@@ -1,0 +1,14 @@
+{
+  "name": "flowcatalyst-website",
+  "version": "1.0.0",
+  "description": "Static website for FlowCatalyst toolkit",
+  "scripts": {
+    "dev": "bunx serve . -p 8080",
+    "build": "mkdir -p dist && cp -r * dist/",
+    "serve": "bunx serve . -p 8080",
+    "preview": "bunx serve dist -p 8080"
+  },
+  "keywords": ["flowcatalyst", "event-driven", "business-applications", "distributed-systems"],
+  "author": "Belac Technology",
+  "license": "MIT"
+}

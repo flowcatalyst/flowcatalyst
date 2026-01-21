@@ -1,0 +1,54 @@
+{
+    "name": "flowcatalyst/laravel-sdk",
+    "description": "Laravel SDK for FlowCatalyst Platform - Event-driven architecture made simple",
+    "keywords": ["flowcatalyst", "laravel", "events", "webhooks", "postbox", "sdk"],
+    "license": "MIT",
+    "type": "library",
+    "authors": [
+        {
+            "name": "FlowCatalyst",
+            "email": "support@flowcatalyst.io"
+        }
+    ],
+    "require": {
+        "php": "^8.1",
+        "illuminate/support": "^10.0|^11.0|^12.0",
+        "illuminate/database": "^10.0|^11.0|^12.0",
+        "illuminate/cache": "^10.0|^11.0|^12.0",
+        "guzzlehttp/guzzle": "^7.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0|^9.0|^10.0",
+        "phpunit/phpunit": "^10.0|^11.0"
+    },
+    "suggest": {
+        "mongodb/laravel-mongodb": "Required for MongoDB postbox driver (^4.0|^5.0)",
+        "doctrine/dbal": "Required for MySQL/PostgreSQL migrations"
+    },
+    "autoload": {
+        "psr-4": {
+            "FlowCatalyst\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "FlowCatalyst\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "FlowCatalyst\\FlowCatalystServiceProvider"
+            ],
+            "aliases": {
+                "FlowCatalyst": "FlowCatalyst\\Facades\\FlowCatalyst",
+                "Postbox": "FlowCatalyst\\Facades\\Postbox"
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

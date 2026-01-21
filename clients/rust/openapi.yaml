@@ -1,0 +1,4238 @@
+openapi: 3.0.0
+info:
+  contact:
+    email: support@flowcatalyst.tech
+    name: FlowCatalyst Support
+    url: https://flowcatalyst.tech/support
+  description: Control plane API for FlowCatalyst - multi-tenant event routing platform.
+  license:
+    name: Proprietary
+    url: https://flowcatalyst.tech/license
+  title: FlowCatalyst Platform API
+  version: "1.0"
+paths:
+  /admin/platform/anchor-domains:
+    get:
+      description: Returns all anchor domains that grant platform-wide access
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/internal_platform_api.AnchorDomainDTO"
+                type: array
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: List anchor domains
+      tags:
+        - Anchor Domains
+    post:
+      description: Adds a new anchor domain that grants platform-wide access to users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/internal_platform_api.CreateAnchorDomainRequest"
+        description: Anchor domain to add
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.AnchorDomainDTO"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Add anchor domain
+      tags:
+        - Anchor Domains
+  "/admin/platform/anchor-domains/{domain}":
+    delete:
+      description: Removes an anchor domain
+      parameters:
+        - description: Domain to remove
+          in: path
+          name: domain
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Unauthorized
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Remove anchor domain
+      tags:
+        - Anchor Domains
+  /admin/platform/audit-logs:
+    get:
+      description: Returns audit logs with optional filtering by entity type, entity
+        ID, principal, or operation
+      parameters:
+        - description: Filter by entity type
+          in: query
+          name: entityType
+          schema:
+            type: string
+        - description: Filter by entity ID
+          in: query
+          name: entityId
+          schema:
+            type: string
+        - description: Filter by principal ID
+          in: query
+          name: principalId
+          schema:
+            type: string
+        - description: Filter by operation name
+          in: query
+          name: operation
+          schema:
+            type: string
+        - description: Page number (0-based)
+          in: query
+          name: page
+          schema:
+            type: integer
+            default: 0
+        - description: Page size
+          in: query
+          name: pageSize
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_audit.AuditL\
+                  ogListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: List audit logs
+      tags:
+        - Audit Logs
+  "/admin/platform/audit-logs/{id}":
+    get:
+      description: Returns a specific audit log entry including operation JSON
+      parameters:
+        - description: Audit log ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_audit.AuditL\
+                  ogDetailDTO"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get audit log by ID
+      tags:
+        - Audit Logs
+  /admin/platform/audit-logs/entity-types:
+    get:
+      description: Returns distinct entity types that have audit log entries
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get entity types with audit logs
+      tags:
+        - Audit Logs
+  "/admin/platform/audit-logs/entity/{entityType}/{entityId}":
+    get:
+      description: Returns all audit logs for a specific entity
+      parameters:
+        - description: Entity type
+          in: path
+          name: entityType
+          required: true
+          schema:
+            type: string
+        - description: Entity ID
+          in: path
+          name: entityId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get audit logs for entity
+      tags:
+        - Audit Logs
+  /admin/platform/audit-logs/operations:
+    get:
+      description: Returns distinct operation names that have audit log entries
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get operations with audit logs
+      tags:
+        - Audit Logs
+  /admin/platform/auth-configs:
+    get:
+      description: Returns all authentication configurations
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/internal_platform_api.AuthConfigDTO"
+                type: array
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: List auth configs
+      tags:
+        - Auth Config
+    post:
+      description: Creates a new authentication configuration for an email domain
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/internal_platform_api.CreateAuthConfigRequest"
+        description: Auth config to create
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.AuthConfigDTO"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Create auth config
+      tags:
+        - Auth Config
+  "/admin/platform/auth-configs/{id}":
+    delete:
+      description: Deletes an authentication configuration
+      parameters:
+        - description: Auth config ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Unauthorized
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Delete auth config
+      tags:
+        - Auth Config
+    get:
+      description: Returns a specific authentication configuration
+      parameters:
+        - description: Auth config ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.AuthConfigDTO"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get auth config by ID
+      tags:
+        - Auth Config
+    put:
+      description: Updates an existing authentication configuration
+      parameters:
+        - description: Auth config ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/internal_platform_api.CreateAuthConfigRequest"
+        description: Auth config updates
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.AuthConfigDTO"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Update auth config
+      tags:
+        - Auth Config
+  /api/admin/platform/roles:
+    get:
+      description: Returns a list of all roles in the system
+      parameters:
+        - description: Filter by scope (ANCHOR, PARTNER, CLIENT)
+          in: query
+          name: scope
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_role.Role"
+                type: array
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: List all roles
+      tags:
+        - Admin - Roles
+    post:
+      description: Creates a new role with specified permissions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_role_operati\
+                ons.CreateRoleCommand"
+        description: Role details
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_role.Role"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Role with code already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Create a new role
+      tags:
+        - Admin - Roles
+  "/api/admin/platform/roles/{id}":
+    delete:
+      description: Deletes a role (built-in roles cannot be deleted)
+      parameters:
+        - description: Role ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Cannot delete built-in role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Role is in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Delete a role
+      tags:
+        - Admin - Roles
+    get:
+      description: Returns a single role by its ID
+      parameters:
+        - description: Role ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_role.Role"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get role by ID
+      tags:
+        - Admin - Roles
+    put:
+      description: Updates an existing role
+      parameters:
+        - description: Role ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_role_operati\
+                ons.UpdateRoleCommand"
+        description: Updated role details
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_role.Role"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "403":
+          description: Cannot modify built-in role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Update a role
+      tags:
+        - Admin - Roles
+  /api/admin/platform/service-accounts:
+    get:
+      description: Returns a list of all service accounts in the system
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_serviceaccou\
+                    nt.ServiceAccount"
+                type: array
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: List all service accounts
+      tags:
+        - Admin - Service Accounts
+    post:
+      description: Creates a new service account for machine-to-machine
+        authentication. Returns credentials only on creation.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_serviceaccou\
+                nt_operations.CreateServiceAccountCommand"
+        description: Service account details
+        required: true
+      responses:
+        "201":
+          description: Created service account with credentials (secret shown only once)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_serviceaccou\
+                  nt.ServiceAccount"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Service account with name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Create a new service account
+      tags:
+        - Admin - Service Accounts
+  "/api/admin/platform/service-accounts/{id}":
+    delete:
+      description: Permanently deletes a service account and revokes all credentials
+      parameters:
+        - description: Service Account ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Delete a service account
+      tags:
+        - Admin - Service Accounts
+    get:
+      description: Returns a single service account by its ID
+      parameters:
+        - description: Service Account ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_serviceaccou\
+                  nt.ServiceAccount"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get service account by ID
+      tags:
+        - Admin - Service Accounts
+  "/api/admin/platform/service-accounts/{id}/rotate":
+    post:
+      description: Generates new credentials and invalidates the old ones. Returns new
+        secret only once.
+      parameters:
+        - description: Service Account ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Service account with new credentials (secret shown only once)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_serviceaccou\
+                  nt.ServiceAccount"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Rotate service account credentials
+      tags:
+        - Admin - Service Accounts
+  /api/v1/dispatch-pools:
+    get:
+      description: Returns a list of dispatch pools the user has access to
+      parameters:
+        - description: Filter by status (ACTIVE, SUSPENDED, ARCHIVED)
+          in: query
+          name: status
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_dispatchpool\
+                    .DispatchPool"
+                type: array
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: List all dispatch pools
+      tags:
+        - Dispatch Pools
+    post:
+      description: Creates a new dispatch pool for rate limiting and concurrency control
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/internal_platform_api.CreateDispatchPoolRequest"
+        description: Dispatch pool details
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_dispatchpool\
+                  .DispatchPool"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Dispatch pool with code already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Create a new dispatch pool
+      tags:
+        - Dispatch Pools
+  "/api/v1/dispatch-pools/{id}":
+    delete:
+      description: Permanently deletes a dispatch pool
+      parameters:
+        - description: Dispatch Pool ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Pool is in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Delete a dispatch pool
+      tags:
+        - Dispatch Pools
+    get:
+      description: Returns a single dispatch pool by its ID
+      parameters:
+        - description: Dispatch Pool ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_dispatchpool\
+                  .DispatchPool"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get dispatch pool by ID
+      tags:
+        - Dispatch Pools
+    put:
+      description: Updates an existing dispatch pool
+      parameters:
+        - description: Dispatch Pool ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/internal_platform_api.UpdateDispatchPoolRequest"
+        description: Updated dispatch pool details
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_dispatchpool\
+                  .DispatchPool"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Update a dispatch pool
+      tags:
+        - Dispatch Pools
+  "/api/v1/dispatch-pools/{id}/activate":
+    post:
+      description: Activates a suspended or archived dispatch pool
+      parameters:
+        - description: Dispatch Pool ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_dispatchpool\
+                  .DispatchPool"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Already active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Activate a dispatch pool
+      tags:
+        - Dispatch Pools
+  "/api/v1/dispatch-pools/{id}/archive":
+    post:
+      description: Archives a dispatch pool (soft delete)
+      parameters:
+        - description: Dispatch Pool ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_dispatchpool\
+                  .DispatchPool"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Pool is in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Archive a dispatch pool
+      tags:
+        - Dispatch Pools
+  "/api/v1/dispatch-pools/{id}/suspend":
+    post:
+      description: Suspends a dispatch pool, stopping all event processing
+      parameters:
+        - description: Dispatch Pool ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_dispatchpool\
+                  .DispatchPool"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Already suspended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Suspend a dispatch pool
+      tags:
+        - Dispatch Pools
+  /api/v1/event-types:
+    get:
+      description: Returns a list of all event types with optional filtering
+      parameters:
+        - description: Filter by status (CURRENT, ARCHIVED)
+          in: query
+          name: status
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype.Ev\
+                    entType"
+                type: array
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: List all event types
+      tags:
+        - Event Types
+    post:
+      description: Creates a new event type in the system
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype_op\
+                erations.CreateEventTypeCommand"
+        description: Event type details
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype.Ev\
+                  entType"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Event type with code already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Create a new event type
+      tags:
+        - Event Types
+  "/api/v1/event-types/{id}":
+    delete:
+      description: Permanently deletes an event type (prefer archive for soft delete)
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Event type is in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Delete an event type
+      tags:
+        - Event Types
+    get:
+      description: Returns a single event type by its ID
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype.Ev\
+                  entType"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get event type by ID
+      tags:
+        - Event Types
+    put:
+      description: Updates an existing event type
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype_op\
+                erations.UpdateEventTypeCommand"
+        description: Updated event type details
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype.Ev\
+                  entType"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Update an event type
+      tags:
+        - Event Types
+  "/api/v1/event-types/{id}/archive":
+    post:
+      description: Archives an event type (soft delete, reversible)
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype.Ev\
+                  entType"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Already archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Archive an event type
+      tags:
+        - Event Types
+  "/api/v1/event-types/{id}/schemas":
+    get:
+      description: Returns all schema versions for an event type
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype.Sp\
+                    ecVersion"
+                type: array
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: List schema versions for an event type
+      tags:
+        - Event Types - Schemas
+    post:
+      description: Adds a new schema version to an event type (starts in FINALISING status)
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype_op\
+                erations.AddSchemaCommand"
+        description: Schema details
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype.Sp\
+                  ecVersion"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Schema version already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Add a new schema version
+      tags:
+        - Event Types - Schemas
+  "/api/v1/event-types/{id}/schemas/{version}":
+    delete:
+      description: Deletes a draft schema version (only FINALISING schemas can be deleted)
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: Schema version (e.g., 1.0.0)
+          in: path
+          name: version
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Cannot delete finalised schema
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Delete a schema version
+      tags:
+        - Event Types - Schemas
+    get:
+      description: Returns a single schema version by version number
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: Schema version (e.g., 1.0.0)
+          in: path
+          name: version
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype.Sp\
+                  ecVersion"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get a specific schema version
+      tags:
+        - Event Types - Schemas
+  "/api/v1/event-types/{id}/schemas/{version}/deprecate":
+    post:
+      description: Deprecates a schema version, marking it as no longer recommended
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: Schema version (e.g., 1.0.0)
+          in: path
+          name: version
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype.Sp\
+                  ecVersion"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Schema not in CURRENT status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Deprecate a schema version
+      tags:
+        - Event Types - Schemas
+  "/api/v1/event-types/{id}/schemas/{version}/finalise":
+    post:
+      description: Finalises a schema version, making it immutable and CURRENT
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: Schema version (e.g., 1.0.0)
+          in: path
+          name: version
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype.Sp\
+                  ecVersion"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Schema already finalised
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Finalise a schema version
+      tags:
+        - Event Types - Schemas
+  /api/v1/subscriptions:
+    get:
+      description: Returns a list of subscriptions the user has access to
+      parameters:
+        - description: Filter by status (ACTIVE, PAUSED, ARCHIVED)
+          in: query
+          name: status
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_subscription\
+                    .Subscription"
+                type: array
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: List all subscriptions
+      tags:
+        - Subscriptions
+    post:
+      description: Creates a new subscription for event delivery
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/internal_platform_api.CreateSubscriptionRequest"
+        description: Subscription details
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_subscription\
+                  .Subscription"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Subscription with code already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Create a new subscription
+      tags:
+        - Subscriptions
+  "/api/v1/subscriptions/{id}":
+    delete:
+      description: Permanently deletes a subscription
+      parameters:
+        - description: Subscription ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Delete a subscription
+      tags:
+        - Subscriptions
+    get:
+      description: Returns a single subscription by its ID
+      parameters:
+        - description: Subscription ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_subscription\
+                  .Subscription"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get subscription by ID
+      tags:
+        - Subscriptions
+    put:
+      description: Updates an existing subscription
+      parameters:
+        - description: Subscription ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/internal_platform_api.UpdateSubscriptionRequest"
+        description: Updated subscription details
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_subscription\
+                  .Subscription"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Update a subscription
+      tags:
+        - Subscriptions
+  "/api/v1/subscriptions/{id}/pause":
+    post:
+      description: Pauses event delivery for a subscription
+      parameters:
+        - description: Subscription ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_subscription\
+                  .Subscription"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Already paused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Pause a subscription
+      tags:
+        - Subscriptions
+  "/api/v1/subscriptions/{id}/resume":
+    post:
+      description: Resumes event delivery for a paused subscription
+      parameters:
+        - description: Subscription ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_subscription\
+                  .Subscription"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Not paused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Resume a subscription
+      tags:
+        - Subscriptions
+  /bff/debug/dispatch-jobs:
+    get:
+      description: List raw dispatch jobs from the transactional collection
+        (debug/admin only)
+      parameters:
+        - description: Page number (0-based)
+          in: query
+          name: page
+          schema:
+            type: integer
+            default: 0
+        - description: Page size (max 100)
+          in: query
+          name: size
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.PagedRawDispatchJobResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: List raw dispatch jobs
+      tags:
+        - Raw Dispatch Jobs (Debug)
+  "/bff/debug/dispatch-jobs/{id}":
+    get:
+      description: Get a single raw dispatch job by its ID (debug/admin only)
+      parameters:
+        - description: Dispatch Job ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.RawDispatchJobResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get raw dispatch job by ID
+      tags:
+        - Raw Dispatch Jobs (Debug)
+  /bff/debug/events:
+    get:
+      description: List raw events from the transactional collection (debug/admin only)
+      parameters:
+        - description: Page number (0-based)
+          in: query
+          name: page
+          schema:
+            type: integer
+            default: 0
+        - description: Page size (max 100)
+          in: query
+          name: size
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.PagedRawEventResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: List raw events
+      tags:
+        - Raw Events (Debug)
+  "/bff/debug/events/{id}":
+    get:
+      description: Get a single raw event by its ID (debug/admin only)
+      parameters:
+        - description: Event ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.RawEventResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get raw event by ID
+      tags:
+        - Raw Events (Debug)
+  /bff/event-types:
+    get:
+      description: Returns all event types with optional filtering. Supports
+        multi-value filtering with comma-separated values.
+      parameters:
+        - description: Filter by status (ACTIVE, ARCHIVED)
+          in: query
+          name: status
+          schema:
+            type: string
+        - description: Filter by application names (comma-separated)
+          in: query
+          name: application
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+        - description: Filter by subdomains (comma-separated)
+          in: query
+          name: subdomain
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+        - description: Filter by aggregates (comma-separated)
+          in: query
+          name: aggregate
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffEventTypeListResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      summary: List all event types (BFF)
+      tags:
+        - BFF - Event Types
+    post:
+      description: Creates a new event type
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/internal_platform_api.CreateEventTypeRequest"
+        description: Event type details
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffEventTypeResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      summary: Create a new event type (BFF)
+      tags:
+        - BFF - Event Types
+  "/bff/event-types/{id}":
+    get:
+      description: Returns a single event type by its ID
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffEventTypeResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      summary: Get event type by ID (BFF)
+      tags:
+        - BFF - Event Types
+    patch:
+      description: Updates an existing event type
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/internal_platform_api.UpdateEventTypeRequest"
+        description: Updated event type details
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffEventTypeResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      summary: Update an event type (BFF)
+      tags:
+        - BFF - Event Types
+  "/bff/event-types/{id}/archive":
+    post:
+      description: Archives an event type
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffEventTypeResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      summary: Archive an event type (BFF)
+      tags:
+        - BFF - Event Types
+  "/bff/event-types/{id}/schemas":
+    post:
+      description: Adds a new schema version to an event type
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/internal_platform_api.AddSchemaRequest"
+        description: Schema details
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffEventTypeResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      summary: Add a schema version (BFF)
+      tags:
+        - BFF - Event Types
+  "/bff/event-types/{id}/schemas/{version}/deprecate":
+    post:
+      description: Deprecates a schema version
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: Schema version
+          in: path
+          name: version
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffEventTypeResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      summary: Deprecate a schema version (BFF)
+      tags:
+        - BFF - Event Types
+  "/bff/event-types/{id}/schemas/{version}/finalise":
+    post:
+      description: Finalises a schema version, making it immutable
+      parameters:
+        - description: Event Type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: Schema version
+          in: path
+          name: version
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffEventTypeResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      summary: Finalise a schema version (BFF)
+      tags:
+        - BFF - Event Types
+  /bff/event-types/filters/aggregates:
+    get:
+      description: Returns distinct aggregates for filtering, optionally filtered by
+        application and subdomain
+      parameters:
+        - description: Filter by application names
+          in: query
+          name: application
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+        - description: Filter by subdomains
+          in: query
+          name: subdomain
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffFilterOptionsResponse"
+      summary: Get distinct aggregates
+      tags:
+        - BFF - Event Types
+  /bff/event-types/filters/applications:
+    get:
+      description: Returns distinct application names for filtering
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffFilterOptionsResponse"
+      summary: Get distinct application names
+      tags:
+        - BFF - Event Types
+  /bff/event-types/filters/subdomains:
+    get:
+      description: Returns distinct subdomains for filtering, optionally filtered by
+        application
+      parameters:
+        - description: Filter by application names
+          in: query
+          name: application
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffFilterOptionsResponse"
+      summary: Get distinct subdomains
+      tags:
+        - BFF - Event Types
+  /bff/roles:
+    get:
+      description: Returns all roles with optional filtering
+      parameters:
+        - description: Filter by scope (ANCHOR, PARTNER, CLIENT)
+          in: query
+          name: scope
+          schema:
+            type: string
+        - description: Filter by built-in status (true, false)
+          in: query
+          name: builtIn
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffRoleListResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      summary: List all roles (BFF)
+      tags:
+        - BFF - Roles
+    post:
+      description: Creates a new role
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/internal_platform_api.CreateRoleBffRequest"
+        description: Role details
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffRoleResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      summary: Create a new role (BFF)
+      tags:
+        - BFF - Roles
+  "/bff/roles/{id}":
+    delete:
+      description: Deletes a role
+      parameters:
+        - description: Role ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Cannot delete built-in role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      summary: Delete a role (BFF)
+      tags:
+        - BFF - Roles
+    get:
+      description: Returns a single role by its ID
+      parameters:
+        - description: Role ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffRoleResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      summary: Get role by ID (BFF)
+      tags:
+        - BFF - Roles
+    put:
+      description: Updates an existing role
+      parameters:
+        - description: Role ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/internal_platform_api.UpdateRoleBffRequest"
+        description: Updated role details
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffRoleResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "403":
+          description: Cannot modify built-in role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      summary: Update a role (BFF)
+      tags:
+        - BFF - Roles
+  /bff/roles/filters/applications:
+    get:
+      description: Returns available applications for filtering roles
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffApplicationOptionsResponse"
+      summary: Get applications for role filter
+      tags:
+        - BFF - Roles
+  /bff/roles/permissions:
+    get:
+      description: Returns all available permissions
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffPermissionListResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      summary: List all permissions (BFF)
+      tags:
+        - BFF - Roles
+  "/bff/roles/permissions/{code}":
+    get:
+      description: Returns a single permission by its code
+      parameters:
+        - description: Permission code
+          in: path
+          name: code
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BffPermissionResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      summary: Get permission by code (BFF)
+      tags:
+        - BFF - Roles
+  /dispatch/jobs:
+    post:
+      description: Creates a new webhook dispatch job for HTTP delivery
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/internal_platform_api.CreateDispatchJobRequest"
+        description: Dispatch job to create
+        required: true
+      responses:
+        "200":
+          description: Existing job (idempotent with idempotencyKey)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.DispatchJobDTO"
+        "201":
+          description: Created dispatch job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.DispatchJobDTO"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Create a dispatch job
+      tags:
+        - Dispatch Jobs
+  "/dispatch/jobs/{id}":
+    get:
+      description: Retrieves a single dispatch job by its ID
+      parameters:
+        - description: Dispatch job ID (TSID)
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Dispatch job found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.DispatchJobDTO"
+        "404":
+          description: Dispatch job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get a dispatch job by ID
+      tags:
+        - Dispatch Jobs
+  "/dispatch/jobs/{id}/attempts":
+    get:
+      description: Retrieves all delivery attempts for a dispatch job
+      parameters:
+        - description: Dispatch job ID (TSID)
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Dispatch attempts
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/internal_platform_api.DispatchAttemptDTO"
+                type: array
+        "404":
+          description: Dispatch job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get dispatch attempts for a job
+      tags:
+        - Dispatch Jobs
+  /dispatch/jobs/batch:
+    post:
+      description: Creates multiple dispatch jobs in a batch (max 100)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              items:
+                $ref: "#/components/schemas/internal_platform_api.CreateDispatchJobRequest"
+              type: array
+        description: Dispatch jobs to create
+        required: true
+      responses:
+        "201":
+          description: Created dispatch jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BatchDispatchJobResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Create multiple dispatch jobs
+      tags:
+        - Dispatch Jobs
+  /dispatch/process:
+    post:
+      description: |-
+        Internal endpoint that executes webhook dispatch and records attempts.
+        Requires HMAC-SHA256 authentication via Bearer token.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/go_flowcatalyst_tech_internal_router_model.ProcessR\
+                equest"
+        description: Processing request with messageId
+        required: true
+      responses:
+        "200":
+          description: Job processed (check ack field for success/failure)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_router_model.ProcessR\
+                  esponse"
+        "401":
+          description: Invalid or missing authentication token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_router_model.ProcessR\
+                  esponse"
+        "500":
+          description: Internal error during processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/go_flowcatalyst_tech_internal_router_model.ProcessR\
+                  esponse"
+      summary: Process a dispatch job (internal endpoint called by message router)
+      tags:
+        - Dispatch Processing
+  /events:
+    post:
+      description: Creates a new domain event. Events are processed asynchronously by
+        subscriptions.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/internal_platform_api.CreateEventRequest"
+        description: Event to create
+        required: true
+      responses:
+        "200":
+          description: Existing event (idempotent with deduplicationId)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.EventDTO"
+        "201":
+          description: Created event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.EventDTO"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Create a new event
+      tags:
+        - Events
+  "/events/{id}":
+    get:
+      description: Retrieves a single event by its ID
+      parameters:
+        - description: Event ID (TSID)
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Event found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.EventDTO"
+        "404":
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get an event by ID
+      tags:
+        - Events
+  /events/batch:
+    post:
+      description: Creates multiple events in a single batch (max 100). All events in
+        a batch share the same batch ID.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/internal_platform_api.BatchCreateRequest"
+        description: Events to create
+        required: true
+      responses:
+        "201":
+          description: Created events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.BatchCreateResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/internal_platform_api.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Create multiple events
+      tags:
+        - Events
+servers:
+  - url: //localhost:8080/api
+components:
+  securitySchemes:
+    BearerAuth:
+      description: 'JWT Bearer token. Format: "Bearer {token}"'
+      in: header
+      name: Authorization
+      type: apiKey
+    SessionCookie:
+      description: Session cookie for browser-based authentication
+      in: cookie
+      name: FLOWCATALYST_SESSION
+      type: apiKey
+  schemas:
+    go_flowcatalyst_tech_internal_platform_audit.AuditLogDTO:
+      properties:
+        entityId:
+          type: string
+        entityType:
+          type: string
+        id:
+          type: string
+        operation:
+          type: string
+        performedAt:
+          type: string
+        principalId:
+          type: string
+        principalName:
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_platform_audit.AuditLogDetailDTO:
+      properties:
+        entityId:
+          type: string
+        entityType:
+          type: string
+        id:
+          type: string
+        operation:
+          type: string
+        operationJson:
+          type: string
+        performedAt:
+          type: string
+        principalId:
+          type: string
+        principalName:
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_platform_audit.AuditLogListResponse:
+      properties:
+        auditLogs:
+          items:
+            $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_audit.AuditL\
+              ogDTO"
+          type: array
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+      type: object
+    go_flowcatalyst_tech_internal_platform_dispatchpool.DispatchPool:
+      properties:
+        clientId:
+          type: string
+        clientIdentifier:
+          description: Denormalized client identifier
+          type: string
+        code:
+          type: string
+        concurrency:
+          type: integer
+        createdAt:
+          type: string
+        description:
+          type: string
+        enabled:
+          description: |-
+            Enabled is deprecated - use Status instead
+            Kept for backwards compatibility with older data
+          type: boolean
+        id:
+          type: string
+        mediatorType:
+          $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_dispatchpool\
+            .MediatorType"
+        name:
+          type: string
+        queueCapacity:
+          type: integer
+        rateLimitPerMin:
+          type: integer
+        status:
+          $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_dispatchpool\
+            .DispatchPoolStatus"
+        updatedAt:
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_platform_dispatchpool.DispatchPoolStatus:
+      enum:
+        - ACTIVE
+        - SUSPENDED
+        - ARCHIVED
+      type: string
+      x-enum-varnames:
+        - DispatchPoolStatusActive
+        - DispatchPoolStatusSuspended
+        - DispatchPoolStatusArchived
+    go_flowcatalyst_tech_internal_platform_dispatchpool.MediatorType:
+      enum:
+        - HTTP_WEBHOOK
+      type: string
+      x-enum-varnames:
+        - MediatorTypeHTTPWebhook
+    go_flowcatalyst_tech_internal_platform_event.ContextData:
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_platform_eventtype.EventType:
+      properties:
+        category:
+          type: string
+        code:
+          type: string
+        createdAt:
+          type: string
+        description:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        specVersions:
+          items:
+            $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype.Sp\
+              ecVersion"
+          type: array
+        status:
+          $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype.Ev\
+            entTypeStatus"
+        updatedAt:
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_platform_eventtype.EventTypeStatus:
+      enum:
+        - CURRENT
+        - ARCHIVED
+      type: string
+      x-enum-varnames:
+        - EventTypeStatusCurrent
+        - EventTypeStatusArchived
+    go_flowcatalyst_tech_internal_platform_eventtype.SchemaType:
+      enum:
+        - JSON_SCHEMA
+        - PROTO
+        - XSD
+      type: string
+      x-enum-varnames:
+        - SchemaTypeJSONSchema
+        - SchemaTypeProto
+        - SchemaTypeXSD
+    go_flowcatalyst_tech_internal_platform_eventtype.SpecVersion:
+      properties:
+        createdAt:
+          type: string
+        mimeType:
+          description: e.g., "application/json"
+          type: string
+        schema:
+          description: Schema content (JSON Schema, etc.)
+          type: string
+        schemaType:
+          allOf:
+            - $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype.Sc\
+                hemaType"
+          description: JSON_SCHEMA, PROTO, XSD
+        status:
+          allOf:
+            - $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_eventtype.Sp\
+                ecVersionStatus"
+          description: FINALISING, CURRENT, DEPRECATED
+        updatedAt:
+          type: string
+        version:
+          description: e.g., "1.0", "1.1", "2.0"
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_platform_eventtype.SpecVersionStatus:
+      enum:
+        - FINALISING
+        - CURRENT
+        - DEPRECATED
+      type: string
+      x-enum-varnames:
+        - SpecVersionStatusFinalising
+        - SpecVersionStatusCurrent
+        - SpecVersionStatusDeprecated
+    go_flowcatalyst_tech_internal_platform_eventtype_operations.AddSchemaCommand:
+      properties:
+        eventTypeId:
+          type: string
+        mimeType:
+          type: string
+        schema:
+          type: string
+        schemaType:
+          description: JSON_SCHEMA, PROTO, XSD
+          type: string
+        version:
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_platform_eventtype_operations.CreateEventTypeCommand:
+      properties:
+        category:
+          type: string
+        code:
+          type: string
+        description:
+          type: string
+        name:
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_platform_eventtype_operations.UpdateEventTypeCommand:
+      properties:
+        category:
+          type: string
+        description:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_platform_principal.RoleAssignment:
+      properties:
+        assignedAt:
+          type: string
+        assignmentSource:
+          type: string
+        roleId:
+          type: string
+        roleName:
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_platform_role.Role:
+      properties:
+        builtIn:
+          type: boolean
+        code:
+          type: string
+        createdAt:
+          type: string
+        description:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        permissions:
+          items:
+            type: string
+          type: array
+        scope:
+          description: ANCHOR, PARTNER, CLIENT
+          type: string
+        updatedAt:
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_platform_role_operations.CreateRoleCommand:
+      properties:
+        code:
+          type: string
+        description:
+          type: string
+        name:
+          type: string
+        permissions:
+          items:
+            type: string
+          type: array
+        scope:
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_platform_role_operations.UpdateRoleCommand:
+      properties:
+        description:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        permissions:
+          items:
+            type: string
+          type: array
+      type: object
+    go_flowcatalyst_tech_internal_platform_serviceaccount.ServiceAccount:
+      properties:
+        active:
+          type: boolean
+        applicationId:
+          type: string
+        clientIds:
+          items:
+            type: string
+          type: array
+        code:
+          description: Unique code
+          type: string
+        createdAt:
+          type: string
+        description:
+          type: string
+        id:
+          type: string
+        lastUsedAt:
+          type: string
+        name:
+          type: string
+        roles:
+          items:
+            $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_principal.Ro\
+              leAssignment"
+          type: array
+        updatedAt:
+          type: string
+        webhookCredentials:
+          $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_serviceaccou\
+            nt.WebhookCredentials"
+      type: object
+    go_flowcatalyst_tech_internal_platform_serviceaccount.SigningAlgorithm:
+      enum:
+        - HMAC_SHA256
+      type: string
+      x-enum-varnames:
+        - SigningAlgorithmHMACSHA256
+    go_flowcatalyst_tech_internal_platform_serviceaccount.WebhookAuthType:
+      enum:
+        - BEARER
+        - BASIC
+      type: string
+      x-enum-varnames:
+        - WebhookAuthTypeBearer
+        - WebhookAuthTypeBasic
+    go_flowcatalyst_tech_internal_platform_serviceaccount.WebhookCredentials:
+      properties:
+        authType:
+          $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_serviceaccou\
+            nt.WebhookAuthType"
+        createdAt:
+          type: string
+        regeneratedAt:
+          type: string
+        signingAlgorithm:
+          $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_serviceaccou\
+            nt.SigningAlgorithm"
+      type: object
+    go_flowcatalyst_tech_internal_platform_serviceaccount_operations.CreateServiceAccountCommand:
+      properties:
+        applicationId:
+          type: string
+        clientIds:
+          items:
+            type: string
+          type: array
+        code:
+          type: string
+        description:
+          type: string
+        name:
+          type: string
+        roles:
+          items:
+            $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_principal.Ro\
+              leAssignment"
+          type: array
+      type: object
+    go_flowcatalyst_tech_internal_platform_subscription.ConfigEntry:
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_platform_subscription.DispatchMode:
+      enum:
+        - IMMEDIATE
+        - NEXT_ON_ERROR
+        - BLOCK_ON_ERROR
+      type: string
+      x-enum-comments:
+        DispatchModeBlockOnError: Block group on failure
+        DispatchModeImmediate: No ordering guarantee
+        DispatchModeNextOnError: Skip failed, process next
+      x-enum-descriptions:
+        - No ordering guarantee
+        - Skip failed, process next
+        - Block group on failure
+      x-enum-varnames:
+        - DispatchModeImmediate
+        - DispatchModeNextOnError
+        - DispatchModeBlockOnError
+    go_flowcatalyst_tech_internal_platform_subscription.EventTypeBinding:
+      properties:
+        eventTypeCode:
+          type: string
+        eventTypeId:
+          type: string
+        specVersion:
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_platform_subscription.Subscription:
+      properties:
+        clientId:
+          description: Tenant isolation
+          type: string
+        clientIdentifier:
+          type: string
+        code:
+          description: Unique subscription code
+          type: string
+        createdAt:
+          type: string
+        customConfig:
+          items:
+            $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_subscription\
+              .ConfigEntry"
+          type: array
+        dataOnly:
+          type: boolean
+        delaySeconds:
+          type: integer
+        description:
+          type: string
+        dispatchPoolCode:
+          type: string
+        dispatchPoolId:
+          type: string
+        eventTypes:
+          items:
+            $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_subscription\
+              .EventTypeBinding"
+          type: array
+        id:
+          type: string
+        maxAgeSeconds:
+          type: integer
+        maxRetries:
+          description: Maximum retry attempts (default 3)
+          type: integer
+        mode:
+          $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_subscription\
+            .DispatchMode"
+        name:
+          type: string
+        queue:
+          type: string
+        sequence:
+          type: integer
+        serviceAccountId:
+          description: For webhook credentials
+          type: string
+        source:
+          $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_subscription\
+            .SubscriptionSource"
+        status:
+          $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_subscription\
+            .SubscriptionStatus"
+        target:
+          description: Webhook URL
+          type: string
+        timeoutSeconds:
+          type: integer
+        updatedAt:
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_platform_subscription.SubscriptionSource:
+      enum:
+        - API
+        - UI
+      type: string
+      x-enum-varnames:
+        - SubscriptionSourceAPI
+        - SubscriptionSourceUI
+    go_flowcatalyst_tech_internal_platform_subscription.SubscriptionStatus:
+      enum:
+        - ACTIVE
+        - PAUSED
+      type: string
+      x-enum-varnames:
+        - SubscriptionStatusActive
+        - SubscriptionStatusPaused
+    go_flowcatalyst_tech_internal_router_model.ProcessRequest:
+      properties:
+        messageId:
+          description: MessageID is the dispatch job ID to process
+          type: string
+      type: object
+    go_flowcatalyst_tech_internal_router_model.ProcessResponse:
+      properties:
+        ack:
+          type: boolean
+        delaySeconds:
+          type: integer
+        message:
+          type: string
+      type: object
+    internal_platform_api.AddSchemaRequest:
+      properties:
+        mimeType:
+          type: string
+        schema:
+          type: string
+        schemaType:
+          type: string
+        version:
+          type: string
+      type: object
+    internal_platform_api.AnchorDomainDTO:
+      properties:
+        createdAt:
+          type: string
+        domain:
+          type: string
+        id:
+          type: string
+      type: object
+    internal_platform_api.AuthConfigDTO:
+      properties:
+        additionalClientIds:
+          items:
+            type: string
+          type: array
+        authProvider:
+          type: string
+        configType:
+          type: string
+        createdAt:
+          type: string
+        emailDomain:
+          type: string
+        entraTenantId:
+          type: string
+        grantedClientIds:
+          items:
+            type: string
+          type: array
+        groupsClaim:
+          type: string
+        id:
+          type: string
+        idpType:
+          type: string
+        oidcClientId:
+          type: string
+        oidcIssuerPattern:
+          type: string
+        oidcIssuerUrl:
+          type: string
+        oidcMultiTenant:
+          type: boolean
+        primaryClientId:
+          type: string
+        rolesClaim:
+          type: string
+        updatedAt:
+          type: string
+      type: object
+    internal_platform_api.BatchCreateRequest:
+      properties:
+        events:
+          items:
+            $ref: "#/components/schemas/internal_platform_api.CreateEventRequest"
+          type: array
+      type: object
+    internal_platform_api.BatchCreateResponse:
+      properties:
+        count:
+          type: integer
+        events:
+          items:
+            $ref: "#/components/schemas/internal_platform_api.EventDTO"
+          type: array
+      type: object
+    internal_platform_api.BatchDispatchJobResponse:
+      properties:
+        count:
+          type: integer
+        jobs:
+          items:
+            $ref: "#/components/schemas/internal_platform_api.DispatchJobDTO"
+          type: array
+      type: object
+    internal_platform_api.BffApplicationOption:
+      properties:
+        code:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+      type: object
+    internal_platform_api.BffApplicationOptionsResponse:
+      properties:
+        options:
+          items:
+            $ref: "#/components/schemas/internal_platform_api.BffApplicationOption"
+          type: array
+      type: object
+    internal_platform_api.BffEventTypeListResponse:
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/internal_platform_api.BffEventTypeResponse"
+          type: array
+        total:
+          type: integer
+      type: object
+    internal_platform_api.BffEventTypeResponse:
+      description: Event type with string IDs for JavaScript client precision
+      properties:
+        aggregate:
+          type: string
+        application:
+          type: string
+        code:
+          type: string
+        createdAt:
+          type: string
+        description:
+          type: string
+        event:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        specVersions:
+          items:
+            $ref: "#/components/schemas/internal_platform_api.BffSpecVersionResponse"
+          type: array
+        status:
+          type: string
+        subdomain:
+          type: string
+        updatedAt:
+          type: string
+      type: object
+    internal_platform_api.BffFilterOptionsResponse:
+      properties:
+        options:
+          items:
+            type: string
+          type: array
+      type: object
+    internal_platform_api.BffPermissionListResponse:
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/internal_platform_api.BffPermissionResponse"
+          type: array
+        total:
+          type: integer
+      type: object
+    internal_platform_api.BffPermissionResponse:
+      properties:
+        action:
+          type: string
+        aggregate:
+          type: string
+        application:
+          type: string
+        category:
+          type: string
+        code:
+          type: string
+        context:
+          type: string
+        description:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+      type: object
+    internal_platform_api.BffRoleListResponse:
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/internal_platform_api.BffRoleResponse"
+          type: array
+        total:
+          type: integer
+      type: object
+    internal_platform_api.BffRoleResponse:
+      description: Role with string IDs for JavaScript client precision
+      properties:
+        builtIn:
+          type: boolean
+        code:
+          type: string
+        createdAt:
+          type: string
+        description:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        permissions:
+          items:
+            type: string
+          type: array
+        scope:
+          type: string
+        shortName:
+          type: string
+        updatedAt:
+          type: string
+      type: object
+    internal_platform_api.BffSpecVersionResponse:
+      properties:
+        mimeType:
+          type: string
+        schemaType:
+          type: string
+        status:
+          type: string
+        version:
+          type: string
+      type: object
+    internal_platform_api.ContextDataResponse:
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+      type: object
+    internal_platform_api.CreateAnchorDomainRequest:
+      properties:
+        domain:
+          type: string
+      type: object
+    internal_platform_api.CreateAuthConfigRequest:
+      properties:
+        additionalClientIds:
+          items:
+            type: string
+          type: array
+        authProvider:
+          type: string
+        configType:
+          type: string
+        emailDomain:
+          type: string
+        entraTenantId:
+          type: string
+        grantedClientIds:
+          items:
+            type: string
+          type: array
+        groupsClaim:
+          type: string
+        idpType:
+          type: string
+        oidcClientId:
+          type: string
+        oidcClientSecretRef:
+          type: string
+        oidcIssuerPattern:
+          type: string
+        oidcIssuerUrl:
+          type: string
+        oidcMultiTenant:
+          type: boolean
+        primaryClientId:
+          type: string
+        rolesClaim:
+          type: string
+      type: object
+    internal_platform_api.CreateDispatchJobRequest:
+      properties:
+        clientId:
+          type: string
+        code:
+          type: string
+        correlationId:
+          type: string
+        dataOnly:
+          type: boolean
+        dispatchPoolId:
+          type: string
+        eventId:
+          type: string
+        expiresAt:
+          type: string
+        externalId:
+          type: string
+        headers:
+          additionalProperties:
+            type: string
+          type: object
+        idempotencyKey:
+          type: string
+        kind:
+          type: string
+        maxRetries:
+          type: integer
+        messageGroup:
+          type: string
+        metadata:
+          additionalProperties:
+            type: string
+          type: object
+        mode:
+          type: string
+        payload:
+          type: string
+        payloadContentType:
+          type: string
+        protocol:
+          type: string
+        queueUrl:
+          type: string
+        retryStrategy:
+          type: string
+        scheduledFor:
+          type: string
+        schemaId:
+          type: string
+        sequence:
+          type: integer
+        serviceAccountId:
+          type: string
+        source:
+          type: string
+        subject:
+          type: string
+        subscriptionId:
+          type: string
+        targetUrl:
+          type: string
+        timeoutSeconds:
+          type: integer
+      type: object
+    internal_platform_api.CreateDispatchPoolRequest:
+      properties:
+        code:
+          type: string
+        concurrency:
+          type: integer
+        description:
+          type: string
+        name:
+          type: string
+        rateLimit:
+          type: integer
+      type: object
+    internal_platform_api.CreateEventRequest:
+      properties:
+        causationId:
+          type: string
+        contextData:
+          items:
+            $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_event.Contex\
+              tData"
+          type: array
+        correlationId:
+          type: string
+        data:
+          type: string
+        deduplicationId:
+          type: string
+        messageGroup:
+          type: string
+        source:
+          type: string
+        specVersion:
+          type: string
+        subject:
+          type: string
+        time:
+          type: string
+        type:
+          type: string
+      type: object
+    internal_platform_api.CreateEventTypeRequest:
+      properties:
+        code:
+          type: string
+        description:
+          type: string
+        name:
+          type: string
+      type: object
+    internal_platform_api.CreateRoleBffRequest:
+      properties:
+        code:
+          type: string
+        description:
+          type: string
+        name:
+          type: string
+        permissions:
+          items:
+            type: string
+          type: array
+        scope:
+          type: string
+      type: object
+    internal_platform_api.CreateSubscriptionRequest:
+      properties:
+        code:
+          type: string
+        customConfig:
+          items:
+            $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_subscription\
+              .ConfigEntry"
+          type: array
+        dataOnly:
+          type: boolean
+        delaySeconds:
+          type: integer
+        description:
+          type: string
+        dispatchPoolCode:
+          type: string
+        eventTypes:
+          items:
+            $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_subscription\
+              .EventTypeBinding"
+          type: array
+        mode:
+          $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_subscription\
+            .DispatchMode"
+        name:
+          type: string
+        queue:
+          type: string
+        target:
+          type: string
+        timeoutSeconds:
+          type: integer
+      type: object
+    internal_platform_api.DispatchAttemptDTO:
+      properties:
+        attemptNumber:
+          type: integer
+        attemptedAt:
+          type: string
+        completedAt:
+          type: string
+        createdAt:
+          type: string
+        durationMillis:
+          type: integer
+        errorMessage:
+          type: string
+        errorStackTrace:
+          type: string
+        errorType:
+          type: string
+        id:
+          type: string
+        responseBody:
+          type: string
+        responseCode:
+          type: integer
+        status:
+          type: string
+      type: object
+    internal_platform_api.DispatchJobDTO:
+      properties:
+        attemptCount:
+          type: integer
+        clientId:
+          type: string
+        code:
+          type: string
+        completedAt:
+          type: string
+        correlationId:
+          type: string
+        createdAt:
+          type: string
+        dataOnly:
+          type: boolean
+        dispatchPoolId:
+          type: string
+        durationMillis:
+          type: integer
+        eventId:
+          type: string
+        expiresAt:
+          type: string
+        externalId:
+          type: string
+        headers:
+          additionalProperties:
+            type: string
+          type: object
+        id:
+          type: string
+        idempotencyKey:
+          type: string
+        kind:
+          type: string
+        lastAttemptAt:
+          type: string
+        lastError:
+          type: string
+        maxRetries:
+          type: integer
+        messageGroup:
+          type: string
+        metadata:
+          additionalProperties:
+            type: string
+          type: object
+        mode:
+          type: string
+        payloadContentType:
+          type: string
+        protocol:
+          type: string
+        retryStrategy:
+          type: string
+        scheduledFor:
+          type: string
+        schemaId:
+          type: string
+        sequence:
+          type: integer
+        serviceAccountId:
+          type: string
+        source:
+          type: string
+        status:
+          type: string
+        subject:
+          type: string
+        subscriptionId:
+          type: string
+        targetUrl:
+          type: string
+        timeoutSeconds:
+          type: integer
+        updatedAt:
+          type: string
+      type: object
+    internal_platform_api.ErrorResponse:
+      properties:
+        details:
+          type: string
+        error:
+          type: string
+        message:
+          type: string
+      type: object
+    internal_platform_api.EventDTO:
+      properties:
+        causationId:
+          type: string
+        clientId:
+          type: string
+        contextData:
+          items:
+            $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_event.Contex\
+              tData"
+          type: array
+        correlationId:
+          type: string
+        createdAt:
+          type: string
+        data:
+          type: string
+        deduplicationId:
+          type: string
+        id:
+          type: string
+        messageGroup:
+          type: string
+        source:
+          type: string
+        specVersion:
+          type: string
+        subject:
+          type: string
+        time:
+          type: string
+        type:
+          type: string
+      type: object
+    internal_platform_api.PagedRawDispatchJobResponse:
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/internal_platform_api.RawDispatchJobResponse"
+          type: array
+        page:
+          type: integer
+        size:
+          type: integer
+        totalItems:
+          type: integer
+        totalPages:
+          type: integer
+      type: object
+    internal_platform_api.PagedRawEventResponse:
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/internal_platform_api.RawEventResponse"
+          type: array
+        page:
+          type: integer
+        size:
+          type: integer
+        totalItems:
+          type: integer
+        totalPages:
+          type: integer
+      type: object
+    internal_platform_api.RawDispatchJobResponse:
+      properties:
+        attemptCount:
+          type: integer
+        attemptHistoryCount:
+          type: integer
+        clientId:
+          type: string
+        code:
+          type: string
+        completedAt:
+          type: string
+        correlationId:
+          type: string
+        createdAt:
+          type: string
+        dispatchPoolId:
+          type: string
+        eventId:
+          type: string
+        externalId:
+          type: string
+        id:
+          type: string
+        idempotencyKey:
+          type: string
+        kind:
+          type: string
+        lastError:
+          type: string
+        maxRetries:
+          type: integer
+        messageGroup:
+          type: string
+        mode:
+          type: string
+        payloadContentType:
+          type: string
+        payloadLength:
+          type: integer
+        protocol:
+          type: string
+        retryStrategy:
+          type: string
+        scheduledFor:
+          type: string
+        sequence:
+          type: integer
+        serviceAccountId:
+          type: string
+        source:
+          type: string
+        status:
+          type: string
+        subject:
+          type: string
+        subscriptionId:
+          type: string
+        targetUrl:
+          type: string
+        timeoutSeconds:
+          type: integer
+        updatedAt:
+          type: string
+      type: object
+    internal_platform_api.RawEventResponse:
+      properties:
+        causationId:
+          type: string
+        clientId:
+          type: string
+        contextData:
+          items:
+            $ref: "#/components/schemas/internal_platform_api.ContextDataResponse"
+          type: array
+        correlationId:
+          type: string
+        createdAt:
+          type: string
+        data:
+          type: string
+        deduplicationId:
+          type: string
+        id:
+          type: string
+        messageGroup:
+          type: string
+        source:
+          type: string
+        specVersion:
+          type: string
+        subject:
+          type: string
+        time:
+          type: string
+        type:
+          type: string
+      type: object
+    internal_platform_api.UpdateDispatchPoolRequest:
+      properties:
+        concurrency:
+          type: integer
+        description:
+          type: string
+        name:
+          type: string
+        rateLimit:
+          type: integer
+      type: object
+    internal_platform_api.UpdateEventTypeRequest:
+      properties:
+        description:
+          type: string
+        name:
+          type: string
+      type: object
+    internal_platform_api.UpdateRoleBffRequest:
+      properties:
+        description:
+          type: string
+        name:
+          type: string
+        permissions:
+          items:
+            type: string
+          type: array
+      type: object
+    internal_platform_api.UpdateSubscriptionRequest:
+      properties:
+        customConfig:
+          items:
+            $ref: "#/components/schemas/go_flowcatalyst_tech_internal_platform_subscription\
+              .ConfigEntry"
+          type: array
+        delaySeconds:
+          type: integer
+        description:
+          type: string
+        name:
+          type: string
+        target:
+          type: string
+        timeoutSeconds:
+          type: integer
+      type: object

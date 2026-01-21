@@ -1,0 +1,23 @@
+[package]
+name = "fc-outbox-processor"
+version.workspace = true
+edition.workspace = true
+description = "FlowCatalyst Outbox Processor - Reads from app database outbox and publishes to queues"
+
+[dependencies]
+fc-common = { path = "../../crates/fc-common" }
+fc-outbox = { path = "../../crates/fc-outbox", features = ["sqlite", "postgres", "mongo"] }
+fc-queue = { path = "../../crates/fc-queue", features = ["sqs"] }
+
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+axum = { workspace = true }
+sqlx = { workspace = true }
+mongodb = { workspace = true }
+aws-config = { workspace = true }
+aws-sdk-sqs = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }

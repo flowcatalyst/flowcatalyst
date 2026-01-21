@@ -1,0 +1,111 @@
+package tech.flowcatalyst.eventtype.operations.updateeventtype;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import tech.flowcatalyst.eventtype.EventType;
+import tech.flowcatalyst.eventtype.EventTypeRepository;
+import tech.flowcatalyst.eventtype.events.EventTypeUpdated;
+import tech.flowcatalyst.platform.common.AuthorizationContext;
+import tech.flowcatalyst.platform.common.ExecutionContext;
+import tech.flowcatalyst.platform.common.Result;
+import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.errors.UseCaseError;
+
+import java.util.Map;
+
+/**
+ * Use case for updating an EventType's metadata.
+ */
+@ApplicationScoped
+public class UpdateEventTypeUseCase {
+
+    private static final int MAX_NAME_LENGTH = 100;
+    private static final int MAX_DESCRIPTION_LENGTH = 255;
+
+    @Inject
+    EventTypeRepository repo;
+
+    @Inject
+    UnitOfWork unitOfWork;
+
+    public Result<EventTypeUpdated> execute(
+            UpdateEventTypeCommand command,
+            ExecutionContext context
+    ) {
+        // Load aggregate first (needed for authorization check)
+        EventType eventType = repo.findByIdOptional(command.eventTypeId())
+            .orElse(null);
+
+        if (eventType == null) {
+            return Result.failure(new UseCaseError.NotFoundError(
+                "EVENT_TYPE_NOT_FOUND",
+                "Event type not found",
+                Map.of("eventTypeId", command.eventTypeId())
+            ));
+        }
+
+        // Authorization check: can principal manage event types with this prefix?
+        AuthorizationContext authz = context.authz();
+        if (authz != null && !authz.canManageResourceWithPrefix(eventType.code())) {
+            return Result.failure(new UseCaseError.AuthorizationError(
+                "NOT_AUTHORIZED",
+                "Not authorized to update this event type",
+                Map.of("eventTypeId", command.eventTypeId(), "code", eventType.code())
+            ));
+        }
+
+        // Validation: at least one field to update
+        if (command.name() == null && command.description() == null) {
+            return Result.failure(new UseCaseError.ValidationError(
+                "NO_CHANGES",
+                "At least one field (name or description) must be provided",
+                Map.of()
+            ));
+        }
+
+        // Validation: name not blank if provided
+        if (command.name() != null && command.name().isBlank()) {
+            return Result.failure(new UseCaseError.ValidationError(
+                "NAME_BLANK",
+                "Name cannot be blank",
+                Map.of()
+            ));
+        }
+
+        // Validation: name length
+        if (command.name() != null && command.name().length() > MAX_NAME_LENGTH) {
+            return Result.failure(new UseCaseError.ValidationError(
+                "NAME_TOO_LONG",
+                "Name must be " + MAX_NAME_LENGTH + " characters or less",
+                Map.of("length", command.name().length())
+            ));
+        }
+
+        // Validation: description length
+        if (command.description() != null && command.description().length() > MAX_DESCRIPTION_LENGTH) {
+            return Result.failure(new UseCaseError.ValidationError(
+                "DESCRIPTION_TOO_LONG",
+                "Description must be " + MAX_DESCRIPTION_LENGTH + " characters or less",
+                Map.of("length", command.description().length())
+            ));
+        }
+
+        // Apply changes immutably using toBuilder()
+        String newName = command.name() != null ? command.name() : eventType.name();
+        String newDescription = command.description() != null ? command.description() : eventType.description();
+        EventType updated = eventType.toBuilder()
+            .name(newName)
+            .description(newDescription)
+            .updatedAt(java.time.Instant.now())
+            .build();
+
+        // Create domain event
+        EventTypeUpdated event = EventTypeUpdated.fromContext(context)
+            .eventTypeId(updated.id())
+            .name(updated.name())
+            .description(updated.description())
+            .build();
+
+        return unitOfWork.commit(updated, event, command);
+    }
+}

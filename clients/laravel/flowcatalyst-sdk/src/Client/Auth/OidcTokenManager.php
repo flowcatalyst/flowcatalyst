@@ -1,0 +1,151 @@
+<?php
+
+declare(strict_types=1);
+
+namespace FlowCatalyst\Client\Auth;
+
+use FlowCatalyst\Exceptions\AuthenticationException;
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\GuzzleException;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
+
+class OidcTokenManager
+{
+    private Client $httpClient;
+    private ?string $cachedToken = null;
+    private ?int $cachedExpiry = null;
+
+    public function __construct(
+        private readonly string $baseUrl,
+        private readonly string $clientId,
+        private readonly string $clientSecret,
+        private readonly ?string $tokenUrl,
+        private readonly CacheRepository $cache,
+        private readonly string $cacheKey = 'flowcatalyst_access_token'
+    ) {
+        $this->httpClient = new Client([
+            'timeout' => 30,
+            'http_errors' => false,
+        ]);
+    }
+
+    /**
+     * Get a valid access token, refreshing if necessary.
+     *
+     * @throws AuthenticationException
+     */
+    public function getAccessToken(): string
+    {
+        // Check in-memory cache first
+        if ($this->cachedToken !== null && $this->cachedExpiry !== null && $this->cachedExpiry > time()) {
+            return $this->cachedToken;
+        }
+
+        // Check Laravel cache
+        $cached = $this->cache->get($this->cacheKey);
+        if ($cached !== null && is_array($cached)) {
+            $token = $cached['token'] ?? null;
+            $expiry = $cached['expiry'] ?? 0;
+
+            if ($token !== null && $expiry > time()) {
+                $this->cachedToken = $token;
+                $this->cachedExpiry = $expiry;
+                return $token;
+            }
+        }
+
+        // Fetch new token
+        return $this->fetchNewToken();
+    }
+
+    /**
+     * Force refresh the access token.
+     *
+     * @throws AuthenticationException
+     */
+    public function refreshToken(): string
+    {
+        $this->cachedToken = null;
+        $this->cachedExpiry = null;
+        $this->cache->forget($this->cacheKey);
+
+        return $this->fetchNewToken();
+    }
+
+    /**
+     * Check if we have valid credentials configured.
+     */
+    public function hasCredentials(): bool
+    {
+        return !empty($this->clientId) && !empty($this->clientSecret);
+    }
+
+    /**
+     * Fetch a new token from the OAuth server.
+     *
+     * @throws AuthenticationException
+     */
+    private function fetchNewToken(): string
+    {
+        if (!$this->hasCredentials()) {
+            throw AuthenticationException::missingConfiguration('FLOWCATALYST_CLIENT_ID and FLOWCATALYST_CLIENT_SECRET');
+        }
+
+        $tokenUrl = $this->tokenUrl ?? rtrim($this->baseUrl, '/') . '/oauth/token';
+
+        try {
+            $response = $this->httpClient->post($tokenUrl, [
+                'form_params' => [
+                    'grant_type' => 'client_credentials',
+                    'client_id' => $this->clientId,
+                    'client_secret' => $this->clientSecret,
+                ],
+                'headers' => [
+                    'Accept' => 'application/json',
+                ],
+            ]);
+
+            $statusCode = $response->getStatusCode();
+            $body = json_decode((string) $response->getBody(), true);
+
+            if ($statusCode === 401 || $statusCode === 403) {
+                throw AuthenticationException::invalidCredentials();
+            }
+
+            if ($statusCode !== 200 || !isset($body['access_token'])) {
+                $error = $body['error'] ?? $body['error_description'] ?? 'Unknown error';
+                throw AuthenticationException::tokenFetchFailed($error);
+            }
+
+            $token = $body['access_token'];
+            $expiresIn = $body['expires_in'] ?? 3600;
+
+            // Cache with 60 second buffer before expiry
+            $expiry = time() + $expiresIn - 60;
+
+            // Store in Laravel cache
+            $this->cache->put($this->cacheKey, [
+                'token' => $token,
+                'expiry' => $expiry,
+            ], $expiresIn - 60);
+
+            // Store in memory
+            $this->cachedToken = $token;
+            $this->cachedExpiry = $expiry;
+
+            return $token;
+        } catch (GuzzleException $e) {
+            throw AuthenticationException::tokenFetchFailed($e->getMessage());
+        }
+    }
+
+    /**
+     * Clear the cached token.
+     */
+    public function clearCache(): void
+    {
+        $this->cachedToken = null;
+        $this->cachedExpiry = null;
+        $this->cache->forget($this->cacheKey);
+    }
+}

@@ -1,0 +1,83 @@
+# Local development environment for FlowCatalyst
+# Usage: docker compose -f docker-compose.dev.yml up -d
+#
+# PostgreSQL: jdbc:postgresql://localhost:5432/flowcatalyst
+# MongoDB (for migration): mongodb://localhost:27017/?replicaSet=rs0&directConnection=true
+
+services:
+  # ============================================================================
+  # PostgreSQL - Primary Database
+  # ============================================================================
+  postgres:
+    image: postgres:18-alpine
+    container_name: flowcatalyst-postgres
+    environment:
+      POSTGRES_DB: flowcatalyst
+      POSTGRES_USER: flowcatalyst
+      POSTGRES_PASSWORD: flowcatalyst
+    ports:
+      - "5432:5432"
+    volumes:
+      # PostgreSQL 18+ uses /var/lib/postgresql (not /data) for pg_upgrade compatibility
+      - flowcatalyst-postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowcatalyst -d flowcatalyst"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: flowcatalyst-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@flowcatalyst.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    profiles:
+      - tools
+
+  # ============================================================================
+  # MongoDB - Kept temporarily for data migration
+  # ============================================================================
+  mongo:
+    image: mongo:7
+    container_name: flowcatalyst-mongo
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - flowcatalyst-mongo-data:/data/db
+    healthcheck:
+      test: echo "try { rs.status() } catch (err) { rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]}) }" | mongosh --quiet
+      interval: 5s
+      timeout: 30s
+      start_period: 10s
+      retries: 30
+    profiles:
+      - migration
+
+  # Optional: Mongo Express for database management
+  mongo-express:
+    image: mongo-express:latest
+    container_name: flowcatalyst-mongo-express
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongo:27017/?directConnection=true
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: admin
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mongo
+    profiles:
+      - migration
+      - tools
+
+volumes:
+  flowcatalyst-postgres-data:
+    name: flowcatalyst-postgres-data
+  flowcatalyst-mongo-data:
+    name: flowcatalyst-mongo-data

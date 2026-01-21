@@ -1,0 +1,25 @@
+{
+	"name": "@flowcatalyst/dev-build",
+	"version": "0.0.1",
+	"description": "FlowCatalyst Dev Build - Combined Platform and Message Router for development",
+	"type": "module",
+	"scripts": {
+		"dev": "tsx watch src/index.ts",
+		"build": "tsup",
+		"start": "node dist/index.js",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@flowcatalyst/config": "workspace:*",
+		"@flowcatalyst/logging": "workspace:*",
+		"@flowcatalyst/message-router": "workspace:*",
+		"@flowcatalyst/platform": "workspace:*",
+		"dotenv": "^16.4.7"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.6",
+		"tsup": "^8.5.1",
+		"tsx": "^4.19.2",
+		"typescript": "^5.7.3"
+	}
+}

@@ -1,0 +1,45 @@
+{
+  "name": "@flowcatalyst/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript/JavaScript SDK for FlowCatalyst platform",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "echo \"Tests coming soon\" && exit 0",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "flowcatalyst",
+    "event-driven",
+    "messaging",
+    "sdk",
+    "typescript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/flowcatalyst.git",
+    "directory": "clients/typescript/flowcatalyst-sdk"
+  },
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

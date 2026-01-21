@@ -1,0 +1,21 @@
+[package]
+name = "fc-stream-processor"
+version.workspace = true
+edition.workspace = true
+description = "FlowCatalyst Stream Processor - Watches MongoDB change streams and creates dispatch jobs"
+
+[dependencies]
+fc-common = { path = "../../crates/fc-common" }
+fc-platform = { path = "../../crates/fc-platform" }
+fc-stream = { path = "../../crates/fc-stream" }
+
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+axum = { workspace = true }
+mongodb = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }

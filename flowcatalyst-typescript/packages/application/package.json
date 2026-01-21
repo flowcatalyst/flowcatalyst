@@ -1,0 +1,42 @@
+{
+	"name": "@flowcatalyst/application",
+	"version": "0.0.1",
+	"description": "Application layer patterns for FlowCatalyst platform - UseCases, Commands, and Operations",
+	"type": "module",
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsup",
+		"dev": "tsup --watch",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"lint": "eslint src --ext .ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@flowcatalyst/domain-core": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.6",
+		"tsup": "^8.5.1",
+		"typescript": "^5.7.3",
+		"vitest": "^2.1.9"
+	},
+	"files": [
+		"dist",
+		"src"
+	],
+	"keywords": [
+		"flowcatalyst",
+		"use-case",
+		"cqrs",
+		"application-layer"
+	]
+}

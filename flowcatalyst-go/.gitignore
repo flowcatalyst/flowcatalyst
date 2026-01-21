@@ -1,0 +1,116 @@
+# Binaries
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Root-level binaries (built without -o flag)
+/flowcatalyst
+/platform
+/router
+/fc-router
+/fc-platform
+/fc-stream
+/fc-outbox
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+coverage.out
+coverage.txt
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# IDE and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# Air hot reload
+tmp/
+build-errors.log
+
+# Data directories (runtime data)
+data/
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Heap dumps and profiling
+java_pid*.hprof
+*.pprof
+*.prof
+cpu.out
+mem.out
+heap.out
+
+# Debug files
+debug
+*.debug
+
+# Swagger generated docs (regenerate with `make swagger`)
+docs/docs.go
+docs/swagger.json
+docs/swagger.yaml
+
+# Build cache
+.cache/
+
+# goreleaser
+dist/
+
+# Delve debugger
+__debug_bin
+
+# Air temporary files
+air.toml.bak
+
+# Test cache
+.testcache/
+
+# Security scan results
+gosec-report.json
+gosec-report.sarif
+
+# Benchmark results
+*.bench
+
+# Local configuration overrides
+config.local.yaml
+config.local.json
+*.local.yaml
+*.local.json

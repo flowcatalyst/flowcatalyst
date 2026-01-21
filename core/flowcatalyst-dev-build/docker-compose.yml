@@ -1,0 +1,49 @@
+# FlowCatalyst Developer Build - Infrastructure
+# Usage: docker compose up -d
+#
+# This only starts MongoDB (required for FlowCatalyst platform).
+# The outbox processor connects to YOUR application's database where
+# the FlowCatalyst SDK has created the outbox tables.
+#
+# Profiles:
+# - default: MongoDB only (single-node replica set for change streams)
+# - tools: MongoDB + Mongo Express UI
+
+services:
+  # MongoDB - Required
+  # Configured as single-node replica set for change streams support
+  mongo:
+    image: mongo:7
+    container_name: fc-dev-mongo
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+    volumes:
+      - fc-dev-mongo-data:/data/db
+    healthcheck:
+      test: echo "try { rs.status() } catch (err) { rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]}) }" | mongosh --quiet
+      interval: 5s
+      timeout: 30s
+      start_period: 10s
+      retries: 30
+    restart: unless-stopped
+
+  # Mongo Express - Optional UI for MongoDB
+  mongo-express:
+    image: mongo-express:latest
+    container_name: fc-dev-mongo-express
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongo:27017/?directConnection=true
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: admin
+    ports:
+      - "${MONGO_EXPRESS_PORT:-8081}:8081"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    profiles:
+      - tools
+    restart: unless-stopped
+
+volumes:
+  fc-dev-mongo-data:
