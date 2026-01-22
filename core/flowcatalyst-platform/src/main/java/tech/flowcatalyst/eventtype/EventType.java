@@ -53,6 +53,11 @@ public record EventType(
      */
     EventTypeStatus status,
 
+    /**
+     * Source of the event type - how it was created (API/SDK or UI).
+     */
+    EventTypeSource source,
+
     Instant createdAt,
 
     Instant updatedAt
@@ -117,6 +122,27 @@ public record EventType(
             .name(name)
             .specVersions(new ArrayList<>())
             .status(EventTypeStatus.CURRENT)
+            .source(EventTypeSource.UI)
+            .createdAt(now)
+            .updatedAt(now);
+    }
+
+    /**
+     * Create a new event type from SDK/API with required fields and sensible defaults.
+     *
+     * @param code Unique event type code
+     * @param name Human-readable name
+     * @return A pre-configured builder with defaults set
+     */
+    public static EventTypeBuilder createFromApi(String code, String name) {
+        var now = Instant.now();
+        return EventType.builder()
+            .id(TsidGenerator.generate())
+            .code(code)
+            .name(name)
+            .specVersions(new ArrayList<>())
+            .status(EventTypeStatus.CURRENT)
+            .source(EventTypeSource.API)
             .createdAt(now)
             .updatedAt(now);
     }

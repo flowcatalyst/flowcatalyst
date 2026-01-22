@@ -15,6 +15,8 @@ import tech.flowcatalyst.eventtype.operations.deprecateschema.DeprecateSchemaCom
 import tech.flowcatalyst.eventtype.operations.deprecateschema.DeprecateSchemaUseCase;
 import tech.flowcatalyst.eventtype.operations.finaliseschema.FinaliseSchemaCommand;
 import tech.flowcatalyst.eventtype.operations.finaliseschema.FinaliseSchemaUseCase;
+import tech.flowcatalyst.eventtype.operations.synceventtypes.SyncEventTypesCommand;
+import tech.flowcatalyst.eventtype.operations.synceventtypes.SyncEventTypesUseCase;
 import tech.flowcatalyst.eventtype.operations.updateeventtype.UpdateEventTypeCommand;
 import tech.flowcatalyst.eventtype.operations.updateeventtype.UpdateEventTypeUseCase;
 import tech.flowcatalyst.platform.common.ExecutionContext;
@@ -70,6 +72,9 @@ public class EventTypeOperations {
 
     @Inject
     DeleteEventTypeUseCase deleteEventTypeUseCase;
+
+    @Inject
+    SyncEventTypesUseCase syncEventTypesUseCase;
 
     /**
      * Create a new EventType.
@@ -167,6 +172,23 @@ public class EventTypeOperations {
             ExecutionContext context
     ) {
         return deleteEventTypeUseCase.execute(command, context);
+    }
+
+    /**
+     * Sync EventTypes from an external application (SDK).
+     *
+     * <p>Creates new API-sourced event types, updates existing API-sourced ones,
+     * and optionally removes unlisted API-sourced event types.
+     *
+     * @param command The command containing event types to sync
+     * @param context The execution context
+     * @return Success with EventTypesSynced, or Failure with error
+     */
+    public Result<EventTypesSynced> syncEventTypes(
+            SyncEventTypesCommand command,
+            ExecutionContext context
+    ) {
+        return syncEventTypesUseCase.execute(command, context);
     }
 
     // ========================================================================

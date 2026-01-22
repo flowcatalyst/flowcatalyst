@@ -14,11 +14,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | OIDC Client Credentials
+    | Service Account Credentials
     |--------------------------------------------------------------------------
     |
     | These credentials are used to authenticate with the FlowCatalyst API
     | using the OAuth2 client credentials grant flow.
+    |
+    | For single-application deployments:
+    |   Use a service account tied to your application.
+    |
+    | For multi-application deployments:
+    |   Use a service account with access to multiple applications. Sync
+    |   definitions programmatically using the DefinitionSynchronizer:
+    |
+    |   $synchronizer->syncAll([
+    |       SyncDefinitionSet::forApplication('app-one')->withEventTypes([...]),
+    |       SyncDefinitionSet::forApplication('app-two')->withEventTypes([...]),
+    |   ]);
     |
     */
     'client_id' => env('FLOWCATALYST_CLIENT_ID'),
@@ -174,6 +186,70 @@ return [
         |
         */
         'middleware' => ['web'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Application Code (Single-App Deployments)
+    |--------------------------------------------------------------------------
+    |
+    | The unique code for your application in FlowCatalyst. Used by the
+    | `flowcatalyst:sync` artisan command when syncing definitions.
+    |
+    | For multi-application deployments, leave this empty and use the
+    | DefinitionSynchronizer service programmatically instead:
+    |
+    |   use FlowCatalyst\Sync\{DefinitionSynchronizer, SyncDefinitionSet};
+    |
+    |   $synchronizer = app(DefinitionSynchronizer::class);
+    |   $synchronizer->sync(
+    |       SyncDefinitionSet::forApplication('my-app')
+    |           ->withEventTypes([...])
+    |           ->withRoles([...])
+    |   );
+    |
+    */
+    'application_code' => env('FLOWCATALYST_APP_CODE'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Definition Scanning
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for scanning PHP classes with FlowCatalyst attributes
+    | (#[AsRole], #[AsEventType], #[AsSubscription]) and caching them for
+    | syncing to the platform.
+    |
+    */
+    'definitions' => [
+        /*
+        |----------------------------------------------------------------------
+        | Scan Paths
+        |----------------------------------------------------------------------
+        |
+        | Directories to scan for FlowCatalyst definition classes. These are
+        | PHP classes with attributes like #[AsRole], #[AsEventType], or
+        | #[AsSubscription].
+        |
+        | Default: app/FlowCatalyst
+        |
+        */
+        'paths' => [
+            app_path('FlowCatalyst'),
+        ],
+
+        /*
+        |----------------------------------------------------------------------
+        | Cache Path
+        |----------------------------------------------------------------------
+        |
+        | Directory where scanned definitions are cached as JSON. The cache
+        | is used by the sync command to avoid rescanning on every sync.
+        |
+        | Default: storage/flowcatalyst
+        |
+        */
+        'cache_path' => storage_path('flowcatalyst'),
     ],
 
     /*

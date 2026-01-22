@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import tech.flowcatalyst.eventtype.EventTypeSource;
 import tech.flowcatalyst.eventtype.EventTypeStatus;
 
 import java.time.Instant;
@@ -39,6 +40,10 @@ public class EventTypeEntity {
     @Column(name = "status", nullable = false, length = 20)
     @Enumerated(EnumType.STRING)
     public EventTypeStatus status;
+
+    @Column(name = "source", nullable = false, length = 20)
+    @Enumerated(EnumType.STRING)
+    public EventTypeSource source;
 
     @Column(name = "created_at", nullable = false)
     public Instant createdAt;

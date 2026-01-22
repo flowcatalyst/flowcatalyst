@@ -7,10 +7,13 @@ import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.subscription.events.SubscriptionCreated;
 import tech.flowcatalyst.subscription.events.SubscriptionDeleted;
 import tech.flowcatalyst.subscription.events.SubscriptionUpdated;
+import tech.flowcatalyst.subscription.events.SubscriptionsSynced;
 import tech.flowcatalyst.subscription.operations.createsubscription.CreateSubscriptionCommand;
 import tech.flowcatalyst.subscription.operations.createsubscription.CreateSubscriptionUseCase;
 import tech.flowcatalyst.subscription.operations.deletesubscription.DeleteSubscriptionCommand;
 import tech.flowcatalyst.subscription.operations.deletesubscription.DeleteSubscriptionUseCase;
+import tech.flowcatalyst.subscription.operations.syncsubscriptions.SyncSubscriptionsCommand;
+import tech.flowcatalyst.subscription.operations.syncsubscriptions.SyncSubscriptionsUseCase;
 import tech.flowcatalyst.subscription.operations.updatesubscription.UpdateSubscriptionCommand;
 import tech.flowcatalyst.subscription.operations.updatesubscription.UpdateSubscriptionUseCase;
 
@@ -52,6 +55,9 @@ public class SubscriptionOperations {
 
     @Inject
     DeleteSubscriptionUseCase deleteSubscriptionUseCase;
+
+    @Inject
+    SyncSubscriptionsUseCase syncSubscriptionsUseCase;
 
     @Inject
     SubscriptionCache subscriptionCache;
@@ -106,6 +112,28 @@ public class SubscriptionOperations {
         Result<SubscriptionDeleted> result = deleteSubscriptionUseCase.execute(command, context);
         if (result instanceof Result.Success<SubscriptionDeleted> success) {
             invalidateCacheForEventTypes(success.value().eventTypes());
+        }
+        return result;
+    }
+
+    /**
+     * Sync Subscriptions from an external application (SDK).
+     *
+     * <p>Creates new API-sourced subscriptions, updates existing API-sourced ones,
+     * and optionally removes unlisted API-sourced subscriptions.
+     *
+     * @param command The command containing subscriptions to sync
+     * @param context The execution context
+     * @return Success with SubscriptionsSynced, or Failure with error
+     */
+    public Result<SubscriptionsSynced> syncSubscriptions(
+            SyncSubscriptionsCommand command,
+            ExecutionContext context
+    ) {
+        Result<SubscriptionsSynced> result = syncSubscriptionsUseCase.execute(command, context);
+        if (result instanceof Result.Success<SubscriptionsSynced> success) {
+            // Invalidate cache for all synced subscriptions
+            subscriptionCache.invalidateAll();
         }
         return result;
     }

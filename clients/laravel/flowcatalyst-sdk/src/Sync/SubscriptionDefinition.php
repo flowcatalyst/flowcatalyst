@@ -1,0 +1,205 @@
+<?php
+
+declare(strict_types=1);
+
+namespace FlowCatalyst\Sync;
+
+/**
+ * Represents a subscription definition for syncing to FlowCatalyst.
+ *
+ * Can be used directly or converted to array for the sync API.
+ */
+final class SubscriptionDefinition
+{
+    /**
+     * @param string $code Unique subscription code
+     * @param string $name Human-readable name
+     * @param string $target Target URL for webhook delivery
+     * @param string $queue Queue name for delivery
+     * @param string $dispatchPoolCode Code of the dispatch pool to use
+     * @param string|null $description Subscription description
+     * @param string|null $eventTypeCode Code of the event type to subscribe to (resolved to ID by platform)
+     * @param int $maxRetries Maximum retry attempts (default: 3)
+     * @param int $retryDelaySeconds Delay between retries in seconds (default: 60)
+     * @param int $timeoutSeconds Webhook timeout in seconds (default: 30)
+     * @param bool $active Whether the subscription is active (default: true)
+     */
+    public function __construct(
+        public readonly string $code,
+        public readonly string $name,
+        public readonly string $target,
+        public readonly string $queue,
+        public readonly string $dispatchPoolCode,
+        public readonly ?string $description = null,
+        public readonly ?string $eventTypeCode = null,
+        public readonly int $maxRetries = 3,
+        public readonly int $retryDelaySeconds = 60,
+        public readonly int $timeoutSeconds = 30,
+        public readonly bool $active = true,
+    ) {}
+
+    /**
+     * Create a new subscription definition with fluent syntax.
+     */
+    public static function make(
+        string $code,
+        string $name,
+        string $target,
+        string $queue,
+        string $dispatchPoolCode
+    ): self {
+        return new self($code, $name, $target, $queue, $dispatchPoolCode);
+    }
+
+    /**
+     * Create a copy with a different description.
+     */
+    public function withDescription(string $description): self
+    {
+        return new self(
+            code: $this->code,
+            name: $this->name,
+            target: $this->target,
+            queue: $this->queue,
+            dispatchPoolCode: $this->dispatchPoolCode,
+            description: $description,
+            eventTypeCode: $this->eventTypeCode,
+            maxRetries: $this->maxRetries,
+            retryDelaySeconds: $this->retryDelaySeconds,
+            timeoutSeconds: $this->timeoutSeconds,
+            active: $this->active,
+        );
+    }
+
+    /**
+     * Create a copy that subscribes to a specific event type.
+     */
+    public function forEventType(string $eventTypeCode): self
+    {
+        return new self(
+            code: $this->code,
+            name: $this->name,
+            target: $this->target,
+            queue: $this->queue,
+            dispatchPoolCode: $this->dispatchPoolCode,
+            description: $this->description,
+            eventTypeCode: $eventTypeCode,
+            maxRetries: $this->maxRetries,
+            retryDelaySeconds: $this->retryDelaySeconds,
+            timeoutSeconds: $this->timeoutSeconds,
+            active: $this->active,
+        );
+    }
+
+    /**
+     * Create a copy with different retry settings.
+     */
+    public function withRetry(int $maxRetries, int $delaySeconds = 60): self
+    {
+        return new self(
+            code: $this->code,
+            name: $this->name,
+            target: $this->target,
+            queue: $this->queue,
+            dispatchPoolCode: $this->dispatchPoolCode,
+            description: $this->description,
+            eventTypeCode: $this->eventTypeCode,
+            maxRetries: $maxRetries,
+            retryDelaySeconds: $delaySeconds,
+            timeoutSeconds: $this->timeoutSeconds,
+            active: $this->active,
+        );
+    }
+
+    /**
+     * Create a copy with a different timeout.
+     */
+    public function withTimeout(int $seconds): self
+    {
+        return new self(
+            code: $this->code,
+            name: $this->name,
+            target: $this->target,
+            queue: $this->queue,
+            dispatchPoolCode: $this->dispatchPoolCode,
+            description: $this->description,
+            eventTypeCode: $this->eventTypeCode,
+            maxRetries: $this->maxRetries,
+            retryDelaySeconds: $this->retryDelaySeconds,
+            timeoutSeconds: $seconds,
+            active: $this->active,
+        );
+    }
+
+    /**
+     * Create a copy that is inactive.
+     */
+    public function inactive(): self
+    {
+        return new self(
+            code: $this->code,
+            name: $this->name,
+            target: $this->target,
+            queue: $this->queue,
+            dispatchPoolCode: $this->dispatchPoolCode,
+            description: $this->description,
+            eventTypeCode: $this->eventTypeCode,
+            maxRetries: $this->maxRetries,
+            retryDelaySeconds: $this->retryDelaySeconds,
+            timeoutSeconds: $this->timeoutSeconds,
+            active: false,
+        );
+    }
+
+    /**
+     * Convert to array for the sync API.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $data = [
+            'code' => $this->code,
+            'name' => $this->name,
+            'target' => $this->target,
+            'queue' => $this->queue,
+            'dispatchPoolCode' => $this->dispatchPoolCode,
+            'maxRetries' => $this->maxRetries,
+            'retryDelaySeconds' => $this->retryDelaySeconds,
+            'timeoutSeconds' => $this->timeoutSeconds,
+            'active' => $this->active,
+        ];
+
+        if ($this->description !== null) {
+            $data['description'] = $this->description;
+        }
+
+        if ($this->eventTypeCode !== null) {
+            $data['eventTypeCode'] = $this->eventTypeCode;
+        }
+
+        return $data;
+    }
+
+    /**
+     * Create from array (e.g., from cached definitions).
+     *
+     * @param array<string, mixed> $data
+     */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            code: $data['code'],
+            name: $data['name'],
+            target: $data['target'],
+            queue: $data['queue'],
+            dispatchPoolCode: $data['dispatchPoolCode'],
+            description: $data['description'] ?? null,
+            eventTypeCode: $data['eventTypeCode'] ?? null,
+            maxRetries: $data['maxRetries'] ?? 3,
+            retryDelaySeconds: $data['retryDelaySeconds'] ?? 60,
+            timeoutSeconds: $data['timeoutSeconds'] ?? 30,
+            active: $data['active'] ?? true,
+        );
+    }
+}

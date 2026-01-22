@@ -8,6 +8,11 @@ use FlowCatalyst\Auth\Contracts\OidcUserHandler;
 use FlowCatalyst\Auth\DefaultOidcUserHandler;
 use FlowCatalyst\Client\Auth\OidcTokenManager;
 use FlowCatalyst\Client\FlowCatalystClient;
+use FlowCatalyst\Console\Commands\ScanDefinitionsCommand;
+use FlowCatalyst\Console\Commands\SyncDefinitionsCommand;
+use FlowCatalyst\Definition\DefinitionRepository;
+use FlowCatalyst\Definition\DefinitionScanner;
+use FlowCatalyst\Sync\DefinitionSynchronizer;
 use FlowCatalyst\Outbox\Contracts\OutboxDriver;
 use FlowCatalyst\Outbox\Drivers\DatabaseDriver;
 use FlowCatalyst\Outbox\Drivers\MongoDriver;
@@ -30,6 +35,7 @@ class FlowCatalystServiceProvider extends ServiceProvider
         $this->registerClient();
         $this->registerOutbox();
         $this->registerOidcUserAuth();
+        $this->registerDefinitions();
     }
 
     /**
@@ -41,6 +47,7 @@ class FlowCatalystServiceProvider extends ServiceProvider
         $this->publishMigrations();
         $this->registerMiddleware();
         $this->registerOidcRoutes();
+        $this->registerCommands();
     }
 
     /**
@@ -155,6 +162,43 @@ class FlowCatalystServiceProvider extends ServiceProvider
         // Only bind if not already bound (allows app to override)
         if (!$this->app->bound(OidcUserHandler::class)) {
             $this->app->singleton(OidcUserHandler::class, DefaultOidcUserHandler::class);
+        }
+    }
+
+    /**
+     * Register the definition scanner, repository, and synchronizer.
+     */
+    protected function registerDefinitions(): void
+    {
+        $this->app->singleton(DefinitionScanner::class);
+
+        $this->app->singleton(DefinitionRepository::class, function ($app) {
+            $cachePath = $app['config']['flowcatalyst']['definitions']['cache_path']
+                ?? storage_path('flowcatalyst');
+
+            return new DefinitionRepository(
+                cachePath: $cachePath,
+                scanner: $app->make(DefinitionScanner::class)
+            );
+        });
+
+        $this->app->singleton(DefinitionSynchronizer::class, function ($app) {
+            return new DefinitionSynchronizer(
+                client: $app->make(FlowCatalystClient::class)
+            );
+        });
+    }
+
+    /**
+     * Register the Artisan commands.
+     */
+    protected function registerCommands(): void
+    {
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                ScanDefinitionsCommand::class,
+                SyncDefinitionsCommand::class,
+            ]);
         }
     }
 

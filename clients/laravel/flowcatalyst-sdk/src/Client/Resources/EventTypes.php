@@ -171,4 +171,59 @@ class EventTypes
 
         return $response['aggregates'] ?? $response ?? [];
     }
+
+    /**
+     * List event types for an application (by code prefix).
+     *
+     * @param string $appCode The application code
+     * @param string|null $source Filter by source (API or UI)
+     * @return array{eventTypes: EventType[], total: int}
+     */
+    public function listForApplication(string $appCode, ?string $source = null): array
+    {
+        $query = $source ? "?source={$source}" : '';
+        $response = $this->client->request('GET', "/api/applications/{$appCode}/event-types{$query}");
+
+        return [
+            'eventTypes' => array_map(
+                fn(array $item) => EventType::fromArray($item),
+                $response['eventTypes'] ?? []
+            ),
+            'total' => $response['total'] ?? count($response['eventTypes'] ?? []),
+        ];
+    }
+
+    /**
+     * Sync event types for an application.
+     *
+     * This creates/updates event types with source=API and optionally removes
+     * API-sourced event types not in the sync list.
+     *
+     * @param string $appCode The application code
+     * @param array<array{
+     *     code: string,
+     *     name: string,
+     *     description?: string
+     * }> $eventTypes The event types to sync (codes are relative to app, e.g., "order:created")
+     * @param bool $removeUnlisted If true, removes API-sourced event types not in the list
+     * @return array{created: int, updated: int, deleted: int, eventTypes: EventType[]}
+     */
+    public function sync(string $appCode, array $eventTypes, bool $removeUnlisted = false): array
+    {
+        $query = $removeUnlisted ? '?removeUnlisted=true' : '';
+
+        $response = $this->client->request('POST', "/api/applications/{$appCode}/event-types/sync{$query}", [
+            'json' => ['eventTypes' => $eventTypes],
+        ]);
+
+        return [
+            'created' => $response['created'] ?? 0,
+            'updated' => $response['updated'] ?? 0,
+            'deleted' => $response['deleted'] ?? 0,
+            'eventTypes' => array_map(
+                fn(array $item) => EventType::fromArray($item),
+                $response['eventTypes'] ?? []
+            ),
+        ];
+    }
 }

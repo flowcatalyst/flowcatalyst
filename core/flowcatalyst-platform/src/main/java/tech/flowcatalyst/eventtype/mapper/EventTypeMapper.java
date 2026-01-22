@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import tech.flowcatalyst.eventtype.EventType;
+import tech.flowcatalyst.eventtype.EventTypeSource;
 import tech.flowcatalyst.eventtype.EventTypeStatus;
 import tech.flowcatalyst.eventtype.SpecVersion;
 import tech.flowcatalyst.eventtype.entity.EventTypeEntity;
@@ -34,6 +35,7 @@ public final class EventTypeMapper {
             .description(entity.description)
             .specVersions(parseSpecVersions(entity.specVersionsJson))
             .status(entity.status != null ? entity.status : EventTypeStatus.CURRENT)
+            .source(entity.source != null ? entity.source : EventTypeSource.UI)
             .createdAt(entity.createdAt)
             .updatedAt(entity.updatedAt)
             .build();
@@ -51,6 +53,7 @@ public final class EventTypeMapper {
         entity.description = domain.description();
         entity.specVersionsJson = toJson(domain.specVersions());
         entity.status = domain.status() != null ? domain.status() : EventTypeStatus.CURRENT;
+        entity.source = domain.source() != null ? domain.source() : EventTypeSource.UI;
         entity.createdAt = domain.createdAt();
         entity.updatedAt = domain.updatedAt();
         return entity;
@@ -62,6 +65,7 @@ public final class EventTypeMapper {
         entity.description = domain.description();
         entity.specVersionsJson = toJson(domain.specVersions());
         entity.status = domain.status() != null ? domain.status() : EventTypeStatus.CURRENT;
+        entity.source = domain.source() != null ? domain.source() : entity.source;
         entity.updatedAt = domain.updatedAt();
     }
 
