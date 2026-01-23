@@ -4,11 +4,9 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
-import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.serviceaccount.entity.ServiceAccount;
 import tech.flowcatalyst.serviceaccount.jpaentity.ServiceAccountClientIdEntity;
 import tech.flowcatalyst.serviceaccount.jpaentity.ServiceAccountJpaEntity;
-import tech.flowcatalyst.serviceaccount.jpaentity.ServiceAccountRoleEntity;
 import tech.flowcatalyst.serviceaccount.mapper.ServiceAccountMapper;
 import tech.flowcatalyst.serviceaccount.repository.ServiceAccountFilter;
 import tech.flowcatalyst.serviceaccount.repository.ServiceAccountRepository;
@@ -192,15 +190,7 @@ public class ServiceAccountReadRepository implements ServiceAccountRepository {
             .getResultList();
         List<String> clientIds = ServiceAccountMapper.toClientIds(clientIdEntities);
 
-        // Load roles
-        List<ServiceAccountRoleEntity> roleEntities = em.createQuery(
-                "FROM ServiceAccountRoleEntity WHERE serviceAccountId = :id", ServiceAccountRoleEntity.class)
-            .setParameter("id", entity.id)
-            .getResultList();
-        List<Principal.RoleAssignment> roles = ServiceAccountMapper.toRoleAssignments(roleEntities);
-
         base.clientIds = clientIds;
-        base.roles = roles;
 
         return base;
     }

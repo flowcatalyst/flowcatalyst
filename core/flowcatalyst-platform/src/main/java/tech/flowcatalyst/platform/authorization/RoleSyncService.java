@@ -8,6 +8,8 @@ import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import tech.flowcatalyst.platform.application.Application;
 import tech.flowcatalyst.platform.application.ApplicationRepository;
+import tech.flowcatalyst.platform.shared.EntityType;
+import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.util.HashSet;
 import java.util.List;
@@ -81,7 +83,7 @@ public class RoleSyncService {
             if (appOpt.isEmpty()) {
                 Log.warn("Application not found for role " + roleName + ", creating: " + appCode);
                 Application app = new Application(appCode, appCode);
-                app.id = tech.flowcatalyst.platform.shared.TsidGenerator.generate();
+                app.id = TsidGenerator.generate(EntityType.APPLICATION);
                 applicationRepository.persist(app);
                 appOpt = Optional.of(app);
             }
@@ -113,7 +115,7 @@ public class RoleSyncService {
                     roleDef.permissionStrings(),
                     AuthRole.RoleSource.CODE
                 );
-                authRole.id = tech.flowcatalyst.platform.shared.TsidGenerator.generate();
+                authRole.id = TsidGenerator.generate(EntityType.ROLE);
                 authRole.displayName = formatDisplayName(roleDef.roleName());
                 authRoleRepository.persist(authRole);
                 created++;

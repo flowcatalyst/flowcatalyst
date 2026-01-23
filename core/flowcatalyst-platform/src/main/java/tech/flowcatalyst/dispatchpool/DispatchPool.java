@@ -2,6 +2,7 @@ package tech.flowcatalyst.dispatchpool;
 
 import lombok.Builder;
 import lombok.With;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -62,7 +63,7 @@ public record DispatchPool(
     public static DispatchPoolBuilder create(String code, String name) {
         var now = Instant.now();
         return DispatchPool.builder()
-            .id(TsidGenerator.generate())
+            .id(TsidGenerator.generate(EntityType.DISPATCH_POOL))
             .code(code.toLowerCase())
             .name(name)
             .rateLimit(100)      // default

@@ -9,6 +9,7 @@ import tech.flowcatalyst.eventtype.EventTypeRepository;
 import tech.flowcatalyst.eventtype.EventTypeSource;
 import tech.flowcatalyst.eventtype.EventTypeStatus;
 import tech.flowcatalyst.platform.lock.DistributedLock;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 import tech.flowcatalyst.platform.sync.PlatformEventTypeRegistry.PlatformEventTypeDefinition;
 
@@ -128,7 +129,7 @@ public class PlatformEventTypeSyncService {
 
                 // Create new event type
                 EventType newType = new EventType(
-                    TsidGenerator.generate(),
+                    TsidGenerator.generate(EntityType.EVENT_TYPE),
                     def.code(),
                     def.name(),
                     def.description(),

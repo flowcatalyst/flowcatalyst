@@ -7,6 +7,7 @@ import org.jboss.logging.Logger;
 import tech.flowcatalyst.platform.authentication.AuthProvider;
 import tech.flowcatalyst.platform.security.secrets.SecretProvider.ValidationResult;
 import tech.flowcatalyst.platform.security.secrets.SecretService;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -166,7 +167,7 @@ public class ClientAuthConfigService {
         }
 
         ClientAuthConfig config = new ClientAuthConfig();
-        config.id = TsidGenerator.generate();
+        config.id = TsidGenerator.generate(EntityType.CLIENT_AUTH_CONFIG);
         config.emailDomain = normalizedDomain;
         config.configType = configType;
         config.primaryClientId = primaryClientId;

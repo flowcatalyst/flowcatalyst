@@ -8,7 +8,6 @@ import jakarta.transaction.Transactional;
 import tech.flowcatalyst.serviceaccount.entity.ServiceAccount;
 import tech.flowcatalyst.serviceaccount.jpaentity.ServiceAccountClientIdEntity;
 import tech.flowcatalyst.serviceaccount.jpaentity.ServiceAccountJpaEntity;
-import tech.flowcatalyst.serviceaccount.jpaentity.ServiceAccountRoleEntity;
 import tech.flowcatalyst.serviceaccount.mapper.ServiceAccountMapper;
 
 import java.time.Instant;
@@ -26,7 +25,8 @@ public class ServiceAccountWriteRepository implements PanacheRepositoryBase<Serv
     EntityManager em;
 
     /**
-     * Persist a new service account with its client IDs and roles.
+     * Persist a new service account with its client IDs.
+     * Note: Roles are stored on the Principal entity, not on the ServiceAccount.
      */
     public void persistServiceAccount(ServiceAccount serviceAccount) {
         ServiceAccount toSave = serviceAccount;
@@ -40,13 +40,11 @@ public class ServiceAccountWriteRepository implements PanacheRepositoryBase<Serv
 
         // Save client IDs
         saveClientIds(toSave.id, toSave.clientIds);
-
-        // Save roles
-        saveRoles(toSave.id, toSave.roles);
     }
 
     /**
-     * Update an existing service account with its client IDs and roles.
+     * Update an existing service account with its client IDs.
+     * Note: Roles are stored on the Principal entity, not on the ServiceAccount.
      */
     public void updateServiceAccount(ServiceAccount serviceAccount) {
         serviceAccount.updatedAt = Instant.now();
@@ -58,22 +56,15 @@ public class ServiceAccountWriteRepository implements PanacheRepositoryBase<Serv
 
         // Update client IDs
         saveClientIds(serviceAccount.id, serviceAccount.clientIds);
-
-        // Update roles
-        saveRoles(serviceAccount.id, serviceAccount.roles);
     }
 
     /**
      * Delete a service account and its related entities.
+     * Note: Roles are stored on the Principal entity, not on the ServiceAccount.
      */
     public boolean deleteServiceAccount(String id) {
         // Delete client IDs first
         em.createQuery("DELETE FROM ServiceAccountClientIdEntity WHERE serviceAccountId = :id")
-            .setParameter("id", id)
-            .executeUpdate();
-
-        // Delete roles
-        em.createQuery("DELETE FROM ServiceAccountRoleEntity WHERE serviceAccountId = :id")
             .setParameter("id", id)
             .executeUpdate();
 
@@ -94,25 +85,6 @@ public class ServiceAccountWriteRepository implements PanacheRepositoryBase<Serv
         if (clientIds != null) {
             List<ServiceAccountClientIdEntity> entities = ServiceAccountMapper.toClientIdEntities(serviceAccountId, clientIds);
             for (ServiceAccountClientIdEntity entity : entities) {
-                em.persist(entity);
-            }
-        }
-    }
-
-    /**
-     * Save roles to the normalized table.
-     * Replaces all existing roles for the service account.
-     */
-    private void saveRoles(String serviceAccountId, List<tech.flowcatalyst.platform.principal.Principal.RoleAssignment> roles) {
-        // Delete existing
-        em.createQuery("DELETE FROM ServiceAccountRoleEntity WHERE serviceAccountId = :id")
-            .setParameter("id", serviceAccountId)
-            .executeUpdate();
-
-        // Insert new
-        if (roles != null) {
-            List<ServiceAccountRoleEntity> entities = ServiceAccountMapper.toRoleEntities(serviceAccountId, roles);
-            for (ServiceAccountRoleEntity entity : entities) {
                 em.persist(entity);
             }
         }

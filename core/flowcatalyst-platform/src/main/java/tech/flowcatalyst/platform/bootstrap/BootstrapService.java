@@ -9,6 +9,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 import tech.flowcatalyst.platform.authentication.IdpType;
 import tech.flowcatalyst.platform.principal.*;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.util.List;
@@ -113,7 +114,7 @@ public class BootstrapService {
         // Create anchor domain if it doesn't exist
         if (!anchorDomainRepository.existsByDomain(emailDomain)) {
             AnchorDomain anchorDomain = new AnchorDomain();
-            anchorDomain.id = TsidGenerator.generate();
+            anchorDomain.id = TsidGenerator.generate(EntityType.ANCHOR_DOMAIN);
             anchorDomain.domain = emailDomain;
             anchorDomainRepository.persist(anchorDomain);
             LOG.infof("Created anchor domain: %s", emailDomain);
@@ -131,7 +132,7 @@ public class BootstrapService {
 
         // Create the bootstrap admin user
         Principal admin = new Principal();
-        admin.id = TsidGenerator.generate();
+        admin.id = TsidGenerator.generate(EntityType.PRINCIPAL);
         admin.type = PrincipalType.USER;
         admin.scope = UserScope.ANCHOR;
         admin.clientId = null; // Anchor users don't have a home client

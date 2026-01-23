@@ -16,17 +16,18 @@ class Clients
     /**
      * List all clients.
      *
-     * @return array{items: Client[]}
+     * @return array{clients: Client[], total: int}
      */
     public function list(): array
     {
-        $response = $this->client->request('GET', '/api/clients');
+        $response = $this->client->request('GET', '/api/admin/clients');
 
         return [
-            'items' => array_map(
+            'clients' => array_map(
                 fn(array $item) => Client::fromArray($item),
-                $response['items'] ?? []
+                $response['clients'] ?? []
             ),
+            'total' => $response['total'] ?? 0,
         ];
     }
 
@@ -35,17 +36,17 @@ class Clients
      */
     public function get(string $id): Client
     {
-        $response = $this->client->request('GET', "/api/clients/{$id}");
+        $response = $this->client->request('GET', "/api/admin/clients/{$id}");
 
         return Client::fromArray($response);
     }
 
     /**
-     * Get a client by code.
+     * Get a client by identifier.
      */
-    public function getByCode(string $code): Client
+    public function getByIdentifier(string $identifier): Client
     {
-        $response = $this->client->request('GET', "/api/clients/code/{$code}");
+        $response = $this->client->request('GET', "/api/admin/clients/by-identifier/{$identifier}");
 
         return Client::fromArray($response);
     }
@@ -54,14 +55,13 @@ class Clients
      * Create a new client.
      *
      * @param array{
-     *     code: string,
      *     name: string,
-     *     description?: string
+     *     identifier: string
      * } $data
      */
     public function create(array $data): Client
     {
-        $response = $this->client->request('POST', '/api/clients', [
+        $response = $this->client->request('POST', '/api/admin/clients', [
             'json' => $data,
         ]);
 
@@ -78,7 +78,7 @@ class Clients
      */
     public function update(string $id, array $data): Client
     {
-        $response = $this->client->request('PUT', "/api/clients/{$id}", [
+        $response = $this->client->request('PUT', "/api/admin/clients/{$id}", [
             'json' => $data,
         ]);
 
@@ -90,7 +90,7 @@ class Clients
      */
     public function activate(string $id): Client
     {
-        $response = $this->client->request('POST', "/api/clients/{$id}/activate");
+        $response = $this->client->request('POST', "/api/admin/clients/{$id}/activate");
 
         return Client::fromArray($response);
     }
@@ -100,7 +100,7 @@ class Clients
      */
     public function deactivate(string $id): Client
     {
-        $response = $this->client->request('POST', "/api/clients/{$id}/deactivate");
+        $response = $this->client->request('POST', "/api/admin/clients/{$id}/deactivate");
 
         return Client::fromArray($response);
     }

@@ -3,6 +3,7 @@ package tech.flowcatalyst.subscription;
 import lombok.Builder;
 import lombok.With;
 import tech.flowcatalyst.dispatch.DispatchMode;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -210,7 +211,7 @@ public record Subscription(
     public static SubscriptionBuilder create(String code, String name, String target, boolean clientScoped) {
         var now = Instant.now();
         return Subscription.builder()
-            .id(TsidGenerator.generate())
+            .id(TsidGenerator.generate(EntityType.SUBSCRIPTION))
             .code(code.toLowerCase())
             .name(name)
             .target(target)

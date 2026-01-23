@@ -105,9 +105,7 @@ public class PanacheAggregateRegistry {
             em.createNativeQuery("DELETE FROM service_account_client_ids WHERE service_account_id = :id")
                 .setParameter("id", id)
                 .executeUpdate();
-            em.createNativeQuery("DELETE FROM service_account_roles WHERE service_account_id = :id")
-                .setParameter("id", id)
-                .executeUpdate();
+            // Note: Roles are stored on Principal, not ServiceAccount (service_account_roles table is deprecated)
         }
 
         // Handle junction tables for Principal
@@ -503,9 +501,7 @@ public class PanacheAggregateRegistry {
 
         // Save client IDs to normalized junction table
         saveServiceAccountClientIds(sa);
-
-        // Save roles to normalized junction table
-        saveServiceAccountRoles(sa);
+        // Note: Roles are stored on Principal, not ServiceAccount (see AssignRolesUseCase)
     }
 
     private void saveServiceAccountClientIds(ServiceAccount sa) {
@@ -523,28 +519,6 @@ public class PanacheAggregateRegistry {
                     """)
                     .setParameter("serviceAccountId", sa.id)
                     .setParameter("clientId", clientId)
-                    .executeUpdate();
-            }
-        }
-    }
-
-    private void saveServiceAccountRoles(ServiceAccount sa) {
-        // Delete existing role associations
-        em.createNativeQuery("DELETE FROM service_account_roles WHERE service_account_id = :id")
-            .setParameter("id", sa.id)
-            .executeUpdate();
-
-        // Insert current roles
-        if (sa.roles != null) {
-            for (var role : sa.roles) {
-                em.createNativeQuery("""
-                    INSERT INTO service_account_roles (service_account_id, role_name, assignment_source, assigned_at)
-                    VALUES (:serviceAccountId, :roleName, :assignmentSource, :assignedAt)
-                    """)
-                    .setParameter("serviceAccountId", sa.id)
-                    .setParameter("roleName", role.roleName)
-                    .setParameter("assignmentSource", role.assignmentSource)
-                    .setParameter("assignedAt", role.assignedAt != null ? role.assignedAt : Instant.now())
                     .executeUpdate();
             }
         }

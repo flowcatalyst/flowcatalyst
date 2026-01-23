@@ -8,6 +8,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.Builder;
 import tech.flowcatalyst.platform.common.DomainEvent;
 import tech.flowcatalyst.platform.common.ExecutionContext;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -63,7 +64,7 @@ public record ServiceAccountUpdated(
      */
     public static ServiceAccountUpdatedBuilder fromContext(ExecutionContext ctx) {
         return ServiceAccountUpdated.builder()
-            .eventId(TsidGenerator.generate())
+            .eventId(TsidGenerator.generate(EntityType.EVENT))
             .time(Instant.now())
             .executionId(ctx.executionId())
             .correlationId(ctx.correlationId())

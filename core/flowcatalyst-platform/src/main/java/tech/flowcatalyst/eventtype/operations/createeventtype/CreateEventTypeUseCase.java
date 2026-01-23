@@ -12,6 +12,7 @@ import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -119,7 +120,7 @@ public class CreateEventTypeUseCase {
         // Create aggregate (immutable record)
         Instant now = Instant.now();
         EventType eventType = new EventType(
-            TsidGenerator.generate(),
+            TsidGenerator.generate(EntityType.EVENT_TYPE),
             code,
             command.name(),
             command.description(),

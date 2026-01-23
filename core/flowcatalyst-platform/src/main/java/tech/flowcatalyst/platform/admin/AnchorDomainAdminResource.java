@@ -169,7 +169,7 @@ public class AnchorDomainAdminResource {
 
         // Create new anchor domain
         AnchorDomain domain = new AnchorDomain();
-        domain.id = TsidGenerator.generate();
+        domain.id = TsidGenerator.generate(EntityType.ANCHOR_DOMAIN);
         domain.domain = normalizedDomain;
         domain.createdAt = Instant.now();
 

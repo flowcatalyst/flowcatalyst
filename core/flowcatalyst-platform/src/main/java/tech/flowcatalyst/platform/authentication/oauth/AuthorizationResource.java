@@ -18,6 +18,7 @@ import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
 import tech.flowcatalyst.platform.principal.PrincipalType;
 import tech.flowcatalyst.platform.security.secrets.SecretService;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.net.URI;
@@ -214,7 +215,7 @@ public class AuthorizationResource {
 
         // Store authorization code (using internal client ID - raw TSID)
         AuthorizationCode authCode = new AuthorizationCode();
-        authCode.id = TsidGenerator.generate();
+        authCode.id = TsidGenerator.generate(EntityType.AUTH_CODE);
         authCode.code = code;
         authCode.clientId = internalClientId;
         authCode.principalId = principalId;

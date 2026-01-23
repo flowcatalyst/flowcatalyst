@@ -17,6 +17,7 @@ import tech.flowcatalyst.platform.application.Application;
 import tech.flowcatalyst.platform.application.ApplicationOperations;
 import tech.flowcatalyst.platform.application.ApplicationRepository;
 import tech.flowcatalyst.platform.application.operations.createapplication.CreateApplicationCommand;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 import tech.flowcatalyst.platform.audit.AuditContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
@@ -143,7 +144,7 @@ public class DevDataSeeder {
         }
 
         AnchorDomain anchor = new AnchorDomain();
-        anchor.id = TsidGenerator.generate();
+        anchor.id = TsidGenerator.generate(EntityType.ANCHOR_DOMAIN);
         anchor.domain = "flowcatalyst.local";
         anchorDomainRepo.persist(anchor);
         LOG.info("Created anchor domain: flowcatalyst.local");
@@ -163,7 +164,7 @@ public class DevDataSeeder {
         }
 
         Client client = new Client();
-        client.id = TsidGenerator.generate();
+        client.id = TsidGenerator.generate(EntityType.CLIENT);
         client.name = name;
         client.identifier = identifier;
         client.status = status;
@@ -186,7 +187,7 @@ public class DevDataSeeder {
         }
 
         ClientAuthConfig config = new ClientAuthConfig();
-        config.id = TsidGenerator.generate();
+        config.id = TsidGenerator.generate(EntityType.CLIENT_AUTH_CONFIG);
         config.emailDomain = domain;
         config.authProvider = provider;
         authConfigRepo.persist(config);
@@ -265,7 +266,7 @@ public class DevDataSeeder {
         }
 
         Principal user = new Principal();
-        user.id = TsidGenerator.generate();
+        user.id = TsidGenerator.generate(EntityType.PRINCIPAL);
         user.type = PrincipalType.USER;
         user.clientId = clientId;
         user.name = name;
@@ -294,7 +295,7 @@ public class DevDataSeeder {
         }
 
         ClientAccessGrant grant = new ClientAccessGrant();
-        grant.id = TsidGenerator.generate();
+        grant.id = TsidGenerator.generate(EntityType.CLIENT_ACCESS_GRANT);
         grant.principalId = principalId;
         grant.clientId = clientId;
         grantRepo.persist(grant);

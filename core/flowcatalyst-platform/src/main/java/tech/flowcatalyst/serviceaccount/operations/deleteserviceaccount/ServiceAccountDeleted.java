@@ -8,6 +8,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.Builder;
 import tech.flowcatalyst.platform.common.DomainEvent;
 import tech.flowcatalyst.platform.common.ExecutionContext;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -86,7 +87,7 @@ public record ServiceAccountDeleted(
      */
     public static ServiceAccountDeletedBuilder fromContext(ExecutionContext ctx) {
         return ServiceAccountDeleted.builder()
-            .eventId(TsidGenerator.generate())
+            .eventId(TsidGenerator.generate(EntityType.EVENT))
             .time(Instant.now())
             .executionId(ctx.executionId())
             .correlationId(ctx.correlationId())

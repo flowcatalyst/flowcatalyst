@@ -1,11 +1,9 @@
 package tech.flowcatalyst.serviceaccount.mapper;
 
-import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.serviceaccount.entity.ServiceAccount;
 import tech.flowcatalyst.serviceaccount.entity.WebhookCredentials;
 import tech.flowcatalyst.serviceaccount.jpaentity.ServiceAccountClientIdEntity;
 import tech.flowcatalyst.serviceaccount.jpaentity.ServiceAccountJpaEntity;
-import tech.flowcatalyst.serviceaccount.jpaentity.ServiceAccountRoleEntity;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,7 +33,6 @@ public final class ServiceAccountMapper {
         sa.applicationId = entity.applicationId;
         sa.active = entity.active;
         sa.clientIds = new ArrayList<>(); // loaded separately
-        sa.roles = new ArrayList<>(); // loaded separately
 
         // Map embedded webhook credentials
         sa.webhookCredentials = toWebhookCredentials(entity);
@@ -142,33 +139,4 @@ public final class ServiceAccountMapper {
             .toList();
     }
 
-    /**
-     * Convert role entities to domain role assignments.
-     */
-    public static List<Principal.RoleAssignment> toRoleAssignments(List<ServiceAccountRoleEntity> entities) {
-        if (entities == null) {
-            return new ArrayList<>();
-        }
-        return entities.stream()
-            .map(e -> {
-                Principal.RoleAssignment ra = new Principal.RoleAssignment();
-                ra.roleName = e.roleName;
-                ra.assignmentSource = e.assignmentSource;
-                ra.assignedAt = e.assignedAt;
-                return ra;
-            })
-            .toList();
-    }
-
-    /**
-     * Convert domain role assignments to entities.
-     */
-    public static List<ServiceAccountRoleEntity> toRoleEntities(String serviceAccountId, List<Principal.RoleAssignment> roles) {
-        if (roles == null) {
-            return new ArrayList<>();
-        }
-        return roles.stream()
-            .map(r -> new ServiceAccountRoleEntity(serviceAccountId, r.roleName, r.assignmentSource, r.assignedAt))
-            .toList();
-    }
 }

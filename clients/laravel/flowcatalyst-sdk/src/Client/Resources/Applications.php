@@ -16,17 +16,18 @@ class Applications
     /**
      * List all applications.
      *
-     * @return array{items: Application[]}
+     * @return array{applications: Application[], total: int}
      */
     public function list(): array
     {
-        $response = $this->client->request('GET', '/api/applications');
+        $response = $this->client->request('GET', '/api/admin/applications');
 
         return [
-            'items' => array_map(
+            'applications' => array_map(
                 fn(array $item) => Application::fromArray($item),
-                $response['items'] ?? []
+                $response['applications'] ?? []
             ),
+            'total' => $response['total'] ?? 0,
         ];
     }
 
@@ -35,7 +36,7 @@ class Applications
      */
     public function get(string $id): Application
     {
-        $response = $this->client->request('GET', "/api/applications/{$id}");
+        $response = $this->client->request('GET', "/api/admin/applications/{$id}");
 
         return Application::fromArray($response);
     }
@@ -45,7 +46,7 @@ class Applications
      */
     public function getByCode(string $code): Application
     {
-        $response = $this->client->request('GET', "/api/applications/code/{$code}");
+        $response = $this->client->request('GET', "/api/admin/applications/by-code/{$code}");
 
         return Application::fromArray($response);
     }
@@ -63,7 +64,7 @@ class Applications
      */
     public function create(array $data): Application
     {
-        $response = $this->client->request('POST', '/api/applications', [
+        $response = $this->client->request('POST', '/api/admin/applications', [
             'json' => $data,
         ]);
 
@@ -82,7 +83,7 @@ class Applications
      */
     public function update(string $id, array $data): Application
     {
-        $response = $this->client->request('PUT', "/api/applications/{$id}", [
+        $response = $this->client->request('PUT', "/api/admin/applications/{$id}", [
             'json' => $data,
         ]);
 
@@ -94,7 +95,7 @@ class Applications
      */
     public function activate(string $id): Application
     {
-        $response = $this->client->request('POST', "/api/applications/{$id}/activate");
+        $response = $this->client->request('POST', "/api/admin/applications/{$id}/activate");
 
         return Application::fromArray($response);
     }
@@ -104,7 +105,7 @@ class Applications
      */
     public function deactivate(string $id): Application
     {
-        $response = $this->client->request('POST', "/api/applications/{$id}/deactivate");
+        $response = $this->client->request('POST', "/api/admin/applications/{$id}/deactivate");
 
         return Application::fromArray($response);
     }

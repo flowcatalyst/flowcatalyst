@@ -8,6 +8,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import tech.flowcatalyst.dispatchjob.entity.DispatchJob;
 import tech.flowcatalyst.event.Event;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.sql.*;
@@ -50,7 +51,7 @@ public class BatchEventWriter {
                 Instant now = Instant.now();
                 for (Event event : events) {
                     if (event.id == null) {
-                        event.id = TsidGenerator.generate();
+                        event.id = TsidGenerator.generate(EntityType.EVENT);
                     }
                     if (event.time == null) {
                         event.time = now;
@@ -60,7 +61,7 @@ public class BatchEventWriter {
                 // Assign IDs and timestamps to dispatch jobs
                 for (DispatchJob job : dispatchJobs) {
                     if (job.id == null) {
-                        job.id = TsidGenerator.generate();
+                        job.id = TsidGenerator.generate(EntityType.DISPATCH_JOB);
                     }
                     if (job.createdAt == null) {
                         job.createdAt = now;

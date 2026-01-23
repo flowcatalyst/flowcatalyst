@@ -108,7 +108,7 @@ public class CreateServiceAccountUseCase {
         String serviceAccountId = TsidGenerator.generate(EntityType.SERVICE_ACCOUNT);
         String principalId = TsidGenerator.generate(EntityType.PRINCIPAL);
         String oauthClientEntityId = TsidGenerator.generate(EntityType.OAUTH_CLIENT);
-        String oauthClientId = TsidGenerator.generate();  // Raw TSID for OAuth client_id
+        String oauthClientId = TsidGenerator.generate(EntityType.OAUTH_CLIENT);
 
         // Generate credentials
         String authToken = generateBearerToken();

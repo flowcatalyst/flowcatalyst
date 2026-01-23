@@ -15,6 +15,7 @@ import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.serviceaccount.entity.ServiceAccount;
 import tech.flowcatalyst.dispatch.DispatchMode;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 import tech.flowcatalyst.serviceaccount.repository.ServiceAccountRepository;
 import tech.flowcatalyst.subscription.*;
@@ -231,7 +232,7 @@ public class CreateSubscriptionUseCase {
         // Create subscription
         Instant now = Instant.now();
         Subscription subscription = new Subscription(
-            TsidGenerator.generate(),
+            TsidGenerator.generate(EntityType.SUBSCRIPTION),
             command.code().toLowerCase(),
             command.name(),
             command.description(),

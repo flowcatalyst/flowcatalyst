@@ -18,6 +18,7 @@ import tech.flowcatalyst.platform.common.DomainEvent;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -313,7 +314,7 @@ public class PanacheTransactionalUnitOfWork implements UnitOfWork {
             """;
 
         em.createNativeQuery(sql)
-            .setParameter("id", TsidGenerator.generate())
+            .setParameter("id", TsidGenerator.generate(EntityType.AUDIT_LOG))
             .setParameter("entityType", extractAggregateType(event.subject()))
             .setParameter("entityId", extractEntityIdFromSubject(event.subject()))
             .setParameter("operation", command.getClass().getSimpleName())
@@ -344,7 +345,7 @@ public class PanacheTransactionalUnitOfWork implements UnitOfWork {
         // Insert dispatch jobs
         for (DispatchJob job : jobs) {
             if (job.id == null) {
-                job.id = TsidGenerator.generate();
+                job.id = TsidGenerator.generate(EntityType.DISPATCH_JOB);
             }
             if (job.createdAt == null) {
                 job.createdAt = now;

@@ -9,6 +9,7 @@ import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
 import tech.flowcatalyst.platform.principal.PrincipalType;
 import tech.flowcatalyst.platform.principal.UserScope;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.util.List;
@@ -232,7 +233,7 @@ public class AuditContext {
         // Note: This is a special internal principal for audit purposes,
         // it doesn't need a full ServiceAccount entity
         Principal system = new Principal();
-        system.id = TsidGenerator.generate();
+        system.id = TsidGenerator.generate(EntityType.PRINCIPAL);
         system.type = PrincipalType.SERVICE;
         system.name = SYSTEM_PRINCIPAL_NAME;
         system.active = true;

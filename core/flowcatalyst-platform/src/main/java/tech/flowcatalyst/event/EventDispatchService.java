@@ -18,6 +18,7 @@ import tech.flowcatalyst.dispatchjob.model.MediationType;
 import tech.flowcatalyst.dispatchjob.model.MessagePointer;
 import tech.flowcatalyst.dispatchjob.repository.DispatchJobRepository;
 import tech.flowcatalyst.dispatchjob.security.DispatchAuthService;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 import tech.flowcatalyst.subscription.SubscriptionCache;
 import tech.flowcatalyst.subscription.SubscriptionCache.CachedSubscription;
@@ -227,7 +228,7 @@ public class EventDispatchService {
         Instant now = Instant.now();
 
         DispatchJob job = new DispatchJob();
-        job.id = TsidGenerator.generate();
+        job.id = TsidGenerator.generate(EntityType.DISPATCH_JOB);
         job.kind = DispatchKind.EVENT;
         job.code = event.type();
         job.source = event.source();

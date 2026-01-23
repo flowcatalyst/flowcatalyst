@@ -5,6 +5,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import tech.flowcatalyst.event.Event;
 import tech.flowcatalyst.event.entity.EventEntity;
 import tech.flowcatalyst.event.mapper.EventMapper;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -22,7 +23,7 @@ public class EventWriteRepository implements PanacheRepositoryBase<EventEntity, 
      */
     public void persistEvent(Event event) {
         if (event.id == null) {
-            event.id = TsidGenerator.generate();
+            event.id = TsidGenerator.generate(EntityType.EVENT);
         }
         if (event.time == null) {
             event.time = Instant.now();
@@ -38,7 +39,7 @@ public class EventWriteRepository implements PanacheRepositoryBase<EventEntity, 
         List<EventEntity> entities = events.stream()
             .map(event -> {
                 if (event.id == null) {
-                    event.id = TsidGenerator.generate();
+                    event.id = TsidGenerator.generate(EntityType.EVENT);
                 }
                 if (event.time == null) {
                     event.time = Instant.now();

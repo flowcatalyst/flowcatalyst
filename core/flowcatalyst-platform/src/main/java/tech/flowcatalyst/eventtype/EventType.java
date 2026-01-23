@@ -3,6 +3,7 @@ package tech.flowcatalyst.eventtype;
 
 import lombok.Builder;
 import lombok.With;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -131,7 +132,7 @@ public record EventType(
     public static EventTypeBuilder create(String code, String name, boolean clientScoped) {
         var now = Instant.now();
         return EventType.builder()
-            .id(TsidGenerator.generate())
+            .id(TsidGenerator.generate(EntityType.EVENT_TYPE))
             .code(code)
             .name(name)
             .specVersions(new ArrayList<>())
@@ -153,7 +154,7 @@ public record EventType(
     public static EventTypeBuilder createFromApi(String code, String name, boolean clientScoped) {
         var now = Instant.now();
         return EventType.builder()
-            .id(TsidGenerator.generate())
+            .id(TsidGenerator.generate(EntityType.EVENT_TYPE))
             .code(code)
             .name(name)
             .specVersions(new ArrayList<>())
@@ -175,7 +176,7 @@ public record EventType(
     public static EventTypeBuilder createFromCode(String code, String name, boolean clientScoped) {
         var now = Instant.now();
         return EventType.builder()
-            .id(TsidGenerator.generate())
+            .id(TsidGenerator.generate(EntityType.EVENT_TYPE))
             .code(code)
             .name(name)
             .specVersions(new ArrayList<>())

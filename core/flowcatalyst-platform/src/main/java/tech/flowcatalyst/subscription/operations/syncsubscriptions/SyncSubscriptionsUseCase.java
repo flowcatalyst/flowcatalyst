@@ -14,6 +14,7 @@ import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 import tech.flowcatalyst.subscription.*;
 import tech.flowcatalyst.subscription.events.SubscriptionsSynced;
@@ -191,7 +192,7 @@ public class SyncSubscriptionsUseCase {
                 boolean clientScoped = item.clientScoped() != null ? item.clientScoped() : false;
                 Instant now = Instant.now();
                 Subscription newSub = new Subscription(
-                    TsidGenerator.generate(),
+                    TsidGenerator.generate(EntityType.SUBSCRIPTION),
                     code,
                     item.name() != null ? item.name() : code,
                     item.description(),

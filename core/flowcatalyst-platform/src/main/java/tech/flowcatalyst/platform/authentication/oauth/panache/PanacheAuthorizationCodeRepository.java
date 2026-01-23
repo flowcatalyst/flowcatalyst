@@ -6,6 +6,7 @@ import tech.flowcatalyst.platform.authentication.oauth.AuthorizationCode;
 import tech.flowcatalyst.platform.authentication.oauth.AuthorizationCodeRepository;
 import tech.flowcatalyst.platform.authentication.oauth.entity.AuthorizationCodeEntity;
 import tech.flowcatalyst.platform.authentication.oauth.mapper.AuthorizationCodeMapper;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -28,7 +29,7 @@ public class PanacheAuthorizationCodeRepository
     @Override
     public void persist(AuthorizationCode authCode) {
         if (authCode.id == null) {
-            authCode.id = TsidGenerator.generate();
+            authCode.id = TsidGenerator.generate(EntityType.AUTH_CODE);
         }
         if (authCode.createdAt == null) {
             authCode.createdAt = Instant.now();

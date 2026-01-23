@@ -15,6 +15,7 @@ import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.util.*;
@@ -69,7 +70,7 @@ public class ApplicationService {
             .findByApplicationAndClient(cmd.applicationId(), cmd.clientId())
             .orElseGet(() -> {
                 ApplicationClientConfig newConfig = new ApplicationClientConfig();
-                newConfig.id = TsidGenerator.generate();
+                newConfig.id = TsidGenerator.generate(EntityType.APP_CLIENT_CONFIG);
                 newConfig.applicationId = app.id;
                 newConfig.clientId = client.id;
                 return newConfig;
@@ -121,7 +122,7 @@ public class ApplicationService {
             // Already disabled or never enabled - no-op but still emit event for idempotency
             ApplicationClientConfig config = existingConfig.orElseGet(() -> {
                 ApplicationClientConfig newConfig = new ApplicationClientConfig();
-                newConfig.id = TsidGenerator.generate();
+                newConfig.id = TsidGenerator.generate(EntityType.APP_CLIENT_CONFIG);
                 newConfig.applicationId = app.id;
                 newConfig.clientId = client.id;
                 newConfig.enabled = false;

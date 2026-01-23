@@ -9,6 +9,7 @@ import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.util.Map;
@@ -77,7 +78,7 @@ public class CreateApplicationUseCase {
 
         // Create the application
         Application app = new Application();
-        app.id = TsidGenerator.generate();
+        app.id = TsidGenerator.generate(EntityType.APPLICATION);
         app.type = command.type() != null ? command.type() : Application.ApplicationType.APPLICATION;
         app.code = command.code().toLowerCase();
         app.name = command.name();

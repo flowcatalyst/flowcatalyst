@@ -7,6 +7,7 @@ import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.principal.Principal;
+import tech.flowcatalyst.platform.principal.PrincipalRepository;
 import tech.flowcatalyst.serviceaccount.entity.ServiceAccount;
 import tech.flowcatalyst.serviceaccount.repository.ServiceAccountRepository;
 
@@ -27,6 +28,9 @@ public class AssignRolesUseCase {
     ServiceAccountRepository repository;
 
     @Inject
+    PrincipalRepository principalRepository;
+
+    @Inject
     UnitOfWork unitOfWork;
 
     public Result<RolesAssigned> execute(AssignRolesCommand command, ExecutionContext context) {
@@ -40,8 +44,18 @@ public class AssignRolesUseCase {
             ));
         }
 
-        // Get current role names
-        Set<String> currentRoles = sa.getRoleNames();
+        // Find the linked Principal (roles are stored on Principal, not ServiceAccount)
+        Principal principal = principalRepository.findByServiceAccountId(sa.id).orElse(null);
+        if (principal == null) {
+            return Result.failure(new UseCaseError.NotFoundError(
+                "PRINCIPAL_NOT_FOUND",
+                "Principal not found for service account",
+                Map.of("serviceAccountId", command.serviceAccountId())
+            ));
+        }
+
+        // Get current role names from Principal
+        Set<String> currentRoles = principal.getRoleNames();
         Set<String> newRoles = new HashSet<>(command.roleNames() != null ? command.roleNames() : List.of());
 
         // Calculate diff
@@ -58,12 +72,13 @@ public class AssignRolesUseCase {
         // If no changes, still commit to record the event
         // This allows auditing of "no-op" assignments
 
-        // Update roles
-        sa.roles = newRoles.stream()
+        // Update roles on the Principal
+        principal.roles = newRoles.stream()
             .sorted()
             .map(roleName -> new Principal.RoleAssignment(roleName, ASSIGNMENT_SOURCE))
             .collect(Collectors.toList());
 
+        principal.updatedAt = Instant.now();
         sa.updatedAt = Instant.now();
 
         // Create event
@@ -75,6 +90,6 @@ public class AssignRolesUseCase {
             .removedRoles(removedRoles)
             .build();
 
-        return unitOfWork.commit(sa, event, command);
+        return unitOfWork.commitAll(List.of(sa, principal), event, command);
     }
 }

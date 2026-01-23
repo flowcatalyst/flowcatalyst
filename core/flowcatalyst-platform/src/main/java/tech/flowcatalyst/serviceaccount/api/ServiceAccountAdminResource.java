@@ -21,6 +21,7 @@ import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.TracingContext;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.principal.Principal;
+import tech.flowcatalyst.platform.principal.PrincipalRepository;
 import tech.flowcatalyst.serviceaccount.entity.ServiceAccount;
 import tech.flowcatalyst.serviceaccount.entity.WebhookAuthType;
 import tech.flowcatalyst.serviceaccount.operations.ServiceAccountOperations;
@@ -58,6 +59,9 @@ public class ServiceAccountAdminResource {
 
     @Inject
     ServiceAccountOperations operations;
+
+    @Inject
+    PrincipalRepository principalRepository;
 
     @Inject
     AuditContext auditContext;
@@ -283,16 +287,21 @@ public class ServiceAccountAdminResource {
 
         auditContext.requirePrincipalId();
 
-        return operations.findById(id)
-            .map(sa -> {
-                List<RoleAssignmentDto> roles = sa.roles.stream()
-                    .map(r -> new RoleAssignmentDto(r.roleName, r.assignmentSource, r.assignedAt))
-                    .toList();
-                return Response.ok(new RolesResponse(roles)).build();
-            })
-            .orElse(Response.status(Response.Status.NOT_FOUND)
+        // First check if service account exists
+        if (operations.findById(id).isEmpty()) {
+            return Response.status(Response.Status.NOT_FOUND)
                 .entity(new ErrorResponse("Service account not found"))
-                .build());
+                .build();
+        }
+
+        // Load roles from the linked Principal
+        List<RoleAssignmentDto> roles = principalRepository.findByServiceAccountId(id)
+            .map(p -> p.roles.stream()
+                .map(r -> new RoleAssignmentDto(r.roleName, r.assignmentSource, r.assignedAt))
+                .toList())
+            .orElse(List.of());
+
+        return Response.ok(new RolesResponse(roles)).build();
     }
 
     @PUT
@@ -309,10 +318,12 @@ public class ServiceAccountAdminResource {
 
         return switch (result) {
             case Result.Success<RolesAssigned> s -> {
-                ServiceAccount sa = operations.findById(id).orElseThrow();
-                List<RoleAssignmentDto> roles = sa.roles.stream()
-                    .map(r -> new RoleAssignmentDto(r.roleName, r.assignmentSource, r.assignedAt))
-                    .toList();
+                // Load roles from the linked Principal
+                List<RoleAssignmentDto> roles = principalRepository.findByServiceAccountId(id)
+                    .map(p -> p.roles.stream()
+                        .map(r -> new RoleAssignmentDto(r.roleName, r.assignmentSource, r.assignedAt))
+                        .toList())
+                    .orElse(List.of());
                 yield Response.ok(new RolesAssignedResponse(roles, s.value().addedRoles(), s.value().removedRoles())).build();
             }
             case Result.Failure<RolesAssigned> f -> mapErrorToResponse(f.error());
@@ -322,6 +333,11 @@ public class ServiceAccountAdminResource {
     // ==================== DTOs ====================
 
     private ServiceAccountDto toDto(ServiceAccount sa) {
+        // Load roles from the linked Principal
+        List<String> roleNames = principalRepository.findByServiceAccountId(sa.id)
+            .map(p -> p.roles.stream().map(r -> r.roleName).toList())
+            .orElse(List.of());
+
         return new ServiceAccountDto(
             sa.id,  // ID already has prefix from storage
             sa.code,
@@ -331,7 +347,7 @@ public class ServiceAccountAdminResource {
             sa.applicationId,  // ID already has prefix from storage
             sa.active,
             sa.webhookCredentials != null ? sa.webhookCredentials.authType : null,
-            sa.roles.stream().map(r -> r.roleName).toList(),
+            roleNames,
             sa.lastUsedAt,
             sa.createdAt,
             sa.updatedAt

@@ -267,7 +267,7 @@ public class OAuthClientAdminResource {
         }
 
         OAuthClient client = new OAuthClient();
-        client.id = TsidGenerator.generate();
+        client.id = TsidGenerator.generate(EntityType.OAUTH_CLIENT);
         client.clientId = clientId;
         client.clientName = request.clientName();
         client.clientType = request.clientType();
@@ -590,8 +590,7 @@ public class OAuthClientAdminResource {
     private static final String CLIENT_ID_PREFIX = "oauth_";
 
     private String generateClientId() {
-        // Store raw TSID in database, prefix added at API boundary
-        return TsidGenerator.generate();
+        return TsidGenerator.generate(EntityType.OAUTH_CLIENT);
     }
 
     /**
@@ -734,7 +733,7 @@ public class OAuthClientAdminResource {
         for (String origin : origins) {
             if (!corsOriginRepo.existsByOrigin(origin)) {
                 CorsAllowedOrigin entry = new CorsAllowedOrigin();
-                entry.id = TsidGenerator.generate();
+                entry.id = TsidGenerator.generate(EntityType.CORS_ORIGIN);
                 entry.origin = origin;
                 entry.description = "Auto-added for OAuth client: " + clientName;
                 corsOriginRepo.persist(entry);

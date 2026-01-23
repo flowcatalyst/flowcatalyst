@@ -9,6 +9,7 @@ import lombok.Builder;
 import tech.flowcatalyst.eventtype.SchemaType;
 import tech.flowcatalyst.platform.common.DomainEvent;
 import tech.flowcatalyst.platform.common.ExecutionContext;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -101,7 +102,7 @@ public record SchemaAdded(
      */
     public static SchemaAddedBuilder fromContext(ExecutionContext ctx) {
         return SchemaAdded.builder()
-            .eventId(TsidGenerator.generate())
+            .eventId(TsidGenerator.generate(EntityType.EVENT))
             .time(Instant.now())
             .executionId(ctx.executionId())
             .correlationId(ctx.correlationId())

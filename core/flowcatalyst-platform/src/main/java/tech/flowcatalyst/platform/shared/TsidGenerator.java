@@ -57,18 +57,6 @@ public class TsidGenerator {
     }
 
     /**
-     * Generate a raw TSID without prefix.
-     *
-     * @return the raw TSID (e.g., "0HZXEQ5Y8JY5Z")
-     * @deprecated Use {@link #generate(EntityType)} for entity IDs to get prefixed IDs,
-     *             or {@link #generateRaw()} explicitly for non-entity IDs.
-     */
-    @Deprecated
-    public static String generate() {
-        return generateRaw();
-    }
-
-    /**
      * Extract the raw TSID portion from a typed ID.
      *
      * @param typedId the typed ID (e.g., "clt_0HZXEQ5Y8JY5Z")

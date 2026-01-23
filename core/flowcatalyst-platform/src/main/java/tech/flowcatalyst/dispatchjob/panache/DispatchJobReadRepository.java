@@ -15,6 +15,7 @@ import tech.flowcatalyst.dispatchjob.mapper.DispatchJobMapper;
 import tech.flowcatalyst.dispatchjob.model.DispatchStatus;
 import tech.flowcatalyst.dispatchjob.repository.DispatchJobRepository;
 import tech.flowcatalyst.platform.common.Page;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -314,7 +315,7 @@ public class DispatchJobReadRepository implements DispatchJobRepository {
     @Override
     public DispatchJob create(CreateDispatchJobRequest request) {
         DispatchJob job = new DispatchJob();
-        job.id = TsidGenerator.generate();
+        job.id = TsidGenerator.generate(EntityType.DISPATCH_JOB);
         job.externalId = request.externalId();
         job.source = request.source();
         job.kind = request.kind() != null ? request.kind() : tech.flowcatalyst.dispatchjob.model.DispatchKind.EVENT;

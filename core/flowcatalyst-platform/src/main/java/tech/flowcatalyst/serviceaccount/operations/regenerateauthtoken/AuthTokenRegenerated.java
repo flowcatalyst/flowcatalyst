@@ -8,6 +8,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.Builder;
 import tech.flowcatalyst.platform.common.DomainEvent;
 import tech.flowcatalyst.platform.common.ExecutionContext;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 import tech.flowcatalyst.serviceaccount.entity.WebhookAuthType;
 
@@ -64,7 +65,7 @@ public record AuthTokenRegenerated(
      */
     public static AuthTokenRegeneratedBuilder fromContext(ExecutionContext ctx) {
         return AuthTokenRegenerated.builder()
-            .eventId(TsidGenerator.generate())
+            .eventId(TsidGenerator.generate(EntityType.EVENT))
             .time(Instant.now())
             .executionId(ctx.executionId())
             .correlationId(ctx.correlationId())

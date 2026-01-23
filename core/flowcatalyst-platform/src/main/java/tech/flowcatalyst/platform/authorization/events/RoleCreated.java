@@ -9,6 +9,7 @@ import lombok.Builder;
 import tech.flowcatalyst.platform.authorization.AuthRole;
 import tech.flowcatalyst.platform.common.DomainEvent;
 import tech.flowcatalyst.platform.common.ExecutionContext;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -105,7 +106,7 @@ public record RoleCreated(
      */
     public static RoleCreatedBuilder fromContext(ExecutionContext ctx) {
         return RoleCreated.builder()
-            .eventId(TsidGenerator.generate())
+            .eventId(TsidGenerator.generate(EntityType.EVENT))
             .time(Instant.now())
             .executionId(ctx.executionId())
             .correlationId(ctx.correlationId())

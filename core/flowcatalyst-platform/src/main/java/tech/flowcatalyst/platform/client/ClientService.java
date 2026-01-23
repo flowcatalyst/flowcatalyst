@@ -2,10 +2,12 @@ package tech.flowcatalyst.platform.client;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.NotFoundException;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.util.List;
@@ -38,6 +40,7 @@ public class ClientService {
      * @return Created client
      * @throws BadRequestException if identifier already exists or is invalid
      */
+    @Transactional
     public Client createClient(String name, String identifier) {
         // Validate identifier format
         if (identifier == null || identifier.isBlank()) {
@@ -57,7 +60,7 @@ public class ClientService {
 
         // Create client
         Client client = new Client();
-        client.id = TsidGenerator.generate();
+        client.id = TsidGenerator.generate(EntityType.CLIENT);
         client.name = name;
         client.identifier = identifier;
         client.status = ClientStatus.ACTIVE;
@@ -74,6 +77,7 @@ public class ClientService {
      * @return Updated client
      * @throws NotFoundException if client not found
      */
+    @Transactional
     public Client updateClient(String clientId, String name) {
         Client client = clientRepo.findByIdOptional(clientId)
             .orElseThrow(() -> new NotFoundException("Client not found"));
@@ -93,6 +97,7 @@ public class ClientService {
      * @param changedBy Principal ID of who made the change
      * @throws NotFoundException if client not found
      */
+    @Transactional
     public void changeClientStatus(String clientId, ClientStatus status, String reason, String note, String changedBy) {
         Client client = clientRepo.findByIdOptional(clientId)
             .orElseThrow(() -> new NotFoundException("Client not found"));
@@ -150,6 +155,7 @@ public class ClientService {
      * @throws NotFoundException if principal or client not found
      * @throws BadRequestException if grant already exists or if principal already belongs to client
      */
+    @Transactional
     public ClientAccessGrant grantClientAccess(String principalId, String clientId) {
         // Validate principal exists
         Principal principal = principalRepo.findByIdOptional(principalId)
@@ -171,7 +177,7 @@ public class ClientService {
 
         // Create grant
         ClientAccessGrant grant = new ClientAccessGrant();
-        grant.id = TsidGenerator.generate();
+        grant.id = TsidGenerator.generate(EntityType.CLIENT_ACCESS_GRANT);
         grant.principalId = principalId;
         grant.clientId = clientId;
 
@@ -186,6 +192,7 @@ public class ClientService {
      * @param clientId Client ID
      * @throws NotFoundException if grant not found
      */
+    @Transactional
     public void revokeClientAccess(String principalId, String clientId) {
         long deleted = grantRepo.deleteByPrincipalIdAndClientId(principalId, clientId);
         if (deleted == 0) {
@@ -282,6 +289,7 @@ public class ClientService {
      * @param addedBy Who added the note
      * @throws NotFoundException if client not found
      */
+    @Transactional
     public void addNote(String clientId, String category, String text, String addedBy) {
         Client client = clientRepo.findByIdOptional(clientId)
             .orElseThrow(() -> new NotFoundException("Client not found"));

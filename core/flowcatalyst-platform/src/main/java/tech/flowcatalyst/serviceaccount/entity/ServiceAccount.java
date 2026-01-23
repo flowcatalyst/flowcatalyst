@@ -1,12 +1,8 @@
 package tech.flowcatalyst.serviceaccount.entity;
 
-import tech.flowcatalyst.platform.principal.Principal;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Service account for machine-to-machine authentication and webhook signing.
@@ -69,16 +65,6 @@ public class ServiceAccount {
     public WebhookCredentials webhookCredentials;
 
     /**
-     * Role assignments for this service account.
-     *
-     * @deprecated Roles should be assigned to the linked Principal (type=SERVICE) instead.
-     * Use the Principal.roles field via the Principal entity linked by serviceAccountId.
-     * This field is kept for backwards compatibility during migration.
-     */
-    @Deprecated
-    public List<Principal.RoleAssignment> roles = new ArrayList<>();
-
-    /**
      * When this service account was last used for authentication or webhook dispatch.
      */
     public Instant lastUsedAt;
@@ -88,27 +74,5 @@ public class ServiceAccount {
     public Instant updatedAt;
 
     public ServiceAccount() {
-    }
-
-    /**
-     * Get role names as a set for quick lookup.
-     *
-     * @deprecated Use the linked Principal's roles instead.
-     */
-    @Deprecated
-    public Set<String> getRoleNames() {
-        return roles.stream()
-            .map(r -> r.roleName)
-            .collect(Collectors.toSet());
-    }
-
-    /**
-     * Check if service account has a specific role.
-     *
-     * @deprecated Use the linked Principal's hasRole() instead.
-     */
-    @Deprecated
-    public boolean hasRole(String roleName) {
-        return roles.stream().anyMatch(r -> r.roleName.equals(roleName));
     }
 }

@@ -14,6 +14,7 @@ import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.util.List;
@@ -91,7 +92,7 @@ public class CreateRoleUseCase {
 
         // Create role
         AuthRole role = new AuthRole();
-        role.id = TsidGenerator.generate();
+        role.id = TsidGenerator.generate(EntityType.ROLE);
         role.applicationId = app.id;
         role.applicationCode = app.code;
         role.name = fullRoleName;

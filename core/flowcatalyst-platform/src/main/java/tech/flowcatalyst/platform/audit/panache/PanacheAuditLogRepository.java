@@ -8,6 +8,7 @@ import tech.flowcatalyst.platform.audit.AuditLogRepository;
 import tech.flowcatalyst.platform.audit.entity.AuditLogEntity;
 import tech.flowcatalyst.platform.audit.mapper.AuditLogMapper;
 import tech.flowcatalyst.platform.common.Page;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -146,7 +147,7 @@ public class PanacheAuditLogRepository implements AuditLogRepository {
     @Override
     public void persist(AuditLog log) {
         if (log.id == null) {
-            log.id = TsidGenerator.generate();
+            log.id = TsidGenerator.generate(EntityType.AUDIT_LOG);
         }
         if (log.performedAt == null) {
             log.performedAt = Instant.now();

@@ -9,6 +9,7 @@ import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.cors.CorsAllowedOrigin;
 import tech.flowcatalyst.platform.cors.CorsAllowedOriginRepository;
 import tech.flowcatalyst.platform.cors.events.CorsOriginAdded;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.util.Map;
@@ -58,7 +59,7 @@ public class AddCorsOriginUseCase {
 
         // Create entity
         CorsAllowedOrigin entry = new CorsAllowedOrigin();
-        entry.id = TsidGenerator.generate();
+        entry.id = TsidGenerator.generate(EntityType.CORS_ORIGIN);
         entry.origin = normalizedOrigin;
         entry.description = command.description();
         entry.createdBy = context.principalId();

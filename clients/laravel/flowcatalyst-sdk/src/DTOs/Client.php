@@ -8,10 +8,11 @@ class Client
 {
     public function __construct(
         public readonly string $id,
-        public readonly string $code,
         public readonly string $name,
-        public readonly ?string $description,
-        public readonly bool $active,
+        public readonly string $identifier,
+        public readonly string $status,
+        public readonly ?string $statusReason,
+        public readonly ?string $statusChangedAt,
         public readonly string $createdAt,
         public readonly string $updatedAt,
     ) {}
@@ -20,10 +21,11 @@ class Client
     {
         return new self(
             id: $data['id'],
-            code: $data['code'],
             name: $data['name'],
-            description: $data['description'] ?? null,
-            active: $data['active'] ?? true,
+            identifier: $data['identifier'],
+            status: $data['status'] ?? 'ACTIVE',
+            statusReason: $data['statusReason'] ?? null,
+            statusChangedAt: $data['statusChangedAt'] ?? null,
             createdAt: $data['createdAt'] ?? '',
             updatedAt: $data['updatedAt'] ?? '',
         );
@@ -33,10 +35,11 @@ class Client
     {
         return [
             'id' => $this->id,
-            'code' => $this->code,
             'name' => $this->name,
-            'description' => $this->description,
-            'active' => $this->active,
+            'identifier' => $this->identifier,
+            'status' => $this->status,
+            'statusReason' => $this->statusReason,
+            'statusChangedAt' => $this->statusChangedAt,
             'createdAt' => $this->createdAt,
             'updatedAt' => $this->updatedAt,
         ];

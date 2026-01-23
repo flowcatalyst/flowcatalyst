@@ -3,6 +3,7 @@ package tech.flowcatalyst.schema;
 import lombok.Builder;
 import lombok.With;
 import tech.flowcatalyst.eventtype.SchemaType;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -77,7 +78,7 @@ public record Schema(
     public static SchemaBuilder create(SchemaType schemaType, String content) {
         var now = Instant.now();
         return Schema.builder()
-            .id(TsidGenerator.generate())
+            .id(TsidGenerator.generate(EntityType.SCHEMA))
             .schemaType(schemaType)
             .content(content)
             .mimeType("application/json")

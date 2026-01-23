@@ -9,6 +9,7 @@ import org.jboss.logging.Logger;
 import tech.flowcatalyst.dispatchjob.entity.DispatchJob;
 import tech.flowcatalyst.event.operations.CreateEvent;
 import tech.flowcatalyst.platform.batch.BatchEventWriter;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -62,7 +63,7 @@ public class EventService {
 
         // Create the event
         Event event = new Event(
-            TsidGenerator.generate(),
+            TsidGenerator.generate(EntityType.EVENT),
             operation.specVersion(),
             operation.type(),
             operation.source(),
@@ -134,7 +135,7 @@ public class EventService {
             }
 
             Event event = new Event(
-                TsidGenerator.generate(),
+                TsidGenerator.generate(EntityType.EVENT),
                 op.specVersion(),
                 op.type(),
                 op.source(),
