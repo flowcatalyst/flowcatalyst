@@ -154,9 +154,13 @@ public class EventTypeResource {
         ExecutionContext context = createExecutionContext();
 
         CreateEventTypeCommand command = new CreateEventTypeCommand(
-            request.code(),
+            request.application(),
+            request.subdomain(),
+            request.aggregate(),
+            request.event(),
             request.name(),
-            request.description()
+            request.description(),
+            request.clientScoped()
         );
 
         Result<EventTypeCreated> result = eventTypeOperations.createEventType(command, context);
@@ -417,10 +421,27 @@ public class EventTypeResource {
         }
     }
 
+    /**
+     * Request to create a new event type.
+     *
+     * <p>Code is composed from segments: {application}:{subdomain}:{aggregate}:{event}
+     *
+     * @param application  Application code (e.g., "operant", "platform")
+     * @param subdomain    Subdomain within the application (e.g., "execution", "control-plane")
+     * @param aggregate    Aggregate name (e.g., "trip", "eventtype")
+     * @param event        Event name (e.g., "started", "created")
+     * @param name         Human-friendly name (max 100 chars)
+     * @param description  Optional description (max 255 chars)
+     * @param clientScoped Whether events of this type are scoped to a client context
+     */
     public record CreateEventTypeRequest(
-        String code,
+        String application,
+        String subdomain,
+        String aggregate,
+        String event,
         String name,
-        String description
+        String description,
+        boolean clientScoped
     ) {}
 
     public record UpdateEventTypeRequest(

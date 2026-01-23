@@ -4,6 +4,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import tech.flowcatalyst.eventtype.EventType;
 import tech.flowcatalyst.eventtype.EventTypeRepository;
+import tech.flowcatalyst.eventtype.EventTypeSource;
 import tech.flowcatalyst.eventtype.EventTypeStatus;
 import tech.flowcatalyst.eventtype.events.EventTypeCreated;
 import tech.flowcatalyst.platform.common.AuthorizationContext;
@@ -23,7 +24,7 @@ import java.util.regex.Pattern;
  *
  * <p>This use case:
  * <ol>
- *   <li>Validates the command (code format, name length, etc.)</li>
+ *   <li>Validates the command (code segments, name length, etc.)</li>
  *   <li>Checks that the code is unique</li>
  *   <li>Creates the EventType aggregate</li>
  *   <li>Emits an {@link EventTypeCreated} event</li>
@@ -34,11 +35,10 @@ import java.util.regex.Pattern;
 public class CreateEventTypeUseCase {
 
     /**
-     * Code format: {app}:{subdomain}:{aggregate}:{event}
-     * Each segment: lowercase alphanumeric with hyphens, starting with letter
+     * Segment format: lowercase alphanumeric with hyphens, starting with letter
      */
-    private static final Pattern CODE_PATTERN = Pattern.compile(
-        "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*:[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$"
+    private static final Pattern SEGMENT_PATTERN = Pattern.compile(
+        "^[a-z][a-z0-9-]*$"
     );
 
     private static final int MAX_NAME_LENGTH = 100;
@@ -61,22 +61,22 @@ public class CreateEventTypeUseCase {
             CreateEventTypeCommand command,
             ExecutionContext context
     ) {
-        // Validation: code format
-        if (command.code() == null || !CODE_PATTERN.matcher(command.code()).matches()) {
-            return Result.failure(new UseCaseError.ValidationError(
-                "INVALID_CODE_FORMAT",
-                "Code must be in format {app}:{subdomain}:{aggregate}:{event} with lowercase alphanumeric segments",
-                Map.of("code", String.valueOf(command.code()))
-            ));
+        // Validation: each segment must be valid
+        Result<Void> segmentValidation = validateSegments(command);
+        if (segmentValidation instanceof Result.Failure<Void> f) {
+            return Result.failure(f.error());
         }
+
+        // Build the full code from segments
+        String code = command.buildCode();
 
         // Authorization check: can principal manage event types with this prefix?
         AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canManageResourceWithPrefix(command.code())) {
+        if (authz != null && !authz.canManageResourceWithPrefix(code)) {
             return Result.failure(new UseCaseError.AuthorizationError(
                 "NOT_AUTHORIZED",
                 "Not authorized to create event types for this application",
-                Map.of("code", command.code())
+                Map.of("application", command.application())
             ));
         }
 
@@ -108,11 +108,11 @@ public class CreateEventTypeUseCase {
         }
 
         // Business rule: code must be unique
-        if (repo.existsByCode(command.code())) {
+        if (repo.existsByCode(code)) {
             return Result.failure(new UseCaseError.BusinessRuleViolation(
                 "CODE_EXISTS",
                 "Event type code already exists",
-                Map.of("code", command.code())
+                Map.of("code", code)
             ));
         }
 
@@ -120,11 +120,13 @@ public class CreateEventTypeUseCase {
         Instant now = Instant.now();
         EventType eventType = new EventType(
             TsidGenerator.generate(),
-            command.code().toLowerCase(),
+            code,
             command.name(),
             command.description(),
             List.of(),  // empty specVersions
             EventTypeStatus.CURRENT,
+            EventTypeSource.UI,  // Created via UI/API, not sync
+            command.clientScoped(),
             now,
             now
         );
@@ -139,5 +141,60 @@ public class CreateEventTypeUseCase {
 
         // Atomic commit: entity + event + audit log
         return unitOfWork.commit(eventType, event, command);
+    }
+
+    /**
+     * Validate all code segments.
+     */
+    private Result<Void> validateSegments(CreateEventTypeCommand command) {
+        // Validate application segment
+        Result<Void> appResult = validateSegment("application", command.application());
+        if (appResult instanceof Result.Failure<Void>) {
+            return appResult;
+        }
+
+        // Validate subdomain segment
+        Result<Void> subResult = validateSegment("subdomain", command.subdomain());
+        if (subResult instanceof Result.Failure<Void>) {
+            return subResult;
+        }
+
+        // Validate aggregate segment
+        Result<Void> aggResult = validateSegment("aggregate", command.aggregate());
+        if (aggResult instanceof Result.Failure<Void>) {
+            return aggResult;
+        }
+
+        // Validate event segment
+        Result<Void> eventResult = validateSegment("event", command.event());
+        if (eventResult instanceof Result.Failure<Void>) {
+            return eventResult;
+        }
+
+        return Result.success(null);
+    }
+
+    /**
+     * Validate a single code segment.
+     */
+    private Result<Void> validateSegment(String fieldName, String value) {
+        if (value == null || value.isBlank()) {
+            return Result.failure(new UseCaseError.ValidationError(
+                fieldName.toUpperCase() + "_REQUIRED",
+                fieldName.substring(0, 1).toUpperCase() + fieldName.substring(1) + " is required",
+                Map.of("field", fieldName)
+            ));
+        }
+
+        if (!SEGMENT_PATTERN.matcher(value).matches()) {
+            return Result.failure(new UseCaseError.ValidationError(
+                "INVALID_" + fieldName.toUpperCase() + "_FORMAT",
+                fieldName.substring(0, 1).toUpperCase() + fieldName.substring(1) +
+                    " must be lowercase alphanumeric with hyphens, starting with a letter",
+                Map.of("field", fieldName, "value", value)
+            ));
+        }
+
+        return Result.success(null);
     }
 }

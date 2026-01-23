@@ -17,6 +17,8 @@ import tech.flowcatalyst.eventtype.operations.deprecateschema.DeprecateSchemaCom
 import tech.flowcatalyst.eventtype.operations.finaliseschema.FinaliseSchemaCommand;
 import tech.flowcatalyst.eventtype.operations.updateeventtype.UpdateEventTypeCommand;
 import tech.flowcatalyst.platform.audit.AuditContext;
+import tech.flowcatalyst.platform.authorization.AuthorizationService;
+import tech.flowcatalyst.platform.authorization.platform.PlatformMessagingPermissions;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.TracingContext;
@@ -45,6 +47,9 @@ public class EventTypeBffResource {
     @Inject
     TracingContext tracingContext;
 
+    @Inject
+    AuthorizationService authorizationService;
+
     @GET
     @Operation(summary = "List all event types (BFF)")
     public Response listEventTypes(
@@ -53,6 +58,9 @@ public class EventTypeBffResource {
         @QueryParam("subdomain") List<String> subdomains,
         @QueryParam("aggregate") List<String> aggregates
     ) {
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformMessagingPermissions.EVENT_TYPE_VIEW);
+
         List<String> filteredApps = filterEmpty(applications);
         List<String> filteredSubs = filterEmpty(subdomains);
         List<String> filteredAggs = filterEmpty(aggregates);
@@ -75,6 +83,9 @@ public class EventTypeBffResource {
     @Path("/{id}")
     @Operation(summary = "Get event type by ID (BFF)")
     public Response getEventType(@PathParam("id") String id) {
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformMessagingPermissions.EVENT_TYPE_VIEW);
+
         return eventTypeOperations.findById(id)
             .map(et -> Response.ok(BffEventTypeResponse.from(et)).build())
             .orElse(Response.status(404)
@@ -86,6 +97,9 @@ public class EventTypeBffResource {
     @Path("/filters/applications")
     @Operation(summary = "Get distinct application names")
     public Response getApplications() {
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformMessagingPermissions.EVENT_TYPE_VIEW);
+
         List<String> applications = eventTypeOperations.getDistinctApplications();
         return Response.ok(new FilterOptionsResponse(applications)).build();
     }
@@ -94,6 +108,9 @@ public class EventTypeBffResource {
     @Path("/filters/subdomains")
     @Operation(summary = "Get distinct subdomains")
     public Response getSubdomains(@QueryParam("application") List<String> applications) {
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformMessagingPermissions.EVENT_TYPE_VIEW);
+
         List<String> filteredApps = filterEmpty(applications);
         List<String> subdomains = eventTypeOperations.getDistinctSubdomains(filteredApps);
         return Response.ok(new FilterOptionsResponse(subdomains)).build();
@@ -106,6 +123,9 @@ public class EventTypeBffResource {
         @QueryParam("application") List<String> applications,
         @QueryParam("subdomain") List<String> subdomains
     ) {
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformMessagingPermissions.EVENT_TYPE_VIEW);
+
         List<String> filteredApps = filterEmpty(applications);
         List<String> filteredSubs = filterEmpty(subdomains);
         List<String> aggregates = eventTypeOperations.getDistinctAggregates(
@@ -118,12 +138,19 @@ public class EventTypeBffResource {
     @POST
     @Operation(summary = "Create a new event type (BFF)")
     public Response createEventType(CreateEventTypeRequest request) {
-        ExecutionContext context = createExecutionContext();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformMessagingPermissions.EVENT_TYPE_CREATE);
+
+        ExecutionContext context = ExecutionContext.from(tracingContext, principalId);
 
         CreateEventTypeCommand command = new CreateEventTypeCommand(
-            request.code(),
+            request.application(),
+            request.subdomain(),
+            request.aggregate(),
+            request.event(),
             request.name(),
-            request.description()
+            request.description(),
+            request.clientScoped()
         );
 
         Result<EventTypeCreated> result = eventTypeOperations.createEventType(command, context);
@@ -142,7 +169,10 @@ public class EventTypeBffResource {
     @Path("/{id}")
     @Operation(summary = "Update an event type (BFF)")
     public Response updateEventType(@PathParam("id") String id, UpdateEventTypeRequest request) {
-        ExecutionContext context = createExecutionContext();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformMessagingPermissions.EVENT_TYPE_UPDATE);
+
+        ExecutionContext context = ExecutionContext.from(tracingContext, principalId);
 
         UpdateEventTypeCommand command = new UpdateEventTypeCommand(
             id,
@@ -166,7 +196,10 @@ public class EventTypeBffResource {
     @Path("/{id}/schemas")
     @Operation(summary = "Add a schema version (BFF)")
     public Response addSchema(@PathParam("id") String id, AddSchemaRequest request) {
-        ExecutionContext context = createExecutionContext();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformMessagingPermissions.EVENT_TYPE_UPDATE);
+
+        ExecutionContext context = ExecutionContext.from(tracingContext, principalId);
 
         AddSchemaCommand command = new AddSchemaCommand(
             id,
@@ -192,7 +225,10 @@ public class EventTypeBffResource {
     @Path("/{id}/schemas/{version}/finalise")
     @Operation(summary = "Finalise a schema version (BFF)")
     public Response finaliseSchema(@PathParam("id") String id, @PathParam("version") String version) {
-        ExecutionContext context = createExecutionContext();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformMessagingPermissions.EVENT_TYPE_UPDATE);
+
+        ExecutionContext context = ExecutionContext.from(tracingContext, principalId);
 
         FinaliseSchemaCommand command = new FinaliseSchemaCommand(id, version);
 
@@ -212,7 +248,10 @@ public class EventTypeBffResource {
     @Path("/{id}/schemas/{version}/deprecate")
     @Operation(summary = "Deprecate a schema version (BFF)")
     public Response deprecateSchema(@PathParam("id") String id, @PathParam("version") String version) {
-        ExecutionContext context = createExecutionContext();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformMessagingPermissions.EVENT_TYPE_UPDATE);
+
+        ExecutionContext context = ExecutionContext.from(tracingContext, principalId);
 
         DeprecateSchemaCommand command = new DeprecateSchemaCommand(id, version);
 
@@ -232,7 +271,10 @@ public class EventTypeBffResource {
     @Path("/{id}/archive")
     @Operation(summary = "Archive an event type (BFF)")
     public Response archiveEventType(@PathParam("id") String id) {
-        ExecutionContext context = createExecutionContext();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformMessagingPermissions.EVENT_TYPE_UPDATE);
+
+        ExecutionContext context = ExecutionContext.from(tracingContext, principalId);
 
         ArchiveEventTypeCommand command = new ArchiveEventTypeCommand(id);
 
@@ -252,7 +294,10 @@ public class EventTypeBffResource {
     @Path("/{id}")
     @Operation(summary = "Delete an event type (BFF)")
     public Response deleteEventType(@PathParam("id") String id) {
-        ExecutionContext context = createExecutionContext();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformMessagingPermissions.EVENT_TYPE_DELETE);
+
+        ExecutionContext context = ExecutionContext.from(tracingContext, principalId);
 
         DeleteEventTypeCommand command = new DeleteEventTypeCommand(id);
 
@@ -305,6 +350,7 @@ public class EventTypeBffResource {
         String name,
         String description,
         EventTypeStatus status,
+        boolean clientScoped,
         String application,
         String subdomain,
         String aggregate,
@@ -321,6 +367,7 @@ public class EventTypeBffResource {
                 et.name(),
                 et.description(),
                 et.status(),
+                et.clientScoped(),
                 parts.length > 0 ? parts[0] : null,
                 parts.length > 1 ? parts[1] : null,
                 parts.length > 2 ? parts[2] : null,
@@ -350,7 +397,15 @@ public class EventTypeBffResource {
         }
     }
 
-    public record CreateEventTypeRequest(String code, String name, String description) {}
+    public record CreateEventTypeRequest(
+        String application,
+        String subdomain,
+        String aggregate,
+        String event,
+        String name,
+        String description,
+        boolean clientScoped
+    ) {}
     public record UpdateEventTypeRequest(String name, String description) {}
     public record AddSchemaRequest(String version, String mimeType, String schema, SchemaType schemaType) {}
     public record FilterOptionsResponse(List<String> options) {}

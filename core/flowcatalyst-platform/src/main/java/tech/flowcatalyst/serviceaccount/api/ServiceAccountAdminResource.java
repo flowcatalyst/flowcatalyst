@@ -155,8 +155,15 @@ public class ServiceAccountAdminResource {
                 yield Response.status(Response.Status.CREATED)
                     .entity(new CreateServiceAccountResponse(
                         toDto(createResult.serviceAccount()),
-                        createResult.authToken(),
-                        createResult.signingSecret()
+                        createResult.principal() != null ? createResult.principal().id : null,
+                        new OAuthCredentials(
+                            createResult.clientId(),
+                            createResult.clientSecret()
+                        ),
+                        new WebhookCredentials(
+                            createResult.authToken(),
+                            createResult.signingSecret()
+                        )
                     ))
                     .location(uriInfo.getBaseUriBuilder()
                         .path(ServiceAccountAdminResource.class)
@@ -316,16 +323,12 @@ public class ServiceAccountAdminResource {
 
     private ServiceAccountDto toDto(ServiceAccount sa) {
         return new ServiceAccountDto(
-            TypedId.Ops.serialize(EntityType.PRINCIPAL, sa.id),
+            sa.id,  // ID already has prefix from storage
             sa.code,
             sa.name,
             sa.description,
-            sa.clientIds != null
-                ? sa.clientIds.stream()
-                    .map(id -> TypedId.Ops.serialize(EntityType.CLIENT, id))
-                    .toList()
-                : List.of(),
-            TypedId.Ops.serialize(EntityType.APPLICATION, sa.applicationId),
+            sa.clientIds != null ? sa.clientIds : List.of(),  // IDs already have prefix from storage
+            sa.applicationId,  // ID already has prefix from storage
             sa.active,
             sa.webhookCredentials != null ? sa.webhookCredentials.authType : null,
             sa.roles.stream().map(r -> r.roleName).toList(),
@@ -402,8 +405,42 @@ public class ServiceAccountAdminResource {
         int total
     ) {}
 
+    /**
+     * Response for service account creation.
+     *
+     * <p>Includes all credentials needed for both OAuth and webhook authentication.
+     * These credentials are shown only once at creation time.
+     *
+     * @param serviceAccount The created service account
+     * @param principalId    The Principal entity ID (for identity/roles)
+     * @param oauth          OAuth credentials for client_credentials authentication
+     * @param webhook        Webhook credentials for outbound webhook auth/signing
+     */
     public record CreateServiceAccountResponse(
         ServiceAccountDto serviceAccount,
+        String principalId,
+        OAuthCredentials oauth,
+        WebhookCredentials webhook
+    ) {}
+
+    /**
+     * OAuth credentials for client_credentials grant authentication.
+     *
+     * @param clientId     The OAuth client_id to use in token requests
+     * @param clientSecret The OAuth client_secret (shown only once)
+     */
+    public record OAuthCredentials(
+        String clientId,
+        String clientSecret
+    ) {}
+
+    /**
+     * Webhook credentials for outbound webhook authentication and signing.
+     *
+     * @param authToken     Bearer token for Authorization header (shown only once)
+     * @param signingSecret HMAC signing secret for webhook signatures (shown only once)
+     */
+    public record WebhookCredentials(
         String authToken,
         String signingSecret
     ) {}

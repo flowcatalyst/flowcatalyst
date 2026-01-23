@@ -33,11 +33,30 @@ public record Subscription(
     /** Optional description */
     String description,
 
-    /** Client this subscription belongs to (nullable - null means anchor-level subscription) */
+    /** Client this subscription belongs to (nullable - null means all clients when clientScoped=true) */
     String clientId,
 
     /** Denormalized client identifier for queries (nullable) */
     String clientIdentifier,
+
+    /**
+     * Whether this subscription is scoped to clients.
+     *
+     * <p>This field is immutable after creation and must match the clientScoped
+     * value of all bound event types.
+     *
+     * <p>When {@code clientScoped = true}:
+     * <ul>
+     *   <li>{@code clientId = null} means the subscription applies to ALL clients</li>
+     *   <li>{@code clientId = "xyz"} means the subscription applies to that specific client only</li>
+     * </ul>
+     *
+     * <p>When {@code clientScoped = false}:
+     * <ul>
+     *   <li>{@code clientId} must be null (platform-wide subscription)</li>
+     * </ul>
+     */
+    boolean clientScoped,
 
     /** List of event types this subscription listens to */
     List<EventTypeBinding> eventTypes,
@@ -127,10 +146,24 @@ public record Subscription(
     // ========================================================================
 
     /**
-     * Check if this is an anchor-level subscription (not client-specific).
+     * Check if this is a platform-wide subscription (not client-scoped).
      */
-    public boolean isAnchorLevel() {
-        return clientId == null;
+    public boolean isPlatformWide() {
+        return !clientScoped;
+    }
+
+    /**
+     * Check if this subscription applies to all clients (client-scoped with no specific client).
+     */
+    public boolean isAllClients() {
+        return clientScoped && clientId == null;
+    }
+
+    /**
+     * Check if this subscription applies to a specific client only.
+     */
+    public boolean isSpecificClient() {
+        return clientScoped && clientId != null;
     }
 
     /**
@@ -168,18 +201,20 @@ public record Subscription(
     /**
      * Create a new subscription with required fields and sensible defaults.
      *
-     * @param code   Unique code within client scope
-     * @param name   Display name
-     * @param target Target URL for dispatching
+     * @param code         Unique code within client scope
+     * @param name         Display name
+     * @param target       Target URL for dispatching
+     * @param clientScoped Whether this subscription is scoped to clients
      * @return A pre-configured builder with defaults set
      */
-    public static SubscriptionBuilder create(String code, String name, String target) {
+    public static SubscriptionBuilder create(String code, String name, String target, boolean clientScoped) {
         var now = Instant.now();
         return Subscription.builder()
             .id(TsidGenerator.generate())
             .code(code.toLowerCase())
             .name(name)
             .target(target)
+            .clientScoped(clientScoped)
             .eventTypes(new ArrayList<>())
             .customConfig(new ArrayList<>())
             .source(SubscriptionSource.API)

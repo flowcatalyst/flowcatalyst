@@ -49,6 +49,16 @@ public class OAuthClientReadRepository implements OAuthClientRepository {
     }
 
     @Override
+    public Optional<OAuthClient> findByServiceAccountPrincipalId(String principalId) {
+        var results = em.createQuery(
+                "FROM OAuthClientEntity WHERE serviceAccountPrincipalId = :principalId",
+                OAuthClientEntity.class)
+            .setParameter("principalId", principalId)
+            .getResultList();
+        return results.isEmpty() ? Optional.empty() : Optional.of(OAuthClientMapper.toDomain(results.get(0)));
+    }
+
+    @Override
     public List<OAuthClient> findByApplicationIdAndActive(String applicationId, boolean active) {
         @SuppressWarnings("unchecked")
         List<OAuthClientEntity> results = em.createNativeQuery(

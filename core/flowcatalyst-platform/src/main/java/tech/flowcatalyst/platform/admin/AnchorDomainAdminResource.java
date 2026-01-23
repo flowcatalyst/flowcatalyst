@@ -15,6 +15,8 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import org.jboss.logging.Logger;
 import tech.flowcatalyst.platform.audit.AuditContext;
 import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
+import tech.flowcatalyst.platform.authorization.AuthorizationService;
+import tech.flowcatalyst.platform.authorization.platform.PlatformIamPermissions;
 import tech.flowcatalyst.platform.principal.AnchorDomain;
 import tech.flowcatalyst.platform.principal.AnchorDomainRepository;
 import tech.flowcatalyst.platform.principal.Principal;
@@ -55,6 +57,9 @@ public class AnchorDomainAdminResource {
     @Inject
     AuditContext auditContext;
 
+    @Inject
+    AuthorizationService authorizationService;
+
     // ==================== List & Get Operations ====================
 
     /**
@@ -71,7 +76,8 @@ public class AnchorDomainAdminResource {
     })
     public Response listAnchorDomains() {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ANCHOR_DOMAIN_VIEW);
 
         List<AnchorDomain> domains = anchorDomainRepo.listAll();
 
@@ -96,7 +102,8 @@ public class AnchorDomainAdminResource {
     })
     public Response getAnchorDomain(@PathParam("id") String id) {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ANCHOR_DOMAIN_VIEW);
 
         return anchorDomainRepo.findByIdOptional(id)
             .map(domain -> Response.ok(toDto(domain)).build())
@@ -118,7 +125,8 @@ public class AnchorDomainAdminResource {
     })
     public Response checkDomain(@PathParam("domain") String domain) {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ANCHOR_DOMAIN_VIEW);
 
         String normalizedDomain = domain.toLowerCase().trim();
         boolean isAnchor = anchorDomainRepo.existsByDomain(normalizedDomain);
@@ -148,6 +156,7 @@ public class AnchorDomainAdminResource {
             @Context UriInfo uriInfo) {
 
         String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ANCHOR_DOMAIN_MANAGE);
 
         String normalizedDomain = request.domain().toLowerCase().trim();
 
@@ -199,6 +208,7 @@ public class AnchorDomainAdminResource {
     public Response deleteAnchorDomain(@PathParam("id") String id) {
 
         String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ANCHOR_DOMAIN_MANAGE);
 
         AnchorDomain domain = anchorDomainRepo.findByIdOptional(id).orElse(null);
         if (domain == null) {

@@ -54,7 +54,7 @@ public interface RoleDefinition {
      * @param application Application code
      * @param roleName Role name within application
      * @param permissions Permission instances this role grants
-     * @param description Human-readable description
+     * @param description Human-readable description (optional, may be null)
      * @return Role instance
      */
     static RoleRecord make(String application, String roleName, Set<PermissionDefinition> permissions, String description) {
@@ -73,7 +73,7 @@ public interface RoleDefinition {
      * @param application Application code
      * @param roleName Role name within application
      * @param permissionStrings Permission strings this role grants
-     * @param description Human-readable description
+     * @param description Human-readable description (optional, may be null)
      * @return Role instance
      */
     static RoleRecord makeFromStrings(String application, String roleName, Set<String> permissionStrings, String description) {
@@ -93,6 +93,6 @@ public interface RoleDefinition {
         if (parts.length != 4) {
             throw new IllegalArgumentException("Invalid permission string format: " + permissionString);
         }
-        return PermissionDefinition.make(parts[0], parts[1], parts[2], parts[3], "Permission created from string");
+        return PermissionDefinition.make(parts[0], parts[1], parts[2], parts[3], null);
     }
 }

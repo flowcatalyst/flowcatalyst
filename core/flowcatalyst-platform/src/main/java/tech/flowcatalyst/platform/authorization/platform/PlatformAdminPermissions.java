@@ -72,5 +72,14 @@ public class PlatformAdminPermissions {
         "Update platform configuration"
     );
 
+    // ========================================================================
+    // Audit Log Access
+    // ========================================================================
+
+    public static final PermissionDefinition AUDIT_LOG_VIEW = PermissionDefinition.make(
+        "platform", "admin", "audit-log", "view",
+        "View audit logs"
+    );
+
     private PlatformAdminPermissions() {}
 }

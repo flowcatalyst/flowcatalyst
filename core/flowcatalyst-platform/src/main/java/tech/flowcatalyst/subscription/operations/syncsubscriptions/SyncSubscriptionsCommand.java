@@ -24,6 +24,7 @@ public record SyncSubscriptionsCommand(
         String code,
         String name,
         String description,
+        Boolean clientScoped,
         List<EventTypeBindingItem> eventTypes,
         String target,
         String queue,

@@ -19,6 +19,7 @@ class Subscription
         public readonly string $code,
         public readonly string $name,
         public readonly ?string $description,
+        public readonly bool $clientScoped,
         public readonly ?string $clientId,
         public readonly ?string $clientIdentifier,
         public readonly array $eventTypes,
@@ -46,6 +47,7 @@ class Subscription
             code: $data['code'],
             name: $data['name'],
             description: $data['description'] ?? null,
+            clientScoped: $data['clientScoped'] ?? false,
             clientId: $data['clientId'] ?? null,
             clientIdentifier: $data['clientIdentifier'] ?? null,
             eventTypes: array_map(
@@ -77,6 +79,7 @@ class Subscription
             'code' => $this->code,
             'name' => $this->name,
             'description' => $this->description,
+            'clientScoped' => $this->clientScoped,
             'clientId' => $this->clientId,
             'clientIdentifier' => $this->clientIdentifier,
             'eventTypes' => array_map(fn(EventTypeBinding $et) => $et->toArray(), $this->eventTypes),

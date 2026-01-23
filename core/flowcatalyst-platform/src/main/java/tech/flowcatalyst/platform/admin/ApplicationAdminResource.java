@@ -32,7 +32,9 @@ import tech.flowcatalyst.platform.application.operations.updateapplication.Updat
 import tech.flowcatalyst.platform.application.events.ApplicationCreated;
 import tech.flowcatalyst.platform.audit.AuditContext;
 import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
+import tech.flowcatalyst.platform.authorization.AuthorizationService;
 import tech.flowcatalyst.platform.authorization.PermissionRegistry;
+import tech.flowcatalyst.platform.authorization.platform.PlatformAdminPermissions;
 import tech.flowcatalyst.platform.client.Client;
 import tech.flowcatalyst.platform.client.ClientRepository;
 import tech.flowcatalyst.platform.common.ExecutionContext;
@@ -71,6 +73,9 @@ public class ApplicationAdminResource {
     AuditContext auditContext;
 
     @Inject
+    AuthorizationService authorizationService;
+
+    @Inject
     ActivateApplicationUseCase activateApplicationUseCase;
 
     @Inject
@@ -98,8 +103,8 @@ public class ApplicationAdminResource {
             @QueryParam("activeOnly") @DefaultValue("false") boolean activeOnly,
             @QueryParam("type") String type) {
 
-        // Require authentication (throws 401 if not authenticated)
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_VIEW);
 
         List<Application> apps;
         if (type != null && !type.isBlank()) {
@@ -130,6 +135,9 @@ public class ApplicationAdminResource {
     @Operation(summary = "Get application by ID")
     public Response getApplication(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_VIEW);
+
         return applicationService.findById(id)
             .map(app -> Response.ok(toApplicationDetailResponse(app)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND)
@@ -141,6 +149,9 @@ public class ApplicationAdminResource {
     @Path("/by-code/{code}")
     @Operation(summary = "Get application by code")
     public Response getApplicationByCode(@PathParam("code") String code) {
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_VIEW);
+
         return applicationService.findByCode(code)
             .map(app -> Response.ok(toApplicationDetailResponse(app)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND)
@@ -152,6 +163,8 @@ public class ApplicationAdminResource {
     @Operation(summary = "Create a new application")
     public Response createApplication(CreateApplicationRequest request) {
         String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_CREATE);
+
         ExecutionContext ctx = ExecutionContext.create(principalId);
 
         // Parse application type
@@ -232,6 +245,8 @@ public class ApplicationAdminResource {
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id,
             UpdateApplicationRequest request) {
         String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_UPDATE);
+
         ExecutionContext ctx = ExecutionContext.create(principalId);
         var command = new UpdateApplicationCommand(
             id,
@@ -271,6 +286,8 @@ public class ApplicationAdminResource {
     public Response deleteApplication(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_DELETE);
+
         ExecutionContext ctx = ExecutionContext.create(principalId);
         var command = new DeleteApplicationCommand(id);
         Result<ApplicationDeleted> result = deleteApplicationUseCase.execute(command, ctx);
@@ -297,6 +314,8 @@ public class ApplicationAdminResource {
     public Response activateApplication(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_UPDATE);
+
         ExecutionContext ctx = ExecutionContext.create(principalId);
         var command = new ActivateApplicationCommand(id);
         Result<ApplicationActivated> result = activateApplicationUseCase.execute(command, ctx);
@@ -323,6 +342,8 @@ public class ApplicationAdminResource {
     public Response deactivateApplication(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_UPDATE);
+
         ExecutionContext ctx = ExecutionContext.create(principalId);
         var command = new DeactivateApplicationCommand(id);
         Result<ApplicationDeactivated> result = deactivateApplicationUseCase.execute(command, ctx);
@@ -351,6 +372,8 @@ public class ApplicationAdminResource {
     public Response provisionServiceAccount(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_UPDATE);
+
         ExecutionContext ctx = ExecutionContext.create(principalId);
         var command = new ProvisionServiceAccountCommand(id);
         var provisionResult = provisionServiceAccountUseCase.execute(command, ctx);
@@ -390,6 +413,9 @@ public class ApplicationAdminResource {
     @Operation(summary = "Get client configurations for an application")
     public Response getClientConfigs(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_VIEW);
+
         if (applicationService.findById(id).isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND)
                 .entity(Map.of("error", "Application not found"))
@@ -414,6 +440,8 @@ public class ApplicationAdminResource {
             ClientConfigRequest request) {
 
         String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_UPDATE);
+
         ExecutionContext ctx = ExecutionContext.create(principalId);
 
         boolean enabled = request.enabled != null ? request.enabled : true;
@@ -511,6 +539,8 @@ public class ApplicationAdminResource {
             @TypedIdParam(EntityType.CLIENT) @PathParam("clientId") String clientId) {
 
         String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_UPDATE);
+
         ExecutionContext ctx = ExecutionContext.create(principalId);
         var command = new EnableApplicationForClientCommand(applicationId, clientId, null);
         Result<ApplicationEnabledForClient> result = applicationService.enableForClient(ctx, command);
@@ -539,6 +569,8 @@ public class ApplicationAdminResource {
             @TypedIdParam(EntityType.CLIENT) @PathParam("clientId") String clientId) {
 
         String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_UPDATE);
+
         ExecutionContext ctx = ExecutionContext.create(principalId);
         var command = new DisableApplicationForClientCommand(applicationId, clientId);
         Result<ApplicationDisabledForClient> result = applicationService.disableForClient(ctx, command);
@@ -568,6 +600,9 @@ public class ApplicationAdminResource {
     @Operation(summary = "Get all roles defined for this application")
     public Response getApplicationRoles(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_VIEW);
+
         return applicationService.findById(id)
             .map(app -> {
                 var roles = PermissionRegistry.extractApplicationCodes(List.of(app.code));

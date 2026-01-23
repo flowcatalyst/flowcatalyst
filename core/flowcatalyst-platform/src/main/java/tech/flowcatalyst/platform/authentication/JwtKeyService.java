@@ -165,13 +165,29 @@ public class JwtKeyService {
 
     /**
      * Issue an access token for a service account (client credentials).
+     *
+     * @param principalId The service account principal ID
+     * @param clientId The OAuth client ID
+     * @param roles The service account's role strings
      */
     public String issueAccessToken(String principalId, String clientId, Set<String> roles) {
+        // Extract application codes from roles (same as user tokens)
+        Set<String> applications = PermissionRegistry.extractApplicationCodes(roles);
+
+        // Filter out any null values from collections (JWT builder doesn't handle nulls)
+        Set<String> safeRoles = roles != null
+            ? roles.stream().filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet())
+            : Set.of();
+        Set<String> safeApplications = applications != null
+            ? applications.stream().filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet())
+            : Set.of();
+
         return Jwt.issuer(issuer)
                 .subject(String.valueOf(principalId))
                 .claim("client_id", clientId)
                 .claim("type", "SERVICE")
-                .claim("roles", roles)
+                .claim("applications", safeApplications)
+                .claim("roles", safeRoles)
                 .issuedAt(Instant.now())
                 .expiresAt(Instant.now().plus(accessTokenExpiry))
                 .jws()

@@ -13,7 +13,8 @@ import java.util.List;
  * @param code Unique code within client scope
  * @param name Display name
  * @param description Optional description
- * @param clientId Client ID (nullable - null for anchor-level)
+ * @param clientScoped Whether this subscription is scoped to clients (must match event types)
+ * @param clientId Client ID (nullable - null means "all clients" when clientScoped=true, must be null when clientScoped=false)
  * @param eventTypes List of event type bindings
  * @param target Target URL for dispatching
  * @param queue Queue name
@@ -33,6 +34,7 @@ public record CreateSubscriptionCommand(
     String code,
     String name,
     String description,
+    boolean clientScoped,
     String clientId,
     List<EventTypeBinding> eventTypes,
     String target,

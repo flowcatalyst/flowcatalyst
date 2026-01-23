@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace FlowCatalyst\Sync;
 
 use FlowCatalyst\Client\FlowCatalystClient;
+use FlowCatalyst\Sync\RoleDefinition;
 
 /**
  * Service for synchronizing FlowCatalyst definitions to the platform.
@@ -59,6 +60,7 @@ class DefinitionSynchronizer
         $rolesResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
         $eventTypesResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
         $subscriptionsResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
+        $dispatchPoolsResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
 
         // Sync roles
         if ($options->syncRoles && $definitions->hasRoles()) {
@@ -75,11 +77,17 @@ class DefinitionSynchronizer
             $subscriptionsResult = $this->syncSubscriptions($appCode, $definitions->getSubscriptions(), $options->removeUnlisted);
         }
 
+        // Sync dispatch pools
+        if ($options->syncDispatchPools && $definitions->hasDispatchPools()) {
+            $dispatchPoolsResult = $this->syncDispatchPools($appCode, $definitions->getDispatchPools(), $options->removeUnlisted);
+        }
+
         return new SyncResult(
             applicationCode: $appCode,
             roles: $rolesResult,
             eventTypes: $eventTypesResult,
             subscriptions: $subscriptionsResult,
+            dispatchPools: $dispatchPoolsResult,
         );
     }
 
@@ -111,6 +119,17 @@ class DefinitionSynchronizer
      */
     private function syncRoles(string $appCode, array $roles, bool $removeUnlisted): array
     {
+        // Validate role names before syncing
+        $validationErrors = $this->validateRoles($roles);
+        if (!empty($validationErrors)) {
+            return [
+                'created' => 0,
+                'updated' => 0,
+                'deleted' => 0,
+                'error' => implode('; ', $validationErrors),
+            ];
+        }
+
         try {
             $result = $this->client->roles()->sync($appCode, $roles, $removeUnlisted);
 
@@ -127,6 +146,27 @@ class DefinitionSynchronizer
                 'error' => $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * Validate role definitions before syncing.
+     *
+     * @param array<array<string, mixed>> $roles Role definitions
+     * @return string[] Validation error messages
+     */
+    private function validateRoles(array $roles): array
+    {
+        $errors = [];
+
+        foreach ($roles as $role) {
+            $name = $role['name'] ?? '';
+            $error = RoleDefinition::validateName($name);
+            if ($error !== null) {
+                $errors[] = $error;
+            }
+        }
+
+        return $errors;
     }
 
     /**
@@ -183,5 +223,65 @@ class DefinitionSynchronizer
                 'error' => $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * Sync dispatch pools for an application.
+     *
+     * @param string $appCode Application code
+     * @param array<array<string, mixed>> $dispatchPools Dispatch pool definitions
+     * @param bool $removeUnlisted Remove dispatch pools not in the local set
+     * @return array{created: int, updated: int, deleted: int, error?: string}
+     */
+    private function syncDispatchPools(string $appCode, array $dispatchPools, bool $removeUnlisted): array
+    {
+        // Validate dispatch pool codes before syncing
+        $validationErrors = $this->validateDispatchPools($dispatchPools);
+        if (!empty($validationErrors)) {
+            return [
+                'created' => 0,
+                'updated' => 0,
+                'deleted' => 0,
+                'error' => implode('; ', $validationErrors),
+            ];
+        }
+
+        try {
+            $result = $this->client->dispatchPools()->sync($appCode, $dispatchPools, $removeUnlisted);
+
+            return [
+                'created' => $result['created'] ?? 0,
+                'updated' => $result['updated'] ?? 0,
+                'deleted' => $result['deleted'] ?? 0,
+            ];
+        } catch (\Exception $e) {
+            return [
+                'created' => 0,
+                'updated' => 0,
+                'deleted' => 0,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Validate dispatch pool definitions before syncing.
+     *
+     * @param array<array<string, mixed>> $dispatchPools Dispatch pool definitions
+     * @return string[] Validation error messages
+     */
+    private function validateDispatchPools(array $dispatchPools): array
+    {
+        $errors = [];
+
+        foreach ($dispatchPools as $pool) {
+            $code = $pool['code'] ?? '';
+            $error = DispatchPoolDefinition::validateCode($code);
+            if ($error !== null) {
+                $errors[] = $error;
+            }
+        }
+
+        return $errors;
     }
 }

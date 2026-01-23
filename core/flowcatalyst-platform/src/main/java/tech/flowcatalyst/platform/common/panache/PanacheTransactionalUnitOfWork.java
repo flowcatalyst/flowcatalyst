@@ -184,6 +184,48 @@ public class PanacheTransactionalUnitOfWork implements UnitOfWork {
         }
     }
 
+    @Override
+    @Transactional
+    public <T extends DomainEvent> Result<T> commitDeleteAll(
+            List<Object> aggregates,
+            T event,
+            Object command
+    ) {
+        try {
+            // 1. Delete all aggregates
+            for (Object aggregate : aggregates) {
+                aggregateRegistry.delete(aggregate);
+            }
+
+            // 2. Create domain event + event_outbox
+            Event eventEntity = createEvent(event);
+
+            // 3. Build dispatch jobs for matching subscriptions
+            List<DispatchJob> dispatchJobs = eventDispatchService.buildDispatchJobsForEvents(List.of(eventEntity));
+
+            // 4. Persist dispatch jobs + dispatch_job_outbox
+            if (!dispatchJobs.isEmpty()) {
+                persistDispatchJobs(dispatchJobs);
+                registerPostCommitQueueing(dispatchJobs);
+            }
+
+            // 5. Create audit log
+            createAuditLog(event, command);
+
+            LOG.debugf("Committed delete of %d aggregates with event [%s] and %d dispatch jobs",
+                Integer.valueOf(aggregates.size()), event.eventId(), Integer.valueOf(dispatchJobs.size()));
+            return Result.success(event);
+
+        } catch (Exception e) {
+            LOG.errorf(e, "Failed to commit delete all transaction");
+            return Result.failure(new UseCaseError.BusinessRuleViolation(
+                "COMMIT_FAILED",
+                "Failed to commit transaction: " + e.getMessage(),
+                Map.of("exception", e.getClass().getSimpleName())
+            ));
+        }
+    }
+
     // ========================================================================
     // Event Operations
     // ========================================================================

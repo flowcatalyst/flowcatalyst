@@ -100,5 +100,43 @@ public class PlatformIamPermissions {
         "Manage identity provider configurations (create, update, delete domain IDPs)"
     );
 
+    // ========================================================================
+    // OAuth Client Management
+    // ========================================================================
+
+    public static final PermissionDefinition OAUTH_CLIENT_VIEW = PermissionDefinition.make(
+        "platform", "iam", "oauth-client", "view",
+        "View OAuth clients and their configurations"
+    );
+
+    public static final PermissionDefinition OAUTH_CLIENT_CREATE = PermissionDefinition.make(
+        "platform", "iam", "oauth-client", "create",
+        "Create new OAuth clients"
+    );
+
+    public static final PermissionDefinition OAUTH_CLIENT_UPDATE = PermissionDefinition.make(
+        "platform", "iam", "oauth-client", "update",
+        "Update OAuth client configurations"
+    );
+
+    public static final PermissionDefinition OAUTH_CLIENT_DELETE = PermissionDefinition.make(
+        "platform", "iam", "oauth-client", "delete",
+        "Delete OAuth clients"
+    );
+
+    // ========================================================================
+    // Anchor Domain Management
+    // ========================================================================
+
+    public static final PermissionDefinition ANCHOR_DOMAIN_VIEW = PermissionDefinition.make(
+        "platform", "iam", "anchor-domain", "view",
+        "View anchor domain configurations"
+    );
+
+    public static final PermissionDefinition ANCHOR_DOMAIN_MANAGE = PermissionDefinition.make(
+        "platform", "iam", "anchor-domain", "manage",
+        "Manage anchor domain configurations (create, update, delete)"
+    );
+
     private PlatformIamPermissions() {}
 }

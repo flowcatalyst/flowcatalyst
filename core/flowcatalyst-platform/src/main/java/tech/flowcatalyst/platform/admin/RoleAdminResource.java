@@ -14,6 +14,8 @@ import tech.flowcatalyst.platform.application.ApplicationRepository;
 import tech.flowcatalyst.platform.audit.AuditContext;
 import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
 import tech.flowcatalyst.platform.authorization.*;
+import tech.flowcatalyst.platform.authorization.platform.PlatformIamPermissions;
+import tech.flowcatalyst.platform.authorization.PermissionInput;
 import tech.flowcatalyst.platform.authorization.events.RoleCreated;
 import tech.flowcatalyst.platform.authorization.events.RoleDeleted;
 import tech.flowcatalyst.platform.authorization.events.RoleUpdated;
@@ -66,6 +68,9 @@ public class RoleAdminResource {
     @Inject
     TracingContext tracingContext;
 
+    @Inject
+    AuthorizationService authorizationService;
+
     // ==================== Roles ====================
 
     /**
@@ -83,7 +88,8 @@ public class RoleAdminResource {
             @QueryParam("application") String application,
             @QueryParam("source") String source) {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ROLE_VIEW);
 
         List<AuthRole> roles;
         if (application != null && !application.isBlank()) {
@@ -127,7 +133,8 @@ public class RoleAdminResource {
     })
     public Response getRole(@PathParam("roleName") String roleName) {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ROLE_VIEW);
 
         return roleService.getRoleByName(roleName)
             .map(role -> Response.ok(toRoleDto(role)).build())
@@ -153,6 +160,7 @@ public class RoleAdminResource {
     public Response createRole(CreateRoleRequest request) {
 
         String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ROLE_CREATE);
 
         // Validate request
         if (request.applicationCode() == null || request.applicationCode().isBlank()) {
@@ -183,7 +191,9 @@ public class RoleAdminResource {
             request.name(),
             request.displayName(),
             request.description(),
-            request.permissions(),
+            request.permissions() != null
+                ? request.permissions().stream().map(PermissionInputDto::toPermissionInput).toList()
+                : List.of(),
             AuthRole.RoleSource.DATABASE,
             request.clientManaged() != null ? request.clientManaged() : false
         );
@@ -216,7 +226,8 @@ public class RoleAdminResource {
             @PathParam("roleName") String roleName,
             UpdateRoleRequest request) {
 
-        var principalId = auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ROLE_UPDATE);
 
         // Create execution context (audit context already set by filter)
         var context = ExecutionContext.from(tracingContext, principalId);
@@ -225,7 +236,9 @@ public class RoleAdminResource {
             roleName,
             request.displayName(),
             request.description(),
-            request.permissions(),
+            request.permissions() != null
+                ? request.permissions().stream().map(PermissionInputDto::toPermissionInput).toList()
+                : null,
             request.clientManaged()
         );
 
@@ -255,6 +268,7 @@ public class RoleAdminResource {
     public Response deleteRole(@PathParam("roleName") String roleName) {
 
         String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ROLE_DELETE);
 
         // Create execution context (audit context already set by filter)
         ExecutionContext context = ExecutionContext.from(tracingContext, principalId);
@@ -286,7 +300,8 @@ public class RoleAdminResource {
     })
     public Response listPermissions() {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.PERMISSION_VIEW);
 
         Collection<PermissionDefinition> permissions = permissionRegistry.getAllPermissions();
 
@@ -310,7 +325,8 @@ public class RoleAdminResource {
     })
     public Response getPermission(@PathParam("permission") String permission) {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.PERMISSION_VIEW);
 
         return permissionRegistry.getPermission(permission)
             .map(perm -> Response.ok(toPermissionDto(perm)).build())
@@ -381,21 +397,47 @@ public class RoleAdminResource {
         int total
     ) {}
 
+    /**
+     * Request to create a role.
+     *
+     * <p>Permissions are structured with explicit segments to enforce format.
+     */
     public record CreateRoleRequest(
         String applicationCode,
         String name,
         String displayName,
         String description,
-        Set<String> permissions,
+        List<PermissionInputDto> permissions,
         Boolean clientManaged
     ) {}
 
+    /**
+     * Request to update a role.
+     *
+     * <p>Permissions are structured with explicit segments to enforce format.
+     */
     public record UpdateRoleRequest(
         String displayName,
         String description,
-        Set<String> permissions,
+        List<PermissionInputDto> permissions,
         Boolean clientManaged
     ) {}
+
+    /**
+     * Structured permission input.
+     *
+     * <p>Format: {application}:{context}:{aggregate}:{action}
+     */
+    public record PermissionInputDto(
+        String application,
+        String context,
+        String aggregate,
+        String action
+    ) {
+        public PermissionInput toPermissionInput() {
+            return new PermissionInput(application, context, aggregate, action);
+        }
+    }
 
     public record PermissionDto(
         String permission,

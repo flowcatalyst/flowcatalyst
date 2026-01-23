@@ -30,6 +30,11 @@ final class SyncOptions
          * Whether to sync subscriptions.
          */
         public readonly bool $syncSubscriptions = true,
+
+        /**
+         * Whether to sync dispatch pools.
+         */
+        public readonly bool $syncDispatchPools = true,
     ) {}
 
     /**
@@ -57,6 +62,7 @@ final class SyncOptions
             syncRoles: true,
             syncEventTypes: false,
             syncSubscriptions: false,
+            syncDispatchPools: false,
         );
     }
 
@@ -69,6 +75,7 @@ final class SyncOptions
             syncRoles: false,
             syncEventTypes: true,
             syncSubscriptions: false,
+            syncDispatchPools: false,
         );
     }
 
@@ -81,6 +88,20 @@ final class SyncOptions
             syncRoles: false,
             syncEventTypes: false,
             syncSubscriptions: true,
+            syncDispatchPools: false,
+        );
+    }
+
+    /**
+     * Create options that only sync dispatch pools.
+     */
+    public static function dispatchPoolsOnly(): self
+    {
+        return new self(
+            syncRoles: false,
+            syncEventTypes: false,
+            syncSubscriptions: false,
+            syncDispatchPools: true,
         );
     }
 
@@ -94,6 +115,7 @@ final class SyncOptions
             syncRoles: $this->syncRoles,
             syncEventTypes: $this->syncEventTypes,
             syncSubscriptions: $this->syncSubscriptions,
+            syncDispatchPools: $this->syncDispatchPools,
         );
     }
 }

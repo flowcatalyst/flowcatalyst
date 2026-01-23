@@ -4,11 +4,14 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import tech.flowcatalyst.dispatchpool.events.DispatchPoolCreated;
 import tech.flowcatalyst.dispatchpool.events.DispatchPoolDeleted;
+import tech.flowcatalyst.dispatchpool.events.DispatchPoolsSynced;
 import tech.flowcatalyst.dispatchpool.events.DispatchPoolUpdated;
 import tech.flowcatalyst.dispatchpool.operations.createpool.CreateDispatchPoolCommand;
 import tech.flowcatalyst.dispatchpool.operations.createpool.CreateDispatchPoolUseCase;
 import tech.flowcatalyst.dispatchpool.operations.deletepool.DeleteDispatchPoolCommand;
 import tech.flowcatalyst.dispatchpool.operations.deletepool.DeleteDispatchPoolUseCase;
+import tech.flowcatalyst.dispatchpool.operations.syncpools.SyncDispatchPoolsCommand;
+import tech.flowcatalyst.dispatchpool.operations.syncpools.SyncDispatchPoolsUseCase;
 import tech.flowcatalyst.dispatchpool.operations.updatepool.UpdateDispatchPoolCommand;
 import tech.flowcatalyst.dispatchpool.operations.updatepool.UpdateDispatchPoolUseCase;
 import tech.flowcatalyst.platform.common.ExecutionContext;
@@ -53,6 +56,9 @@ public class DispatchPoolOperations {
     @Inject
     DeleteDispatchPoolUseCase deletePoolUseCase;
 
+    @Inject
+    SyncDispatchPoolsUseCase syncPoolsUseCase;
+
     /**
      * Create a new DispatchPool.
      *
@@ -93,6 +99,22 @@ public class DispatchPoolOperations {
             ExecutionContext context
     ) {
         return deletePoolUseCase.execute(command, context);
+    }
+
+    /**
+     * Sync DispatchPools from an external application (SDK).
+     *
+     * <p>Creates new pools, updates existing ones, and optionally removes unlisted pools.
+     *
+     * @param command The command containing pools to sync
+     * @param context The execution context
+     * @return Success with DispatchPoolsSynced, or Failure with error
+     */
+    public Result<DispatchPoolsSynced> syncPools(
+            SyncDispatchPoolsCommand command,
+            ExecutionContext context
+    ) {
+        return syncPoolsUseCase.execute(command, context);
     }
 
     // ========================================================================

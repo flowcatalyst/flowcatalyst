@@ -30,10 +30,21 @@ export interface CreateServiceAccountRequest {
   applicationId?: string;
 }
 
-export interface CreateServiceAccountResponse {
-  serviceAccount: ServiceAccount;
+export interface OAuthCredentials {
+  clientId: string;
+  clientSecret: string;
+}
+
+export interface WebhookCredentials {
   authToken: string;
   signingSecret: string;
+}
+
+export interface CreateServiceAccountResponse {
+  serviceAccount: ServiceAccount;
+  principalId: string;
+  oauth: OAuthCredentials;
+  webhook: WebhookCredentials;
 }
 
 export interface UpdateServiceAccountRequest {

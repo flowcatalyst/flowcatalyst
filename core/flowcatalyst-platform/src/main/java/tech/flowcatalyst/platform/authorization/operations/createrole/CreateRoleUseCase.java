@@ -6,6 +6,7 @@ import tech.flowcatalyst.platform.application.Application;
 import tech.flowcatalyst.platform.application.ApplicationRepository;
 import tech.flowcatalyst.platform.authorization.AuthRole;
 import tech.flowcatalyst.platform.authorization.AuthRoleRepository;
+import tech.flowcatalyst.platform.authorization.PermissionInput;
 import tech.flowcatalyst.platform.authorization.PermissionRegistry;
 import tech.flowcatalyst.platform.authorization.events.RoleCreated;
 import tech.flowcatalyst.platform.common.AuthorizationContext;
@@ -15,8 +16,9 @@ import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
-import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Use case for creating a Role.
@@ -66,6 +68,12 @@ public class CreateRoleUseCase {
             ));
         }
 
+        // Validate permission formats
+        Result<Void> permissionValidation = validatePermissions(command.permissions(), command.name());
+        if (permissionValidation instanceof Result.Failure<Void> f) {
+            return Result.failure(f.error());
+        }
+
         // Construct full role name with app prefix
         String fullRoleName = app.code + ":" + command.name();
 
@@ -78,6 +86,9 @@ public class CreateRoleUseCase {
             ));
         }
 
+        // Build permission strings from structured inputs
+        Set<String> permissionStrings = command.buildPermissionStrings();
+
         // Create role
         AuthRole role = new AuthRole();
         role.id = TsidGenerator.generate();
@@ -86,7 +97,7 @@ public class CreateRoleUseCase {
         role.name = fullRoleName;
         role.displayName = command.displayName() != null ? command.displayName() : formatDisplayName(command.name());
         role.description = command.description();
-        role.permissions = command.permissions() != null ? command.permissions() : new HashSet<>();
+        role.permissions = permissionStrings;
         role.source = command.source() != null ? command.source() : AuthRole.RoleSource.DATABASE;
         role.clientManaged = command.clientManaged();
 
@@ -132,5 +143,41 @@ public class CreateRoleUseCase {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * Validate all permissions.
+     * Each permission segment is validated individually.
+     */
+    private Result<Void> validatePermissions(List<PermissionInput> permissions, String roleName) {
+        if (permissions == null || permissions.isEmpty()) {
+            return Result.success(null);
+        }
+
+        for (PermissionInput permission : permissions) {
+            if (permission == null) {
+                return Result.failure(new UseCaseError.ValidationError(
+                    "INVALID_PERMISSION",
+                    "Permission cannot be null",
+                    Map.of("role", roleName)
+                ));
+            }
+
+            String validationError = permission.validate();
+            if (validationError != null) {
+                return Result.failure(new UseCaseError.ValidationError(
+                    "INVALID_PERMISSION_FORMAT",
+                    "Invalid permission for role '" + roleName + "': " + validationError,
+                    Map.of(
+                        "role", roleName,
+                        "permission", permission.buildPermissionString(),
+                        "error", validationError,
+                        "expectedFormat", "{application}:{context}:{aggregate}:{action}",
+                        "example", "myapp:orders:order:view"
+                    )
+                ));
+            }
+        }
+        return Result.success(null);
     }
 }

@@ -22,6 +22,8 @@ import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
 import tech.flowcatalyst.platform.authentication.oauth.OAuthClient;
 import tech.flowcatalyst.platform.authentication.oauth.OAuthClient.ClientType;
 import tech.flowcatalyst.platform.authentication.oauth.OAuthClientRepository;
+import tech.flowcatalyst.platform.authorization.AuthorizationService;
+import tech.flowcatalyst.platform.authorization.platform.PlatformIamPermissions;
 import tech.flowcatalyst.platform.cors.CorsAllowedOrigin;
 import tech.flowcatalyst.platform.cors.CorsAllowedOriginRepository;
 import tech.flowcatalyst.platform.security.secrets.SecretService;
@@ -73,6 +75,9 @@ public class OAuthClientAdminResource {
     @Inject
     AuditContext auditContext;
 
+    @Inject
+    AuthorizationService authorizationService;
+
     // ==================== CRUD Operations ====================
 
     /**
@@ -89,7 +94,13 @@ public class OAuthClientAdminResource {
             @QueryParam("applicationId") @Parameter(description = "Filter by associated application") String applicationId,
             @QueryParam("active") @Parameter(description = "Filter by active status") Boolean active) {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(principalId, PlatformIamPermissions.OAUTH_CLIENT_VIEW.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.OAUTH_CLIENT_VIEW.toPermissionString()))
+                .build();
+        }
 
         List<OAuthClient> clients;
         if (applicationId != null && active != null) {
@@ -132,7 +143,13 @@ public class OAuthClientAdminResource {
     })
     public Response getClient(@PathParam("id") String id) {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(principalId, PlatformIamPermissions.OAUTH_CLIENT_VIEW.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.OAUTH_CLIENT_VIEW.toPermissionString()))
+                .build();
+        }
 
         return clientRepo.findByIdOptional(id)
             .map(client -> {
@@ -156,7 +173,13 @@ public class OAuthClientAdminResource {
     })
     public Response getClientByClientId(@PathParam("clientId") String clientId) {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(principalId, PlatformIamPermissions.OAUTH_CLIENT_VIEW.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.OAUTH_CLIENT_VIEW.toPermissionString()))
+                .build();
+        }
 
         // Strip prefix to get internal ID
         String internalClientId = toInternalClientId(clientId);
@@ -190,6 +213,12 @@ public class OAuthClientAdminResource {
             @Context UriInfo uriInfo) {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.OAUTH_CLIENT_CREATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.OAUTH_CLIENT_CREATE.toPermissionString()))
+                .build();
+        }
 
         // Validate redirect URIs use HTTPS (except localhost)
         String redirectUriError = validateSecureUrls(request.redirectUris(), "Redirect URI");
@@ -297,6 +326,12 @@ public class OAuthClientAdminResource {
             @Valid UpdateClientRequest request) {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.OAUTH_CLIENT_UPDATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.OAUTH_CLIENT_UPDATE.toPermissionString()))
+                .build();
+        }
 
         OAuthClient client = clientRepo.findByIdOptional(id).orElse(null);
         if (client == null) {
@@ -417,6 +452,12 @@ public class OAuthClientAdminResource {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
 
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.OAUTH_CLIENT_UPDATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.OAUTH_CLIENT_UPDATE.toPermissionString()))
+                .build();
+        }
+
         OAuthClient client = clientRepo.findByIdOptional(id).orElse(null);
         if (client == null) {
             return Response.status(Response.Status.NOT_FOUND)
@@ -455,6 +496,12 @@ public class OAuthClientAdminResource {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
 
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.OAUTH_CLIENT_UPDATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.OAUTH_CLIENT_UPDATE.toPermissionString()))
+                .build();
+        }
+
         OAuthClient client = clientRepo.findByIdOptional(id).orElse(null);
         if (client == null) {
             return Response.status(Response.Status.NOT_FOUND)
@@ -484,6 +531,12 @@ public class OAuthClientAdminResource {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
 
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.OAUTH_CLIENT_UPDATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.OAUTH_CLIENT_UPDATE.toPermissionString()))
+                .build();
+        }
+
         OAuthClient client = clientRepo.findByIdOptional(id).orElse(null);
         if (client == null) {
             return Response.status(Response.Status.NOT_FOUND)
@@ -512,6 +565,12 @@ public class OAuthClientAdminResource {
     public Response deleteClient(@PathParam("id") String id) {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.OAUTH_CLIENT_DELETE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.OAUTH_CLIENT_DELETE.toPermissionString()))
+                .build();
+        }
 
         OAuthClient client = clientRepo.findByIdOptional(id).orElse(null);
         if (client == null) {

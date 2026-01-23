@@ -45,6 +45,9 @@ public class EventTypeEntity {
     @Enumerated(EnumType.STRING)
     public EventTypeSource source;
 
+    @Column(name = "client_scoped", nullable = false)
+    public boolean clientScoped;
+
     @Column(name = "created_at", nullable = false)
     public Instant createdAt;
 

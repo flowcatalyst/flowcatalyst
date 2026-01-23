@@ -4,6 +4,8 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import tech.flowcatalyst.dispatchpool.DispatchPool;
 import tech.flowcatalyst.dispatchpool.DispatchPoolRepository;
+import tech.flowcatalyst.eventtype.EventType;
+import tech.flowcatalyst.eventtype.EventTypeRepository;
 import tech.flowcatalyst.platform.client.Client;
 import tech.flowcatalyst.platform.client.ClientRepository;
 import tech.flowcatalyst.platform.common.AuthorizationContext;
@@ -39,6 +41,9 @@ public class CreateSubscriptionUseCase {
 
     @Inject
     ServiceAccountRepository serviceAccountRepo;
+
+    @Inject
+    EventTypeRepository eventTypeRepo;
 
     @Inject
     UnitOfWork unitOfWork;
@@ -96,6 +101,50 @@ public class CreateSubscriptionUseCase {
                 "At least one event type binding is required",
                 Map.of()
             ));
+        }
+
+        // Validate clientScoped constraints
+        if (!command.clientScoped() && command.clientId() != null && !command.clientId().isBlank()) {
+            return Result.failure(new UseCaseError.ValidationError(
+                "CLIENT_ID_NOT_ALLOWED",
+                "Client ID cannot be specified for non-client-scoped subscriptions",
+                Map.of("clientScoped", false, "clientId", command.clientId())
+            ));
+        }
+
+        // Validate that all event types have matching clientScoped value
+        for (EventTypeBinding binding : command.eventTypes()) {
+            if (binding.eventTypeId() == null && binding.eventTypeCode() == null) {
+                continue; // Will be validated elsewhere
+            }
+
+            EventType eventType = null;
+            if (binding.eventTypeId() != null) {
+                eventType = eventTypeRepo.findByIdOptional(binding.eventTypeId()).orElse(null);
+            } else if (binding.eventTypeCode() != null) {
+                eventType = eventTypeRepo.findByCode(binding.eventTypeCode()).orElse(null);
+            }
+
+            if (eventType == null) {
+                return Result.failure(new UseCaseError.NotFoundError(
+                    "EVENT_TYPE_NOT_FOUND",
+                    "Event type not found",
+                    Map.of("eventTypeId", String.valueOf(binding.eventTypeId()),
+                           "eventTypeCode", String.valueOf(binding.eventTypeCode()))
+                ));
+            }
+
+            if (eventType.clientScoped() != command.clientScoped()) {
+                return Result.failure(new UseCaseError.ValidationError(
+                    "CLIENT_SCOPED_MISMATCH",
+                    command.clientScoped()
+                        ? "Cannot bind non-client-scoped event type to client-scoped subscription"
+                        : "Cannot bind client-scoped event type to non-client-scoped subscription",
+                    Map.of("subscriptionClientScoped", command.clientScoped(),
+                           "eventTypeCode", eventType.code(),
+                           "eventTypeClientScoped", eventType.clientScoped())
+                ));
+            }
         }
 
         // Validate dispatch pool
@@ -188,6 +237,7 @@ public class CreateSubscriptionUseCase {
             command.description(),
             command.clientId(),
             clientIdentifier,
+            command.clientScoped(),
             command.eventTypes(),
             command.target(),
             command.queue(),
@@ -214,6 +264,7 @@ public class CreateSubscriptionUseCase {
             .code(subscription.code())
             .name(subscription.name())
             .description(subscription.description())
+            .clientScoped(subscription.clientScoped())
             .clientId(subscription.clientId())
             .clientIdentifier(subscription.clientIdentifier())
             .eventTypes(subscription.eventTypes())

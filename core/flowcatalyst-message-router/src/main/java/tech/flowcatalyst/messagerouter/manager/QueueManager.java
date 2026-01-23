@@ -845,6 +845,7 @@ public class QueueManager implements MessageCallback {
         LOG.info("Draining all process pools during shutdown");
 
         // Move all active pools to draining state
+        // drain() discards queued messages and interrupts waiting threads
         for (ProcessPool pool : processPools.values()) {
             try {
                 pool.drain();
@@ -855,10 +856,10 @@ public class QueueManager implements MessageCallback {
         }
         processPools.clear();
 
-        // Wait for all pools to finish draining (blocking during shutdown is ok)
-        LOG.infof("Waiting for %d pools to finish draining...", drainingPools.size());
+        // Wait for active HTTP requests to complete (not queued messages - those are discarded)
+        LOG.infof("Waiting for %d pools to finish active requests...", drainingPools.size());
         long startTime = System.currentTimeMillis();
-        long maxWaitMs = 60_000; // 60 seconds max wait
+        long maxWaitMs = 30_000; // 30 seconds for active HTTP requests to complete
 
         while (!drainingPools.isEmpty() && (System.currentTimeMillis() - startTime) < maxWaitMs) {
             List<String> drainedPools = new ArrayList<>();
@@ -871,6 +872,8 @@ public class QueueManager implements MessageCallback {
                     LOG.infof("Pool [%s] fully drained during shutdown", poolCode);
                     pool.shutdown();
                     drainedPools.add(poolCode);
+                } else {
+                    LOG.debugf("Pool [%s] still has %d active workers", poolCode, pool.getActiveWorkers());
                 }
             }
 
@@ -896,6 +899,8 @@ public class QueueManager implements MessageCallback {
                 drainingPools.size(), maxWaitMs / 1000);
             for (ProcessPool pool : drainingPools.values()) {
                 try {
+                    LOG.warnf("Force shutting down pool [%s] with %d active workers",
+                        pool.getPoolCode(), pool.getActiveWorkers());
                     pool.shutdown();
                 } catch (Exception e) {
                     LOG.errorf(e, "Error forcing shutdown of pool: %s", pool.getPoolCode());

@@ -81,6 +81,23 @@ public class PrincipalReadRepository implements PrincipalRepository {
     }
 
     @Override
+    public Optional<Principal> findByServiceAccountId(String serviceAccountId) {
+        var results = em.createQuery(
+                "FROM PrincipalEntity WHERE serviceAccountId = :serviceAccountId",
+                PrincipalEntity.class)
+            .setParameter("serviceAccountId", serviceAccountId)
+            .getResultList();
+
+        if (results.isEmpty()) {
+            return Optional.empty();
+        }
+        Principal p = PrincipalMapper.toDomain(results.get(0));
+        p.roles = loadRoles(p.id);
+        p.managedApplicationIds = loadManagedApplicationIds(p.id);
+        return Optional.of(p);
+    }
+
+    @Override
     public List<Principal> findByType(PrincipalType type) {
         return em.createQuery("FROM PrincipalEntity WHERE type = :type", PrincipalEntity.class)
             .setParameter("type", type)

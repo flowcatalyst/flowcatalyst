@@ -8,6 +8,7 @@ import Textarea from 'primevue/textarea';
 import Message from 'primevue/message';
 import AutoComplete from 'primevue/autocomplete';
 import ProgressSpinner from 'primevue/progressspinner';
+import ToggleSwitch from 'primevue/toggleswitch';
 import { eventTypesApi } from '@/api/event-types';
 import { applicationsApi, type Application } from '@/api/applications';
 
@@ -26,6 +27,7 @@ const aggregate = ref('');
 const event = ref('');
 const name = ref('');
 const description = ref('');
+const clientScoped = ref(false);
 
 const submitting = ref(false);
 const errorMessage = ref<string | null>(null);
@@ -86,6 +88,7 @@ async function onSubmit() {
       code,
       name: name.value,
       description: description.value || undefined,
+      clientScoped: clientScoped.value,
     });
     toast.add({ severity: 'success', summary: 'Success', detail: 'Event type created', life: 3000 });
     router.push(`/event-types/${eventType.id}`);
@@ -210,6 +213,17 @@ async function onSubmit() {
               :invalid="description.length > 255"
             />
             <small class="char-count">{{ description.length }} / 255</small>
+          </div>
+
+          <div class="form-field toggle-field">
+            <div class="toggle-row">
+              <ToggleSwitch v-model="clientScoped" inputId="clientScoped" />
+              <label for="clientScoped" class="toggle-label">Client Scoped</label>
+            </div>
+            <small class="field-hint">
+              Enable if events of this type are specific to individual clients.
+              Client-scoped event types can only be used with client-scoped subscriptions.
+            </small>
           </div>
         </section>
 
@@ -375,6 +389,29 @@ async function onSubmit() {
   font-size: 12px;
   color: #94a3b8;
   margin-top: 4px;
+}
+
+.toggle-field {
+  margin-top: 8px;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toggle-label {
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.field-hint {
+  display: block;
+  color: #64748b;
+  font-size: 13px;
+  margin-top: 8px;
+  line-height: 1.4;
 }
 
 .error-message {

@@ -53,6 +53,10 @@ const roleSearchQuery = ref('');
 const selectedRoleNames = ref<Set<string>>(new Set());
 const savingRoles = ref(false);
 
+// Delete dialog
+const showDeleteDialog = ref(false);
+const deleting = ref(false);
+
 const filteredAvailableRoles = computed(() => {
   const query = roleSearchQuery.value.toLowerCase();
   return availableRoles.value.filter(r =>
@@ -324,6 +328,30 @@ function formatDate(dateStr: string | null | undefined) {
 function goBack() {
   router.push('/identity/service-accounts');
 }
+
+async function deleteServiceAccount() {
+  deleting.value = true;
+  try {
+    await serviceAccountsApi.delete(serviceAccountId);
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Service account deleted successfully',
+      life: 3000
+    });
+    router.push('/identity/service-accounts');
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error?.message || 'Failed to delete service account',
+      life: 5000
+    });
+  } finally {
+    deleting.value = false;
+    showDeleteDialog.value = false;
+  }
+}
 </script>
 
 <template>
@@ -350,6 +378,15 @@ function goBack() {
           <Tag
             :value="serviceAccount.active ? 'Active' : 'Inactive'"
             :severity="serviceAccount.active ? 'success' : 'danger'"
+          />
+        </div>
+        <div class="header-right">
+          <Button
+            label="Delete"
+            icon="pi pi-trash"
+            severity="danger"
+            outlined
+            @click="showDeleteDialog = true"
           />
         </div>
       </header>
@@ -635,6 +672,41 @@ function goBack() {
         />
       </template>
     </Dialog>
+
+    <!-- Delete Confirmation Dialog -->
+    <Dialog
+      v-model:visible="showDeleteDialog"
+      header="Delete Service Account"
+      :style="{ width: '450px' }"
+      :modal="true"
+      :closable="!deleting"
+    >
+      <div class="delete-dialog">
+        <p class="delete-warning">
+          <i class="pi pi-exclamation-triangle"></i>
+          Are you sure you want to delete this service account?
+        </p>
+        <p class="delete-details">
+          This will permanently delete <strong>{{ serviceAccount?.name }}</strong> including:
+        </p>
+        <ul class="delete-list">
+          <li>The service account and all webhook credentials</li>
+          <li>The associated principal and role assignments</li>
+          <li>The OAuth client (client_credentials will stop working)</li>
+        </ul>
+        <p class="delete-note">This action cannot be undone.</p>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="showDeleteDialog = false" :disabled="deleting" />
+        <Button
+          label="Delete"
+          icon="pi pi-trash"
+          severity="danger"
+          :loading="deleting"
+          @click="deleteServiceAccount"
+        />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -650,6 +722,12 @@ function goBack() {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .fc-card {
@@ -899,6 +977,51 @@ function goBack() {
   text-align: center;
   color: #94a3b8;
   font-size: 13px;
+}
+
+/* Delete dialog styles */
+.delete-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.delete-warning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #dc2626;
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0;
+}
+
+.delete-warning i {
+  font-size: 20px;
+}
+
+.delete-details {
+  font-size: 14px;
+  color: #374151;
+  margin: 0;
+}
+
+.delete-list {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.delete-list li {
+  margin-bottom: 4px;
+}
+
+.delete-note {
+  font-size: 13px;
+  color: #9ca3af;
+  font-style: italic;
+  margin: 0;
 }
 
 @media (max-width: 768px) {

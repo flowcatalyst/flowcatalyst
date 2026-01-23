@@ -229,16 +229,14 @@ public class AuditContext {
         }
 
         // Create the SYSTEM principal
+        // Note: This is a special internal principal for audit purposes,
+        // it doesn't need a full ServiceAccount entity
         Principal system = new Principal();
         system.id = TsidGenerator.generate();
         system.type = PrincipalType.SERVICE;
         system.name = SYSTEM_PRINCIPAL_NAME;
         system.active = true;
         system.clientId = null; // Platform-level, no client
-
-        system.serviceAccount = new tech.flowcatalyst.platform.principal.ServiceAccount();
-        system.serviceAccount.code = SYSTEM_PRINCIPAL_CODE;
-        system.serviceAccount.description = "System principal for automated operations (background jobs, startup tasks, CLI tools)";
 
         principalRepo.persist(system);
         return system;

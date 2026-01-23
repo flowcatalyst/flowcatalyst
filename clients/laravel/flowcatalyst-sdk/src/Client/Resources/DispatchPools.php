@@ -119,4 +119,40 @@ class DispatchPools
 
         return DispatchPool::fromArray($response);
     }
+
+    /**
+     * Sync dispatch pools for an application.
+     *
+     * This creates/updates anchor-level pools and optionally removes
+     * pools not in the sync list.
+     *
+     * @param string $appCode The application code
+     * @param array<array{
+     *     code: string,
+     *     name?: string,
+     *     description?: string,
+     *     rateLimit?: int,
+     *     concurrency?: int
+     * }> $pools The pools to sync
+     * @param bool $removeUnlisted If true, archives pools not in the list
+     * @return array{created: int, updated: int, deleted: int, pools: DispatchPool[]}
+     */
+    public function sync(string $appCode, array $pools, bool $removeUnlisted = false): array
+    {
+        $query = $removeUnlisted ? '?removeUnlisted=true' : '';
+
+        $response = $this->client->request('POST', "/api/applications/{$appCode}/dispatch-pools/sync{$query}", [
+            'json' => ['pools' => $pools],
+        ]);
+
+        return [
+            'created' => $response['created'] ?? 0,
+            'updated' => $response['updated'] ?? 0,
+            'deleted' => $response['deleted'] ?? 0,
+            'pools' => array_map(
+                fn(array $item) => DispatchPool::fromArray($item),
+                $response['pools'] ?? []
+            ),
+        ];
+    }
 }

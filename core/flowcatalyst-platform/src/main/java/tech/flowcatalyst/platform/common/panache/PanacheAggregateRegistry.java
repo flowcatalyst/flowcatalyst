@@ -100,6 +100,42 @@ public class PanacheAggregateRegistry {
         Class<?> clazz = aggregate.getClass();
         String id = extractId(aggregate);
 
+        // Handle junction tables for ServiceAccount
+        if (clazz == ServiceAccount.class) {
+            em.createNativeQuery("DELETE FROM service_account_client_ids WHERE service_account_id = :id")
+                .setParameter("id", id)
+                .executeUpdate();
+            em.createNativeQuery("DELETE FROM service_account_roles WHERE service_account_id = :id")
+                .setParameter("id", id)
+                .executeUpdate();
+        }
+
+        // Handle junction tables for Principal
+        if (clazz == Principal.class) {
+            em.createNativeQuery("DELETE FROM principal_roles WHERE principal_id = :id")
+                .setParameter("id", id)
+                .executeUpdate();
+            em.createNativeQuery("DELETE FROM principal_managed_applications WHERE principal_id = :id")
+                .setParameter("id", id)
+                .executeUpdate();
+        }
+
+        // Handle junction tables for OAuthClient
+        if (clazz == OAuthClient.class) {
+            em.createNativeQuery("DELETE FROM oauth_client_redirect_uris WHERE oauth_client_id = :id")
+                .setParameter("id", id)
+                .executeUpdate();
+            em.createNativeQuery("DELETE FROM oauth_client_allowed_origins WHERE oauth_client_id = :id")
+                .setParameter("id", id)
+                .executeUpdate();
+            em.createNativeQuery("DELETE FROM oauth_client_grant_types WHERE oauth_client_id = :id")
+                .setParameter("id", id)
+                .executeUpdate();
+            em.createNativeQuery("DELETE FROM oauth_client_application_ids WHERE oauth_client_id = :id")
+                .setParameter("id", id)
+                .executeUpdate();
+        }
+
         String tableName = getTableName(clazz);
         if (tableName != null) {
             em.createNativeQuery("DELETE FROM " + tableName + " WHERE id = :id")
@@ -291,19 +327,21 @@ public class PanacheAggregateRegistry {
     private void persistPrincipal(Principal principal) {
         var ui = principal.userIdentity;
         // Note: roles column was normalized to principal_roles table in V8/V12 migrations
+        // Note: service_account_id added in V22 - links to ServiceAccount entity for SERVICE type
+        // Note: application_id and service_account columns are deprecated (set to NULL)
         String sql = """
             INSERT INTO principals (id, type, scope, client_id, application_id, name, active,
                 email, email_domain, idp_type, external_idp_id, password_hash, last_login_at,
-                service_account, created_at, updated_at)
-            VALUES (:id, :type, :scope, :clientId, :applicationId, :name, :active,
+                service_account_id, service_account, created_at, updated_at)
+            VALUES (:id, :type, :scope, :clientId, NULL, :name, :active,
                 :email, :emailDomain, :idpType, :externalIdpId, :passwordHash, :lastLoginAt,
-                CAST(:serviceAccount AS jsonb), :createdAt, :updatedAt)
+                :serviceAccountId, NULL, :createdAt, :updatedAt)
             ON CONFLICT (id) DO UPDATE SET
                 type = EXCLUDED.type, scope = EXCLUDED.scope, client_id = EXCLUDED.client_id,
-                application_id = EXCLUDED.application_id, name = EXCLUDED.name, active = EXCLUDED.active,
+                name = EXCLUDED.name, active = EXCLUDED.active,
                 email = EXCLUDED.email, email_domain = EXCLUDED.email_domain, idp_type = EXCLUDED.idp_type,
                 external_idp_id = EXCLUDED.external_idp_id, password_hash = EXCLUDED.password_hash,
-                last_login_at = EXCLUDED.last_login_at, service_account = EXCLUDED.service_account,
+                last_login_at = EXCLUDED.last_login_at, service_account_id = EXCLUDED.service_account_id,
                 updated_at = EXCLUDED.updated_at
             """;
         em.createNativeQuery(sql)
@@ -311,7 +349,6 @@ public class PanacheAggregateRegistry {
             .setParameter("type", principal.type != null ? principal.type.name() : "USER")
             .setParameter("scope", principal.scope != null ? principal.scope.name() : null)
             .setParameter("clientId", principal.clientId)
-            .setParameter("applicationId", principal.applicationId)
             .setParameter("name", principal.name)
             .setParameter("active", principal.active)
             .setParameter("email", ui != null ? ui.email : null)
@@ -320,7 +357,7 @@ public class PanacheAggregateRegistry {
             .setParameter("externalIdpId", ui != null ? ui.externalIdpId : null)
             .setParameter("passwordHash", ui != null ? ui.passwordHash : null)
             .setParameter("lastLoginAt", ui != null ? ui.lastLoginAt : null)
-            .setParameter("serviceAccount", toJson(principal.serviceAccount))
+            .setParameter("serviceAccountId", principal.serviceAccountId)
             .setParameter("createdAt", principal.createdAt)
             .setParameter("updatedAt", principal.updatedAt)
             .executeUpdate();
@@ -429,20 +466,21 @@ public class PanacheAggregateRegistry {
 
     private void persistServiceAccount(ServiceAccount sa) {
         var wc = sa.webhookCredentials;
+        // Note: client_ids and roles columns were normalized to junction tables in V12 migration
         String sql = """
-            INSERT INTO service_accounts (id, code, name, description, client_ids, application_id,
+            INSERT INTO service_accounts (id, code, name, description, application_id,
                 active, wh_auth_type, wh_auth_token_ref, wh_signing_secret_ref, wh_signing_algorithm,
-                wh_credentials_created_at, wh_credentials_regenerated_at, roles, last_used_at, created_at, updated_at)
-            VALUES (:id, :code, :name, :description, :clientIds, :applicationId,
+                wh_credentials_created_at, wh_credentials_regenerated_at, last_used_at, created_at, updated_at)
+            VALUES (:id, :code, :name, :description, :applicationId,
                 :active, :whAuthType, :whAuthTokenRef, :whSigningSecretRef, :whSigningAlgorithm,
-                :whCredentialsCreatedAt, :whCredentialsRegeneratedAt, CAST(:roles AS jsonb), :lastUsedAt, :createdAt, :updatedAt)
+                :whCredentialsCreatedAt, :whCredentialsRegeneratedAt, :lastUsedAt, :createdAt, :updatedAt)
             ON CONFLICT (id) DO UPDATE SET
                 code = EXCLUDED.code, name = EXCLUDED.name, description = EXCLUDED.description,
-                client_ids = EXCLUDED.client_ids, application_id = EXCLUDED.application_id,
+                application_id = EXCLUDED.application_id,
                 active = EXCLUDED.active, wh_auth_type = EXCLUDED.wh_auth_type,
                 wh_auth_token_ref = EXCLUDED.wh_auth_token_ref, wh_signing_secret_ref = EXCLUDED.wh_signing_secret_ref,
                 wh_signing_algorithm = EXCLUDED.wh_signing_algorithm, wh_credentials_created_at = EXCLUDED.wh_credentials_created_at,
-                wh_credentials_regenerated_at = EXCLUDED.wh_credentials_regenerated_at, roles = EXCLUDED.roles,
+                wh_credentials_regenerated_at = EXCLUDED.wh_credentials_regenerated_at,
                 last_used_at = EXCLUDED.last_used_at, updated_at = EXCLUDED.updated_at
             """;
         em.createNativeQuery(sql)
@@ -450,7 +488,6 @@ public class PanacheAggregateRegistry {
             .setParameter("code", sa.code)
             .setParameter("name", sa.name)
             .setParameter("description", sa.description)
-            .setParameter("clientIds", sa.clientIds != null ? sa.clientIds.toArray(new String[0]) : new String[0])
             .setParameter("applicationId", sa.applicationId)
             .setParameter("active", sa.active)
             .setParameter("whAuthType", wc != null && wc.authType != null ? wc.authType.name() : null)
@@ -459,11 +496,58 @@ public class PanacheAggregateRegistry {
             .setParameter("whSigningAlgorithm", wc != null && wc.signingAlgorithm != null ? wc.signingAlgorithm.name() : null)
             .setParameter("whCredentialsCreatedAt", wc != null ? wc.createdAt : null)
             .setParameter("whCredentialsRegeneratedAt", wc != null ? wc.regeneratedAt : null)
-            .setParameter("roles", toJson(sa.roles))
             .setParameter("lastUsedAt", sa.lastUsedAt)
             .setParameter("createdAt", sa.createdAt)
             .setParameter("updatedAt", sa.updatedAt)
             .executeUpdate();
+
+        // Save client IDs to normalized junction table
+        saveServiceAccountClientIds(sa);
+
+        // Save roles to normalized junction table
+        saveServiceAccountRoles(sa);
+    }
+
+    private void saveServiceAccountClientIds(ServiceAccount sa) {
+        // Delete existing client ID associations
+        em.createNativeQuery("DELETE FROM service_account_client_ids WHERE service_account_id = :id")
+            .setParameter("id", sa.id)
+            .executeUpdate();
+
+        // Insert current client IDs
+        if (sa.clientIds != null) {
+            for (String clientId : sa.clientIds) {
+                em.createNativeQuery("""
+                    INSERT INTO service_account_client_ids (service_account_id, client_id)
+                    VALUES (:serviceAccountId, :clientId)
+                    """)
+                    .setParameter("serviceAccountId", sa.id)
+                    .setParameter("clientId", clientId)
+                    .executeUpdate();
+            }
+        }
+    }
+
+    private void saveServiceAccountRoles(ServiceAccount sa) {
+        // Delete existing role associations
+        em.createNativeQuery("DELETE FROM service_account_roles WHERE service_account_id = :id")
+            .setParameter("id", sa.id)
+            .executeUpdate();
+
+        // Insert current roles
+        if (sa.roles != null) {
+            for (var role : sa.roles) {
+                em.createNativeQuery("""
+                    INSERT INTO service_account_roles (service_account_id, role_name, assignment_source, assigned_at)
+                    VALUES (:serviceAccountId, :roleName, :assignmentSource, :assignedAt)
+                    """)
+                    .setParameter("serviceAccountId", sa.id)
+                    .setParameter("roleName", role.roleName)
+                    .setParameter("assignmentSource", role.assignmentSource)
+                    .setParameter("assignedAt", role.assignedAt != null ? role.assignedAt : Instant.now())
+                    .executeUpdate();
+            }
+        }
     }
 
     private void persistAuthRole(AuthRole role) {

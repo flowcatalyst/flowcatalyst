@@ -371,15 +371,23 @@ export type CreateEventResponse = {
 };
 
 export type CreateEventTypeRequest = {
-  code?: string;
+  application?: string;
+  subdomain?: string;
+  aggregate?: string;
+  event?: string;
   name?: string;
   description?: string;
+  clientScoped?: boolean;
 };
 
 export type CreateEventTypeRequest1 = {
-  code?: string;
+  application?: string;
+  subdomain?: string;
+  aggregate?: string;
+  event?: string;
   name?: string;
   description?: string;
+  clientScoped?: boolean;
 };
 
 export type CreateInternalConfigRequest = {
@@ -412,7 +420,7 @@ export type CreateRoleRequest = {
   name?: string;
   displayName?: string;
   description?: string;
-  permissions?: Array<string>;
+  permissions?: Array<PermissionInputDto>;
   clientManaged?: boolean;
 };
 
@@ -420,7 +428,7 @@ export type CreateRoleRequest1 = {
   name?: string;
   displayName?: string;
   description?: string;
-  permissions?: Array<string>;
+  permissions?: Array<PermissionInputDto1>;
   clientManaged?: boolean;
 };
 
@@ -429,7 +437,7 @@ export type CreateRoleRequest2 = {
   name?: string;
   displayName?: string;
   description?: string;
-  permissions?: Array<string>;
+  permissions?: Array<PermissionInputDto2>;
   clientManaged?: boolean;
 };
 
@@ -443,14 +451,16 @@ export type CreateServiceAccountRequest = {
 
 export type CreateServiceAccountResponse = {
   serviceAccount?: ServiceAccountDto;
-  authToken?: string;
-  signingSecret?: string;
+  principalId?: string;
+  oauth?: OAuthCredentials;
+  webhook?: WebhookCredentials;
 };
 
 export type CreateSubscriptionRequest = {
   code: string;
   name: string;
   description?: string;
+  clientScoped?: boolean;
   clientId?: string;
   eventTypes: Array<EventTypeBinding>;
   target: string;
@@ -692,8 +702,34 @@ export type EventTypeBinding = {
   specVersion?: string;
 };
 
+export type EventTypeBindingDto = {
+  eventTypeId?: string;
+  eventTypeCode?: string;
+  specVersion?: string;
+};
+
+export type EventTypeBindingItem = {
+  eventTypeCode?: string;
+  specVersion?: string;
+};
+
+export type EventTypeDto = {
+  id?: string;
+  code?: string;
+  fullCode?: string;
+  name?: string;
+  description?: string;
+  source?: string;
+  status?: string;
+};
+
 export type EventTypeListResponse = {
   items?: Array<EventTypeResponse>;
+};
+
+export type EventTypeListResponse1 = {
+  eventTypes?: Array<EventTypeDto>;
+  total?: number;
 };
 
 export type EventTypeResponse = {
@@ -780,6 +816,11 @@ export type LoginResponse = {
   clientId?: string;
 };
 
+export type OAuthCredentials = {
+  clientId?: string;
+  clientSecret?: string;
+};
+
 export type PagedDispatchJobReadResponse = {
   items?: Array<DispatchJobReadResponse>;
   page?: number;
@@ -829,6 +870,27 @@ export type PermissionDto = {
   description?: string;
 };
 
+export type PermissionInputDto = {
+  application?: string;
+  context?: string;
+  aggregate?: string;
+  action?: string;
+};
+
+export type PermissionInputDto1 = {
+  application?: string;
+  context?: string;
+  aggregate?: string;
+  action?: string;
+};
+
+export type PermissionInputDto2 = {
+  application?: string;
+  context?: string;
+  aggregate?: string;
+  action?: string;
+};
+
 export type PermissionListResponse = {
   permissions?: Array<PermissionDto>;
   total?: number;
@@ -842,6 +904,21 @@ export type PlatformStats = {
   eventTypes?: number;
   subscriptions?: number;
   messagesProcessed?: number;
+};
+
+export type PoolDto = {
+  id?: string;
+  code?: string;
+  name?: string;
+  description?: string;
+  rateLimit?: number;
+  concurrency?: number;
+  status?: string;
+};
+
+export type PoolListResponse = {
+  pools?: Array<PoolDto>;
+  total?: number;
 };
 
 export type PrincipalDetailDto = {
@@ -1043,6 +1120,30 @@ export type SubscriptionDto = {
   code?: string;
   name?: string;
   description?: string;
+  eventTypes?: Array<EventTypeBindingDto>;
+  target?: string;
+  queue?: string;
+  customConfig?: Array<ConfigEntry>;
+  source?: string;
+  status?: string;
+  maxAgeSeconds?: number;
+  dispatchPoolId?: string;
+  dispatchPoolCode?: string;
+  delaySeconds?: number;
+  sequence?: number;
+  mode?: DispatchMode;
+  timeoutSeconds?: number;
+  maxRetries?: number;
+  serviceAccountId?: string;
+  dataOnly?: boolean;
+};
+
+export type SubscriptionDto1 = {
+  id?: string;
+  code?: string;
+  name?: string;
+  description?: string;
+  clientScoped?: boolean;
   clientId?: string;
   clientIdentifier?: string;
   eventTypes?: Array<EventTypeBinding>;
@@ -1070,7 +1171,12 @@ export type SubscriptionListResponse = {
   total?: number;
 };
 
-export type SubscriptionSource = "API" | "UI";
+export type SubscriptionListResponse1 = {
+  subscriptions?: Array<SubscriptionDto1>;
+  total?: number;
+};
+
+export type SubscriptionSource = "CODE" | "API" | "UI";
 
 export type SubscriptionStatus = "ACTIVE" | "PAUSED";
 
@@ -1085,21 +1191,90 @@ export type SwitchClientResponse = {
   permissions?: Array<string>;
 };
 
+export type SyncEventTypeItem = {
+  subdomain?: string;
+  aggregate?: string;
+  event?: string;
+  name?: string;
+  description?: string;
+  clientScoped?: boolean;
+};
+
+export type SyncEventTypesRequest = {
+  eventTypes?: Array<SyncEventTypeItem>;
+};
+
+export type SyncPoolItem = {
+  code?: string;
+  name?: string;
+  description?: string;
+  rateLimit?: number;
+  concurrency?: number;
+};
+
+export type SyncPoolsRequest = {
+  pools?: Array<SyncPoolItem>;
+};
+
 export type SyncResponse = {
+  created?: number;
+  updated?: number;
+  deleted?: number;
+  pools?: Array<PoolDto>;
+};
+
+export type SyncResponse1 = {
+  created?: number;
+  updated?: number;
+  deleted?: number;
+  eventTypes?: Array<EventTypeDto>;
+};
+
+export type SyncResponse2 = {
   syncedCount?: number;
   roles?: Array<RoleDto1>;
+};
+
+export type SyncResponse3 = {
+  created?: number;
+  updated?: number;
+  deleted?: number;
+  subscriptions?: Array<SubscriptionDto>;
 };
 
 export type SyncRoleItem = {
   name?: string;
   displayName?: string;
   description?: string;
-  permissions?: Array<string>;
+  permissions?: Array<PermissionInputDto1>;
   clientManaged?: boolean;
 };
 
 export type SyncRolesRequest = {
   roles?: Array<SyncRoleItem>;
+};
+
+export type SyncSubscriptionItem = {
+  code?: string;
+  name?: string;
+  description?: string;
+  clientScoped?: boolean;
+  eventTypes?: Array<EventTypeBindingItem>;
+  target?: string;
+  queue?: string;
+  customConfig?: Array<ConfigEntry>;
+  maxAgeSeconds?: number;
+  dispatchPoolCode?: string;
+  delaySeconds?: number;
+  sequence?: number;
+  mode?: DispatchMode;
+  timeoutSeconds?: number;
+  maxRetries?: number;
+  dataOnly?: boolean;
+};
+
+export type SyncSubscriptionsRequest = {
+  subscriptions?: Array<SyncSubscriptionItem>;
 };
 
 export type UpdateAccessRequest = {
@@ -1196,14 +1371,14 @@ export type UpdatePrincipalRequest = {
 export type UpdateRoleRequest = {
   displayName?: string;
   description?: string;
-  permissions?: Array<string>;
+  permissions?: Array<PermissionInputDto>;
   clientManaged?: boolean;
 };
 
 export type UpdateRoleRequest1 = {
   displayName?: string;
   description?: string;
-  permissions?: Array<string>;
+  permissions?: Array<PermissionInputDto2>;
   clientManaged?: boolean;
 };
 
@@ -1253,6 +1428,11 @@ export type WebhookAuthType =
   | "BASIC_AUTH"
   | "API_KEY"
   | "HMAC_SIGNATURE";
+
+export type WebhookCredentials = {
+  authToken?: string;
+  signingSecret?: string;
+};
 
 export type GetWellKnownJwksJsonData = {
   body?: never;
@@ -4357,7 +4537,7 @@ export type GetApiAdminSubscriptionsResponses = {
   /**
    * List of subscriptions
    */
-  200: SubscriptionListResponse;
+  200: SubscriptionListResponse1;
 };
 
 export type GetApiAdminSubscriptionsResponse =
@@ -4389,7 +4569,7 @@ export type PostApiAdminSubscriptionsResponses = {
   /**
    * Subscription created
    */
-  201: SubscriptionDto;
+  201: SubscriptionDto1;
 };
 
 export type PostApiAdminSubscriptionsResponse =
@@ -4454,7 +4634,7 @@ export type GetApiAdminSubscriptionsByIdResponses = {
   /**
    * Subscription details
    */
-  200: SubscriptionDto;
+  200: SubscriptionDto1;
 };
 
 export type GetApiAdminSubscriptionsByIdResponse =
@@ -4492,7 +4672,7 @@ export type PutApiAdminSubscriptionsByIdResponses = {
   /**
    * Subscription updated
    */
-  200: SubscriptionDto;
+  200: SubscriptionDto1;
 };
 
 export type PutApiAdminSubscriptionsByIdResponse =
@@ -4627,6 +4807,126 @@ export type GetApiApplicationsCodeByCodeResponses = {
   200: unknown;
 };
 
+export type GetApiApplicationsByAppCodeDispatchPoolsData = {
+  body?: never;
+  path: {
+    appCode: string;
+  };
+  query?: {
+    status?: string;
+  };
+  url: "/api/applications/{appCode}/dispatch-pools";
+};
+
+export type GetApiApplicationsByAppCodeDispatchPoolsErrors = {
+  /**
+   * Application not found
+   */
+  404: unknown;
+};
+
+export type GetApiApplicationsByAppCodeDispatchPoolsResponses = {
+  /**
+   * List of dispatch pools
+   */
+  200: PoolListResponse;
+};
+
+export type GetApiApplicationsByAppCodeDispatchPoolsResponse =
+  GetApiApplicationsByAppCodeDispatchPoolsResponses[keyof GetApiApplicationsByAppCodeDispatchPoolsResponses];
+
+export type PostApiApplicationsByAppCodeDispatchPoolsSyncData = {
+  body: SyncPoolsRequest;
+  path: {
+    appCode: string;
+  };
+  query?: {
+    removeUnlisted?: boolean;
+  };
+  url: "/api/applications/{appCode}/dispatch-pools/sync";
+};
+
+export type PostApiApplicationsByAppCodeDispatchPoolsSyncErrors = {
+  /**
+   * Bad Request
+   */
+  400: unknown;
+  /**
+   * Application not found
+   */
+  404: unknown;
+};
+
+export type PostApiApplicationsByAppCodeDispatchPoolsSyncResponses = {
+  /**
+   * Sync complete
+   */
+  200: SyncResponse;
+};
+
+export type PostApiApplicationsByAppCodeDispatchPoolsSyncResponse =
+  PostApiApplicationsByAppCodeDispatchPoolsSyncResponses[keyof PostApiApplicationsByAppCodeDispatchPoolsSyncResponses];
+
+export type GetApiApplicationsByAppCodeEventTypesData = {
+  body?: never;
+  path: {
+    appCode: string;
+  };
+  query?: {
+    source?: string;
+  };
+  url: "/api/applications/{appCode}/event-types";
+};
+
+export type GetApiApplicationsByAppCodeEventTypesErrors = {
+  /**
+   * Application not found
+   */
+  404: unknown;
+};
+
+export type GetApiApplicationsByAppCodeEventTypesResponses = {
+  /**
+   * List of event types
+   */
+  200: EventTypeListResponse1;
+};
+
+export type GetApiApplicationsByAppCodeEventTypesResponse =
+  GetApiApplicationsByAppCodeEventTypesResponses[keyof GetApiApplicationsByAppCodeEventTypesResponses];
+
+export type PostApiApplicationsByAppCodeEventTypesSyncData = {
+  body: SyncEventTypesRequest;
+  path: {
+    appCode: string;
+  };
+  query?: {
+    removeUnlisted?: boolean;
+  };
+  url: "/api/applications/{appCode}/event-types/sync";
+};
+
+export type PostApiApplicationsByAppCodeEventTypesSyncErrors = {
+  /**
+   * Bad Request
+   */
+  400: unknown;
+  /**
+   * Application not found
+   */
+  404: unknown;
+};
+
+export type PostApiApplicationsByAppCodeEventTypesSyncResponses = {
+  /**
+   * Sync complete
+   */
+  200: SyncResponse1;
+};
+
+export type PostApiApplicationsByAppCodeEventTypesSyncResponse =
+  PostApiApplicationsByAppCodeEventTypesSyncResponses[keyof PostApiApplicationsByAppCodeEventTypesSyncResponses];
+
 export type GetApiApplicationsByAppCodeRolesData = {
   body?: never;
   path: {
@@ -4715,7 +5015,7 @@ export type PostApiApplicationsByAppCodeRolesSyncResponses = {
   /**
    * Sync complete
    */
-  200: SyncResponse;
+  200: SyncResponse2;
 };
 
 export type PostApiApplicationsByAppCodeRolesSyncResponse =
@@ -4751,6 +5051,66 @@ export type DeleteApiApplicationsByAppCodeRolesByRoleNameResponses = {
 
 export type DeleteApiApplicationsByAppCodeRolesByRoleNameResponse =
   DeleteApiApplicationsByAppCodeRolesByRoleNameResponses[keyof DeleteApiApplicationsByAppCodeRolesByRoleNameResponses];
+
+export type GetApiApplicationsByAppCodeSubscriptionsData = {
+  body?: never;
+  path: {
+    appCode: string;
+  };
+  query?: {
+    source?: string;
+  };
+  url: "/api/applications/{appCode}/subscriptions";
+};
+
+export type GetApiApplicationsByAppCodeSubscriptionsErrors = {
+  /**
+   * Application not found
+   */
+  404: unknown;
+};
+
+export type GetApiApplicationsByAppCodeSubscriptionsResponses = {
+  /**
+   * List of subscriptions
+   */
+  200: SubscriptionListResponse;
+};
+
+export type GetApiApplicationsByAppCodeSubscriptionsResponse =
+  GetApiApplicationsByAppCodeSubscriptionsResponses[keyof GetApiApplicationsByAppCodeSubscriptionsResponses];
+
+export type PostApiApplicationsByAppCodeSubscriptionsSyncData = {
+  body: SyncSubscriptionsRequest;
+  path: {
+    appCode: string;
+  };
+  query?: {
+    removeUnlisted?: boolean;
+  };
+  url: "/api/applications/{appCode}/subscriptions/sync";
+};
+
+export type PostApiApplicationsByAppCodeSubscriptionsSyncErrors = {
+  /**
+   * Invalid request
+   */
+  400: unknown;
+  /**
+   * Application not found
+   */
+  404: unknown;
+};
+
+export type PostApiApplicationsByAppCodeSubscriptionsSyncResponses = {
+  /**
+   * Sync complete
+   */
+  200: SyncResponse3;
+};
+
+export type PostApiApplicationsByAppCodeSubscriptionsSyncResponse =
+  PostApiApplicationsByAppCodeSubscriptionsSyncResponses[keyof PostApiApplicationsByAppCodeSubscriptionsSyncResponses];
 
 export type DeleteApiApplicationsByIdData = {
   body?: never;

@@ -19,8 +19,10 @@ import org.jboss.logging.Logger;
 import tech.flowcatalyst.platform.audit.AuditContext;
 import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
 import tech.flowcatalyst.platform.authentication.IdpType;
+import tech.flowcatalyst.platform.authorization.AuthorizationService;
 import tech.flowcatalyst.platform.authorization.PrincipalRole;
 import tech.flowcatalyst.platform.authorization.RoleService;
+import tech.flowcatalyst.platform.authorization.platform.PlatformIamPermissions;
 import tech.flowcatalyst.platform.authentication.AuthProvider;
 import tech.flowcatalyst.platform.client.ClientAccessGrant;
 import tech.flowcatalyst.platform.client.ClientAccessGrantRepository;
@@ -101,6 +103,9 @@ public class PrincipalAdminResource {
     @Inject
     TracingContext tracingContext;
 
+    @Inject
+    AuthorizationService authorizationService;
+
     // ==================== CRUD Operations ====================
 
     /**
@@ -118,7 +123,13 @@ public class PrincipalAdminResource {
             @QueryParam("type") @Parameter(description = "Filter by type (USER/SERVICE)") PrincipalType type,
             @QueryParam("active") @Parameter(description = "Filter by active status") Boolean active) {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(principalId, PlatformIamPermissions.USER_VIEW.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_VIEW.toPermissionString()))
+                .build();
+        }
 
         List<Principal> principals;
 
@@ -159,7 +170,13 @@ public class PrincipalAdminResource {
     })
     public Response getPrincipal(@PathParam("id") String id) {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(principalId, PlatformIamPermissions.USER_VIEW.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_VIEW.toPermissionString()))
+                .build();
+        }
 
         // Validate ID has correct type prefix
         TypedId.Ops.validate(EntityType.PRINCIPAL, id);
@@ -196,6 +213,13 @@ public class PrincipalAdminResource {
             @Context UriInfo uriInfo) {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.USER_CREATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_CREATE.toPermissionString()))
+                .build();
+        }
+
         ExecutionContext context = ExecutionContext.from(tracingContext, adminPrincipalId);
 
         CreateUserCommand command = new CreateUserCommand(
@@ -238,6 +262,13 @@ public class PrincipalAdminResource {
             @Valid UpdatePrincipalRequest request) {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.USER_UPDATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_UPDATE.toPermissionString()))
+                .build();
+        }
+
         ExecutionContext context = ExecutionContext.from(tracingContext, adminPrincipalId);
 
         // Validate ID has correct type prefix
@@ -271,6 +302,13 @@ public class PrincipalAdminResource {
     public Response activatePrincipal(@PathParam("id") String id) {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.USER_UPDATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_UPDATE.toPermissionString()))
+                .build();
+        }
+
         ExecutionContext context = ExecutionContext.from(tracingContext, adminPrincipalId);
 
         // Validate ID has correct type prefix
@@ -301,6 +339,13 @@ public class PrincipalAdminResource {
     public Response deactivatePrincipal(@PathParam("id") String id) {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.USER_UPDATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_UPDATE.toPermissionString()))
+                .build();
+        }
+
         ExecutionContext context = ExecutionContext.from(tracingContext, adminPrincipalId);
 
         DeactivateUserCommand command = new DeactivateUserCommand(id, null);
@@ -334,6 +379,12 @@ public class PrincipalAdminResource {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
 
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.USER_UPDATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_UPDATE.toPermissionString()))
+                .build();
+        }
+
         try {
             userService.resetPassword(id, request.newPassword());
             LOG.infof("Password reset for principal %s by principal %s", id, adminPrincipalId);
@@ -363,7 +414,13 @@ public class PrincipalAdminResource {
     })
     public Response getPrincipalRoles(@PathParam("id") String id) {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(principalId, PlatformIamPermissions.USER_VIEW.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_VIEW.toPermissionString()))
+                .build();
+        }
 
         if (!principalRepo.findByIdOptional(id).isPresent()) {
             return Response.status(Response.Status.NOT_FOUND)
@@ -395,6 +452,12 @@ public class PrincipalAdminResource {
             @Valid AssignRoleRequest request) {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.USER_UPDATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_UPDATE.toPermissionString()))
+                .build();
+        }
 
         try {
             PrincipalRole assignment = roleService.assignRole(id, request.roleName(), "MANUAL");
@@ -435,6 +498,12 @@ public class PrincipalAdminResource {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
 
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.USER_UPDATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_UPDATE.toPermissionString()))
+                .build();
+        }
+
         try {
             roleService.removeRole(id, roleName);
             LOG.infof("Role %s removed from principal %s by principal %s",
@@ -468,6 +537,13 @@ public class PrincipalAdminResource {
             @Valid AssignRolesRequest request) {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.USER_UPDATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_UPDATE.toPermissionString()))
+                .build();
+        }
+
         ExecutionContext context = ExecutionContext.from(tracingContext, adminPrincipalId);
 
         // Build command
@@ -510,7 +586,13 @@ public class PrincipalAdminResource {
     })
     public Response getClientAccessGrants(@PathParam("id") String id) {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(principalId, PlatformIamPermissions.USER_VIEW.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_VIEW.toPermissionString()))
+                .build();
+        }
 
         if (!principalRepo.findByIdOptional(id).isPresent()) {
             return Response.status(Response.Status.NOT_FOUND)
@@ -542,6 +624,13 @@ public class PrincipalAdminResource {
             @Valid GrantClientAccessRequest request) {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.USER_UPDATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_UPDATE.toPermissionString()))
+                .build();
+        }
+
         ExecutionContext context = ExecutionContext.from(tracingContext, adminPrincipalId);
 
         GrantClientAccessCommand command = new GrantClientAccessCommand(id, request.clientId(), null);
@@ -579,6 +668,13 @@ public class PrincipalAdminResource {
             @PathParam("clientId") String clientId) {
 
         String adminPrincipalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.USER_UPDATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_UPDATE.toPermissionString()))
+                .build();
+        }
+
         ExecutionContext context = ExecutionContext.from(tracingContext, adminPrincipalId);
 
         RevokeClientAccessCommand command = new RevokeClientAccessCommand(id, clientId);
@@ -679,7 +775,13 @@ public class PrincipalAdminResource {
     public Response checkEmailDomain(
             @QueryParam("email") @Parameter(description = "Email address to check") String email) {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(principalId, PlatformIamPermissions.USER_VIEW.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_VIEW.toPermissionString()))
+                .build();
+        }
 
         if (email == null || !email.contains("@")) {
             return Response.status(Response.Status.BAD_REQUEST)

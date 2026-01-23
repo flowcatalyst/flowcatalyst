@@ -31,6 +31,7 @@ public final class SubscriptionMapper {
             .description(entity.description)
             .clientId(entity.clientId)
             .clientIdentifier(entity.clientIdentifier)
+            .clientScoped(entity.clientScoped)
             .eventTypes(new ArrayList<>()) // loaded separately
             .target(entity.target)
             .queue(entity.queue)
@@ -67,6 +68,7 @@ public final class SubscriptionMapper {
         entity.description = domain.description();
         entity.clientId = domain.clientId();
         entity.clientIdentifier = domain.clientIdentifier();
+        entity.clientScoped = domain.clientScoped();
         entity.target = domain.target();
         entity.queue = domain.queue();
         entity.source = domain.source();

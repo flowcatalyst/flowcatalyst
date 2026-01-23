@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
 @ApplicationScoped
 public class CreateApplicationUseCase {
 
-    private static final Pattern CODE_PATTERN = Pattern.compile("^[a-z][a-z0-9-]*$");
+    private static final Pattern CODE_PATTERN = Pattern.compile("^[a-z][a-z0-9_-]*$");
 
     @Inject
     ApplicationRepository repo;
@@ -36,7 +36,7 @@ public class CreateApplicationUseCase {
         if (command.code() == null || !CODE_PATTERN.matcher(command.code()).matches()) {
             return Result.failure(new UseCaseError.ValidationError(
                 "INVALID_CODE",
-                "Invalid application code. Must be lowercase alphanumeric with hyphens, starting with a letter.",
+                "Invalid application code. Must be lowercase alphanumeric with hyphens/underscores, starting with a letter.",
                 Map.of("code", command.code() != null ? command.code() : "null")
             ));
         }

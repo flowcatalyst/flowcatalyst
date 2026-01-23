@@ -13,8 +13,11 @@ import tech.flowcatalyst.platform.audit.AuditContext;
 import tech.flowcatalyst.platform.authentication.JwtKeyService;
 import tech.flowcatalyst.platform.authorization.AuthRole;
 import tech.flowcatalyst.platform.authorization.PermissionDefinition;
+import tech.flowcatalyst.platform.authorization.PermissionInput;
 import tech.flowcatalyst.platform.authorization.PermissionRegistry;
 import tech.flowcatalyst.platform.authorization.RoleOperations;
+import tech.flowcatalyst.platform.authorization.AuthorizationService;
+import tech.flowcatalyst.platform.authorization.platform.PlatformIamPermissions;
 import tech.flowcatalyst.platform.authorization.events.RoleCreated;
 import tech.flowcatalyst.platform.authorization.events.RoleDeleted;
 import tech.flowcatalyst.platform.authorization.events.RoleUpdated;
@@ -59,6 +62,9 @@ public class RoleBffResource {
     @Inject
     TracingContext tracingContext;
 
+    @Inject
+    AuthorizationService authorizationService;
+
     @GET
     @Operation(summary = "List all roles (BFF)")
     public Response listRoles(
@@ -67,6 +73,9 @@ public class RoleBffResource {
         @CookieParam("fc_session") String sessionToken,
         @HeaderParam("Authorization") String authHeader
     ) {
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ROLE_VIEW);
+
         List<AuthRole> roles;
 
         if (applicationCode != null && !applicationCode.isBlank()) {
@@ -100,6 +109,9 @@ public class RoleBffResource {
     @Path("/{roleName}")
     @Operation(summary = "Get role by name (BFF)")
     public Response getRole(@PathParam("roleName") String roleName) {
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ROLE_VIEW);
+
         return roleOperations.findByName(roleName)
             .map(role -> Response.ok(BffRoleResponse.from(role)).build())
             .orElse(Response.status(404)
@@ -111,6 +123,9 @@ public class RoleBffResource {
     @Path("/filters/applications")
     @Operation(summary = "Get applications for role filter")
     public Response getApplications() {
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ROLE_VIEW);
+
         List<Application> apps = applicationRepository.listAll();
         List<BffApplicationOption> options = apps.stream()
             .filter(a -> a.active)
@@ -126,11 +141,8 @@ public class RoleBffResource {
         @CookieParam("fc_session") String sessionToken,
         @HeaderParam("Authorization") String authHeader
     ) {
-        var principalIdOpt = jwtKeyService.extractAndValidatePrincipalId(sessionToken, authHeader);
-        if (principalIdOpt.isEmpty()) {
-            return Response.status(401).entity(new ErrorResponse("UNAUTHORIZED", "Not authenticated")).build();
-        }
-        String principalId = principalIdOpt.get();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ROLE_CREATE);
 
         if (request.applicationCode() == null || request.applicationCode().isBlank()) {
             return Response.status(400).entity(new ErrorResponse("APPLICATION_CODE_REQUIRED", "applicationCode is required")).build();
@@ -146,7 +158,6 @@ public class RoleBffResource {
                 .build();
         }
 
-        auditContext.setPrincipalId(principalId);
         ExecutionContext context = ExecutionContext.from(tracingContext, principalId);
 
         CreateRoleCommand command = new CreateRoleCommand(
@@ -154,7 +165,9 @@ public class RoleBffResource {
             request.name(),
             request.displayName(),
             request.description(),
-            request.permissions(),
+            request.permissions() != null
+                ? request.permissions().stream().map(PermissionInputDto::toPermissionInput).toList()
+                : List.of(),
             AuthRole.RoleSource.DATABASE,
             request.clientManaged() != null ? request.clientManaged() : false
         );
@@ -179,20 +192,18 @@ public class RoleBffResource {
         @CookieParam("fc_session") String sessionToken,
         @HeaderParam("Authorization") String authHeader
     ) {
-        var principalIdOpt = jwtKeyService.extractAndValidatePrincipalId(sessionToken, authHeader);
-        if (principalIdOpt.isEmpty()) {
-            return Response.status(401).entity(new ErrorResponse("UNAUTHORIZED", "Not authenticated")).build();
-        }
-        String principalId = principalIdOpt.get();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ROLE_UPDATE);
 
-        auditContext.setPrincipalId(principalId);
         ExecutionContext context = ExecutionContext.from(tracingContext, principalId);
 
         UpdateRoleCommand command = new UpdateRoleCommand(
             roleName,
             request.displayName(),
             request.description(),
-            request.permissions(),
+            request.permissions() != null
+                ? request.permissions().stream().map(PermissionInputDto::toPermissionInput).toList()
+                : null,
             request.clientManaged()
         );
 
@@ -215,13 +226,9 @@ public class RoleBffResource {
         @CookieParam("fc_session") String sessionToken,
         @HeaderParam("Authorization") String authHeader
     ) {
-        var principalIdOpt = jwtKeyService.extractAndValidatePrincipalId(sessionToken, authHeader);
-        if (principalIdOpt.isEmpty()) {
-            return Response.status(401).entity(new ErrorResponse("UNAUTHORIZED", "Not authenticated")).build();
-        }
-        String principalId = principalIdOpt.get();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.ROLE_DELETE);
 
-        auditContext.setPrincipalId(principalId);
         ExecutionContext context = ExecutionContext.from(tracingContext, principalId);
 
         DeleteRoleCommand command = new DeleteRoleCommand(roleName);
@@ -242,6 +249,9 @@ public class RoleBffResource {
     @Path("/permissions")
     @Operation(summary = "List all permissions (BFF)")
     public Response listPermissions() {
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.PERMISSION_VIEW);
+
         List<BffPermissionResponse> responses = permissionRegistry.getAllPermissions().stream()
             .map(BffPermissionResponse::from)
             .sorted((a, b) -> a.permission().compareTo(b.permission()))
@@ -254,6 +264,9 @@ public class RoleBffResource {
     @Path("/permissions/{permission}")
     @Operation(summary = "Get permission by string (BFF)")
     public Response getPermission(@PathParam("permission") String permission) {
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformIamPermissions.PERMISSION_VIEW);
+
         return permissionRegistry.getPermission(permission)
             .map(perm -> Response.ok(BffPermissionResponse.from(perm)).build())
             .orElse(Response.status(404)
@@ -314,21 +327,47 @@ public class RoleBffResource {
     public record BffApplicationOption(String id, String code, String name) {}
     public record BffApplicationOptionsResponse(List<BffApplicationOption> options) {}
 
+    /**
+     * Request to create a role.
+     *
+     * <p>Permissions are structured with explicit segments to enforce format.
+     */
     public record CreateRoleRequest(
         String applicationCode,
         String name,
         String displayName,
         String description,
-        Set<String> permissions,
+        List<PermissionInputDto> permissions,
         Boolean clientManaged
     ) {}
 
+    /**
+     * Request to update a role.
+     *
+     * <p>Permissions are structured with explicit segments to enforce format.
+     */
     public record UpdateRoleRequest(
         String displayName,
         String description,
-        Set<String> permissions,
+        List<PermissionInputDto> permissions,
         Boolean clientManaged
     ) {}
+
+    /**
+     * Structured permission input.
+     *
+     * <p>Format: {application}:{context}:{aggregate}:{action}
+     */
+    public record PermissionInputDto(
+        String application,
+        String context,
+        String aggregate,
+        String action
+    ) {
+        public PermissionInput toPermissionInput() {
+            return new PermissionInput(application, context, aggregate, action);
+        }
+    }
 
     public record ErrorResponse(String code, String message, Map<String, Object> details) {
         public ErrorResponse(String code, String message) {

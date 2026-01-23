@@ -16,6 +16,13 @@ import java.time.Instant;
  * Event emitted when a service account is deleted.
  *
  * <p>Event type: {@code platform:iam:service-account:deleted}
+ *
+ * <p>Deleting a service account atomically deletes three entities:
+ * <ul>
+ *   <li>ServiceAccount (serviceAccountId)</li>
+ *   <li>Principal (deletedPrincipalId) - if it existed</li>
+ *   <li>OAuthClient (deletedOauthClientId) - if it existed</li>
+ * </ul>
  */
 @Builder
 public record ServiceAccountDeleted(
@@ -24,8 +31,10 @@ public record ServiceAccountDeleted(
     String executionId,
     String correlationId,
     String causationId,
-    String principalId,
+    String principalId,  // The principal who performed the action
     String serviceAccountId,
+    String deletedPrincipalId,  // The Principal entity that was deleted (may be null for legacy)
+    String deletedOauthClientId,  // The OAuthClient entity that was deleted (may be null for legacy)
     String code,
     String name,
     String applicationId
@@ -50,13 +59,27 @@ public record ServiceAccountDeleted(
     @JsonIgnore
     public String toDataJson() {
         try {
-            return MAPPER.writeValueAsString(new Data(serviceAccountId, code, name, applicationId));
+            return MAPPER.writeValueAsString(new Data(
+                serviceAccountId,
+                deletedPrincipalId,
+                deletedOauthClientId,
+                code,
+                name,
+                applicationId
+            ));
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize event data", e);
         }
     }
 
-    public record Data(String serviceAccountId, String code, String name, String applicationId) {}
+    public record Data(
+        String serviceAccountId,
+        String principalId,
+        String oauthClientId,
+        String code,
+        String name,
+        String applicationId
+    ) {}
 
     /**
      * Create a pre-configured builder with event metadata from the execution context.

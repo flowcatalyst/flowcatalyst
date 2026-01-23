@@ -36,6 +36,7 @@ public final class EventTypeMapper {
             .specVersions(parseSpecVersions(entity.specVersionsJson))
             .status(entity.status != null ? entity.status : EventTypeStatus.CURRENT)
             .source(entity.source != null ? entity.source : EventTypeSource.UI)
+            .clientScoped(entity.clientScoped)
             .createdAt(entity.createdAt)
             .updatedAt(entity.updatedAt)
             .build();
@@ -54,6 +55,7 @@ public final class EventTypeMapper {
         entity.specVersionsJson = toJson(domain.specVersions());
         entity.status = domain.status() != null ? domain.status() : EventTypeStatus.CURRENT;
         entity.source = domain.source() != null ? domain.source() : EventTypeSource.UI;
+        entity.clientScoped = domain.clientScoped();
         entity.createdAt = domain.createdAt();
         entity.updatedAt = domain.updatedAt();
         return entity;

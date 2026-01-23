@@ -4,6 +4,8 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import tech.flowcatalyst.dispatchpool.DispatchPool;
 import tech.flowcatalyst.dispatchpool.DispatchPoolRepository;
+import tech.flowcatalyst.eventtype.EventType;
+import tech.flowcatalyst.eventtype.EventTypeRepository;
 import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
@@ -34,6 +36,9 @@ public class UpdateSubscriptionUseCase {
 
     @Inject
     ServiceAccountRepository serviceAccountRepo;
+
+    @Inject
+    EventTypeRepository eventTypeRepo;
 
     @Inject
     UnitOfWork unitOfWork;
@@ -102,6 +107,43 @@ public class UpdateSubscriptionUseCase {
             ));
         }
 
+        // Validate that new event types have matching clientScoped value
+        if (command.eventTypes() != null) {
+            for (EventTypeBinding binding : command.eventTypes()) {
+                if (binding.eventTypeId() == null && binding.eventTypeCode() == null) {
+                    continue;
+                }
+
+                EventType eventType = null;
+                if (binding.eventTypeId() != null) {
+                    eventType = eventTypeRepo.findByIdOptional(binding.eventTypeId()).orElse(null);
+                } else if (binding.eventTypeCode() != null) {
+                    eventType = eventTypeRepo.findByCode(binding.eventTypeCode()).orElse(null);
+                }
+
+                if (eventType == null) {
+                    return Result.failure(new UseCaseError.NotFoundError(
+                        "EVENT_TYPE_NOT_FOUND",
+                        "Event type not found",
+                        Map.of("eventTypeId", String.valueOf(binding.eventTypeId()),
+                               "eventTypeCode", String.valueOf(binding.eventTypeCode()))
+                    ));
+                }
+
+                if (eventType.clientScoped() != existing.clientScoped()) {
+                    return Result.failure(new UseCaseError.ValidationError(
+                        "CLIENT_SCOPED_MISMATCH",
+                        existing.clientScoped()
+                            ? "Cannot bind non-client-scoped event type to client-scoped subscription"
+                            : "Cannot bind client-scoped event type to non-client-scoped subscription",
+                        Map.of("subscriptionClientScoped", existing.clientScoped(),
+                               "eventTypeCode", eventType.code(),
+                               "eventTypeClientScoped", eventType.clientScoped())
+                    ));
+                }
+            }
+        }
+
         // Validate service account if changing
         String newServiceAccountId = existing.serviceAccountId();
         if (command.serviceAccountId() != null && !command.serviceAccountId().equals(existing.serviceAccountId())) {
@@ -131,7 +173,7 @@ public class UpdateSubscriptionUseCase {
         int newMaxRetries = command.maxRetries() != null ? command.maxRetries() : existing.maxRetries();
         boolean newDataOnly = command.dataOnly() != null ? command.dataOnly() : existing.dataOnly();
 
-        // Create updated subscription
+        // Create updated subscription (clientScoped is immutable - preserve existing value)
         Subscription updated = new Subscription(
             existing.id(),
             existing.code(),
@@ -139,6 +181,7 @@ public class UpdateSubscriptionUseCase {
             newDescription,
             existing.clientId(),
             existing.clientIdentifier(),
+            existing.clientScoped(),  // immutable - preserve existing
             newEventTypes,
             newTarget,
             newQueue,

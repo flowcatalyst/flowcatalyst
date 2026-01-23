@@ -69,6 +69,16 @@ class DefinitionRepository
     }
 
     /**
+     * Get all dispatch pool definitions.
+     *
+     * @return array<array<string, mixed>>
+     */
+    public function dispatchPools(): array
+    {
+        return $this->all()->dispatchPools;
+    }
+
+    /**
      * Scan and cache definitions from the given paths.
      *
      * @param string[] $paths Directories to scan

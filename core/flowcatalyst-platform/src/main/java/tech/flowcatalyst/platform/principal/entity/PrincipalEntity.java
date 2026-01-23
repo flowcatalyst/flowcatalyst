@@ -6,8 +6,6 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import tech.flowcatalyst.platform.authentication.IdpType;
 import tech.flowcatalyst.platform.principal.ManagedApplicationScope;
 import tech.flowcatalyst.platform.principal.PrincipalType;
@@ -40,9 +38,6 @@ public class PrincipalEntity {
     @Column(name = "client_id", length = 17)
     public String clientId;
 
-    @Column(name = "application_id", length = 17)
-    public String applicationId;
-
     @Column(name = "managed_application_scope", length = 20)
     @Enumerated(EnumType.STRING)
     public ManagedApplicationScope managedApplicationScope;
@@ -73,10 +68,9 @@ public class PrincipalEntity {
     @Column(name = "last_login_at")
     public Instant lastLoginAt;
 
-    // ServiceAccount embedded as JSONB
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "service_account", columnDefinition = "jsonb")
-    public String serviceAccount;
+    // Service account FK (for SERVICE type principals)
+    @Column(name = "service_account_id", length = 17)
+    public String serviceAccountId;
 
     // Note: roles column has been dropped - use principal_roles table via PrincipalRoleEntity
 

@@ -16,6 +16,7 @@ use FlowCatalyst\Enums\DispatchMode;
  *     code: 'order-processor',
  *     name: 'Order Processor',
  *     description: 'Processes new orders',
+ *     clientScoped: true,  // Set to true for client-scoped subscriptions
  *     eventTypes: ['myapp:orders:order:created', 'myapp:orders:order:updated'],
  *     target: 'https://myapp.com/webhooks/orders',
  *     queue: 'orders',
@@ -35,6 +36,7 @@ final class AsSubscription
      * @param string $queue Queue name for message routing
      * @param string $dispatchPoolCode Dispatch pool code for rate limiting
      * @param string|null $description Subscription description
+     * @param bool $clientScoped Whether this subscription is client-scoped
      * @param string[] $eventTypes Array of event type codes to subscribe to
      * @param array<array{key: string, value: string}> $customConfig Custom configuration entries
      * @param int|null $maxAgeSeconds Maximum age in seconds for dispatch jobs
@@ -52,6 +54,7 @@ final class AsSubscription
         public readonly string $queue,
         public readonly string $dispatchPoolCode,
         public readonly ?string $description = null,
+        public readonly bool $clientScoped = false,
         public readonly array $eventTypes = [],
         public readonly array $customConfig = [],
         public readonly ?int $maxAgeSeconds = null,
@@ -79,22 +82,44 @@ final class AsSubscription
             $this->eventTypes
         );
 
-        return array_filter([
+        $data = [
             'code' => $this->code,
             'name' => $this->name,
-            'description' => $this->description,
+            'clientScoped' => $this->clientScoped,
             'eventTypes' => $eventTypeBindings ?: null,
             'target' => $this->target,
             'queue' => $this->queue,
             'dispatchPoolCode' => $this->dispatchPoolCode,
-            'customConfig' => $this->customConfig ?: null,
-            'maxAgeSeconds' => $this->maxAgeSeconds,
-            'delaySeconds' => $this->delaySeconds,
-            'sequence' => $this->sequence,
-            'mode' => $mode,
-            'timeoutSeconds' => $this->timeoutSeconds,
-            'maxRetries' => $this->maxRetries,
-            'dataOnly' => $this->dataOnly,
-        ], fn($value) => $value !== null);
+        ];
+
+        if ($this->description !== null) {
+            $data['description'] = $this->description;
+        }
+        if (!empty($this->customConfig)) {
+            $data['customConfig'] = $this->customConfig;
+        }
+        if ($this->maxAgeSeconds !== null) {
+            $data['maxAgeSeconds'] = $this->maxAgeSeconds;
+        }
+        if ($this->delaySeconds !== null) {
+            $data['delaySeconds'] = $this->delaySeconds;
+        }
+        if ($this->sequence !== null) {
+            $data['sequence'] = $this->sequence;
+        }
+        if ($mode !== null) {
+            $data['mode'] = $mode;
+        }
+        if ($this->timeoutSeconds !== null) {
+            $data['timeoutSeconds'] = $this->timeoutSeconds;
+        }
+        if ($this->maxRetries !== null) {
+            $data['maxRetries'] = $this->maxRetries;
+        }
+        if ($this->dataOnly !== null) {
+            $data['dataOnly'] = $this->dataOnly;
+        }
+
+        return $data;
     }
 }

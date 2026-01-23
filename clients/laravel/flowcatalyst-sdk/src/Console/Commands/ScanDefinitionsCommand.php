@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace FlowCatalyst\Console\Commands;
 
 use FlowCatalyst\Definition\DefinitionRepository;
+use FlowCatalyst\Sync\DispatchPoolDefinition;
+use FlowCatalyst\Sync\RoleDefinition;
 use Illuminate\Console\Command;
 
 /**
@@ -41,8 +43,36 @@ class ScanDefinitionsCommand extends Command
                 ['Roles', count($definitions->roles)],
                 ['Event Types', count($definitions->eventTypes)],
                 ['Subscriptions', count($definitions->subscriptions)],
+                ['Dispatch Pools', count($definitions->dispatchPools)],
             ]
         );
+
+        // Validate role names
+        $hasErrors = false;
+        foreach ($definitions->roles as $role) {
+            $name = $role['name'] ?? '';
+            $error = RoleDefinition::validateName($name);
+            if ($error !== null) {
+                $this->error("Invalid role: {$error}");
+                $hasErrors = true;
+            }
+        }
+
+        // Validate dispatch pool codes
+        foreach ($definitions->dispatchPools as $pool) {
+            $code = $pool['code'] ?? '';
+            $error = DispatchPoolDefinition::validateCode($code);
+            if ($error !== null) {
+                $this->error("Invalid dispatch pool: {$error}");
+                $hasErrors = true;
+            }
+        }
+
+        if ($hasErrors) {
+            $this->newLine();
+            $this->error('Validation errors found. Please fix the above issues before syncing.');
+            return Command::FAILURE;
+        }
 
         if (!$definitions->isEmpty()) {
             $this->newLine();

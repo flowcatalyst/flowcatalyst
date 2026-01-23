@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace FlowCatalyst\Definition;
 
+use FlowCatalyst\Attributes\AsDispatchPool;
 use FlowCatalyst\Attributes\AsEventType;
 use FlowCatalyst\Attributes\AsRole;
 use FlowCatalyst\Attributes\AsSubscription;
@@ -27,6 +28,7 @@ class DefinitionScanner
         $roles = [];
         $eventTypes = [];
         $subscriptions = [];
+        $dispatchPools = [];
 
         foreach ($paths as $path) {
             if (!File::isDirectory($path)) {
@@ -40,7 +42,7 @@ class DefinitionScanner
                 $classes = $this->getClassesFromFile($file->getRealPath());
 
                 foreach ($classes as $className) {
-                    $this->processClass($className, $roles, $eventTypes, $subscriptions);
+                    $this->processClass($className, $roles, $eventTypes, $subscriptions, $dispatchPools);
                 }
             }
         }
@@ -48,7 +50,8 @@ class DefinitionScanner
         return new ScannedDefinitions(
             roles: $roles,
             eventTypes: $eventTypes,
-            subscriptions: $subscriptions
+            subscriptions: $subscriptions,
+            dispatchPools: $dispatchPools
         );
     }
 
@@ -91,12 +94,14 @@ class DefinitionScanner
      * @param array<array<string, mixed>> $roles
      * @param array<array<string, mixed>> $eventTypes
      * @param array<array<string, mixed>> $subscriptions
+     * @param array<array<string, mixed>> $dispatchPools
      */
     private function processClass(
         string $className,
         array &$roles,
         array &$eventTypes,
-        array &$subscriptions
+        array &$subscriptions,
+        array &$dispatchPools
     ): void {
         try {
             $reflection = new ReflectionClass($className);
@@ -130,6 +135,16 @@ class DefinitionScanner
             /** @var AsSubscription $instance */
             $instance = $attribute->newInstance();
             $subscriptions[] = array_merge($instance->toArray(), [
+                '_class' => $className,
+            ]);
+        }
+
+        // Check for AsDispatchPool attribute
+        $dispatchPoolAttributes = $reflection->getAttributes(AsDispatchPool::class);
+        foreach ($dispatchPoolAttributes as $attribute) {
+            /** @var AsDispatchPool $instance */
+            $instance = $attribute->newInstance();
+            $dispatchPools[] = array_merge($instance->toArray(), [
                 '_class' => $className,
             ]);
         }

@@ -14,6 +14,8 @@ import tech.flowcatalyst.platform.audit.AuditContext;
 import tech.flowcatalyst.platform.audit.AuditLog;
 import tech.flowcatalyst.platform.audit.AuditLogRepository;
 import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
+import tech.flowcatalyst.platform.authorization.AuthorizationService;
+import tech.flowcatalyst.platform.authorization.platform.PlatformAdminPermissions;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
 
@@ -43,6 +45,9 @@ public class AuditLogAdminResource {
     @Inject
     PrincipalRepository principalRepo;
 
+    @Inject
+    AuthorizationService authorizationService;
+
     // ==================== List Operations ====================
 
     /**
@@ -70,7 +75,8 @@ public class AuditLogAdminResource {
             @Parameter(description = "Page size")
             @QueryParam("pageSize") @DefaultValue("50") int pageSize) {
 
-        auditContext.requirePrincipalId();
+        String authPrincipalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(authPrincipalId, PlatformAdminPermissions.AUDIT_LOG_VIEW);
 
         List<AuditLog> logs;
         long total;
@@ -117,7 +123,8 @@ public class AuditLogAdminResource {
     })
     public Response getAuditLog(@PathParam("id") String id) {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.AUDIT_LOG_VIEW);
 
         AuditLog log = auditLogRepo.findById(id);
         if (log == null) {
@@ -144,7 +151,8 @@ public class AuditLogAdminResource {
             @PathParam("entityType") String entityType,
             @PathParam("entityId") String entityId) {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.AUDIT_LOG_VIEW);
 
         List<AuditLog> logs = auditLogRepo.findByEntity(entityType, entityId);
         var response = logs.stream().map(this::toDto).toList();
@@ -170,7 +178,8 @@ public class AuditLogAdminResource {
     })
     public Response getEntityTypes() {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.AUDIT_LOG_VIEW);
 
         // Get distinct entity types using aggregation
         List<String> entityTypes = auditLogRepo.findDistinctEntityTypes();
@@ -191,7 +200,8 @@ public class AuditLogAdminResource {
     })
     public Response getOperations() {
 
-        auditContext.requirePrincipalId();
+        String principalId = auditContext.requirePrincipalId();
+        authorizationService.requirePermission(principalId, PlatformAdminPermissions.AUDIT_LOG_VIEW);
 
         // Get distinct operations using aggregation
         List<String> operations = auditLogRepo.findDistinctOperations();
@@ -238,15 +248,12 @@ public class AuditLogAdminResource {
         if (principal == null) {
             return null;
         }
-        // Prefer name, fall back to email from userIdentity, fall back to service account code
+        // Prefer name, fall back to email from userIdentity
         if (principal.name != null && !principal.name.isBlank()) {
             return principal.name;
         }
         if (principal.userIdentity != null && principal.userIdentity.email != null) {
             return principal.userIdentity.email;
-        }
-        if (principal.serviceAccount != null && principal.serviceAccount.code != null) {
-            return principal.serviceAccount.code;
         }
         return "Unknown";
     }

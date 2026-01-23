@@ -187,7 +187,8 @@ public class SyncSubscriptionsUseCase {
                     ));
                 }
 
-                // Create new subscription
+                // Create new subscription (default to non-client-scoped for SDK sync)
+                boolean clientScoped = item.clientScoped() != null ? item.clientScoped() : false;
                 Instant now = Instant.now();
                 Subscription newSub = new Subscription(
                     TsidGenerator.generate(),
@@ -196,6 +197,7 @@ public class SyncSubscriptionsUseCase {
                     item.description(),
                     null, // anchor-level
                     null, // no client identifier
+                    clientScoped,
                     eventTypeBindings,
                     item.target(),
                     item.queue(),

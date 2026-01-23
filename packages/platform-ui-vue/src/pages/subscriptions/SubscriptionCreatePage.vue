@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
@@ -7,7 +7,7 @@ import InputText from 'primevue/inputtext';
 import InputNumber from 'primevue/inputnumber';
 import Textarea from 'primevue/textarea';
 import Select from 'primevue/select';
-import Checkbox from 'primevue/checkbox';
+import ToggleSwitch from 'primevue/toggleswitch';
 import MultiSelect from 'primevue/multiselect';
 import Message from 'primevue/message';
 import ClientSelect from '@/components/ClientSelect.vue';
@@ -30,8 +30,8 @@ const sequence = ref<number>(99);
 const timeoutSeconds = ref<number>(30);
 const mode = ref<SubscriptionMode>('IMMEDIATE');
 const dispatchPoolId = ref<string | null>(null);
+const clientScoped = ref(false);
 const clientId = ref<string | null>(null);
-const isAnchorLevel = ref(false);
 const selectedEventTypes = ref<string[]>([]);
 
 // Lookup data
@@ -82,15 +82,26 @@ const isFormValid = computed(() => {
 });
 
 // Filtered event types with CURRENT spec versions for selection
+// Only show event types that match the subscription's clientScoped setting
 const eventTypeOptions = computed(() => {
   return eventTypes.value
     .filter(et => et.specVersions.some(sv => sv.status === 'CURRENT'))
+    .filter(et => et.clientScoped === clientScoped.value)
     .map(et => ({
       id: et.id,
       code: et.code,
       name: et.name,
       currentVersion: et.specVersions.find(sv => sv.status === 'CURRENT')?.version || '',
     }));
+});
+
+// Clear selected event types when clientScoped changes
+watch(clientScoped, () => {
+  selectedEventTypes.value = [];
+  // Also clear clientId when switching to non-client-scoped
+  if (!clientScoped.value) {
+    clientId.value = null;
+  }
 });
 
 onMounted(async () => {
@@ -143,11 +154,12 @@ async function onSubmit() {
       code: code.value,
       name: name.value,
       description: description.value || undefined,
+      clientScoped: clientScoped.value,
       target: target.value,
       queue: queue.value,
       eventTypes: buildEventTypeBindings(),
       dispatchPoolId: dispatchPoolId.value!,
-      clientId: isAnchorLevel.value ? undefined : clientId.value || undefined,
+      clientId: clientScoped.value ? clientId.value || undefined : undefined,
       maxAgeSeconds: maxAgeSeconds.value,
       delaySeconds: delaySeconds.value,
       sequence: sequence.value,
@@ -242,7 +254,8 @@ async function onSubmit() {
               </template>
             </MultiSelect>
             <small class="hint">
-              Select which event types this subscription will receive
+              Select which event types this subscription will receive.
+              Only {{ clientScoped ? 'client-scoped' : 'non-client-scoped' }} event types are shown.
             </small>
           </div>
         </div>
@@ -368,24 +381,25 @@ async function onSubmit() {
         <div class="form-section">
           <h3>Scope</h3>
 
-          <div class="form-field">
-            <div class="checkbox-field">
-              <Checkbox v-model="isAnchorLevel" :binary="true" inputId="anchorLevel" />
-              <label for="anchorLevel">Anchor-level subscription (not client-scoped)</label>
+          <div class="form-field toggle-field">
+            <div class="toggle-row">
+              <ToggleSwitch v-model="clientScoped" inputId="clientScoped" />
+              <label for="clientScoped" class="toggle-label">Client Scoped</label>
             </div>
             <small class="hint">
-              Anchor-level subscriptions receive events that are not scoped to a specific client.
+              Client-scoped subscriptions receive events that are specific to individual clients.
+              Non-client-scoped subscriptions receive platform-wide events.
             </small>
           </div>
 
-          <div class="form-field" v-if="!isAnchorLevel">
+          <div class="form-field" v-if="clientScoped">
             <label>Client</label>
             <ClientSelect
               v-model="clientId"
-              placeholder="Search for a client (optional)"
+              placeholder="All clients (leave empty) or select specific client"
             />
             <small class="hint">
-              If specified, this subscription only receives events for this client.
+              Leave empty to receive events for all clients, or select a specific client.
             </small>
           </div>
         </div>
@@ -479,14 +493,18 @@ async function onSubmit() {
   margin-top: 4px;
 }
 
-.checkbox-field {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.toggle-field {
+  margin-top: 8px;
 }
 
-.checkbox-field label {
-  margin: 0;
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toggle-label {
+  font-weight: 500;
   cursor: pointer;
 }
 

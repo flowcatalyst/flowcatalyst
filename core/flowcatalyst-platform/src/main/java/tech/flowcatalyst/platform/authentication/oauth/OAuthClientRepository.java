@@ -13,6 +13,7 @@ public interface OAuthClientRepository {
     Optional<OAuthClient> findByIdOptional(String id);
     Optional<OAuthClient> findByClientId(String clientId);
     Optional<OAuthClient> findByClientIdIncludingInactive(String clientId);
+    Optional<OAuthClient> findByServiceAccountPrincipalId(String principalId);
     List<OAuthClient> findByApplicationIdAndActive(String applicationId, boolean active);
     List<OAuthClient> findByApplicationId(String applicationId);
     List<OAuthClient> findByActive(boolean active);

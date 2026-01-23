@@ -18,6 +18,7 @@ final class SubscriptionDefinition
      * @param string $queue Queue name for delivery
      * @param string $dispatchPoolCode Code of the dispatch pool to use
      * @param string|null $description Subscription description
+     * @param bool $clientScoped Whether this subscription is client-scoped
      * @param string|null $eventTypeCode Code of the event type to subscribe to (resolved to ID by platform)
      * @param int $maxRetries Maximum retry attempts (default: 3)
      * @param int $retryDelaySeconds Delay between retries in seconds (default: 60)
@@ -31,6 +32,7 @@ final class SubscriptionDefinition
         public readonly string $queue,
         public readonly string $dispatchPoolCode,
         public readonly ?string $description = null,
+        public readonly bool $clientScoped = false,
         public readonly ?string $eventTypeCode = null,
         public readonly int $maxRetries = 3,
         public readonly int $retryDelaySeconds = 60,
@@ -63,6 +65,28 @@ final class SubscriptionDefinition
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             description: $description,
+            clientScoped: $this->clientScoped,
+            eventTypeCode: $this->eventTypeCode,
+            maxRetries: $this->maxRetries,
+            retryDelaySeconds: $this->retryDelaySeconds,
+            timeoutSeconds: $this->timeoutSeconds,
+            active: $this->active,
+        );
+    }
+
+    /**
+     * Create a copy that is client-scoped.
+     */
+    public function clientScoped(bool $clientScoped = true): self
+    {
+        return new self(
+            code: $this->code,
+            name: $this->name,
+            target: $this->target,
+            queue: $this->queue,
+            dispatchPoolCode: $this->dispatchPoolCode,
+            description: $this->description,
+            clientScoped: $clientScoped,
             eventTypeCode: $this->eventTypeCode,
             maxRetries: $this->maxRetries,
             retryDelaySeconds: $this->retryDelaySeconds,
@@ -83,6 +107,7 @@ final class SubscriptionDefinition
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             description: $this->description,
+            clientScoped: $this->clientScoped,
             eventTypeCode: $eventTypeCode,
             maxRetries: $this->maxRetries,
             retryDelaySeconds: $this->retryDelaySeconds,
@@ -103,6 +128,7 @@ final class SubscriptionDefinition
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             description: $this->description,
+            clientScoped: $this->clientScoped,
             eventTypeCode: $this->eventTypeCode,
             maxRetries: $maxRetries,
             retryDelaySeconds: $delaySeconds,
@@ -123,6 +149,7 @@ final class SubscriptionDefinition
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             description: $this->description,
+            clientScoped: $this->clientScoped,
             eventTypeCode: $this->eventTypeCode,
             maxRetries: $this->maxRetries,
             retryDelaySeconds: $this->retryDelaySeconds,
@@ -143,6 +170,7 @@ final class SubscriptionDefinition
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             description: $this->description,
+            clientScoped: $this->clientScoped,
             eventTypeCode: $this->eventTypeCode,
             maxRetries: $this->maxRetries,
             retryDelaySeconds: $this->retryDelaySeconds,
@@ -164,6 +192,7 @@ final class SubscriptionDefinition
             'target' => $this->target,
             'queue' => $this->queue,
             'dispatchPoolCode' => $this->dispatchPoolCode,
+            'clientScoped' => $this->clientScoped,
             'maxRetries' => $this->maxRetries,
             'retryDelaySeconds' => $this->retryDelaySeconds,
             'timeoutSeconds' => $this->timeoutSeconds,
@@ -195,6 +224,7 @@ final class SubscriptionDefinition
             queue: $data['queue'],
             dispatchPoolCode: $data['dispatchPoolCode'],
             description: $data['description'] ?? null,
+            clientScoped: $data['clientScoped'] ?? false,
             eventTypeCode: $data['eventTypeCode'] ?? null,
             maxRetries: $data['maxRetries'] ?? 3,
             retryDelaySeconds: $data['retryDelaySeconds'] ?? 60,

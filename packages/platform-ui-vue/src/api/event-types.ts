@@ -23,6 +23,7 @@ export interface EventType {
   name: string;
   description?: string;
   status: EventTypeStatus;
+  clientScoped: boolean;
   specVersions: SpecVersion[];
   createdAt: string;
   updatedAt: string;
@@ -41,6 +42,7 @@ export interface CreateEventTypeRequest {
   code: string;
   name: string;
   description?: string;
+  clientScoped: boolean;
 }
 
 export interface UpdateEventTypeRequest {

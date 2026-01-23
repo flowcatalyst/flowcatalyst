@@ -4,6 +4,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import tech.flowcatalyst.platform.authorization.AuthRole;
 import tech.flowcatalyst.platform.authorization.AuthRoleRepository;
+import tech.flowcatalyst.platform.authorization.PermissionInput;
 import tech.flowcatalyst.platform.authorization.PermissionRegistry;
 import tech.flowcatalyst.platform.authorization.events.RoleUpdated;
 import tech.flowcatalyst.platform.common.AuthorizationContext;
@@ -12,7 +13,9 @@ import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Use case for updating a Role.
@@ -50,6 +53,14 @@ public class UpdateRoleUseCase {
             ));
         }
 
+        // Validate permission formats if permissions are being updated
+        if (command.permissions() != null) {
+            Result<Void> permissionValidation = validatePermissions(command.permissions(), command.roleName());
+            if (permissionValidation instanceof Result.Failure<Void> f) {
+                return Result.failure(f.error());
+            }
+        }
+
         boolean permissionsChanged = false;
 
         if (role.source == AuthRole.RoleSource.CODE) {
@@ -66,7 +77,7 @@ public class UpdateRoleUseCase {
                 role.description = command.description();
             }
             if (command.permissions() != null) {
-                role.permissions = command.permissions();
+                role.permissions = command.buildPermissionStrings();
                 permissionsChanged = true;
             }
             if (command.clientManaged() != null) {
@@ -93,5 +104,41 @@ public class UpdateRoleUseCase {
         }
 
         return result;
+    }
+
+    /**
+     * Validate all permissions.
+     * Each permission segment is validated individually.
+     */
+    private Result<Void> validatePermissions(List<PermissionInput> permissions, String roleName) {
+        if (permissions == null || permissions.isEmpty()) {
+            return Result.success(null);
+        }
+
+        for (PermissionInput permission : permissions) {
+            if (permission == null) {
+                return Result.failure(new UseCaseError.ValidationError(
+                    "INVALID_PERMISSION",
+                    "Permission cannot be null",
+                    Map.of("role", roleName)
+                ));
+            }
+
+            String validationError = permission.validate();
+            if (validationError != null) {
+                return Result.failure(new UseCaseError.ValidationError(
+                    "INVALID_PERMISSION_FORMAT",
+                    "Invalid permission for role '" + roleName + "': " + validationError,
+                    Map.of(
+                        "role", roleName,
+                        "permission", permission.buildPermissionString(),
+                        "error", validationError,
+                        "expectedFormat", "{application}:{context}:{aggregate}:{action}",
+                        "example", "myapp:orders:order:view"
+                    )
+                ));
+            }
+        }
+        return Result.success(null);
     }
 }

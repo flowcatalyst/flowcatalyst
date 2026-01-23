@@ -12,6 +12,7 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import tech.flowcatalyst.platform.audit.AuditContext;
 import tech.flowcatalyst.platform.authentication.JwtKeyService;
 import tech.flowcatalyst.platform.authorization.AuthRole;
+import tech.flowcatalyst.platform.authorization.PermissionInput;
 import tech.flowcatalyst.platform.authorization.RoleOperations;
 import tech.flowcatalyst.platform.authorization.RoleService;
 import tech.flowcatalyst.platform.authorization.events.RoleCreated;
@@ -175,7 +176,9 @@ public class ApplicationRoleResource {
                 r.name(),
                 r.displayName(),
                 r.description(),
-                r.permissions(),
+                r.permissions() != null
+                    ? r.permissions().stream().map(PermissionInputDto::toPermissionInput).toList()
+                    : List.of(),
                 r.clientManaged() != null ? r.clientManaged() : false
             ))
             .toList();
@@ -245,7 +248,9 @@ public class ApplicationRoleResource {
             request.name(),
             request.displayName(),
             request.description(),
-            request.permissions(),
+            request.permissions() != null
+                ? request.permissions().stream().map(PermissionInputDto::toPermissionInput).toList()
+                : List.of(),
             AuthRole.RoleSource.SDK,
             request.clientManaged() != null ? request.clientManaged() : false
         );
@@ -364,11 +369,16 @@ public class ApplicationRoleResource {
         int total
     ) {}
 
+    /**
+     * Request to create a role.
+     *
+     * <p>Permissions are structured with explicit segments to enforce format.
+     */
     public record CreateRoleRequest(
         String name,
         String displayName,
         String description,
-        Set<String> permissions,
+        List<PermissionInputDto> permissions,
         Boolean clientManaged
     ) {}
 
@@ -376,13 +386,42 @@ public class ApplicationRoleResource {
         List<SyncRoleItem> roles
     ) {}
 
+    /**
+     * Role item for sync request.
+     *
+     * <p>Permissions are structured with explicit segments to enforce format.
+     */
     public record SyncRoleItem(
         String name,
         String displayName,
         String description,
-        Set<String> permissions,
+        List<PermissionInputDto> permissions,
         Boolean clientManaged
     ) {}
+
+    /**
+     * Structured permission input.
+     *
+     * <p>Format: {application}:{context}:{aggregate}:{action}
+     *
+     * @param application Application code (e.g., "myapp")
+     * @param context     Bounded context (e.g., "orders")
+     * @param aggregate   Resource/entity (e.g., "order")
+     * @param action      Operation (e.g., "view", "create", "update", "delete")
+     */
+    public record PermissionInputDto(
+        String application,
+        String context,
+        String aggregate,
+        String action
+    ) {
+        /**
+         * Convert to internal PermissionInput.
+         */
+        public PermissionInput toPermissionInput() {
+            return new PermissionInput(application, context, aggregate, action);
+        }
+    }
 
     public record SyncResponse(
         int syncedCount,

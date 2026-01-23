@@ -33,9 +33,11 @@ import java.util.Map;
  *   <li>Sync event types (bulk create/update/delete)</li>
  * </ul>
  *
- * <p>Event type codes are prefixed with the application code.
- * For example, if app code is "myapp" and event type code is "order:created",
- * the full code will be "myapp:order:created".
+ * <p>Event type codes follow the format: {application}:{subdomain}:{aggregate}:{event}
+ * For example: operant:execution:trip:started
+ *
+ * <p>When syncing, the application code is taken from the URL path, and
+ * each event type specifies subdomain, aggregate, and event segments separately.
  */
 @Path("/api/applications/{appCode}/event-types")
 @Tag(name = "Application Event Types SDK", description = "SDK API for external applications to manage their event types")
@@ -165,9 +167,12 @@ public class ApplicationEventTypeResource {
         // Convert request to internal format
         List<SyncEventTypesCommand.SyncEventTypeItem> items = request.eventTypes().stream()
             .map(et -> new SyncEventTypesCommand.SyncEventTypeItem(
-                et.code(),
+                et.subdomain(),
+                et.aggregate(),
+                et.event(),
                 et.name(),
-                et.description()
+                et.description(),
+                et.clientScoped()
             ))
             .toList();
 
@@ -243,10 +248,26 @@ public class ApplicationEventTypeResource {
         int total
     ) {}
 
+    /**
+     * Event type item for sync request.
+     *
+     * <p>The full event type code is composed as:
+     * {applicationCode}:{subdomain}:{aggregate}:{event}
+     *
+     * @param subdomain    Subdomain within the application (e.g., "execution", "orders")
+     * @param aggregate    Aggregate name (e.g., "trip", "order")
+     * @param event        Event name (e.g., "started", "created")
+     * @param name         Human-friendly name
+     * @param description  Optional description
+     * @param clientScoped Whether events of this type are scoped to clients (optional, defaults to false)
+     */
     public record SyncEventTypeItem(
-        String code,
+        String subdomain,
+        String aggregate,
+        String event,
         String name,
-        String description
+        String description,
+        Boolean clientScoped
     ) {}
 
     public record SyncEventTypesRequest(

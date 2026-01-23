@@ -6,6 +6,7 @@ namespace FlowCatalyst\Client;
 
 use FlowCatalyst\Client\Auth\OidcTokenManager;
 use FlowCatalyst\Client\Resources\Applications;
+use FlowCatalyst\Client\Resources\Clients;
 use FlowCatalyst\Client\Resources\DispatchPools;
 use FlowCatalyst\Client\Resources\EventTypes;
 use FlowCatalyst\Client\Resources\Permissions;
@@ -27,6 +28,7 @@ class FlowCatalystClient
     private ?Roles $roles = null;
     private ?Permissions $permissions = null;
     private ?Applications $applications = null;
+    private ?Clients $clients = null;
 
     public function __construct(
         private readonly OidcTokenManager $tokenManager,
@@ -91,6 +93,14 @@ class FlowCatalystClient
     }
 
     /**
+     * Get the Clients resource.
+     */
+    public function clients(): Clients
+    {
+        return $this->clients ??= new Clients($this);
+    }
+
+    /**
      * Make an authenticated API request.
      *
      * @throws FlowCatalystException
@@ -142,6 +152,13 @@ class FlowCatalystClient
         // Convert body to JSON if it's an array
         if (isset($options['body']) && is_array($options['body'])) {
             $options['body'] = json_encode($options['body']);
+        }
+
+        // DEBUG: Log request details
+        if (env('FLOWCATALYST_DEBUG', false)) {
+            \Illuminate\Support\Facades\Log::debug("FLOWCATALYST REQUEST: {$method} {$endpoint}", [
+                'body' => $options['body'] ?? $options['json'] ?? null,
+            ]);
         }
 
         // Handle JSON body

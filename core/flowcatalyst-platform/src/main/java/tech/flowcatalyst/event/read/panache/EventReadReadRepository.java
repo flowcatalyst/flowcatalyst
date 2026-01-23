@@ -44,8 +44,17 @@ public class EventReadReadRepository implements EventReadRepository {
     public List<EventRead> findWithFilter(EventFilter filter) {
         StringBuilder jpql = new StringBuilder("FROM EventReadEntity WHERE 1=1");
 
+        // Handle clientIds with special "null" marker for IS NULL
         if (filter.clientIds() != null && !filter.clientIds().isEmpty()) {
-            jpql.append(" AND clientId IN :clientIds");
+            boolean hasNull = filter.clientIds().contains("null");
+            List<String> nonNullIds = filter.clientIds().stream().filter(id -> !"null".equals(id)).toList();
+            if (hasNull && nonNullIds.isEmpty()) {
+                jpql.append(" AND clientId IS NULL");
+            } else if (hasNull) {
+                jpql.append(" AND (clientId IS NULL OR clientId IN :clientIds)");
+            } else {
+                jpql.append(" AND clientId IN :clientIds");
+            }
         }
         if (filter.applications() != null && !filter.applications().isEmpty()) {
             jpql.append(" AND application IN :applications");
@@ -83,7 +92,10 @@ public class EventReadReadRepository implements EventReadRepository {
         TypedQuery<EventReadEntity> query = em.createQuery(jpql.toString(), EventReadEntity.class);
 
         if (filter.clientIds() != null && !filter.clientIds().isEmpty()) {
-            query.setParameter("clientIds", filter.clientIds());
+            List<String> nonNullIds = filter.clientIds().stream().filter(id -> !"null".equals(id)).toList();
+            if (!nonNullIds.isEmpty()) {
+                query.setParameter("clientIds", nonNullIds);
+            }
         }
         if (filter.applications() != null && !filter.applications().isEmpty()) {
             query.setParameter("applications", filter.applications());
@@ -143,8 +155,17 @@ public class EventReadReadRepository implements EventReadRepository {
     public long countWithFilter(EventFilter filter) {
         StringBuilder jpql = new StringBuilder("SELECT COUNT(e) FROM EventReadEntity e WHERE 1=1");
 
+        // Handle clientIds with special "null" marker for IS NULL
         if (filter.clientIds() != null && !filter.clientIds().isEmpty()) {
-            jpql.append(" AND e.clientId IN :clientIds");
+            boolean hasNull = filter.clientIds().contains("null");
+            List<String> nonNullIds = filter.clientIds().stream().filter(id -> !"null".equals(id)).toList();
+            if (hasNull && nonNullIds.isEmpty()) {
+                jpql.append(" AND e.clientId IS NULL");
+            } else if (hasNull) {
+                jpql.append(" AND (e.clientId IS NULL OR e.clientId IN :clientIds)");
+            } else {
+                jpql.append(" AND e.clientId IN :clientIds");
+            }
         }
         if (filter.applications() != null && !filter.applications().isEmpty()) {
             jpql.append(" AND e.application IN :applications");
@@ -180,7 +201,10 @@ public class EventReadReadRepository implements EventReadRepository {
         TypedQuery<Long> query = em.createQuery(jpql.toString(), Long.class);
 
         if (filter.clientIds() != null && !filter.clientIds().isEmpty()) {
-            query.setParameter("clientIds", filter.clientIds());
+            List<String> nonNullIds = filter.clientIds().stream().filter(id -> !"null".equals(id)).toList();
+            if (!nonNullIds.isEmpty()) {
+                query.setParameter("clientIds", nonNullIds);
+            }
         }
         if (filter.applications() != null && !filter.applications().isEmpty()) {
             query.setParameter("applications", filter.applications());
@@ -218,6 +242,12 @@ public class EventReadReadRepository implements EventReadRepository {
 
     @Override
     public FilterOptions getFilterOptions(FilterOptionsRequest request) {
+        // Parse clientIds for null handling
+        boolean hasNullClient = request.clientIds() != null && request.clientIds().contains("null");
+        List<String> nonNullClientIds = request.clientIds() != null
+            ? request.clientIds().stream().filter(id -> !"null".equals(id)).toList()
+            : null;
+
         // Get distinct clients
         List<String> clients = em.createQuery(
                 "SELECT DISTINCT e.clientId FROM EventReadEntity e WHERE e.clientId IS NOT NULL ORDER BY e.clientId",
@@ -227,30 +257,22 @@ public class EventReadReadRepository implements EventReadRepository {
         // Get distinct applications (optionally filtered by clients)
         StringBuilder appQuery = new StringBuilder(
             "SELECT DISTINCT e.application FROM EventReadEntity e WHERE e.application IS NOT NULL");
-        if (request.clientIds() != null && !request.clientIds().isEmpty()) {
-            appQuery.append(" AND e.clientId IN :clientIds");
-        }
+        appendClientIdFilter(appQuery, "e", hasNullClient, nonNullClientIds);
         appQuery.append(" ORDER BY e.application");
         TypedQuery<String> appQ = em.createQuery(appQuery.toString(), String.class);
-        if (request.clientIds() != null && !request.clientIds().isEmpty()) {
-            appQ.setParameter("clientIds", request.clientIds());
-        }
+        setClientIdParameter(appQ, nonNullClientIds);
         List<String> applications = appQ.getResultList();
 
         // Get distinct subdomains (optionally filtered)
         StringBuilder subQuery = new StringBuilder(
             "SELECT DISTINCT e.subdomain FROM EventReadEntity e WHERE e.subdomain IS NOT NULL");
-        if (request.clientIds() != null && !request.clientIds().isEmpty()) {
-            subQuery.append(" AND e.clientId IN :clientIds");
-        }
+        appendClientIdFilter(subQuery, "e", hasNullClient, nonNullClientIds);
         if (request.applications() != null && !request.applications().isEmpty()) {
             subQuery.append(" AND e.application IN :applications");
         }
         subQuery.append(" ORDER BY e.subdomain");
         TypedQuery<String> subQ = em.createQuery(subQuery.toString(), String.class);
-        if (request.clientIds() != null && !request.clientIds().isEmpty()) {
-            subQ.setParameter("clientIds", request.clientIds());
-        }
+        setClientIdParameter(subQ, nonNullClientIds);
         if (request.applications() != null && !request.applications().isEmpty()) {
             subQ.setParameter("applications", request.applications());
         }
@@ -259,9 +281,7 @@ public class EventReadReadRepository implements EventReadRepository {
         // Get distinct aggregates (optionally filtered)
         StringBuilder aggQuery = new StringBuilder(
             "SELECT DISTINCT e.aggregate FROM EventReadEntity e WHERE e.aggregate IS NOT NULL");
-        if (request.clientIds() != null && !request.clientIds().isEmpty()) {
-            aggQuery.append(" AND e.clientId IN :clientIds");
-        }
+        appendClientIdFilter(aggQuery, "e", hasNullClient, nonNullClientIds);
         if (request.applications() != null && !request.applications().isEmpty()) {
             aggQuery.append(" AND e.application IN :applications");
         }
@@ -270,9 +290,7 @@ public class EventReadReadRepository implements EventReadRepository {
         }
         aggQuery.append(" ORDER BY e.aggregate");
         TypedQuery<String> aggQ = em.createQuery(aggQuery.toString(), String.class);
-        if (request.clientIds() != null && !request.clientIds().isEmpty()) {
-            aggQ.setParameter("clientIds", request.clientIds());
-        }
+        setClientIdParameter(aggQ, nonNullClientIds);
         if (request.applications() != null && !request.applications().isEmpty()) {
             aggQ.setParameter("applications", request.applications());
         }
@@ -284,9 +302,7 @@ public class EventReadReadRepository implements EventReadRepository {
         // Get distinct types (optionally filtered)
         StringBuilder typeQuery = new StringBuilder(
             "SELECT DISTINCT e.type FROM EventReadEntity e WHERE e.type IS NOT NULL");
-        if (request.clientIds() != null && !request.clientIds().isEmpty()) {
-            typeQuery.append(" AND e.clientId IN :clientIds");
-        }
+        appendClientIdFilter(typeQuery, "e", hasNullClient, nonNullClientIds);
         if (request.applications() != null && !request.applications().isEmpty()) {
             typeQuery.append(" AND e.application IN :applications");
         }
@@ -298,9 +314,7 @@ public class EventReadReadRepository implements EventReadRepository {
         }
         typeQuery.append(" ORDER BY e.type");
         TypedQuery<String> typeQ = em.createQuery(typeQuery.toString(), String.class);
-        if (request.clientIds() != null && !request.clientIds().isEmpty()) {
-            typeQ.setParameter("clientIds", request.clientIds());
-        }
+        setClientIdParameter(typeQ, nonNullClientIds);
         if (request.applications() != null && !request.applications().isEmpty()) {
             typeQ.setParameter("applications", request.applications());
         }
@@ -313,6 +327,30 @@ public class EventReadReadRepository implements EventReadRepository {
         List<String> types = typeQ.getResultList();
 
         return new FilterOptions(clients, applications, subdomains, aggregates, types);
+    }
+
+    /**
+     * Append client ID filter clause to query, handling "null" marker for IS NULL.
+     */
+    private void appendClientIdFilter(StringBuilder query, String alias, boolean hasNull, List<String> nonNullIds) {
+        if (hasNull || (nonNullIds != null && !nonNullIds.isEmpty())) {
+            if (hasNull && (nonNullIds == null || nonNullIds.isEmpty())) {
+                query.append(" AND ").append(alias).append(".clientId IS NULL");
+            } else if (hasNull) {
+                query.append(" AND (").append(alias).append(".clientId IS NULL OR ").append(alias).append(".clientId IN :clientIds)");
+            } else {
+                query.append(" AND ").append(alias).append(".clientId IN :clientIds");
+            }
+        }
+    }
+
+    /**
+     * Set clientIds parameter if there are non-null IDs to bind.
+     */
+    private void setClientIdParameter(TypedQuery<?> query, List<String> nonNullIds) {
+        if (nonNullIds != null && !nonNullIds.isEmpty()) {
+            query.setParameter("clientIds", nonNullIds);
+        }
     }
 
     // Write operations delegate to WriteRepository

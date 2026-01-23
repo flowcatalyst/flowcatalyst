@@ -15,7 +15,7 @@ public record PermissionRecord(
     String description
 ) implements PermissionDefinition {
 
-    private static final Pattern VALID_PART = Pattern.compile("^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$");
+    private static final Pattern VALID_PART = Pattern.compile("^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$");
 
     public PermissionRecord {
         // Validate all parts
@@ -23,16 +23,13 @@ public record PermissionRecord(
         validatePart(context, "context");
         validatePart(aggregate, "aggregate");
         validatePart(action, "action");
-
-        if (description == null || description.isBlank()) {
-            throw new IllegalArgumentException("Description cannot be null or empty");
-        }
+        // Description is optional
     }
 
     /**
      * Validate that a part follows the naming rules:
-     * - Lowercase letters, numbers, and hyphens only
-     * - Cannot start or end with a hyphen
+     * - Lowercase letters, numbers, hyphens, and underscores only
+     * - Cannot start or end with a hyphen or underscore
      * - At least 1 character
      */
     private void validatePart(String part, String partName) {
@@ -42,13 +39,15 @@ public record PermissionRecord(
 
         if (!VALID_PART.matcher(part).matches()) {
             throw new IllegalArgumentException(
-                partName + " must be lowercase alphanumeric with hyphens (cannot start/end with hyphen): " + part
+                partName + " must be lowercase alphanumeric with hyphens/underscores (cannot start/end with hyphen or underscore): " + part
             );
         }
     }
 
     @Override
     public String toString() {
-        return toPermissionString() + " (" + description + ")";
+        return description != null
+            ? toPermissionString() + " (" + description + ")"
+            : toPermissionString();
     }
 }

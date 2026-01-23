@@ -205,7 +205,7 @@ public class PermissionRegistry {
             subdomain,
             roleNamePart,
             permissionStrings != null ? permissionStrings : Set.of(),
-            description != null ? description : ""
+            description  // null is allowed
         );
 
         roles.put(roleName, roleDef);

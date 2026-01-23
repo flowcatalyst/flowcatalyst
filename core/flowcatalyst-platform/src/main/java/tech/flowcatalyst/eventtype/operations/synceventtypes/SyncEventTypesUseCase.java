@@ -2,6 +2,7 @@ package tech.flowcatalyst.eventtype.operations.synceventtypes;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import tech.flowcatalyst.eventtype.EventType;
 import tech.flowcatalyst.eventtype.EventTypeRepository;
 import tech.flowcatalyst.eventtype.EventTypeSource;
@@ -35,6 +36,7 @@ public class SyncEventTypesUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
+    @Transactional
     public Result<EventTypesSynced> execute(SyncEventTypesCommand command, ExecutionContext context) {
         if (command.applicationCode() == null || command.applicationCode().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(
@@ -71,8 +73,8 @@ public class SyncEventTypesUseCase {
         int deleted = 0;
 
         for (SyncEventTypesCommand.SyncEventTypeItem item : command.eventTypes()) {
-            // Build full code with application prefix
-            String fullCode = codePrefix + item.code();
+            // Build full code from segments
+            String fullCode = item.buildCode(command.applicationCode());
             syncedCodes.add(fullCode);
 
             Optional<EventType> existingOpt = eventTypeRepo.findByCode(fullCode);
@@ -91,8 +93,9 @@ public class SyncEventTypesUseCase {
                 }
                 // Don't update UI-sourced event types from SDK sync
             } else {
-                // Create new API-sourced event type
-                EventType newType = EventType.createFromApi(fullCode, item.name())
+                // Create new API-sourced event type (default to non-client-scoped for SDK sync)
+                boolean clientScoped = item.clientScoped() != null ? item.clientScoped() : false;
+                EventType newType = EventType.createFromApi(fullCode, item.name(), clientScoped)
                     .description(item.description())
                     .build();
                 eventTypeRepo.persist(newType);

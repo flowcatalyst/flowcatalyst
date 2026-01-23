@@ -592,11 +592,7 @@ public class AuthorizationResource {
             // Issue access token (using internal client ID)
             String token = jwtKeyService.issueAccessToken(principal.id, internalClientId, roles);
 
-            // Update last used on service account
-            if (principal.serviceAccount != null) {
-                principal.serviceAccount.lastUsedAt = Instant.now();
-                principalRepo.updateOnly(principal);
-            }
+            // Note: lastUsedAt is tracked on the ServiceAccount entity via serviceAccountId
 
             LOG.infof("Access token issued for service account via OAuthClient: %s (principal: %s)", internalClientId, principal.id);
 
@@ -610,58 +606,9 @@ public class AuthorizationResource {
             )).build();
         }
 
-        // Fall back to legacy service account lookup (for backwards compatibility)
-        Optional<Principal> principalOpt = principalRepo.findByServiceAccountClientId(clientId);
-        if (principalOpt.isEmpty()) {
-            LOG.infof("Token request failed: client_id not found: %s", clientId);
-            return tokenError("invalid_client", "Invalid client credentials");
-        }
-
-        Principal principal = principalOpt.get();
-
-        // Verify it's a service account
-        if (principal.type != PrincipalType.SERVICE) {
-            LOG.warnf("Token request for non-service principal: %s", clientId);
-            return tokenError("invalid_client", "Invalid client credentials");
-        }
-
-        // Verify service account is active
-        if (!principal.active) {
-            LOG.infof("Token request failed: service account is inactive: %s", clientId);
-            return tokenError("invalid_client", "Client is disabled");
-        }
-
-        // Verify client secret (legacy path uses argon2 hash in ServiceAccount)
-        if (principal.serviceAccount == null || principal.serviceAccount.clientSecretHash == null) {
-            LOG.warnf("Token request failed: no client secret set for: %s", clientId);
-            return tokenError("invalid_client", "Invalid client credentials");
-        }
-
-        if (!passwordService.verifyPassword(clientSecret, principal.serviceAccount.clientSecretHash)) {
-            LOG.infof("Token request failed: invalid client secret for: %s", clientId);
-            return tokenError("invalid_client", "Invalid client credentials");
-        }
-
-        // Load roles
-        Set<String> roles = loadRoles(principal.id);
-
-        // Issue access token
-        String token = jwtKeyService.issueAccessToken(principal.id, clientId, roles);
-
-        // Update last used
-        principal.serviceAccount.lastUsedAt = Instant.now();
-        principalRepo.updateOnly(principal);
-
-        LOG.infof("Access token issued for service account (legacy): %s", clientId);
-
-        return Response.ok(new TokenResponse(
-            token,
-            "Bearer",
-            jwtKeyService.getAccessTokenExpiry().toSeconds(),
-            null, // No refresh token for client_credentials
-            null,
-            null  // No ID token for client_credentials
-        )).build();
+        // OAuthClient not found - service account must be configured with OAuthClient
+        LOG.infof("Token request failed: OAuth client not found: %s", clientId);
+        return tokenError("invalid_client", "Invalid client credentials");
     }
 
     private Response handlePasswordGrant(String username, String password) {

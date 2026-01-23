@@ -212,15 +212,59 @@ public class ProcessPoolImpl implements ProcessPool {
 
     @Override
     public void drain() {
-        LOG.infof("Draining process pool [%s] - will finish processing buffered messages asynchronously", poolCode);
+        LOG.infof("Draining process pool [%s] - discarding queued messages, waiting only for active processing", poolCode);
         running.set(false);
 
-        // Non-blocking drain: Just stop accepting new work
-        // The pool will continue processing messages already in its queue
-        // The cleanup scheduled task will call shutdown() when fully drained
+        // Clear all queued messages immediately - they'll return to broker via visibility timeout
+        // We only want to wait for messages actively being mediated (holding semaphore permits)
+        int discardedCount = clearAllQueuedMessages();
 
-        LOG.infof("Process pool [%s] set to draining mode (queued: %d, active: %d, groups: %d)",
-            poolCode, totalQueuedMessages.get(), concurrency - semaphore.availablePermits(), getActiveGroupCount());
+        // Interrupt all virtual threads blocked on queue.poll() so they exit immediately
+        // Threads actively processing (holding semaphore) will complete their current message
+        executorService.shutdownNow();
+
+        LOG.infof("Process pool [%s] draining: discarded %d queued messages, waiting for %d active workers",
+            poolCode, discardedCount, concurrency - semaphore.availablePermits());
+    }
+
+    /**
+     * Clears all queued messages from both high and regular priority queues.
+     * Messages are simply discarded - they'll return to the broker via visibility timeout.
+     *
+     * @return the number of messages discarded
+     */
+    private int clearAllQueuedMessages() {
+        int discarded = 0;
+
+        // Clear high priority queues
+        for (var entry : highPriorityGroupQueues.entrySet()) {
+            BlockingQueue<MessagePointer> queue = entry.getValue();
+            int size = queue.size();
+            queue.clear();
+            discarded += size;
+        }
+        highPriorityGroupQueues.clear();
+
+        // Clear regular priority queues
+        for (var entry : regularGroupQueues.entrySet()) {
+            BlockingQueue<MessagePointer> queue = entry.getValue();
+            int size = queue.size();
+            queue.clear();
+            discarded += size;
+        }
+        regularGroupQueues.clear();
+
+        // Reset the counter
+        totalQueuedMessages.set(0);
+
+        // Clear active threads tracking
+        activeGroupThreads.clear();
+
+        // Clear batch tracking
+        failedBatchGroups.clear();
+        batchGroupMessageCount.clear();
+
+        return discarded;
     }
 
     @Override
@@ -348,7 +392,9 @@ public class ProcessPoolImpl implements ProcessPool {
 
     @Override
     public boolean isFullyDrained() {
-        return totalQueuedMessages.get() == 0 && semaphore.availablePermits() == concurrency;
+        // Only check for active workers - queues are cleared immediately by drain()
+        // Available permits == concurrency means no workers are actively processing
+        return semaphore.availablePermits() == concurrency;
     }
 
     @Override
@@ -359,15 +405,17 @@ public class ProcessPoolImpl implements ProcessPool {
         }
         gaugeUpdater.shutdown();
 
-        // Then shutdown worker executor
-        executorService.shutdown();
+        // Shutdown worker executor (may already be shutdown by drain())
+        if (!executorService.isShutdown()) {
+            executorService.shutdownNow();
+        }
+
+        // Wait briefly for any interrupted threads to exit
         try {
-            if (!executorService.awaitTermination(10, TimeUnit.SECONDS)) {
-                LOG.warnf("Executor service for pool [%s] did not terminate within 10 seconds", poolCode);
-                executorService.shutdownNow();
+            if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+                LOG.warnf("Executor service for pool [%s] did not terminate within 5 seconds", poolCode);
             }
         } catch (InterruptedException e) {
-            executorService.shutdownNow();
             Thread.currentThread().interrupt();
         }
     }

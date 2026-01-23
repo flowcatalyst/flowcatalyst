@@ -17,6 +17,13 @@ import java.util.List;
  * Event emitted when a new service account is created.
  *
  * <p>Event type: {@code platform:iam:service-account:created}
+ *
+ * <p>A service account creation atomically creates three entities:
+ * <ul>
+ *   <li>ServiceAccount (serviceAccountId) - webhook credentials</li>
+ *   <li>Principal (createdPrincipalId) - identity and role assignments</li>
+ *   <li>OAuthClient (oauthClientId / oauthClientClientId) - OAuth authentication</li>
+ * </ul>
  */
 @Builder
 public record ServiceAccountCreated(
@@ -25,8 +32,11 @@ public record ServiceAccountCreated(
     String executionId,
     String correlationId,
     String causationId,
-    String principalId,
+    String principalId,  // The principal who performed the action
     String serviceAccountId,
+    String createdPrincipalId,  // The Principal entity created for this service account
+    String oauthClientId,  // The OAuthClient entity ID
+    String oauthClientClientId,  // The OAuth client_id for authentication
     String code,
     String name,
     List<String> clientIds,
@@ -76,7 +86,16 @@ public record ServiceAccountCreated(
     @JsonIgnore
     public String toDataJson() {
         try {
-            return MAPPER.writeValueAsString(new Data(serviceAccountId, code, name, clientIds, applicationId));
+            return MAPPER.writeValueAsString(new Data(
+                serviceAccountId,
+                createdPrincipalId,
+                oauthClientId,
+                oauthClientClientId,
+                code,
+                name,
+                clientIds,
+                applicationId
+            ));
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize event data", e);
         }
@@ -84,6 +103,9 @@ public record ServiceAccountCreated(
 
     public record Data(
         String serviceAccountId,
+        String principalId,
+        String oauthClientId,
+        String oauthClientClientId,
         String code,
         String name,
         List<String> clientIds,

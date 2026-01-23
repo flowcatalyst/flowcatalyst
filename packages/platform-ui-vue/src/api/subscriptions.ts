@@ -20,6 +20,7 @@ export interface Subscription {
   code: string;
   name: string;
   description?: string;
+  clientScoped: boolean;
   clientId?: string;
   clientIdentifier?: string;
   eventTypes: EventTypeBinding[];
@@ -48,6 +49,7 @@ export interface CreateSubscriptionRequest {
   code: string;
   name: string;
   description?: string;
+  clientScoped: boolean;
   clientId?: string;
   eventTypes: EventTypeBinding[];
   target: string;

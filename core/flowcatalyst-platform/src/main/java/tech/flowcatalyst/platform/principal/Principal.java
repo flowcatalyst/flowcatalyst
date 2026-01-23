@@ -36,17 +36,6 @@ public class Principal {
      */
     public String clientId;
 
-    /**
-     * Application this service account belongs to (for SERVICE type).
-     * When set, this service account was auto-created for the application
-     * and can manage resources prefixed with the application's code.
-     * Null for standalone service accounts or USER type principals.
-     *
-     * @deprecated Use managedApplicationIds instead. This field is kept for
-     * backwards compatibility during migration.
-     */
-    @Deprecated
-    public String applicationId;
 
     /**
      * Scope for application management access.
@@ -81,9 +70,12 @@ public class Principal {
     public UserIdentity userIdentity;
 
     /**
-     * Embedded service account (for SERVICE type)
+     * Foreign key to the ServiceAccount entity (for SERVICE type).
+     * This is the primary way to link a Principal to a ServiceAccount.
+     * The ServiceAccount entity contains webhook credentials and other metadata.
      */
-    public ServiceAccount serviceAccount;
+    public String serviceAccountId;
+
 
     /**
      * Embedded role assignments (denormalized for MongoDB).

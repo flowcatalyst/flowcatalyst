@@ -22,7 +22,12 @@ const saving = ref(false);
 
 // Created credentials dialog
 const showCredentialsDialog = ref(false);
-const createdCredentials = ref<{ authToken: string; signingSecret: string } | null>(null);
+const createdCredentials = ref<{
+  clientId: string;
+  clientSecret: string;
+  authToken: string;
+  signingSecret: string;
+} | null>(null);
 const createdServiceAccountId = ref<string | null>(null);
 
 const isValid = computed(() => {
@@ -83,8 +88,10 @@ async function createServiceAccount() {
 
     // Store credentials and show dialog
     createdCredentials.value = {
-      authToken: response.authToken,
-      signingSecret: response.signingSecret
+      clientId: response.oauth.clientId,
+      clientSecret: response.oauth.clientSecret,
+      authToken: response.webhook.authToken,
+      signingSecret: response.webhook.signingSecret
     };
     createdServiceAccountId.value = response.serviceAccount.id;
     showCredentialsDialog.value = true;
@@ -230,7 +237,7 @@ function goBack() {
     <Dialog
       v-model:visible="showCredentialsDialog"
       header="Service Account Created"
-      :style="{ width: '600px' }"
+      :style="{ width: '650px' }"
       :modal="true"
       :closable="false"
     >
@@ -240,38 +247,76 @@ function goBack() {
           <span>Copy these credentials now. They will not be shown again.</span>
         </div>
 
-        <div class="credential-section">
-          <label>Auth Token (Bearer)</label>
-          <div class="credential-value">
-            <code>{{ createdCredentials?.authToken }}</code>
-            <Button
-              icon="pi pi-copy"
-              text
-              rounded
-              @click="copyToClipboard(createdCredentials?.authToken!, 'Auth Token')"
-              v-tooltip.top="'Copy'"
-            />
+        <div class="credentials-group">
+          <h3 class="credentials-group-title">OAuth Credentials (API Authentication)</h3>
+          <p class="credentials-group-desc">Use these for client_credentials grant to obtain access tokens.</p>
+
+          <div class="credential-section">
+            <label>Client ID</label>
+            <div class="credential-value">
+              <code>{{ createdCredentials?.clientId }}</code>
+              <Button
+                icon="pi pi-copy"
+                text
+                rounded
+                @click="copyToClipboard(createdCredentials?.clientId!, 'Client ID')"
+                v-tooltip.top="'Copy'"
+              />
+            </div>
           </div>
-          <small class="help-text">
-            Use this token in the Authorization header: <code>Authorization: Bearer &lt;token&gt;</code>
-          </small>
+
+          <div class="credential-section">
+            <label>Client Secret</label>
+            <div class="credential-value">
+              <code>{{ createdCredentials?.clientSecret }}</code>
+              <Button
+                icon="pi pi-copy"
+                text
+                rounded
+                @click="copyToClipboard(createdCredentials?.clientSecret!, 'Client Secret')"
+                v-tooltip.top="'Copy'"
+              />
+            </div>
+          </div>
         </div>
 
-        <div class="credential-section">
-          <label>Signing Secret</label>
-          <div class="credential-value">
-            <code>{{ createdCredentials?.signingSecret }}</code>
-            <Button
-              icon="pi pi-copy"
-              text
-              rounded
-              @click="copyToClipboard(createdCredentials?.signingSecret!, 'Signing Secret')"
-              v-tooltip.top="'Copy'"
-            />
+        <div class="credentials-group">
+          <h3 class="credentials-group-title">Webhook Credentials</h3>
+          <p class="credentials-group-desc">Use these for outbound webhook authentication and signature verification.</p>
+
+          <div class="credential-section">
+            <label>Auth Token (Bearer)</label>
+            <div class="credential-value">
+              <code>{{ createdCredentials?.authToken }}</code>
+              <Button
+                icon="pi pi-copy"
+                text
+                rounded
+                @click="copyToClipboard(createdCredentials?.authToken!, 'Auth Token')"
+                v-tooltip.top="'Copy'"
+              />
+            </div>
+            <small class="help-text">
+              Sent in the Authorization header: <code>Authorization: Bearer &lt;token&gt;</code>
+            </small>
           </div>
-          <small class="help-text">
-            Use this secret to verify webhook signatures (HMAC-SHA256)
-          </small>
+
+          <div class="credential-section">
+            <label>Signing Secret</label>
+            <div class="credential-value">
+              <code>{{ createdCredentials?.signingSecret }}</code>
+              <Button
+                icon="pi pi-copy"
+                text
+                rounded
+                @click="copyToClipboard(createdCredentials?.signingSecret!, 'Signing Secret')"
+                v-tooltip.top="'Copy'"
+              />
+            </div>
+            <small class="help-text">
+              Used to verify webhook signatures (HMAC-SHA256)
+            </small>
+          </div>
         </div>
       </div>
 
@@ -404,6 +449,41 @@ function goBack() {
 
 .credential-section .help-text {
   margin-top: 0;
+}
+
+.credentials-group {
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.credentials-group-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 4px 0;
+}
+
+.credentials-group-desc {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0 0 16px 0;
+}
+
+.credentials-group .credential-section {
+  background: white;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.credentials-group .credential-section:last-child {
+  margin-bottom: 0;
+}
+
+.credentials-group .credential-value {
+  background: #f1f5f9;
 }
 
 @media (max-width: 768px) {

@@ -155,6 +155,7 @@ public class SubscriptionResource {
             request.code(),
             request.name(),
             request.description(),
+            request.clientScoped(),
             request.clientId(),
             request.eventTypes(),
             request.target(),
@@ -394,6 +395,7 @@ public class SubscriptionResource {
             subscription.code(),
             subscription.name(),
             subscription.description(),
+            subscription.clientScoped(),
             subscription.clientId(),
             subscription.clientIdentifier(),
             subscription.eventTypes(),
@@ -424,6 +426,7 @@ public class SubscriptionResource {
         String code,
         String name,
         String description,
+        boolean clientScoped,
         String clientId,
         String clientIdentifier,
         List<EventTypeBinding> eventTypes,
@@ -461,6 +464,8 @@ public class SubscriptionResource {
         String name,
 
         String description,
+
+        boolean clientScoped,
 
         String clientId,
 

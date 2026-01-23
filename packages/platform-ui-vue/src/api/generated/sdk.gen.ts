@@ -183,6 +183,14 @@ import type {
   GetApiApplicationsResponse,
   PostApiApplicationsData,
   GetApiApplicationsCodeByCodeData,
+  GetApiApplicationsByAppCodeDispatchPoolsData,
+  GetApiApplicationsByAppCodeDispatchPoolsResponse,
+  PostApiApplicationsByAppCodeDispatchPoolsSyncData,
+  PostApiApplicationsByAppCodeDispatchPoolsSyncResponse,
+  GetApiApplicationsByAppCodeEventTypesData,
+  GetApiApplicationsByAppCodeEventTypesResponse,
+  PostApiApplicationsByAppCodeEventTypesSyncData,
+  PostApiApplicationsByAppCodeEventTypesSyncResponse,
   GetApiApplicationsByAppCodeRolesData,
   GetApiApplicationsByAppCodeRolesResponse,
   PostApiApplicationsByAppCodeRolesData,
@@ -191,6 +199,10 @@ import type {
   PostApiApplicationsByAppCodeRolesSyncResponse,
   DeleteApiApplicationsByAppCodeRolesByRoleNameData,
   DeleteApiApplicationsByAppCodeRolesByRoleNameResponse,
+  GetApiApplicationsByAppCodeSubscriptionsData,
+  GetApiApplicationsByAppCodeSubscriptionsResponse,
+  PostApiApplicationsByAppCodeSubscriptionsSyncData,
+  PostApiApplicationsByAppCodeSubscriptionsSyncResponse,
   DeleteApiApplicationsByIdData,
   DeleteApiApplicationsByIdResponse,
   GetApiApplicationsByIdData,
@@ -2572,6 +2584,96 @@ export const getApiApplicationsCodeByCode = <
 };
 
 /**
+ * List anchor-level dispatch pools
+ * Returns all anchor-level dispatch pools (clientId = null).
+ */
+export const getApiApplicationsByAppCodeDispatchPools = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetApiApplicationsByAppCodeDispatchPoolsData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<
+    GetApiApplicationsByAppCodeDispatchPoolsResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/applications/{appCode}/dispatch-pools",
+    ...options,
+  });
+};
+
+/**
+ * Sync dispatch pools
+ * Bulk sync dispatch pools. Creates new pools, updates existing ones. Set removeUnlisted=true to archive pools not in the sync list.
+ */
+export const postApiApplicationsByAppCodeDispatchPoolsSync = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<
+    PostApiApplicationsByAppCodeDispatchPoolsSyncData,
+    ThrowOnError
+  >,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    PostApiApplicationsByAppCodeDispatchPoolsSyncResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/applications/{appCode}/dispatch-pools/sync",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * List application event types
+ * Returns all event types registered for this application (matching code prefix).
+ */
+export const getApiApplicationsByAppCodeEventTypes = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetApiApplicationsByAppCodeEventTypesData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<
+    GetApiApplicationsByAppCodeEventTypesResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/applications/{appCode}/event-types",
+    ...options,
+  });
+};
+
+/**
+ * Sync application event types
+ * Bulk sync event types from an external application. Creates new event types, updates existing API-sourced event types. Set removeUnlisted=true to remove API-sourced event types not in the sync list.
+ */
+export const postApiApplicationsByAppCodeEventTypesSync = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<
+    PostApiApplicationsByAppCodeEventTypesSyncData,
+    ThrowOnError
+  >,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    PostApiApplicationsByAppCodeEventTypesSyncResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/applications/{appCode}/event-types/sync",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
  * List application roles
  * Returns all roles registered for this application.
  */
@@ -2655,6 +2757,51 @@ export const deleteApiApplicationsByAppCodeRolesByRoleName = <
   >({
     url: "/api/applications/{appCode}/roles/{roleName}",
     ...options,
+  });
+};
+
+/**
+ * List anchor-level subscriptions
+ * Returns all anchor-level subscriptions (clientId = null).
+ */
+export const getApiApplicationsByAppCodeSubscriptions = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetApiApplicationsByAppCodeSubscriptionsData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<
+    GetApiApplicationsByAppCodeSubscriptionsResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/applications/{appCode}/subscriptions",
+    ...options,
+  });
+};
+
+/**
+ * Sync application subscriptions
+ * Bulk sync subscriptions from an external application. Creates new subscriptions, updates existing API-sourced subscriptions. Set removeUnlisted=true to remove API-sourced subscriptions not in the sync list.
+ */
+export const postApiApplicationsByAppCodeSubscriptionsSync = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<
+    PostApiApplicationsByAppCodeSubscriptionsSyncData,
+    ThrowOnError
+  >,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    PostApiApplicationsByAppCodeSubscriptionsSyncResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/applications/{appCode}/subscriptions/sync",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
   });
 };
 

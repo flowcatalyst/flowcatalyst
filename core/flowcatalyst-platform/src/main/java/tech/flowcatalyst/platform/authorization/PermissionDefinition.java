@@ -45,7 +45,7 @@ public interface PermissionDefinition {
      * @param context Bounded context
      * @param aggregate Resource/entity
      * @param action Operation
-     * @param description Human-readable description
+     * @param description Human-readable description (optional, may be null)
      * @return Permission instance
      */
     static PermissionRecord make(String application, String context, String aggregate,

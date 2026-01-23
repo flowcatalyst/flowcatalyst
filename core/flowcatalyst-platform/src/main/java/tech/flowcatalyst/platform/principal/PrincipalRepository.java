@@ -14,6 +14,7 @@ public interface PrincipalRepository {
     Optional<Principal> findByIdOptional(String id);
     Optional<Principal> findByEmail(String email);
     Optional<Principal> findByServiceAccountCode(String code);
+    Optional<Principal> findByServiceAccountId(String serviceAccountId);
 
     // Read operations - lists
     List<Principal> findByType(PrincipalType type);

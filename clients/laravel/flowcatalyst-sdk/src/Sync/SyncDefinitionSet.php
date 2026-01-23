@@ -46,6 +46,9 @@ final class SyncDefinitionSet
     /** @var array<SubscriptionDefinition|array<string, mixed>> */
     private array $subscriptions = [];
 
+    /** @var array<DispatchPoolDefinition|array<string, mixed>> */
+    private array $dispatchPools = [];
+
     public function __construct(
         public readonly string $applicationCode,
     ) {}
@@ -131,6 +134,30 @@ final class SyncDefinitionSet
     }
 
     /**
+     * Add dispatch pools to the definition set.
+     *
+     * @param array<DispatchPoolDefinition|array<string, mixed>> $dispatchPools
+     */
+    public function withDispatchPools(array $dispatchPools): self
+    {
+        $clone = clone $this;
+        $clone->dispatchPools = $dispatchPools;
+        return $clone;
+    }
+
+    /**
+     * Add a single dispatch pool to the definition set.
+     *
+     * @param DispatchPoolDefinition|array<string, mixed> $dispatchPool
+     */
+    public function addDispatchPool(DispatchPoolDefinition|array $dispatchPool): self
+    {
+        $clone = clone $this;
+        $clone->dispatchPools = [...$this->dispatchPools, $dispatchPool];
+        return $clone;
+    }
+
+    /**
      * Get roles as arrays for the sync API.
      *
      * @return array<array<string, mixed>>
@@ -170,6 +197,19 @@ final class SyncDefinitionSet
     }
 
     /**
+     * Get dispatch pools as arrays for the sync API.
+     *
+     * @return array<array<string, mixed>>
+     */
+    public function getDispatchPools(): array
+    {
+        return array_map(
+            fn($pool) => $pool instanceof DispatchPoolDefinition ? $pool->toArray() : $pool,
+            $this->dispatchPools
+        );
+    }
+
+    /**
      * Check if there are any roles to sync.
      */
     public function hasRoles(): bool
@@ -194,18 +234,26 @@ final class SyncDefinitionSet
     }
 
     /**
+     * Check if there are any dispatch pools to sync.
+     */
+    public function hasDispatchPools(): bool
+    {
+        return !empty($this->dispatchPools);
+    }
+
+    /**
      * Check if the definition set is empty.
      */
     public function isEmpty(): bool
     {
-        return !$this->hasRoles() && !$this->hasEventTypes() && !$this->hasSubscriptions();
+        return !$this->hasRoles() && !$this->hasEventTypes() && !$this->hasSubscriptions() && !$this->hasDispatchPools();
     }
 
     /**
      * Create from the scanned definitions repository format.
      *
      * @param string $applicationCode
-     * @param array{roles?: array<array<string, mixed>>, eventTypes?: array<array<string, mixed>>, subscriptions?: array<array<string, mixed>>} $data
+     * @param array{roles?: array<array<string, mixed>>, eventTypes?: array<array<string, mixed>>, subscriptions?: array<array<string, mixed>>, dispatchPools?: array<array<string, mixed>>} $data
      */
     public static function fromScannedDefinitions(string $applicationCode, array $data): self
     {
@@ -226,6 +274,11 @@ final class SyncDefinitionSet
             unset($sub['_class']);
             return $sub;
         }, $data['subscriptions'] ?? []);
+
+        $set->dispatchPools = array_map(function ($pool) {
+            unset($pool['_class']);
+            return $pool;
+        }, $data['dispatchPools'] ?? []);
 
         return $set;
     }

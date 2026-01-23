@@ -33,6 +33,9 @@ public class SubscriptionEntity {
     @Column(name = "client_identifier", length = 100)
     public String clientIdentifier;
 
+    @Column(name = "client_scoped", nullable = false)
+    public boolean clientScoped;
+
     @Column(name = "target", nullable = false, length = 500)
     public String target;
 

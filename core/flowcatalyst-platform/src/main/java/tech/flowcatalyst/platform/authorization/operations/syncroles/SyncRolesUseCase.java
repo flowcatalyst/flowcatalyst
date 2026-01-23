@@ -2,10 +2,12 @@ package tech.flowcatalyst.platform.authorization.operations.syncroles;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import tech.flowcatalyst.platform.application.Application;
 import tech.flowcatalyst.platform.application.ApplicationRepository;
 import tech.flowcatalyst.platform.authorization.AuthRole;
 import tech.flowcatalyst.platform.authorization.AuthRoleRepository;
+import tech.flowcatalyst.platform.authorization.PermissionInput;
 import tech.flowcatalyst.platform.authorization.PermissionRegistry;
 import tech.flowcatalyst.platform.authorization.events.RolesSynced;
 import tech.flowcatalyst.platform.common.AuthorizationContext;
@@ -37,6 +39,7 @@ public class SyncRolesUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
+    @Transactional
     public Result<RolesSynced> execute(SyncRolesCommand command, ExecutionContext context) {
         // Authorization check: can principal manage this application?
         AuthorizationContext authz = context.authz();
@@ -57,6 +60,12 @@ public class SyncRolesUseCase {
             ));
         }
 
+        // Validate all permission strings have correct format before processing
+        Result<Void> validationResult = validatePermissions(command.roles());
+        if (validationResult instanceof Result.Failure<Void> f) {
+            return Result.failure(f.error());
+        }
+
         Set<String> syncedRoleNames = new HashSet<>();
         int rolesCreated = 0;
         int rolesUpdated = 0;
@@ -68,6 +77,9 @@ public class SyncRolesUseCase {
 
             Optional<AuthRole> existingOpt = roleRepo.findByName(fullRoleName);
 
+            // Build permission strings from structured inputs
+            Set<String> permissionStrings = item.buildPermissionStrings();
+
             if (existingOpt.isPresent()) {
                 AuthRole existing = existingOpt.get();
                 if (existing.source == AuthRole.RoleSource.SDK) {
@@ -75,8 +87,7 @@ public class SyncRolesUseCase {
                     existing.displayName = item.displayName() != null ?
                         item.displayName() : formatDisplayName(item.name());
                     existing.description = item.description();
-                    existing.permissions = item.permissions() != null ?
-                        item.permissions() : new HashSet<>();
+                    existing.permissions = permissionStrings;
                     existing.clientManaged = item.clientManaged();
 
                     roleRepo.update(existing);
@@ -93,7 +104,7 @@ public class SyncRolesUseCase {
                 role.name = fullRoleName;
                 role.displayName = item.displayName() != null ? item.displayName() : formatDisplayName(item.name());
                 role.description = item.description();
-                role.permissions = item.permissions() != null ? item.permissions() : new HashSet<>();
+                role.permissions = permissionStrings;
                 role.source = AuthRole.RoleSource.SDK;
                 role.clientManaged = item.clientManaged();
 
@@ -147,5 +158,43 @@ public class SyncRolesUseCase {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * Validate all permissions in the sync request.
+     * Each permission segment is validated individually.
+     */
+    private Result<Void> validatePermissions(List<SyncRolesCommand.SyncRoleItem> roles) {
+        for (SyncRolesCommand.SyncRoleItem role : roles) {
+            if (role.permissions() == null || role.permissions().isEmpty()) {
+                continue;
+            }
+
+            for (PermissionInput permission : role.permissions()) {
+                if (permission == null) {
+                    return Result.failure(new UseCaseError.ValidationError(
+                        "INVALID_PERMISSION",
+                        "Permission cannot be null",
+                        Map.of("role", role.name())
+                    ));
+                }
+
+                String validationError = permission.validate();
+                if (validationError != null) {
+                    return Result.failure(new UseCaseError.ValidationError(
+                        "INVALID_PERMISSION_FORMAT",
+                        "Invalid permission for role '" + role.name() + "': " + validationError,
+                        Map.of(
+                            "role", role.name(),
+                            "permission", permission.buildPermissionString(),
+                            "error", validationError,
+                            "expectedFormat", "{application}:{context}:{aggregate}:{action}",
+                            "example", "myapp:orders:order:view"
+                        )
+                    ));
+                }
+            }
+        }
+        return Result.success(null);
     }
 }

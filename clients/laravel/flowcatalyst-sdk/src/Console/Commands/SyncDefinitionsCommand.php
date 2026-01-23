@@ -25,6 +25,7 @@ class SyncDefinitionsCommand extends Command
                             {--roles : Sync only roles}
                             {--event-types : Sync only event types}
                             {--subscriptions : Sync only subscriptions}
+                            {--dispatch-pools : Sync only dispatch pools}
                             {--remove-unlisted : Remove definitions not in local cache}
                             {--dry-run : Show what would be synced without actually syncing}';
 
@@ -56,12 +57,13 @@ class SyncDefinitionsCommand extends Command
         }
 
         // Build options from command flags
-        $syncAll = !$this->option('roles') && !$this->option('event-types') && !$this->option('subscriptions');
+        $syncAll = !$this->option('roles') && !$this->option('event-types') && !$this->option('subscriptions') && !$this->option('dispatch-pools');
         $options = new SyncOptions(
             removeUnlisted: $removeUnlisted,
             syncRoles: $syncAll || $this->option('roles'),
             syncEventTypes: $syncAll || $this->option('event-types'),
             syncSubscriptions: $syncAll || $this->option('subscriptions'),
+            syncDispatchPools: $syncAll || $this->option('dispatch-pools'),
         );
 
         // Build definition set from cached definitions
@@ -117,6 +119,14 @@ class SyncDefinitionsCommand extends Command
             }
             $this->newLine();
         }
+
+        if ($options->syncDispatchPools && $definitions->hasDispatchPools()) {
+            $this->info('Dispatch pools to sync:');
+            foreach ($definitions->getDispatchPools() as $pool) {
+                $this->line("  - {$pool['code']}");
+            }
+            $this->newLine();
+        }
     }
 
     /**
@@ -156,6 +166,12 @@ class SyncDefinitionsCommand extends Command
                     $result->subscriptions['created'] ?? 0,
                     $result->subscriptions['updated'] ?? 0,
                     $result->subscriptions['deleted'] ?? 0,
+                ],
+                [
+                    'Dispatch Pools',
+                    $result->dispatchPools['created'] ?? 0,
+                    $result->dispatchPools['updated'] ?? 0,
+                    $result->dispatchPools['deleted'] ?? 0,
                 ],
             ]
         );

@@ -29,7 +29,8 @@ public record EventType(
 
     /**
      * Unique event type code (globally unique, not tenant-scoped).
-     * Format: {app}:{subdomain}:{aggregate}:{event}
+     * Format: {application}:{subdomain}:{aggregate}:{event}
+     * Example: operant:execution:trip:started
      */
     String code,
 
@@ -54,9 +55,21 @@ public record EventType(
     EventTypeStatus status,
 
     /**
-     * Source of the event type - how it was created (API/SDK or UI).
+     * Source of the event type - how it was created (CODE, API/SDK, or UI).
      */
     EventTypeSource source,
+
+    /**
+     * Whether events of this type are scoped to a specific client.
+     *
+     * <p>Client-scoped event types represent events that occur within a client context
+     * (e.g., spar:orders:order:created). Non-client-scoped event types are platform-wide
+     * (e.g., platform:iam:user:created).
+     *
+     * <p>This field is immutable after creation. Subscriptions to client-scoped event types
+     * must also be client-scoped, and vice versa.
+     */
+    boolean clientScoped,
 
     Instant createdAt,
 
@@ -112,9 +125,10 @@ public record EventType(
      *
      * @param code Unique event type code
      * @param name Human-readable name
+     * @param clientScoped Whether events of this type are scoped to a client
      * @return A pre-configured builder with defaults set
      */
-    public static EventTypeBuilder create(String code, String name) {
+    public static EventTypeBuilder create(String code, String name, boolean clientScoped) {
         var now = Instant.now();
         return EventType.builder()
             .id(TsidGenerator.generate())
@@ -123,6 +137,7 @@ public record EventType(
             .specVersions(new ArrayList<>())
             .status(EventTypeStatus.CURRENT)
             .source(EventTypeSource.UI)
+            .clientScoped(clientScoped)
             .createdAt(now)
             .updatedAt(now);
     }
@@ -132,9 +147,10 @@ public record EventType(
      *
      * @param code Unique event type code
      * @param name Human-readable name
+     * @param clientScoped Whether events of this type are scoped to a client
      * @return A pre-configured builder with defaults set
      */
-    public static EventTypeBuilder createFromApi(String code, String name) {
+    public static EventTypeBuilder createFromApi(String code, String name, boolean clientScoped) {
         var now = Instant.now();
         return EventType.builder()
             .id(TsidGenerator.generate())
@@ -143,6 +159,29 @@ public record EventType(
             .specVersions(new ArrayList<>())
             .status(EventTypeStatus.CURRENT)
             .source(EventTypeSource.API)
+            .clientScoped(clientScoped)
+            .createdAt(now)
+            .updatedAt(now);
+    }
+
+    /**
+     * Create a new event type from code (platform event types) with required fields and sensible defaults.
+     *
+     * @param code Unique event type code
+     * @param name Human-readable name
+     * @param clientScoped Whether events of this type are scoped to a client
+     * @return A pre-configured builder with defaults set
+     */
+    public static EventTypeBuilder createFromCode(String code, String name, boolean clientScoped) {
+        var now = Instant.now();
+        return EventType.builder()
+            .id(TsidGenerator.generate())
+            .code(code)
+            .name(name)
+            .specVersions(new ArrayList<>())
+            .status(EventTypeStatus.CURRENT)
+            .source(EventTypeSource.CODE)
+            .clientScoped(clientScoped)
             .createdAt(now)
             .updatedAt(now);
     }

@@ -1,9 +1,7 @@
 package tech.flowcatalyst.platform.principal.mapper;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import tech.flowcatalyst.platform.principal.ManagedApplicationScope;
 import tech.flowcatalyst.platform.principal.Principal;
-import tech.flowcatalyst.platform.principal.ServiceAccount;
 import tech.flowcatalyst.platform.principal.UserIdentity;
 import tech.flowcatalyst.platform.principal.entity.PrincipalEntity;
 import tech.flowcatalyst.platform.principal.entity.PrincipalManagedApplicationEntity;
@@ -17,8 +15,6 @@ import java.util.stream.Collectors;
  * Mapper for converting between Principal domain model and JPA entity.
  */
 public final class PrincipalMapper {
-
-    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private PrincipalMapper() {
     }
@@ -37,7 +33,6 @@ public final class PrincipalMapper {
         domain.type = entity.type;
         domain.scope = entity.scope;
         domain.clientId = entity.clientId;
-        domain.applicationId = entity.applicationId;
         domain.managedApplicationScope = entity.managedApplicationScope != null
             ? entity.managedApplicationScope
             : ManagedApplicationScope.NONE;
@@ -59,10 +54,8 @@ public final class PrincipalMapper {
             domain.userIdentity = ui;
         }
 
-        // ServiceAccount (from JSONB)
-        if (entity.serviceAccount != null && !entity.serviceAccount.isBlank()) {
-            domain.serviceAccount = parseJson(entity.serviceAccount, ServiceAccount.class);
-        }
+        // ServiceAccount FK (primary way to link to ServiceAccount entity)
+        domain.serviceAccountId = entity.serviceAccountId;
 
         // Note: Roles are loaded separately from principal_roles table via toRoleAssignments()
         // The roles column has been dropped from the principals table
@@ -83,7 +76,6 @@ public final class PrincipalMapper {
         entity.type = domain.type;
         entity.scope = domain.scope;
         entity.clientId = domain.clientId;
-        entity.applicationId = domain.applicationId;
         entity.managedApplicationScope = domain.managedApplicationScope;
         entity.name = domain.name;
         entity.active = domain.active;
@@ -101,8 +93,8 @@ public final class PrincipalMapper {
             entity.lastLoginAt = domain.userIdentity.lastLoginAt;
         }
 
-        // ServiceAccount (to JSONB)
-        entity.serviceAccount = toJson(domain.serviceAccount);
+        // ServiceAccount FK (primary way to link)
+        entity.serviceAccountId = domain.serviceAccountId;
 
         // Note: Roles are persisted separately to principal_roles table via toRoleEntities()
         // The roles column has been dropped from the principals table
@@ -117,7 +109,6 @@ public final class PrincipalMapper {
         entity.type = domain.type;
         entity.scope = domain.scope;
         entity.clientId = domain.clientId;
-        entity.applicationId = domain.applicationId;
         entity.managedApplicationScope = domain.managedApplicationScope;
         entity.name = domain.name;
         entity.active = domain.active;
@@ -132,7 +123,7 @@ public final class PrincipalMapper {
             entity.lastLoginAt = domain.userIdentity.lastLoginAt;
         }
 
-        entity.serviceAccount = toJson(domain.serviceAccount);
+        entity.serviceAccountId = domain.serviceAccountId;
         // Note: Roles are updated separately via principal_roles table
     }
 
@@ -189,25 +180,4 @@ public final class PrincipalMapper {
             .collect(Collectors.toList());
     }
 
-    // ========================================================================
-    // JSON Utilities
-    // ========================================================================
-
-    private static <T> T parseJson(String json, Class<T> clazz) {
-        if (json == null || json.isBlank()) return null;
-        try {
-            return objectMapper.readValue(json, clazz);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private static String toJson(Object obj) {
-        if (obj == null) return null;
-        try {
-            return objectMapper.writeValueAsString(obj);
-        } catch (Exception e) {
-            return null;
-        }
-    }
 }

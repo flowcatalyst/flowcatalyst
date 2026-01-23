@@ -267,6 +267,15 @@ async function deleteEventType() {
                 <label>Description</label>
                 <span>{{ eventType.description || '—' }}</span>
               </div>
+              <div class="detail-item">
+                <label>Client Scoped</label>
+                <span>
+                  <Tag
+                    :value="eventType.clientScoped ? 'Yes' : 'No'"
+                    :severity="eventType.clientScoped ? 'info' : 'secondary'"
+                  />
+                </span>
+              </div>
             </div>
           </template>
         </div>

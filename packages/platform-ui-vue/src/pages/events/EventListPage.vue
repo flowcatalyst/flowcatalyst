@@ -369,7 +369,7 @@ function hasActiveFilters(): boolean {
         <Column field="clientId" header="Client" style="width: 10rem">
           <template #body="{ data }">
             <span v-if="data.clientId" class="font-mono text-sm">{{ truncateId(data.clientId) }}</span>
-            <Tag v-else value="Platform" severity="secondary" />
+            <span v-else class="text-muted">-</span>
           </template>
         </Column>
         <Column field="time" header="Time" style="width: 12rem">
@@ -437,7 +437,7 @@ function hasActiveFilters(): boolean {
         <div class="detail-row">
           <label>Client ID</label>
           <span v-if="selectedEvent.clientId" class="font-mono">{{ selectedEvent.clientId }}</span>
-          <Tag v-else value="Platform (No Client)" severity="secondary" />
+          <span v-else class="text-muted">-</span>
         </div>
         <div class="detail-row">
           <label>Message Group</label>
@@ -536,6 +536,10 @@ function hasActiveFilters(): boolean {
 
 .text-sm {
   font-size: 0.875rem;
+}
+
+.text-muted {
+  color: var(--text-color-secondary);
 }
 
 .truncate-cell {

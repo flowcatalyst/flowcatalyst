@@ -116,4 +116,31 @@ public interface UnitOfWork {
         T event,
         Object command
     );
+
+    /**
+     * Commit deletion of multiple entities with a domain event atomically.
+     *
+     * <p>Use this for cascade delete operations, such as deleting a service account
+     * which also deletes its associated Principal and OAuthClient.
+     *
+     * <p>Within a single transaction:
+     * <ol>
+     *   <li>Deletes all aggregate entities</li>
+     *   <li>Creates the domain event in the events collection</li>
+     *   <li>Creates the audit log entry</li>
+     * </ol>
+     *
+     * <p>If any step fails, the entire transaction is rolled back.
+     *
+     * @param aggregates The entities to delete (each must have public String id field)
+     * @param event      The domain event representing what happened
+     * @param command    The command that was executed (for audit log)
+     * @param <T>        The domain event type
+     * @return Success with the event, or Failure if transaction fails
+     */
+    <T extends DomainEvent> Result<T> commitDeleteAll(
+        java.util.List<Object> aggregates,
+        T event,
+        Object command
+    );
 }
