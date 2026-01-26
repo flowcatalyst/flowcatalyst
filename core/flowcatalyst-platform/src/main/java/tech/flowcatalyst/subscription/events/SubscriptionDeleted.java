@@ -34,6 +34,7 @@ public record SubscriptionDeleted(
     // Event-specific payload
     String subscriptionId,
     String code,
+    String applicationCode,
     String clientId,
     String clientIdentifier,
     List<EventTypeBinding> eventTypes
@@ -83,7 +84,7 @@ public record SubscriptionDeleted(
     public String toDataJson() {
         try {
             return MAPPER.writeValueAsString(new Data(
-                subscriptionId, code, clientId, clientIdentifier, eventTypes
+                subscriptionId, code, applicationCode, clientId, clientIdentifier, eventTypes
             ));
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize event data", e);
@@ -93,6 +94,7 @@ public record SubscriptionDeleted(
     public record Data(
         String subscriptionId,
         String code,
+        String applicationCode,
         String clientId,
         String clientIdentifier,
         List<EventTypeBinding> eventTypes

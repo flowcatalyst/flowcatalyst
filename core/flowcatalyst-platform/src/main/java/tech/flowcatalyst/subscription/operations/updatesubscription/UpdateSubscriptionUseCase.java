@@ -177,6 +177,7 @@ public class UpdateSubscriptionUseCase {
         Subscription updated = new Subscription(
             existing.id(),
             existing.code(),
+            existing.applicationCode(),  // applicationCode is immutable - preserve existing
             newName,
             newDescription,
             existing.clientId(),
@@ -206,6 +207,7 @@ public class UpdateSubscriptionUseCase {
         SubscriptionUpdated event = SubscriptionUpdated.fromContext(context)
             .subscriptionId(updated.id())
             .code(updated.code())
+            .applicationCode(updated.applicationCode())
             .name(updated.name())
             .description(updated.description())
             .clientId(updated.clientId())

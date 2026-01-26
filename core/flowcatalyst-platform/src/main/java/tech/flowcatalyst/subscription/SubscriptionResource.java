@@ -153,6 +153,7 @@ public class SubscriptionResource {
 
         CreateSubscriptionCommand command = new CreateSubscriptionCommand(
             request.code(),
+            request.applicationCode(),
             request.name(),
             request.description(),
             request.clientScoped(),
@@ -393,6 +394,7 @@ public class SubscriptionResource {
         return new SubscriptionDto(
             subscription.id(),
             subscription.code(),
+            subscription.applicationCode(),
             subscription.name(),
             subscription.description(),
             subscription.clientScoped(),
@@ -424,6 +426,7 @@ public class SubscriptionResource {
     public record SubscriptionDto(
         String id,
         String code,
+        String applicationCode,
         String name,
         String description,
         boolean clientScoped,
@@ -458,6 +461,8 @@ public class SubscriptionResource {
         @NotBlank(message = "Code is required")
         @Size(min = 2, max = 100, message = "Code must be 2-100 characters")
         String code,
+
+        String applicationCode,
 
         @NotBlank(message = "Name is required")
         @Size(max = 255, message = "Name must be less than 255 characters")

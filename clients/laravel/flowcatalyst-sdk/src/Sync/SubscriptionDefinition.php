@@ -17,6 +17,7 @@ final class SubscriptionDefinition
      * @param string $target Target URL for webhook delivery
      * @param string $queue Queue name for delivery
      * @param string $dispatchPoolCode Code of the dispatch pool to use
+     * @param string|null $applicationCode Application code this subscription belongs to
      * @param string|null $description Subscription description
      * @param bool $clientScoped Whether this subscription is client-scoped
      * @param string|null $eventTypeCode Code of the event type to subscribe to (resolved to ID by platform)
@@ -31,6 +32,7 @@ final class SubscriptionDefinition
         public readonly string $target,
         public readonly string $queue,
         public readonly string $dispatchPoolCode,
+        public readonly ?string $applicationCode = null,
         public readonly ?string $description = null,
         public readonly bool $clientScoped = false,
         public readonly ?string $eventTypeCode = null,
@@ -64,6 +66,7 @@ final class SubscriptionDefinition
             target: $this->target,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
+            applicationCode: $this->applicationCode,
             description: $description,
             clientScoped: $this->clientScoped,
             eventTypeCode: $this->eventTypeCode,
@@ -85,6 +88,7 @@ final class SubscriptionDefinition
             target: $this->target,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
+            applicationCode: $this->applicationCode,
             description: $this->description,
             clientScoped: $clientScoped,
             eventTypeCode: $this->eventTypeCode,
@@ -106,6 +110,7 @@ final class SubscriptionDefinition
             target: $this->target,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
+            applicationCode: $this->applicationCode,
             description: $this->description,
             clientScoped: $this->clientScoped,
             eventTypeCode: $eventTypeCode,
@@ -127,6 +132,7 @@ final class SubscriptionDefinition
             target: $this->target,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
+            applicationCode: $this->applicationCode,
             description: $this->description,
             clientScoped: $this->clientScoped,
             eventTypeCode: $this->eventTypeCode,
@@ -148,6 +154,7 @@ final class SubscriptionDefinition
             target: $this->target,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
+            applicationCode: $this->applicationCode,
             description: $this->description,
             clientScoped: $this->clientScoped,
             eventTypeCode: $this->eventTypeCode,
@@ -169,6 +176,7 @@ final class SubscriptionDefinition
             target: $this->target,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
+            applicationCode: $this->applicationCode,
             description: $this->description,
             clientScoped: $this->clientScoped,
             eventTypeCode: $this->eventTypeCode,
@@ -199,6 +207,10 @@ final class SubscriptionDefinition
             'active' => $this->active,
         ];
 
+        if ($this->applicationCode !== null) {
+            $data['applicationCode'] = $this->applicationCode;
+        }
+
         if ($this->description !== null) {
             $data['description'] = $this->description;
         }
@@ -223,6 +235,7 @@ final class SubscriptionDefinition
             target: $data['target'],
             queue: $data['queue'],
             dispatchPoolCode: $data['dispatchPoolCode'],
+            applicationCode: $data['applicationCode'] ?? null,
             description: $data['description'] ?? null,
             clientScoped: $data['clientScoped'] ?? false,
             eventTypeCode: $data['eventTypeCode'] ?? null,

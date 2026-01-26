@@ -17,6 +17,7 @@ class Subscription
     public function __construct(
         public readonly string $id,
         public readonly string $code,
+        public readonly ?string $applicationCode,
         public readonly string $name,
         public readonly ?string $description,
         public readonly bool $clientScoped,
@@ -45,6 +46,7 @@ class Subscription
         return new self(
             id: $data['id'],
             code: $data['code'],
+            applicationCode: $data['applicationCode'] ?? null,
             name: $data['name'],
             description: $data['description'] ?? null,
             clientScoped: $data['clientScoped'] ?? false,
@@ -77,6 +79,7 @@ class Subscription
         return [
             'id' => $this->id,
             'code' => $this->code,
+            'applicationCode' => $this->applicationCode,
             'name' => $this->name,
             'description' => $this->description,
             'clientScoped' => $this->clientScoped,

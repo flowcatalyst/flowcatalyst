@@ -28,6 +28,9 @@ public record Subscription(
     /** Unique code within client scope (or anchor-level if clientId is null) */
     String code,
 
+    /** Application/module code that owns this subscription (for filtering) */
+    String applicationCode,
+
     /** Display name */
     String name,
 
@@ -202,17 +205,19 @@ public record Subscription(
     /**
      * Create a new subscription with required fields and sensible defaults.
      *
-     * @param code         Unique code within client scope
-     * @param name         Display name
-     * @param target       Target URL for dispatching
-     * @param clientScoped Whether this subscription is scoped to clients
+     * @param code            Unique code within client scope
+     * @param applicationCode Application/module code that owns this subscription
+     * @param name            Display name
+     * @param target          Target URL for dispatching
+     * @param clientScoped    Whether this subscription is scoped to clients
      * @return A pre-configured builder with defaults set
      */
-    public static SubscriptionBuilder create(String code, String name, String target, boolean clientScoped) {
+    public static SubscriptionBuilder create(String code, String applicationCode, String name, String target, boolean clientScoped) {
         var now = Instant.now();
         return Subscription.builder()
             .id(TsidGenerator.generate(EntityType.SUBSCRIPTION))
             .code(code.toLowerCase())
+            .applicationCode(applicationCode)
             .name(name)
             .target(target)
             .clientScoped(clientScoped)

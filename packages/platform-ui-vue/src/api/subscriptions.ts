@@ -18,6 +18,7 @@ export interface ConfigEntry {
 export interface Subscription {
   id: string;
   code: string;
+  applicationCode?: string;
   name: string;
   description?: string;
   clientScoped: boolean;
@@ -47,6 +48,7 @@ export interface SubscriptionListResponse {
 
 export interface CreateSubscriptionRequest {
   code: string;
+  applicationCode?: string;
   name: string;
   description?: string;
   clientScoped: boolean;
@@ -85,6 +87,7 @@ export interface SubscriptionFilters {
   status?: SubscriptionStatus;
   source?: SubscriptionSource;
   dispatchPoolId?: string;
+  applicationCode?: string;
   anchorLevel?: boolean;
 }
 
@@ -100,6 +103,7 @@ export const subscriptionsApi = {
     if (filters.status) params.set('status', filters.status);
     if (filters.source) params.set('source', filters.source);
     if (filters.dispatchPoolId) params.set('dispatchPoolId', filters.dispatchPoolId);
+    if (filters.applicationCode) params.set('applicationCode', filters.applicationCode);
     if (filters.anchorLevel !== undefined) params.set('anchorLevel', String(filters.anchorLevel));
 
     const query = params.toString();

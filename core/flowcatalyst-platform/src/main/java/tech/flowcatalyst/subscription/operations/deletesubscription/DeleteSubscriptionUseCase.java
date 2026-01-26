@@ -75,6 +75,7 @@ public class DeleteSubscriptionUseCase {
         SubscriptionDeleted event = SubscriptionDeleted.fromContext(context)
             .subscriptionId(existing.id())
             .code(existing.code())
+            .applicationCode(existing.applicationCode())
             .clientId(existing.clientId())
             .clientIdentifier(existing.clientIdentifier())
             .eventTypes(existing.eventTypes())

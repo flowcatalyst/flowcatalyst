@@ -80,12 +80,8 @@ public class ApplicationSubscriptionResource {
                 .build();
         }
 
-        Application app = applicationRepository.findByCode(appCode).orElse(null);
-        if (app == null) {
-            return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("APPLICATION_NOT_FOUND", "Application not found: " + appCode))
-                .build();
-        }
+        // Note: Application entity is not required - subscriptions can exist for modules
+        // that are not registered applications
 
         // Get anchor-level subscriptions
         List<Subscription> subscriptions = subscriptionOperations.findAnchorLevel();
@@ -242,6 +238,7 @@ public class ApplicationSubscriptionResource {
         return new SubscriptionDto(
             sub.id(),
             sub.code(),
+            sub.applicationCode(),
             sub.name(),
             sub.description(),
             eventTypes,
@@ -268,6 +265,7 @@ public class ApplicationSubscriptionResource {
     public record SubscriptionDto(
         String id,
         String code,
+        String applicationCode,
         String name,
         String description,
         List<EventTypeBindingDto> eventTypes,

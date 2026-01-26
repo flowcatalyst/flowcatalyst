@@ -11,6 +11,7 @@ import java.util.List;
  * Command to create a new subscription.
  *
  * @param code Unique code within client scope
+ * @param applicationCode Application/module code that owns this subscription
  * @param name Display name
  * @param description Optional description
  * @param clientScoped Whether this subscription is scoped to clients (must match event types)
@@ -32,6 +33,7 @@ import java.util.List;
  */
 public record CreateSubscriptionCommand(
     String code,
+    String applicationCode,
     String name,
     String description,
     boolean clientScoped,

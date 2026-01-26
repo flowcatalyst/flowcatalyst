@@ -21,6 +21,9 @@ public class SubscriptionEntity {
     @Column(name = "code", nullable = false, length = 100)
     public String code;
 
+    @Column(name = "application_code", length = 100)
+    public String applicationCode;
+
     @Column(name = "name", nullable = false, length = 200)
     public String name;
 

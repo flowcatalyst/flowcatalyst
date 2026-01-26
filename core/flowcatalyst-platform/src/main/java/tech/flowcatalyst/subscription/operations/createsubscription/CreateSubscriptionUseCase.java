@@ -234,6 +234,7 @@ public class CreateSubscriptionUseCase {
         Subscription subscription = new Subscription(
             TsidGenerator.generate(EntityType.SUBSCRIPTION),
             command.code().toLowerCase(),
+            command.applicationCode(),
             command.name(),
             command.description(),
             command.clientId(),
@@ -263,6 +264,7 @@ public class CreateSubscriptionUseCase {
         SubscriptionCreated event = SubscriptionCreated.fromContext(context)
             .subscriptionId(subscription.id())
             .code(subscription.code())
+            .applicationCode(subscription.applicationCode())
             .name(subscription.name())
             .description(subscription.description())
             .clientScoped(subscription.clientScoped())

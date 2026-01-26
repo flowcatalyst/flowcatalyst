@@ -7,6 +7,7 @@ import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Tag from 'primevue/tag';
 import Select from 'primevue/select';
+import MultiSelect from 'primevue/multiselect';
 import ProgressSpinner from 'primevue/progressspinner';
 import Message from 'primevue/message';
 import { subscriptionsApi, type Subscription, type SubscriptionStatus } from '@/api/subscriptions';
@@ -17,12 +18,23 @@ const loading = ref(true);
 const error = ref<string | null>(null);
 const searchQuery = ref('');
 const statusFilter = ref<SubscriptionStatus | null>(null);
+const applicationFilter = ref<string[]>([]);
 
 const statusOptions = [
   { label: 'All Statuses', value: null },
   { label: 'Active', value: 'ACTIVE' },
   { label: 'Paused', value: 'PAUSED' },
 ];
+
+const applicationOptions = computed(() => {
+  const codes = new Set<string>();
+  subscriptions.value.forEach(sub => {
+    if (sub.applicationCode) {
+      codes.add(sub.applicationCode);
+    }
+  });
+  return Array.from(codes).sort().map(code => ({ label: code, value: code }));
+});
 
 const filteredSubscriptions = computed(() => {
   let result = subscriptions.value;
@@ -31,12 +43,17 @@ const filteredSubscriptions = computed(() => {
     result = result.filter(sub => sub.status === statusFilter.value);
   }
 
+  if (applicationFilter.value.length > 0) {
+    result = result.filter(sub => sub.applicationCode && applicationFilter.value.includes(sub.applicationCode));
+  }
+
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase();
     result = result.filter(sub =>
       sub.code.toLowerCase().includes(query) ||
       sub.name.toLowerCase().includes(query) ||
       sub.target.toLowerCase().includes(query) ||
+      sub.applicationCode?.toLowerCase().includes(query) ||
       sub.clientIdentifier?.toLowerCase().includes(query)
     );
   }
@@ -113,6 +130,15 @@ function getEventTypesLabel(sub: Subscription) {
           <i class="pi pi-search" />
           <InputText v-model="searchQuery" placeholder="Search subscriptions..." />
         </span>
+        <MultiSelect
+          v-model="applicationFilter"
+          :options="applicationOptions"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Filter by application"
+          class="application-filter"
+          display="chip"
+        />
         <Select
           v-model="statusFilter"
           :options="statusOptions"
@@ -139,6 +165,12 @@ function getEventTypesLabel(sub: Subscription) {
         <Column field="code" header="Code" sortable>
           <template #body="{ data }">
             <code class="sub-code">{{ data.code }}</code>
+          </template>
+        </Column>
+        <Column field="applicationCode" header="Application" sortable>
+          <template #body="{ data }">
+            <code v-if="data.applicationCode" class="app-code">{{ data.applicationCode }}</code>
+            <span v-else class="no-app">—</span>
           </template>
         </Column>
         <Column field="name" header="Name" sortable />
@@ -224,6 +256,10 @@ function getEventTypesLabel(sub: Subscription) {
   min-width: 180px;
 }
 
+.application-filter {
+  min-width: 220px;
+}
+
 .loading-container {
   display: flex;
   justify-content: center;
@@ -239,6 +275,18 @@ function getEventTypesLabel(sub: Subscription) {
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 13px;
+}
+
+.app-code {
+  background: #fef3c7;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #92400e;
+}
+
+.no-app {
+  color: #94a3b8;
 }
 
 .pool-code {

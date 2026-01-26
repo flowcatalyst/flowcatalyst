@@ -34,6 +34,7 @@ public record SubscriptionCreated(
     // Event-specific payload
     String subscriptionId,
     String code,
+    String applicationCode,
     String name,
     String description,
     boolean clientScoped,
@@ -102,7 +103,7 @@ public record SubscriptionCreated(
     public String toDataJson() {
         try {
             return MAPPER.writeValueAsString(new Data(
-                subscriptionId, code, name, description, clientScoped, clientId, clientIdentifier,
+                subscriptionId, code, applicationCode, name, description, clientScoped, clientId, clientIdentifier,
                 eventTypes, target, queue, customConfig, subscriptionSource, status,
                 maxAgeSeconds, dispatchPoolId, dispatchPoolCode,
                 delaySeconds, sequence, mode, timeoutSeconds, maxRetries,
@@ -116,6 +117,7 @@ public record SubscriptionCreated(
     public record Data(
         String subscriptionId,
         String code,
+        String applicationCode,
         String name,
         String description,
         boolean clientScoped,

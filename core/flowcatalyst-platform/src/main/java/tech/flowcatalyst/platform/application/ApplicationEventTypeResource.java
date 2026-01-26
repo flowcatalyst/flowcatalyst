@@ -46,9 +46,6 @@ import java.util.Map;
 public class ApplicationEventTypeResource {
 
     @Inject
-    ApplicationRepository applicationRepository;
-
-    @Inject
     EventTypeOperations eventTypeOperations;
 
     @Inject
@@ -84,12 +81,8 @@ public class ApplicationEventTypeResource {
                 .build();
         }
 
-        Application app = applicationRepository.findByCode(appCode).orElse(null);
-        if (app == null) {
-            return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("APPLICATION_NOT_FOUND", "Application not found: " + appCode))
-                .build();
-        }
+        // Note: Application entity is not required - event types can exist for modules
+        // that are not registered applications
 
         // Find event types by code prefix
         String codePrefix = appCode + ":";
@@ -147,12 +140,8 @@ public class ApplicationEventTypeResource {
         }
         String principalId = principalIdOpt.get();
 
-        Application app = applicationRepository.findByCode(appCode).orElse(null);
-        if (app == null) {
-            return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("APPLICATION_NOT_FOUND", "Application not found: " + appCode))
-                .build();
-        }
+        // Note: Application entity is not required - event types can exist for modules
+        // that are not registered applications
 
         if (request.eventTypes() == null || request.eventTypes().isEmpty()) {
             return Response.status(Response.Status.BAD_REQUEST)

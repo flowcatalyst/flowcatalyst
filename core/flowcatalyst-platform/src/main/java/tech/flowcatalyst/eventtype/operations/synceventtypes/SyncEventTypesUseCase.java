@@ -7,8 +7,6 @@ import tech.flowcatalyst.eventtype.EventType;
 import tech.flowcatalyst.eventtype.EventTypeRepository;
 import tech.flowcatalyst.eventtype.EventTypeSource;
 import tech.flowcatalyst.eventtype.events.EventTypesSynced;
-import tech.flowcatalyst.platform.application.Application;
-import tech.flowcatalyst.platform.application.ApplicationRepository;
 import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
@@ -23,15 +21,15 @@ import java.util.*;
  *
  * <p>Event types are synced based on their code prefix (application code).
  * Only API-sourced event types can be modified via sync.
+ *
+ * <p>Note: A registered Application entity is NOT required. Event types can
+ * be synced for modules/prefixes that are not registered applications.
  */
 @ApplicationScoped
 public class SyncEventTypesUseCase {
 
     @Inject
     EventTypeRepository eventTypeRepo;
-
-    @Inject
-    ApplicationRepository appRepo;
 
     @Inject
     UnitOfWork unitOfWork;
@@ -46,19 +44,13 @@ public class SyncEventTypesUseCase {
             ));
         }
 
-        // Look up application
-        Application app = appRepo.findByCode(command.applicationCode()).orElse(null);
-        if (app == null) {
-            return Result.failure(new UseCaseError.NotFoundError(
-                "APPLICATION_NOT_FOUND",
-                "Application not found: " + command.applicationCode(),
-                Map.of("applicationCode", command.applicationCode())
-            ));
-        }
+        String codePrefix = command.applicationCode() + ":";
 
-        // Authorization check: can principal manage this application?
+        // Authorization check: can principal manage resources with this prefix?
+        // Note: Application entity is optional - event types can exist for modules
+        // that are not registered applications
         AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canManageApplication(app.id)) {
+        if (authz != null && !authz.canManageResourceWithPrefix(codePrefix)) {
             return Result.failure(new UseCaseError.AuthorizationError(
                 "NOT_AUTHORIZED",
                 "Not authorized to sync event types for this application",
@@ -66,7 +58,6 @@ public class SyncEventTypesUseCase {
             ));
         }
 
-        String codePrefix = command.applicationCode() + ":";
         Set<String> syncedCodes = new HashSet<>();
         int created = 0;
         int updated = 0;
@@ -123,7 +114,7 @@ public class SyncEventTypesUseCase {
             .syncedEventTypeCodes(new ArrayList<>(syncedCodes))
             .build();
 
-        // Commit atomically with the app as the entity for the event
-        return unitOfWork.commit(app, event, command);
+        // Commit - no entity to persist (event types already persisted via repository)
+        return unitOfWork.commitAll(List.of(), event, command);
     }
 }

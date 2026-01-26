@@ -27,6 +27,7 @@ public final class SubscriptionMapper {
         return Subscription.builder()
             .id(entity.id)
             .code(entity.code)
+            .applicationCode(entity.applicationCode)
             .name(entity.name)
             .description(entity.description)
             .clientId(entity.clientId)
@@ -64,6 +65,7 @@ public final class SubscriptionMapper {
         SubscriptionEntity entity = new SubscriptionEntity();
         entity.id = domain.id();
         entity.code = domain.code();
+        entity.applicationCode = domain.applicationCode();
         entity.name = domain.name();
         entity.description = domain.description();
         entity.clientId = domain.clientId();
@@ -94,6 +96,7 @@ public final class SubscriptionMapper {
      */
     public static void updateEntity(SubscriptionEntity entity, Subscription domain) {
         entity.code = domain.code();
+        entity.applicationCode = domain.applicationCode();
         entity.name = domain.name();
         entity.description = domain.description();
         entity.clientId = domain.clientId();

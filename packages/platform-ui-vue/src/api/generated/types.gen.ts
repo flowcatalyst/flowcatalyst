@@ -458,6 +458,7 @@ export type CreateServiceAccountResponse = {
 
 export type CreateSubscriptionRequest = {
   code: string;
+  applicationCode?: string;
   name: string;
   description?: string;
   clientScoped?: boolean;
@@ -1118,6 +1119,7 @@ export type StatusChangeRequest = {
 export type SubscriptionDto = {
   id?: string;
   code?: string;
+  applicationCode?: string;
   name?: string;
   description?: string;
   eventTypes?: Array<EventTypeBindingDto>;
@@ -1141,6 +1143,7 @@ export type SubscriptionDto = {
 export type SubscriptionDto1 = {
   id?: string;
   code?: string;
+  applicationCode?: string;
   name?: string;
   description?: string;
   clientScoped?: boolean;

@@ -26,7 +26,11 @@ import java.util.*;
  * Use case for syncing subscriptions from an external application (SDK).
  *
  * <p>Subscriptions are synced as anchor-level (clientId = null) with source = API.
- * The application's service account is used for webhook credentials.
+ * If a registered Application exists, its service account is used for webhook credentials.
+ *
+ * <p>Note: A registered Application entity is NOT required. Subscriptions can be
+ * synced for modules/prefixes that are not registered applications. In this case,
+ * the serviceAccountId will be null (unauthenticated webhooks).
  */
 @ApplicationScoped
 public class SyncSubscriptionsUseCase {
@@ -55,28 +59,15 @@ public class SyncSubscriptionsUseCase {
             ));
         }
 
-        // Look up application
+        String codePrefix = command.applicationCode() + ":";
+
+        // Look up application (optional - subscriptions can exist for modules without registered apps)
         Application app = appRepo.findByCode(command.applicationCode()).orElse(null);
-        if (app == null) {
-            return Result.failure(new UseCaseError.NotFoundError(
-                "APPLICATION_NOT_FOUND",
-                "Application not found: " + command.applicationCode(),
-                Map.of("applicationCode", command.applicationCode())
-            ));
-        }
+        String serviceAccountId = app != null ? app.serviceAccountId : null;
 
-        // Verify application has a service account
-        if (app.serviceAccountId == null) {
-            return Result.failure(new UseCaseError.ValidationError(
-                "NO_SERVICE_ACCOUNT",
-                "Application does not have a service account configured",
-                Map.of("applicationCode", command.applicationCode())
-            ));
-        }
-
-        // Authorization check
+        // Authorization check: can principal manage resources with this prefix?
         AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canManageApplication(app.id)) {
+        if (authz != null && !authz.canManageResourceWithPrefix(codePrefix)) {
             return Result.failure(new UseCaseError.AuthorizationError(
                 "NOT_AUTHORIZED",
                 "Not authorized to sync subscriptions for this application",
@@ -143,6 +134,7 @@ public class SyncSubscriptionsUseCase {
                 // Only update API-sourced subscriptions
                 if (existing.source() == SubscriptionSource.API) {
                     Subscription updatedSub = existing.toBuilder()
+                        .applicationCode(command.applicationCode()) // ensure applicationCode is set/updated
                         .name(item.name() != null ? item.name() : existing.name())
                         .description(item.description())
                         .eventTypes(eventTypeBindings.isEmpty() ? existing.eventTypes() : eventTypeBindings)
@@ -194,6 +186,7 @@ public class SyncSubscriptionsUseCase {
                 Subscription newSub = new Subscription(
                     TsidGenerator.generate(EntityType.SUBSCRIPTION),
                     code,
+                    command.applicationCode(), // application/module that owns this subscription
                     item.name() != null ? item.name() : code,
                     item.description(),
                     null, // anchor-level
@@ -213,7 +206,7 @@ public class SyncSubscriptionsUseCase {
                     item.mode() != null ? item.mode() : DispatchMode.IMMEDIATE,
                     item.timeoutSeconds() != null ? item.timeoutSeconds() : Subscription.DEFAULT_TIMEOUT_SECONDS,
                     item.maxRetries() != null ? item.maxRetries() : Subscription.DEFAULT_MAX_RETRIES,
-                    app.serviceAccountId,
+                    serviceAccountId,
                     item.dataOnly() != null ? item.dataOnly() : Subscription.DEFAULT_DATA_ONLY,
                     now,
                     now
@@ -243,7 +236,7 @@ public class SyncSubscriptionsUseCase {
             .syncedSubscriptionCodes(new ArrayList<>(syncedCodes))
             .build();
 
-        // Commit atomically with the app as the entity
-        return unitOfWork.commit(app, event, command);
+        // Commit - no entity to persist (subscriptions already persisted via repository)
+        return unitOfWork.commitAll(List.of(), event, command);
     }
 }
