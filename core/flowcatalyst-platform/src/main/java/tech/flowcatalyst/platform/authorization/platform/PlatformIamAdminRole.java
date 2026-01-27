@@ -28,7 +28,15 @@ public class PlatformIamAdminRole {
             PlatformIamPermissions.SERVICE_ACCOUNT_VIEW,
             PlatformIamPermissions.SERVICE_ACCOUNT_CREATE,
             PlatformIamPermissions.SERVICE_ACCOUNT_UPDATE,
-            PlatformIamPermissions.SERVICE_ACCOUNT_DELETE
+            PlatformIamPermissions.SERVICE_ACCOUNT_DELETE,
+            // OAuth client management
+            PlatformIamPermissions.OAUTH_CLIENT_VIEW,
+            PlatformIamPermissions.OAUTH_CLIENT_CREATE,
+            PlatformIamPermissions.OAUTH_CLIENT_UPDATE,
+            PlatformIamPermissions.OAUTH_CLIENT_DELETE,
+            // Anchor domain management
+            PlatformIamPermissions.ANCHOR_DOMAIN_VIEW,
+            PlatformIamPermissions.ANCHOR_DOMAIN_MANAGE
         ),
         "IAM administrator - manages users, roles, and service accounts"
     );

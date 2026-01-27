@@ -1,5 +1,6 @@
 package tech.flowcatalyst.platform.security;
 
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.DisplayName;
@@ -11,6 +12,7 @@ import tech.flowcatalyst.platform.authentication.OidcSyncService;
 import tech.flowcatalyst.platform.authorization.PrincipalRole;
 import tech.flowcatalyst.platform.authorization.RoleService;
 import tech.flowcatalyst.platform.principal.Principal;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.util.List;
@@ -256,7 +258,7 @@ class IdpRoleAuthorizationSecurityTest {
         assertThat(roleService.findAssignmentsByPrincipal(user.id)).hasSize(1);
 
         // ACT: Platform admin deletes mapping (removes from whitelist)
-        idpRoleMappingRepo.delete(mapping);
+        QuarkusTransaction.requiringNew().run(() -> idpRoleMappingRepo.delete(mapping));
 
         // User logs in again with same IDP role
         oidcSyncService.syncIdpRoles(user, List.of(idpRole));
@@ -440,12 +442,13 @@ class IdpRoleAuthorizationSecurityTest {
     }
 
     private IdpRoleMapping createIdpMapping(String idpRoleName, String internalRoleName) {
-        IdpRoleMapping mapping = new IdpRoleMapping();
-        mapping.id = TsidGenerator.generate();
-        mapping.idpRoleName = idpRoleName;
-        mapping.internalRoleName = internalRoleName;
-        idpRoleMappingRepo.persist(mapping);
-        // MongoDB doesn't need flush - writes are immediate
-        return mapping;
+        return QuarkusTransaction.requiringNew().call(() -> {
+            IdpRoleMapping mapping = new IdpRoleMapping();
+            mapping.id = TsidGenerator.generate(EntityType.IDP_ROLE_MAPPING);
+            mapping.idpRoleName = idpRoleName;
+            mapping.internalRoleName = internalRoleName;
+            idpRoleMappingRepo.persist(mapping);
+            return mapping;
+        });
     }
 }

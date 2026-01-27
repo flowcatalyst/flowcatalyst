@@ -60,7 +60,7 @@ public class ApplicationDispatchPoolResource {
      * List all anchor-level dispatch pools.
      */
     @GET
-    @Operation(summary = "List anchor-level dispatch pools",
+    @Operation(operationId = "listApplicationDispatchPools", summary = "List anchor-level dispatch pools",
         description = "Returns all anchor-level dispatch pools (clientId = null).")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of dispatch pools",
@@ -122,7 +122,7 @@ public class ApplicationDispatchPoolResource {
      */
     @POST
     @Path("/sync")
-    @Operation(summary = "Sync dispatch pools",
+    @Operation(operationId = "syncApplicationDispatchPools", summary = "Sync dispatch pools",
         description = "Bulk sync dispatch pools. Creates new pools, updates existing ones. " +
                       "Set removeUnlisted=true to archive pools not in the sync list.")
     @APIResponses({

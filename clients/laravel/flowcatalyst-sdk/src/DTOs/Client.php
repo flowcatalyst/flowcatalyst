@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace FlowCatalyst\DTOs;
 
+use FlowCatalyst\Generated\Model\ClientDto;
+
 class Client
 {
     public function __construct(
@@ -16,6 +18,20 @@ class Client
         public readonly string $createdAt,
         public readonly string $updatedAt,
     ) {}
+
+    public static function fromGenerated(ClientDto $dto): self
+    {
+        return new self(
+            id: $dto->getId(),
+            name: $dto->getName(),
+            identifier: $dto->getIdentifier(),
+            status: $dto->getStatus() ?? 'ACTIVE',
+            statusReason: $dto->getStatusReason(),
+            statusChangedAt: $dto->getStatusChangedAt()?->format('c'),
+            createdAt: $dto->getCreatedAt()?->format('c') ?? '',
+            updatedAt: $dto->getUpdatedAt()?->format('c') ?? '',
+        );
+    }
 
     public static function fromArray(array $data): self
     {

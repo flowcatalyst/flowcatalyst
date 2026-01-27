@@ -115,6 +115,7 @@ public class ClientService {
      * @param changedBy Who deactivated the client
      * @throws NotFoundException if client not found
      */
+    @Transactional
     public void deactivateClient(String clientId, String reason, String changedBy) {
         changeClientStatus(clientId, ClientStatus.INACTIVE, reason,
             "Client deactivated: " + reason, changedBy);
@@ -128,6 +129,7 @@ public class ClientService {
      * @param changedBy Who suspended the client
      * @throws NotFoundException if client not found
      */
+    @Transactional
     public void suspendClient(String clientId, String reason, String changedBy) {
         changeClientStatus(clientId, ClientStatus.SUSPENDED, reason,
             "Client suspended: " + reason, changedBy);
@@ -140,6 +142,7 @@ public class ClientService {
      * @param changedBy Who activated the client
      * @throws NotFoundException if client not found
      */
+    @Transactional
     public void activateClient(String clientId, String changedBy) {
         changeClientStatus(clientId, ClientStatus.ACTIVE, null,
             "Client activated", changedBy);

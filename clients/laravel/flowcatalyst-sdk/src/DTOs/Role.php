@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace FlowCatalyst\DTOs;
 
+use FlowCatalyst\Generated\Model\RoleDto;
+
 class Role
 {
     /**
@@ -21,6 +23,22 @@ class Role
         public readonly ?string $createdAt,
         public readonly ?string $updatedAt,
     ) {}
+
+    public static function fromGenerated(RoleDto $dto): self
+    {
+        return new self(
+            name: $dto->getName(),
+            applicationCode: $dto->getApplicationCode(),
+            fullName: $dto->getName(),
+            displayName: $dto->getDisplayName(),
+            description: $dto->getDescription(),
+            permissions: $dto->getPermissions() ?? [],
+            source: $dto->getSource(),
+            clientManaged: $dto->getClientManaged() ?? false,
+            createdAt: $dto->getCreatedAt()?->format('c'),
+            updatedAt: $dto->getUpdatedAt()?->format('c'),
+        );
+    }
 
     public static function fromArray(array $data): self
     {

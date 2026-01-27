@@ -58,6 +58,7 @@ import java.util.Map;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @EmbeddedModeOnly
+@jakarta.transaction.Transactional
 public class ApplicationAdminResource {
 
     @Inject
@@ -98,7 +99,7 @@ public class ApplicationAdminResource {
     // ========================================================================
 
     @GET
-    @Operation(summary = "List all applications")
+    @Operation(operationId = "listApplications", summary = "List all applications")
     public Response listApplications(
             @QueryParam("activeOnly") @DefaultValue("false") boolean activeOnly,
             @QueryParam("type") String type) {
@@ -132,7 +133,7 @@ public class ApplicationAdminResource {
 
     @GET
     @Path("/{id}")
-    @Operation(summary = "Get application by ID")
+    @Operation(operationId = "getApplication", summary = "Get application by ID")
     public Response getApplication(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();
@@ -147,7 +148,7 @@ public class ApplicationAdminResource {
 
     @GET
     @Path("/by-code/{code}")
-    @Operation(summary = "Get application by code")
+    @Operation(operationId = "getApplicationByCode", summary = "Get application by code")
     public Response getApplicationByCode(@PathParam("code") String code) {
         String principalId = auditContext.requirePrincipalId();
         authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_VIEW);
@@ -160,7 +161,7 @@ public class ApplicationAdminResource {
     }
 
     @POST
-    @Operation(summary = "Create a new application")
+    @Operation(operationId = "createApplication", summary = "Create a new application")
     public Response createApplication(CreateApplicationRequest request) {
         String principalId = auditContext.requirePrincipalId();
         authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_CREATE);
@@ -240,7 +241,7 @@ public class ApplicationAdminResource {
 
     @PUT
     @Path("/{id}")
-    @Operation(summary = "Update an application")
+    @Operation(operationId = "updateApplication", summary = "Update an application")
     public Response updateApplication(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id,
             UpdateApplicationRequest request) {
@@ -281,7 +282,7 @@ public class ApplicationAdminResource {
 
     @DELETE
     @Path("/{id}")
-    @Operation(summary = "Delete an application",
+    @Operation(operationId = "deleteApplication", summary = "Delete an application",
         description = "Permanently deletes an application. The application must be deactivated first.")
     public Response deleteApplication(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
@@ -310,7 +311,7 @@ public class ApplicationAdminResource {
 
     @POST
     @Path("/{id}/activate")
-    @Operation(summary = "Activate an application")
+    @Operation(operationId = "activateApplication", summary = "Activate an application")
     public Response activateApplication(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();
@@ -338,7 +339,7 @@ public class ApplicationAdminResource {
 
     @POST
     @Path("/{id}/deactivate")
-    @Operation(summary = "Deactivate an application")
+    @Operation(operationId = "deactivateApplication", summary = "Deactivate an application")
     public Response deactivateApplication(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();
@@ -366,7 +367,7 @@ public class ApplicationAdminResource {
 
     @POST
     @Path("/{id}/provision-service-account")
-    @Operation(summary = "Provision a service account for an existing application",
+    @Operation(operationId = "provisionApplicationServiceAccount", summary = "Provision a service account for an existing application",
         description = "Creates a service account and OAuth client for an application that doesn't have one. " +
             "The client secret is only returned once and cannot be retrieved later.")
     public Response provisionServiceAccount(
@@ -410,7 +411,7 @@ public class ApplicationAdminResource {
 
     @GET
     @Path("/{id}/clients")
-    @Operation(summary = "Get client configurations for an application")
+    @Operation(operationId = "getApplicationClientConfigs", summary = "Get client configurations for an application")
     public Response getClientConfigs(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();
@@ -433,7 +434,7 @@ public class ApplicationAdminResource {
 
     @PUT
     @Path("/{id}/clients/{clientId}")
-    @Operation(summary = "Configure application for a specific client")
+    @Operation(operationId = "configureApplicationForClient", summary = "Configure application for a specific client")
     public Response configureClient(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String applicationId,
             @TypedIdParam(EntityType.CLIENT) @PathParam("clientId") String clientId,
@@ -533,7 +534,7 @@ public class ApplicationAdminResource {
 
     @POST
     @Path("/{id}/clients/{clientId}/enable")
-    @Operation(summary = "Enable application for a client")
+    @Operation(operationId = "enableApplicationForClient", summary = "Enable application for a client")
     public Response enableForClient(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String applicationId,
             @TypedIdParam(EntityType.CLIENT) @PathParam("clientId") String clientId) {
@@ -563,7 +564,7 @@ public class ApplicationAdminResource {
 
     @POST
     @Path("/{id}/clients/{clientId}/disable")
-    @Operation(summary = "Disable application for a client")
+    @Operation(operationId = "disableApplicationForClient", summary = "Disable application for a client")
     public Response disableForClient(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String applicationId,
             @TypedIdParam(EntityType.CLIENT) @PathParam("clientId") String clientId) {
@@ -597,7 +598,7 @@ public class ApplicationAdminResource {
 
     @GET
     @Path("/{id}/roles")
-    @Operation(summary = "Get all roles defined for this application")
+    @Operation(operationId = "getApplicationRoles", summary = "Get all roles defined for this application")
     public Response getApplicationRoles(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();

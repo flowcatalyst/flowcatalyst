@@ -55,6 +55,7 @@ import java.util.stream.Collectors;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @EmbeddedModeOnly
+@jakarta.transaction.Transactional
 public class OAuthClientAdminResource {
 
     private static final Logger LOG = Logger.getLogger(OAuthClientAdminResource.class);
@@ -84,7 +85,7 @@ public class OAuthClientAdminResource {
      * List all OAuth clients.
      */
     @GET
-    @Operation(summary = "List all OAuth clients")
+    @Operation(operationId = "listOAuthClients", summary = "List all OAuth clients")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of OAuth clients",
             content = @Content(schema = @Schema(implementation = ClientListResponse.class))),
@@ -135,7 +136,7 @@ public class OAuthClientAdminResource {
      */
     @GET
     @Path("/{id}")
-    @Operation(summary = "Get OAuth client by ID")
+    @Operation(operationId = "getOAuthClient", summary = "Get OAuth client by ID")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Client details",
             content = @Content(schema = @Schema(implementation = ClientDto.class))),
@@ -166,7 +167,7 @@ public class OAuthClientAdminResource {
      */
     @GET
     @Path("/by-client-id/{clientId}")
-    @Operation(summary = "Get OAuth client by client_id")
+    @Operation(operationId = "getOAuthClientByClientId", summary = "Get OAuth client by client_id")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Client details"),
         @APIResponse(responseCode = "404", description = "Client not found")
@@ -201,7 +202,7 @@ public class OAuthClientAdminResource {
      * The secret is encrypted at rest using the platform's encryption key.
      */
     @POST
-    @Operation(summary = "Create a new OAuth client",
+    @Operation(operationId = "createOAuthClient", summary = "Create a new OAuth client",
         description = "For confidential clients, the secret is returned once in the response and cannot be retrieved again.")
     @APIResponses({
         @APIResponse(responseCode = "201", description = "Client created",
@@ -316,7 +317,7 @@ public class OAuthClientAdminResource {
      */
     @PUT
     @Path("/{id}")
-    @Operation(summary = "Update OAuth client")
+    @Operation(operationId = "updateOAuthClient", summary = "Update OAuth client")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Client updated"),
         @APIResponse(responseCode = "404", description = "Client not found")
@@ -440,7 +441,7 @@ public class OAuthClientAdminResource {
      */
     @POST
     @Path("/{id}/rotate-secret")
-    @Operation(summary = "Rotate client secret",
+    @Operation(operationId = "rotateOAuthClientSecret", summary = "Rotate client secret",
         description = "Generates a new secret. The new secret is returned once and cannot be retrieved again.")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Secret rotated",
@@ -487,7 +488,7 @@ public class OAuthClientAdminResource {
      */
     @POST
     @Path("/{id}/activate")
-    @Operation(summary = "Activate OAuth client")
+    @Operation(operationId = "activateOAuthClient", summary = "Activate OAuth client")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Client activated"),
         @APIResponse(responseCode = "404", description = "Client not found")
@@ -522,7 +523,7 @@ public class OAuthClientAdminResource {
      */
     @POST
     @Path("/{id}/deactivate")
-    @Operation(summary = "Deactivate OAuth client")
+    @Operation(operationId = "deactivateOAuthClient", summary = "Deactivate OAuth client")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Client deactivated"),
         @APIResponse(responseCode = "404", description = "Client not found")
@@ -557,7 +558,7 @@ public class OAuthClientAdminResource {
      */
     @DELETE
     @Path("/{id}")
-    @Operation(summary = "Delete OAuth client")
+    @Operation(operationId = "deleteOAuthClient", summary = "Delete OAuth client")
     @APIResponses({
         @APIResponse(responseCode = "204", description = "Client deleted"),
         @APIResponse(responseCode = "404", description = "Client not found")

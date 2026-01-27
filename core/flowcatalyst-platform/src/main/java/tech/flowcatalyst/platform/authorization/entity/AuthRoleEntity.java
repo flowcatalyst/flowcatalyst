@@ -1,15 +1,18 @@
 package tech.flowcatalyst.platform.authorization.entity;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import tech.flowcatalyst.platform.authorization.AuthRole;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -38,9 +41,10 @@ public class AuthRoleEntity {
     @Column(name = "description", columnDefinition = "TEXT")
     public String description;
 
-    @Column(name = "permissions", columnDefinition = "TEXT[]")
-    @JdbcTypeCode(SqlTypes.ARRAY)
-    public String[] permissions;
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "role_permissions", joinColumns = @JoinColumn(name = "role_id"))
+    @Column(name = "permission")
+    public Set<String> permissions = new HashSet<>();
 
     @Column(name = "source", nullable = false, length = 20)
     @Enumerated(EnumType.STRING)

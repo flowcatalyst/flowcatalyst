@@ -13,6 +13,7 @@ import tech.flowcatalyst.platform.authentication.OidcSyncService;
 import tech.flowcatalyst.platform.authorization.PrincipalRole;
 import tech.flowcatalyst.platform.authorization.RoleService;
 import tech.flowcatalyst.platform.principal.*;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.time.Instant;
@@ -342,10 +343,10 @@ class OidcSyncServiceTest {
         String email = "alice@customer.com";
         String name = "Alice Smith";
         String externalIdpId = "google-oauth2|123";
-        String clientId = TsidGenerator.generate();
+        String clientId = TsidGenerator.generate(EntityType.CLIENT);
         List<String> idpRoles = List.of("customer-viewer");
 
-        String principalId = TsidGenerator.generate();
+        String principalId = TsidGenerator.generate(EntityType.PRINCIPAL);
         Principal principal = createOidcPrincipal(principalId, email);
 
         when(userService.createOrUpdateOidcUser(email, name, externalIdpId, clientId, null))

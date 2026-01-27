@@ -11,74 +11,74 @@ import type {
   GetWellKnownJwksJsonResponse,
   GetWellKnownOpenidConfigurationData,
   GetWellKnownOpenidConfigurationResponse,
-  GetApiAdminAnchorDomainsData,
-  GetApiAdminAnchorDomainsResponse,
-  PostApiAdminAnchorDomainsData,
-  PostApiAdminAnchorDomainsResponse,
-  GetApiAdminAnchorDomainsCheckByDomainData,
-  GetApiAdminAnchorDomainsCheckByDomainResponse,
-  DeleteApiAdminAnchorDomainsByIdData,
-  DeleteApiAdminAnchorDomainsByIdResponse,
-  GetApiAdminAnchorDomainsByIdData,
-  GetApiAdminAnchorDomainsByIdResponse,
-  GetApiAdminApplicationsData,
-  PostApiAdminApplicationsData,
-  GetApiAdminApplicationsByCodeByCodeData,
-  DeleteApiAdminApplicationsByIdData,
-  GetApiAdminApplicationsByIdData,
-  PutApiAdminApplicationsByIdData,
-  PostApiAdminApplicationsByIdActivateData,
-  GetApiAdminApplicationsByIdClientsData,
-  PutApiAdminApplicationsByIdClientsByClientIdData,
-  PostApiAdminApplicationsByIdClientsByClientIdDisableData,
-  PostApiAdminApplicationsByIdClientsByClientIdEnableData,
-  PostApiAdminApplicationsByIdDeactivateData,
-  PostApiAdminApplicationsByIdProvisionServiceAccountData,
-  GetApiAdminApplicationsByIdRolesData,
-  GetApiAdminAuditLogsData,
-  GetApiAdminAuditLogsResponse,
-  GetApiAdminAuditLogsEntityTypesData,
-  GetApiAdminAuditLogsEntityByEntityTypeByEntityIdData,
-  GetApiAdminAuditLogsOperationsData,
-  GetApiAdminAuditLogsByIdData,
-  GetApiAdminAuditLogsByIdResponse,
-  GetApiAdminAuthConfigsData,
-  GetApiAdminAuthConfigsResponse,
-  GetApiAdminAuthConfigsByDomainByDomainData,
-  PostApiAdminAuthConfigsInternalData,
-  PostApiAdminAuthConfigsInternalResponse,
-  PostApiAdminAuthConfigsOidcData,
-  PostApiAdminAuthConfigsOidcResponse,
-  PostApiAdminAuthConfigsValidateSecretData,
-  PostApiAdminAuthConfigsValidateSecretResponse,
-  DeleteApiAdminAuthConfigsByIdData,
-  DeleteApiAdminAuthConfigsByIdResponse,
-  GetApiAdminAuthConfigsByIdData,
-  GetApiAdminAuthConfigsByIdResponse,
-  PutApiAdminAuthConfigsByIdAdditionalClientsData,
-  PutApiAdminAuthConfigsByIdClientBindingData,
-  PutApiAdminAuthConfigsByIdConfigTypeData,
-  PutApiAdminAuthConfigsByIdGrantedClientsData,
-  PutApiAdminAuthConfigsByIdOidcData,
-  GetApiAdminClientsData,
-  GetApiAdminClientsResponse,
-  PostApiAdminClientsData,
-  PostApiAdminClientsResponse,
-  GetApiAdminClientsByIdentifierByIdentifierData,
-  GetApiAdminClientsSearchData,
-  GetApiAdminClientsSearchResponse,
-  GetApiAdminClientsByIdData,
-  GetApiAdminClientsByIdResponse,
-  PutApiAdminClientsByIdData,
-  PostApiAdminClientsByIdActivateData,
-  GetApiAdminClientsByIdApplicationsData,
-  GetApiAdminClientsByIdApplicationsResponse,
-  PutApiAdminClientsByIdApplicationsData,
-  PostApiAdminClientsByIdApplicationsByApplicationIdDisableData,
-  PostApiAdminClientsByIdApplicationsByApplicationIdEnableData,
-  PostApiAdminClientsByIdDeactivateData,
-  PostApiAdminClientsByIdNotesData,
-  PostApiAdminClientsByIdSuspendData,
+  ListAnchorDomainsData,
+  ListAnchorDomainsResponse,
+  AddAnchorDomainData,
+  AddAnchorDomainResponse,
+  CheckAnchorDomainData,
+  CheckAnchorDomainResponse,
+  RemoveAnchorDomainData,
+  RemoveAnchorDomainResponse,
+  GetAnchorDomainData,
+  GetAnchorDomainResponse,
+  ListApplicationsData,
+  CreateApplicationData,
+  GetApplicationByCodeData,
+  DeleteApplicationData,
+  GetApplicationData,
+  UpdateApplicationData,
+  ActivateApplicationData,
+  GetApplicationClientConfigsData,
+  ConfigureApplicationForClientData,
+  DisableApplicationForClientData,
+  EnableApplicationForClientData,
+  DeactivateApplicationData,
+  ProvisionApplicationServiceAccountData,
+  GetApplicationRolesData,
+  ListAuditLogsData,
+  ListAuditLogsResponse,
+  GetAuditLogEntityTypesData,
+  GetEntityAuditLogsData,
+  GetAuditLogOperationsData,
+  GetAuditLogData,
+  GetAuditLogResponse,
+  ListAuthConfigsData,
+  ListAuthConfigsResponse,
+  GetAuthConfigByDomainData,
+  CreateInternalAuthConfigData,
+  CreateInternalAuthConfigResponse,
+  CreateOidcAuthConfigData,
+  CreateOidcAuthConfigResponse,
+  ValidateSecretReferenceData,
+  ValidateSecretReferenceResponse,
+  DeleteAuthConfigData,
+  DeleteAuthConfigResponse,
+  GetAuthConfigData,
+  GetAuthConfigResponse,
+  UpdateAuthConfigAdditionalClientsData,
+  UpdateAuthConfigClientBindingData,
+  UpdateAuthConfigTypeData,
+  UpdateAuthConfigGrantedClientsData,
+  UpdateOidcConfigData,
+  ListClientsData,
+  ListClientsResponse,
+  CreateClientData,
+  CreateClientResponse2,
+  GetClientByIdentifierData,
+  SearchClientsData,
+  SearchClientsResponse,
+  GetClientData,
+  GetClientResponse,
+  UpdateClientData,
+  ActivateClientData,
+  GetClientApplicationsData,
+  GetClientApplicationsResponse,
+  UpdateClientApplicationsData,
+  DisableClientApplicationData,
+  EnableClientApplicationData,
+  DeactivateClientData,
+  AddClientAuditNoteData,
+  SuspendClientData,
   GetApiAdminConfigAccessByAppCodeData,
   PostApiAdminConfigAccessByAppCodeData,
   DeleteApiAdminConfigAccessByAppCodeByRoleCodeData,
@@ -101,59 +101,59 @@ import type {
   PutApiAdminDispatchPoolsByIdResponse,
   PostApiAdminDispatchPoolsByIdActivateData,
   PostApiAdminDispatchPoolsByIdSuspendData,
-  GetApiAdminOauthClientsData,
-  GetApiAdminOauthClientsResponse,
-  PostApiAdminOauthClientsData,
-  PostApiAdminOauthClientsResponse,
-  GetApiAdminOauthClientsByClientIdByClientIdData,
-  DeleteApiAdminOauthClientsByIdData,
-  DeleteApiAdminOauthClientsByIdResponse,
-  GetApiAdminOauthClientsByIdData,
-  GetApiAdminOauthClientsByIdResponse,
-  PutApiAdminOauthClientsByIdData,
-  PostApiAdminOauthClientsByIdActivateData,
-  PostApiAdminOauthClientsByIdDeactivateData,
-  PostApiAdminOauthClientsByIdRotateSecretData,
-  PostApiAdminOauthClientsByIdRotateSecretResponse,
+  ListOAuthClientsData,
+  ListOAuthClientsResponse,
+  CreateOAuthClientData,
+  CreateOAuthClientResponse,
+  GetOAuthClientByClientIdData,
+  DeleteOAuthClientData,
+  DeleteOAuthClientResponse,
+  GetOAuthClientData,
+  GetOAuthClientResponse,
+  UpdateOAuthClientData,
+  ActivateOAuthClientData,
+  DeactivateOAuthClientData,
+  RotateOAuthClientSecretData,
+  RotateOAuthClientSecretResponse,
   GetApiAdminPlatformCorsData,
   PostApiAdminPlatformCorsData,
   GetApiAdminPlatformCorsAllowedData,
   DeleteApiAdminPlatformCorsByIdData,
   GetApiAdminPlatformCorsByIdData,
-  GetApiAdminPrincipalsData,
-  GetApiAdminPrincipalsResponse,
-  GetApiAdminPrincipalsCheckEmailDomainData,
-  GetApiAdminPrincipalsCheckEmailDomainResponse,
-  PostApiAdminPrincipalsUsersData,
-  PostApiAdminPrincipalsUsersResponse,
-  GetApiAdminPrincipalsByIdData,
-  GetApiAdminPrincipalsByIdResponse,
-  PutApiAdminPrincipalsByIdData,
-  PostApiAdminPrincipalsByIdActivateData,
-  GetApiAdminPrincipalsByIdClientAccessData,
-  PostApiAdminPrincipalsByIdClientAccessData,
-  DeleteApiAdminPrincipalsByIdClientAccessByClientIdData,
-  DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponse,
-  PostApiAdminPrincipalsByIdDeactivateData,
-  PostApiAdminPrincipalsByIdResetPasswordData,
-  GetApiAdminPrincipalsByIdRolesData,
-  PostApiAdminPrincipalsByIdRolesData,
-  PutApiAdminPrincipalsByIdRolesData,
-  DeleteApiAdminPrincipalsByIdRolesByRoleNameData,
-  DeleteApiAdminPrincipalsByIdRolesByRoleNameResponse,
-  GetApiAdminRolesData,
-  GetApiAdminRolesResponse,
-  PostApiAdminRolesData,
-  PostApiAdminRolesResponse,
-  GetApiAdminRolesPermissionsData,
-  GetApiAdminRolesPermissionsResponse,
-  GetApiAdminRolesPermissionsByPermissionData,
-  DeleteApiAdminRolesByRoleNameData,
-  DeleteApiAdminRolesByRoleNameResponse,
-  GetApiAdminRolesByRoleNameData,
-  GetApiAdminRolesByRoleNameResponse,
-  PutApiAdminRolesByRoleNameData,
-  PutApiAdminRolesByRoleNameResponse,
+  ListPrincipalsData,
+  ListPrincipalsResponse,
+  CheckEmailDomainData,
+  CheckEmailDomainResponse,
+  CreateUserData,
+  CreateUserResponse,
+  GetPrincipalData,
+  GetPrincipalResponse,
+  UpdatePrincipalData,
+  ActivatePrincipalData,
+  GetPrincipalClientAccessData,
+  GrantPrincipalClientAccessData,
+  RevokePrincipalClientAccessData,
+  RevokePrincipalClientAccessResponse,
+  DeactivatePrincipalData,
+  ResetPrincipalPasswordData,
+  GetPrincipalRolesData,
+  AssignPrincipalRoleData,
+  AssignPrincipalRolesData,
+  RemovePrincipalRoleData,
+  RemovePrincipalRoleResponse,
+  ListRolesData,
+  ListRolesResponse,
+  CreateRoleData,
+  CreateRoleResponse,
+  ListPermissionsData,
+  ListPermissionsResponse,
+  GetPermissionData,
+  DeleteRoleData,
+  DeleteRoleResponse,
+  GetRoleData,
+  GetRoleResponse,
+  UpdateRoleData,
+  UpdateRoleResponse,
   GetApiAdminServiceAccountsData,
   GetApiAdminServiceAccountsResponse,
   PostApiAdminServiceAccountsData,
@@ -179,36 +179,42 @@ import type {
   PutApiAdminSubscriptionsByIdResponse,
   PostApiAdminSubscriptionsByIdPauseData,
   PostApiAdminSubscriptionsByIdResumeData,
-  GetApiApplicationsData,
-  GetApiApplicationsResponse,
-  PostApiApplicationsData,
-  GetApiApplicationsCodeByCodeData,
-  GetApiApplicationsByAppCodeDispatchPoolsData,
-  GetApiApplicationsByAppCodeDispatchPoolsResponse,
-  PostApiApplicationsByAppCodeDispatchPoolsSyncData,
-  PostApiApplicationsByAppCodeDispatchPoolsSyncResponse,
-  GetApiApplicationsByAppCodeEventTypesData,
-  GetApiApplicationsByAppCodeEventTypesResponse,
-  PostApiApplicationsByAppCodeEventTypesSyncData,
-  PostApiApplicationsByAppCodeEventTypesSyncResponse,
-  GetApiApplicationsByAppCodeRolesData,
-  GetApiApplicationsByAppCodeRolesResponse,
-  PostApiApplicationsByAppCodeRolesData,
-  PostApiApplicationsByAppCodeRolesResponse,
-  PostApiApplicationsByAppCodeRolesSyncData,
-  PostApiApplicationsByAppCodeRolesSyncResponse,
-  DeleteApiApplicationsByAppCodeRolesByRoleNameData,
-  DeleteApiApplicationsByAppCodeRolesByRoleNameResponse,
-  GetApiApplicationsByAppCodeSubscriptionsData,
-  GetApiApplicationsByAppCodeSubscriptionsResponse,
-  PostApiApplicationsByAppCodeSubscriptionsSyncData,
-  PostApiApplicationsByAppCodeSubscriptionsSyncResponse,
-  DeleteApiApplicationsByIdData,
-  DeleteApiApplicationsByIdResponse,
-  GetApiApplicationsByIdData,
-  PutApiApplicationsByIdData,
-  PostApiApplicationsByIdActivateData,
-  PostApiApplicationsByIdDeactivateData,
+  ListAppsData,
+  ListAppsResponse,
+  CreateAppData,
+  CreateAppResponse,
+  GetAppByCodeData,
+  GetAppByCodeResponse,
+  ListApplicationDispatchPoolsData,
+  ListApplicationDispatchPoolsResponse,
+  SyncApplicationDispatchPoolsData,
+  SyncApplicationDispatchPoolsResponse,
+  ListApplicationEventTypesData,
+  ListApplicationEventTypesResponse,
+  SyncApplicationEventTypesData,
+  SyncApplicationEventTypesResponse,
+  ListApplicationRolesData,
+  ListApplicationRolesResponse,
+  CreateApplicationRoleData,
+  CreateApplicationRoleResponse,
+  SyncApplicationRolesData,
+  SyncApplicationRolesResponse,
+  DeleteApplicationRoleData,
+  DeleteApplicationRoleResponse,
+  ListApplicationSubscriptionsData,
+  ListApplicationSubscriptionsResponse,
+  SyncApplicationSubscriptionsData,
+  SyncApplicationSubscriptionsResponse,
+  DeleteAppData,
+  DeleteAppResponse,
+  GetAppData,
+  GetAppResponse,
+  UpdateAppData,
+  UpdateAppResponse,
+  ActivateAppData,
+  ActivateAppResponse,
+  DeactivateAppData,
+  DeactivateAppResponse,
   GetApiBffDebugDispatchJobsData,
   GetApiBffDebugDispatchJobsResponse,
   GetApiBffDebugDispatchJobsByIdData,
@@ -228,6 +234,7 @@ import type {
   GetApiClientsData,
   GetApiClientsResponse,
   GetApiClientsByIdData,
+  GetApiClientsByIdResponse,
   GetApiClientsByIdApplicationsData,
   GetApiClientsByIdApplicationsResponse,
   GetApiConfigPlatformData,
@@ -252,17 +259,27 @@ import type {
   GetApiEventTypesData,
   GetApiEventTypesResponse,
   PostApiEventTypesData,
+  PostApiEventTypesResponse,
   GetApiEventTypesFiltersAggregatesData,
+  GetApiEventTypesFiltersAggregatesResponse,
   GetApiEventTypesFiltersApplicationsData,
+  GetApiEventTypesFiltersApplicationsResponse,
   GetApiEventTypesFiltersSubdomainsData,
+  GetApiEventTypesFiltersSubdomainsResponse,
   DeleteApiEventTypesByIdData,
   DeleteApiEventTypesByIdResponse,
   GetApiEventTypesByIdData,
+  GetApiEventTypesByIdResponse,
   PatchApiEventTypesByIdData,
+  PatchApiEventTypesByIdResponse,
   PostApiEventTypesByIdArchiveData,
+  PostApiEventTypesByIdArchiveResponse,
   PostApiEventTypesByIdSchemasData,
+  PostApiEventTypesByIdSchemasResponse,
   PostApiEventTypesByIdSchemasByVersionDeprecateData,
+  PostApiEventTypesByIdSchemasByVersionDeprecateResponse,
   PostApiEventTypesByIdSchemasByVersionFinaliseData,
+  PostApiEventTypesByIdSchemasByVersionFinaliseResponse,
   PostApiEventsData,
   PostApiEventsResponse,
   PostApiEventsBatchData,
@@ -275,6 +292,58 @@ import type {
   PostApiSampleWebhookFailPermanentData,
   PostApiSampleWebhookFailTransientData,
   PostApiSampleWebhookSlowData,
+  SdkListClientsData,
+  SdkListClientsResponse,
+  SdkCreateClientData,
+  SdkCreateClientResponse,
+  SdkGetClientData,
+  SdkGetClientResponse,
+  SdkUpdateClientData,
+  SdkUpdateClientResponse,
+  SdkActivateClientData,
+  SdkActivateClientResponse,
+  SdkDeactivateClientData,
+  SdkDeactivateClientResponse,
+  SdkSuspendClientData,
+  SdkSuspendClientResponse,
+  SdkListPrincipalsData,
+  SdkListPrincipalsResponse,
+  SdkCreateServicePrincipalData,
+  SdkCreateServicePrincipalResponse,
+  SdkCreateUserPrincipalData,
+  SdkCreateUserPrincipalResponse,
+  SdkGetPrincipalData,
+  SdkGetPrincipalResponse,
+  SdkUpdatePrincipalData,
+  SdkUpdatePrincipalResponse,
+  SdkActivatePrincipalData,
+  SdkActivatePrincipalResponse,
+  SdkGetPrincipalClientsData,
+  SdkGetPrincipalClientsResponse,
+  SdkRevokeClientAccessData,
+  SdkRevokeClientAccessResponse,
+  SdkGrantClientAccessData,
+  SdkGrantClientAccessResponse,
+  SdkDeactivatePrincipalData,
+  SdkDeactivatePrincipalResponse,
+  SdkGetPrincipalRolesData,
+  SdkGetPrincipalRolesResponse,
+  SdkAssignPrincipalRolesData,
+  SdkAssignPrincipalRolesResponse,
+  SdkRemovePrincipalRoleData,
+  SdkRemovePrincipalRoleResponse,
+  SdkAddPrincipalRoleData,
+  SdkAddPrincipalRoleResponse,
+  SdkListRolesData,
+  SdkListRolesResponse,
+  SdkCreateRoleData,
+  SdkCreateRoleResponse,
+  SdkDeleteRoleData,
+  SdkDeleteRoleResponse,
+  SdkGetRoleData,
+  SdkGetRoleResponse,
+  SdkUpdateRoleData,
+  SdkUpdateRoleResponse,
   GetApiStatsData,
   GetApiStatsResponse,
   PostAuthCheckDomainData,
@@ -371,11 +440,11 @@ export const getWellKnownOpenidConfiguration = <
  * List all anchor domains
  * Returns all configured anchor domains. Users from these domains have access to all clients.
  */
-export const getApiAdminAnchorDomains = <ThrowOnError extends boolean = false>(
-  options?: Options<GetApiAdminAnchorDomainsData, ThrowOnError>,
+export const listAnchorDomains = <ThrowOnError extends boolean = false>(
+  options?: Options<ListAnchorDomainsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
-    GetApiAdminAnchorDomainsResponse,
+    ListAnchorDomainsResponse,
     unknown,
     ThrowOnError
   >({
@@ -388,11 +457,11 @@ export const getApiAdminAnchorDomains = <ThrowOnError extends boolean = false>(
  * Add anchor domain
  * Add a new anchor domain. Users from this domain will have access to all clients.
  */
-export const postApiAdminAnchorDomains = <ThrowOnError extends boolean = false>(
-  options: Options<PostApiAdminAnchorDomainsData, ThrowOnError>,
+export const addAnchorDomain = <ThrowOnError extends boolean = false>(
+  options: Options<AddAnchorDomainData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
-    PostApiAdminAnchorDomainsResponse,
+    AddAnchorDomainResponse,
     unknown,
     ThrowOnError
   >({
@@ -408,13 +477,11 @@ export const postApiAdminAnchorDomains = <ThrowOnError extends boolean = false>(
 /**
  * Check if domain is an anchor domain
  */
-export const getApiAdminAnchorDomainsCheckByDomain = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiAdminAnchorDomainsCheckByDomainData, ThrowOnError>,
+export const checkAnchorDomain = <ThrowOnError extends boolean = false>(
+  options: Options<CheckAnchorDomainData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
-    GetApiAdminAnchorDomainsCheckByDomainResponse,
+    CheckAnchorDomainResponse,
     unknown,
     ThrowOnError
   >({
@@ -427,13 +494,11 @@ export const getApiAdminAnchorDomainsCheckByDomain = <
  * Remove anchor domain
  * Remove an anchor domain. Users from this domain will lose global access.
  */
-export const deleteApiAdminAnchorDomainsById = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<DeleteApiAdminAnchorDomainsByIdData, ThrowOnError>,
+export const removeAnchorDomain = <ThrowOnError extends boolean = false>(
+  options: Options<RemoveAnchorDomainData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).delete<
-    DeleteApiAdminAnchorDomainsByIdResponse,
+    RemoveAnchorDomainResponse,
     unknown,
     ThrowOnError
   >({
@@ -445,13 +510,11 @@ export const deleteApiAdminAnchorDomainsById = <
 /**
  * Get anchor domain by ID
  */
-export const getApiAdminAnchorDomainsById = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiAdminAnchorDomainsByIdData, ThrowOnError>,
+export const getAnchorDomain = <ThrowOnError extends boolean = false>(
+  options: Options<GetAnchorDomainData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
-    GetApiAdminAnchorDomainsByIdResponse,
+    GetAnchorDomainResponse,
     unknown,
     ThrowOnError
   >({
@@ -463,8 +526,8 @@ export const getApiAdminAnchorDomainsById = <
 /**
  * List all applications
  */
-export const getApiAdminApplications = <ThrowOnError extends boolean = false>(
-  options?: Options<GetApiAdminApplicationsData, ThrowOnError>,
+export const listApplications = <ThrowOnError extends boolean = false>(
+  options?: Options<ListApplicationsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
     {
@@ -477,8 +540,8 @@ export const getApiAdminApplications = <ThrowOnError extends boolean = false>(
 /**
  * Create a new application
  */
-export const postApiAdminApplications = <ThrowOnError extends boolean = false>(
-  options: Options<PostApiAdminApplicationsData, ThrowOnError>,
+export const createApplication = <ThrowOnError extends boolean = false>(
+  options: Options<CreateApplicationData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -495,10 +558,8 @@ export const postApiAdminApplications = <ThrowOnError extends boolean = false>(
 /**
  * Get application by code
  */
-export const getApiAdminApplicationsByCodeByCode = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiAdminApplicationsByCodeByCodeData, ThrowOnError>,
+export const getApplicationByCode = <ThrowOnError extends boolean = false>(
+  options: Options<GetApplicationByCodeData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
     url: "/api/admin/applications/by-code/{code}",
@@ -510,10 +571,8 @@ export const getApiAdminApplicationsByCodeByCode = <
  * Delete an application
  * Permanently deletes an application. The application must be deactivated first.
  */
-export const deleteApiAdminApplicationsById = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<DeleteApiAdminApplicationsByIdData, ThrowOnError>,
+export const deleteApplication = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteApplicationData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).delete<
     unknown,
@@ -528,10 +587,8 @@ export const deleteApiAdminApplicationsById = <
 /**
  * Get application by ID
  */
-export const getApiAdminApplicationsById = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiAdminApplicationsByIdData, ThrowOnError>,
+export const getApplication = <ThrowOnError extends boolean = false>(
+  options: Options<GetApplicationData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
     url: "/api/admin/applications/{id}",
@@ -542,10 +599,8 @@ export const getApiAdminApplicationsById = <
 /**
  * Update an application
  */
-export const putApiAdminApplicationsById = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PutApiAdminApplicationsByIdData, ThrowOnError>,
+export const updateApplication = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateApplicationData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
     url: "/api/admin/applications/{id}",
@@ -560,10 +615,8 @@ export const putApiAdminApplicationsById = <
 /**
  * Activate an application
  */
-export const postApiAdminApplicationsByIdActivate = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminApplicationsByIdActivateData, ThrowOnError>,
+export const activateApplication = <ThrowOnError extends boolean = false>(
+  options: Options<ActivateApplicationData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -576,10 +629,10 @@ export const postApiAdminApplicationsByIdActivate = <
 /**
  * Get client configurations for an application
  */
-export const getApiAdminApplicationsByIdClients = <
+export const getApplicationClientConfigs = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<GetApiAdminApplicationsByIdClientsData, ThrowOnError>,
+  options: Options<GetApplicationClientConfigsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
     url: "/api/admin/applications/{id}/clients",
@@ -590,13 +643,10 @@ export const getApiAdminApplicationsByIdClients = <
 /**
  * Configure application for a specific client
  */
-export const putApiAdminApplicationsByIdClientsByClientId = <
+export const configureApplicationForClient = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<
-    PutApiAdminApplicationsByIdClientsByClientIdData,
-    ThrowOnError
-  >,
+  options: Options<ConfigureApplicationForClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
     url: "/api/admin/applications/{id}/clients/{clientId}",
@@ -611,13 +661,10 @@ export const putApiAdminApplicationsByIdClientsByClientId = <
 /**
  * Disable application for a client
  */
-export const postApiAdminApplicationsByIdClientsByClientIdDisable = <
+export const disableApplicationForClient = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<
-    PostApiAdminApplicationsByIdClientsByClientIdDisableData,
-    ThrowOnError
-  >,
+  options: Options<DisableApplicationForClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -630,13 +677,10 @@ export const postApiAdminApplicationsByIdClientsByClientIdDisable = <
 /**
  * Enable application for a client
  */
-export const postApiAdminApplicationsByIdClientsByClientIdEnable = <
+export const enableApplicationForClient = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<
-    PostApiAdminApplicationsByIdClientsByClientIdEnableData,
-    ThrowOnError
-  >,
+  options: Options<EnableApplicationForClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -649,10 +693,8 @@ export const postApiAdminApplicationsByIdClientsByClientIdEnable = <
 /**
  * Deactivate an application
  */
-export const postApiAdminApplicationsByIdDeactivate = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminApplicationsByIdDeactivateData, ThrowOnError>,
+export const deactivateApplication = <ThrowOnError extends boolean = false>(
+  options: Options<DeactivateApplicationData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -666,13 +708,10 @@ export const postApiAdminApplicationsByIdDeactivate = <
  * Provision a service account for an existing application
  * Creates a service account and OAuth client for an application that doesn't have one. The client secret is only returned once and cannot be retrieved later.
  */
-export const postApiAdminApplicationsByIdProvisionServiceAccount = <
+export const provisionApplicationServiceAccount = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<
-    PostApiAdminApplicationsByIdProvisionServiceAccountData,
-    ThrowOnError
-  >,
+  options: Options<ProvisionApplicationServiceAccountData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -685,10 +724,8 @@ export const postApiAdminApplicationsByIdProvisionServiceAccount = <
 /**
  * Get all roles defined for this application
  */
-export const getApiAdminApplicationsByIdRoles = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiAdminApplicationsByIdRolesData, ThrowOnError>,
+export const getApplicationRoles = <ThrowOnError extends boolean = false>(
+  options: Options<GetApplicationRolesData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
     url: "/api/admin/applications/{id}/roles",
@@ -700,11 +737,11 @@ export const getApiAdminApplicationsByIdRoles = <
  * List audit logs
  * Returns audit logs with optional filtering by entity type, entity ID, principal, or operation
  */
-export const getApiAdminAuditLogs = <ThrowOnError extends boolean = false>(
-  options?: Options<GetApiAdminAuditLogsData, ThrowOnError>,
+export const listAuditLogs = <ThrowOnError extends boolean = false>(
+  options?: Options<ListAuditLogsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
-    GetApiAdminAuditLogsResponse,
+    ListAuditLogsResponse,
     unknown,
     ThrowOnError
   >({
@@ -717,10 +754,8 @@ export const getApiAdminAuditLogs = <ThrowOnError extends boolean = false>(
  * Get entity types with audit logs
  * Returns distinct entity types that have audit log entries
  */
-export const getApiAdminAuditLogsEntityTypes = <
-  ThrowOnError extends boolean = false,
->(
-  options?: Options<GetApiAdminAuditLogsEntityTypesData, ThrowOnError>,
+export const getAuditLogEntityTypes = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAuditLogEntityTypesData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
     {
@@ -734,13 +769,8 @@ export const getApiAdminAuditLogsEntityTypes = <
  * Get audit logs for entity
  * Returns all audit logs for a specific entity
  */
-export const getApiAdminAuditLogsEntityByEntityTypeByEntityId = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    GetApiAdminAuditLogsEntityByEntityTypeByEntityIdData,
-    ThrowOnError
-  >,
+export const getEntityAuditLogs = <ThrowOnError extends boolean = false>(
+  options: Options<GetEntityAuditLogsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
     url: "/api/admin/audit-logs/entity/{entityType}/{entityId}",
@@ -752,10 +782,8 @@ export const getApiAdminAuditLogsEntityByEntityTypeByEntityId = <
  * Get operations with audit logs
  * Returns distinct operation names that have audit log entries
  */
-export const getApiAdminAuditLogsOperations = <
-  ThrowOnError extends boolean = false,
->(
-  options?: Options<GetApiAdminAuditLogsOperationsData, ThrowOnError>,
+export const getAuditLogOperations = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAuditLogOperationsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
     {
@@ -768,11 +796,11 @@ export const getApiAdminAuditLogsOperations = <
 /**
  * Get audit log by ID
  */
-export const getApiAdminAuditLogsById = <ThrowOnError extends boolean = false>(
-  options: Options<GetApiAdminAuditLogsByIdData, ThrowOnError>,
+export const getAuditLog = <ThrowOnError extends boolean = false>(
+  options: Options<GetAuditLogData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
-    GetApiAdminAuditLogsByIdResponse,
+    GetAuditLogResponse,
     unknown,
     ThrowOnError
   >({
@@ -785,11 +813,11 @@ export const getApiAdminAuditLogsById = <ThrowOnError extends boolean = false>(
  * List all auth configurations
  * Returns all domain auth configurations
  */
-export const getApiAdminAuthConfigs = <ThrowOnError extends boolean = false>(
-  options?: Options<GetApiAdminAuthConfigsData, ThrowOnError>,
+export const listAuthConfigs = <ThrowOnError extends boolean = false>(
+  options?: Options<ListAuthConfigsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
-    GetApiAdminAuthConfigsResponse,
+    ListAuthConfigsResponse,
     unknown,
     ThrowOnError
   >({
@@ -801,10 +829,8 @@ export const getApiAdminAuthConfigs = <ThrowOnError extends boolean = false>(
 /**
  * Get auth configuration by email domain
  */
-export const getApiAdminAuthConfigsByDomainByDomain = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiAdminAuthConfigsByDomainByDomainData, ThrowOnError>,
+export const getAuthConfigByDomain = <ThrowOnError extends boolean = false>(
+  options: Options<GetAuthConfigByDomainData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
     url: "/api/admin/auth-configs/by-domain/{domain}",
@@ -816,13 +842,11 @@ export const getApiAdminAuthConfigsByDomainByDomain = <
  * Create internal auth configuration
  * Configure a domain to use internal (password) authentication
  */
-export const postApiAdminAuthConfigsInternal = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminAuthConfigsInternalData, ThrowOnError>,
+export const createInternalAuthConfig = <ThrowOnError extends boolean = false>(
+  options: Options<CreateInternalAuthConfigData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
-    PostApiAdminAuthConfigsInternalResponse,
+    CreateInternalAuthConfigResponse,
     unknown,
     ThrowOnError
   >({
@@ -839,13 +863,11 @@ export const postApiAdminAuthConfigsInternal = <
  * Create OIDC auth configuration
  * Configure a domain to use external OIDC identity provider
  */
-export const postApiAdminAuthConfigsOidc = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminAuthConfigsOidcData, ThrowOnError>,
+export const createOidcAuthConfig = <ThrowOnError extends boolean = false>(
+  options: Options<CreateOidcAuthConfigData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
-    PostApiAdminAuthConfigsOidcResponse,
+    CreateOidcAuthConfigResponse,
     unknown,
     ThrowOnError
   >({
@@ -862,13 +884,11 @@ export const postApiAdminAuthConfigsOidc = <
  * Validate secret reference
  * Checks that a secret reference is valid and accessible without returning the value
  */
-export const postApiAdminAuthConfigsValidateSecret = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminAuthConfigsValidateSecretData, ThrowOnError>,
+export const validateSecretReference = <ThrowOnError extends boolean = false>(
+  options: Options<ValidateSecretReferenceData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
-    PostApiAdminAuthConfigsValidateSecretResponse,
+    ValidateSecretReferenceResponse,
     unknown,
     ThrowOnError
   >({
@@ -884,13 +904,11 @@ export const postApiAdminAuthConfigsValidateSecret = <
 /**
  * Delete auth configuration
  */
-export const deleteApiAdminAuthConfigsById = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<DeleteApiAdminAuthConfigsByIdData, ThrowOnError>,
+export const deleteAuthConfig = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteAuthConfigData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).delete<
-    DeleteApiAdminAuthConfigsByIdResponse,
+    DeleteAuthConfigResponse,
     unknown,
     ThrowOnError
   >({
@@ -902,13 +920,11 @@ export const deleteApiAdminAuthConfigsById = <
 /**
  * Get auth configuration by ID
  */
-export const getApiAdminAuthConfigsById = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiAdminAuthConfigsByIdData, ThrowOnError>,
+export const getAuthConfig = <ThrowOnError extends boolean = false>(
+  options: Options<GetAuthConfigData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
-    GetApiAdminAuthConfigsByIdResponse,
+    GetAuthConfigResponse,
     unknown,
     ThrowOnError
   >({
@@ -921,13 +937,10 @@ export const getApiAdminAuthConfigsById = <
  * Update additional clients
  * Set additional client IDs for CLIENT type configurations
  */
-export const putApiAdminAuthConfigsByIdAdditionalClients = <
+export const updateAuthConfigAdditionalClients = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<
-    PutApiAdminAuthConfigsByIdAdditionalClientsData,
-    ThrowOnError
-  >,
+  options: Options<UpdateAuthConfigAdditionalClientsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
     url: "/api/admin/auth-configs/{id}/additional-clients",
@@ -943,10 +956,10 @@ export const putApiAdminAuthConfigsByIdAdditionalClients = <
  * Update client binding
  * Change which client this domain is bound to, or remove binding for platform-wide access
  */
-export const putApiAdminAuthConfigsByIdClientBinding = <
+export const updateAuthConfigClientBinding = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<PutApiAdminAuthConfigsByIdClientBindingData, ThrowOnError>,
+  options: Options<UpdateAuthConfigClientBindingData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
     url: "/api/admin/auth-configs/{id}/client-binding",
@@ -962,10 +975,8 @@ export const putApiAdminAuthConfigsByIdClientBinding = <
  * Update config type
  * Change the config type (ANCHOR, PARTNER, CLIENT). This will reset client associations.
  */
-export const putApiAdminAuthConfigsByIdConfigType = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PutApiAdminAuthConfigsByIdConfigTypeData, ThrowOnError>,
+export const updateAuthConfigType = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateAuthConfigTypeData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
     url: "/api/admin/auth-configs/{id}/config-type",
@@ -981,10 +992,10 @@ export const putApiAdminAuthConfigsByIdConfigType = <
  * Update granted clients
  * Set granted client IDs for PARTNER type configurations
  */
-export const putApiAdminAuthConfigsByIdGrantedClients = <
+export const updateAuthConfigGrantedClients = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<PutApiAdminAuthConfigsByIdGrantedClientsData, ThrowOnError>,
+  options: Options<UpdateAuthConfigGrantedClientsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
     url: "/api/admin/auth-configs/{id}/granted-clients",
@@ -999,10 +1010,8 @@ export const putApiAdminAuthConfigsByIdGrantedClients = <
 /**
  * Update OIDC configuration
  */
-export const putApiAdminAuthConfigsByIdOidc = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PutApiAdminAuthConfigsByIdOidcData, ThrowOnError>,
+export const updateOidcConfig = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateOidcConfigData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
     url: "/api/admin/auth-configs/{id}/oidc",
@@ -1018,11 +1027,11 @@ export const putApiAdminAuthConfigsByIdOidc = <
  * List all clients
  * Returns all clients regardless of status
  */
-export const getApiAdminClients = <ThrowOnError extends boolean = false>(
-  options?: Options<GetApiAdminClientsData, ThrowOnError>,
+export const listClients = <ThrowOnError extends boolean = false>(
+  options?: Options<ListClientsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
-    GetApiAdminClientsResponse,
+    ListClientsResponse,
     unknown,
     ThrowOnError
   >({
@@ -1034,11 +1043,11 @@ export const getApiAdminClients = <ThrowOnError extends boolean = false>(
 /**
  * Create a new client
  */
-export const postApiAdminClients = <ThrowOnError extends boolean = false>(
-  options: Options<PostApiAdminClientsData, ThrowOnError>,
+export const createClient = <ThrowOnError extends boolean = false>(
+  options: Options<CreateClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
-    PostApiAdminClientsResponse,
+    CreateClientResponse2,
     unknown,
     ThrowOnError
   >({
@@ -1054,13 +1063,8 @@ export const postApiAdminClients = <ThrowOnError extends boolean = false>(
 /**
  * Get client by identifier
  */
-export const getApiAdminClientsByIdentifierByIdentifier = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    GetApiAdminClientsByIdentifierByIdentifierData,
-    ThrowOnError
-  >,
+export const getClientByIdentifier = <ThrowOnError extends boolean = false>(
+  options: Options<GetClientByIdentifierData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
     url: "/api/admin/clients/by-identifier/{identifier}",
@@ -1072,11 +1076,11 @@ export const getApiAdminClientsByIdentifierByIdentifier = <
  * Search clients
  * Search clients by name or identifier
  */
-export const getApiAdminClientsSearch = <ThrowOnError extends boolean = false>(
-  options?: Options<GetApiAdminClientsSearchData, ThrowOnError>,
+export const searchClients = <ThrowOnError extends boolean = false>(
+  options?: Options<SearchClientsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
-    GetApiAdminClientsSearchResponse,
+    SearchClientsResponse,
     unknown,
     ThrowOnError
   >({
@@ -1088,11 +1092,11 @@ export const getApiAdminClientsSearch = <ThrowOnError extends boolean = false>(
 /**
  * Get client by ID
  */
-export const getApiAdminClientsById = <ThrowOnError extends boolean = false>(
-  options: Options<GetApiAdminClientsByIdData, ThrowOnError>,
+export const getClient = <ThrowOnError extends boolean = false>(
+  options: Options<GetClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
-    GetApiAdminClientsByIdResponse,
+    GetClientResponse,
     unknown,
     ThrowOnError
   >({
@@ -1104,8 +1108,8 @@ export const getApiAdminClientsById = <ThrowOnError extends boolean = false>(
 /**
  * Update client details
  */
-export const putApiAdminClientsById = <ThrowOnError extends boolean = false>(
-  options: Options<PutApiAdminClientsByIdData, ThrowOnError>,
+export const updateClient = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
     url: "/api/admin/clients/{id}",
@@ -1120,10 +1124,8 @@ export const putApiAdminClientsById = <ThrowOnError extends boolean = false>(
 /**
  * Activate a client
  */
-export const postApiAdminClientsByIdActivate = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminClientsByIdActivateData, ThrowOnError>,
+export const activateClient = <ThrowOnError extends boolean = false>(
+  options: Options<ActivateClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -1137,13 +1139,11 @@ export const postApiAdminClientsByIdActivate = <
  * Get applications for client
  * Returns all applications with their enabled/disabled status for this client
  */
-export const getApiAdminClientsByIdApplications = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiAdminClientsByIdApplicationsData, ThrowOnError>,
+export const getClientApplications = <ThrowOnError extends boolean = false>(
+  options: Options<GetClientApplicationsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
-    GetApiAdminClientsByIdApplicationsResponse,
+    GetClientApplicationsResponse,
     unknown,
     ThrowOnError
   >({
@@ -1156,10 +1156,8 @@ export const getApiAdminClientsByIdApplications = <
  * Update applications for client
  * Sets which applications are enabled for this client
  */
-export const putApiAdminClientsByIdApplications = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PutApiAdminClientsByIdApplicationsData, ThrowOnError>,
+export const updateClientApplications = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateClientApplicationsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
     url: "/api/admin/clients/{id}/applications",
@@ -1174,13 +1172,8 @@ export const putApiAdminClientsByIdApplications = <
 /**
  * Disable application for client
  */
-export const postApiAdminClientsByIdApplicationsByApplicationIdDisable = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    PostApiAdminClientsByIdApplicationsByApplicationIdDisableData,
-    ThrowOnError
-  >,
+export const disableClientApplication = <ThrowOnError extends boolean = false>(
+  options: Options<DisableClientApplicationData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -1193,13 +1186,8 @@ export const postApiAdminClientsByIdApplicationsByApplicationIdDisable = <
 /**
  * Enable application for client
  */
-export const postApiAdminClientsByIdApplicationsByApplicationIdEnable = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    PostApiAdminClientsByIdApplicationsByApplicationIdEnableData,
-    ThrowOnError
-  >,
+export const enableClientApplication = <ThrowOnError extends boolean = false>(
+  options: Options<EnableClientApplicationData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -1212,10 +1200,8 @@ export const postApiAdminClientsByIdApplicationsByApplicationIdEnable = <
 /**
  * Deactivate a client
  */
-export const postApiAdminClientsByIdDeactivate = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminClientsByIdDeactivateData, ThrowOnError>,
+export const deactivateClient = <ThrowOnError extends boolean = false>(
+  options: Options<DeactivateClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -1232,10 +1218,8 @@ export const postApiAdminClientsByIdDeactivate = <
 /**
  * Add audit note to client
  */
-export const postApiAdminClientsByIdNotes = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminClientsByIdNotesData, ThrowOnError>,
+export const addClientAuditNote = <ThrowOnError extends boolean = false>(
+  options: Options<AddClientAuditNoteData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -1252,10 +1236,8 @@ export const postApiAdminClientsByIdNotes = <
 /**
  * Suspend a client
  */
-export const postApiAdminClientsByIdSuspend = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminClientsByIdSuspendData, ThrowOnError>,
+export const suspendClient = <ThrowOnError extends boolean = false>(
+  options: Options<SuspendClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -1565,11 +1547,11 @@ export const postApiAdminDispatchPoolsByIdSuspend = <
 /**
  * List all OAuth clients
  */
-export const getApiAdminOauthClients = <ThrowOnError extends boolean = false>(
-  options?: Options<GetApiAdminOauthClientsData, ThrowOnError>,
+export const listOAuthClients = <ThrowOnError extends boolean = false>(
+  options?: Options<ListOAuthClientsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
-    GetApiAdminOauthClientsResponse,
+    ListOAuthClientsResponse,
     unknown,
     ThrowOnError
   >({
@@ -1582,11 +1564,11 @@ export const getApiAdminOauthClients = <ThrowOnError extends boolean = false>(
  * Create a new OAuth client
  * For confidential clients, the secret is returned once in the response and cannot be retrieved again.
  */
-export const postApiAdminOauthClients = <ThrowOnError extends boolean = false>(
-  options: Options<PostApiAdminOauthClientsData, ThrowOnError>,
+export const createOAuthClient = <ThrowOnError extends boolean = false>(
+  options: Options<CreateOAuthClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
-    PostApiAdminOauthClientsResponse,
+    CreateOAuthClientResponse,
     unknown,
     ThrowOnError
   >({
@@ -1602,13 +1584,8 @@ export const postApiAdminOauthClients = <ThrowOnError extends boolean = false>(
 /**
  * Get OAuth client by client_id
  */
-export const getApiAdminOauthClientsByClientIdByClientId = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    GetApiAdminOauthClientsByClientIdByClientIdData,
-    ThrowOnError
-  >,
+export const getOAuthClientByClientId = <ThrowOnError extends boolean = false>(
+  options: Options<GetOAuthClientByClientIdData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
     url: "/api/admin/oauth-clients/by-client-id/{clientId}",
@@ -1619,13 +1596,11 @@ export const getApiAdminOauthClientsByClientIdByClientId = <
 /**
  * Delete OAuth client
  */
-export const deleteApiAdminOauthClientsById = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<DeleteApiAdminOauthClientsByIdData, ThrowOnError>,
+export const deleteOAuthClient = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteOAuthClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).delete<
-    DeleteApiAdminOauthClientsByIdResponse,
+    DeleteOAuthClientResponse,
     unknown,
     ThrowOnError
   >({
@@ -1637,13 +1612,11 @@ export const deleteApiAdminOauthClientsById = <
 /**
  * Get OAuth client by ID
  */
-export const getApiAdminOauthClientsById = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiAdminOauthClientsByIdData, ThrowOnError>,
+export const getOAuthClient = <ThrowOnError extends boolean = false>(
+  options: Options<GetOAuthClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
-    GetApiAdminOauthClientsByIdResponse,
+    GetOAuthClientResponse,
     unknown,
     ThrowOnError
   >({
@@ -1655,10 +1628,8 @@ export const getApiAdminOauthClientsById = <
 /**
  * Update OAuth client
  */
-export const putApiAdminOauthClientsById = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PutApiAdminOauthClientsByIdData, ThrowOnError>,
+export const updateOAuthClient = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateOAuthClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
     url: "/api/admin/oauth-clients/{id}",
@@ -1673,10 +1644,8 @@ export const putApiAdminOauthClientsById = <
 /**
  * Activate OAuth client
  */
-export const postApiAdminOauthClientsByIdActivate = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminOauthClientsByIdActivateData, ThrowOnError>,
+export const activateOAuthClient = <ThrowOnError extends boolean = false>(
+  options: Options<ActivateOAuthClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -1689,10 +1658,8 @@ export const postApiAdminOauthClientsByIdActivate = <
 /**
  * Deactivate OAuth client
  */
-export const postApiAdminOauthClientsByIdDeactivate = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminOauthClientsByIdDeactivateData, ThrowOnError>,
+export const deactivateOAuthClient = <ThrowOnError extends boolean = false>(
+  options: Options<DeactivateOAuthClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -1706,13 +1673,11 @@ export const postApiAdminOauthClientsByIdDeactivate = <
  * Rotate client secret
  * Generates a new secret. The new secret is returned once and cannot be retrieved again.
  */
-export const postApiAdminOauthClientsByIdRotateSecret = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminOauthClientsByIdRotateSecretData, ThrowOnError>,
+export const rotateOAuthClientSecret = <ThrowOnError extends boolean = false>(
+  options: Options<RotateOAuthClientSecretData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
-    PostApiAdminOauthClientsByIdRotateSecretResponse,
+    RotateOAuthClientSecretResponse,
     unknown,
     ThrowOnError
   >({
@@ -1805,11 +1770,11 @@ export const getApiAdminPlatformCorsById = <
  * List principals
  * List users and service accounts with optional filters
  */
-export const getApiAdminPrincipals = <ThrowOnError extends boolean = false>(
-  options?: Options<GetApiAdminPrincipalsData, ThrowOnError>,
+export const listPrincipals = <ThrowOnError extends boolean = false>(
+  options?: Options<ListPrincipalsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
-    GetApiAdminPrincipalsResponse,
+    ListPrincipalsResponse,
     unknown,
     ThrowOnError
   >({
@@ -1822,13 +1787,11 @@ export const getApiAdminPrincipals = <ThrowOnError extends boolean = false>(
  * Check email domain configuration
  * Returns auth provider info and warnings for an email domain
  */
-export const getApiAdminPrincipalsCheckEmailDomain = <
-  ThrowOnError extends boolean = false,
->(
-  options?: Options<GetApiAdminPrincipalsCheckEmailDomainData, ThrowOnError>,
+export const checkEmailDomain = <ThrowOnError extends boolean = false>(
+  options?: Options<CheckEmailDomainData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
-    GetApiAdminPrincipalsCheckEmailDomainResponse,
+    CheckEmailDomainResponse,
     unknown,
     ThrowOnError
   >({
@@ -1840,13 +1803,11 @@ export const getApiAdminPrincipalsCheckEmailDomain = <
 /**
  * Create a new internal user
  */
-export const postApiAdminPrincipalsUsers = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminPrincipalsUsersData, ThrowOnError>,
+export const createUser = <ThrowOnError extends boolean = false>(
+  options: Options<CreateUserData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
-    PostApiAdminPrincipalsUsersResponse,
+    CreateUserResponse,
     unknown,
     ThrowOnError
   >({
@@ -1862,11 +1823,11 @@ export const postApiAdminPrincipalsUsers = <
 /**
  * Get principal by ID
  */
-export const getApiAdminPrincipalsById = <ThrowOnError extends boolean = false>(
-  options: Options<GetApiAdminPrincipalsByIdData, ThrowOnError>,
+export const getPrincipal = <ThrowOnError extends boolean = false>(
+  options: Options<GetPrincipalData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
-    GetApiAdminPrincipalsByIdResponse,
+    GetPrincipalResponse,
     unknown,
     ThrowOnError
   >({
@@ -1878,8 +1839,8 @@ export const getApiAdminPrincipalsById = <ThrowOnError extends boolean = false>(
 /**
  * Update principal details
  */
-export const putApiAdminPrincipalsById = <ThrowOnError extends boolean = false>(
-  options: Options<PutApiAdminPrincipalsByIdData, ThrowOnError>,
+export const updatePrincipal = <ThrowOnError extends boolean = false>(
+  options: Options<UpdatePrincipalData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
     url: "/api/admin/principals/{id}",
@@ -1894,10 +1855,8 @@ export const putApiAdminPrincipalsById = <ThrowOnError extends boolean = false>(
 /**
  * Activate a principal
  */
-export const postApiAdminPrincipalsByIdActivate = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminPrincipalsByIdActivateData, ThrowOnError>,
+export const activatePrincipal = <ThrowOnError extends boolean = false>(
+  options: Options<ActivatePrincipalData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -1910,10 +1869,8 @@ export const postApiAdminPrincipalsByIdActivate = <
 /**
  * Get principal's client access grants
  */
-export const getApiAdminPrincipalsByIdClientAccess = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiAdminPrincipalsByIdClientAccessData, ThrowOnError>,
+export const getPrincipalClientAccess = <ThrowOnError extends boolean = false>(
+  options: Options<GetPrincipalClientAccessData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
     url: "/api/admin/principals/{id}/client-access",
@@ -1924,10 +1881,10 @@ export const getApiAdminPrincipalsByIdClientAccess = <
 /**
  * Grant client access to principal
  */
-export const postApiAdminPrincipalsByIdClientAccess = <
+export const grantPrincipalClientAccess = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<PostApiAdminPrincipalsByIdClientAccessData, ThrowOnError>,
+  options: Options<GrantPrincipalClientAccessData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -1944,16 +1901,13 @@ export const postApiAdminPrincipalsByIdClientAccess = <
 /**
  * Revoke client access from principal
  */
-export const deleteApiAdminPrincipalsByIdClientAccessByClientId = <
+export const revokePrincipalClientAccess = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<
-    DeleteApiAdminPrincipalsByIdClientAccessByClientIdData,
-    ThrowOnError
-  >,
+  options: Options<RevokePrincipalClientAccessData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).delete<
-    DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponse,
+    RevokePrincipalClientAccessResponse,
     unknown,
     ThrowOnError
   >({
@@ -1965,10 +1919,8 @@ export const deleteApiAdminPrincipalsByIdClientAccessByClientId = <
 /**
  * Deactivate a principal
  */
-export const postApiAdminPrincipalsByIdDeactivate = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminPrincipalsByIdDeactivateData, ThrowOnError>,
+export const deactivatePrincipal = <ThrowOnError extends boolean = false>(
+  options: Options<DeactivatePrincipalData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -1981,10 +1933,8 @@ export const postApiAdminPrincipalsByIdDeactivate = <
 /**
  * Reset user password
  */
-export const postApiAdminPrincipalsByIdResetPassword = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminPrincipalsByIdResetPasswordData, ThrowOnError>,
+export const resetPrincipalPassword = <ThrowOnError extends boolean = false>(
+  options: Options<ResetPrincipalPasswordData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -2001,10 +1951,8 @@ export const postApiAdminPrincipalsByIdResetPassword = <
 /**
  * Get principal's roles
  */
-export const getApiAdminPrincipalsByIdRoles = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiAdminPrincipalsByIdRolesData, ThrowOnError>,
+export const getPrincipalRoles = <ThrowOnError extends boolean = false>(
+  options: Options<GetPrincipalRolesData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
     url: "/api/admin/principals/{id}/roles",
@@ -2015,10 +1963,8 @@ export const getApiAdminPrincipalsByIdRoles = <
 /**
  * Assign role to principal
  */
-export const postApiAdminPrincipalsByIdRoles = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiAdminPrincipalsByIdRolesData, ThrowOnError>,
+export const assignPrincipalRole = <ThrowOnError extends boolean = false>(
+  options: Options<AssignPrincipalRoleData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
     {
@@ -2036,10 +1982,8 @@ export const postApiAdminPrincipalsByIdRoles = <
  * Batch assign roles to principal
  * Sets the complete list of roles for a principal. Roles not in the list will be removed.
  */
-export const putApiAdminPrincipalsByIdRoles = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PutApiAdminPrincipalsByIdRolesData, ThrowOnError>,
+export const assignPrincipalRoles = <ThrowOnError extends boolean = false>(
+  options: Options<AssignPrincipalRolesData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
     url: "/api/admin/principals/{id}/roles",
@@ -2054,16 +1998,11 @@ export const putApiAdminPrincipalsByIdRoles = <
 /**
  * Remove role from principal
  */
-export const deleteApiAdminPrincipalsByIdRolesByRoleName = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    DeleteApiAdminPrincipalsByIdRolesByRoleNameData,
-    ThrowOnError
-  >,
+export const removePrincipalRole = <ThrowOnError extends boolean = false>(
+  options: Options<RemovePrincipalRoleData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).delete<
-    DeleteApiAdminPrincipalsByIdRolesByRoleNameResponse,
+    RemovePrincipalRoleResponse,
     unknown,
     ThrowOnError
   >({
@@ -2076,11 +2015,11 @@ export const deleteApiAdminPrincipalsByIdRolesByRoleName = <
  * List all available roles
  * Returns all roles from the database. Filter by application code or source.
  */
-export const getApiAdminRoles = <ThrowOnError extends boolean = false>(
-  options?: Options<GetApiAdminRolesData, ThrowOnError>,
+export const listRoles = <ThrowOnError extends boolean = false>(
+  options?: Options<ListRolesData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
-    GetApiAdminRolesResponse,
+    ListRolesResponse,
     unknown,
     ThrowOnError
   >({
@@ -2093,11 +2032,11 @@ export const getApiAdminRoles = <ThrowOnError extends boolean = false>(
  * Create a new role
  * Creates a new role with source=DATABASE. Role name is auto-prefixed with application code.
  */
-export const postApiAdminRoles = <ThrowOnError extends boolean = false>(
-  options: Options<PostApiAdminRolesData, ThrowOnError>,
+export const createRole = <ThrowOnError extends boolean = false>(
+  options: Options<CreateRoleData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
-    PostApiAdminRolesResponse,
+    CreateRoleResponse,
     unknown,
     ThrowOnError
   >({
@@ -2114,13 +2053,11 @@ export const postApiAdminRoles = <ThrowOnError extends boolean = false>(
  * List all available permissions
  * Returns all permissions from code and database.
  */
-export const getApiAdminRolesPermissions = <
-  ThrowOnError extends boolean = false,
->(
-  options?: Options<GetApiAdminRolesPermissionsData, ThrowOnError>,
+export const listPermissions = <ThrowOnError extends boolean = false>(
+  options?: Options<ListPermissionsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
-    GetApiAdminRolesPermissionsResponse,
+    ListPermissionsResponse,
     unknown,
     ThrowOnError
   >({
@@ -2132,10 +2069,8 @@ export const getApiAdminRolesPermissions = <
 /**
  * Get permission details
  */
-export const getApiAdminRolesPermissionsByPermission = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiAdminRolesPermissionsByPermissionData, ThrowOnError>,
+export const getPermission = <ThrowOnError extends boolean = false>(
+  options: Options<GetPermissionData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
     url: "/api/admin/roles/permissions/{permission}",
@@ -2147,13 +2082,11 @@ export const getApiAdminRolesPermissionsByPermission = <
  * Delete a role
  * Deletes a role. Only DATABASE and SDK sourced roles can be deleted.
  */
-export const deleteApiAdminRolesByRoleName = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<DeleteApiAdminRolesByRoleNameData, ThrowOnError>,
+export const deleteRole = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteRoleData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).delete<
-    DeleteApiAdminRolesByRoleNameResponse,
+    DeleteRoleResponse,
     unknown,
     ThrowOnError
   >({
@@ -2165,13 +2098,11 @@ export const deleteApiAdminRolesByRoleName = <
 /**
  * Get role details by name
  */
-export const getApiAdminRolesByRoleName = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiAdminRolesByRoleNameData, ThrowOnError>,
+export const getRole = <ThrowOnError extends boolean = false>(
+  options: Options<GetRoleData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
-    GetApiAdminRolesByRoleNameResponse,
+    GetRoleResponse,
     unknown,
     ThrowOnError
   >({
@@ -2184,13 +2115,11 @@ export const getApiAdminRolesByRoleName = <
  * Update a role
  * Updates a role. CODE-sourced roles can only have clientManaged updated.
  */
-export const putApiAdminRolesByRoleName = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PutApiAdminRolesByRoleNameData, ThrowOnError>,
+export const updateRole = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateRoleData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<
-    PutApiAdminRolesByRoleNameResponse,
+    UpdateRoleResponse,
     unknown,
     ThrowOnError
   >({
@@ -2538,11 +2467,11 @@ export const postApiAdminSubscriptionsByIdResume = <
  * List all applications
  * Returns all applications
  */
-export const getApiApplications = <ThrowOnError extends boolean = false>(
-  options?: Options<GetApiApplicationsData, ThrowOnError>,
+export const listApps = <ThrowOnError extends boolean = false>(
+  options?: Options<ListAppsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
-    GetApiApplicationsResponse,
+    ListAppsResponse,
     unknown,
     ThrowOnError
   >({
@@ -2554,30 +2483,34 @@ export const getApiApplications = <ThrowOnError extends boolean = false>(
 /**
  * Create a new application
  */
-export const postApiApplications = <ThrowOnError extends boolean = false>(
-  options: Options<PostApiApplicationsData, ThrowOnError>,
+export const createApp = <ThrowOnError extends boolean = false>(
+  options: Options<CreateAppData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/applications",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<
+    CreateAppResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/applications",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
  * Get application by code
  */
-export const getApiApplicationsCodeByCode = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiApplicationsCodeByCodeData, ThrowOnError>,
+export const getAppByCode = <ThrowOnError extends boolean = false>(
+  options: Options<GetAppByCodeData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).get<
+    GetAppByCodeResponse,
+    unknown,
+    ThrowOnError
+  >({
     url: "/api/applications/code/{code}",
     ...options,
   });
@@ -2587,13 +2520,13 @@ export const getApiApplicationsCodeByCode = <
  * List anchor-level dispatch pools
  * Returns all anchor-level dispatch pools (clientId = null).
  */
-export const getApiApplicationsByAppCodeDispatchPools = <
+export const listApplicationDispatchPools = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<GetApiApplicationsByAppCodeDispatchPoolsData, ThrowOnError>,
+  options: Options<ListApplicationDispatchPoolsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
-    GetApiApplicationsByAppCodeDispatchPoolsResponse,
+    ListApplicationDispatchPoolsResponse,
     unknown,
     ThrowOnError
   >({
@@ -2606,16 +2539,13 @@ export const getApiApplicationsByAppCodeDispatchPools = <
  * Sync dispatch pools
  * Bulk sync dispatch pools. Creates new pools, updates existing ones. Set removeUnlisted=true to archive pools not in the sync list.
  */
-export const postApiApplicationsByAppCodeDispatchPoolsSync = <
+export const syncApplicationDispatchPools = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<
-    PostApiApplicationsByAppCodeDispatchPoolsSyncData,
-    ThrowOnError
-  >,
+  options: Options<SyncApplicationDispatchPoolsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
-    PostApiApplicationsByAppCodeDispatchPoolsSyncResponse,
+    SyncApplicationDispatchPoolsResponse,
     unknown,
     ThrowOnError
   >({
@@ -2632,13 +2562,11 @@ export const postApiApplicationsByAppCodeDispatchPoolsSync = <
  * List application event types
  * Returns all event types registered for this application (matching code prefix).
  */
-export const getApiApplicationsByAppCodeEventTypes = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiApplicationsByAppCodeEventTypesData, ThrowOnError>,
+export const listApplicationEventTypes = <ThrowOnError extends boolean = false>(
+  options: Options<ListApplicationEventTypesData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
-    GetApiApplicationsByAppCodeEventTypesResponse,
+    ListApplicationEventTypesResponse,
     unknown,
     ThrowOnError
   >({
@@ -2651,16 +2579,11 @@ export const getApiApplicationsByAppCodeEventTypes = <
  * Sync application event types
  * Bulk sync event types from an external application. Creates new event types, updates existing API-sourced event types. Set removeUnlisted=true to remove API-sourced event types not in the sync list.
  */
-export const postApiApplicationsByAppCodeEventTypesSync = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    PostApiApplicationsByAppCodeEventTypesSyncData,
-    ThrowOnError
-  >,
+export const syncApplicationEventTypes = <ThrowOnError extends boolean = false>(
+  options: Options<SyncApplicationEventTypesData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
-    PostApiApplicationsByAppCodeEventTypesSyncResponse,
+    SyncApplicationEventTypesResponse,
     unknown,
     ThrowOnError
   >({
@@ -2677,13 +2600,11 @@ export const postApiApplicationsByAppCodeEventTypesSync = <
  * List application roles
  * Returns all roles registered for this application.
  */
-export const getApiApplicationsByAppCodeRoles = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiApplicationsByAppCodeRolesData, ThrowOnError>,
+export const listApplicationRoles = <ThrowOnError extends boolean = false>(
+  options: Options<ListApplicationRolesData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
-    GetApiApplicationsByAppCodeRolesResponse,
+    ListApplicationRolesResponse,
     unknown,
     ThrowOnError
   >({
@@ -2696,13 +2617,11 @@ export const getApiApplicationsByAppCodeRoles = <
  * Create application role
  * Creates a single role for the application with source=SDK.
  */
-export const postApiApplicationsByAppCodeRoles = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiApplicationsByAppCodeRolesData, ThrowOnError>,
+export const createApplicationRole = <ThrowOnError extends boolean = false>(
+  options: Options<CreateApplicationRoleData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
-    PostApiApplicationsByAppCodeRolesResponse,
+    CreateApplicationRoleResponse,
     unknown,
     ThrowOnError
   >({
@@ -2719,13 +2638,11 @@ export const postApiApplicationsByAppCodeRoles = <
  * Sync application roles
  * Bulk sync roles from an external application. Creates new roles, updates existing SDK roles. Set removeUnlisted=true to remove SDK roles not in the sync list.
  */
-export const postApiApplicationsByAppCodeRolesSync = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiApplicationsByAppCodeRolesSyncData, ThrowOnError>,
+export const syncApplicationRoles = <ThrowOnError extends boolean = false>(
+  options: Options<SyncApplicationRolesData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
-    PostApiApplicationsByAppCodeRolesSyncResponse,
+    SyncApplicationRolesResponse,
     unknown,
     ThrowOnError
   >({
@@ -2742,16 +2659,11 @@ export const postApiApplicationsByAppCodeRolesSync = <
  * Delete application role
  * Deletes an SDK-sourced role. Cannot delete CODE or DATABASE sourced roles.
  */
-export const deleteApiApplicationsByAppCodeRolesByRoleName = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    DeleteApiApplicationsByAppCodeRolesByRoleNameData,
-    ThrowOnError
-  >,
+export const deleteApplicationRole = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteApplicationRoleData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).delete<
-    DeleteApiApplicationsByAppCodeRolesByRoleNameResponse,
+    DeleteApplicationRoleResponse,
     unknown,
     ThrowOnError
   >({
@@ -2764,13 +2676,13 @@ export const deleteApiApplicationsByAppCodeRolesByRoleName = <
  * List anchor-level subscriptions
  * Returns all anchor-level subscriptions (clientId = null).
  */
-export const getApiApplicationsByAppCodeSubscriptions = <
+export const listApplicationSubscriptions = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<GetApiApplicationsByAppCodeSubscriptionsData, ThrowOnError>,
+  options: Options<ListApplicationSubscriptionsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
-    GetApiApplicationsByAppCodeSubscriptionsResponse,
+    ListApplicationSubscriptionsResponse,
     unknown,
     ThrowOnError
   >({
@@ -2783,16 +2695,13 @@ export const getApiApplicationsByAppCodeSubscriptions = <
  * Sync application subscriptions
  * Bulk sync subscriptions from an external application. Creates new subscriptions, updates existing API-sourced subscriptions. Set removeUnlisted=true to remove API-sourced subscriptions not in the sync list.
  */
-export const postApiApplicationsByAppCodeSubscriptionsSync = <
+export const syncApplicationSubscriptions = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<
-    PostApiApplicationsByAppCodeSubscriptionsSyncData,
-    ThrowOnError
-  >,
+  options: Options<SyncApplicationSubscriptionsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
-    PostApiApplicationsByAppCodeSubscriptionsSyncResponse,
+    SyncApplicationSubscriptionsResponse,
     unknown,
     ThrowOnError
   >({
@@ -2808,11 +2717,11 @@ export const postApiApplicationsByAppCodeSubscriptionsSync = <
 /**
  * Delete an application
  */
-export const deleteApiApplicationsById = <ThrowOnError extends boolean = false>(
-  options: Options<DeleteApiApplicationsByIdData, ThrowOnError>,
+export const deleteApp = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteAppData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).delete<
-    DeleteApiApplicationsByIdResponse,
+    DeleteAppResponse,
     unknown,
     ThrowOnError
   >({
@@ -2824,10 +2733,14 @@ export const deleteApiApplicationsById = <ThrowOnError extends boolean = false>(
 /**
  * Get application by ID
  */
-export const getApiApplicationsById = <ThrowOnError extends boolean = false>(
-  options: Options<GetApiApplicationsByIdData, ThrowOnError>,
+export const getApp = <ThrowOnError extends boolean = false>(
+  options: Options<GetAppData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).get<
+    GetAppResponse,
+    unknown,
+    ThrowOnError
+  >({
     url: "/api/applications/{id}",
     ...options,
   });
@@ -2836,10 +2749,14 @@ export const getApiApplicationsById = <ThrowOnError extends boolean = false>(
 /**
  * Update an application
  */
-export const putApiApplicationsById = <ThrowOnError extends boolean = false>(
-  options: Options<PutApiApplicationsByIdData, ThrowOnError>,
+export const updateApp = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateAppData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).put<
+    UpdateAppResponse,
+    unknown,
+    ThrowOnError
+  >({
     url: "/api/applications/{id}",
     ...options,
     headers: {
@@ -2852,33 +2769,33 @@ export const putApiApplicationsById = <ThrowOnError extends boolean = false>(
 /**
  * Activate an application
  */
-export const postApiApplicationsByIdActivate = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiApplicationsByIdActivateData, ThrowOnError>,
+export const activateApp = <ThrowOnError extends boolean = false>(
+  options: Options<ActivateAppData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/applications/{id}/activate",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<
+    ActivateAppResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/applications/{id}/activate",
+    ...options,
+  });
 };
 
 /**
  * Deactivate an application
  */
-export const postApiApplicationsByIdDeactivate = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<PostApiApplicationsByIdDeactivateData, ThrowOnError>,
+export const deactivateApp = <ThrowOnError extends boolean = false>(
+  options: Options<DeactivateAppData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/applications/{id}/deactivate",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<
+    DeactivateAppResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/applications/{id}/deactivate",
+    ...options,
+  });
 };
 
 /**
@@ -3067,7 +2984,11 @@ export const getApiClients = <ThrowOnError extends boolean = false>(
 export const getApiClientsById = <ThrowOnError extends boolean = false>(
   options: Options<GetApiClientsByIdData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).get<
+    GetApiClientsByIdResponse,
+    unknown,
+    ThrowOnError
+  >({
     url: "/api/clients/{id}",
     ...options,
   });
@@ -3248,16 +3169,18 @@ export const getApiEventTypes = <ThrowOnError extends boolean = false>(
 export const postApiEventTypes = <ThrowOnError extends boolean = false>(
   options: Options<PostApiEventTypesData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/event-types",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<
+    PostApiEventTypesResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/event-types",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
@@ -3268,12 +3191,14 @@ export const getApiEventTypesFiltersAggregates = <
 >(
   options?: Options<GetApiEventTypesFiltersAggregatesData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/event-types/filters/aggregates",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<
+    GetApiEventTypesFiltersAggregatesResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/event-types/filters/aggregates",
+    ...options,
+  });
 };
 
 /**
@@ -3284,12 +3209,14 @@ export const getApiEventTypesFiltersApplications = <
 >(
   options?: Options<GetApiEventTypesFiltersApplicationsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/event-types/filters/applications",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<
+    GetApiEventTypesFiltersApplicationsResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/event-types/filters/applications",
+    ...options,
+  });
 };
 
 /**
@@ -3300,12 +3227,14 @@ export const getApiEventTypesFiltersSubdomains = <
 >(
   options?: Options<GetApiEventTypesFiltersSubdomainsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/event-types/filters/subdomains",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<
+    GetApiEventTypesFiltersSubdomainsResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/event-types/filters/subdomains",
+    ...options,
+  });
 };
 
 /**
@@ -3330,7 +3259,11 @@ export const deleteApiEventTypesById = <ThrowOnError extends boolean = false>(
 export const getApiEventTypesById = <ThrowOnError extends boolean = false>(
   options: Options<GetApiEventTypesByIdData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).get<
+    GetApiEventTypesByIdResponse,
+    unknown,
+    ThrowOnError
+  >({
     url: "/api/event-types/{id}",
     ...options,
   });
@@ -3343,7 +3276,7 @@ export const patchApiEventTypesById = <ThrowOnError extends boolean = false>(
   options: Options<PatchApiEventTypesByIdData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).patch<
-    unknown,
+    PatchApiEventTypesByIdResponse,
     unknown,
     ThrowOnError
   >({
@@ -3364,12 +3297,14 @@ export const postApiEventTypesByIdArchive = <
 >(
   options: Options<PostApiEventTypesByIdArchiveData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/event-types/{id}/archive",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<
+    PostApiEventTypesByIdArchiveResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/event-types/{id}/archive",
+    ...options,
+  });
 };
 
 /**
@@ -3380,16 +3315,18 @@ export const postApiEventTypesByIdSchemas = <
 >(
   options: Options<PostApiEventTypesByIdSchemasData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/event-types/{id}/schemas",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<
+    PostApiEventTypesByIdSchemasResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/event-types/{id}/schemas",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
@@ -3403,12 +3340,14 @@ export const postApiEventTypesByIdSchemasByVersionDeprecate = <
     ThrowOnError
   >,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/event-types/{id}/schemas/{version}/deprecate",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<
+    PostApiEventTypesByIdSchemasByVersionDeprecateResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/event-types/{id}/schemas/{version}/deprecate",
+    ...options,
+  });
 };
 
 /**
@@ -3422,12 +3361,14 @@ export const postApiEventTypesByIdSchemasByVersionFinalise = <
     ThrowOnError
   >,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/event-types/{id}/schemas/{version}/finalise",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<
+    PostApiEventTypesByIdSchemasByVersionFinaliseResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/event-types/{id}/schemas/{version}/finalise",
+    ...options,
+  });
 };
 
 /**
@@ -3589,6 +3530,462 @@ export const postApiSampleWebhookSlow = <ThrowOnError extends boolean = false>(
       },
     },
   );
+};
+
+/**
+ * List clients
+ */
+export const sdkListClients = <ThrowOnError extends boolean = false>(
+  options?: Options<SdkListClientsData, ThrowOnError>,
+) => {
+  return (options?.client ?? _heyApiClient).get<
+    SdkListClientsResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/clients",
+    ...options,
+  });
+};
+
+/**
+ * Create a new client
+ */
+export const sdkCreateClient = <ThrowOnError extends boolean = false>(
+  options: Options<SdkCreateClientData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    SdkCreateClientResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/clients",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Get client by ID
+ */
+export const sdkGetClient = <ThrowOnError extends boolean = false>(
+  options: Options<SdkGetClientData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<
+    SdkGetClientResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/clients/{id}",
+    ...options,
+  });
+};
+
+/**
+ * Update client details
+ */
+export const sdkUpdateClient = <ThrowOnError extends boolean = false>(
+  options: Options<SdkUpdateClientData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).put<
+    SdkUpdateClientResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/clients/{id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Activate a client
+ */
+export const sdkActivateClient = <ThrowOnError extends boolean = false>(
+  options: Options<SdkActivateClientData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    SdkActivateClientResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/clients/{id}/activate",
+    ...options,
+  });
+};
+
+/**
+ * Deactivate a client
+ */
+export const sdkDeactivateClient = <ThrowOnError extends boolean = false>(
+  options: Options<SdkDeactivateClientData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    SdkDeactivateClientResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/clients/{id}/deactivate",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Suspend a client
+ */
+export const sdkSuspendClient = <ThrowOnError extends boolean = false>(
+  options: Options<SdkSuspendClientData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    SdkSuspendClientResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/clients/{id}/suspend",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * List principals
+ */
+export const sdkListPrincipals = <ThrowOnError extends boolean = false>(
+  options?: Options<SdkListPrincipalsData, ThrowOnError>,
+) => {
+  return (options?.client ?? _heyApiClient).get<
+    SdkListPrincipalsResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/principals",
+    ...options,
+  });
+};
+
+/**
+ * Create a new service account principal
+ */
+export const sdkCreateServicePrincipal = <ThrowOnError extends boolean = false>(
+  options: Options<SdkCreateServicePrincipalData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    SdkCreateServicePrincipalResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/principals/service",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Create a new user principal
+ */
+export const sdkCreateUserPrincipal = <ThrowOnError extends boolean = false>(
+  options: Options<SdkCreateUserPrincipalData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    SdkCreateUserPrincipalResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/principals/user",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Get principal by ID
+ */
+export const sdkGetPrincipal = <ThrowOnError extends boolean = false>(
+  options: Options<SdkGetPrincipalData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<
+    SdkGetPrincipalResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/principals/{id}",
+    ...options,
+  });
+};
+
+/**
+ * Update principal details
+ */
+export const sdkUpdatePrincipal = <ThrowOnError extends boolean = false>(
+  options: Options<SdkUpdatePrincipalData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).put<
+    SdkUpdatePrincipalResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/principals/{id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Activate a principal
+ */
+export const sdkActivatePrincipal = <ThrowOnError extends boolean = false>(
+  options: Options<SdkActivatePrincipalData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    SdkActivatePrincipalResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/principals/{id}/activate",
+    ...options,
+  });
+};
+
+/**
+ * Get principal's granted clients
+ */
+export const sdkGetPrincipalClients = <ThrowOnError extends boolean = false>(
+  options: Options<SdkGetPrincipalClientsData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<
+    SdkGetPrincipalClientsResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/principals/{id}/clients",
+    ...options,
+  });
+};
+
+/**
+ * Revoke client access from principal
+ */
+export const sdkRevokeClientAccess = <ThrowOnError extends boolean = false>(
+  options: Options<SdkRevokeClientAccessData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).delete<
+    SdkRevokeClientAccessResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/principals/{id}/clients/{clientId}",
+    ...options,
+  });
+};
+
+/**
+ * Grant client access to principal
+ */
+export const sdkGrantClientAccess = <ThrowOnError extends boolean = false>(
+  options: Options<SdkGrantClientAccessData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    SdkGrantClientAccessResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/principals/{id}/clients/{clientId}",
+    ...options,
+  });
+};
+
+/**
+ * Deactivate a principal
+ */
+export const sdkDeactivatePrincipal = <ThrowOnError extends boolean = false>(
+  options: Options<SdkDeactivatePrincipalData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    SdkDeactivatePrincipalResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/principals/{id}/deactivate",
+    ...options,
+  });
+};
+
+/**
+ * Get principal's roles
+ */
+export const sdkGetPrincipalRoles = <ThrowOnError extends boolean = false>(
+  options: Options<SdkGetPrincipalRolesData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<
+    SdkGetPrincipalRolesResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/principals/{id}/roles",
+    ...options,
+  });
+};
+
+/**
+ * Batch assign roles to principal (declarative)
+ */
+export const sdkAssignPrincipalRoles = <ThrowOnError extends boolean = false>(
+  options: Options<SdkAssignPrincipalRolesData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).put<
+    SdkAssignPrincipalRolesResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/principals/{id}/roles",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Remove a role from principal
+ */
+export const sdkRemovePrincipalRole = <ThrowOnError extends boolean = false>(
+  options: Options<SdkRemovePrincipalRoleData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).delete<
+    SdkRemovePrincipalRoleResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/principals/{id}/roles/{roleName}",
+    ...options,
+  });
+};
+
+/**
+ * Add a single role to principal
+ */
+export const sdkAddPrincipalRole = <ThrowOnError extends boolean = false>(
+  options: Options<SdkAddPrincipalRoleData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    SdkAddPrincipalRoleResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/principals/{id}/roles/{roleName}",
+    ...options,
+  });
+};
+
+/**
+ * List roles
+ */
+export const sdkListRoles = <ThrowOnError extends boolean = false>(
+  options?: Options<SdkListRolesData, ThrowOnError>,
+) => {
+  return (options?.client ?? _heyApiClient).get<
+    SdkListRolesResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/roles",
+    ...options,
+  });
+};
+
+/**
+ * Create a new role
+ */
+export const sdkCreateRole = <ThrowOnError extends boolean = false>(
+  options: Options<SdkCreateRoleData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    SdkCreateRoleResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/roles",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Delete a role
+ */
+export const sdkDeleteRole = <ThrowOnError extends boolean = false>(
+  options: Options<SdkDeleteRoleData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).delete<
+    SdkDeleteRoleResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/roles/{roleName}",
+    ...options,
+  });
+};
+
+/**
+ * Get role by name
+ */
+export const sdkGetRole = <ThrowOnError extends boolean = false>(
+  options: Options<SdkGetRoleData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<
+    SdkGetRoleResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/roles/{roleName}",
+    ...options,
+  });
+};
+
+/**
+ * Update a role
+ */
+export const sdkUpdateRole = <ThrowOnError extends boolean = false>(
+  options: Options<SdkUpdateRoleData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).put<
+    SdkUpdateRoleResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/sdk/roles/{roleName}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
 };
 
 /**

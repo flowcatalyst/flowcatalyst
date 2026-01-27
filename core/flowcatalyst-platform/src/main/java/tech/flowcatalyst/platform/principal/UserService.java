@@ -163,6 +163,7 @@ public class UserService {
      * @param principalId Principal ID
      * @throws NotFoundException if user not found
      */
+    @jakarta.transaction.Transactional
     public void deactivateUser(String principalId) {
         Principal principal = principalRepo.findByIdOptional(principalId)
             .orElseThrow(() -> new NotFoundException("User not found"));
@@ -181,6 +182,7 @@ public class UserService {
      * @param principalId Principal ID
      * @throws NotFoundException if user not found
      */
+    @jakarta.transaction.Transactional
     public void activateUser(String principalId) {
         Principal principal = principalRepo.findByIdOptional(principalId)
             .orElseThrow(() -> new NotFoundException("User not found"));
@@ -202,6 +204,7 @@ public class UserService {
      * @throws NotFoundException if user not found
      * @throws IllegalArgumentException if user is not INTERNAL auth
      */
+    @jakarta.transaction.Transactional
     public void resetPassword(String principalId, String newPassword) {
         Principal principal = principalRepo.findByIdOptional(principalId)
             .orElseThrow(() -> new NotFoundException("User not found"));
@@ -230,6 +233,7 @@ public class UserService {
      * @throws NotFoundException if user not found
      * @throws BadRequestException if old password is incorrect
      */
+    @jakarta.transaction.Transactional
     public void changePassword(String principalId, String oldPassword, String newPassword) {
         Principal principal = principalRepo.findByIdOptional(principalId)
             .orElseThrow(() -> new NotFoundException("User not found"));

@@ -85,6 +85,10 @@ public class PanacheAggregateRegistry {
             throw new IllegalArgumentException("Unknown aggregate type: " + clazz.getName() +
                 ". Register it in PanacheAggregateRegistry.");
         }
+
+        // Clear L1 cache after native SQL to prevent stale reads
+        em.flush();
+        em.clear();
     }
 
     /**
@@ -99,6 +103,13 @@ public class PanacheAggregateRegistry {
 
         Class<?> clazz = aggregate.getClass();
         String id = extractId(aggregate);
+
+        // Handle junction tables for AuthRole
+        if (clazz == AuthRole.class) {
+            em.createNativeQuery("DELETE FROM role_permissions WHERE role_id = :id")
+                .setParameter("id", id)
+                .executeUpdate();
+        }
 
         // Handle junction tables for ServiceAccount
         if (clazz == ServiceAccount.class) {
@@ -142,6 +153,10 @@ public class PanacheAggregateRegistry {
         } else {
             throw new IllegalArgumentException("Unknown aggregate type for delete: " + clazz.getName());
         }
+
+        // Clear L1 cache after native SQL to prevent stale reads
+        em.flush();
+        em.clear();
     }
 
     // ========================================================================
@@ -527,13 +542,13 @@ public class PanacheAggregateRegistry {
     private void persistAuthRole(AuthRole role) {
         String sql = """
             INSERT INTO auth_roles (id, application_id, application_code, name, display_name,
-                description, permissions, source, client_managed, created_at, updated_at)
+                description, source, client_managed, created_at, updated_at)
             VALUES (:id, :applicationId, :applicationCode, :name, :displayName,
-                :description, :permissions, :source, :clientManaged, :createdAt, :updatedAt)
+                :description, :source, :clientManaged, :createdAt, :updatedAt)
             ON CONFLICT (id) DO UPDATE SET
                 application_id = EXCLUDED.application_id, application_code = EXCLUDED.application_code,
                 name = EXCLUDED.name, display_name = EXCLUDED.display_name, description = EXCLUDED.description,
-                permissions = EXCLUDED.permissions, source = EXCLUDED.source,
+                source = EXCLUDED.source,
                 client_managed = EXCLUDED.client_managed, updated_at = EXCLUDED.updated_at
             """;
         em.createNativeQuery(sql)
@@ -543,12 +558,21 @@ public class PanacheAggregateRegistry {
             .setParameter("name", role.name)
             .setParameter("displayName", role.displayName)
             .setParameter("description", role.description)
-            .setParameter("permissions", role.permissions != null ? role.permissions.toArray(new String[0]) : new String[0])
             .setParameter("source", role.source != null ? role.source.name() : "DATABASE")
             .setParameter("clientManaged", role.clientManaged)
             .setParameter("createdAt", role.createdAt)
             .setParameter("updatedAt", role.updatedAt)
             .executeUpdate();
+
+        // Save permissions to normalized role_permissions table
+        em.createNativeQuery("DELETE FROM role_permissions WHERE role_id = :roleId")
+            .setParameter("roleId", role.id).executeUpdate();
+        if (role.permissions != null) {
+            for (String perm : role.permissions) {
+                em.createNativeQuery("INSERT INTO role_permissions (role_id, permission) VALUES (:roleId, :perm)")
+                    .setParameter("roleId", role.id).setParameter("perm", perm).executeUpdate();
+            }
+        }
     }
 
     private void persistAuthPermission(AuthPermission perm) {

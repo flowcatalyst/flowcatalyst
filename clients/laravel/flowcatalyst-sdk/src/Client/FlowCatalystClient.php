@@ -10,11 +10,13 @@ use FlowCatalyst\Client\Resources\Clients;
 use FlowCatalyst\Client\Resources\DispatchPools;
 use FlowCatalyst\Client\Resources\EventTypes;
 use FlowCatalyst\Client\Resources\Permissions;
+use FlowCatalyst\Client\Resources\Principals;
 use FlowCatalyst\Client\Resources\Roles;
 use FlowCatalyst\Client\Resources\Subscriptions;
 use FlowCatalyst\Exceptions\AuthenticationException;
 use FlowCatalyst\Exceptions\FlowCatalystException;
 use FlowCatalyst\Exceptions\ValidationException;
+use FlowCatalyst\Generated\Client as GeneratedClient;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
@@ -22,6 +24,7 @@ use GuzzleHttp\Exception\RequestException;
 class FlowCatalystClient
 {
     private Client $httpClient;
+    private ?GeneratedClient $generatedClient = null;
     private ?EventTypes $eventTypes = null;
     private ?Subscriptions $subscriptions = null;
     private ?DispatchPools $dispatchPools = null;
@@ -29,6 +32,7 @@ class FlowCatalystClient
     private ?Permissions $permissions = null;
     private ?Applications $applications = null;
     private ?Clients $clients = null;
+    private ?Principals $principals = null;
 
     public function __construct(
         private readonly OidcTokenManager $tokenManager,
@@ -98,6 +102,25 @@ class FlowCatalystClient
     public function clients(): Clients
     {
         return $this->clients ??= new Clients($this);
+    }
+
+    /**
+     * Get the Principals resource.
+     */
+    public function principals(): Principals
+    {
+        return $this->principals ??= new Principals($this);
+    }
+
+    /**
+     * Get the JanePHP generated API client.
+     */
+    public function generated(): GeneratedClient
+    {
+        return $this->generatedClient ??= GeneratedClientFactory::create(
+            $this->tokenManager,
+            $this->baseUrl
+        );
     }
 
     /**

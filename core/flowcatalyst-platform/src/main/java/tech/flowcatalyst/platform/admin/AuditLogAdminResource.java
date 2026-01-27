@@ -34,6 +34,7 @@ import java.util.Map;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @EmbeddedModeOnly
+@jakarta.transaction.Transactional
 public class AuditLogAdminResource {
 
     @Inject
@@ -54,7 +55,7 @@ public class AuditLogAdminResource {
      * List audit logs with optional filtering and pagination.
      */
     @GET
-    @Operation(summary = "List audit logs",
+    @Operation(operationId = "listAuditLogs", summary = "List audit logs",
         description = "Returns audit logs with optional filtering by entity type, entity ID, principal, or operation")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Audit logs retrieved",
@@ -114,7 +115,7 @@ public class AuditLogAdminResource {
      */
     @GET
     @Path("/{id}")
-    @Operation(summary = "Get audit log by ID")
+    @Operation(operationId = "getAuditLog", summary = "Get audit log by ID")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Audit log retrieved",
             content = @Content(schema = @Schema(implementation = AuditLogDto.class))),
@@ -141,7 +142,7 @@ public class AuditLogAdminResource {
      */
     @GET
     @Path("/entity/{entityType}/{entityId}")
-    @Operation(summary = "Get audit logs for entity",
+    @Operation(operationId = "getEntityAuditLogs", summary = "Get audit logs for entity",
         description = "Returns all audit logs for a specific entity")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Audit logs retrieved"),
@@ -170,7 +171,7 @@ public class AuditLogAdminResource {
      */
     @GET
     @Path("/entity-types")
-    @Operation(summary = "Get entity types with audit logs",
+    @Operation(operationId = "getAuditLogEntityTypes", summary = "Get entity types with audit logs",
         description = "Returns distinct entity types that have audit log entries")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Entity types retrieved"),
@@ -192,7 +193,7 @@ public class AuditLogAdminResource {
      */
     @GET
     @Path("/operations")
-    @Operation(summary = "Get operations with audit logs",
+    @Operation(operationId = "getAuditLogOperations", summary = "Get operations with audit logs",
         description = "Returns distinct operation names that have audit log entries")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Operations retrieved"),

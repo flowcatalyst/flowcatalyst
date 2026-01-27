@@ -69,6 +69,7 @@ import java.util.stream.Collectors;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @EmbeddedModeOnly
+@jakarta.transaction.Transactional
 public class PrincipalAdminResource {
 
     private static final Logger LOG = Logger.getLogger(PrincipalAdminResource.class);
@@ -112,7 +113,7 @@ public class PrincipalAdminResource {
      * List all principals with optional filters.
      */
     @GET
-    @Operation(summary = "List principals", description = "List users and service accounts with optional filters")
+    @Operation(operationId = "listPrincipals", summary = "List principals", description = "List users and service accounts with optional filters")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of principals",
             content = @Content(schema = @Schema(implementation = PrincipalListResponse.class))),
@@ -121,7 +122,8 @@ public class PrincipalAdminResource {
     public Response listPrincipals(
             @QueryParam("clientId") @Parameter(description = "Filter by client ID") String clientId,
             @QueryParam("type") @Parameter(description = "Filter by type (USER/SERVICE)") PrincipalType type,
-            @QueryParam("active") @Parameter(description = "Filter by active status") Boolean active) {
+            @QueryParam("active") @Parameter(description = "Filter by active status") Boolean active,
+            @QueryParam("email") @Parameter(description = "Filter by exact email match") String email) {
 
         String principalId = auditContext.requirePrincipalId();
 
@@ -129,6 +131,13 @@ public class PrincipalAdminResource {
             return Response.status(Response.Status.FORBIDDEN)
                 .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_VIEW.toPermissionString()))
                 .build();
+        }
+
+        // If email is provided, filter by exact email match (takes precedence over other filters)
+        if (email != null && !email.isBlank()) {
+            return principalRepo.findByEmail(email)
+                .map(p -> Response.ok(new PrincipalListResponse(List.of(toDto(p)), 1)).build())
+                .orElse(Response.ok(new PrincipalListResponse(List.of(), 0)).build());
         }
 
         List<Principal> principals;
@@ -162,7 +171,7 @@ public class PrincipalAdminResource {
      */
     @GET
     @Path("/{id}")
-    @Operation(summary = "Get principal by ID")
+    @Operation(operationId = "getPrincipal", summary = "Get principal by ID")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Principal details",
             content = @Content(schema = @Schema(implementation = PrincipalDetailDto.class))),
@@ -202,7 +211,7 @@ public class PrincipalAdminResource {
      */
     @POST
     @Path("/users")
-    @Operation(summary = "Create a new internal user")
+    @Operation(operationId = "createUser", summary = "Create a new internal user")
     @APIResponses({
         @APIResponse(responseCode = "201", description = "User created",
             content = @Content(schema = @Schema(implementation = PrincipalDto.class))),
@@ -252,7 +261,7 @@ public class PrincipalAdminResource {
      */
     @PUT
     @Path("/{id}")
-    @Operation(summary = "Update principal details")
+    @Operation(operationId = "updatePrincipal", summary = "Update principal details")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Principal updated"),
         @APIResponse(responseCode = "404", description = "Principal not found")
@@ -294,7 +303,7 @@ public class PrincipalAdminResource {
      */
     @POST
     @Path("/{id}/activate")
-    @Operation(summary = "Activate a principal")
+    @Operation(operationId = "activatePrincipal", summary = "Activate a principal")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Principal activated"),
         @APIResponse(responseCode = "404", description = "Principal not found")
@@ -331,7 +340,7 @@ public class PrincipalAdminResource {
      */
     @POST
     @Path("/{id}/deactivate")
-    @Operation(summary = "Deactivate a principal")
+    @Operation(operationId = "deactivatePrincipal", summary = "Deactivate a principal")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Principal deactivated"),
         @APIResponse(responseCode = "404", description = "Principal not found")
@@ -367,7 +376,7 @@ public class PrincipalAdminResource {
      */
     @POST
     @Path("/{id}/reset-password")
-    @Operation(summary = "Reset user password")
+    @Operation(operationId = "resetPrincipalPassword", summary = "Reset user password")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Password reset"),
         @APIResponse(responseCode = "400", description = "User is not internal auth or password doesn't meet requirements"),
@@ -407,7 +416,7 @@ public class PrincipalAdminResource {
      */
     @GET
     @Path("/{id}/roles")
-    @Operation(summary = "Get principal's roles")
+    @Operation(operationId = "getPrincipalRoles", summary = "Get principal's roles")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of roles"),
         @APIResponse(responseCode = "404", description = "Principal not found")
@@ -441,7 +450,7 @@ public class PrincipalAdminResource {
      */
     @POST
     @Path("/{id}/roles")
-    @Operation(summary = "Assign role to principal")
+    @Operation(operationId = "assignPrincipalRole", summary = "Assign role to principal")
     @APIResponses({
         @APIResponse(responseCode = "201", description = "Role assigned"),
         @APIResponse(responseCode = "400", description = "Role already assigned or not defined"),
@@ -487,7 +496,7 @@ public class PrincipalAdminResource {
      */
     @DELETE
     @Path("/{id}/roles/{roleName}")
-    @Operation(summary = "Remove role from principal")
+    @Operation(operationId = "removePrincipalRole", summary = "Remove role from principal")
     @APIResponses({
         @APIResponse(responseCode = "204", description = "Role removed"),
         @APIResponse(responseCode = "404", description = "Principal or role assignment not found")
@@ -525,7 +534,7 @@ public class PrincipalAdminResource {
      */
     @PUT
     @Path("/{id}/roles")
-    @Operation(summary = "Batch assign roles to principal",
+    @Operation(operationId = "assignPrincipalRoles", summary = "Batch assign roles to principal",
         description = "Sets the complete list of roles for a principal. Roles not in the list will be removed.")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Roles assigned"),
@@ -579,7 +588,7 @@ public class PrincipalAdminResource {
      */
     @GET
     @Path("/{id}/client-access")
-    @Operation(summary = "Get principal's client access grants")
+    @Operation(operationId = "getPrincipalClientAccess", summary = "Get principal's client access grants")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of client access grants"),
         @APIResponse(responseCode = "404", description = "Principal not found")
@@ -613,7 +622,7 @@ public class PrincipalAdminResource {
      */
     @POST
     @Path("/{id}/client-access")
-    @Operation(summary = "Grant client access to principal")
+    @Operation(operationId = "grantPrincipalClientAccess", summary = "Grant client access to principal")
     @APIResponses({
         @APIResponse(responseCode = "201", description = "Access granted"),
         @APIResponse(responseCode = "400", description = "Grant already exists or principal belongs to client"),
@@ -658,7 +667,7 @@ public class PrincipalAdminResource {
      */
     @DELETE
     @Path("/{id}/client-access/{clientId}")
-    @Operation(summary = "Revoke client access from principal")
+    @Operation(operationId = "revokePrincipalClientAccess", summary = "Revoke client access from principal")
     @APIResponses({
         @APIResponse(responseCode = "204", description = "Access revoked"),
         @APIResponse(responseCode = "404", description = "Grant not found")
@@ -765,7 +774,7 @@ public class PrincipalAdminResource {
      */
     @GET
     @Path("/check-email-domain")
-    @Operation(summary = "Check email domain configuration",
+    @Operation(operationId = "checkEmailDomain", summary = "Check email domain configuration",
         description = "Returns auth provider info and warnings for an email domain")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Domain info returned",

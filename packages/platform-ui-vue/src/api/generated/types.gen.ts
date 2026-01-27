@@ -74,11 +74,21 @@ export type AssignRoleRequest = {
   roleName: string;
 };
 
+/**
+ * Assign roles request (declarative)
+ */
 export type AssignRolesRequest = {
+  /**
+   * Complete list of role names
+   */
   roles: Array<string>;
 };
 
 export type AssignRolesRequest1 = {
+  roles: Array<string>;
+};
+
+export type AssignRolesRequest2 = {
   roles?: Array<string>;
 };
 
@@ -141,6 +151,38 @@ export type BatchEventResponse = {
   duplicateCount?: number;
 };
 
+/**
+ * Client access grant
+ */
+export type ClientAccessGrantDto = {
+  /**
+   * Grant ID
+   */
+  id?: string;
+  /**
+   * Client ID
+   */
+  clientId?: string;
+  /**
+   * When access was granted
+   */
+  grantedAt?: Instant;
+  /**
+   * When access expires
+   */
+  expiresAt?: Instant;
+};
+
+/**
+ * List of client access grants
+ */
+export type ClientAccessListResponse = {
+  /**
+   * Client access grants
+   */
+  grants?: Array<ClientAccessGrantDto>;
+};
+
 export type ClientApplicationDto = {
   id?: string;
   code?: string;
@@ -168,7 +210,45 @@ export type ClientConfigRequest = {
   };
 };
 
+/**
+ * Client details
+ */
 export type ClientDto = {
+  /**
+   * Client ID
+   */
+  id?: string;
+  /**
+   * Client name
+   */
+  name?: string;
+  /**
+   * Client identifier/slug
+   */
+  identifier?: string;
+  /**
+   * Client status (ACTIVE, SUSPENDED, INACTIVE)
+   */
+  status?: string;
+  /**
+   * Reason for current status
+   */
+  statusReason?: string;
+  /**
+   * When status was last changed
+   */
+  statusChangedAt?: Instant;
+  /**
+   * Creation timestamp
+   */
+  createdAt?: Instant;
+  /**
+   * Last update timestamp
+   */
+  updatedAt?: Instant;
+};
+
+export type ClientDto1 = {
   id?: string;
   name?: string;
   identifier?: string;
@@ -179,7 +259,7 @@ export type ClientDto = {
   updatedAt?: Instant;
 };
 
-export type ClientDto1 = {
+export type ClientDto2 = {
   id?: string;
   clientId?: string;
   clientName?: string;
@@ -202,8 +282,17 @@ export type ClientInfo = {
   identifier?: string;
 };
 
+/**
+ * List of clients
+ */
 export type ClientListResponse = {
+  /**
+   * Client list
+   */
   clients?: Array<ClientDto>;
+  /**
+   * Total count
+   */
   total?: number;
 };
 
@@ -213,6 +302,11 @@ export type ClientListResponse1 = {
 };
 
 export type ClientListResponse2 = {
+  clients?: Array<ClientDto2>;
+  total?: number;
+};
+
+export type ClientListResponse3 = {
   items?: Array<ClientResponse>;
 };
 
@@ -280,12 +374,26 @@ export type CreateApplicationRequest1 = {
   iconUrl?: string;
 };
 
+/**
+ * Create client request
+ */
 export type CreateClientRequest = {
+  /**
+   * Client name
+   */
   name: string;
+  /**
+   * Unique identifier/slug
+   */
   identifier: string;
 };
 
 export type CreateClientRequest1 = {
+  name: string;
+  identifier: string;
+};
+
+export type CreateClientRequest2 = {
   clientName: string;
   clientType: ClientType;
   redirectUris: Array<string>;
@@ -297,7 +405,7 @@ export type CreateClientRequest1 = {
 };
 
 export type CreateClientResponse = {
-  client?: ClientDto1;
+  client?: ClientDto2;
   clientSecret?: string;
 };
 
@@ -415,16 +523,38 @@ export type CreateOidcConfigRequest = {
   oidcIssuerPattern?: string;
 };
 
+/**
+ * Create role request
+ */
 export type CreateRoleRequest = {
-  applicationCode?: string;
-  name?: string;
+  /**
+   * Application code
+   */
+  applicationCode: string;
+  /**
+   * Role name (will be prefixed with app code)
+   */
+  name: string;
+  /**
+   * Display name
+   */
   displayName?: string;
+  /**
+   * Role description
+   */
   description?: string;
+  /**
+   * Structured permission inputs
+   */
   permissions?: Array<PermissionInputDto>;
+  /**
+   * Whether clients can manage assignment
+   */
   clientManaged?: boolean;
 };
 
 export type CreateRoleRequest1 = {
+  applicationCode?: string;
   name?: string;
   displayName?: string;
   description?: string;
@@ -433,11 +563,19 @@ export type CreateRoleRequest1 = {
 };
 
 export type CreateRoleRequest2 = {
-  applicationCode?: string;
   name?: string;
   displayName?: string;
   description?: string;
   permissions?: Array<PermissionInputDto2>;
+  clientManaged?: boolean;
+};
+
+export type CreateRoleRequest3 = {
+  applicationCode?: string;
+  name?: string;
+  displayName?: string;
+  description?: string;
+  permissions?: Array<PermissionInputDto3>;
   clientManaged?: boolean;
 };
 
@@ -454,6 +592,20 @@ export type CreateServiceAccountResponse = {
   principalId?: string;
   oauth?: OAuthCredentials;
   webhook?: WebhookCredentials;
+};
+
+/**
+ * Create service principal request
+ */
+export type CreateServicePrincipalRequest = {
+  /**
+   * Service account name
+   */
+  name: string;
+  /**
+   * Description
+   */
+  description?: string;
 };
 
 export type CreateSubscriptionRequest = {
@@ -479,7 +631,29 @@ export type CreateSubscriptionRequest = {
   dataOnly?: boolean;
 };
 
+/**
+ * Create user request
+ */
 export type CreateUserRequest = {
+  /**
+   * Email address
+   */
+  email: string;
+  /**
+   * Password (required for internal auth)
+   */
+  password?: string;
+  /**
+   * Display name
+   */
+  name: string;
+  /**
+   * Client ID to associate with
+   */
+  clientId?: string;
+};
+
+export type CreateUserRequest1 = {
   email: string;
   password?: string;
   name: string;
@@ -656,7 +830,49 @@ export type EmailDomainCheckResponse = {
   warning?: string;
 };
 
+/**
+ * Error response
+ */
 export type ErrorResponse = {
+  /**
+   * Error code
+   */
+  code?: string;
+  /**
+   * Error message
+   */
+  message?: string;
+};
+
+/**
+ * Error response
+ */
+export type ErrorResponse1 = {
+  /**
+   * Error code
+   */
+  code?: string;
+  /**
+   * Error message
+   */
+  message?: string;
+};
+
+/**
+ * Error response
+ */
+export type ErrorResponse2 = {
+  /**
+   * Error code
+   */
+  code?: string;
+  /**
+   * Error message
+   */
+  message?: string;
+};
+
+export type ErrorResponse3 = {
   error?: string;
 };
 
@@ -765,6 +981,10 @@ export type FilterOption1 = {
 };
 
 export type FilterOptionsResponse = {
+  options?: Array<string>;
+};
+
+export type FilterOptionsResponse1 = {
   clients?: Array<FilterOption>;
   applications?: Array<FilterOption>;
   subdomains?: Array<FilterOption>;
@@ -773,7 +993,7 @@ export type FilterOptionsResponse = {
   statuses?: Array<FilterOption>;
 };
 
-export type FilterOptionsResponse1 = {
+export type FilterOptionsResponse2 = {
   clients?: Array<FilterOption1>;
   applications?: Array<FilterOption1>;
   subdomains?: Array<FilterOption1>;
@@ -871,10 +1091,25 @@ export type PermissionDto = {
   description?: string;
 };
 
+/**
+ * Structured permission input
+ */
 export type PermissionInputDto = {
+  /**
+   * Application code
+   */
   application?: string;
+  /**
+   * Bounded context
+   */
   context?: string;
+  /**
+   * Resource/entity
+   */
   aggregate?: string;
+  /**
+   * Operation
+   */
   action?: string;
 };
 
@@ -886,6 +1121,13 @@ export type PermissionInputDto1 = {
 };
 
 export type PermissionInputDto2 = {
+  application?: string;
+  context?: string;
+  aggregate?: string;
+  action?: string;
+};
+
+export type PermissionInputDto3 = {
   application?: string;
   context?: string;
   aggregate?: string;
@@ -939,7 +1181,65 @@ export type PrincipalDetailDto = {
   updatedAt?: Instant;
 };
 
+/**
+ * Principal details
+ */
 export type PrincipalDto = {
+  /**
+   * Principal ID
+   */
+  id?: string;
+  /**
+   * Principal type (USER/SERVICE)
+   */
+  type?: string;
+  /**
+   * User scope (ANCHOR/PARTNER/CLIENT)
+   */
+  scope?: string;
+  /**
+   * Home client ID
+   */
+  clientId?: string;
+  /**
+   * Display name
+   */
+  name?: string;
+  /**
+   * Whether principal is active
+   */
+  active?: boolean;
+  /**
+   * Email address (USER type only)
+   */
+  email?: string;
+  /**
+   * Identity provider type
+   */
+  idpType?: string;
+  /**
+   * Assigned role names
+   */
+  roles?: Array<string>;
+  /**
+   * Whether user is from anchor domain
+   */
+  isAnchorUser?: boolean;
+  /**
+   * Granted client IDs
+   */
+  grantedClientIds?: Array<string>;
+  /**
+   * Creation timestamp
+   */
+  createdAt?: Instant;
+  /**
+   * Last update timestamp
+   */
+  updatedAt?: Instant;
+};
+
+export type PrincipalDto1 = {
   id?: string;
   type?: PrincipalType;
   scope?: UserScope;
@@ -955,8 +1255,22 @@ export type PrincipalDto = {
   updatedAt?: Instant;
 };
 
+/**
+ * List of principals
+ */
 export type PrincipalListResponse = {
+  /**
+   * Principal list
+   */
   principals?: Array<PrincipalDto>;
+  /**
+   * Total count
+   */
+  total?: number;
+};
+
+export type PrincipalListResponse1 = {
+  principals?: Array<PrincipalDto1>;
   total?: number;
 };
 
@@ -1026,7 +1340,71 @@ export type ResetPasswordRequest = {
   newPassword: string;
 };
 
+/**
+ * Role assignment details
+ */
+export type RoleAssignmentDto = {
+  /**
+   * Role name
+   */
+  roleName?: string;
+  /**
+   * How the role was assigned
+   */
+  assignmentSource?: string;
+  /**
+   * When the role was assigned
+   */
+  assignedAt?: Instant;
+};
+
+/**
+ * Role details
+ */
 export type RoleDto = {
+  /**
+   * Full role name (e.g. app:admin)
+   */
+  name?: string;
+  /**
+   * Application code
+   */
+  applicationCode?: string;
+  /**
+   * Display name
+   */
+  displayName?: string;
+  /**
+   * Short name without app prefix
+   */
+  shortName?: string;
+  /**
+   * Role description
+   */
+  description?: string;
+  /**
+   * Permission strings
+   */
+  permissions?: Array<string>;
+  /**
+   * Source (CODE, DATABASE, SDK)
+   */
+  source?: string;
+  /**
+   * Whether clients can manage assignment
+   */
+  clientManaged?: boolean;
+  /**
+   * Creation timestamp
+   */
+  createdAt?: Instant;
+  /**
+   * Last update timestamp
+   */
+  updatedAt?: Instant;
+};
+
+export type RoleDto1 = {
   name?: string;
   applicationCode?: string;
   displayName?: string;
@@ -1039,7 +1417,7 @@ export type RoleDto = {
   updatedAt?: Instant;
 };
 
-export type RoleDto1 = {
+export type RoleDto2 = {
   name?: string;
   fullName?: string;
   displayName?: string;
@@ -1049,14 +1427,56 @@ export type RoleDto1 = {
   clientManaged?: boolean;
 };
 
+/**
+ * List of role assignments
+ */
 export type RoleListResponse = {
+  /**
+   * Role assignments
+   */
+  roles?: Array<RoleAssignmentDto>;
+};
+
+/**
+ * List of roles
+ */
+export type RoleListResponse1 = {
+  /**
+   * Role list
+   */
   roles?: Array<RoleDto>;
+  /**
+   * Total count
+   */
   total?: number;
 };
 
-export type RoleListResponse1 = {
+export type RoleListResponse2 = {
   roles?: Array<RoleDto1>;
   total?: number;
+};
+
+export type RoleListResponse3 = {
+  roles?: Array<RoleDto2>;
+  total?: number;
+};
+
+/**
+ * Roles assigned response
+ */
+export type RolesAssignedResponse = {
+  /**
+   * Current role assignments
+   */
+  roles?: Array<RoleAssignmentDto>;
+  /**
+   * Roles that were added
+   */
+  added?: Array<string>;
+  /**
+   * Roles that were removed
+   */
+  removed?: Array<string>;
 };
 
 export type RotateSecretResponse = {
@@ -1112,8 +1532,38 @@ export type SpecVersionResponse = {
   status?: string;
 };
 
+/**
+ * Status change request
+ */
 export type StatusChangeRequest = {
+  /**
+   * Reason for status change
+   */
+  reason?: string;
+};
+
+export type StatusChangeRequest1 = {
   reason: string;
+};
+
+/**
+ * Status change response
+ */
+export type StatusResponse = {
+  /**
+   * Status message
+   */
+  message?: string;
+};
+
+/**
+ * Status response
+ */
+export type StatusResponse1 = {
+  /**
+   * Status message
+   */
+  message?: string;
 };
 
 export type SubscriptionDto = {
@@ -1235,7 +1685,7 @@ export type SyncResponse1 = {
 
 export type SyncResponse2 = {
   syncedCount?: number;
-  roles?: Array<RoleDto1>;
+  roles?: Array<RoleDto2>;
 };
 
 export type SyncResponse3 = {
@@ -1249,7 +1699,7 @@ export type SyncRoleItem = {
   name?: string;
   displayName?: string;
   description?: string;
-  permissions?: Array<PermissionInputDto1>;
+  permissions?: Array<PermissionInputDto2>;
   clientManaged?: boolean;
 };
 
@@ -1318,11 +1768,21 @@ export type UpdateClientBindingRequest = {
   clientId?: string;
 };
 
+/**
+ * Update client request
+ */
 export type UpdateClientRequest = {
+  /**
+   * Client name
+   */
   name: string;
 };
 
 export type UpdateClientRequest1 = {
+  name: string;
+};
+
+export type UpdateClientRequest2 = {
   clientName?: string;
   redirectUris?: Array<string>;
   allowedOrigins?: Array<string>;
@@ -1367,21 +1827,53 @@ export type UpdateOidcConfigRequest = {
   oidcIssuerPattern?: string;
 };
 
+/**
+ * Update principal request
+ */
 export type UpdatePrincipalRequest = {
+  /**
+   * Display name
+   */
   name: string;
 };
 
+export type UpdatePrincipalRequest1 = {
+  name: string;
+};
+
+/**
+ * Update role request
+ */
 export type UpdateRoleRequest = {
+  /**
+   * Display name
+   */
   displayName?: string;
+  /**
+   * Role description
+   */
   description?: string;
+  /**
+   * Structured permission inputs
+   */
   permissions?: Array<PermissionInputDto>;
+  /**
+   * Whether clients can manage assignment
+   */
   clientManaged?: boolean;
 };
 
 export type UpdateRoleRequest1 = {
   displayName?: string;
   description?: string;
-  permissions?: Array<PermissionInputDto2>;
+  permissions?: Array<PermissionInputDto1>;
+  clientManaged?: boolean;
+};
+
+export type UpdateRoleRequest2 = {
+  displayName?: string;
+  description?: string;
+  permissions?: Array<PermissionInputDto3>;
   clientManaged?: boolean;
 };
 
@@ -1475,14 +1967,14 @@ export type GetWellKnownOpenidConfigurationResponses = {
 export type GetWellKnownOpenidConfigurationResponse =
   GetWellKnownOpenidConfigurationResponses[keyof GetWellKnownOpenidConfigurationResponses];
 
-export type GetApiAdminAnchorDomainsData = {
+export type ListAnchorDomainsData = {
   body?: never;
   path?: never;
   query?: never;
   url: "/api/admin/anchor-domains";
 };
 
-export type GetApiAdminAnchorDomainsErrors = {
+export type ListAnchorDomainsErrors = {
   /**
    * Not authenticated
    */
@@ -1493,24 +1985,24 @@ export type GetApiAdminAnchorDomainsErrors = {
   403: unknown;
 };
 
-export type GetApiAdminAnchorDomainsResponses = {
+export type ListAnchorDomainsResponses = {
   /**
    * List of anchor domains
    */
   200: AnchorDomainListResponse;
 };
 
-export type GetApiAdminAnchorDomainsResponse =
-  GetApiAdminAnchorDomainsResponses[keyof GetApiAdminAnchorDomainsResponses];
+export type ListAnchorDomainsResponse =
+  ListAnchorDomainsResponses[keyof ListAnchorDomainsResponses];
 
-export type PostApiAdminAnchorDomainsData = {
+export type AddAnchorDomainData = {
   body: CreateAnchorDomainRequest;
   path?: never;
   query?: never;
   url: "/api/admin/anchor-domains";
 };
 
-export type PostApiAdminAnchorDomainsErrors = {
+export type AddAnchorDomainErrors = {
   /**
    * Invalid request or domain already exists
    */
@@ -1521,17 +2013,17 @@ export type PostApiAdminAnchorDomainsErrors = {
   401: unknown;
 };
 
-export type PostApiAdminAnchorDomainsResponses = {
+export type AddAnchorDomainResponses = {
   /**
    * Anchor domain created
    */
   201: AnchorDomainDto;
 };
 
-export type PostApiAdminAnchorDomainsResponse =
-  PostApiAdminAnchorDomainsResponses[keyof PostApiAdminAnchorDomainsResponses];
+export type AddAnchorDomainResponse =
+  AddAnchorDomainResponses[keyof AddAnchorDomainResponses];
 
-export type GetApiAdminAnchorDomainsCheckByDomainData = {
+export type CheckAnchorDomainData = {
   body?: never;
   path: {
     domain: string;
@@ -1540,24 +2032,24 @@ export type GetApiAdminAnchorDomainsCheckByDomainData = {
   url: "/api/admin/anchor-domains/check/{domain}";
 };
 
-export type GetApiAdminAnchorDomainsCheckByDomainErrors = {
+export type CheckAnchorDomainErrors = {
   /**
    * Not authenticated
    */
   401: unknown;
 };
 
-export type GetApiAdminAnchorDomainsCheckByDomainResponses = {
+export type CheckAnchorDomainResponses = {
   /**
    * Domain check result
    */
   200: DomainCheckResponse;
 };
 
-export type GetApiAdminAnchorDomainsCheckByDomainResponse =
-  GetApiAdminAnchorDomainsCheckByDomainResponses[keyof GetApiAdminAnchorDomainsCheckByDomainResponses];
+export type CheckAnchorDomainResponse =
+  CheckAnchorDomainResponses[keyof CheckAnchorDomainResponses];
 
-export type DeleteApiAdminAnchorDomainsByIdData = {
+export type RemoveAnchorDomainData = {
   body?: never;
   path: {
     id: string;
@@ -1566,7 +2058,7 @@ export type DeleteApiAdminAnchorDomainsByIdData = {
   url: "/api/admin/anchor-domains/{id}";
 };
 
-export type DeleteApiAdminAnchorDomainsByIdErrors = {
+export type RemoveAnchorDomainErrors = {
   /**
    * Not authenticated
    */
@@ -1577,17 +2069,17 @@ export type DeleteApiAdminAnchorDomainsByIdErrors = {
   404: unknown;
 };
 
-export type DeleteApiAdminAnchorDomainsByIdResponses = {
+export type RemoveAnchorDomainResponses = {
   /**
    * Anchor domain removed
    */
   200: DeleteAnchorDomainResponse;
 };
 
-export type DeleteApiAdminAnchorDomainsByIdResponse =
-  DeleteApiAdminAnchorDomainsByIdResponses[keyof DeleteApiAdminAnchorDomainsByIdResponses];
+export type RemoveAnchorDomainResponse =
+  RemoveAnchorDomainResponses[keyof RemoveAnchorDomainResponses];
 
-export type GetApiAdminAnchorDomainsByIdData = {
+export type GetAnchorDomainData = {
   body?: never;
   path: {
     id: string;
@@ -1596,7 +2088,7 @@ export type GetApiAdminAnchorDomainsByIdData = {
   url: "/api/admin/anchor-domains/{id}";
 };
 
-export type GetApiAdminAnchorDomainsByIdErrors = {
+export type GetAnchorDomainErrors = {
   /**
    * Not authenticated
    */
@@ -1607,17 +2099,17 @@ export type GetApiAdminAnchorDomainsByIdErrors = {
   404: unknown;
 };
 
-export type GetApiAdminAnchorDomainsByIdResponses = {
+export type GetAnchorDomainResponses = {
   /**
    * Anchor domain details
    */
   200: AnchorDomainDto;
 };
 
-export type GetApiAdminAnchorDomainsByIdResponse =
-  GetApiAdminAnchorDomainsByIdResponses[keyof GetApiAdminAnchorDomainsByIdResponses];
+export type GetAnchorDomainResponse =
+  GetAnchorDomainResponses[keyof GetAnchorDomainResponses];
 
-export type GetApiAdminApplicationsData = {
+export type ListApplicationsData = {
   body?: never;
   path?: never;
   query?: {
@@ -1627,35 +2119,35 @@ export type GetApiAdminApplicationsData = {
   url: "/api/admin/applications";
 };
 
-export type GetApiAdminApplicationsResponses = {
+export type ListApplicationsResponses = {
   /**
    * OK
    */
   200: unknown;
 };
 
-export type PostApiAdminApplicationsData = {
+export type CreateApplicationData = {
   body: CreateApplicationRequest;
   path?: never;
   query?: never;
   url: "/api/admin/applications";
 };
 
-export type PostApiAdminApplicationsErrors = {
+export type CreateApplicationErrors = {
   /**
    * Bad Request
    */
   400: unknown;
 };
 
-export type PostApiAdminApplicationsResponses = {
+export type CreateApplicationResponses = {
   /**
    * OK
    */
   200: unknown;
 };
 
-export type GetApiAdminApplicationsByCodeByCodeData = {
+export type GetApplicationByCodeData = {
   body?: never;
   path: {
     code: string;
@@ -1664,14 +2156,14 @@ export type GetApiAdminApplicationsByCodeByCodeData = {
   url: "/api/admin/applications/by-code/{code}";
 };
 
-export type GetApiAdminApplicationsByCodeByCodeResponses = {
+export type GetApplicationByCodeResponses = {
   /**
    * OK
    */
   200: unknown;
 };
 
-export type DeleteApiAdminApplicationsByIdData = {
+export type DeleteApplicationData = {
   body?: never;
   path: {
     id: string;
@@ -1680,14 +2172,14 @@ export type DeleteApiAdminApplicationsByIdData = {
   url: "/api/admin/applications/{id}";
 };
 
-export type DeleteApiAdminApplicationsByIdResponses = {
+export type DeleteApplicationResponses = {
   /**
    * OK
    */
   200: unknown;
 };
 
-export type GetApiAdminApplicationsByIdData = {
+export type GetApplicationData = {
   body?: never;
   path: {
     id: string;
@@ -1696,14 +2188,14 @@ export type GetApiAdminApplicationsByIdData = {
   url: "/api/admin/applications/{id}";
 };
 
-export type GetApiAdminApplicationsByIdResponses = {
+export type GetApplicationResponses = {
   /**
    * OK
    */
   200: unknown;
 };
 
-export type PutApiAdminApplicationsByIdData = {
+export type UpdateApplicationData = {
   body: UpdateApplicationRequest;
   path: {
     id: string;
@@ -1712,21 +2204,21 @@ export type PutApiAdminApplicationsByIdData = {
   url: "/api/admin/applications/{id}";
 };
 
-export type PutApiAdminApplicationsByIdErrors = {
+export type UpdateApplicationErrors = {
   /**
    * Bad Request
    */
   400: unknown;
 };
 
-export type PutApiAdminApplicationsByIdResponses = {
+export type UpdateApplicationResponses = {
   /**
    * OK
    */
   200: unknown;
 };
 
-export type PostApiAdminApplicationsByIdActivateData = {
+export type ActivateApplicationData = {
   body?: never;
   path: {
     id: string;
@@ -1735,14 +2227,14 @@ export type PostApiAdminApplicationsByIdActivateData = {
   url: "/api/admin/applications/{id}/activate";
 };
 
-export type PostApiAdminApplicationsByIdActivateResponses = {
+export type ActivateApplicationResponses = {
   /**
    * OK
    */
   200: unknown;
 };
 
-export type GetApiAdminApplicationsByIdClientsData = {
+export type GetApplicationClientConfigsData = {
   body?: never;
   path: {
     id: string;
@@ -1751,14 +2243,14 @@ export type GetApiAdminApplicationsByIdClientsData = {
   url: "/api/admin/applications/{id}/clients";
 };
 
-export type GetApiAdminApplicationsByIdClientsResponses = {
+export type GetApplicationClientConfigsResponses = {
   /**
    * OK
    */
   200: unknown;
 };
 
-export type PutApiAdminApplicationsByIdClientsByClientIdData = {
+export type ConfigureApplicationForClientData = {
   body: ClientConfigRequest;
   path: {
     clientId: string;
@@ -1768,21 +2260,21 @@ export type PutApiAdminApplicationsByIdClientsByClientIdData = {
   url: "/api/admin/applications/{id}/clients/{clientId}";
 };
 
-export type PutApiAdminApplicationsByIdClientsByClientIdErrors = {
+export type ConfigureApplicationForClientErrors = {
   /**
    * Bad Request
    */
   400: unknown;
 };
 
-export type PutApiAdminApplicationsByIdClientsByClientIdResponses = {
+export type ConfigureApplicationForClientResponses = {
   /**
    * OK
    */
   200: unknown;
 };
 
-export type PostApiAdminApplicationsByIdClientsByClientIdDisableData = {
+export type DisableApplicationForClientData = {
   body?: never;
   path: {
     clientId: string;
@@ -1792,14 +2284,14 @@ export type PostApiAdminApplicationsByIdClientsByClientIdDisableData = {
   url: "/api/admin/applications/{id}/clients/{clientId}/disable";
 };
 
-export type PostApiAdminApplicationsByIdClientsByClientIdDisableResponses = {
+export type DisableApplicationForClientResponses = {
   /**
    * OK
    */
   200: unknown;
 };
 
-export type PostApiAdminApplicationsByIdClientsByClientIdEnableData = {
+export type EnableApplicationForClientData = {
   body?: never;
   path: {
     clientId: string;
@@ -1809,14 +2301,14 @@ export type PostApiAdminApplicationsByIdClientsByClientIdEnableData = {
   url: "/api/admin/applications/{id}/clients/{clientId}/enable";
 };
 
-export type PostApiAdminApplicationsByIdClientsByClientIdEnableResponses = {
+export type EnableApplicationForClientResponses = {
   /**
    * OK
    */
   200: unknown;
 };
 
-export type PostApiAdminApplicationsByIdDeactivateData = {
+export type DeactivateApplicationData = {
   body?: never;
   path: {
     id: string;
@@ -1825,14 +2317,14 @@ export type PostApiAdminApplicationsByIdDeactivateData = {
   url: "/api/admin/applications/{id}/deactivate";
 };
 
-export type PostApiAdminApplicationsByIdDeactivateResponses = {
+export type DeactivateApplicationResponses = {
   /**
    * OK
    */
   200: unknown;
 };
 
-export type PostApiAdminApplicationsByIdProvisionServiceAccountData = {
+export type ProvisionApplicationServiceAccountData = {
   body?: never;
   path: {
     id: string;
@@ -1841,14 +2333,14 @@ export type PostApiAdminApplicationsByIdProvisionServiceAccountData = {
   url: "/api/admin/applications/{id}/provision-service-account";
 };
 
-export type PostApiAdminApplicationsByIdProvisionServiceAccountResponses = {
+export type ProvisionApplicationServiceAccountResponses = {
   /**
    * OK
    */
   200: unknown;
 };
 
-export type GetApiAdminApplicationsByIdRolesData = {
+export type GetApplicationRolesData = {
   body?: never;
   path: {
     id: string;
@@ -1857,14 +2349,14 @@ export type GetApiAdminApplicationsByIdRolesData = {
   url: "/api/admin/applications/{id}/roles";
 };
 
-export type GetApiAdminApplicationsByIdRolesResponses = {
+export type GetApplicationRolesResponses = {
   /**
    * OK
    */
   200: unknown;
 };
 
-export type GetApiAdminAuditLogsData = {
+export type ListAuditLogsData = {
   body?: never;
   path?: never;
   query?: {
@@ -1896,45 +2388,45 @@ export type GetApiAdminAuditLogsData = {
   url: "/api/admin/audit-logs";
 };
 
-export type GetApiAdminAuditLogsErrors = {
+export type ListAuditLogsErrors = {
   /**
    * Not authenticated
    */
   401: unknown;
 };
 
-export type GetApiAdminAuditLogsResponses = {
+export type ListAuditLogsResponses = {
   /**
    * Audit logs retrieved
    */
   200: AuditLogListResponse;
 };
 
-export type GetApiAdminAuditLogsResponse =
-  GetApiAdminAuditLogsResponses[keyof GetApiAdminAuditLogsResponses];
+export type ListAuditLogsResponse =
+  ListAuditLogsResponses[keyof ListAuditLogsResponses];
 
-export type GetApiAdminAuditLogsEntityTypesData = {
+export type GetAuditLogEntityTypesData = {
   body?: never;
   path?: never;
   query?: never;
   url: "/api/admin/audit-logs/entity-types";
 };
 
-export type GetApiAdminAuditLogsEntityTypesErrors = {
+export type GetAuditLogEntityTypesErrors = {
   /**
    * Not authenticated
    */
   401: unknown;
 };
 
-export type GetApiAdminAuditLogsEntityTypesResponses = {
+export type GetAuditLogEntityTypesResponses = {
   /**
    * Entity types retrieved
    */
   200: unknown;
 };
 
-export type GetApiAdminAuditLogsEntityByEntityTypeByEntityIdData = {
+export type GetEntityAuditLogsData = {
   body?: never;
   path: {
     entityId: string;
@@ -1944,42 +2436,42 @@ export type GetApiAdminAuditLogsEntityByEntityTypeByEntityIdData = {
   url: "/api/admin/audit-logs/entity/{entityType}/{entityId}";
 };
 
-export type GetApiAdminAuditLogsEntityByEntityTypeByEntityIdErrors = {
+export type GetEntityAuditLogsErrors = {
   /**
    * Not authenticated
    */
   401: unknown;
 };
 
-export type GetApiAdminAuditLogsEntityByEntityTypeByEntityIdResponses = {
+export type GetEntityAuditLogsResponses = {
   /**
    * Audit logs retrieved
    */
   200: unknown;
 };
 
-export type GetApiAdminAuditLogsOperationsData = {
+export type GetAuditLogOperationsData = {
   body?: never;
   path?: never;
   query?: never;
   url: "/api/admin/audit-logs/operations";
 };
 
-export type GetApiAdminAuditLogsOperationsErrors = {
+export type GetAuditLogOperationsErrors = {
   /**
    * Not authenticated
    */
   401: unknown;
 };
 
-export type GetApiAdminAuditLogsOperationsResponses = {
+export type GetAuditLogOperationsResponses = {
   /**
    * Operations retrieved
    */
   200: unknown;
 };
 
-export type GetApiAdminAuditLogsByIdData = {
+export type GetAuditLogData = {
   body?: never;
   path: {
     id: string;
@@ -1988,7 +2480,7 @@ export type GetApiAdminAuditLogsByIdData = {
   url: "/api/admin/audit-logs/{id}";
 };
 
-export type GetApiAdminAuditLogsByIdErrors = {
+export type GetAuditLogErrors = {
   /**
    * Not authenticated
    */
@@ -1999,17 +2491,17 @@ export type GetApiAdminAuditLogsByIdErrors = {
   404: unknown;
 };
 
-export type GetApiAdminAuditLogsByIdResponses = {
+export type GetAuditLogResponses = {
   /**
    * Audit log retrieved
    */
   200: AuditLogDto;
 };
 
-export type GetApiAdminAuditLogsByIdResponse =
-  GetApiAdminAuditLogsByIdResponses[keyof GetApiAdminAuditLogsByIdResponses];
+export type GetAuditLogResponse =
+  GetAuditLogResponses[keyof GetAuditLogResponses];
 
-export type GetApiAdminAuthConfigsData = {
+export type ListAuthConfigsData = {
   body?: never;
   path?: never;
   query?: {
@@ -2021,7 +2513,7 @@ export type GetApiAdminAuthConfigsData = {
   url: "/api/admin/auth-configs";
 };
 
-export type GetApiAdminAuthConfigsErrors = {
+export type ListAuthConfigsErrors = {
   /**
    * Not authenticated
    */
@@ -2032,17 +2524,17 @@ export type GetApiAdminAuthConfigsErrors = {
   403: unknown;
 };
 
-export type GetApiAdminAuthConfigsResponses = {
+export type ListAuthConfigsResponses = {
   /**
    * List of auth configurations
    */
   200: AuthConfigListResponse;
 };
 
-export type GetApiAdminAuthConfigsResponse =
-  GetApiAdminAuthConfigsResponses[keyof GetApiAdminAuthConfigsResponses];
+export type ListAuthConfigsResponse =
+  ListAuthConfigsResponses[keyof ListAuthConfigsResponses];
 
-export type GetApiAdminAuthConfigsByDomainByDomainData = {
+export type GetAuthConfigByDomainData = {
   body?: never;
   path: {
     domain: string;
@@ -2051,28 +2543,28 @@ export type GetApiAdminAuthConfigsByDomainByDomainData = {
   url: "/api/admin/auth-configs/by-domain/{domain}";
 };
 
-export type GetApiAdminAuthConfigsByDomainByDomainErrors = {
+export type GetAuthConfigByDomainErrors = {
   /**
    * No configuration for this domain
    */
   404: unknown;
 };
 
-export type GetApiAdminAuthConfigsByDomainByDomainResponses = {
+export type GetAuthConfigByDomainResponses = {
   /**
    * Auth configuration details
    */
   200: unknown;
 };
 
-export type PostApiAdminAuthConfigsInternalData = {
+export type CreateInternalAuthConfigData = {
   body: CreateInternalConfigRequest;
   path?: never;
   query?: never;
   url: "/api/admin/auth-configs/internal";
 };
 
-export type PostApiAdminAuthConfigsInternalErrors = {
+export type CreateInternalAuthConfigErrors = {
   /**
    * Invalid request or domain already configured
    */
@@ -2083,24 +2575,24 @@ export type PostApiAdminAuthConfigsInternalErrors = {
   401: unknown;
 };
 
-export type PostApiAdminAuthConfigsInternalResponses = {
+export type CreateInternalAuthConfigResponses = {
   /**
    * Configuration created
    */
   201: AuthConfigDto;
 };
 
-export type PostApiAdminAuthConfigsInternalResponse =
-  PostApiAdminAuthConfigsInternalResponses[keyof PostApiAdminAuthConfigsInternalResponses];
+export type CreateInternalAuthConfigResponse =
+  CreateInternalAuthConfigResponses[keyof CreateInternalAuthConfigResponses];
 
-export type PostApiAdminAuthConfigsOidcData = {
+export type CreateOidcAuthConfigData = {
   body: CreateOidcConfigRequest;
   path?: never;
   query?: never;
   url: "/api/admin/auth-configs/oidc";
 };
 
-export type PostApiAdminAuthConfigsOidcErrors = {
+export type CreateOidcAuthConfigErrors = {
   /**
    * Invalid request or domain already configured
    */
@@ -2111,24 +2603,24 @@ export type PostApiAdminAuthConfigsOidcErrors = {
   401: unknown;
 };
 
-export type PostApiAdminAuthConfigsOidcResponses = {
+export type CreateOidcAuthConfigResponses = {
   /**
    * Configuration created
    */
   201: AuthConfigDto;
 };
 
-export type PostApiAdminAuthConfigsOidcResponse =
-  PostApiAdminAuthConfigsOidcResponses[keyof PostApiAdminAuthConfigsOidcResponses];
+export type CreateOidcAuthConfigResponse =
+  CreateOidcAuthConfigResponses[keyof CreateOidcAuthConfigResponses];
 
-export type PostApiAdminAuthConfigsValidateSecretData = {
+export type ValidateSecretReferenceData = {
   body: ValidateSecretRequest;
   path?: never;
   query?: never;
   url: "/api/admin/auth-configs/validate-secret";
 };
 
-export type PostApiAdminAuthConfigsValidateSecretErrors = {
+export type ValidateSecretReferenceErrors = {
   /**
    * Bad Request
    */
@@ -2139,17 +2631,17 @@ export type PostApiAdminAuthConfigsValidateSecretErrors = {
   401: unknown;
 };
 
-export type PostApiAdminAuthConfigsValidateSecretResponses = {
+export type ValidateSecretReferenceResponses = {
   /**
    * Validation result
    */
   200: SecretValidationResponse;
 };
 
-export type PostApiAdminAuthConfigsValidateSecretResponse =
-  PostApiAdminAuthConfigsValidateSecretResponses[keyof PostApiAdminAuthConfigsValidateSecretResponses];
+export type ValidateSecretReferenceResponse =
+  ValidateSecretReferenceResponses[keyof ValidateSecretReferenceResponses];
 
-export type DeleteApiAdminAuthConfigsByIdData = {
+export type DeleteAuthConfigData = {
   body?: never;
   path: {
     id: string;
@@ -2158,24 +2650,24 @@ export type DeleteApiAdminAuthConfigsByIdData = {
   url: "/api/admin/auth-configs/{id}";
 };
 
-export type DeleteApiAdminAuthConfigsByIdErrors = {
+export type DeleteAuthConfigErrors = {
   /**
    * Configuration not found
    */
   404: unknown;
 };
 
-export type DeleteApiAdminAuthConfigsByIdResponses = {
+export type DeleteAuthConfigResponses = {
   /**
    * Configuration deleted
    */
   204: void;
 };
 
-export type DeleteApiAdminAuthConfigsByIdResponse =
-  DeleteApiAdminAuthConfigsByIdResponses[keyof DeleteApiAdminAuthConfigsByIdResponses];
+export type DeleteAuthConfigResponse =
+  DeleteAuthConfigResponses[keyof DeleteAuthConfigResponses];
 
-export type GetApiAdminAuthConfigsByIdData = {
+export type GetAuthConfigData = {
   body?: never;
   path: {
     id: string;
@@ -2184,7 +2676,7 @@ export type GetApiAdminAuthConfigsByIdData = {
   url: "/api/admin/auth-configs/{id}";
 };
 
-export type GetApiAdminAuthConfigsByIdErrors = {
+export type GetAuthConfigErrors = {
   /**
    * Not authenticated
    */
@@ -2195,17 +2687,17 @@ export type GetApiAdminAuthConfigsByIdErrors = {
   404: unknown;
 };
 
-export type GetApiAdminAuthConfigsByIdResponses = {
+export type GetAuthConfigResponses = {
   /**
    * Auth configuration details
    */
   200: AuthConfigDto;
 };
 
-export type GetApiAdminAuthConfigsByIdResponse =
-  GetApiAdminAuthConfigsByIdResponses[keyof GetApiAdminAuthConfigsByIdResponses];
+export type GetAuthConfigResponse =
+  GetAuthConfigResponses[keyof GetAuthConfigResponses];
 
-export type PutApiAdminAuthConfigsByIdAdditionalClientsData = {
+export type UpdateAuthConfigAdditionalClientsData = {
   body: UpdateAdditionalClientsRequest;
   path: {
     id: string;
@@ -2214,7 +2706,7 @@ export type PutApiAdminAuthConfigsByIdAdditionalClientsData = {
   url: "/api/admin/auth-configs/{id}/additional-clients";
 };
 
-export type PutApiAdminAuthConfigsByIdAdditionalClientsErrors = {
+export type UpdateAuthConfigAdditionalClientsErrors = {
   /**
    * Invalid request or not a CLIENT type config
    */
@@ -2225,14 +2717,14 @@ export type PutApiAdminAuthConfigsByIdAdditionalClientsErrors = {
   404: unknown;
 };
 
-export type PutApiAdminAuthConfigsByIdAdditionalClientsResponses = {
+export type UpdateAuthConfigAdditionalClientsResponses = {
   /**
    * Additional clients updated
    */
   200: unknown;
 };
 
-export type PutApiAdminAuthConfigsByIdClientBindingData = {
+export type UpdateAuthConfigClientBindingData = {
   body: UpdateClientBindingRequest;
   path: {
     id: string;
@@ -2241,7 +2733,7 @@ export type PutApiAdminAuthConfigsByIdClientBindingData = {
   url: "/api/admin/auth-configs/{id}/client-binding";
 };
 
-export type PutApiAdminAuthConfigsByIdClientBindingErrors = {
+export type UpdateAuthConfigClientBindingErrors = {
   /**
    * Bad Request
    */
@@ -2256,14 +2748,14 @@ export type PutApiAdminAuthConfigsByIdClientBindingErrors = {
   404: unknown;
 };
 
-export type PutApiAdminAuthConfigsByIdClientBindingResponses = {
+export type UpdateAuthConfigClientBindingResponses = {
   /**
    * Client binding updated
    */
   200: unknown;
 };
 
-export type PutApiAdminAuthConfigsByIdConfigTypeData = {
+export type UpdateAuthConfigTypeData = {
   body: UpdateConfigTypeRequest;
   path: {
     id: string;
@@ -2272,7 +2764,7 @@ export type PutApiAdminAuthConfigsByIdConfigTypeData = {
   url: "/api/admin/auth-configs/{id}/config-type";
 };
 
-export type PutApiAdminAuthConfigsByIdConfigTypeErrors = {
+export type UpdateAuthConfigTypeErrors = {
   /**
    * Invalid config type or constraint violation
    */
@@ -2283,14 +2775,14 @@ export type PutApiAdminAuthConfigsByIdConfigTypeErrors = {
   404: unknown;
 };
 
-export type PutApiAdminAuthConfigsByIdConfigTypeResponses = {
+export type UpdateAuthConfigTypeResponses = {
   /**
    * Config type updated
    */
   200: unknown;
 };
 
-export type PutApiAdminAuthConfigsByIdGrantedClientsData = {
+export type UpdateAuthConfigGrantedClientsData = {
   body: UpdateGrantedClientsRequest;
   path: {
     id: string;
@@ -2299,7 +2791,7 @@ export type PutApiAdminAuthConfigsByIdGrantedClientsData = {
   url: "/api/admin/auth-configs/{id}/granted-clients";
 };
 
-export type PutApiAdminAuthConfigsByIdGrantedClientsErrors = {
+export type UpdateAuthConfigGrantedClientsErrors = {
   /**
    * Invalid request or not a PARTNER type config
    */
@@ -2310,14 +2802,14 @@ export type PutApiAdminAuthConfigsByIdGrantedClientsErrors = {
   404: unknown;
 };
 
-export type PutApiAdminAuthConfigsByIdGrantedClientsResponses = {
+export type UpdateAuthConfigGrantedClientsResponses = {
   /**
    * Granted clients updated
    */
   200: unknown;
 };
 
-export type PutApiAdminAuthConfigsByIdOidcData = {
+export type UpdateOidcConfigData = {
   body: UpdateOidcConfigRequest;
   path: {
     id: string;
@@ -2326,7 +2818,7 @@ export type PutApiAdminAuthConfigsByIdOidcData = {
   url: "/api/admin/auth-configs/{id}/oidc";
 };
 
-export type PutApiAdminAuthConfigsByIdOidcErrors = {
+export type UpdateOidcConfigErrors = {
   /**
    * Invalid request or not an OIDC config
    */
@@ -2337,14 +2829,14 @@ export type PutApiAdminAuthConfigsByIdOidcErrors = {
   404: unknown;
 };
 
-export type PutApiAdminAuthConfigsByIdOidcResponses = {
+export type UpdateOidcConfigResponses = {
   /**
    * Configuration updated
    */
   200: unknown;
 };
 
-export type GetApiAdminClientsData = {
+export type ListClientsData = {
   body?: never;
   path?: never;
   query?: {
@@ -2356,7 +2848,7 @@ export type GetApiAdminClientsData = {
   url: "/api/admin/clients";
 };
 
-export type GetApiAdminClientsErrors = {
+export type ListClientsErrors = {
   /**
    * Not authenticated
    */
@@ -2367,24 +2859,24 @@ export type GetApiAdminClientsErrors = {
   403: unknown;
 };
 
-export type GetApiAdminClientsResponses = {
+export type ListClientsResponses = {
   /**
    * List of clients
    */
-  200: ClientListResponse;
+  200: ClientListResponse1;
 };
 
-export type GetApiAdminClientsResponse =
-  GetApiAdminClientsResponses[keyof GetApiAdminClientsResponses];
+export type ListClientsResponse =
+  ListClientsResponses[keyof ListClientsResponses];
 
-export type PostApiAdminClientsData = {
-  body: CreateClientRequest;
+export type CreateClientData = {
+  body: CreateClientRequest1;
   path?: never;
   query?: never;
   url: "/api/admin/clients";
 };
 
-export type PostApiAdminClientsErrors = {
+export type CreateClientErrors = {
   /**
    * Invalid request or identifier already exists
    */
@@ -2399,17 +2891,17 @@ export type PostApiAdminClientsErrors = {
   403: unknown;
 };
 
-export type PostApiAdminClientsResponses = {
+export type CreateClientResponses = {
   /**
    * Client created
    */
-  201: ClientDto;
+  201: ClientDto1;
 };
 
-export type PostApiAdminClientsResponse =
-  PostApiAdminClientsResponses[keyof PostApiAdminClientsResponses];
+export type CreateClientResponse2 =
+  CreateClientResponses[keyof CreateClientResponses];
 
-export type GetApiAdminClientsByIdentifierByIdentifierData = {
+export type GetClientByIdentifierData = {
   body?: never;
   path: {
     identifier: string;
@@ -2418,7 +2910,7 @@ export type GetApiAdminClientsByIdentifierByIdentifierData = {
   url: "/api/admin/clients/by-identifier/{identifier}";
 };
 
-export type GetApiAdminClientsByIdentifierByIdentifierErrors = {
+export type GetClientByIdentifierErrors = {
   /**
    * Not authenticated
    */
@@ -2433,14 +2925,14 @@ export type GetApiAdminClientsByIdentifierByIdentifierErrors = {
   404: unknown;
 };
 
-export type GetApiAdminClientsByIdentifierByIdentifierResponses = {
+export type GetClientByIdentifierResponses = {
   /**
    * Client details
    */
   200: unknown;
 };
 
-export type GetApiAdminClientsSearchData = {
+export type SearchClientsData = {
   body?: never;
   path?: never;
   query?: {
@@ -2460,7 +2952,7 @@ export type GetApiAdminClientsSearchData = {
   url: "/api/admin/clients/search";
 };
 
-export type GetApiAdminClientsSearchErrors = {
+export type SearchClientsErrors = {
   /**
    * Not authenticated
    */
@@ -2471,17 +2963,17 @@ export type GetApiAdminClientsSearchErrors = {
   403: unknown;
 };
 
-export type GetApiAdminClientsSearchResponses = {
+export type SearchClientsResponses = {
   /**
    * Matching clients
    */
-  200: ClientListResponse;
+  200: ClientListResponse1;
 };
 
-export type GetApiAdminClientsSearchResponse =
-  GetApiAdminClientsSearchResponses[keyof GetApiAdminClientsSearchResponses];
+export type SearchClientsResponse =
+  SearchClientsResponses[keyof SearchClientsResponses];
 
-export type GetApiAdminClientsByIdData = {
+export type GetClientData = {
   body?: never;
   path: {
     id: string;
@@ -2490,7 +2982,7 @@ export type GetApiAdminClientsByIdData = {
   url: "/api/admin/clients/{id}";
 };
 
-export type GetApiAdminClientsByIdErrors = {
+export type GetClientErrors = {
   /**
    * Invalid client ID format
    */
@@ -2509,18 +3001,17 @@ export type GetApiAdminClientsByIdErrors = {
   404: unknown;
 };
 
-export type GetApiAdminClientsByIdResponses = {
+export type GetClientResponses = {
   /**
    * Client details
    */
-  200: ClientDto;
+  200: ClientDto1;
 };
 
-export type GetApiAdminClientsByIdResponse =
-  GetApiAdminClientsByIdResponses[keyof GetApiAdminClientsByIdResponses];
+export type GetClientResponse = GetClientResponses[keyof GetClientResponses];
 
-export type PutApiAdminClientsByIdData = {
-  body: UpdateClientRequest;
+export type UpdateClientData = {
+  body: UpdateClientRequest1;
   path: {
     id: string;
   };
@@ -2528,7 +3019,7 @@ export type PutApiAdminClientsByIdData = {
   url: "/api/admin/clients/{id}";
 };
 
-export type PutApiAdminClientsByIdErrors = {
+export type UpdateClientErrors = {
   /**
    * Invalid request or client ID format
    */
@@ -2547,14 +3038,14 @@ export type PutApiAdminClientsByIdErrors = {
   404: unknown;
 };
 
-export type PutApiAdminClientsByIdResponses = {
+export type UpdateClientResponses = {
   /**
    * Client updated
    */
   200: unknown;
 };
 
-export type PostApiAdminClientsByIdActivateData = {
+export type ActivateClientData = {
   body?: never;
   path: {
     id: string;
@@ -2563,7 +3054,7 @@ export type PostApiAdminClientsByIdActivateData = {
   url: "/api/admin/clients/{id}/activate";
 };
 
-export type PostApiAdminClientsByIdActivateErrors = {
+export type ActivateClientErrors = {
   /**
    * Invalid client ID format
    */
@@ -2582,14 +3073,14 @@ export type PostApiAdminClientsByIdActivateErrors = {
   404: unknown;
 };
 
-export type PostApiAdminClientsByIdActivateResponses = {
+export type ActivateClientResponses = {
   /**
    * Client activated
    */
   200: unknown;
 };
 
-export type GetApiAdminClientsByIdApplicationsData = {
+export type GetClientApplicationsData = {
   body?: never;
   path: {
     id: string;
@@ -2598,7 +3089,7 @@ export type GetApiAdminClientsByIdApplicationsData = {
   url: "/api/admin/clients/{id}/applications";
 };
 
-export type GetApiAdminClientsByIdApplicationsErrors = {
+export type GetClientApplicationsErrors = {
   /**
    * Invalid client ID format
    */
@@ -2617,17 +3108,17 @@ export type GetApiAdminClientsByIdApplicationsErrors = {
   404: unknown;
 };
 
-export type GetApiAdminClientsByIdApplicationsResponses = {
+export type GetClientApplicationsResponses = {
   /**
    * List of applications with status
    */
   200: ClientApplicationsResponse;
 };
 
-export type GetApiAdminClientsByIdApplicationsResponse =
-  GetApiAdminClientsByIdApplicationsResponses[keyof GetApiAdminClientsByIdApplicationsResponses];
+export type GetClientApplicationsResponse =
+  GetClientApplicationsResponses[keyof GetClientApplicationsResponses];
 
-export type PutApiAdminClientsByIdApplicationsData = {
+export type UpdateClientApplicationsData = {
   body: UpdateClientApplicationsRequest;
   path: {
     id: string;
@@ -2636,7 +3127,7 @@ export type PutApiAdminClientsByIdApplicationsData = {
   url: "/api/admin/clients/{id}/applications";
 };
 
-export type PutApiAdminClientsByIdApplicationsErrors = {
+export type UpdateClientApplicationsErrors = {
   /**
    * Invalid ID format
    */
@@ -2655,14 +3146,14 @@ export type PutApiAdminClientsByIdApplicationsErrors = {
   404: unknown;
 };
 
-export type PutApiAdminClientsByIdApplicationsResponses = {
+export type UpdateClientApplicationsResponses = {
   /**
    * Applications updated
    */
   200: unknown;
 };
 
-export type PostApiAdminClientsByIdApplicationsByApplicationIdDisableData = {
+export type DisableClientApplicationData = {
   body?: never;
   path: {
     applicationId: string;
@@ -2672,7 +3163,7 @@ export type PostApiAdminClientsByIdApplicationsByApplicationIdDisableData = {
   url: "/api/admin/clients/{id}/applications/{applicationId}/disable";
 };
 
-export type PostApiAdminClientsByIdApplicationsByApplicationIdDisableErrors = {
+export type DisableClientApplicationErrors = {
   /**
    * Invalid ID format
    */
@@ -2691,15 +3182,14 @@ export type PostApiAdminClientsByIdApplicationsByApplicationIdDisableErrors = {
   404: unknown;
 };
 
-export type PostApiAdminClientsByIdApplicationsByApplicationIdDisableResponses =
-  {
-    /**
-     * Application disabled
-     */
-    200: unknown;
-  };
+export type DisableClientApplicationResponses = {
+  /**
+   * Application disabled
+   */
+  200: unknown;
+};
 
-export type PostApiAdminClientsByIdApplicationsByApplicationIdEnableData = {
+export type EnableClientApplicationData = {
   body?: never;
   path: {
     applicationId: string;
@@ -2709,7 +3199,7 @@ export type PostApiAdminClientsByIdApplicationsByApplicationIdEnableData = {
   url: "/api/admin/clients/{id}/applications/{applicationId}/enable";
 };
 
-export type PostApiAdminClientsByIdApplicationsByApplicationIdEnableErrors = {
+export type EnableClientApplicationErrors = {
   /**
    * Invalid ID format
    */
@@ -2728,16 +3218,15 @@ export type PostApiAdminClientsByIdApplicationsByApplicationIdEnableErrors = {
   404: unknown;
 };
 
-export type PostApiAdminClientsByIdApplicationsByApplicationIdEnableResponses =
-  {
-    /**
-     * Application enabled
-     */
-    200: unknown;
-  };
+export type EnableClientApplicationResponses = {
+  /**
+   * Application enabled
+   */
+  200: unknown;
+};
 
-export type PostApiAdminClientsByIdDeactivateData = {
-  body: StatusChangeRequest;
+export type DeactivateClientData = {
+  body: StatusChangeRequest1;
   path: {
     id: string;
   };
@@ -2745,7 +3234,7 @@ export type PostApiAdminClientsByIdDeactivateData = {
   url: "/api/admin/clients/{id}/deactivate";
 };
 
-export type PostApiAdminClientsByIdDeactivateErrors = {
+export type DeactivateClientErrors = {
   /**
    * Invalid client ID format
    */
@@ -2764,14 +3253,14 @@ export type PostApiAdminClientsByIdDeactivateErrors = {
   404: unknown;
 };
 
-export type PostApiAdminClientsByIdDeactivateResponses = {
+export type DeactivateClientResponses = {
   /**
    * Client deactivated
    */
   200: unknown;
 };
 
-export type PostApiAdminClientsByIdNotesData = {
+export type AddClientAuditNoteData = {
   body: AddNoteRequest;
   path: {
     id: string;
@@ -2780,7 +3269,7 @@ export type PostApiAdminClientsByIdNotesData = {
   url: "/api/admin/clients/{id}/notes";
 };
 
-export type PostApiAdminClientsByIdNotesErrors = {
+export type AddClientAuditNoteErrors = {
   /**
    * Invalid client ID format
    */
@@ -2799,15 +3288,15 @@ export type PostApiAdminClientsByIdNotesErrors = {
   404: unknown;
 };
 
-export type PostApiAdminClientsByIdNotesResponses = {
+export type AddClientAuditNoteResponses = {
   /**
    * Note added
    */
   201: unknown;
 };
 
-export type PostApiAdminClientsByIdSuspendData = {
-  body: StatusChangeRequest;
+export type SuspendClientData = {
+  body: StatusChangeRequest1;
   path: {
     id: string;
   };
@@ -2815,7 +3304,7 @@ export type PostApiAdminClientsByIdSuspendData = {
   url: "/api/admin/clients/{id}/suspend";
 };
 
-export type PostApiAdminClientsByIdSuspendErrors = {
+export type SuspendClientErrors = {
   /**
    * Invalid client ID format
    */
@@ -2834,7 +3323,7 @@ export type PostApiAdminClientsByIdSuspendErrors = {
   404: unknown;
 };
 
-export type PostApiAdminClientsByIdSuspendResponses = {
+export type SuspendClientResponses = {
   /**
    * Client suspended
    */
@@ -3356,7 +3845,7 @@ export type PostApiAdminDispatchPoolsByIdSuspendResponses = {
   200: unknown;
 };
 
-export type GetApiAdminOauthClientsData = {
+export type ListOAuthClientsData = {
   body?: never;
   path?: never;
   query?: {
@@ -3372,48 +3861,48 @@ export type GetApiAdminOauthClientsData = {
   url: "/api/admin/oauth-clients";
 };
 
-export type GetApiAdminOauthClientsErrors = {
+export type ListOAuthClientsErrors = {
   /**
    * Not authenticated
    */
   401: unknown;
 };
 
-export type GetApiAdminOauthClientsResponses = {
+export type ListOAuthClientsResponses = {
   /**
    * List of OAuth clients
    */
-  200: ClientListResponse1;
+  200: ClientListResponse2;
 };
 
-export type GetApiAdminOauthClientsResponse =
-  GetApiAdminOauthClientsResponses[keyof GetApiAdminOauthClientsResponses];
+export type ListOAuthClientsResponse =
+  ListOAuthClientsResponses[keyof ListOAuthClientsResponses];
 
-export type PostApiAdminOauthClientsData = {
-  body: CreateClientRequest1;
+export type CreateOAuthClientData = {
+  body: CreateClientRequest2;
   path?: never;
   query?: never;
   url: "/api/admin/oauth-clients";
 };
 
-export type PostApiAdminOauthClientsErrors = {
+export type CreateOAuthClientErrors = {
   /**
    * Invalid request
    */
   400: unknown;
 };
 
-export type PostApiAdminOauthClientsResponses = {
+export type CreateOAuthClientResponses = {
   /**
    * Client created
    */
   201: CreateClientResponse;
 };
 
-export type PostApiAdminOauthClientsResponse =
-  PostApiAdminOauthClientsResponses[keyof PostApiAdminOauthClientsResponses];
+export type CreateOAuthClientResponse =
+  CreateOAuthClientResponses[keyof CreateOAuthClientResponses];
 
-export type GetApiAdminOauthClientsByClientIdByClientIdData = {
+export type GetOAuthClientByClientIdData = {
   body?: never;
   path: {
     clientId: string;
@@ -3422,21 +3911,21 @@ export type GetApiAdminOauthClientsByClientIdByClientIdData = {
   url: "/api/admin/oauth-clients/by-client-id/{clientId}";
 };
 
-export type GetApiAdminOauthClientsByClientIdByClientIdErrors = {
+export type GetOAuthClientByClientIdErrors = {
   /**
    * Client not found
    */
   404: unknown;
 };
 
-export type GetApiAdminOauthClientsByClientIdByClientIdResponses = {
+export type GetOAuthClientByClientIdResponses = {
   /**
    * Client details
    */
   200: unknown;
 };
 
-export type DeleteApiAdminOauthClientsByIdData = {
+export type DeleteOAuthClientData = {
   body?: never;
   path: {
     id: string;
@@ -3445,24 +3934,24 @@ export type DeleteApiAdminOauthClientsByIdData = {
   url: "/api/admin/oauth-clients/{id}";
 };
 
-export type DeleteApiAdminOauthClientsByIdErrors = {
+export type DeleteOAuthClientErrors = {
   /**
    * Client not found
    */
   404: unknown;
 };
 
-export type DeleteApiAdminOauthClientsByIdResponses = {
+export type DeleteOAuthClientResponses = {
   /**
    * Client deleted
    */
   204: void;
 };
 
-export type DeleteApiAdminOauthClientsByIdResponse =
-  DeleteApiAdminOauthClientsByIdResponses[keyof DeleteApiAdminOauthClientsByIdResponses];
+export type DeleteOAuthClientResponse =
+  DeleteOAuthClientResponses[keyof DeleteOAuthClientResponses];
 
-export type GetApiAdminOauthClientsByIdData = {
+export type GetOAuthClientData = {
   body?: never;
   path: {
     id: string;
@@ -3471,25 +3960,25 @@ export type GetApiAdminOauthClientsByIdData = {
   url: "/api/admin/oauth-clients/{id}";
 };
 
-export type GetApiAdminOauthClientsByIdErrors = {
+export type GetOAuthClientErrors = {
   /**
    * Client not found
    */
   404: unknown;
 };
 
-export type GetApiAdminOauthClientsByIdResponses = {
+export type GetOAuthClientResponses = {
   /**
    * Client details
    */
-  200: ClientDto1;
+  200: ClientDto2;
 };
 
-export type GetApiAdminOauthClientsByIdResponse =
-  GetApiAdminOauthClientsByIdResponses[keyof GetApiAdminOauthClientsByIdResponses];
+export type GetOAuthClientResponse =
+  GetOAuthClientResponses[keyof GetOAuthClientResponses];
 
-export type PutApiAdminOauthClientsByIdData = {
-  body: UpdateClientRequest1;
+export type UpdateOAuthClientData = {
+  body: UpdateClientRequest2;
   path: {
     id: string;
   };
@@ -3497,7 +3986,7 @@ export type PutApiAdminOauthClientsByIdData = {
   url: "/api/admin/oauth-clients/{id}";
 };
 
-export type PutApiAdminOauthClientsByIdErrors = {
+export type UpdateOAuthClientErrors = {
   /**
    * Bad Request
    */
@@ -3508,14 +3997,14 @@ export type PutApiAdminOauthClientsByIdErrors = {
   404: unknown;
 };
 
-export type PutApiAdminOauthClientsByIdResponses = {
+export type UpdateOAuthClientResponses = {
   /**
    * Client updated
    */
   200: unknown;
 };
 
-export type PostApiAdminOauthClientsByIdActivateData = {
+export type ActivateOAuthClientData = {
   body?: never;
   path: {
     id: string;
@@ -3524,21 +4013,21 @@ export type PostApiAdminOauthClientsByIdActivateData = {
   url: "/api/admin/oauth-clients/{id}/activate";
 };
 
-export type PostApiAdminOauthClientsByIdActivateErrors = {
+export type ActivateOAuthClientErrors = {
   /**
    * Client not found
    */
   404: unknown;
 };
 
-export type PostApiAdminOauthClientsByIdActivateResponses = {
+export type ActivateOAuthClientResponses = {
   /**
    * Client activated
    */
   200: unknown;
 };
 
-export type PostApiAdminOauthClientsByIdDeactivateData = {
+export type DeactivateOAuthClientData = {
   body?: never;
   path: {
     id: string;
@@ -3547,21 +4036,21 @@ export type PostApiAdminOauthClientsByIdDeactivateData = {
   url: "/api/admin/oauth-clients/{id}/deactivate";
 };
 
-export type PostApiAdminOauthClientsByIdDeactivateErrors = {
+export type DeactivateOAuthClientErrors = {
   /**
    * Client not found
    */
   404: unknown;
 };
 
-export type PostApiAdminOauthClientsByIdDeactivateResponses = {
+export type DeactivateOAuthClientResponses = {
   /**
    * Client deactivated
    */
   200: unknown;
 };
 
-export type PostApiAdminOauthClientsByIdRotateSecretData = {
+export type RotateOAuthClientSecretData = {
   body?: never;
   path: {
     id: string;
@@ -3570,7 +4059,7 @@ export type PostApiAdminOauthClientsByIdRotateSecretData = {
   url: "/api/admin/oauth-clients/{id}/rotate-secret";
 };
 
-export type PostApiAdminOauthClientsByIdRotateSecretErrors = {
+export type RotateOAuthClientSecretErrors = {
   /**
    * Cannot rotate secret for public client
    */
@@ -3581,15 +4070,15 @@ export type PostApiAdminOauthClientsByIdRotateSecretErrors = {
   404: unknown;
 };
 
-export type PostApiAdminOauthClientsByIdRotateSecretResponses = {
+export type RotateOAuthClientSecretResponses = {
   /**
    * Secret rotated
    */
   200: RotateSecretResponse;
 };
 
-export type PostApiAdminOauthClientsByIdRotateSecretResponse =
-  PostApiAdminOauthClientsByIdRotateSecretResponses[keyof PostApiAdminOauthClientsByIdRotateSecretResponses];
+export type RotateOAuthClientSecretResponse =
+  RotateOAuthClientSecretResponses[keyof RotateOAuthClientSecretResponses];
 
 export type GetApiAdminPlatformCorsData = {
   body?: never;
@@ -3672,7 +4161,7 @@ export type GetApiAdminPlatformCorsByIdResponses = {
   200: unknown;
 };
 
-export type GetApiAdminPrincipalsData = {
+export type ListPrincipalsData = {
   body?: never;
   path?: never;
   query?: {
@@ -3685,6 +4174,10 @@ export type GetApiAdminPrincipalsData = {
      */
     clientId?: string;
     /**
+     * Filter by exact email match
+     */
+    email?: string;
+    /**
      * Filter by type (USER/SERVICE)
      */
     type?: PrincipalType;
@@ -3692,24 +4185,24 @@ export type GetApiAdminPrincipalsData = {
   url: "/api/admin/principals";
 };
 
-export type GetApiAdminPrincipalsErrors = {
+export type ListPrincipalsErrors = {
   /**
    * Not authenticated
    */
   401: unknown;
 };
 
-export type GetApiAdminPrincipalsResponses = {
+export type ListPrincipalsResponses = {
   /**
    * List of principals
    */
-  200: PrincipalListResponse;
+  200: PrincipalListResponse1;
 };
 
-export type GetApiAdminPrincipalsResponse =
-  GetApiAdminPrincipalsResponses[keyof GetApiAdminPrincipalsResponses];
+export type ListPrincipalsResponse =
+  ListPrincipalsResponses[keyof ListPrincipalsResponses];
 
-export type GetApiAdminPrincipalsCheckEmailDomainData = {
+export type CheckEmailDomainData = {
   body?: never;
   path?: never;
   query?: {
@@ -3721,48 +4214,47 @@ export type GetApiAdminPrincipalsCheckEmailDomainData = {
   url: "/api/admin/principals/check-email-domain";
 };
 
-export type GetApiAdminPrincipalsCheckEmailDomainErrors = {
+export type CheckEmailDomainErrors = {
   /**
    * Invalid email format
    */
   400: unknown;
 };
 
-export type GetApiAdminPrincipalsCheckEmailDomainResponses = {
+export type CheckEmailDomainResponses = {
   /**
    * Domain info returned
    */
   200: EmailDomainCheckResponse;
 };
 
-export type GetApiAdminPrincipalsCheckEmailDomainResponse =
-  GetApiAdminPrincipalsCheckEmailDomainResponses[keyof GetApiAdminPrincipalsCheckEmailDomainResponses];
+export type CheckEmailDomainResponse =
+  CheckEmailDomainResponses[keyof CheckEmailDomainResponses];
 
-export type PostApiAdminPrincipalsUsersData = {
-  body: CreateUserRequest;
+export type CreateUserData = {
+  body: CreateUserRequest1;
   path?: never;
   query?: never;
   url: "/api/admin/principals/users";
 };
 
-export type PostApiAdminPrincipalsUsersErrors = {
+export type CreateUserErrors = {
   /**
    * Invalid request or email already exists
    */
   400: unknown;
 };
 
-export type PostApiAdminPrincipalsUsersResponses = {
+export type CreateUserResponses = {
   /**
    * User created
    */
-  201: PrincipalDto;
+  201: PrincipalDto1;
 };
 
-export type PostApiAdminPrincipalsUsersResponse =
-  PostApiAdminPrincipalsUsersResponses[keyof PostApiAdminPrincipalsUsersResponses];
+export type CreateUserResponse = CreateUserResponses[keyof CreateUserResponses];
 
-export type GetApiAdminPrincipalsByIdData = {
+export type GetPrincipalData = {
   body?: never;
   path: {
     id: string;
@@ -3771,25 +4263,25 @@ export type GetApiAdminPrincipalsByIdData = {
   url: "/api/admin/principals/{id}";
 };
 
-export type GetApiAdminPrincipalsByIdErrors = {
+export type GetPrincipalErrors = {
   /**
    * Principal not found
    */
   404: unknown;
 };
 
-export type GetApiAdminPrincipalsByIdResponses = {
+export type GetPrincipalResponses = {
   /**
    * Principal details
    */
   200: PrincipalDetailDto;
 };
 
-export type GetApiAdminPrincipalsByIdResponse =
-  GetApiAdminPrincipalsByIdResponses[keyof GetApiAdminPrincipalsByIdResponses];
+export type GetPrincipalResponse =
+  GetPrincipalResponses[keyof GetPrincipalResponses];
 
-export type PutApiAdminPrincipalsByIdData = {
-  body: UpdatePrincipalRequest;
+export type UpdatePrincipalData = {
+  body: UpdatePrincipalRequest1;
   path: {
     id: string;
   };
@@ -3797,7 +4289,7 @@ export type PutApiAdminPrincipalsByIdData = {
   url: "/api/admin/principals/{id}";
 };
 
-export type PutApiAdminPrincipalsByIdErrors = {
+export type UpdatePrincipalErrors = {
   /**
    * Bad Request
    */
@@ -3808,14 +4300,14 @@ export type PutApiAdminPrincipalsByIdErrors = {
   404: unknown;
 };
 
-export type PutApiAdminPrincipalsByIdResponses = {
+export type UpdatePrincipalResponses = {
   /**
    * Principal updated
    */
   200: unknown;
 };
 
-export type PostApiAdminPrincipalsByIdActivateData = {
+export type ActivatePrincipalData = {
   body?: never;
   path: {
     id: string;
@@ -3824,21 +4316,21 @@ export type PostApiAdminPrincipalsByIdActivateData = {
   url: "/api/admin/principals/{id}/activate";
 };
 
-export type PostApiAdminPrincipalsByIdActivateErrors = {
+export type ActivatePrincipalErrors = {
   /**
    * Principal not found
    */
   404: unknown;
 };
 
-export type PostApiAdminPrincipalsByIdActivateResponses = {
+export type ActivatePrincipalResponses = {
   /**
    * Principal activated
    */
   200: unknown;
 };
 
-export type GetApiAdminPrincipalsByIdClientAccessData = {
+export type GetPrincipalClientAccessData = {
   body?: never;
   path: {
     id: string;
@@ -3847,21 +4339,21 @@ export type GetApiAdminPrincipalsByIdClientAccessData = {
   url: "/api/admin/principals/{id}/client-access";
 };
 
-export type GetApiAdminPrincipalsByIdClientAccessErrors = {
+export type GetPrincipalClientAccessErrors = {
   /**
    * Principal not found
    */
   404: unknown;
 };
 
-export type GetApiAdminPrincipalsByIdClientAccessResponses = {
+export type GetPrincipalClientAccessResponses = {
   /**
    * List of client access grants
    */
   200: unknown;
 };
 
-export type PostApiAdminPrincipalsByIdClientAccessData = {
+export type GrantPrincipalClientAccessData = {
   body: GrantClientAccessRequest;
   path: {
     id: string;
@@ -3870,7 +4362,7 @@ export type PostApiAdminPrincipalsByIdClientAccessData = {
   url: "/api/admin/principals/{id}/client-access";
 };
 
-export type PostApiAdminPrincipalsByIdClientAccessErrors = {
+export type GrantPrincipalClientAccessErrors = {
   /**
    * Grant already exists or principal belongs to client
    */
@@ -3881,14 +4373,14 @@ export type PostApiAdminPrincipalsByIdClientAccessErrors = {
   404: unknown;
 };
 
-export type PostApiAdminPrincipalsByIdClientAccessResponses = {
+export type GrantPrincipalClientAccessResponses = {
   /**
    * Access granted
    */
   201: unknown;
 };
 
-export type DeleteApiAdminPrincipalsByIdClientAccessByClientIdData = {
+export type RevokePrincipalClientAccessData = {
   body?: never;
   path: {
     clientId: string;
@@ -3898,24 +4390,24 @@ export type DeleteApiAdminPrincipalsByIdClientAccessByClientIdData = {
   url: "/api/admin/principals/{id}/client-access/{clientId}";
 };
 
-export type DeleteApiAdminPrincipalsByIdClientAccessByClientIdErrors = {
+export type RevokePrincipalClientAccessErrors = {
   /**
    * Grant not found
    */
   404: unknown;
 };
 
-export type DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponses = {
+export type RevokePrincipalClientAccessResponses = {
   /**
    * Access revoked
    */
   204: void;
 };
 
-export type DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponse =
-  DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponses[keyof DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponses];
+export type RevokePrincipalClientAccessResponse =
+  RevokePrincipalClientAccessResponses[keyof RevokePrincipalClientAccessResponses];
 
-export type PostApiAdminPrincipalsByIdDeactivateData = {
+export type DeactivatePrincipalData = {
   body?: never;
   path: {
     id: string;
@@ -3924,21 +4416,21 @@ export type PostApiAdminPrincipalsByIdDeactivateData = {
   url: "/api/admin/principals/{id}/deactivate";
 };
 
-export type PostApiAdminPrincipalsByIdDeactivateErrors = {
+export type DeactivatePrincipalErrors = {
   /**
    * Principal not found
    */
   404: unknown;
 };
 
-export type PostApiAdminPrincipalsByIdDeactivateResponses = {
+export type DeactivatePrincipalResponses = {
   /**
    * Principal deactivated
    */
   200: unknown;
 };
 
-export type PostApiAdminPrincipalsByIdResetPasswordData = {
+export type ResetPrincipalPasswordData = {
   body: ResetPasswordRequest;
   path: {
     id: string;
@@ -3947,7 +4439,7 @@ export type PostApiAdminPrincipalsByIdResetPasswordData = {
   url: "/api/admin/principals/{id}/reset-password";
 };
 
-export type PostApiAdminPrincipalsByIdResetPasswordErrors = {
+export type ResetPrincipalPasswordErrors = {
   /**
    * User is not internal auth or password doesn't meet requirements
    */
@@ -3958,14 +4450,14 @@ export type PostApiAdminPrincipalsByIdResetPasswordErrors = {
   404: unknown;
 };
 
-export type PostApiAdminPrincipalsByIdResetPasswordResponses = {
+export type ResetPrincipalPasswordResponses = {
   /**
    * Password reset
    */
   200: unknown;
 };
 
-export type GetApiAdminPrincipalsByIdRolesData = {
+export type GetPrincipalRolesData = {
   body?: never;
   path: {
     id: string;
@@ -3974,21 +4466,21 @@ export type GetApiAdminPrincipalsByIdRolesData = {
   url: "/api/admin/principals/{id}/roles";
 };
 
-export type GetApiAdminPrincipalsByIdRolesErrors = {
+export type GetPrincipalRolesErrors = {
   /**
    * Principal not found
    */
   404: unknown;
 };
 
-export type GetApiAdminPrincipalsByIdRolesResponses = {
+export type GetPrincipalRolesResponses = {
   /**
    * List of roles
    */
   200: unknown;
 };
 
-export type PostApiAdminPrincipalsByIdRolesData = {
+export type AssignPrincipalRoleData = {
   body: AssignRoleRequest;
   path: {
     id: string;
@@ -3997,7 +4489,7 @@ export type PostApiAdminPrincipalsByIdRolesData = {
   url: "/api/admin/principals/{id}/roles";
 };
 
-export type PostApiAdminPrincipalsByIdRolesErrors = {
+export type AssignPrincipalRoleErrors = {
   /**
    * Role already assigned or not defined
    */
@@ -4008,15 +4500,15 @@ export type PostApiAdminPrincipalsByIdRolesErrors = {
   404: unknown;
 };
 
-export type PostApiAdminPrincipalsByIdRolesResponses = {
+export type AssignPrincipalRoleResponses = {
   /**
    * Role assigned
    */
   201: unknown;
 };
 
-export type PutApiAdminPrincipalsByIdRolesData = {
-  body: AssignRolesRequest;
+export type AssignPrincipalRolesData = {
+  body: AssignRolesRequest1;
   path: {
     id: string;
   };
@@ -4024,7 +4516,7 @@ export type PutApiAdminPrincipalsByIdRolesData = {
   url: "/api/admin/principals/{id}/roles";
 };
 
-export type PutApiAdminPrincipalsByIdRolesErrors = {
+export type AssignPrincipalRolesErrors = {
   /**
    * Invalid role names
    */
@@ -4035,14 +4527,14 @@ export type PutApiAdminPrincipalsByIdRolesErrors = {
   404: unknown;
 };
 
-export type PutApiAdminPrincipalsByIdRolesResponses = {
+export type AssignPrincipalRolesResponses = {
   /**
    * Roles assigned
    */
   200: unknown;
 };
 
-export type DeleteApiAdminPrincipalsByIdRolesByRoleNameData = {
+export type RemovePrincipalRoleData = {
   body?: never;
   path: {
     id: string;
@@ -4052,24 +4544,24 @@ export type DeleteApiAdminPrincipalsByIdRolesByRoleNameData = {
   url: "/api/admin/principals/{id}/roles/{roleName}";
 };
 
-export type DeleteApiAdminPrincipalsByIdRolesByRoleNameErrors = {
+export type RemovePrincipalRoleErrors = {
   /**
    * Principal or role assignment not found
    */
   404: unknown;
 };
 
-export type DeleteApiAdminPrincipalsByIdRolesByRoleNameResponses = {
+export type RemovePrincipalRoleResponses = {
   /**
    * Role removed
    */
   204: void;
 };
 
-export type DeleteApiAdminPrincipalsByIdRolesByRoleNameResponse =
-  DeleteApiAdminPrincipalsByIdRolesByRoleNameResponses[keyof DeleteApiAdminPrincipalsByIdRolesByRoleNameResponses];
+export type RemovePrincipalRoleResponse =
+  RemovePrincipalRoleResponses[keyof RemovePrincipalRoleResponses];
 
-export type GetApiAdminRolesData = {
+export type ListRolesData = {
   body?: never;
   path?: never;
   query?: {
@@ -4079,31 +4571,30 @@ export type GetApiAdminRolesData = {
   url: "/api/admin/roles";
 };
 
-export type GetApiAdminRolesErrors = {
+export type ListRolesErrors = {
   /**
    * Not authenticated
    */
   401: unknown;
 };
 
-export type GetApiAdminRolesResponses = {
+export type ListRolesResponses = {
   /**
    * List of roles
    */
-  200: RoleListResponse;
+  200: RoleListResponse2;
 };
 
-export type GetApiAdminRolesResponse =
-  GetApiAdminRolesResponses[keyof GetApiAdminRolesResponses];
+export type ListRolesResponse = ListRolesResponses[keyof ListRolesResponses];
 
-export type PostApiAdminRolesData = {
-  body: CreateRoleRequest;
+export type CreateRoleData = {
+  body: CreateRoleRequest1;
   path?: never;
   query?: never;
   url: "/api/admin/roles";
 };
 
-export type PostApiAdminRolesErrors = {
+export type CreateRoleErrors = {
   /**
    * Invalid request
    */
@@ -4118,41 +4609,40 @@ export type PostApiAdminRolesErrors = {
   409: unknown;
 };
 
-export type PostApiAdminRolesResponses = {
+export type CreateRoleResponses = {
   /**
    * Role created
    */
-  201: RoleDto;
+  201: RoleDto1;
 };
 
-export type PostApiAdminRolesResponse =
-  PostApiAdminRolesResponses[keyof PostApiAdminRolesResponses];
+export type CreateRoleResponse = CreateRoleResponses[keyof CreateRoleResponses];
 
-export type GetApiAdminRolesPermissionsData = {
+export type ListPermissionsData = {
   body?: never;
   path?: never;
   query?: never;
   url: "/api/admin/roles/permissions";
 };
 
-export type GetApiAdminRolesPermissionsErrors = {
+export type ListPermissionsErrors = {
   /**
    * Not authenticated
    */
   401: unknown;
 };
 
-export type GetApiAdminRolesPermissionsResponses = {
+export type ListPermissionsResponses = {
   /**
    * List of permissions
    */
   200: PermissionListResponse;
 };
 
-export type GetApiAdminRolesPermissionsResponse =
-  GetApiAdminRolesPermissionsResponses[keyof GetApiAdminRolesPermissionsResponses];
+export type ListPermissionsResponse =
+  ListPermissionsResponses[keyof ListPermissionsResponses];
 
-export type GetApiAdminRolesPermissionsByPermissionData = {
+export type GetPermissionData = {
   body?: never;
   path: {
     permission: string;
@@ -4161,21 +4651,21 @@ export type GetApiAdminRolesPermissionsByPermissionData = {
   url: "/api/admin/roles/permissions/{permission}";
 };
 
-export type GetApiAdminRolesPermissionsByPermissionErrors = {
+export type GetPermissionErrors = {
   /**
    * Permission not found
    */
   404: unknown;
 };
 
-export type GetApiAdminRolesPermissionsByPermissionResponses = {
+export type GetPermissionResponses = {
   /**
    * Permission details
    */
   200: unknown;
 };
 
-export type DeleteApiAdminRolesByRoleNameData = {
+export type DeleteRoleData = {
   body?: never;
   path: {
     roleName: string;
@@ -4184,7 +4674,7 @@ export type DeleteApiAdminRolesByRoleNameData = {
   url: "/api/admin/roles/{roleName}";
 };
 
-export type DeleteApiAdminRolesByRoleNameErrors = {
+export type DeleteRoleErrors = {
   /**
    * Cannot delete CODE-defined role
    */
@@ -4195,17 +4685,16 @@ export type DeleteApiAdminRolesByRoleNameErrors = {
   404: unknown;
 };
 
-export type DeleteApiAdminRolesByRoleNameResponses = {
+export type DeleteRoleResponses = {
   /**
    * Role deleted
    */
   204: void;
 };
 
-export type DeleteApiAdminRolesByRoleNameResponse =
-  DeleteApiAdminRolesByRoleNameResponses[keyof DeleteApiAdminRolesByRoleNameResponses];
+export type DeleteRoleResponse = DeleteRoleResponses[keyof DeleteRoleResponses];
 
-export type GetApiAdminRolesByRoleNameData = {
+export type GetRoleData = {
   body?: never;
   path: {
     roleName: string;
@@ -4214,25 +4703,24 @@ export type GetApiAdminRolesByRoleNameData = {
   url: "/api/admin/roles/{roleName}";
 };
 
-export type GetApiAdminRolesByRoleNameErrors = {
+export type GetRoleErrors = {
   /**
    * Role not found
    */
   404: unknown;
 };
 
-export type GetApiAdminRolesByRoleNameResponses = {
+export type GetRoleResponses = {
   /**
    * Role details with permissions
    */
-  200: RoleDto;
+  200: RoleDto1;
 };
 
-export type GetApiAdminRolesByRoleNameResponse =
-  GetApiAdminRolesByRoleNameResponses[keyof GetApiAdminRolesByRoleNameResponses];
+export type GetRoleResponse = GetRoleResponses[keyof GetRoleResponses];
 
-export type PutApiAdminRolesByRoleNameData = {
-  body: UpdateRoleRequest;
+export type UpdateRoleData = {
+  body: UpdateRoleRequest1;
   path: {
     roleName: string;
   };
@@ -4240,7 +4728,7 @@ export type PutApiAdminRolesByRoleNameData = {
   url: "/api/admin/roles/{roleName}";
 };
 
-export type PutApiAdminRolesByRoleNameErrors = {
+export type UpdateRoleErrors = {
   /**
    * Bad Request
    */
@@ -4251,15 +4739,14 @@ export type PutApiAdminRolesByRoleNameErrors = {
   404: unknown;
 };
 
-export type PutApiAdminRolesByRoleNameResponses = {
+export type UpdateRoleResponses = {
   /**
    * Role updated
    */
-  200: RoleDto;
+  200: RoleDto1;
 };
 
-export type PutApiAdminRolesByRoleNameResponse =
-  PutApiAdminRolesByRoleNameResponses[keyof PutApiAdminRolesByRoleNameResponses];
+export type UpdateRoleResponse = UpdateRoleResponses[keyof UpdateRoleResponses];
 
 export type GetApiAdminServiceAccountsData = {
   body?: never;
@@ -4475,7 +4962,7 @@ export type GetApiAdminServiceAccountsByIdRolesResponses = {
 };
 
 export type PutApiAdminServiceAccountsByIdRolesData = {
-  body: AssignRolesRequest1;
+  body: AssignRolesRequest2;
   path: {
     id: string;
   };
@@ -4743,7 +5230,7 @@ export type PostApiAdminSubscriptionsByIdResumeResponses = {
   200: unknown;
 };
 
-export type GetApiApplicationsData = {
+export type ListAppsData = {
   body?: never;
   path?: never;
   query?: {
@@ -4752,24 +5239,23 @@ export type GetApiApplicationsData = {
   url: "/api/applications";
 };
 
-export type GetApiApplicationsResponses = {
+export type ListAppsResponses = {
   /**
    * List of applications
    */
   200: ApplicationListResponse;
 };
 
-export type GetApiApplicationsResponse =
-  GetApiApplicationsResponses[keyof GetApiApplicationsResponses];
+export type ListAppsResponse = ListAppsResponses[keyof ListAppsResponses];
 
-export type PostApiApplicationsData = {
+export type CreateAppData = {
   body: CreateApplicationRequest1;
   path?: never;
   query?: never;
   url: "/api/applications";
 };
 
-export type PostApiApplicationsErrors = {
+export type CreateAppErrors = {
   /**
    * Invalid request
    */
@@ -4780,14 +5266,16 @@ export type PostApiApplicationsErrors = {
   409: unknown;
 };
 
-export type PostApiApplicationsResponses = {
+export type CreateAppResponses = {
   /**
    * Application created
    */
-  201: unknown;
+  201: ApplicationResponse;
 };
 
-export type GetApiApplicationsCodeByCodeData = {
+export type CreateAppResponse = CreateAppResponses[keyof CreateAppResponses];
+
+export type GetAppByCodeData = {
   body?: never;
   path: {
     code: string;
@@ -4796,21 +5284,24 @@ export type GetApiApplicationsCodeByCodeData = {
   url: "/api/applications/code/{code}";
 };
 
-export type GetApiApplicationsCodeByCodeErrors = {
+export type GetAppByCodeErrors = {
   /**
    * Application not found
    */
   404: unknown;
 };
 
-export type GetApiApplicationsCodeByCodeResponses = {
+export type GetAppByCodeResponses = {
   /**
    * Application found
    */
-  200: unknown;
+  200: ApplicationResponse;
 };
 
-export type GetApiApplicationsByAppCodeDispatchPoolsData = {
+export type GetAppByCodeResponse =
+  GetAppByCodeResponses[keyof GetAppByCodeResponses];
+
+export type ListApplicationDispatchPoolsData = {
   body?: never;
   path: {
     appCode: string;
@@ -4821,24 +5312,24 @@ export type GetApiApplicationsByAppCodeDispatchPoolsData = {
   url: "/api/applications/{appCode}/dispatch-pools";
 };
 
-export type GetApiApplicationsByAppCodeDispatchPoolsErrors = {
+export type ListApplicationDispatchPoolsErrors = {
   /**
    * Application not found
    */
   404: unknown;
 };
 
-export type GetApiApplicationsByAppCodeDispatchPoolsResponses = {
+export type ListApplicationDispatchPoolsResponses = {
   /**
    * List of dispatch pools
    */
   200: PoolListResponse;
 };
 
-export type GetApiApplicationsByAppCodeDispatchPoolsResponse =
-  GetApiApplicationsByAppCodeDispatchPoolsResponses[keyof GetApiApplicationsByAppCodeDispatchPoolsResponses];
+export type ListApplicationDispatchPoolsResponse =
+  ListApplicationDispatchPoolsResponses[keyof ListApplicationDispatchPoolsResponses];
 
-export type PostApiApplicationsByAppCodeDispatchPoolsSyncData = {
+export type SyncApplicationDispatchPoolsData = {
   body: SyncPoolsRequest;
   path: {
     appCode: string;
@@ -4849,7 +5340,7 @@ export type PostApiApplicationsByAppCodeDispatchPoolsSyncData = {
   url: "/api/applications/{appCode}/dispatch-pools/sync";
 };
 
-export type PostApiApplicationsByAppCodeDispatchPoolsSyncErrors = {
+export type SyncApplicationDispatchPoolsErrors = {
   /**
    * Bad Request
    */
@@ -4860,17 +5351,17 @@ export type PostApiApplicationsByAppCodeDispatchPoolsSyncErrors = {
   404: unknown;
 };
 
-export type PostApiApplicationsByAppCodeDispatchPoolsSyncResponses = {
+export type SyncApplicationDispatchPoolsResponses = {
   /**
    * Sync complete
    */
   200: SyncResponse;
 };
 
-export type PostApiApplicationsByAppCodeDispatchPoolsSyncResponse =
-  PostApiApplicationsByAppCodeDispatchPoolsSyncResponses[keyof PostApiApplicationsByAppCodeDispatchPoolsSyncResponses];
+export type SyncApplicationDispatchPoolsResponse =
+  SyncApplicationDispatchPoolsResponses[keyof SyncApplicationDispatchPoolsResponses];
 
-export type GetApiApplicationsByAppCodeEventTypesData = {
+export type ListApplicationEventTypesData = {
   body?: never;
   path: {
     appCode: string;
@@ -4881,24 +5372,24 @@ export type GetApiApplicationsByAppCodeEventTypesData = {
   url: "/api/applications/{appCode}/event-types";
 };
 
-export type GetApiApplicationsByAppCodeEventTypesErrors = {
+export type ListApplicationEventTypesErrors = {
   /**
    * Application not found
    */
   404: unknown;
 };
 
-export type GetApiApplicationsByAppCodeEventTypesResponses = {
+export type ListApplicationEventTypesResponses = {
   /**
    * List of event types
    */
   200: EventTypeListResponse1;
 };
 
-export type GetApiApplicationsByAppCodeEventTypesResponse =
-  GetApiApplicationsByAppCodeEventTypesResponses[keyof GetApiApplicationsByAppCodeEventTypesResponses];
+export type ListApplicationEventTypesResponse =
+  ListApplicationEventTypesResponses[keyof ListApplicationEventTypesResponses];
 
-export type PostApiApplicationsByAppCodeEventTypesSyncData = {
+export type SyncApplicationEventTypesData = {
   body: SyncEventTypesRequest;
   path: {
     appCode: string;
@@ -4909,7 +5400,7 @@ export type PostApiApplicationsByAppCodeEventTypesSyncData = {
   url: "/api/applications/{appCode}/event-types/sync";
 };
 
-export type PostApiApplicationsByAppCodeEventTypesSyncErrors = {
+export type SyncApplicationEventTypesErrors = {
   /**
    * Bad Request
    */
@@ -4920,17 +5411,17 @@ export type PostApiApplicationsByAppCodeEventTypesSyncErrors = {
   404: unknown;
 };
 
-export type PostApiApplicationsByAppCodeEventTypesSyncResponses = {
+export type SyncApplicationEventTypesResponses = {
   /**
    * Sync complete
    */
   200: SyncResponse1;
 };
 
-export type PostApiApplicationsByAppCodeEventTypesSyncResponse =
-  PostApiApplicationsByAppCodeEventTypesSyncResponses[keyof PostApiApplicationsByAppCodeEventTypesSyncResponses];
+export type SyncApplicationEventTypesResponse =
+  SyncApplicationEventTypesResponses[keyof SyncApplicationEventTypesResponses];
 
-export type GetApiApplicationsByAppCodeRolesData = {
+export type ListApplicationRolesData = {
   body?: never;
   path: {
     appCode: string;
@@ -4941,25 +5432,25 @@ export type GetApiApplicationsByAppCodeRolesData = {
   url: "/api/applications/{appCode}/roles";
 };
 
-export type GetApiApplicationsByAppCodeRolesErrors = {
+export type ListApplicationRolesErrors = {
   /**
    * Application not found
    */
   404: unknown;
 };
 
-export type GetApiApplicationsByAppCodeRolesResponses = {
+export type ListApplicationRolesResponses = {
   /**
    * List of roles
    */
-  200: RoleListResponse1;
+  200: RoleListResponse3;
 };
 
-export type GetApiApplicationsByAppCodeRolesResponse =
-  GetApiApplicationsByAppCodeRolesResponses[keyof GetApiApplicationsByAppCodeRolesResponses];
+export type ListApplicationRolesResponse =
+  ListApplicationRolesResponses[keyof ListApplicationRolesResponses];
 
-export type PostApiApplicationsByAppCodeRolesData = {
-  body: CreateRoleRequest1;
+export type CreateApplicationRoleData = {
+  body: CreateRoleRequest2;
   path: {
     appCode: string;
   };
@@ -4967,7 +5458,7 @@ export type PostApiApplicationsByAppCodeRolesData = {
   url: "/api/applications/{appCode}/roles";
 };
 
-export type PostApiApplicationsByAppCodeRolesErrors = {
+export type CreateApplicationRoleErrors = {
   /**
    * Bad Request
    */
@@ -4982,17 +5473,17 @@ export type PostApiApplicationsByAppCodeRolesErrors = {
   409: unknown;
 };
 
-export type PostApiApplicationsByAppCodeRolesResponses = {
+export type CreateApplicationRoleResponses = {
   /**
    * Role created
    */
-  201: RoleDto1;
+  201: RoleDto2;
 };
 
-export type PostApiApplicationsByAppCodeRolesResponse =
-  PostApiApplicationsByAppCodeRolesResponses[keyof PostApiApplicationsByAppCodeRolesResponses];
+export type CreateApplicationRoleResponse =
+  CreateApplicationRoleResponses[keyof CreateApplicationRoleResponses];
 
-export type PostApiApplicationsByAppCodeRolesSyncData = {
+export type SyncApplicationRolesData = {
   body: SyncRolesRequest;
   path: {
     appCode: string;
@@ -5003,7 +5494,7 @@ export type PostApiApplicationsByAppCodeRolesSyncData = {
   url: "/api/applications/{appCode}/roles/sync";
 };
 
-export type PostApiApplicationsByAppCodeRolesSyncErrors = {
+export type SyncApplicationRolesErrors = {
   /**
    * Bad Request
    */
@@ -5014,17 +5505,17 @@ export type PostApiApplicationsByAppCodeRolesSyncErrors = {
   404: unknown;
 };
 
-export type PostApiApplicationsByAppCodeRolesSyncResponses = {
+export type SyncApplicationRolesResponses = {
   /**
    * Sync complete
    */
   200: SyncResponse2;
 };
 
-export type PostApiApplicationsByAppCodeRolesSyncResponse =
-  PostApiApplicationsByAppCodeRolesSyncResponses[keyof PostApiApplicationsByAppCodeRolesSyncResponses];
+export type SyncApplicationRolesResponse =
+  SyncApplicationRolesResponses[keyof SyncApplicationRolesResponses];
 
-export type DeleteApiApplicationsByAppCodeRolesByRoleNameData = {
+export type DeleteApplicationRoleData = {
   body?: never;
   path: {
     appCode: string;
@@ -5034,7 +5525,7 @@ export type DeleteApiApplicationsByAppCodeRolesByRoleNameData = {
   url: "/api/applications/{appCode}/roles/{roleName}";
 };
 
-export type DeleteApiApplicationsByAppCodeRolesByRoleNameErrors = {
+export type DeleteApplicationRoleErrors = {
   /**
    * Cannot delete non-SDK role
    */
@@ -5045,17 +5536,17 @@ export type DeleteApiApplicationsByAppCodeRolesByRoleNameErrors = {
   404: unknown;
 };
 
-export type DeleteApiApplicationsByAppCodeRolesByRoleNameResponses = {
+export type DeleteApplicationRoleResponses = {
   /**
    * Role deleted
    */
   204: void;
 };
 
-export type DeleteApiApplicationsByAppCodeRolesByRoleNameResponse =
-  DeleteApiApplicationsByAppCodeRolesByRoleNameResponses[keyof DeleteApiApplicationsByAppCodeRolesByRoleNameResponses];
+export type DeleteApplicationRoleResponse =
+  DeleteApplicationRoleResponses[keyof DeleteApplicationRoleResponses];
 
-export type GetApiApplicationsByAppCodeSubscriptionsData = {
+export type ListApplicationSubscriptionsData = {
   body?: never;
   path: {
     appCode: string;
@@ -5066,24 +5557,24 @@ export type GetApiApplicationsByAppCodeSubscriptionsData = {
   url: "/api/applications/{appCode}/subscriptions";
 };
 
-export type GetApiApplicationsByAppCodeSubscriptionsErrors = {
+export type ListApplicationSubscriptionsErrors = {
   /**
    * Application not found
    */
   404: unknown;
 };
 
-export type GetApiApplicationsByAppCodeSubscriptionsResponses = {
+export type ListApplicationSubscriptionsResponses = {
   /**
    * List of subscriptions
    */
   200: SubscriptionListResponse;
 };
 
-export type GetApiApplicationsByAppCodeSubscriptionsResponse =
-  GetApiApplicationsByAppCodeSubscriptionsResponses[keyof GetApiApplicationsByAppCodeSubscriptionsResponses];
+export type ListApplicationSubscriptionsResponse =
+  ListApplicationSubscriptionsResponses[keyof ListApplicationSubscriptionsResponses];
 
-export type PostApiApplicationsByAppCodeSubscriptionsSyncData = {
+export type SyncApplicationSubscriptionsData = {
   body: SyncSubscriptionsRequest;
   path: {
     appCode: string;
@@ -5094,7 +5585,7 @@ export type PostApiApplicationsByAppCodeSubscriptionsSyncData = {
   url: "/api/applications/{appCode}/subscriptions/sync";
 };
 
-export type PostApiApplicationsByAppCodeSubscriptionsSyncErrors = {
+export type SyncApplicationSubscriptionsErrors = {
   /**
    * Invalid request
    */
@@ -5105,17 +5596,17 @@ export type PostApiApplicationsByAppCodeSubscriptionsSyncErrors = {
   404: unknown;
 };
 
-export type PostApiApplicationsByAppCodeSubscriptionsSyncResponses = {
+export type SyncApplicationSubscriptionsResponses = {
   /**
    * Sync complete
    */
   200: SyncResponse3;
 };
 
-export type PostApiApplicationsByAppCodeSubscriptionsSyncResponse =
-  PostApiApplicationsByAppCodeSubscriptionsSyncResponses[keyof PostApiApplicationsByAppCodeSubscriptionsSyncResponses];
+export type SyncApplicationSubscriptionsResponse =
+  SyncApplicationSubscriptionsResponses[keyof SyncApplicationSubscriptionsResponses];
 
-export type DeleteApiApplicationsByIdData = {
+export type DeleteAppData = {
   body?: never;
   path: {
     id: string;
@@ -5124,7 +5615,7 @@ export type DeleteApiApplicationsByIdData = {
   url: "/api/applications/{id}";
 };
 
-export type DeleteApiApplicationsByIdErrors = {
+export type DeleteAppErrors = {
   /**
    * Cannot delete active application or application with configurations, or invalid ID format
    */
@@ -5135,17 +5626,16 @@ export type DeleteApiApplicationsByIdErrors = {
   404: unknown;
 };
 
-export type DeleteApiApplicationsByIdResponses = {
+export type DeleteAppResponses = {
   /**
    * Application deleted
    */
   204: void;
 };
 
-export type DeleteApiApplicationsByIdResponse =
-  DeleteApiApplicationsByIdResponses[keyof DeleteApiApplicationsByIdResponses];
+export type DeleteAppResponse = DeleteAppResponses[keyof DeleteAppResponses];
 
-export type GetApiApplicationsByIdData = {
+export type GetAppData = {
   body?: never;
   path: {
     id: string;
@@ -5154,7 +5644,7 @@ export type GetApiApplicationsByIdData = {
   url: "/api/applications/{id}";
 };
 
-export type GetApiApplicationsByIdErrors = {
+export type GetAppErrors = {
   /**
    * Invalid application ID format
    */
@@ -5165,14 +5655,16 @@ export type GetApiApplicationsByIdErrors = {
   404: unknown;
 };
 
-export type GetApiApplicationsByIdResponses = {
+export type GetAppResponses = {
   /**
    * Application found
    */
-  200: unknown;
+  200: ApplicationResponse;
 };
 
-export type PutApiApplicationsByIdData = {
+export type GetAppResponse = GetAppResponses[keyof GetAppResponses];
+
+export type UpdateAppData = {
   body: UpdateApplicationRequest1;
   path: {
     id: string;
@@ -5181,7 +5673,7 @@ export type PutApiApplicationsByIdData = {
   url: "/api/applications/{id}";
 };
 
-export type PutApiApplicationsByIdErrors = {
+export type UpdateAppErrors = {
   /**
    * Invalid request or ID format
    */
@@ -5192,14 +5684,16 @@ export type PutApiApplicationsByIdErrors = {
   404: unknown;
 };
 
-export type PutApiApplicationsByIdResponses = {
+export type UpdateAppResponses = {
   /**
    * Application updated
    */
-  200: unknown;
+  200: ApplicationResponse;
 };
 
-export type PostApiApplicationsByIdActivateData = {
+export type UpdateAppResponse = UpdateAppResponses[keyof UpdateAppResponses];
+
+export type ActivateAppData = {
   body?: never;
   path: {
     id: string;
@@ -5208,7 +5702,7 @@ export type PostApiApplicationsByIdActivateData = {
   url: "/api/applications/{id}/activate";
 };
 
-export type PostApiApplicationsByIdActivateErrors = {
+export type ActivateAppErrors = {
   /**
    * Application already active or invalid ID format
    */
@@ -5219,14 +5713,17 @@ export type PostApiApplicationsByIdActivateErrors = {
   404: unknown;
 };
 
-export type PostApiApplicationsByIdActivateResponses = {
+export type ActivateAppResponses = {
   /**
    * Application activated
    */
-  200: unknown;
+  200: ApplicationResponse;
 };
 
-export type PostApiApplicationsByIdDeactivateData = {
+export type ActivateAppResponse =
+  ActivateAppResponses[keyof ActivateAppResponses];
+
+export type DeactivateAppData = {
   body?: never;
   path: {
     id: string;
@@ -5235,7 +5732,7 @@ export type PostApiApplicationsByIdDeactivateData = {
   url: "/api/applications/{id}/deactivate";
 };
 
-export type PostApiApplicationsByIdDeactivateErrors = {
+export type DeactivateAppErrors = {
   /**
    * Application already deactivated or invalid ID format
    */
@@ -5246,12 +5743,15 @@ export type PostApiApplicationsByIdDeactivateErrors = {
   404: unknown;
 };
 
-export type PostApiApplicationsByIdDeactivateResponses = {
+export type DeactivateAppResponses = {
   /**
    * Application deactivated
    */
-  200: unknown;
+  200: ApplicationResponse;
 };
+
+export type DeactivateAppResponse =
+  DeactivateAppResponses[keyof DeactivateAppResponses];
 
 export type GetApiBffDebugDispatchJobsData = {
   body?: never;
@@ -5388,7 +5888,7 @@ export type GetApiBffDispatchJobsFilterOptionsResponses = {
   /**
    * Filter options
    */
-  200: FilterOptionsResponse;
+  200: FilterOptionsResponse1;
 };
 
 export type GetApiBffDispatchJobsFilterOptionsResponse =
@@ -5464,7 +5964,7 @@ export type GetApiBffEventsFilterOptionsResponses = {
   /**
    * Filter options
    */
-  200: FilterOptionsResponse1;
+  200: FilterOptionsResponse2;
 };
 
 export type GetApiBffEventsFilterOptionsResponse =
@@ -5511,7 +6011,7 @@ export type GetApiClientsResponses = {
   /**
    * List of accessible clients
    */
-  200: ClientListResponse2;
+  200: ClientListResponse3;
 };
 
 export type GetApiClientsResponse =
@@ -5549,8 +6049,11 @@ export type GetApiClientsByIdResponses = {
   /**
    * Client found
    */
-  200: unknown;
+  200: ClientResponse;
 };
+
+export type GetApiClientsByIdResponse =
+  GetApiClientsByIdResponses[keyof GetApiClientsByIdResponses];
 
 export type GetApiClientsByIdApplicationsData = {
   body?: never;
@@ -5648,11 +6151,11 @@ export type PostApiDispatchJobsErrors = {
   /**
    * Invalid request - missing or invalid fields
    */
-  400: ErrorResponse;
+  400: ErrorResponse3;
   /**
    * Internal server error
    */
-  500: ErrorResponse;
+  500: ErrorResponse3;
 };
 
 export type PostApiDispatchJobsError =
@@ -5679,11 +6182,11 @@ export type PostApiDispatchJobsBatchErrors = {
   /**
    * Invalid request or batch size exceeds limit
    */
-  400: ErrorResponse;
+  400: ErrorResponse3;
   /**
    * Internal server error
    */
-  500: ErrorResponse;
+  500: ErrorResponse3;
 };
 
 export type PostApiDispatchJobsBatchError =
@@ -5712,7 +6215,7 @@ export type GetApiDispatchJobsByIdErrors = {
   /**
    * Dispatch job not found
    */
-  404: ErrorResponse;
+  404: ErrorResponse3;
 };
 
 export type GetApiDispatchJobsByIdError =
@@ -5741,7 +6244,7 @@ export type GetApiDispatchJobsByIdAttemptsErrors = {
   /**
    * Dispatch job not found
    */
-  404: ErrorResponse;
+  404: ErrorResponse3;
 };
 
 export type GetApiDispatchJobsByIdAttemptsError =
@@ -5836,8 +6339,11 @@ export type PostApiEventTypesResponses = {
   /**
    * Event type created
    */
-  201: unknown;
+  201: EventTypeResponse;
 };
+
+export type PostApiEventTypesResponse =
+  PostApiEventTypesResponses[keyof PostApiEventTypesResponses];
 
 export type GetApiEventTypesFiltersAggregatesData = {
   body?: never;
@@ -5851,10 +6357,13 @@ export type GetApiEventTypesFiltersAggregatesData = {
 
 export type GetApiEventTypesFiltersAggregatesResponses = {
   /**
-   * OK
+   * Filter options
    */
-  200: unknown;
+  200: FilterOptionsResponse;
 };
+
+export type GetApiEventTypesFiltersAggregatesResponse =
+  GetApiEventTypesFiltersAggregatesResponses[keyof GetApiEventTypesFiltersAggregatesResponses];
 
 export type GetApiEventTypesFiltersApplicationsData = {
   body?: never;
@@ -5865,10 +6374,13 @@ export type GetApiEventTypesFiltersApplicationsData = {
 
 export type GetApiEventTypesFiltersApplicationsResponses = {
   /**
-   * OK
+   * Filter options
    */
-  200: unknown;
+  200: FilterOptionsResponse;
 };
+
+export type GetApiEventTypesFiltersApplicationsResponse =
+  GetApiEventTypesFiltersApplicationsResponses[keyof GetApiEventTypesFiltersApplicationsResponses];
 
 export type GetApiEventTypesFiltersSubdomainsData = {
   body?: never;
@@ -5881,10 +6393,13 @@ export type GetApiEventTypesFiltersSubdomainsData = {
 
 export type GetApiEventTypesFiltersSubdomainsResponses = {
   /**
-   * OK
+   * Filter options
    */
-  200: unknown;
+  200: FilterOptionsResponse;
 };
+
+export type GetApiEventTypesFiltersSubdomainsResponse =
+  GetApiEventTypesFiltersSubdomainsResponses[keyof GetApiEventTypesFiltersSubdomainsResponses];
 
 export type DeleteApiEventTypesByIdData = {
   body?: never;
@@ -5936,8 +6451,11 @@ export type GetApiEventTypesByIdResponses = {
   /**
    * Event type found
    */
-  200: unknown;
+  200: EventTypeResponse;
 };
+
+export type GetApiEventTypesByIdResponse =
+  GetApiEventTypesByIdResponses[keyof GetApiEventTypesByIdResponses];
 
 export type PatchApiEventTypesByIdData = {
   body: UpdateEventTypeRequest;
@@ -5963,8 +6481,11 @@ export type PatchApiEventTypesByIdResponses = {
   /**
    * Event type updated
    */
-  200: unknown;
+  200: EventTypeResponse;
 };
+
+export type PatchApiEventTypesByIdResponse =
+  PatchApiEventTypesByIdResponses[keyof PatchApiEventTypesByIdResponses];
 
 export type PostApiEventTypesByIdArchiveData = {
   body?: never;
@@ -5990,8 +6511,11 @@ export type PostApiEventTypesByIdArchiveResponses = {
   /**
    * Event type archived
    */
-  200: unknown;
+  200: EventTypeResponse;
 };
+
+export type PostApiEventTypesByIdArchiveResponse =
+  PostApiEventTypesByIdArchiveResponses[keyof PostApiEventTypesByIdArchiveResponses];
 
 export type PostApiEventTypesByIdSchemasData = {
   body: AddSchemaRequest;
@@ -6021,8 +6545,11 @@ export type PostApiEventTypesByIdSchemasResponses = {
   /**
    * Schema added
    */
-  201: unknown;
+  201: EventTypeResponse;
 };
+
+export type PostApiEventTypesByIdSchemasResponse =
+  PostApiEventTypesByIdSchemasResponses[keyof PostApiEventTypesByIdSchemasResponses];
 
 export type PostApiEventTypesByIdSchemasByVersionDeprecateData = {
   body?: never;
@@ -6049,8 +6576,11 @@ export type PostApiEventTypesByIdSchemasByVersionDeprecateResponses = {
   /**
    * Schema deprecated
    */
-  200: unknown;
+  200: EventTypeResponse;
 };
+
+export type PostApiEventTypesByIdSchemasByVersionDeprecateResponse =
+  PostApiEventTypesByIdSchemasByVersionDeprecateResponses[keyof PostApiEventTypesByIdSchemasByVersionDeprecateResponses];
 
 export type PostApiEventTypesByIdSchemasByVersionFinaliseData = {
   body?: never;
@@ -6077,8 +6607,11 @@ export type PostApiEventTypesByIdSchemasByVersionFinaliseResponses = {
   /**
    * Schema finalised
    */
-  200: unknown;
+  200: EventTypeResponse;
 };
+
+export type PostApiEventTypesByIdSchemasByVersionFinaliseResponse =
+  PostApiEventTypesByIdSchemasByVersionFinaliseResponses[keyof PostApiEventTypesByIdSchemasByVersionFinaliseResponses];
 
 export type PostApiEventsData = {
   body: CreateEventRequest;
@@ -6262,6 +6795,942 @@ export type PostApiSampleWebhookSlowResponses = {
    */
   200: unknown;
 };
+
+export type SdkListClientsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Filter by status
+     */
+    status?: ClientStatus;
+  };
+  url: "/api/sdk/clients";
+};
+
+export type SdkListClientsErrors = {
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+};
+
+export type SdkListClientsResponses = {
+  /**
+   * List of clients
+   */
+  200: ClientListResponse;
+};
+
+export type SdkListClientsResponse =
+  SdkListClientsResponses[keyof SdkListClientsResponses];
+
+export type SdkCreateClientData = {
+  body: CreateClientRequest;
+  path?: never;
+  query?: never;
+  url: "/api/sdk/clients";
+};
+
+export type SdkCreateClientErrors = {
+  /**
+   * Invalid request
+   */
+  400: unknown;
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+};
+
+export type SdkCreateClientResponses = {
+  /**
+   * Client created
+   */
+  201: ClientDto;
+};
+
+export type SdkCreateClientResponse =
+  SdkCreateClientResponses[keyof SdkCreateClientResponses];
+
+export type SdkGetClientData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/sdk/clients/{id}";
+};
+
+export type SdkGetClientErrors = {
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Client not found
+   */
+  404: unknown;
+};
+
+export type SdkGetClientResponses = {
+  /**
+   * Client details
+   */
+  200: ClientDto;
+};
+
+export type SdkGetClientResponse =
+  SdkGetClientResponses[keyof SdkGetClientResponses];
+
+export type SdkUpdateClientData = {
+  body: UpdateClientRequest;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/sdk/clients/{id}";
+};
+
+export type SdkUpdateClientErrors = {
+  /**
+   * Bad Request
+   */
+  400: unknown;
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Client not found
+   */
+  404: unknown;
+};
+
+export type SdkUpdateClientResponses = {
+  /**
+   * Client updated
+   */
+  200: ClientDto;
+};
+
+export type SdkUpdateClientResponse =
+  SdkUpdateClientResponses[keyof SdkUpdateClientResponses];
+
+export type SdkActivateClientData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/sdk/clients/{id}/activate";
+};
+
+export type SdkActivateClientErrors = {
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Client not found
+   */
+  404: unknown;
+};
+
+export type SdkActivateClientResponses = {
+  /**
+   * Client activated
+   */
+  200: StatusResponse;
+};
+
+export type SdkActivateClientResponse =
+  SdkActivateClientResponses[keyof SdkActivateClientResponses];
+
+export type SdkDeactivateClientData = {
+  body: StatusChangeRequest;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/sdk/clients/{id}/deactivate";
+};
+
+export type SdkDeactivateClientErrors = {
+  /**
+   * Bad Request
+   */
+  400: unknown;
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Client not found
+   */
+  404: unknown;
+};
+
+export type SdkDeactivateClientResponses = {
+  /**
+   * Client deactivated
+   */
+  200: StatusResponse;
+};
+
+export type SdkDeactivateClientResponse =
+  SdkDeactivateClientResponses[keyof SdkDeactivateClientResponses];
+
+export type SdkSuspendClientData = {
+  body: StatusChangeRequest;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/sdk/clients/{id}/suspend";
+};
+
+export type SdkSuspendClientErrors = {
+  /**
+   * Bad Request
+   */
+  400: unknown;
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Client not found
+   */
+  404: unknown;
+};
+
+export type SdkSuspendClientResponses = {
+  /**
+   * Client suspended
+   */
+  200: StatusResponse;
+};
+
+export type SdkSuspendClientResponse =
+  SdkSuspendClientResponses[keyof SdkSuspendClientResponses];
+
+export type SdkListPrincipalsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Filter by active status
+     */
+    active?: boolean;
+    /**
+     * Filter by client ID
+     */
+    clientId?: string;
+    /**
+     * Filter by exact email match
+     */
+    email?: string;
+    /**
+     * Filter by type (USER/SERVICE)
+     */
+    type?: PrincipalType;
+  };
+  url: "/api/sdk/principals";
+};
+
+export type SdkListPrincipalsErrors = {
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+};
+
+export type SdkListPrincipalsResponses = {
+  /**
+   * List of principals
+   */
+  200: PrincipalListResponse;
+};
+
+export type SdkListPrincipalsResponse =
+  SdkListPrincipalsResponses[keyof SdkListPrincipalsResponses];
+
+export type SdkCreateServicePrincipalData = {
+  body: CreateServicePrincipalRequest;
+  path?: never;
+  query?: never;
+  url: "/api/sdk/principals/service";
+};
+
+export type SdkCreateServicePrincipalErrors = {
+  /**
+   * Invalid request
+   */
+  400: unknown;
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+};
+
+export type SdkCreateServicePrincipalResponses = {
+  /**
+   * Service account created
+   */
+  201: StatusResponse1;
+};
+
+export type SdkCreateServicePrincipalResponse =
+  SdkCreateServicePrincipalResponses[keyof SdkCreateServicePrincipalResponses];
+
+export type SdkCreateUserPrincipalData = {
+  body: CreateUserRequest;
+  path?: never;
+  query?: never;
+  url: "/api/sdk/principals/user";
+};
+
+export type SdkCreateUserPrincipalErrors = {
+  /**
+   * Invalid request
+   */
+  400: unknown;
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+};
+
+export type SdkCreateUserPrincipalResponses = {
+  /**
+   * User created
+   */
+  201: PrincipalDto;
+};
+
+export type SdkCreateUserPrincipalResponse =
+  SdkCreateUserPrincipalResponses[keyof SdkCreateUserPrincipalResponses];
+
+export type SdkGetPrincipalData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/sdk/principals/{id}";
+};
+
+export type SdkGetPrincipalErrors = {
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Principal not found
+   */
+  404: unknown;
+};
+
+export type SdkGetPrincipalResponses = {
+  /**
+   * Principal details
+   */
+  200: PrincipalDto;
+};
+
+export type SdkGetPrincipalResponse =
+  SdkGetPrincipalResponses[keyof SdkGetPrincipalResponses];
+
+export type SdkUpdatePrincipalData = {
+  body: UpdatePrincipalRequest;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/sdk/principals/{id}";
+};
+
+export type SdkUpdatePrincipalErrors = {
+  /**
+   * Bad Request
+   */
+  400: unknown;
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Principal not found
+   */
+  404: unknown;
+};
+
+export type SdkUpdatePrincipalResponses = {
+  /**
+   * Principal updated
+   */
+  200: PrincipalDto;
+};
+
+export type SdkUpdatePrincipalResponse =
+  SdkUpdatePrincipalResponses[keyof SdkUpdatePrincipalResponses];
+
+export type SdkActivatePrincipalData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/sdk/principals/{id}/activate";
+};
+
+export type SdkActivatePrincipalErrors = {
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Principal not found
+   */
+  404: unknown;
+};
+
+export type SdkActivatePrincipalResponses = {
+  /**
+   * Principal activated
+   */
+  200: StatusResponse1;
+};
+
+export type SdkActivatePrincipalResponse =
+  SdkActivatePrincipalResponses[keyof SdkActivatePrincipalResponses];
+
+export type SdkGetPrincipalClientsData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/sdk/principals/{id}/clients";
+};
+
+export type SdkGetPrincipalClientsErrors = {
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Principal not found
+   */
+  404: unknown;
+};
+
+export type SdkGetPrincipalClientsResponses = {
+  /**
+   * List of client access grants
+   */
+  200: ClientAccessListResponse;
+};
+
+export type SdkGetPrincipalClientsResponse =
+  SdkGetPrincipalClientsResponses[keyof SdkGetPrincipalClientsResponses];
+
+export type SdkRevokeClientAccessData = {
+  body?: never;
+  path: {
+    clientId: string;
+    id: string;
+  };
+  query?: never;
+  url: "/api/sdk/principals/{id}/clients/{clientId}";
+};
+
+export type SdkRevokeClientAccessErrors = {
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Grant not found
+   */
+  404: unknown;
+};
+
+export type SdkRevokeClientAccessResponses = {
+  /**
+   * Access revoked
+   */
+  204: void;
+};
+
+export type SdkRevokeClientAccessResponse =
+  SdkRevokeClientAccessResponses[keyof SdkRevokeClientAccessResponses];
+
+export type SdkGrantClientAccessData = {
+  body?: never;
+  path: {
+    clientId: string;
+    id: string;
+  };
+  query?: never;
+  url: "/api/sdk/principals/{id}/clients/{clientId}";
+};
+
+export type SdkGrantClientAccessErrors = {
+  /**
+   * Grant already exists
+   */
+  400: unknown;
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Principal or client not found
+   */
+  404: unknown;
+};
+
+export type SdkGrantClientAccessResponses = {
+  /**
+   * Access granted
+   */
+  201: ClientAccessGrantDto;
+};
+
+export type SdkGrantClientAccessResponse =
+  SdkGrantClientAccessResponses[keyof SdkGrantClientAccessResponses];
+
+export type SdkDeactivatePrincipalData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/sdk/principals/{id}/deactivate";
+};
+
+export type SdkDeactivatePrincipalErrors = {
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Principal not found
+   */
+  404: unknown;
+};
+
+export type SdkDeactivatePrincipalResponses = {
+  /**
+   * Principal deactivated
+   */
+  200: StatusResponse1;
+};
+
+export type SdkDeactivatePrincipalResponse =
+  SdkDeactivatePrincipalResponses[keyof SdkDeactivatePrincipalResponses];
+
+export type SdkGetPrincipalRolesData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/sdk/principals/{id}/roles";
+};
+
+export type SdkGetPrincipalRolesErrors = {
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Principal not found
+   */
+  404: unknown;
+};
+
+export type SdkGetPrincipalRolesResponses = {
+  /**
+   * List of role assignments
+   */
+  200: RoleListResponse;
+};
+
+export type SdkGetPrincipalRolesResponse =
+  SdkGetPrincipalRolesResponses[keyof SdkGetPrincipalRolesResponses];
+
+export type SdkAssignPrincipalRolesData = {
+  body: AssignRolesRequest;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/sdk/principals/{id}/roles";
+};
+
+export type SdkAssignPrincipalRolesErrors = {
+  /**
+   * Invalid role names
+   */
+  400: unknown;
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Principal not found
+   */
+  404: unknown;
+};
+
+export type SdkAssignPrincipalRolesResponses = {
+  /**
+   * Roles assigned
+   */
+  200: RolesAssignedResponse;
+};
+
+export type SdkAssignPrincipalRolesResponse =
+  SdkAssignPrincipalRolesResponses[keyof SdkAssignPrincipalRolesResponses];
+
+export type SdkRemovePrincipalRoleData = {
+  body?: never;
+  path: {
+    id: string;
+    roleName: string;
+  };
+  query?: never;
+  url: "/api/sdk/principals/{id}/roles/{roleName}";
+};
+
+export type SdkRemovePrincipalRoleErrors = {
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Principal or role assignment not found
+   */
+  404: unknown;
+};
+
+export type SdkRemovePrincipalRoleResponses = {
+  /**
+   * Role removed
+   */
+  204: void;
+};
+
+export type SdkRemovePrincipalRoleResponse =
+  SdkRemovePrincipalRoleResponses[keyof SdkRemovePrincipalRoleResponses];
+
+export type SdkAddPrincipalRoleData = {
+  body?: never;
+  path: {
+    id: string;
+    roleName: string;
+  };
+  query?: never;
+  url: "/api/sdk/principals/{id}/roles/{roleName}";
+};
+
+export type SdkAddPrincipalRoleErrors = {
+  /**
+   * Role already assigned or not defined
+   */
+  400: unknown;
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Principal not found
+   */
+  404: unknown;
+};
+
+export type SdkAddPrincipalRoleResponses = {
+  /**
+   * Role assigned
+   */
+  201: RoleAssignmentDto;
+};
+
+export type SdkAddPrincipalRoleResponse =
+  SdkAddPrincipalRoleResponses[keyof SdkAddPrincipalRoleResponses];
+
+export type SdkListRolesData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Filter by application code
+     */
+    application?: string;
+    /**
+     * Filter by source (CODE, DATABASE, SDK)
+     */
+    source?: string;
+  };
+  url: "/api/sdk/roles";
+};
+
+export type SdkListRolesErrors = {
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+};
+
+export type SdkListRolesResponses = {
+  /**
+   * List of roles
+   */
+  200: RoleListResponse1;
+};
+
+export type SdkListRolesResponse =
+  SdkListRolesResponses[keyof SdkListRolesResponses];
+
+export type SdkCreateRoleData = {
+  body: CreateRoleRequest;
+  path?: never;
+  query?: never;
+  url: "/api/sdk/roles";
+};
+
+export type SdkCreateRoleErrors = {
+  /**
+   * Invalid request
+   */
+  400: unknown;
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Application not found
+   */
+  404: unknown;
+  /**
+   * Role already exists
+   */
+  409: unknown;
+};
+
+export type SdkCreateRoleResponses = {
+  /**
+   * Role created
+   */
+  201: RoleDto;
+};
+
+export type SdkCreateRoleResponse =
+  SdkCreateRoleResponses[keyof SdkCreateRoleResponses];
+
+export type SdkDeleteRoleData = {
+  body?: never;
+  path: {
+    roleName: string;
+  };
+  query?: never;
+  url: "/api/sdk/roles/{roleName}";
+};
+
+export type SdkDeleteRoleErrors = {
+  /**
+   * Cannot delete CODE-defined role
+   */
+  400: unknown;
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Role not found
+   */
+  404: unknown;
+};
+
+export type SdkDeleteRoleResponses = {
+  /**
+   * Role deleted
+   */
+  204: void;
+};
+
+export type SdkDeleteRoleResponse =
+  SdkDeleteRoleResponses[keyof SdkDeleteRoleResponses];
+
+export type SdkGetRoleData = {
+  body?: never;
+  path: {
+    roleName: string;
+  };
+  query?: never;
+  url: "/api/sdk/roles/{roleName}";
+};
+
+export type SdkGetRoleErrors = {
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Role not found
+   */
+  404: unknown;
+};
+
+export type SdkGetRoleResponses = {
+  /**
+   * Role details
+   */
+  200: RoleDto;
+};
+
+export type SdkGetRoleResponse = SdkGetRoleResponses[keyof SdkGetRoleResponses];
+
+export type SdkUpdateRoleData = {
+  body: UpdateRoleRequest;
+  path: {
+    roleName: string;
+  };
+  query?: never;
+  url: "/api/sdk/roles/{roleName}";
+};
+
+export type SdkUpdateRoleErrors = {
+  /**
+   * Bad Request
+   */
+  400: unknown;
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+  /**
+   * Insufficient permissions
+   */
+  403: unknown;
+  /**
+   * Role not found
+   */
+  404: unknown;
+};
+
+export type SdkUpdateRoleResponses = {
+  /**
+   * Role updated
+   */
+  200: RoleDto;
+};
+
+export type SdkUpdateRoleResponse =
+  SdkUpdateRoleResponses[keyof SdkUpdateRoleResponses];
 
 export type GetApiStatsData = {
   body?: never;
@@ -6721,7 +8190,7 @@ export type GetBffRolesResponses = {
 };
 
 export type PostBffRolesData = {
-  body: CreateRoleRequest2;
+  body: CreateRoleRequest3;
   path?: never;
   query?: never;
   url: "/bff/roles";
@@ -6818,7 +8287,7 @@ export type GetBffRolesByRoleNameResponses = {
 };
 
 export type PutBffRolesByRoleNameData = {
-  body: UpdateRoleRequest1;
+  body: UpdateRoleRequest2;
   path: {
     roleName: string;
   };

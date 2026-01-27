@@ -48,6 +48,7 @@ import java.util.Set;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @EmbeddedModeOnly
+@jakarta.transaction.Transactional
 public class RoleAdminResource {
 
     @Inject
@@ -77,7 +78,7 @@ public class RoleAdminResource {
      * List all available roles from the database.
      */
     @GET
-    @Operation(summary = "List all available roles",
+    @Operation(operationId = "listRoles", summary = "List all available roles",
         description = "Returns all roles from the database. Filter by application code or source.")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of roles",
@@ -125,7 +126,7 @@ public class RoleAdminResource {
      */
     @GET
     @Path("/{roleName}")
-    @Operation(summary = "Get role details by name")
+    @Operation(operationId = "getRole", summary = "Get role details by name")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Role details with permissions",
             content = @Content(schema = @Schema(implementation = RoleDto.class))),
@@ -148,7 +149,7 @@ public class RoleAdminResource {
      * Role name will be auto-prefixed with the application code.
      */
     @POST
-    @Operation(summary = "Create a new role",
+    @Operation(operationId = "createRole", summary = "Create a new role",
         description = "Creates a new role with source=DATABASE. Role name is auto-prefixed with application code.")
     @APIResponses({
         @APIResponse(responseCode = "201", description = "Role created",
@@ -215,7 +216,7 @@ public class RoleAdminResource {
      */
     @PUT
     @Path("/{roleName}")
-    @Operation(summary = "Update a role",
+    @Operation(operationId = "updateRole", summary = "Update a role",
         description = "Updates a role. CODE-sourced roles can only have clientManaged updated.")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Role updated",
@@ -258,7 +259,7 @@ public class RoleAdminResource {
      */
     @DELETE
     @Path("/{roleName}")
-    @Operation(summary = "Delete a role",
+    @Operation(operationId = "deleteRole", summary = "Delete a role",
         description = "Deletes a role. Only DATABASE and SDK sourced roles can be deleted.")
     @APIResponses({
         @APIResponse(responseCode = "204", description = "Role deleted"),
@@ -291,7 +292,7 @@ public class RoleAdminResource {
      */
     @GET
     @Path("/permissions")
-    @Operation(summary = "List all available permissions",
+    @Operation(operationId = "listPermissions", summary = "List all available permissions",
         description = "Returns all permissions from code and database.")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of permissions",
@@ -318,7 +319,7 @@ public class RoleAdminResource {
      */
     @GET
     @Path("/permissions/{permission}")
-    @Operation(summary = "Get permission details")
+    @Operation(operationId = "getPermission", summary = "Get permission details")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Permission details"),
         @APIResponse(responseCode = "404", description = "Permission not found")

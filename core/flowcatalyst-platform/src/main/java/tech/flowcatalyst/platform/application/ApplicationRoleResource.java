@@ -70,7 +70,7 @@ public class ApplicationRoleResource {
      * List all roles for an application.
      */
     @GET
-    @Operation(summary = "List application roles",
+    @Operation(operationId = "listApplicationRoles", summary = "List application roles",
         description = "Returns all roles registered for this application.")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of roles",
@@ -129,7 +129,7 @@ public class ApplicationRoleResource {
      */
     @POST
     @Path("/sync")
-    @Operation(summary = "Sync application roles",
+    @Operation(operationId = "syncApplicationRoles", summary = "Sync application roles",
         description = "Bulk sync roles from an external application. " +
                       "Creates new roles, updates existing SDK roles. " +
                       "Set removeUnlisted=true to remove SDK roles not in the sync list.")
@@ -204,7 +204,7 @@ public class ApplicationRoleResource {
      * Create a single role for an application.
      */
     @POST
-    @Operation(summary = "Create application role",
+    @Operation(operationId = "createApplicationRole", summary = "Create application role",
         description = "Creates a single role for the application with source=SDK.")
     @APIResponses({
         @APIResponse(responseCode = "201", description = "Role created",
@@ -272,7 +272,7 @@ public class ApplicationRoleResource {
      */
     @DELETE
     @Path("/{roleName}")
-    @Operation(summary = "Delete application role",
+    @Operation(operationId = "deleteApplicationRole", summary = "Delete application role",
         description = "Deletes an SDK-sourced role. Cannot delete CODE or DATABASE sourced roles.")
     @APIResponses({
         @APIResponse(responseCode = "204", description = "Role deleted"),

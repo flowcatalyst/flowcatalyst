@@ -1,7 +1,9 @@
 package tech.flowcatalyst.platform.integration;
 
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -12,6 +14,7 @@ import tech.flowcatalyst.platform.principal.AnchorDomainRepository;
 import tech.flowcatalyst.platform.client.ClientService;
 import tech.flowcatalyst.platform.principal.UserService;
 import tech.flowcatalyst.platform.principal.UserScope;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.util.Set;
@@ -36,6 +39,9 @@ class MultiClientAccessIntegrationTest {
 
     @Inject
     AnchorDomainRepository anchorDomainRepo;
+
+    @Inject
+    EntityManager em;
 
     // ========================================
     // HELPER METHODS
@@ -62,10 +68,12 @@ class MultiClientAccessIntegrationTest {
     void anchorDomainUser_shouldAccessAllClients_whenDomainIsAnchor() {
         // Arrange: Register anchor domain (e.g., internal company domain)
         String domain = uniqueDomain("mycompany");
-        AnchorDomain anchor = new AnchorDomain();
-        anchor.id = TsidGenerator.generate();
-        anchor.domain = domain;
-        anchorDomainRepo.persist(anchor);
+        QuarkusTransaction.requiringNew().run(() -> {
+            AnchorDomain anchor = new AnchorDomain();
+            anchor.id = TsidGenerator.generate(EntityType.ANCHOR_DOMAIN);
+            anchor.domain = domain;
+            anchorDomainRepo.persist(anchor);
+        });
 
         // Create several clients (customer accounts)
         Client client1 = clientService.createClient("Customer A", uniqueCode("customer-a"));
@@ -93,10 +101,12 @@ class MultiClientAccessIntegrationTest {
     void anchorDomainUser_shouldNotSeeInactive_whenClientsDeactivated() {
         // Arrange: Register anchor domain
         String domain = uniqueDomain("mycompany");
-        AnchorDomain anchor = new AnchorDomain();
-        anchor.id = TsidGenerator.generate();
-        anchor.domain = domain;
-        anchorDomainRepo.persist(anchor);
+        QuarkusTransaction.requiringNew().run(() -> {
+            AnchorDomain anchor = new AnchorDomain();
+            anchor.id = TsidGenerator.generate(EntityType.ANCHOR_DOMAIN);
+            anchor.domain = domain;
+            anchorDomainRepo.persist(anchor);
+        });
 
         // Create 3 clients
         Client active1 = clientService.createClient("Active 1", uniqueCode("active-1"));
@@ -374,10 +384,12 @@ class MultiClientAccessIntegrationTest {
     void complexScenario_shouldWorkCorrectly_withMultipleUserTypes() {
         // Arrange: Register anchor domain
         String domain = uniqueDomain("platform");
-        AnchorDomain anchor = new AnchorDomain();
-        anchor.id = TsidGenerator.generate();
-        anchor.domain = domain;
-        anchorDomainRepo.persist(anchor);
+        QuarkusTransaction.requiringNew().run(() -> {
+            AnchorDomain anchor = new AnchorDomain();
+            anchor.id = TsidGenerator.generate(EntityType.ANCHOR_DOMAIN);
+            anchor.domain = domain;
+            anchorDomainRepo.persist(anchor);
+        });
 
         // Create 3 customer clients
         Client customer1 = clientService.createClient("Customer 1", uniqueCode("customer-1"));
@@ -460,6 +472,7 @@ class MultiClientAccessIntegrationTest {
 
         // Act: Deactivate one client
         clientService.deactivateClient(toBeDeactivated.id, "Test", "system");
+        em.clear();
 
         // Assert: Deactivated client not in accessible list
         Set<String> afterDeactivation = clientService.getAccessibleClients(partner.id);

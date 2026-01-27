@@ -95,7 +95,9 @@ public class EventTypeResource {
     @Path("/{id}")
     @Operation(summary = "Get event type by ID")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Event type found"),
+        @APIResponse(responseCode = "200", description = "Event type found",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                schema = @Schema(implementation = EventTypeResponse.class))),
         @APIResponse(responseCode = "404", description = "Event type not found")
     })
     public Response getEventType(@PathParam("id") String id) {
@@ -109,6 +111,9 @@ public class EventTypeResource {
     @GET
     @Path("/filters/applications")
     @Operation(summary = "Get distinct application names for filtering")
+    @APIResponse(responseCode = "200", description = "Filter options",
+        content = @Content(mediaType = MediaType.APPLICATION_JSON,
+            schema = @Schema(implementation = FilterOptionsResponse.class)))
     public Response getApplications() {
         List<String> applications = eventTypeOperations.getDistinctApplications();
         return Response.ok(new FilterOptionsResponse(applications)).build();
@@ -117,6 +122,9 @@ public class EventTypeResource {
     @GET
     @Path("/filters/subdomains")
     @Operation(summary = "Get distinct subdomains, optionally filtered by applications")
+    @APIResponse(responseCode = "200", description = "Filter options",
+        content = @Content(mediaType = MediaType.APPLICATION_JSON,
+            schema = @Schema(implementation = FilterOptionsResponse.class)))
     public Response getSubdomains(@QueryParam("application") List<String> applications) {
         List<String> filteredApps = filterEmpty(applications);
         List<String> subdomains = eventTypeOperations.getDistinctSubdomains(filteredApps);
@@ -126,6 +134,9 @@ public class EventTypeResource {
     @GET
     @Path("/filters/aggregates")
     @Operation(summary = "Get distinct aggregates, optionally filtered by applications and subdomains")
+    @APIResponse(responseCode = "200", description = "Filter options",
+        content = @Content(mediaType = MediaType.APPLICATION_JSON,
+            schema = @Schema(implementation = FilterOptionsResponse.class)))
     public Response getAggregates(
         @QueryParam("application") List<String> applications,
         @QueryParam("subdomain") List<String> subdomains
@@ -146,7 +157,9 @@ public class EventTypeResource {
     @POST
     @Operation(summary = "Create a new event type")
     @APIResponses({
-        @APIResponse(responseCode = "201", description = "Event type created"),
+        @APIResponse(responseCode = "201", description = "Event type created",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                schema = @Schema(implementation = EventTypeResponse.class))),
         @APIResponse(responseCode = "400", description = "Invalid request"),
         @APIResponse(responseCode = "409", description = "Business rule violation")
     })
@@ -182,7 +195,9 @@ public class EventTypeResource {
     @Path("/{id}")
     @Operation(summary = "Update an event type's name or description")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Event type updated"),
+        @APIResponse(responseCode = "200", description = "Event type updated",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                schema = @Schema(implementation = EventTypeResponse.class))),
         @APIResponse(responseCode = "400", description = "Invalid request"),
         @APIResponse(responseCode = "404", description = "Event type not found")
     })
@@ -211,7 +226,9 @@ public class EventTypeResource {
     @Path("/{id}/schemas")
     @Operation(summary = "Add a new schema version to an event type")
     @APIResponses({
-        @APIResponse(responseCode = "201", description = "Schema added"),
+        @APIResponse(responseCode = "201", description = "Schema added",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                schema = @Schema(implementation = EventTypeResponse.class))),
         @APIResponse(responseCode = "400", description = "Invalid request"),
         @APIResponse(responseCode = "404", description = "Event type not found"),
         @APIResponse(responseCode = "409", description = "Version already exists")
@@ -243,7 +260,9 @@ public class EventTypeResource {
     @Path("/{id}/schemas/{version}/finalise")
     @Operation(summary = "Finalise a schema version (FINALISING → CURRENT)")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Schema finalised"),
+        @APIResponse(responseCode = "200", description = "Schema finalised",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                schema = @Schema(implementation = EventTypeResponse.class))),
         @APIResponse(responseCode = "400", description = "Invalid request"),
         @APIResponse(responseCode = "404", description = "Event type or version not found")
     })
@@ -268,7 +287,9 @@ public class EventTypeResource {
     @Path("/{id}/schemas/{version}/deprecate")
     @Operation(summary = "Deprecate a schema version (CURRENT → DEPRECATED)")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Schema deprecated"),
+        @APIResponse(responseCode = "200", description = "Schema deprecated",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                schema = @Schema(implementation = EventTypeResponse.class))),
         @APIResponse(responseCode = "400", description = "Invalid request"),
         @APIResponse(responseCode = "404", description = "Event type or version not found")
     })
@@ -293,7 +314,9 @@ public class EventTypeResource {
     @Path("/{id}/archive")
     @Operation(summary = "Archive an event type (CURRENT → ARCHIVE)")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Event type archived"),
+        @APIResponse(responseCode = "200", description = "Event type archived",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                schema = @Schema(implementation = EventTypeResponse.class))),
         @APIResponse(responseCode = "400", description = "Invalid request - all schemas must be deprecated first"),
         @APIResponse(responseCode = "404", description = "Event type not found")
     })

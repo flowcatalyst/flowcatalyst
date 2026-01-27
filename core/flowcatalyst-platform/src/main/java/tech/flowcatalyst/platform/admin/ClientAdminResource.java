@@ -54,6 +54,7 @@ import java.util.stream.Collectors;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @EmbeddedModeOnly
+@jakarta.transaction.Transactional
 public class ClientAdminResource {
 
     private static final Logger LOG = Logger.getLogger(ClientAdminResource.class);
@@ -76,7 +77,7 @@ public class ClientAdminResource {
      * List all clients.
      */
     @GET
-    @Operation(summary = "List all clients", description = "Returns all clients regardless of status")
+    @Operation(operationId = "listClients", summary = "List all clients", description = "Returns all clients regardless of status")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of clients",
             content = @Content(schema = @Schema(implementation = ClientListResponse.class))),
@@ -114,7 +115,7 @@ public class ClientAdminResource {
      */
     @GET
     @Path("/search")
-    @Operation(summary = "Search clients", description = "Search clients by name or identifier")
+    @Operation(operationId = "searchClients", summary = "Search clients", description = "Search clients by name or identifier")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Matching clients",
             content = @Content(schema = @Schema(implementation = ClientListResponse.class))),
@@ -159,7 +160,7 @@ public class ClientAdminResource {
      */
     @GET
     @Path("/{id}")
-    @Operation(summary = "Get client by ID")
+    @Operation(operationId = "getClient", summary = "Get client by ID")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Client details",
             content = @Content(schema = @Schema(implementation = ClientDto.class))),
@@ -186,7 +187,7 @@ public class ClientAdminResource {
      */
     @GET
     @Path("/by-identifier/{identifier}")
-    @Operation(summary = "Get client by identifier")
+    @Operation(operationId = "getClientByIdentifier", summary = "Get client by identifier")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Client details"),
         @APIResponse(responseCode = "404", description = "Client not found"),
@@ -209,7 +210,7 @@ public class ClientAdminResource {
      * Create a new client.
      */
     @POST
-    @Operation(summary = "Create a new client")
+    @Operation(operationId = "createClient", summary = "Create a new client")
     @APIResponses({
         @APIResponse(responseCode = "201", description = "Client created",
             content = @Content(schema = @Schema(implementation = ClientDto.class))),
@@ -243,7 +244,7 @@ public class ClientAdminResource {
      */
     @PUT
     @Path("/{id}")
-    @Operation(summary = "Update client details")
+    @Operation(operationId = "updateClient", summary = "Update client details")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Client updated"),
         @APIResponse(responseCode = "400", description = "Invalid request or client ID format"),
@@ -276,7 +277,7 @@ public class ClientAdminResource {
      */
     @POST
     @Path("/{id}/activate")
-    @Operation(summary = "Activate a client")
+    @Operation(operationId = "activateClient", summary = "Activate a client")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Client activated"),
         @APIResponse(responseCode = "400", description = "Invalid client ID format"),
@@ -306,7 +307,7 @@ public class ClientAdminResource {
      */
     @POST
     @Path("/{id}/suspend")
-    @Operation(summary = "Suspend a client")
+    @Operation(operationId = "suspendClient", summary = "Suspend a client")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Client suspended"),
         @APIResponse(responseCode = "400", description = "Invalid client ID format"),
@@ -337,7 +338,7 @@ public class ClientAdminResource {
      */
     @POST
     @Path("/{id}/deactivate")
-    @Operation(summary = "Deactivate a client")
+    @Operation(operationId = "deactivateClient", summary = "Deactivate a client")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Client deactivated"),
         @APIResponse(responseCode = "400", description = "Invalid client ID format"),
@@ -370,7 +371,7 @@ public class ClientAdminResource {
      */
     @POST
     @Path("/{id}/notes")
-    @Operation(summary = "Add audit note to client")
+    @Operation(operationId = "addClientAuditNote", summary = "Add audit note to client")
     @APIResponses({
         @APIResponse(responseCode = "201", description = "Note added"),
         @APIResponse(responseCode = "400", description = "Invalid client ID format"),
@@ -405,7 +406,7 @@ public class ClientAdminResource {
      */
     @GET
     @Path("/{id}/applications")
-    @Operation(summary = "Get applications for client", description = "Returns all applications with their enabled/disabled status for this client")
+    @Operation(operationId = "getClientApplications", summary = "Get applications for client", description = "Returns all applications with their enabled/disabled status for this client")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of applications with status",
             content = @Content(schema = @Schema(implementation = ClientApplicationsResponse.class))),
@@ -476,7 +477,7 @@ public class ClientAdminResource {
      */
     @POST
     @Path("/{id}/applications/{applicationId}/enable")
-    @Operation(summary = "Enable application for client")
+    @Operation(operationId = "enableClientApplication", summary = "Enable application for client")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Application enabled"),
         @APIResponse(responseCode = "400", description = "Invalid ID format"),
@@ -519,7 +520,7 @@ public class ClientAdminResource {
      */
     @POST
     @Path("/{id}/applications/{applicationId}/disable")
-    @Operation(summary = "Disable application for client")
+    @Operation(operationId = "disableClientApplication", summary = "Disable application for client")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Application disabled"),
         @APIResponse(responseCode = "400", description = "Invalid ID format"),
@@ -563,7 +564,7 @@ public class ClientAdminResource {
      */
     @PUT
     @Path("/{id}/applications")
-    @Operation(summary = "Update applications for client", description = "Sets which applications are enabled for this client")
+    @Operation(operationId = "updateClientApplications", summary = "Update applications for client", description = "Sets which applications are enabled for this client")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Applications updated"),
         @APIResponse(responseCode = "400", description = "Invalid ID format"),

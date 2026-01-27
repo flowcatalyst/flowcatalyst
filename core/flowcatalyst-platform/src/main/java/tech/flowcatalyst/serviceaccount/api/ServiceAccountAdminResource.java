@@ -53,6 +53,7 @@ import java.util.List;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @EmbeddedModeOnly
+@jakarta.transaction.Transactional
 public class ServiceAccountAdminResource {
 
     private static final Logger LOG = Logger.getLogger(ServiceAccountAdminResource.class);

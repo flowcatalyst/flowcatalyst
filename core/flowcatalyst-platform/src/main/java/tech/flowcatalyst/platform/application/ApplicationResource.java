@@ -44,7 +44,7 @@ public class ApplicationResource {
     TracingContext tracingContext;
 
     @GET
-    @Operation(summary = "List all applications", description = "Returns all applications")
+    @Operation(operationId = "listApps", summary = "List all applications", description = "Returns all applications")
     @APIResponses({
         @APIResponse(
             responseCode = "200",
@@ -67,9 +67,11 @@ public class ApplicationResource {
 
     @GET
     @Path("/{id}")
-    @Operation(summary = "Get application by ID")
+    @Operation(operationId = "getApp", summary = "Get application by ID")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Application found"),
+        @APIResponse(responseCode = "200", description = "Application found",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                schema = @Schema(implementation = ApplicationResponse.class))),
         @APIResponse(responseCode = "400", description = "Invalid application ID format"),
         @APIResponse(responseCode = "404", description = "Application not found")
     })
@@ -84,9 +86,11 @@ public class ApplicationResource {
 
     @GET
     @Path("/code/{code}")
-    @Operation(summary = "Get application by code")
+    @Operation(operationId = "getAppByCode", summary = "Get application by code")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Application found"),
+        @APIResponse(responseCode = "200", description = "Application found",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                schema = @Schema(implementation = ApplicationResponse.class))),
         @APIResponse(responseCode = "404", description = "Application not found")
     })
     public Response getApplicationByCode(@PathParam("code") String code) {
@@ -98,9 +102,11 @@ public class ApplicationResource {
     }
 
     @POST
-    @Operation(summary = "Create a new application")
+    @Operation(operationId = "createApp", summary = "Create a new application")
     @APIResponses({
-        @APIResponse(responseCode = "201", description = "Application created"),
+        @APIResponse(responseCode = "201", description = "Application created",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                schema = @Schema(implementation = ApplicationResponse.class))),
         @APIResponse(responseCode = "400", description = "Invalid request"),
         @APIResponse(responseCode = "409", description = "Business rule violation")
     })
@@ -129,9 +135,11 @@ public class ApplicationResource {
 
     @PUT
     @Path("/{id}")
-    @Operation(summary = "Update an application")
+    @Operation(operationId = "updateApp", summary = "Update an application")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Application updated"),
+        @APIResponse(responseCode = "200", description = "Application updated",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                schema = @Schema(implementation = ApplicationResponse.class))),
         @APIResponse(responseCode = "400", description = "Invalid request or ID format"),
         @APIResponse(responseCode = "404", description = "Application not found")
     })
@@ -162,9 +170,11 @@ public class ApplicationResource {
 
     @POST
     @Path("/{id}/activate")
-    @Operation(summary = "Activate an application")
+    @Operation(operationId = "activateApp", summary = "Activate an application")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Application activated"),
+        @APIResponse(responseCode = "200", description = "Application activated",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                schema = @Schema(implementation = ApplicationResponse.class))),
         @APIResponse(responseCode = "400", description = "Application already active or invalid ID format"),
         @APIResponse(responseCode = "404", description = "Application not found")
     })
@@ -188,9 +198,11 @@ public class ApplicationResource {
 
     @POST
     @Path("/{id}/deactivate")
-    @Operation(summary = "Deactivate an application")
+    @Operation(operationId = "deactivateApp", summary = "Deactivate an application")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Application deactivated"),
+        @APIResponse(responseCode = "200", description = "Application deactivated",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                schema = @Schema(implementation = ApplicationResponse.class))),
         @APIResponse(responseCode = "400", description = "Application already deactivated or invalid ID format"),
         @APIResponse(responseCode = "404", description = "Application not found")
     })
@@ -214,7 +226,7 @@ public class ApplicationResource {
 
     @DELETE
     @Path("/{id}")
-    @Operation(summary = "Delete an application")
+    @Operation(operationId = "deleteApp", summary = "Delete an application")
     @APIResponses({
         @APIResponse(responseCode = "204", description = "Application deleted"),
         @APIResponse(responseCode = "400", description = "Cannot delete active application or application with configurations, or invalid ID format"),

@@ -60,8 +60,10 @@ class PrincipalAdminResourceTest {
 
         // Assign the platform:platform-admin role to the user in the database
         roleService.assignRole(adminUser.id, "platform:platform-admin", "TEST");
+        roleService.assignRole(adminUser.id, "platform:super-admin", "TEST");
+        roleService.assignRole(adminUser.id, "platform:iam-admin", "TEST");
 
-        adminToken = jwtKeyService.issueSessionToken(adminUser.id, adminUser.userIdentity.email, Set.of("platform:platform-admin"), List.of("*"));
+        adminToken = jwtKeyService.issueSessionToken(adminUser.id, adminUser.userIdentity.email, Set.of("platform:platform-admin", "platform:super-admin", "platform:iam-admin"), List.of("*"));
     }
 
     // ==================== List Principals ====================
@@ -73,7 +75,7 @@ class PrincipalAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/principals")
+            .get("/api/admin/principals")
         .then()
             .statusCode(200)
             .body("principals", notNullValue())
@@ -97,7 +99,7 @@ class PrincipalAdminResourceTest {
             .contentType(ContentType.JSON)
             .queryParam("clientId", testClient.id)
         .when()
-            .get("/bff/admin/principals")
+            .get("/api/admin/principals")
         .then()
             .statusCode(200)
             .body("principals.size()", greaterThanOrEqualTo(1))
@@ -110,7 +112,7 @@ class PrincipalAdminResourceTest {
         given()
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/principals")
+            .get("/api/admin/principals")
         .then()
             .statusCode(401);
     }
@@ -134,7 +136,7 @@ class PrincipalAdminResourceTest {
                 }
                 """.formatted(uniqueId, testClient.id))
         .when()
-            .post("/bff/admin/principals/users")
+            .post("/api/admin/principals/users")
         .then()
             .statusCode(201)
             .body("id", notNullValue())
@@ -166,7 +168,7 @@ class PrincipalAdminResourceTest {
                 }
                 """.formatted(email, testClient.id))
         .when()
-            .post("/bff/admin/principals/users")
+            .post("/api/admin/principals/users")
         .then()
             .statusCode(409)
             .body("message", containsString("already exists"));
@@ -181,7 +183,7 @@ class PrincipalAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/principals/" + adminUser.id)
+            .get("/api/admin/principals/" + adminUser.id)
         .then()
             .statusCode(200)
             .body("id", equalTo(adminUser.id))
@@ -197,7 +199,7 @@ class PrincipalAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/principals/999999999")
+            .get("/api/admin/principals/prn_0000000000000")
         .then()
             .statusCode(404);
     }
@@ -224,7 +226,7 @@ class PrincipalAdminResourceTest {
                 }
                 """)
         .when()
-            .put("/bff/admin/principals/" + user.id)
+            .put("/api/admin/principals/" + user.id)
         .then()
             .statusCode(200)
             .body("name", equalTo("Updated Name"));
@@ -247,7 +249,7 @@ class PrincipalAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .post("/bff/admin/principals/" + user.id + "/deactivate")
+            .post("/api/admin/principals/" + user.id + "/deactivate")
         .then()
             .statusCode(200)
             .body("message", equalTo("Principal deactivated"));
@@ -257,7 +259,7 @@ class PrincipalAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/principals/" + user.id)
+            .get("/api/admin/principals/" + user.id)
         .then()
             .statusCode(200)
             .body("active", equalTo(false));
@@ -279,7 +281,7 @@ class PrincipalAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .post("/bff/admin/principals/" + user.id + "/activate")
+            .post("/api/admin/principals/" + user.id + "/activate")
         .then()
             .statusCode(200)
             .body("message", equalTo("Principal activated"));
@@ -307,7 +309,7 @@ class PrincipalAdminResourceTest {
                 }
                 """)
         .when()
-            .post("/bff/admin/principals/" + user.id + "/reset-password")
+            .post("/api/admin/principals/" + user.id + "/reset-password")
         .then()
             .statusCode(200)
             .body("message", equalTo("Password reset successfully"));
@@ -330,7 +332,7 @@ class PrincipalAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/principals/" + user.id + "/roles")
+            .get("/api/admin/principals/" + user.id + "/roles")
         .then()
             .statusCode(200)
             .body("roles", hasSize(0));
@@ -356,7 +358,7 @@ class PrincipalAdminResourceTest {
                 }
                 """)
         .when()
-            .post("/bff/admin/principals/" + user.id + "/roles")
+            .post("/api/admin/principals/" + user.id + "/roles")
         .then()
             .statusCode(201)
             .body("roleName", equalTo("platform:test-client-admin"))
@@ -383,7 +385,7 @@ class PrincipalAdminResourceTest {
                 }
                 """)
         .when()
-            .post("/bff/admin/principals/" + user.id + "/roles")
+            .post("/api/admin/principals/" + user.id + "/roles")
         .then()
             .statusCode(400)
             .body("message", containsString("not defined"));
@@ -408,7 +410,7 @@ class PrincipalAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .delete("/bff/admin/principals/" + user.id + "/roles/platform:test-client-admin")
+            .delete("/api/admin/principals/" + user.id + "/roles/platform:test-client-admin")
         .then()
             .statusCode(204);
     }
@@ -431,7 +433,7 @@ class PrincipalAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/principals/" + user.id + "/client-access")
+            .get("/api/admin/principals/" + user.id + "/client-access")
         .then()
             .statusCode(200)
             .body("grants", hasSize(0));
@@ -458,7 +460,7 @@ class PrincipalAdminResourceTest {
                 }
                 """.formatted(testClient.id))
         .when()
-            .post("/bff/admin/principals/" + partnerUser.id + "/client-access")
+            .post("/api/admin/principals/" + partnerUser.id + "/client-access")
         .then()
             .statusCode(201)
             .body("clientId", equalTo(testClient.id));
@@ -483,7 +485,7 @@ class PrincipalAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .delete("/bff/admin/principals/" + partnerUser.id + "/client-access/" + testClient.id)
+            .delete("/api/admin/principals/" + partnerUser.id + "/client-access/" + testClient.id)
         .then()
             .statusCode(204);
     }

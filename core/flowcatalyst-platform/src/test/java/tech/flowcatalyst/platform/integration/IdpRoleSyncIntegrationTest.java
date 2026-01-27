@@ -1,5 +1,6 @@
 package tech.flowcatalyst.platform.integration;
 
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.DisplayName;
@@ -11,6 +12,7 @@ import tech.flowcatalyst.platform.authentication.OidcSyncService;
 import tech.flowcatalyst.platform.authorization.PrincipalRole;
 import tech.flowcatalyst.platform.authorization.RoleService;
 import tech.flowcatalyst.platform.principal.Principal;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.util.List;
@@ -70,11 +72,13 @@ class IdpRoleSyncIntegrationTest {
     void idpRoleSync_shouldAssignAuthorizedRoles_whenMappingExists() {
         // Arrange: Create IDP role mapping to test:admin role (defined in TestRoles)
         String idpRole = uniqueIdpRole("keycloak-admin");
-        IdpRoleMapping mapping = new IdpRoleMapping();
-        mapping.id = TsidGenerator.generate();
-        mapping.idpRoleName = idpRole;
-        mapping.internalRoleName = "test:admin";  // Maps to code-defined role
-        idpRoleMappingRepo.persist(mapping);
+        QuarkusTransaction.requiringNew().run(() -> {
+            IdpRoleMapping mapping = new IdpRoleMapping();
+            mapping.id = TsidGenerator.generate(EntityType.IDP_ROLE_MAPPING);
+            mapping.idpRoleName = idpRole;
+            mapping.internalRoleName = "test:admin";  // Maps to code-defined role
+            idpRoleMappingRepo.persist(mapping);
+        });
 
         // Act: Sync OIDC login with whitelisted IDP role
         Principal principal = oidcSyncService.syncOidcLogin(
@@ -264,7 +268,7 @@ class IdpRoleSyncIntegrationTest {
         assertThat(roleService.findAssignmentsByPrincipal(principal.id)).hasSize(1);
 
         // Act: Platform admin deletes the IDP role mapping (removes from whitelist)
-        idpRoleMappingRepo.delete(mapping);
+        QuarkusTransaction.requiringNew().run(() -> idpRoleMappingRepo.delete(mapping));
 
         // User logs in again with same IDP role
         oidcSyncService.syncIdpRoles(principal, List.of(idpRole));
@@ -455,11 +459,13 @@ class IdpRoleSyncIntegrationTest {
     // ========================================
 
     private IdpRoleMapping createIdpMapping(String idpRoleName, String internalRoleName) {
-        IdpRoleMapping mapping = new IdpRoleMapping();
-        mapping.id = TsidGenerator.generate();
-        mapping.idpRoleName = idpRoleName;
-        mapping.internalRoleName = internalRoleName;
-        idpRoleMappingRepo.persist(mapping);
-        return mapping;
+        return QuarkusTransaction.requiringNew().call(() -> {
+            IdpRoleMapping mapping = new IdpRoleMapping();
+            mapping.id = TsidGenerator.generate(EntityType.IDP_ROLE_MAPPING);
+            mapping.idpRoleName = idpRoleName;
+            mapping.internalRoleName = internalRoleName;
+            idpRoleMappingRepo.persist(mapping);
+            return mapping;
+        });
     }
 }

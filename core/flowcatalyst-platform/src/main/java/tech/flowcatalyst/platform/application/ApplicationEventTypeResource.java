@@ -61,7 +61,7 @@ public class ApplicationEventTypeResource {
      * List all event types for an application.
      */
     @GET
-    @Operation(summary = "List application event types",
+    @Operation(operationId = "listApplicationEventTypes", summary = "List application event types",
         description = "Returns all event types registered for this application (matching code prefix).")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of event types",
@@ -116,7 +116,7 @@ public class ApplicationEventTypeResource {
      */
     @POST
     @Path("/sync")
-    @Operation(summary = "Sync application event types",
+    @Operation(operationId = "syncApplicationEventTypes", summary = "Sync application event types",
         description = "Bulk sync event types from an external application. " +
                       "Creates new event types, updates existing API-sourced event types. " +
                       "Set removeUnlisted=true to remove API-sourced event types not in the sync list.")

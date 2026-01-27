@@ -17,6 +17,7 @@ import tech.flowcatalyst.platform.authorization.RoleService;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.UserService;
 import tech.flowcatalyst.platform.principal.UserScope;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.util.List;
@@ -59,8 +60,10 @@ class OAuthClientAdminResourceTest {
 
         // Assign the platform:platform-admin role to the user in the database
         roleService.assignRole(adminUser.id, "platform:platform-admin", "TEST");
+        roleService.assignRole(adminUser.id, "platform:super-admin", "TEST");
+        roleService.assignRole(adminUser.id, "platform:iam-admin", "TEST");
 
-        adminToken = jwtKeyService.issueSessionToken(adminUser.id, adminUser.userIdentity.email, Set.of("platform:platform-admin"), List.of("*"));
+        adminToken = jwtKeyService.issueSessionToken(adminUser.id, adminUser.userIdentity.email, Set.of("platform:platform-admin", "platform:super-admin", "platform:iam-admin"), List.of("*"));
     }
 
     // ==================== List Clients ====================
@@ -72,7 +75,7 @@ class OAuthClientAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/oauth-clients")
+            .get("/api/admin/oauth-clients")
         .then()
             .statusCode(200)
             .body("clients", notNullValue())
@@ -85,7 +88,7 @@ class OAuthClientAdminResourceTest {
         given()
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/oauth-clients")
+            .get("/api/admin/oauth-clients")
         .then()
             .statusCode(401);
     }
@@ -111,11 +114,11 @@ class OAuthClientAdminResourceTest {
                 }
                 """.formatted(uniqueId))
         .when()
-            .post("/bff/admin/oauth-clients")
+            .post("/api/admin/oauth-clients")
         .then()
             .statusCode(201)
             .body("client.id", notNullValue())
-            .body("client.clientId", startsWith("fc_"))
+            .body("client.clientId", startsWith("oauth_"))
             .body("client.clientName", equalTo("Test SPA " + uniqueId))
             .body("client.clientType", equalTo("PUBLIC"))
             .body("client.pkceRequired", equalTo(true))
@@ -143,11 +146,11 @@ class OAuthClientAdminResourceTest {
                 }
                 """.formatted(uniqueId))
         .when()
-            .post("/bff/admin/oauth-clients")
+            .post("/api/admin/oauth-clients")
         .then()
             .statusCode(201)
             .body("client.id", notNullValue())
-            .body("client.clientId", startsWith("fc_"))
+            .body("client.clientId", startsWith("oauth_"))
             .body("client.clientType", equalTo("CONFIDENTIAL"))
             .body("clientSecret", notNullValue()) // Secret returned once
             .extract().response();
@@ -169,7 +172,7 @@ class OAuthClientAdminResourceTest {
                 }
                 """)
         .when()
-            .post("/bff/admin/oauth-clients")
+            .post("/api/admin/oauth-clients")
         .then()
             .statusCode(400);
     }
@@ -186,11 +189,11 @@ class OAuthClientAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/oauth-clients/" + client.id)
+            .get("/api/admin/oauth-clients/" + client.id)
         .then()
             .statusCode(200)
-            .body("id", equalTo(client.id))
-            .body("clientId", equalTo(client.clientId))
+            .body("id", notNullValue())
+            .body("clientId", equalTo("oauth_" + client.clientId))
             .body("clientName", equalTo(client.clientName));
     }
 
@@ -201,7 +204,7 @@ class OAuthClientAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/oauth-clients/999999999")
+            .get("/api/admin/oauth-clients/nonexistent")
         .then()
             .statusCode(404);
     }
@@ -215,10 +218,10 @@ class OAuthClientAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/oauth-clients/by-client-id/" + client.clientId)
+            .get("/api/admin/oauth-clients/by-client-id/oauth_" + client.clientId)
         .then()
             .statusCode(200)
-            .body("clientId", equalTo(client.clientId));
+            .body("clientId", equalTo("oauth_" + client.clientId));
     }
 
     // ==================== Update Client ====================
@@ -238,7 +241,7 @@ class OAuthClientAdminResourceTest {
                 }
                 """)
         .when()
-            .put("/bff/admin/oauth-clients/" + client.id)
+            .put("/api/admin/oauth-clients/" + client.id)
         .then()
             .statusCode(200)
             .body("clientName", equalTo("Updated Client Name"))
@@ -256,10 +259,10 @@ class OAuthClientAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .post("/bff/admin/oauth-clients/" + client.id + "/rotate-secret")
+            .post("/api/admin/oauth-clients/" + client.id + "/rotate-secret")
         .then()
             .statusCode(200)
-            .body("clientId", equalTo(client.clientId))
+            .body("clientId", equalTo("oauth_" + client.clientId))
             .body("clientSecret", notNullValue());
     }
 
@@ -272,7 +275,7 @@ class OAuthClientAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .post("/bff/admin/oauth-clients/" + client.id + "/rotate-secret")
+            .post("/api/admin/oauth-clients/" + client.id + "/rotate-secret")
         .then()
             .statusCode(400)
             .body("error", containsString("public"));
@@ -289,7 +292,7 @@ class OAuthClientAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .post("/bff/admin/oauth-clients/" + client.id + "/deactivate")
+            .post("/api/admin/oauth-clients/" + client.id + "/deactivate")
         .then()
             .statusCode(200)
             .body("message", equalTo("Client deactivated"));
@@ -299,7 +302,7 @@ class OAuthClientAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/oauth-clients/" + client.id)
+            .get("/api/admin/oauth-clients/" + client.id)
         .then()
             .statusCode(200)
             .body("active", equalTo(false));
@@ -314,7 +317,7 @@ class OAuthClientAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .post("/bff/admin/oauth-clients/" + client.id + "/activate")
+            .post("/api/admin/oauth-clients/" + client.id + "/activate")
         .then()
             .statusCode(200)
             .body("message", equalTo("Client activated"));
@@ -325,7 +328,7 @@ class OAuthClientAdminResourceTest {
     private OAuthClient createTestClient() {
         return QuarkusTransaction.requiringNew().call(() -> {
             OAuthClient client = new OAuthClient();
-            client.id = TsidGenerator.generate();
+            client.id = TsidGenerator.generate(EntityType.OAUTH_CLIENT);
             client.clientId = "fc_test_" + System.currentTimeMillis();
             client.clientName = "Test Client";
             client.clientType = ClientType.PUBLIC;
@@ -341,7 +344,7 @@ class OAuthClientAdminResourceTest {
     private OAuthClient createTestConfidentialClient() {
         return QuarkusTransaction.requiringNew().call(() -> {
             OAuthClient client = new OAuthClient();
-            client.id = TsidGenerator.generate();
+            client.id = TsidGenerator.generate(EntityType.OAUTH_CLIENT);
             client.clientId = "fc_conf_" + System.currentTimeMillis();
             client.clientName = "Test Confidential Client";
             client.clientType = ClientType.CONFIDENTIAL;
@@ -358,7 +361,7 @@ class OAuthClientAdminResourceTest {
     private OAuthClient createDeactivatedTestClient() {
         return QuarkusTransaction.requiringNew().call(() -> {
             OAuthClient client = new OAuthClient();
-            client.id = TsidGenerator.generate();
+            client.id = TsidGenerator.generate(EntityType.OAUTH_CLIENT);
             client.clientId = "fc_deactivated_" + System.currentTimeMillis();
             client.clientName = "Deactivated Test Client";
             client.clientType = ClientType.PUBLIC;

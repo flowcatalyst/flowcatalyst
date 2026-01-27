@@ -44,6 +44,7 @@ import java.util.List;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @EmbeddedModeOnly
+@jakarta.transaction.Transactional
 public class AnchorDomainAdminResource {
 
     private static final Logger LOG = Logger.getLogger(AnchorDomainAdminResource.class);
@@ -66,7 +67,7 @@ public class AnchorDomainAdminResource {
      * List all anchor domains.
      */
     @GET
-    @Operation(summary = "List all anchor domains",
+    @Operation(operationId = "listAnchorDomains", summary = "List all anchor domains",
         description = "Returns all configured anchor domains. Users from these domains have access to all clients.")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of anchor domains",
@@ -93,7 +94,7 @@ public class AnchorDomainAdminResource {
      */
     @GET
     @Path("/{id}")
-    @Operation(summary = "Get anchor domain by ID")
+    @Operation(operationId = "getAnchorDomain", summary = "Get anchor domain by ID")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Anchor domain details",
             content = @Content(schema = @Schema(implementation = AnchorDomainDto.class))),
@@ -117,7 +118,7 @@ public class AnchorDomainAdminResource {
      */
     @GET
     @Path("/check/{domain}")
-    @Operation(summary = "Check if domain is an anchor domain")
+    @Operation(operationId = "checkAnchorDomain", summary = "Check if domain is an anchor domain")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Domain check result",
             content = @Content(schema = @Schema(implementation = DomainCheckResponse.class))),
@@ -143,7 +144,7 @@ public class AnchorDomainAdminResource {
      * Add a new anchor domain.
      */
     @POST
-    @Operation(summary = "Add anchor domain",
+    @Operation(operationId = "addAnchorDomain", summary = "Add anchor domain",
         description = "Add a new anchor domain. Users from this domain will have access to all clients.")
     @APIResponses({
         @APIResponse(responseCode = "201", description = "Anchor domain created",
@@ -197,7 +198,7 @@ public class AnchorDomainAdminResource {
      */
     @DELETE
     @Path("/{id}")
-    @Operation(summary = "Remove anchor domain",
+    @Operation(operationId = "removeAnchorDomain", summary = "Remove anchor domain",
         description = "Remove an anchor domain. Users from this domain will lose global access.")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Anchor domain removed",

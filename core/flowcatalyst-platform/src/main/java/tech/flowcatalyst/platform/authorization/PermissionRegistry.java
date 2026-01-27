@@ -73,6 +73,12 @@ public class PermissionRegistry {
         registerPermission(PlatformIamPermissions.SERVICE_ACCOUNT_UPDATE);
         registerPermission(PlatformIamPermissions.SERVICE_ACCOUNT_DELETE);
         registerPermission(PlatformIamPermissions.IDP_MANAGE);
+        registerPermission(PlatformIamPermissions.OAUTH_CLIENT_VIEW);
+        registerPermission(PlatformIamPermissions.OAUTH_CLIENT_CREATE);
+        registerPermission(PlatformIamPermissions.OAUTH_CLIENT_UPDATE);
+        registerPermission(PlatformIamPermissions.OAUTH_CLIENT_DELETE);
+        registerPermission(PlatformIamPermissions.ANCHOR_DOMAIN_VIEW);
+        registerPermission(PlatformIamPermissions.ANCHOR_DOMAIN_MANAGE);
 
         // ====================================================================
         // Platform Admin Permissions
@@ -87,6 +93,7 @@ public class PermissionRegistry {
         registerPermission(PlatformAdminPermissions.APPLICATION_DELETE);
         registerPermission(PlatformAdminPermissions.CONFIG_VIEW);
         registerPermission(PlatformAdminPermissions.CONFIG_UPDATE);
+        registerPermission(PlatformAdminPermissions.AUDIT_LOG_VIEW);
 
         // ====================================================================
         // Messaging Permissions

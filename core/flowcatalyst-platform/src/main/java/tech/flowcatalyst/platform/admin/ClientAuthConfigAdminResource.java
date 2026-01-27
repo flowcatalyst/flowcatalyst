@@ -45,6 +45,7 @@ import java.util.List;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @EmbeddedModeOnly
+@jakarta.transaction.Transactional
 public class ClientAuthConfigAdminResource {
 
     private static final Logger LOG = Logger.getLogger(ClientAuthConfigAdminResource.class);
@@ -64,7 +65,7 @@ public class ClientAuthConfigAdminResource {
      * List all auth configurations.
      */
     @GET
-    @Operation(summary = "List all auth configurations", description = "Returns all domain auth configurations")
+    @Operation(operationId = "listAuthConfigs", summary = "List all auth configurations", description = "Returns all domain auth configurations")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of auth configurations",
             content = @Content(schema = @Schema(implementation = AuthConfigListResponse.class))),
@@ -95,7 +96,7 @@ public class ClientAuthConfigAdminResource {
      */
     @GET
     @Path("/{id}")
-    @Operation(summary = "Get auth configuration by ID")
+    @Operation(operationId = "getAuthConfig", summary = "Get auth configuration by ID")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Auth configuration details",
             content = @Content(schema = @Schema(implementation = AuthConfigDto.class))),
@@ -118,7 +119,7 @@ public class ClientAuthConfigAdminResource {
      */
     @GET
     @Path("/by-domain/{domain}")
-    @Operation(summary = "Get auth configuration by email domain")
+    @Operation(operationId = "getAuthConfigByDomain", summary = "Get auth configuration by email domain")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Auth configuration details"),
         @APIResponse(responseCode = "404", description = "No configuration for this domain")
@@ -141,7 +142,7 @@ public class ClientAuthConfigAdminResource {
      */
     @POST
     @Path("/internal")
-    @Operation(summary = "Create internal auth configuration",
+    @Operation(operationId = "createInternalAuthConfig", summary = "Create internal auth configuration",
         description = "Configure a domain to use internal (password) authentication")
     @APIResponses({
         @APIResponse(responseCode = "201", description = "Configuration created",
@@ -187,7 +188,7 @@ public class ClientAuthConfigAdminResource {
      */
     @POST
     @Path("/oidc")
-    @Operation(summary = "Create OIDC auth configuration",
+    @Operation(operationId = "createOidcAuthConfig", summary = "Create OIDC auth configuration",
         description = "Configure a domain to use external OIDC identity provider")
     @APIResponses({
         @APIResponse(responseCode = "201", description = "Configuration created",
@@ -241,7 +242,7 @@ public class ClientAuthConfigAdminResource {
      */
     @PUT
     @Path("/{id}/oidc")
-    @Operation(summary = "Update OIDC configuration")
+    @Operation(operationId = "updateOidcConfig", summary = "Update OIDC configuration")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Configuration updated"),
         @APIResponse(responseCode = "404", description = "Configuration not found"),
@@ -292,7 +293,7 @@ public class ClientAuthConfigAdminResource {
      */
     @PUT
     @Path("/{id}/client-binding")
-    @Operation(summary = "Update client binding",
+    @Operation(operationId = "updateAuthConfigClientBinding", summary = "Update client binding",
         description = "Change which client this domain is bound to, or remove binding for platform-wide access")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Client binding updated"),
@@ -331,7 +332,7 @@ public class ClientAuthConfigAdminResource {
      */
     @PUT
     @Path("/{id}/config-type")
-    @Operation(summary = "Update config type",
+    @Operation(operationId = "updateAuthConfigType", summary = "Update config type",
         description = "Change the config type (ANCHOR, PARTNER, CLIENT). This will reset client associations.")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Config type updated"),
@@ -374,7 +375,7 @@ public class ClientAuthConfigAdminResource {
      */
     @PUT
     @Path("/{id}/additional-clients")
-    @Operation(summary = "Update additional clients",
+    @Operation(operationId = "updateAuthConfigAdditionalClients", summary = "Update additional clients",
         description = "Set additional client IDs for CLIENT type configurations")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Additional clients updated"),
@@ -417,7 +418,7 @@ public class ClientAuthConfigAdminResource {
      */
     @PUT
     @Path("/{id}/granted-clients")
-    @Operation(summary = "Update granted clients",
+    @Operation(operationId = "updateAuthConfigGrantedClients", summary = "Update granted clients",
         description = "Set granted client IDs for PARTNER type configurations")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Granted clients updated"),
@@ -462,7 +463,7 @@ public class ClientAuthConfigAdminResource {
      */
     @DELETE
     @Path("/{id}")
-    @Operation(summary = "Delete auth configuration")
+    @Operation(operationId = "deleteAuthConfig", summary = "Delete auth configuration")
     @APIResponses({
         @APIResponse(responseCode = "204", description = "Configuration deleted"),
         @APIResponse(responseCode = "404", description = "Configuration not found")
@@ -497,7 +498,7 @@ public class ClientAuthConfigAdminResource {
      */
     @POST
     @Path("/validate-secret")
-    @Operation(summary = "Validate secret reference",
+    @Operation(operationId = "validateSecretReference", summary = "Validate secret reference",
         description = "Checks that a secret reference is valid and accessible without returning the value")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Validation result",

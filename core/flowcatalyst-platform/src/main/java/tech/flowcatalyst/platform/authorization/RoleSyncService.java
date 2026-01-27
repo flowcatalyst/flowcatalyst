@@ -6,6 +6,7 @@ import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import tech.flowcatalyst.platform.application.Application;
 import tech.flowcatalyst.platform.application.ApplicationRepository;
 import tech.flowcatalyst.platform.shared.EntityType;
@@ -44,6 +45,7 @@ public class RoleSyncService {
      * Sync roles after PermissionRegistry has been initialized.
      * Uses a priority of 100 to ensure it runs after PermissionRegistry's onStart (default priority).
      */
+    @Transactional
     void onStart(@Observes StartupEvent event) {
         Log.info("RoleSyncService: Starting role synchronization...");
 

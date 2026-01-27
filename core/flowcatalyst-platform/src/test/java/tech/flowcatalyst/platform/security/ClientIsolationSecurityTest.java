@@ -2,6 +2,7 @@ package tech.flowcatalyst.platform.security;
 
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,9 @@ class ClientIsolationSecurityTest {
 
     @Inject
     UserService userService;
+
+    @Inject
+    EntityManager em;
 
     /** Generate unique code for test to avoid conflicts (MongoDB doesn't support JTA rollback) */
     private String uniqueCode(String prefix) {
@@ -217,6 +221,7 @@ class ClientIsolationSecurityTest {
 
         // Act: Deactivate client (e.g., account suspended)
         clientService.deactivateClient(client.id, "NON_PAYMENT", "billing-system");
+        em.clear(); // Clear L1 cache so subsequent reads see committed data
 
         // Assert: Client not in accessible list
         Set<String> accessible = clientService.getAccessibleClients(user.id);
@@ -243,6 +248,7 @@ class ClientIsolationSecurityTest {
 
         // Act: Suspend client
         clientService.suspendClient(client.id, "PAYMENT_FAILED", "billing-system");
+        em.clear();
 
         // Assert: Client not accessible during suspension
         Set<String> accessible = clientService.getAccessibleClients(user.id);
@@ -264,6 +270,7 @@ class ClientIsolationSecurityTest {
         );
 
         clientService.suspendClient(client.id, "PAYMENT_FAILED", "system");
+        em.clear();
 
         // Verify no access during suspension
         assertThat(clientService.getAccessibleClients(user.id))
@@ -271,6 +278,7 @@ class ClientIsolationSecurityTest {
 
         // Act: Reactivate client (payment received)
         clientService.activateClient(client.id, "billing-system");
+        em.clear();
 
         // Assert: Access restored
         Set<String> accessible = clientService.getAccessibleClients(user.id);
@@ -428,16 +436,20 @@ class ClientIsolationSecurityTest {
         assertThat(clientService.getAccessibleClients(user.id)).contains(client.id);
 
         clientService.suspendClient(client.id, "PAYMENT_FAILED", "system");
+        em.clear();
         assertThat(clientService.getAccessibleClients(user.id)).doesNotContain(client.id);
 
         clientService.activateClient(client.id, "system");
+        em.clear();
         assertThat(clientService.getAccessibleClients(user.id)).contains(client.id);
 
         // Cycle 2: Active → Deactivated → Active
         clientService.deactivateClient(client.id, "TEST", "system");
+        em.clear();
         assertThat(clientService.getAccessibleClients(user.id)).doesNotContain(client.id);
 
         clientService.activateClient(client.id, "system");
+        em.clear();
         assertThat(clientService.getAccessibleClients(user.id)).contains(client.id);
     }
 
@@ -465,6 +477,7 @@ class ClientIsolationSecurityTest {
 
         // Act: Deactivate home client
         clientService.deactivateClient(homeClient.id, "BUSINESS_CLOSED", "system");
+        em.clear();
 
         // Assert: Can still access granted client, but not home client
         Set<String> accessible = clientService.getAccessibleClients(user.id);

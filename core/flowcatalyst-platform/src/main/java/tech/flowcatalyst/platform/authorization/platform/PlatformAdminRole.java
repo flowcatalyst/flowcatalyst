@@ -27,7 +27,12 @@ public class PlatformAdminRole {
             PlatformAdminPermissions.CONFIG_VIEW,
             PlatformAdminPermissions.CONFIG_UPDATE,
             // IDP management - configure authentication for domains
-            PlatformIamPermissions.IDP_MANAGE
+            PlatformIamPermissions.IDP_MANAGE,
+            // OAuth client management
+            PlatformIamPermissions.OAUTH_CLIENT_VIEW,
+            PlatformIamPermissions.OAUTH_CLIENT_CREATE,
+            PlatformIamPermissions.OAUTH_CLIENT_UPDATE,
+            PlatformIamPermissions.OAUTH_CLIENT_DELETE
         ),
         "Platform administrator - manages clients, applications, and identity providers"
     );

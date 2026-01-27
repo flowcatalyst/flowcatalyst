@@ -20,7 +20,7 @@ class Clients
      */
     public function list(): array
     {
-        $response = $this->client->request('GET', '/api/admin/clients');
+        $response = $this->client->request('GET', '/api/sdk/clients');
 
         return [
             'clients' => array_map(
@@ -36,17 +36,7 @@ class Clients
      */
     public function get(string $id): Client
     {
-        $response = $this->client->request('GET', "/api/admin/clients/{$id}");
-
-        return Client::fromArray($response);
-    }
-
-    /**
-     * Get a client by identifier.
-     */
-    public function getByIdentifier(string $identifier): Client
-    {
-        $response = $this->client->request('GET', "/api/admin/clients/by-identifier/{$identifier}");
+        $response = $this->client->request('GET', "/api/sdk/clients/{$id}");
 
         return Client::fromArray($response);
     }
@@ -61,7 +51,7 @@ class Clients
      */
     public function create(array $data): Client
     {
-        $response = $this->client->request('POST', '/api/admin/clients', [
+        $response = $this->client->request('POST', '/api/sdk/clients', [
             'json' => $data,
         ]);
 
@@ -72,13 +62,12 @@ class Clients
      * Update a client.
      *
      * @param array{
-     *     name?: string,
-     *     description?: string
+     *     name?: string
      * } $data
      */
     public function update(string $id, array $data): Client
     {
-        $response = $this->client->request('PUT', "/api/admin/clients/{$id}", [
+        $response = $this->client->request('PUT', "/api/sdk/clients/{$id}", [
             'json' => $data,
         ]);
 
@@ -90,7 +79,7 @@ class Clients
      */
     public function activate(string $id): Client
     {
-        $response = $this->client->request('POST', "/api/admin/clients/{$id}/activate");
+        $response = $this->client->request('POST', "/api/sdk/clients/{$id}/activate");
 
         return Client::fromArray($response);
     }
@@ -100,7 +89,7 @@ class Clients
      */
     public function deactivate(string $id): Client
     {
-        $response = $this->client->request('POST', "/api/admin/clients/{$id}/deactivate");
+        $response = $this->client->request('POST', "/api/sdk/clients/{$id}/deactivate");
 
         return Client::fromArray($response);
     }

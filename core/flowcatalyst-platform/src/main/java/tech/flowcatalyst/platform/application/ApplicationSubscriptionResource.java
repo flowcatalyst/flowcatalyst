@@ -60,7 +60,7 @@ public class ApplicationSubscriptionResource {
      * List all anchor-level subscriptions.
      */
     @GET
-    @Operation(summary = "List anchor-level subscriptions",
+    @Operation(operationId = "listApplicationSubscriptions", summary = "List anchor-level subscriptions",
         description = "Returns all anchor-level subscriptions (clientId = null).")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of subscriptions",
@@ -112,7 +112,7 @@ public class ApplicationSubscriptionResource {
      */
     @POST
     @Path("/sync")
-    @Operation(summary = "Sync application subscriptions",
+    @Operation(operationId = "syncApplicationSubscriptions", summary = "Sync application subscriptions",
         description = "Bulk sync subscriptions from an external application. " +
                       "Creates new subscriptions, updates existing API-sourced subscriptions. " +
                       "Set removeUnlisted=true to remove API-sourced subscriptions not in the sync list.")

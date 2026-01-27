@@ -90,7 +90,9 @@ public class ClientResource {
         description = "Returns a specific client if the caller has access to it."
     )
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Client found"),
+        @APIResponse(responseCode = "200", description = "Client found",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                schema = @Schema(implementation = ClientResponse.class))),
         @APIResponse(responseCode = "400", description = "Invalid client ID format"),
         @APIResponse(responseCode = "401", description = "Not authenticated"),
         @APIResponse(responseCode = "403", description = "Access denied"),

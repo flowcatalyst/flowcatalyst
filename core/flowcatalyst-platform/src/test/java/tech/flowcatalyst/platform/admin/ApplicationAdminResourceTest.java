@@ -20,6 +20,7 @@ import tech.flowcatalyst.platform.principal.UserService;
 import tech.flowcatalyst.platform.principal.UserScope;
 import tech.flowcatalyst.platform.client.Client;
 import tech.flowcatalyst.platform.client.ClientService;
+import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
 import java.util.List;
@@ -72,8 +73,10 @@ class ApplicationAdminResourceTest {
 
         // Assign the platform:platform-admin role to the user in the database
         roleService.assignRole(adminUser.id, "platform:platform-admin", "TEST");
+        roleService.assignRole(adminUser.id, "platform:super-admin", "TEST");
+        roleService.assignRole(adminUser.id, "platform:iam-admin", "TEST");
 
-        adminToken = jwtKeyService.issueSessionToken(adminUser.id, adminUser.userIdentity.email, Set.of("platform:platform-admin"), List.of("*"));
+        adminToken = jwtKeyService.issueSessionToken(adminUser.id, adminUser.userIdentity.email, Set.of("platform:platform-admin", "platform:super-admin", "platform:iam-admin"), List.of("*"));
     }
 
     // ==================== List Applications ====================
@@ -85,7 +88,7 @@ class ApplicationAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/applications")
+            .get("/api/admin/applications")
         .then()
             .statusCode(200)
             .body("applications", notNullValue())
@@ -98,7 +101,7 @@ class ApplicationAdminResourceTest {
         given()
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/applications")
+            .get("/api/admin/applications")
         .then()
             .statusCode(401);
     }
@@ -122,7 +125,7 @@ class ApplicationAdminResourceTest {
                 }
                 """.formatted(uniqueId, uniqueId))
         .when()
-            .post("/bff/admin/applications")
+            .post("/api/admin/applications")
         .then()
             .statusCode(201)
             .body("id", notNullValue())
@@ -150,7 +153,7 @@ class ApplicationAdminResourceTest {
                 }
                 """.formatted(uniqueId))
         .when()
-            .post("/bff/admin/applications")
+            .post("/api/admin/applications")
         .then()
             .statusCode(400)
             .body("error", containsString("already exists"));
@@ -169,7 +172,7 @@ class ApplicationAdminResourceTest {
                 }
                 """)
         .when()
-            .post("/bff/admin/applications")
+            .post("/api/admin/applications")
         .then()
             .statusCode(400)
             .body("error", containsString("Invalid"));
@@ -186,7 +189,7 @@ class ApplicationAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/applications/" + app.id)
+            .get("/api/admin/applications/" + app.id)
         .then()
             .statusCode(200)
             .body("id", equalTo(app.id))
@@ -201,7 +204,7 @@ class ApplicationAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/applications/999999999")
+            .get("/api/admin/applications/app_0000000000000")
         .then()
             .statusCode(404);
     }
@@ -215,7 +218,7 @@ class ApplicationAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/applications/by-code/" + app.code)
+            .get("/api/admin/applications/by-code/" + app.code)
         .then()
             .statusCode(200)
             .body("code", equalTo(app.code));
@@ -238,7 +241,7 @@ class ApplicationAdminResourceTest {
                 }
                 """)
         .when()
-            .put("/bff/admin/applications/" + app.id)
+            .put("/api/admin/applications/" + app.id)
         .then()
             .statusCode(200)
             .body("name", equalTo("Updated App Name"))
@@ -256,7 +259,7 @@ class ApplicationAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .post("/bff/admin/applications/" + app.id + "/deactivate")
+            .post("/api/admin/applications/" + app.id + "/deactivate")
         .then()
             .statusCode(200)
             .body("message", equalTo("Application deactivated"));
@@ -266,7 +269,7 @@ class ApplicationAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/applications/" + app.id)
+            .get("/api/admin/applications/" + app.id)
         .then()
             .statusCode(200)
             .body("active", equalTo(false));
@@ -281,7 +284,7 @@ class ApplicationAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .post("/bff/admin/applications/" + app.id + "/activate")
+            .post("/api/admin/applications/" + app.id + "/activate")
         .then()
             .statusCode(200)
             .body("message", equalTo("Application activated"));
@@ -304,7 +307,7 @@ class ApplicationAdminResourceTest {
                 }
                 """)
         .when()
-            .put("/bff/admin/applications/" + app.id + "/clients/" + testClient.id)
+            .put("/api/admin/applications/" + app.id + "/clients/" + testClient.id)
         .then()
             .statusCode(200)
             .body("applicationId", equalTo(app.id))
@@ -329,7 +332,7 @@ class ApplicationAdminResourceTest {
                 }
                 """)
         .when()
-            .put("/bff/admin/applications/" + app.id + "/clients/" + testClient.id)
+            .put("/api/admin/applications/" + app.id + "/clients/" + testClient.id)
         .then()
             .statusCode(200);
 
@@ -337,7 +340,7 @@ class ApplicationAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .get("/bff/admin/applications/" + app.id + "/clients")
+            .get("/api/admin/applications/" + app.id + "/clients")
         .then()
             .statusCode(200)
             .body("clientConfigs", notNullValue())
@@ -353,7 +356,7 @@ class ApplicationAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .post("/bff/admin/applications/" + app.id + "/clients/" + testClient.id + "/enable")
+            .post("/api/admin/applications/" + app.id + "/clients/" + testClient.id + "/enable")
         .then()
             .statusCode(200)
             .body("message", equalTo("Application enabled for client"));
@@ -369,7 +372,7 @@ class ApplicationAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .post("/bff/admin/applications/" + app.id + "/clients/" + testClient.id + "/enable")
+            .post("/api/admin/applications/" + app.id + "/clients/" + testClient.id + "/enable")
         .then()
             .statusCode(200);
 
@@ -377,7 +380,7 @@ class ApplicationAdminResourceTest {
             .header("Authorization", "Bearer " + adminToken)
             .contentType(ContentType.JSON)
         .when()
-            .post("/bff/admin/applications/" + app.id + "/clients/" + testClient.id + "/disable")
+            .post("/api/admin/applications/" + app.id + "/clients/" + testClient.id + "/disable")
         .then()
             .statusCode(200)
             .body("message", equalTo("Application disabled for client"));
@@ -388,7 +391,7 @@ class ApplicationAdminResourceTest {
     private Application createTestApplication(String code, String name) {
         return QuarkusTransaction.requiringNew().call(() -> {
             Application app = new Application();
-            app.id = TsidGenerator.generate();
+            app.id = TsidGenerator.generate(EntityType.APPLICATION);
             app.code = code;
             app.name = name;
             app.description = "Test description";
@@ -402,7 +405,7 @@ class ApplicationAdminResourceTest {
     private Application createDeactivatedTestApplication() {
         return QuarkusTransaction.requiringNew().call(() -> {
             Application app = new Application();
-            app.id = TsidGenerator.generate();
+            app.id = TsidGenerator.generate(EntityType.APPLICATION);
             app.code = "deactivated" + System.currentTimeMillis();
             app.name = "Deactivated Test App";
             app.active = false;

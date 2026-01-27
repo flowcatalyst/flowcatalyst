@@ -3,7 +3,6 @@ package tech.flowcatalyst.platform.authorization.mapper;
 import tech.flowcatalyst.platform.authorization.AuthRole;
 import tech.flowcatalyst.platform.authorization.entity.AuthRoleEntity;
 
-import java.util.Arrays;
 import java.util.HashSet;
 
 /**
@@ -27,7 +26,7 @@ public final class AuthRoleMapper {
         domain.displayName = entity.displayName;
         domain.description = entity.description;
         domain.permissions = entity.permissions != null
-            ? new HashSet<>(Arrays.asList(entity.permissions))
+            ? new HashSet<>(entity.permissions)
             : new HashSet<>();
         domain.source = entity.source != null ? entity.source : AuthRole.RoleSource.DATABASE;
         domain.clientManaged = entity.clientManaged;
@@ -49,8 +48,8 @@ public final class AuthRoleMapper {
         entity.displayName = domain.displayName;
         entity.description = domain.description;
         entity.permissions = domain.permissions != null
-            ? domain.permissions.toArray(new String[0])
-            : new String[0];
+            ? new HashSet<>(domain.permissions)
+            : new HashSet<>();
         entity.source = domain.source != null ? domain.source : AuthRole.RoleSource.DATABASE;
         entity.clientManaged = domain.clientManaged;
         entity.createdAt = domain.createdAt;
@@ -64,9 +63,10 @@ public final class AuthRoleMapper {
         entity.name = domain.name;
         entity.displayName = domain.displayName;
         entity.description = domain.description;
-        entity.permissions = domain.permissions != null
-            ? domain.permissions.toArray(new String[0])
-            : new String[0];
+        entity.permissions.clear();
+        if (domain.permissions != null) {
+            entity.permissions.addAll(domain.permissions);
+        }
         entity.source = domain.source != null ? domain.source : AuthRole.RoleSource.DATABASE;
         entity.clientManaged = domain.clientManaged;
         entity.updatedAt = domain.updatedAt;
