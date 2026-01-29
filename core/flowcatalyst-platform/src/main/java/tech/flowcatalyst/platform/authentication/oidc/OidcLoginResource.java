@@ -12,8 +12,10 @@ import tech.flowcatalyst.platform.authentication.AuthConfig;
 import tech.flowcatalyst.platform.authentication.AuthProvider;
 import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
 import tech.flowcatalyst.platform.authentication.JwtKeyService;
+import tech.flowcatalyst.platform.client.Client;
 import tech.flowcatalyst.platform.client.ClientAuthConfig;
 import tech.flowcatalyst.platform.client.ClientAuthConfigService;
+import tech.flowcatalyst.platform.client.ClientRepository;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.UserService;
 
@@ -67,6 +69,9 @@ public class OidcLoginResource {
 
     @Inject
     AuthConfig authConfig;
+
+    @Inject
+    ClientRepository clientRepository;
 
     @Context
     UriInfo uriInfo;
@@ -535,7 +540,7 @@ public class OidcLoginResource {
      * @param principal The authenticated user principal
      * @param roles The user's roles
      * @param config The IDP auth config used for authentication
-     * @return List of client IDs as strings, or ["*"] for anchor users
+     * @return List of client entries as "id:identifier" strings, or ["*"] for anchor users
      */
     private List<String> determineAccessibleClients(Principal principal, Set<String> roles, ClientAuthConfig config) {
         // Use config type to determine accessible clients
@@ -544,10 +549,10 @@ public class OidcLoginResource {
                 return List.of("*");
             case CLIENT:
                 // CLIENT type: primary client + additional clients
-                return config.getAllAccessibleClientIds();
+                return formatClientEntries(config.getAllAccessibleClientIds());
             case PARTNER:
                 // PARTNER type: granted clients from IDP config
-                return config.getAllAccessibleClientIds();
+                return formatClientEntries(config.getAllAccessibleClientIds());
         }
 
         // Fallback: check roles for platform admins
@@ -557,11 +562,34 @@ public class OidcLoginResource {
 
         // User is bound to a specific client
         if (principal.clientId != null) {
-            return List.of(principal.clientId);
+            return formatClientEntries(List.of(principal.clientId));
         }
 
         // User has no specific client - could be a partner or unassigned
         return List.of();
+    }
+
+    /**
+     * Format client IDs as "id:identifier" entries for the clients claim.
+     * Falls back to just the ID if client not found or has no identifier.
+     */
+    private List<String> formatClientEntries(List<String> clientIds) {
+        if (clientIds == null || clientIds.isEmpty()) {
+            return List.of();
+        }
+        var clients = clientRepository.findByIds(Set.copyOf(clientIds));
+        var clientMap = clients.stream()
+            .collect(Collectors.toMap(c -> c.id, c -> c));
+
+        return clientIds.stream()
+            .map(id -> {
+                Client client = clientMap.get(id);
+                if (client != null && client.identifier != null) {
+                    return id + ":" + client.identifier;
+                }
+                return id;
+            })
+            .toList();
     }
 
     private String urlEncode(String value) {

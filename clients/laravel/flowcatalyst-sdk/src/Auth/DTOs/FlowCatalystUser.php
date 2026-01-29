@@ -67,15 +67,76 @@ final readonly class FlowCatalystUser
     ) {}
 
     /**
+     * Get the raw clients claim entries.
+     * Format is "id:identifier" or "*" for full access.
+     *
+     * @return array<string>
+     */
+    public function getClientsRaw(): array
+    {
+        $clients = $this->claims['clients'] ?? [];
+        return is_array($clients) ? $clients : [];
+    }
+
+    /**
      * Get the list of client IDs this user has access to.
      * Returns ['*'] for platform-wide access, or specific client IDs.
      *
      * @return array<string>
      */
+    public function getClientIds(): array
+    {
+        $raw = $this->getClientsRaw();
+        return array_map(function (string $entry): string {
+            if ($entry === '*') {
+                return '*';
+            }
+            // Format is "id:identifier" - extract the ID part
+            $parts = explode(':', $entry, 2);
+            return $parts[0];
+        }, $raw);
+    }
+
+    /**
+     * Get the list of client identifiers this user has access to.
+     * Returns ['*'] for platform-wide access, or specific client identifiers.
+     *
+     * @return array<string>
+     */
+    public function getClientIdentifiers(): array
+    {
+        $raw = $this->getClientsRaw();
+        return array_map(function (string $entry): string {
+            if ($entry === '*') {
+                return '*';
+            }
+            // Format is "id:identifier" - extract the identifier part
+            $parts = explode(':', $entry, 2);
+            return $parts[1] ?? $parts[0]; // Fallback to ID if no identifier
+        }, $raw);
+    }
+
+    /**
+     * Get clients as associative array mapping ID to identifier.
+     * Returns ['*' => '*'] for platform-wide access.
+     *
+     * @return array<string, string>
+     */
     public function getClients(): array
     {
-        $clients = $this->claims['clients'] ?? [];
-        return is_array($clients) ? $clients : [];
+        $raw = $this->getClientsRaw();
+        $result = [];
+        foreach ($raw as $entry) {
+            if ($entry === '*') {
+                $result['*'] = '*';
+            } else {
+                $parts = explode(':', $entry, 2);
+                $id = $parts[0];
+                $identifier = $parts[1] ?? $parts[0];
+                $result[$id] = $identifier;
+            }
+        }
+        return $result;
     }
 
     /**
@@ -83,18 +144,29 @@ final readonly class FlowCatalystUser
      */
     public function hasFullAccess(): bool
     {
-        return in_array('*', $this->getClients(), true);
+        return in_array('*', $this->getClientsRaw(), true);
     }
 
     /**
-     * Check if the user has access to a specific client.
+     * Check if the user has access to a specific client by ID.
      */
     public function hasClientAccess(string $clientId): bool
     {
         if ($this->hasFullAccess()) {
             return true;
         }
-        return in_array($clientId, $this->getClients(), true);
+        return in_array($clientId, $this->getClientIds(), true);
+    }
+
+    /**
+     * Check if the user has access to a specific client by identifier.
+     */
+    public function hasClientAccessByIdentifier(string $identifier): bool
+    {
+        if ($this->hasFullAccess()) {
+            return true;
+        }
+        return in_array($identifier, $this->getClientIdentifiers(), true);
     }
 
     /**

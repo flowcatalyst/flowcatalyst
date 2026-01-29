@@ -6,6 +6,7 @@ export interface LoginTheme {
   brandSubtitle: string;
   logoUrl?: string;
   logoSvg?: string;
+  logoHeight?: number;
   primaryColor: string;
   accentColor: string;
   backgroundColor: string;
@@ -17,6 +18,7 @@ export interface LoginTheme {
 const DEFAULT_THEME: LoginTheme = {
   brandName: 'FlowCatalyst',
   brandSubtitle: 'Platform Administration',
+  logoHeight: 40,
   primaryColor: '#102a43',
   accentColor: '#0967d2',
   backgroundColor: '#0a1929',

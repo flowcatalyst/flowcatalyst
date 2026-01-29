@@ -21,6 +21,7 @@ const theme = ref<LoginTheme>({
   brandSubtitle: 'Platform Administration',
   logoUrl: null,
   logoSvg: null,
+  logoHeight: 40,
   primaryColor: '#102a43',
   accentColor: '#0967d2',
   backgroundColor: '#0a1929',
@@ -95,7 +96,7 @@ async function saveTheme() {
     toast.add({
       severity: 'success',
       summary: 'Success',
-      detail: 'Login theme saved successfully',
+      detail: 'Theme saved successfully',
       life: 3000,
     });
   } catch (e: any) {
@@ -117,6 +118,7 @@ function resetToDefaults() {
     brandSubtitle: 'Platform Administration',
     logoUrl: null,
     logoSvg: null,
+    logoHeight: 40,
     primaryColor: '#102a43',
     accentColor: '#0967d2',
     backgroundColor: '#0a1929',
@@ -134,9 +136,9 @@ function resetToDefaults() {
   <div class="page-container">
     <header class="page-header">
       <div>
-        <h1 class="page-title">Login Theme Settings</h1>
+        <h1 class="page-title">Theme Settings</h1>
         <p class="page-subtitle">
-          Customize the appearance of the login page with your branding.
+          Customize the appearance of the platform with your branding.
         </p>
       </div>
     </header>
@@ -182,6 +184,12 @@ function resetToDefaults() {
           <label for="logoSvg">Logo SVG (inline)</label>
           <Textarea id="logoSvg" v-model="theme.logoSvg" class="w-full" rows="4" placeholder="<svg>...</svg>" />
           <small class="field-help">Paste inline SVG markup. Takes precedence over Logo URL if both are set.</small>
+        </div>
+
+        <div class="field">
+          <label for="logoHeight">Logo Height (px)</label>
+          <InputText id="logoHeight" v-model.number="theme.logoHeight" type="number" class="w-small" min="20" max="120" />
+          <small class="field-help">Height of the logo in pixels (default: 40, max: 120)</small>
         </div>
 
         <h3 class="section-title">Colors</h3>
@@ -328,6 +336,10 @@ function resetToDefaults() {
 
 .w-full {
   width: 100%;
+}
+
+.w-small {
+  width: 120px;
 }
 
 .color-fields {

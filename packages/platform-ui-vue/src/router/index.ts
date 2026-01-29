@@ -243,8 +243,8 @@ const router = createRouter({
         },
         // Platform - Settings
         {
-          path: 'platform/settings/login-theme',
-          name: 'login-theme-settings',
+          path: 'platform/settings/theme',
+          name: 'theme-settings',
           component: () => import('@/pages/platform/settings/LoginThemeSettingsPage.vue'),
         },
         // Platform - Debug

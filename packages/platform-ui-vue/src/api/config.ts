@@ -5,6 +5,7 @@ export interface LoginTheme {
   brandSubtitle: string;
   logoUrl?: string | null;
   logoSvg?: string | null;
+  logoHeight?: number;
   primaryColor: string;
   accentColor: string;
   backgroundColor: string;

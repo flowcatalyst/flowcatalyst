@@ -1,5 +1,6 @@
 package tech.flowcatalyst.platform.authentication.oauth;
 
+import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -121,12 +122,60 @@ public class OAuthClient {
 
     /**
      * Check if a redirect URI is allowed for this client.
+     * Supports wildcard patterns in the host (e.g., "https://*.example.com/callback"
+     * or "https://qa-*.example.com/callback").
      */
     public boolean isRedirectUriAllowed(String uri) {
         if (redirectUris == null || uri == null) {
             return false;
         }
-        return redirectUris.contains(uri);
+
+        for (String allowed : redirectUris) {
+            if (allowed.equals(uri)) {
+                return true;
+            }
+            if (allowed.contains("*") && matchesWildcard(allowed, uri)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Check if a URI matches a wildcard pattern.
+     * Wildcards are only allowed in the host portion and match [a-zA-Z0-9-]+.
+     */
+    private boolean matchesWildcard(String pattern, String uri) {
+        try {
+            URI patternUri = URI.create(pattern.replace("*", "WILDCARD_PLACEHOLDER"));
+            URI requestUri = URI.create(uri);
+
+            // Scheme must match
+            if (!patternUri.getScheme().equals(requestUri.getScheme())) {
+                return false;
+            }
+
+            // Port must match (or both absent)
+            if (patternUri.getPort() != requestUri.getPort()) {
+                return false;
+            }
+
+            // Path must match
+            String patternPath = patternUri.getPath() == null ? "" : patternUri.getPath();
+            String requestPath = requestUri.getPath() == null ? "" : requestUri.getPath();
+            if (!patternPath.equals(requestPath)) {
+                return false;
+            }
+
+            // Host: convert wildcard to regex
+            String hostPattern = patternUri.getHost()
+                .replace(".", "\\.")
+                .replace("WILDCARD_PLACEHOLDER", "[a-zA-Z0-9-]+");
+
+            return requestUri.getHost().matches("^" + hostPattern + "$");
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**

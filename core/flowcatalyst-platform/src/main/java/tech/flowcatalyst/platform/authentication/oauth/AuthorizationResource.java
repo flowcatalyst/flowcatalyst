@@ -13,6 +13,8 @@ import tech.flowcatalyst.platform.application.ApplicationClientConfig;
 import tech.flowcatalyst.platform.application.ApplicationClientConfigRepository;
 import tech.flowcatalyst.platform.application.ApplicationRepository;
 import tech.flowcatalyst.platform.authentication.*;
+import tech.flowcatalyst.platform.client.Client;
+import tech.flowcatalyst.platform.client.ClientRepository;
 import tech.flowcatalyst.platform.principal.PasswordService;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
@@ -81,6 +83,9 @@ public class AuthorizationResource {
 
     @Inject
     ApplicationClientConfigRepository appClientConfigRepo;
+
+    @Inject
+    ClientRepository clientRepository;
 
     @Context
     UriInfo uriInfo;
@@ -888,7 +893,7 @@ public class AuthorizationResource {
     /**
      * Determine which clients the user can access based on their scope.
      *
-     * @return List of client IDs as strings, or ["*"] for anchor users
+     * @return List of client entries as "id:identifier" strings, or ["*"] for anchor users
      */
     private List<String> determineAccessibleClients(Principal principal, Set<String> roles) {
         // Check explicit scope first
@@ -898,12 +903,12 @@ public class AuthorizationResource {
                     return List.of("*");
                 case CLIENT:
                     if (principal.clientId != null) {
-                        return List.of(String.valueOf(principal.clientId));
+                        return formatClientEntry(principal.clientId);
                     }
                     return List.of();
                 case PARTNER:
                     if (principal.clientId != null) {
-                        return List.of(String.valueOf(principal.clientId));
+                        return formatClientEntry(principal.clientId);
                     }
                     return List.of();
             }
@@ -916,10 +921,22 @@ public class AuthorizationResource {
 
         // User is bound to a specific client
         if (principal.clientId != null) {
-            return List.of(String.valueOf(principal.clientId));
+            return formatClientEntry(principal.clientId);
         }
 
         return List.of();
+    }
+
+    /**
+     * Format a client ID as "id:identifier" for the clients claim.
+     * Falls back to just the ID if client not found.
+     */
+    private List<String> formatClientEntry(String clientId) {
+        Client client = clientRepository.findById(clientId);
+        if (client != null && client.identifier != null) {
+            return List.of(clientId + ":" + client.identifier);
+        }
+        return List.of(clientId);
     }
 
     // ==================== DTOs ====================

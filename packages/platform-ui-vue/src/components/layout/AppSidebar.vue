@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { NAVIGATION_CONFIG, type NavItem } from '@/config/navigation';
 import { usePlatformConfigStore } from '@/stores/platformConfig';
+import { useAppThemeStore } from '@/stores/appTheme';
 
 defineProps<{
   collapsed: boolean;
@@ -14,7 +15,13 @@ const emit = defineEmits<{
 
 const route = useRoute();
 const platformConfigStore = usePlatformConfigStore();
+const appThemeStore = useAppThemeStore();
 const expandedItems = ref<Record<string, boolean>>({});
+
+// Load app theme on mount
+onMounted(() => {
+  appThemeStore.loadTheme();
+});
 
 // Filter navigation based on platform configuration
 const filteredNavigation = computed(() => {
@@ -44,14 +51,29 @@ function isActive(item: NavItem): boolean {
   <aside class="sidebar" :class="{ collapsed }">
     <!-- Logo Section -->
     <div class="sidebar-header">
-      <div class="logo-container">
-        <div class="logo-icon">
+      <div v-if="!collapsed" class="logo-container" :style="{ height: `${appThemeStore.logoHeight}px` }">
+        <!-- Custom logo URL -->
+        <img
+          v-if="appThemeStore.logoUrl"
+          :src="appThemeStore.logoUrl"
+          class="logo-image"
+          :style="{ maxHeight: `${appThemeStore.logoHeight}px` }"
+          alt="Logo"
+        />
+        <!-- Custom logo SVG -->
+        <div
+          v-else-if="appThemeStore.logoSvg"
+          class="logo-svg"
+          :style="{ height: `${appThemeStore.logoHeight}px` }"
+          v-html="appThemeStore.logoSvg"
+        />
+        <!-- Default logo icon -->
+        <div v-else class="logo-icon" :style="{ width: `${appThemeStore.logoHeight}px`, height: `${appThemeStore.logoHeight}px` }">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
               d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
         </div>
-        <span v-if="!collapsed" class="logo-text">FlowCatalyst</span>
       </div>
       <button class="collapse-btn" @click="emit('toggleCollapse')">
         <i class="pi" :class="collapsed ? 'pi-chevron-right' : 'pi-chevron-left'"></i>
@@ -151,13 +173,9 @@ function isActive(item: NavItem): boolean {
 .logo-container {
   display: flex;
   align-items: center;
-  gap: 12px;
-  overflow: hidden;
 }
 
 .logo-icon {
-  width: 36px;
-  height: 36px;
   color: #47a3f3;
   flex-shrink: 0;
 }
@@ -167,11 +185,21 @@ function isActive(item: NavItem): boolean {
   height: 100%;
 }
 
-.logo-text {
-  font-size: 18px;
-  font-weight: 600;
-  color: #ffffff;
-  white-space: nowrap;
+.logo-image {
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.logo-svg {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.logo-svg :deep(svg) {
+  height: 100%;
+  width: auto;
 }
 
 .collapse-btn {

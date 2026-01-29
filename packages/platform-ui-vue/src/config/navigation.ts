@@ -91,9 +91,9 @@ export const NAVIGATION_CONFIG: NavGroup[] = [
         expanded: false,
         children: [
           {
-            label: 'Login Theme',
+            label: 'Theme',
             icon: 'pi pi-palette',
-            route: '/platform/settings/login-theme',
+            route: '/platform/settings/theme',
           },
         ],
       },

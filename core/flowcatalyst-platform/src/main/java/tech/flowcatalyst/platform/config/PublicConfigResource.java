@@ -30,11 +30,14 @@ public class PublicConfigResource {
     private static final String SECTION = "login";
     private static final String PROPERTY = "theme";
 
+    private static final int DEFAULT_LOGO_HEIGHT = 40;
+
     private static final LoginThemeResponse DEFAULT_THEME = new LoginThemeResponse(
         "FlowCatalyst",
         "Platform Administration",
         null,
         null,
+        DEFAULT_LOGO_HEIGHT,
         "#102a43",
         "#0967d2",
         "#0a1929",
@@ -85,6 +88,7 @@ public class PublicConfigResource {
             stored.brandSubtitle() != null ? stored.brandSubtitle() : DEFAULT_THEME.brandSubtitle(),
             stored.logoUrl(),
             stored.logoSvg(),
+            stored.logoHeight() != null ? stored.logoHeight() : DEFAULT_THEME.logoHeight(),
             stored.primaryColor() != null ? stored.primaryColor() : DEFAULT_THEME.primaryColor(),
             stored.accentColor() != null ? stored.accentColor() : DEFAULT_THEME.accentColor(),
             stored.backgroundColor() != null ? stored.backgroundColor() : DEFAULT_THEME.backgroundColor(),
@@ -103,6 +107,7 @@ public class PublicConfigResource {
         String brandSubtitle,
         String logoUrl,
         String logoSvg,
+        Integer logoHeight,
         String primaryColor,
         String accentColor,
         String backgroundColor,
