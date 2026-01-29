@@ -204,6 +204,9 @@ class FlowCatalystServiceProvider extends ServiceProvider
 
     /**
      * Register the OIDC authentication routes.
+     *
+     * These routes use only the minimal middleware required for session handling.
+     * Auth middleware is explicitly excluded since these routes ARE the auth mechanism.
      */
     protected function registerOidcRoutes(): void
     {
@@ -211,21 +214,31 @@ class FlowCatalystServiceProvider extends ServiceProvider
             return;
         }
 
+        // Default auth middleware to exclude, plus any custom ones from config
+        $excludeMiddleware = array_merge(
+            ['auth', 'auth:sanctum', 'auth:api', 'auth:web'],
+            config('flowcatalyst.oidc.exclude_middleware', [])
+        );
+
         $this->app['router']->group([
             'middleware' => config('flowcatalyst.oidc.middleware', ['web']),
-        ], function ($router) {
+        ], function ($router) use ($excludeMiddleware) {
             $loginRoute = config('flowcatalyst.oidc.login_route', '/flowcatalyst/login');
             $callbackRoute = config('flowcatalyst.oidc.callback_route', '/flowcatalyst/callback');
             $logoutRoute = config('flowcatalyst.oidc.logout_route', '/flowcatalyst/logout');
 
+            // These routes must not have auth middleware - they ARE the auth mechanism
             $router->get($loginRoute, [\FlowCatalyst\Auth\Http\Controllers\OidcAuthController::class, 'login'])
-                ->name('flowcatalyst.login');
+                ->name('flowcatalyst.login')
+                ->withoutMiddleware($excludeMiddleware);
 
             $router->get($callbackRoute, [\FlowCatalyst\Auth\Http\Controllers\OidcAuthController::class, 'callback'])
-                ->name('flowcatalyst.callback');
+                ->name('flowcatalyst.callback')
+                ->withoutMiddleware($excludeMiddleware);
 
             $router->match(['get', 'post'], $logoutRoute, [\FlowCatalyst\Auth\Http\Controllers\OidcAuthController::class, 'logout'])
-                ->name('flowcatalyst.logout');
+                ->name('flowcatalyst.logout')
+                ->withoutMiddleware($excludeMiddleware);
         });
     }
 }

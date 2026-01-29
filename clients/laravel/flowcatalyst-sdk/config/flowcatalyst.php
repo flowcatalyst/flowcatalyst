@@ -182,10 +182,30 @@ return [
         | Route Middleware
         |----------------------------------------------------------------------
         |
-        | Middleware to apply to the OIDC routes.
+        | Middleware to apply to the OIDC routes. The 'web' middleware is
+        | required for session handling (PKCE state storage).
+        |
+        | Note: Auth middleware (auth, auth:sanctum, etc.) is automatically
+        | excluded from these routes since they ARE the authentication
+        | mechanism. If you have custom auth middleware causing issues,
+        | add it to 'exclude_middleware' below.
         |
         */
         'middleware' => ['web'],
+
+        /*
+        |----------------------------------------------------------------------
+        | Excluded Middleware
+        |----------------------------------------------------------------------
+        |
+        | Additional middleware to exclude from the OIDC routes. The SDK
+        | automatically excludes: auth, auth:sanctum, auth:api, auth:web.
+        |
+        | Add any custom auth middleware here that should not run on the
+        | login/callback/logout routes.
+        |
+        */
+        'exclude_middleware' => [],
     ],
 
     /*
