@@ -121,22 +121,37 @@ const router = createRouter({
           name: 'permissions',
           component: () => import('@/pages/authorization/PermissionListPage.vue'),
         },
-        // Authentication - Domain IDPs
+        // Authentication - Identity Providers
         {
-          path: 'authentication/domain-idps',
-          name: 'domain-idps',
-          component: () => import('@/pages/authentication/AuthConfigListPage.vue'),
+          path: 'authentication/identity-providers',
+          name: 'identity-providers',
+          component: () => import('@/pages/authentication/identity-providers/IdentityProviderListPage.vue'),
         },
         {
-          path: 'authentication/domain-idps/:id',
-          name: 'domain-idp-detail',
-          component: () => import('@/pages/authentication/AuthConfigDetailPage.vue'),
+          path: 'authentication/identity-providers/new',
+          name: 'identity-provider-create',
+          component: () => import('@/pages/authentication/identity-providers/IdentityProviderCreatePage.vue'),
         },
-        // Authentication - Anchor Domains
         {
-          path: 'authentication/anchor-domains',
-          name: 'anchor-domains',
-          component: () => import('@/pages/authentication/AnchorDomainListPage.vue'),
+          path: 'authentication/identity-providers/:id',
+          name: 'identity-provider-detail',
+          component: () => import('@/pages/authentication/identity-providers/IdentityProviderDetailPage.vue'),
+        },
+        // Authentication - Email Domain Mappings
+        {
+          path: 'authentication/email-domain-mappings',
+          name: 'email-domain-mappings',
+          component: () => import('@/pages/authentication/email-domains/EmailDomainMappingListPage.vue'),
+        },
+        {
+          path: 'authentication/email-domain-mappings/new',
+          name: 'email-domain-mapping-create',
+          component: () => import('@/pages/authentication/email-domains/EmailDomainMappingCreatePage.vue'),
+        },
+        {
+          path: 'authentication/email-domain-mappings/:id',
+          name: 'email-domain-mapping-detail',
+          component: () => import('@/pages/authentication/email-domains/EmailDomainMappingDetailPage.vue'),
         },
         // Authentication - OAuth Clients
         {
@@ -154,10 +169,18 @@ const router = createRouter({
           name: 'oauth-client-detail',
           component: () => import('@/pages/authentication/OAuthClientDetailPage.vue'),
         },
-        // Legacy redirect
+        // Legacy redirects
         {
           path: 'roles',
           redirect: '/authorization/roles',
+        },
+        {
+          path: 'authentication/domain-idps',
+          redirect: '/authentication/identity-providers',
+        },
+        {
+          path: 'authentication/anchor-domains',
+          redirect: '/authentication/email-domain-mappings',
         },
         // Event Types
         {

@@ -21,7 +21,8 @@ public final class OidcLoginStateMapper {
         OidcLoginState domain = new OidcLoginState();
         domain.state = entity.state;
         domain.emailDomain = entity.emailDomain;
-        domain.authConfigId = entity.authConfigId;
+        domain.identityProviderId = entity.identityProviderId;
+        domain.emailDomainMappingId = entity.emailDomainMappingId;
         domain.nonce = entity.nonce;
         domain.codeVerifier = entity.codeVerifier;
         domain.returnUrl = entity.returnUrl;
@@ -45,7 +46,8 @@ public final class OidcLoginStateMapper {
         OidcLoginStateEntity entity = new OidcLoginStateEntity();
         entity.state = domain.state;
         entity.emailDomain = domain.emailDomain;
-        entity.authConfigId = domain.authConfigId;
+        entity.identityProviderId = domain.identityProviderId;
+        entity.emailDomainMappingId = domain.emailDomainMappingId;
         entity.nonce = domain.nonce;
         entity.codeVerifier = domain.codeVerifier;
         entity.returnUrl = domain.returnUrl;

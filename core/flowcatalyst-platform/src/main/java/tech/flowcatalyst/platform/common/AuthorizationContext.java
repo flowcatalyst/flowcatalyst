@@ -1,6 +1,5 @@
 package tech.flowcatalyst.platform.common;
 
-import tech.flowcatalyst.platform.principal.ManagedApplicationScope;
 import tech.flowcatalyst.platform.principal.PrincipalType;
 
 import java.util.Set;
@@ -9,11 +8,11 @@ import java.util.Set;
  * Authorization context for a use case execution.
  *
  * <p>Carries authorization information about the executing principal,
- * including what applications they can manage and what clients they can access.
+ * including what applications they can access and what clients they can access.
  *
  * <p>This context enables resource-level authorization checks in use cases:
  * <ul>
- *   <li>Application management scope - which applications can the principal manage?</li>
+ *   <li>Application access - which applications can the principal access?</li>
  *   <li>Client access scope - which clients can the principal access?</li>
  *   <li>Role and permission information for action-level checks</li>
  * </ul>
@@ -22,9 +21,8 @@ import java.util.Set;
  * @param principalType           Type of principal (USER or SERVICE)
  * @param roles                   Roles assigned to the principal
  * @param permissions             Permissions derived from roles
- * @param managedApplicationScope Scope for application management (ALL, SPECIFIC, or NONE)
- * @param managedApplicationIds   Application IDs this principal can manage (when scope is SPECIFIC)
- * @param managedApplicationCodes Application codes this principal can manage (resolved from IDs)
+ * @param accessibleApplicationIds Application IDs this principal can access (explicit grants)
+ * @param accessibleApplicationCodes Application codes this principal can access (resolved from IDs)
  * @param accessibleClientIds     Client IDs this principal can access
  * @param canAccessAllClients     Whether this principal can access all clients (ANCHOR scope)
  */
@@ -33,56 +31,50 @@ public record AuthorizationContext(
     PrincipalType principalType,
     Set<String> roles,
     Set<String> permissions,
-    ManagedApplicationScope managedApplicationScope,
-    Set<String> managedApplicationIds,
-    Set<String> managedApplicationCodes,
+    Set<String> accessibleApplicationIds,
+    Set<String> accessibleApplicationCodes,
     Set<String> accessibleClientIds,
     boolean canAccessAllClients
 ) {
 
     /**
-     * Check if this principal can manage all applications.
-     *
-     * @return true if scope is ALL
-     */
-    public boolean canManageAllApplications() {
-        return managedApplicationScope == ManagedApplicationScope.ALL;
-    }
-
-    /**
-     * Check if this principal can manage a specific application by ID.
+     * Check if this principal can access a specific application by ID.
      *
      * @param applicationId the application ID to check
-     * @return true if the principal can manage this application
+     * @return true if the principal can access this application
      */
-    public boolean canManageApplication(String applicationId) {
-        return switch (managedApplicationScope) {
-            case ALL -> true;
-            case SPECIFIC -> managedApplicationIds != null && managedApplicationIds.contains(applicationId);
-            case NONE -> false;
-        };
+    public boolean canAccessApplication(String applicationId) {
+        return accessibleApplicationIds != null && accessibleApplicationIds.contains(applicationId);
     }
 
     /**
-     * Check if this principal can manage a resource with the given code prefix.
+     * Check if this principal can access a specific application by code.
+     *
+     * @param applicationCode the application code to check
+     * @return true if the principal can access this application
+     */
+    public boolean canAccessApplicationByCode(String applicationCode) {
+        return accessibleApplicationCodes != null && accessibleApplicationCodes.contains(applicationCode);
+    }
+
+    /**
+     * Check if this principal can access a resource with the given code prefix.
      *
      * <p>Resource codes follow the pattern "{applicationCode}:{resourceName}".
      * For example, "tms:shipment-event" belongs to the "tms" application.
      *
      * @param resourceCode the resource code to check (e.g., "tms:manager" for a role)
-     * @return true if the principal can manage resources with this prefix
+     * @return true if the principal can access resources with this prefix
      */
-    public boolean canManageResourceWithPrefix(String resourceCode) {
+    public boolean canAccessResourceWithPrefix(String resourceCode) {
         if (resourceCode == null || resourceCode.isBlank()) {
             return false;
         }
-        return switch (managedApplicationScope) {
-            case ALL -> true;
-            case SPECIFIC -> managedApplicationCodes != null &&
-                managedApplicationCodes.stream()
-                    .anyMatch(code -> resourceCode.startsWith(code + ":"));
-            case NONE -> false;
-        };
+        if (accessibleApplicationCodes == null) {
+            return false;
+        }
+        return accessibleApplicationCodes.stream()
+            .anyMatch(code -> resourceCode.startsWith(code + ":"));
     }
 
     /**

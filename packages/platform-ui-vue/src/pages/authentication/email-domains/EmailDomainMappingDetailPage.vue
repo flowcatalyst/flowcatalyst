@@ -1,0 +1,701 @@
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
+import Button from 'primevue/button';
+import InputText from 'primevue/inputtext';
+import Select from 'primevue/select';
+import Tag from 'primevue/tag';
+import Chip from 'primevue/chip';
+import Message from 'primevue/message';
+import Dialog from 'primevue/dialog';
+import ProgressSpinner from 'primevue/progressspinner';
+import AutoComplete from 'primevue/autocomplete';
+import PickList from 'primevue/picklist';
+import { useToast } from 'primevue/usetoast';
+import { emailDomainMappingsApi, type EmailDomainMapping, type ScopeType } from '@/api/email-domain-mappings';
+import { identityProvidersApi, type IdentityProvider } from '@/api/identity-providers';
+import { clientsApi, type Client } from '@/api/clients';
+import { rolesApi, type Role } from '@/api/roles';
+
+const router = useRouter();
+const route = useRoute();
+const toast = useToast();
+
+const mapping = ref<EmailDomainMapping | null>(null);
+const provider = ref<IdentityProvider | null>(null);
+const clients = ref<Client[]>([]);
+const allRoles = ref<Role[]>([]);
+const loading = ref(true);
+const saving = ref(false);
+const error = ref<string | null>(null);
+
+// Role picker state: [availableRoles, selectedRoles]
+const rolePickerModel = ref<[Role[], Role[]]>([[], []]);
+
+// Edit mode
+const isEditing = ref(false);
+const editForm = ref({
+  scopeType: 'CLIENT' as ScopeType,
+  primaryClientId: null as string | null,
+  requiredOidcTenantId: '' as string,
+});
+
+// Client autocomplete
+const filteredClients = ref<Client[]>([]);
+const selectedPrimaryClient = ref<Client | null>(null);
+
+// Delete dialog
+const showDeleteDialog = ref(false);
+const deleteLoading = ref(false);
+
+const scopeTypeOptions = [
+  { label: 'Anchor', value: 'ANCHOR', description: 'Platform admin - access to all clients' },
+  { label: 'Partner', value: 'PARTNER', description: 'Partner user - access to multiple clients' },
+  { label: 'Client', value: 'CLIENT', description: 'Client user - bound to a single client' },
+];
+
+const isValid = computed(() => {
+  if (editForm.value.scopeType === 'CLIENT') {
+    return editForm.value.primaryClientId != null;
+  }
+  return true;
+});
+
+onMounted(async () => {
+  await loadData();
+});
+
+async function loadData() {
+  loading.value = true;
+  error.value = null;
+  try {
+    const id = route.params.id as string;
+    const [mappingData, clientsResponse, rolesResponse] = await Promise.all([
+      emailDomainMappingsApi.get(id),
+      clientsApi.list(),
+      rolesApi.list(),
+    ]);
+    mapping.value = mappingData;
+    clients.value = clientsResponse.clients;
+    allRoles.value = rolesResponse.items;
+
+    // Load the identity provider
+    provider.value = await identityProvidersApi.get(mappingData.identityProviderId);
+
+    resetEditForm();
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Failed to load email domain mapping';
+  } finally {
+    loading.value = false;
+  }
+}
+
+function resetEditForm() {
+  if (mapping.value) {
+    editForm.value = {
+      scopeType: mapping.value.scopeType,
+      primaryClientId: mapping.value.primaryClientId || null,
+      requiredOidcTenantId: mapping.value.requiredOidcTenantId || '',
+    };
+    if (mapping.value.primaryClientId) {
+      selectedPrimaryClient.value = clients.value.find(c => c.id === mapping.value?.primaryClientId) || null;
+    } else {
+      selectedPrimaryClient.value = null;
+    }
+
+    // Set up role picker
+    const allowedRoleIds = new Set(mapping.value.allowedRoleIds || []);
+    const selectedRoles = allRoles.value.filter(r => allowedRoleIds.has(r.id));
+    const availableRoles = allRoles.value.filter(r => !allowedRoleIds.has(r.id));
+    rolePickerModel.value = [availableRoles, selectedRoles];
+  }
+}
+
+const isOidcMultiTenant = computed(() => {
+  return provider.value?.oidcMultiTenant === true;
+});
+
+const isExternalIdp = computed(() => {
+  return provider.value?.type === 'OIDC';
+});
+
+const showRolePicker = computed(() => {
+  return isExternalIdp.value && editForm.value.scopeType !== 'ANCHOR';
+});
+
+const showRoleDisplay = computed(() => {
+  return isExternalIdp.value && mapping.value?.scopeType !== 'ANCHOR';
+});
+
+function getAllowedRoleNames(): string[] {
+  if (!mapping.value?.allowedRoleIds?.length) return [];
+  return mapping.value.allowedRoleIds.map(id => {
+    const role = allRoles.value.find(r => r.id === id);
+    return role?.displayName || role?.name || id;
+  });
+}
+
+function startEditing() {
+  resetEditForm();
+  isEditing.value = true;
+}
+
+function cancelEditing() {
+  resetEditForm();
+  isEditing.value = false;
+}
+
+function searchClients(event: { query: string }) {
+  const query = event.query.toLowerCase();
+  filteredClients.value = clients.value.filter(c =>
+    c.name.toLowerCase().includes(query) ||
+    c.identifier.toLowerCase().includes(query)
+  );
+}
+
+function onClientSelect(event: { value: Client }) {
+  editForm.value.primaryClientId = event.value.id;
+}
+
+function clearPrimaryClient() {
+  editForm.value.primaryClientId = null;
+  selectedPrimaryClient.value = null;
+}
+
+async function saveChanges() {
+  if (!mapping.value || !isValid.value) return;
+
+  saving.value = true;
+  error.value = null;
+
+  try {
+    const updateData: any = {
+      scopeType: editForm.value.scopeType,
+    };
+
+    if (editForm.value.scopeType === 'CLIENT') {
+      updateData.primaryClientId = editForm.value.primaryClientId;
+    } else if (editForm.value.scopeType === 'ANCHOR') {
+      updateData.primaryClientId = null;
+    }
+
+    // Include tenant ID (empty string clears it)
+    if (isOidcMultiTenant.value) {
+      updateData.requiredOidcTenantId = editForm.value.requiredOidcTenantId || '';
+    }
+
+    // Include allowed roles (send the selected roles' IDs)
+    if (showRolePicker.value) {
+      updateData.allowedRoleIds = rolePickerModel.value[1].map(r => r.id);
+    }
+
+    const updated = await emailDomainMappingsApi.update(mapping.value.id, updateData);
+    mapping.value = updated;
+
+    // Update the selected client display
+    if (updated.primaryClientId) {
+      selectedPrimaryClient.value = clients.value.find(c => c.id === updated.primaryClientId) || null;
+    } else {
+      selectedPrimaryClient.value = null;
+    }
+
+    isEditing.value = false;
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Email domain mapping updated successfully',
+      life: 3000,
+    });
+  } catch (e: any) {
+    error.value = e?.error || e?.message || 'Failed to update mapping';
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function deleteMapping() {
+  if (!mapping.value) return;
+
+  deleteLoading.value = true;
+
+  try {
+    await emailDomainMappingsApi.delete(mapping.value.id);
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: `Email domain mapping for "${mapping.value.emailDomain}" deleted`,
+      life: 3000,
+    });
+    router.push('/authentication/email-domain-mappings');
+  } catch (e: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: e?.error || e?.message || 'Failed to delete mapping',
+      life: 5000,
+    });
+  } finally {
+    deleteLoading.value = false;
+    showDeleteDialog.value = false;
+  }
+}
+
+function formatDate(dateString: string) {
+  return new Date(dateString).toLocaleString();
+}
+
+function getScopeTypeSeverity(scopeType: string) {
+  switch (scopeType) {
+    case 'ANCHOR': return 'danger';
+    case 'PARTNER': return 'warn';
+    case 'CLIENT': return 'info';
+    default: return 'secondary';
+  }
+}
+
+function getPrimaryClientName(): string {
+  if (!mapping.value?.primaryClientId) return '-';
+  const client = clients.value.find(c => c.id === mapping.value?.primaryClientId);
+  return client?.name || 'Unknown';
+}
+</script>
+
+<template>
+  <div class="page-container">
+    <header class="page-header">
+      <div>
+        <Button
+          icon="pi pi-arrow-left"
+          text
+          class="back-button"
+          @click="router.push('/authentication/email-domain-mappings')"
+        />
+        <h1 class="page-title">{{ mapping?.emailDomain || 'Email Domain Mapping' }}</h1>
+        <p class="page-subtitle" v-if="provider">
+          Identity Provider: {{ provider.name }}
+        </p>
+      </div>
+      <div v-if="mapping && !isEditing" class="header-actions">
+        <Button
+          label="Delete"
+          icon="pi pi-trash"
+          severity="danger"
+          text
+          @click="showDeleteDialog = true"
+        />
+        <Button
+          label="Edit"
+          icon="pi pi-pencil"
+          @click="startEditing"
+        />
+      </div>
+    </header>
+
+    <div v-if="loading" class="loading-container">
+      <ProgressSpinner strokeWidth="3" />
+    </div>
+
+    <Message v-else-if="error" severity="error" class="error-message">{{ error }}</Message>
+
+    <template v-else-if="mapping">
+      <div class="fc-card">
+        <div class="card-header">
+          <h2 class="card-title">Mapping Configuration</h2>
+          <div v-if="!isEditing" class="status-badges">
+            <Tag
+              :value="mapping.scopeType"
+              :severity="getScopeTypeSeverity(mapping.scopeType)"
+            />
+          </div>
+        </div>
+
+        <div class="form-content">
+          <!-- View Mode -->
+          <template v-if="!isEditing">
+            <div class="field-group">
+              <label>Email Domain</label>
+              <span class="field-value domain-value">{{ mapping.emailDomain }}</span>
+            </div>
+
+            <div class="field-group">
+              <label>Identity Provider</label>
+              <span class="field-value">{{ provider?.name || 'Unknown' }}</span>
+            </div>
+
+            <div class="field-group">
+              <label>Scope Type</label>
+              <span class="field-value">{{ mapping.scopeType }}</span>
+            </div>
+
+            <div class="field-group" v-if="mapping.scopeType === 'CLIENT'">
+              <label>Primary Client</label>
+              <span class="field-value">{{ getPrimaryClientName() }}</span>
+            </div>
+
+            <div class="field-group" v-if="isOidcMultiTenant">
+              <label>Required OIDC Tenant ID</label>
+              <span class="field-value" v-if="mapping.requiredOidcTenantId">
+                <code class="tenant-id">{{ mapping.requiredOidcTenantId }}</code>
+              </span>
+              <span class="field-value muted" v-else>Not set (any tenant allowed)</span>
+            </div>
+
+            <div class="field-group" v-if="showRoleDisplay">
+              <label>Allowed Roles</label>
+              <div v-if="mapping.allowedRoleIds?.length > 0" class="role-chips">
+                <Chip
+                  v-for="roleName in getAllowedRoleNames()"
+                  :key="roleName"
+                  :label="roleName"
+                />
+              </div>
+              <span class="field-value muted" v-else>All roles allowed</span>
+            </div>
+
+            <div class="field-group">
+              <label>Created</label>
+              <span class="field-value">{{ formatDate(mapping.createdAt) }}</span>
+            </div>
+
+            <div class="field-group">
+              <label>Last Updated</label>
+              <span class="field-value">{{ formatDate(mapping.updatedAt) }}</span>
+            </div>
+          </template>
+
+          <!-- Edit Mode -->
+          <template v-else>
+            <div class="field-group">
+              <label>Email Domain</label>
+              <span class="field-value domain-value">{{ mapping.emailDomain }}</span>
+              <small class="field-help">Email domain cannot be changed</small>
+            </div>
+
+            <div class="field-group">
+              <label>Identity Provider</label>
+              <span class="field-value">{{ provider?.name || 'Unknown' }}</span>
+              <small class="field-help">Identity provider cannot be changed</small>
+            </div>
+
+            <div class="field">
+              <label for="scopeType">Scope Type *</label>
+              <Select
+                id="scopeType"
+                v-model="editForm.scopeType"
+                :options="scopeTypeOptions"
+                optionLabel="label"
+                optionValue="value"
+                class="w-full"
+              >
+                <template #option="slotProps">
+                  <div class="type-option">
+                    <span class="type-label">{{ slotProps.option.label }}</span>
+                    <span class="type-description">{{ slotProps.option.description }}</span>
+                  </div>
+                </template>
+              </Select>
+            </div>
+
+            <div v-if="editForm.scopeType === 'CLIENT'" class="field">
+              <label for="primaryClient">Primary Client *</label>
+              <div class="client-select">
+                <AutoComplete
+                  id="primaryClient"
+                  v-model="selectedPrimaryClient"
+                  :suggestions="filteredClients"
+                  optionLabel="name"
+                  placeholder="Search for a client..."
+                  class="w-full"
+                  @complete="searchClients"
+                  @item-select="onClientSelect"
+                />
+                <Button
+                  v-if="selectedPrimaryClient"
+                  icon="pi pi-times"
+                  text
+                  @click="clearPrimaryClient"
+                />
+              </div>
+              <small class="field-help">
+                Users from this domain will be bound to this client
+              </small>
+            </div>
+
+            <div v-if="isOidcMultiTenant" class="field">
+              <label for="requiredOidcTenantId">Required OIDC Tenant ID</label>
+              <InputText
+                id="requiredOidcTenantId"
+                v-model="editForm.requiredOidcTenantId"
+                placeholder="e.g., 2e789bd9-a313-462a-b520-df9b586c00ed"
+                class="w-full"
+              />
+              <small class="field-help">
+                For Azure AD/Entra, enter the tenant GUID. If set, only users from this tenant can authenticate for this domain. Leave empty to allow any tenant.
+              </small>
+            </div>
+
+            <div v-if="showRolePicker" class="field">
+              <label>Allowed Roles</label>
+              <small class="field-help" style="margin-bottom: 8px; display: block;">
+                Restrict which roles users from this domain can be assigned. Move roles to the right to allow them. Leave empty to allow all roles.
+              </small>
+              <PickList
+                v-model="rolePickerModel"
+                dataKey="id"
+                breakpoint="960px"
+                :showSourceControls="false"
+                :showTargetControls="false"
+              >
+                <template #sourceheader>Available Roles</template>
+                <template #targetheader>Allowed Roles</template>
+                <template #item="{ item }">
+                  <div class="role-item">
+                    <span class="role-name">{{ item.displayName || item.name }}</span>
+                    <span class="role-app">{{ item.applicationCode }}</span>
+                  </div>
+                </template>
+              </PickList>
+            </div>
+
+            <Message v-if="editForm.scopeType === 'ANCHOR'" severity="info" :closable="false">
+              Anchor users have platform admin access and can access all clients.
+            </Message>
+
+            <Message v-if="editForm.scopeType === 'PARTNER'" severity="info" :closable="false">
+              Partner users can be granted access to multiple clients after login.
+            </Message>
+
+            <div class="form-actions">
+              <Button
+                label="Cancel"
+                text
+                @click="cancelEditing"
+                :disabled="saving"
+              />
+              <Button
+                label="Save Changes"
+                icon="pi pi-check"
+                @click="saveChanges"
+                :loading="saving"
+                :disabled="!isValid"
+              />
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+
+    <!-- Delete Confirmation Dialog -->
+    <Dialog
+      v-model:visible="showDeleteDialog"
+      header="Delete Email Domain Mapping"
+      modal
+      :style="{ width: '450px' }"
+    >
+      <div class="dialog-content">
+        <p>
+          Are you sure you want to delete the mapping for
+          <strong>{{ mapping?.emailDomain }}</strong>?
+        </p>
+
+        <Message severity="warn" :closable="false">
+          Users from this domain will no longer be able to authenticate.
+        </Message>
+      </div>
+
+      <template #footer>
+        <Button
+          label="Cancel"
+          text
+          @click="showDeleteDialog = false"
+          :disabled="deleteLoading"
+        />
+        <Button
+          label="Delete"
+          icon="pi pi-trash"
+          severity="danger"
+          @click="deleteMapping"
+          :loading="deleteLoading"
+        />
+      </template>
+    </Dialog>
+  </div>
+</template>
+
+<style scoped>
+.back-button {
+  margin-right: 8px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  padding: 60px;
+}
+
+.error-message {
+  margin-bottom: 16px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: #1e293b;
+}
+
+.status-badges {
+  display: flex;
+  gap: 8px;
+}
+
+.form-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 600px;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-group label {
+  font-weight: 500;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.field-value {
+  color: #1e293b;
+  font-size: 15px;
+}
+
+.domain-value {
+  font-family: monospace;
+  background: #f1f5f9;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.tenant-id {
+  font-family: monospace;
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.muted {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field label {
+  font-weight: 500;
+  color: #334155;
+}
+
+.field-help {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.type-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.type-option .type-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.type-option .type-description {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.client-select {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.role-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.role-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.role-item .role-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.role-item .role-app {
+  font-size: 12px;
+  color: #64748b;
+  font-family: monospace;
+}
+
+:deep(.p-picklist) {
+  max-width: 100%;
+}
+
+:deep(.p-picklist-list) {
+  min-height: 200px;
+  max-height: 300px;
+}
+</style>

@@ -188,7 +188,7 @@ public class CreateSubscriptionUseCase {
         // Authorization check: if service account is linked to an application, can principal manage it?
         AuthorizationContext authz = context.authz();
         if (authz != null && serviceAccount.applicationId != null &&
-                !authz.canManageApplication(serviceAccount.applicationId)) {
+                !authz.canAccessApplication(serviceAccount.applicationId)) {
             return Result.failure(new UseCaseError.AuthorizationError(
                 "NOT_AUTHORIZED",
                 "Not authorized to create subscriptions for this application",

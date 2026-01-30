@@ -8,6 +8,7 @@ import tech.flowcatalyst.platform.client.ClientAccessService;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.principal.events.RolesAssigned;
+import tech.flowcatalyst.platform.principal.events.ApplicationAccessAssigned;
 import tech.flowcatalyst.platform.principal.events.*;
 import tech.flowcatalyst.platform.principal.operations.activateuser.ActivateUserCommand;
 import tech.flowcatalyst.platform.principal.operations.activateuser.ActivateUserUseCase;
@@ -25,6 +26,8 @@ import tech.flowcatalyst.platform.principal.operations.updateuser.UpdateUserComm
 import tech.flowcatalyst.platform.principal.operations.updateuser.UpdateUserUseCase;
 import tech.flowcatalyst.platform.principal.operations.assignroles.AssignRolesCommand;
 import tech.flowcatalyst.platform.principal.operations.assignroles.AssignRolesUseCase;
+import tech.flowcatalyst.platform.principal.operations.assignapplicationaccess.AssignApplicationAccessCommand;
+import tech.flowcatalyst.platform.principal.operations.assignapplicationaccess.AssignApplicationAccessUseCase;
 
 import java.util.List;
 import java.util.Optional;
@@ -81,6 +84,9 @@ public class UserOperations {
 
     @Inject
     AssignRolesUseCase assignRolesUseCase;
+
+    @Inject
+    AssignApplicationAccessUseCase assignApplicationAccessUseCase;
 
     /**
      * Create a new User.
@@ -171,6 +177,21 @@ public class UserOperations {
      */
     public Result<RolesAssigned> assignRoles(AssignRolesCommand command, ExecutionContext context) {
         return assignRolesUseCase.execute(command, context);
+    }
+
+    /**
+     * Assign application access to a user.
+     *
+     * <p>This is a batch operation that sets the complete application access set.
+     * Applications not in the list will be removed, new applications will be added.
+     * Users get no applications by default - each must be explicitly granted.
+     *
+     * @param command The command containing user ID and desired application IDs
+     * @param context The execution context
+     * @return Success with ApplicationAccessAssigned, or Failure with error
+     */
+    public Result<ApplicationAccessAssigned> assignApplicationAccess(AssignApplicationAccessCommand command, ExecutionContext context) {
+        return assignApplicationAccessUseCase.execute(command, context);
     }
 
     // ========================================================================

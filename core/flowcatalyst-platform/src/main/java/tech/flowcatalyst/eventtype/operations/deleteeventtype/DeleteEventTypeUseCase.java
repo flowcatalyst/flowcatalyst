@@ -42,7 +42,7 @@ public class DeleteEventTypeUseCase {
 
         // Authorization check: can principal manage event types with this prefix?
         AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canManageResourceWithPrefix(eventType.code())) {
+        if (authz != null && !authz.canAccessResourceWithPrefix(eventType.code())) {
             return Result.failure(new UseCaseError.AuthorizationError(
                 "NOT_AUTHORIZED",
                 "Not authorized to delete this event type",

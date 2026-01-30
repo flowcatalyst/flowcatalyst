@@ -100,9 +100,17 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
   '/authorization/roles': 'platform:iam:role:view',
   '/authorization/permissions': 'platform:iam:permission:view',
 
-  // Authentication
-  '/authentication/domain-idps': 'platform:iam:idp:manage',
-  '/authentication/anchor-domains': 'platform:iam:idp:manage',
+  // Authentication - Identity Providers
+  '/authentication/identity-providers': 'platform:iam:identity-provider:view',
+  '/authentication/identity-providers/new': 'platform:iam:identity-provider:create',
+
+  // Authentication - Email Domain Mappings
+  '/authentication/email-domain-mappings': 'platform:iam:email-domain-mapping:view',
+  '/authentication/email-domain-mappings/new': 'platform:iam:email-domain-mapping:create',
+
+  // Authentication - OAuth Clients
+  '/authentication/oauth-clients': 'platform:iam:oauth-client:view',
+  '/authentication/oauth-clients/new': 'platform:iam:oauth-client:create',
 
   // Event Types
   '/event-types': 'platform:messaging:event-type:view',

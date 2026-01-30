@@ -38,22 +38,11 @@ public class Principal {
 
 
     /**
-     * Scope for application management access.
-     * Determines which applications this principal can manage.
-     * - ALL: Can manage all applications (platform admins)
-     * - SPECIFIC: Can only manage applications in managedApplicationIds
-     * - NONE: Cannot manage any applications (default)
+     * Applications this principal has access to.
+     * Users get no applications by default - each must be explicitly granted.
+     * This applies to all user scopes including ANCHOR users.
      */
-    public ManagedApplicationScope managedApplicationScope = ManagedApplicationScope.NONE;
-
-    /**
-     * Applications this principal can manage (create roles, permissions, event types, etc.).
-     * Interpretation depends on managedApplicationScope:
-     * - ALL: This list is ignored, can manage all applications
-     * - SPECIFIC: Can only manage applications in this list
-     * - NONE: Cannot manage any applications (list should be empty)
-     */
-    public List<String> managedApplicationIds = new ArrayList<>();
+    public List<String> accessibleApplicationIds = new ArrayList<>();
 
     public String name;
 
@@ -101,6 +90,23 @@ public class Principal {
      */
     public boolean hasRole(String roleName) {
         return roles.stream().anyMatch(r -> r.roleName.equals(roleName));
+    }
+
+    /**
+     * Check if principal has access to a specific application.
+     */
+    public boolean hasApplicationAccess(String applicationId) {
+        return accessibleApplicationIds != null && accessibleApplicationIds.contains(applicationId);
+    }
+
+    /**
+     * Get accessible application IDs as a set for quick lookup.
+     */
+    public Set<String> getAccessibleApplicationIds() {
+        if (accessibleApplicationIds == null) {
+            return Set.of();
+        }
+        return Set.copyOf(accessibleApplicationIds);
     }
 
     /**

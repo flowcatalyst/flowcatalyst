@@ -94,6 +94,19 @@ Session tokens include a `clients` claim:
 
 ## Database Operations - CRITICAL RULES
 
+### No Foreign Keys
+**IMPORTANT**: Never use foreign key constraints in this project. Use indexes on join columns instead.
+
+- **No `REFERENCES` clauses** - don't create FK constraints
+- **Always add indexes** on columns used for joins (e.g., `CREATE INDEX idx_xxx ON table(parent_id)`)
+- **Application enforces integrity** - referential integrity is handled in code, not database
+
+This allows for:
+- Easier data migrations and schema changes
+- Better performance (no FK constraint checks)
+- More flexible data cleanup strategies
+- Simpler cross-service data management
+
 ### NEVER Drop Collections or Databases Without Permission
 **IMPORTANT**: NEVER drop MongoDB collections or databases without explicit user permission. Dropping data is destructive and irreversible.
 

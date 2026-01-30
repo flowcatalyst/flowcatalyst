@@ -8,6 +8,8 @@ import tech.flowcatalyst.dispatchpool.DispatchPool;
 import tech.flowcatalyst.eventtype.EventType;
 import tech.flowcatalyst.platform.application.Application;
 import tech.flowcatalyst.platform.application.ApplicationClientConfig;
+import tech.flowcatalyst.platform.authentication.domain.EmailDomainMapping;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProvider;
 import tech.flowcatalyst.platform.authentication.oauth.OAuthClient;
 import tech.flowcatalyst.platform.authorization.AuthPermission;
 import tech.flowcatalyst.platform.authorization.AuthRole;
@@ -81,6 +83,10 @@ public class PanacheAggregateRegistry {
             persistDispatchPool((DispatchPool) aggregate);
         } else if (clazz == ClientAccessGrant.class) {
             persistClientAccessGrant((ClientAccessGrant) aggregate);
+        } else if (clazz == IdentityProvider.class) {
+            persistIdentityProvider((IdentityProvider) aggregate);
+        } else if (clazz == EmailDomainMapping.class) {
+            persistEmailDomainMapping((EmailDomainMapping) aggregate);
         } else {
             throw new IllegalArgumentException("Unknown aggregate type: " + clazz.getName() +
                 ". Register it in PanacheAggregateRegistry.");
@@ -638,6 +644,131 @@ public class PanacheAggregateRegistry {
             .executeUpdate();
     }
 
+    private void persistIdentityProvider(IdentityProvider idp) {
+        // Insert/update main identity_providers table
+        String sql = """
+            INSERT INTO identity_providers (id, code, name, type, oidc_issuer_url, oidc_client_id,
+                oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern, created_at, updated_at)
+            VALUES (:id, :code, :name, :type, :oidcIssuerUrl, :oidcClientId,
+                :oidcClientSecretRef, :oidcMultiTenant, :oidcIssuerPattern, :createdAt, :updatedAt)
+            ON CONFLICT (id) DO UPDATE SET
+                code = EXCLUDED.code, name = EXCLUDED.name, type = EXCLUDED.type,
+                oidc_issuer_url = EXCLUDED.oidc_issuer_url, oidc_client_id = EXCLUDED.oidc_client_id,
+                oidc_client_secret_ref = EXCLUDED.oidc_client_secret_ref, oidc_multi_tenant = EXCLUDED.oidc_multi_tenant,
+                oidc_issuer_pattern = EXCLUDED.oidc_issuer_pattern, updated_at = EXCLUDED.updated_at
+            """;
+        em.createNativeQuery(sql)
+            .setParameter("id", idp.id)
+            .setParameter("code", idp.code)
+            .setParameter("name", idp.name)
+            .setParameter("type", idp.type != null ? idp.type.name() : "INTERNAL")
+            .setParameter("oidcIssuerUrl", idp.oidcIssuerUrl)
+            .setParameter("oidcClientId", idp.oidcClientId)
+            .setParameter("oidcClientSecretRef", idp.oidcClientSecretRef)
+            .setParameter("oidcMultiTenant", idp.oidcMultiTenant)
+            .setParameter("oidcIssuerPattern", idp.oidcIssuerPattern)
+            .setParameter("createdAt", idp.createdAt)
+            .setParameter("updatedAt", idp.updatedAt)
+            .executeUpdate();
+
+        // Handle allowed_email_domains junction table
+        em.createNativeQuery("DELETE FROM identity_provider_allowed_domains WHERE identity_provider_id = :idpId")
+            .setParameter("idpId", idp.id)
+            .executeUpdate();
+
+        if (idp.allowedEmailDomains != null && !idp.allowedEmailDomains.isEmpty()) {
+            for (String domain : idp.allowedEmailDomains) {
+                em.createNativeQuery("""
+                    INSERT INTO identity_provider_allowed_domains (identity_provider_id, email_domain)
+                    VALUES (:idpId, :domain)
+                    ON CONFLICT DO NOTHING
+                    """)
+                    .setParameter("idpId", idp.id)
+                    .setParameter("domain", domain.toLowerCase())
+                    .executeUpdate();
+            }
+        }
+    }
+
+    private void persistEmailDomainMapping(EmailDomainMapping mapping) {
+        // Insert/update main email_domain_mappings table
+        String sql = """
+            INSERT INTO email_domain_mappings (id, email_domain, identity_provider_id, scope_type,
+                primary_client_id, required_oidc_tenant_id, created_at, updated_at)
+            VALUES (:id, :emailDomain, :identityProviderId, :scopeType,
+                :primaryClientId, :requiredOidcTenantId, :createdAt, :updatedAt)
+            ON CONFLICT (id) DO UPDATE SET
+                email_domain = EXCLUDED.email_domain, identity_provider_id = EXCLUDED.identity_provider_id,
+                scope_type = EXCLUDED.scope_type, primary_client_id = EXCLUDED.primary_client_id,
+                required_oidc_tenant_id = EXCLUDED.required_oidc_tenant_id,
+                updated_at = EXCLUDED.updated_at
+            """;
+        em.createNativeQuery(sql)
+            .setParameter("id", mapping.id)
+            .setParameter("emailDomain", mapping.emailDomain)
+            .setParameter("identityProviderId", mapping.identityProviderId)
+            .setParameter("scopeType", mapping.scopeType != null ? mapping.scopeType.name() : "CLIENT")
+            .setParameter("primaryClientId", mapping.primaryClientId)
+            .setParameter("requiredOidcTenantId", mapping.requiredOidcTenantId)
+            .setParameter("createdAt", mapping.createdAt)
+            .setParameter("updatedAt", mapping.updatedAt)
+            .executeUpdate();
+
+        // Handle additional_client_ids junction table
+        em.createNativeQuery("DELETE FROM email_domain_mapping_additional_clients WHERE email_domain_mapping_id = :mappingId")
+            .setParameter("mappingId", mapping.id)
+            .executeUpdate();
+
+        if (mapping.additionalClientIds != null && !mapping.additionalClientIds.isEmpty()) {
+            for (String clientId : mapping.additionalClientIds) {
+                em.createNativeQuery("""
+                    INSERT INTO email_domain_mapping_additional_clients (email_domain_mapping_id, client_id)
+                    VALUES (:mappingId, :clientId)
+                    ON CONFLICT DO NOTHING
+                    """)
+                    .setParameter("mappingId", mapping.id)
+                    .setParameter("clientId", clientId)
+                    .executeUpdate();
+            }
+        }
+
+        // Handle granted_client_ids junction table
+        em.createNativeQuery("DELETE FROM email_domain_mapping_granted_clients WHERE email_domain_mapping_id = :mappingId")
+            .setParameter("mappingId", mapping.id)
+            .executeUpdate();
+
+        if (mapping.grantedClientIds != null && !mapping.grantedClientIds.isEmpty()) {
+            for (String clientId : mapping.grantedClientIds) {
+                em.createNativeQuery("""
+                    INSERT INTO email_domain_mapping_granted_clients (email_domain_mapping_id, client_id)
+                    VALUES (:mappingId, :clientId)
+                    ON CONFLICT DO NOTHING
+                    """)
+                    .setParameter("mappingId", mapping.id)
+                    .setParameter("clientId", clientId)
+                    .executeUpdate();
+            }
+        }
+
+        // Handle allowed_role_ids junction table
+        em.createNativeQuery("DELETE FROM email_domain_mapping_allowed_roles WHERE email_domain_mapping_id = :mappingId")
+            .setParameter("mappingId", mapping.id)
+            .executeUpdate();
+
+        if (mapping.allowedRoleIds != null && !mapping.allowedRoleIds.isEmpty()) {
+            for (String roleId : mapping.allowedRoleIds) {
+                em.createNativeQuery("""
+                    INSERT INTO email_domain_mapping_allowed_roles (email_domain_mapping_id, role_id)
+                    VALUES (:mappingId, :roleId)
+                    ON CONFLICT DO NOTHING
+                    """)
+                    .setParameter("mappingId", mapping.id)
+                    .setParameter("roleId", roleId)
+                    .executeUpdate();
+            }
+        }
+    }
+
     // ========================================================================
     // Helper Methods
     // ========================================================================
@@ -656,6 +787,8 @@ public class PanacheAggregateRegistry {
         if (clazz == AuthPermission.class) return "auth_permissions";
         if (clazz == DispatchPool.class) return "dispatch_pools";
         if (clazz == ClientAccessGrant.class) return "client_access_grants";
+        if (clazz == IdentityProvider.class) return "identity_providers";
+        if (clazz == EmailDomainMapping.class) return "email_domain_mappings";
         return null;
     }
 

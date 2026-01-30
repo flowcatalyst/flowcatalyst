@@ -6,7 +6,6 @@ import tech.flowcatalyst.platform.application.Application;
 import tech.flowcatalyst.platform.application.ApplicationRepository;
 import tech.flowcatalyst.platform.authorization.PermissionRegistry;
 import tech.flowcatalyst.platform.client.ClientAccessService;
-import tech.flowcatalyst.platform.principal.ManagedApplicationScope;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
 import tech.flowcatalyst.platform.principal.UserScope;
@@ -24,7 +23,7 @@ import java.util.stream.Collectors;
  * for use case execution, including:
  * <ul>
  *   <li>Principal roles and permissions</li>
- *   <li>Application management scope and codes</li>
+ *   <li>Application access (explicitly granted applications)</li>
  *   <li>Client access scope</li>
  * </ul>
  */
@@ -74,16 +73,11 @@ public class AuthorizationContextFactory {
         // Resolve permissions from roles
         Set<String> permissions = resolvePermissions(roles);
 
-        // Get managed application scope
-        ManagedApplicationScope scope = principal.managedApplicationScope != null
-            ? principal.managedApplicationScope
-            : ManagedApplicationScope.NONE;
-
-        // Get managed application IDs and codes
-        Set<String> managedAppIds = new HashSet<>(
-            principal.managedApplicationIds != null ? principal.managedApplicationIds : Collections.emptyList()
+        // Get accessible application IDs and codes
+        Set<String> accessibleAppIds = new HashSet<>(
+            principal.accessibleApplicationIds != null ? principal.accessibleApplicationIds : Collections.emptyList()
         );
-        Set<String> managedAppCodes = resolveManagedApplicationCodes(managedAppIds);
+        Set<String> accessibleAppCodes = resolveApplicationCodes(accessibleAppIds);
 
         // Get client access
         Set<String> accessibleClientIds = clientAccessService.getAccessibleClients(principal);
@@ -95,9 +89,8 @@ public class AuthorizationContextFactory {
             principal.type,
             roles,
             permissions,
-            scope,
-            managedAppIds,
-            managedAppCodes,
+            accessibleAppIds,
+            accessibleAppCodes,
             accessibleClientIds,
             canAccessAllClients
         );
@@ -128,7 +121,7 @@ public class AuthorizationContextFactory {
      * @param applicationIds the application IDs
      * @return set of application codes
      */
-    private Set<String> resolveManagedApplicationCodes(Set<String> applicationIds) {
+    private Set<String> resolveApplicationCodes(Set<String> applicationIds) {
         if (applicationIds == null || applicationIds.isEmpty()) {
             return Collections.emptySet();
         }

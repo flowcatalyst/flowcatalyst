@@ -10,7 +10,7 @@ import Column from 'primevue/column';
 import AutoComplete from 'primevue/autocomplete';
 import Dialog from 'primevue/dialog';
 import ProgressSpinner from 'primevue/progressspinner';
-import {usersApi, type User, type ClientAccessGrant, type RoleAssignment, type RolesAssignedResponse} from '@/api/users';
+import {usersApi, type User, type ClientAccessGrant, type RoleAssignment, type RolesAssignedResponse, type ApplicationAccessGrant, type ApplicationAccessAssignedResponse, type AvailableApplication} from '@/api/users';
 import {clientsApi, type Client} from '@/api/clients';
 import {rolesApi, type Role} from '@/api/roles';
 
@@ -43,6 +43,14 @@ const showRolePickerDialog = ref(false);
 const roleSearchQuery = ref('');
 const selectedRoleNames = ref<Set<string>>(new Set());
 const savingRoles = ref(false);
+
+// Application access management
+const applicationAccessGrants = ref<ApplicationAccessGrant[]>([]);
+const availableApplications = ref<AvailableApplication[]>([]);
+const showAppPickerDialog = ref(false);
+const appSearchQuery = ref('');
+const selectedAppIds = ref<Set<string>>(new Set());
+const savingApps = ref(false);
 
 const isAnchorUser = computed(() => user.value?.isAnchorUser ?? false);
 
@@ -115,10 +123,29 @@ const hasRoleChanges = computed(() => {
   return false;
 });
 
+// Filtered available apps for the picker
+const filteredAvailableApps = computed(() => {
+  const query = appSearchQuery.value.toLowerCase();
+  return availableApplications.value.filter(a =>
+      a.name.toLowerCase().includes(query) ||
+      a.code.toLowerCase().includes(query)
+  );
+});
+
+// Check if there are unsaved changes in the app picker
+const hasAppChanges = computed(() => {
+  const currentApps = new Set(applicationAccessGrants.value.map(a => a.applicationId));
+  if (currentApps.size !== selectedAppIds.value.size) return true;
+  for (const appId of currentApps) {
+    if (!selectedAppIds.value.has(appId)) return true;
+  }
+  return false;
+});
+
 onMounted(async () => {
   await Promise.all([loadUser(), loadClients(), loadAvailableRoles()]);
   if (user.value) {
-    await Promise.all([loadClientGrants(), loadRoleAssignments()]);
+    await Promise.all([loadClientGrants(), loadRoleAssignments(), loadApplicationAccess()]);
     // Check if we should start in edit mode
     if (route.query.edit === 'true') {
       startEdit();
@@ -176,6 +203,24 @@ async function loadRoleAssignments() {
     roleAssignments.value = response.roles;
   } catch (error) {
     console.error('Failed to fetch role assignments:', error);
+  }
+}
+
+async function loadApplicationAccess() {
+  try {
+    const response = await usersApi.getApplicationAccess(userId);
+    applicationAccessGrants.value = response.applications;
+  } catch (error) {
+    console.error('Failed to fetch application access:', error);
+  }
+}
+
+async function loadAvailableApplications() {
+  try {
+    const response = await usersApi.getAvailableApplications(userId);
+    availableApplications.value = response.applications;
+  } catch (error) {
+    console.error('Failed to fetch available applications:', error);
   }
 }
 
@@ -398,6 +443,87 @@ function getRoleDisplay(roleName: string) {
   };
 }
 
+// ========== Application Access Functions ==========
+
+async function openAppPicker() {
+  // Load available applications if not already loaded
+  if (availableApplications.value.length === 0) {
+    await loadAvailableApplications();
+  }
+  // Initialize selected apps from current grants
+  selectedAppIds.value = new Set(applicationAccessGrants.value.map(a => a.applicationId));
+  appSearchQuery.value = '';
+  showAppPickerDialog.value = true;
+}
+
+function toggleApp(appId: string) {
+  if (selectedAppIds.value.has(appId)) {
+    selectedAppIds.value.delete(appId);
+  } else {
+    selectedAppIds.value.add(appId);
+  }
+  // Force reactivity update
+  selectedAppIds.value = new Set(selectedAppIds.value);
+}
+
+function removeSelectedApp(appId: string) {
+  selectedAppIds.value.delete(appId);
+  selectedAppIds.value = new Set(selectedAppIds.value);
+}
+
+function cancelAppPicker() {
+  showAppPickerDialog.value = false;
+}
+
+async function saveApps() {
+  savingApps.value = true;
+  try {
+    const applicationIds = Array.from(selectedAppIds.value);
+    const response: ApplicationAccessAssignedResponse = await usersApi.assignApplicationAccess(userId, applicationIds);
+
+    // Update application access grants from response
+    applicationAccessGrants.value = response.applications;
+
+    showAppPickerDialog.value = false;
+
+    const added = response.added.length;
+    const removed = response.removed.length;
+    let detail = 'Application access updated';
+    if (added > 0 && removed > 0) {
+      detail = `Added ${added} app(s), removed ${removed} app(s)`;
+    } else if (added > 0) {
+      detail = `Added ${added} app(s)`;
+    } else if (removed > 0) {
+      detail = `Removed ${removed} app(s)`;
+    }
+
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail,
+      life: 3000
+    });
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error?.message || 'Failed to save application access',
+      life: 5000
+    });
+  } finally {
+    savingApps.value = false;
+  }
+}
+
+// Get app display info from available applications
+function getAppDisplay(appId: string) {
+  const app = availableApplications.value.find(a => a.id === appId);
+  return {
+    name: app?.name || appId,
+    code: app?.code || ''
+  };
+}
+
 function formatDate(dateStr: string | null | undefined) {
   if (!dateStr) return '—';
   return new Date(dateStr).toLocaleDateString();
@@ -617,6 +743,45 @@ function goBack() {
           </Column>
         </DataTable>
       </div>
+
+      <!-- Application Access Card -->
+      <div class="fc-card">
+        <div class="card-header">
+          <h2 class="card-title">Application Access</h2>
+          <Button
+              label="Manage Applications"
+              icon="pi pi-pencil"
+              text
+              @click="openAppPicker"
+          />
+        </div>
+
+        <div v-if="applicationAccessGrants.length === 0" class="no-apps-notice">
+          <p>No application access granted to this user.</p>
+          <Button
+              label="Grant Application Access"
+              icon="pi pi-plus"
+              text
+              @click="openAppPicker"
+          />
+        </div>
+
+        <DataTable v-else :value="applicationAccessGrants" class="p-datatable-sm">
+          <Column field="applicationName" header="Application">
+            <template #body="{ data }">
+              <div class="app-cell">
+                <span class="app-name">{{ data.applicationName || data.applicationId }}</span>
+                <span class="app-code">{{ data.applicationCode }}</span>
+              </div>
+            </template>
+          </Column>
+          <Column field="grantedAt" header="Granted">
+            <template #body="{ data }">
+              {{ formatDate(data.grantedAt) }}
+            </template>
+          </Column>
+        </DataTable>
+      </div>
     </template>
 
     <!-- Add Client Dialog -->
@@ -737,6 +902,89 @@ function goBack() {
             :disabled="!hasRoleChanges"
             :loading="savingRoles"
             @click="saveRoles"
+        />
+      </template>
+    </Dialog>
+
+    <!-- Application Picker Dialog (Dual-Pane) -->
+    <Dialog
+        v-model:visible="showAppPickerDialog"
+        header="Manage Application Access"
+        :style="{width: '700px'}"
+        :modal="true"
+        :closable="!savingApps"
+    >
+      <div class="app-picker">
+        <!-- Left Pane: Available Applications -->
+        <div class="app-pane available-apps">
+          <div class="pane-header">
+            <h4>Available Applications</h4>
+            <InputText
+                v-model="appSearchQuery"
+                placeholder="Filter applications..."
+                class="app-filter"
+            />
+          </div>
+          <div class="app-list">
+            <div
+                v-for="app in filteredAvailableApps"
+                :key="app.id"
+                class="app-item"
+                :class="{ selected: selectedAppIds.has(app.id) }"
+                @click="toggleApp(app.id)"
+            >
+              <div class="app-item-content">
+                <span class="app-display-name">{{ app.name }}</span>
+                <span class="app-name-code">{{ app.code }}</span>
+              </div>
+              <i v-if="selectedAppIds.has(app.id)" class="pi pi-check check-icon"></i>
+            </div>
+            <div v-if="filteredAvailableApps.length === 0" class="no-results">
+              No applications found
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Pane: Selected Applications -->
+        <div class="app-pane selected-apps">
+          <div class="pane-header">
+            <h4>Selected Applications ({{ selectedAppIds.size }})</h4>
+          </div>
+          <div class="app-list">
+            <div
+                v-for="appId in selectedAppIds"
+                :key="appId"
+                class="app-item selected-item"
+            >
+              <div class="app-item-content">
+                <span class="app-display-name">{{ getAppDisplay(appId).name }}</span>
+                <span class="app-name-code">{{ getAppDisplay(appId).code }}</span>
+              </div>
+              <Button
+                  icon="pi pi-times"
+                  text
+                  rounded
+                  severity="danger"
+                  size="small"
+                  @click="removeSelectedApp(appId)"
+                  v-tooltip.top="'Remove'"
+              />
+            </div>
+            <div v-if="selectedAppIds.size === 0" class="no-results">
+              No applications selected
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <Button label="Cancel" text @click="cancelAppPicker" :disabled="savingApps"/>
+        <Button
+            label="Save Application Access"
+            icon="pi pi-check"
+            :disabled="!hasAppChanges"
+            :loading="savingApps"
+            @click="saveApps"
         />
       </template>
     </Dialog>
@@ -880,14 +1128,16 @@ function goBack() {
 }
 
 .no-clients-notice,
-.no-roles-notice {
+.no-roles-notice,
+.no-apps-notice {
   text-align: center;
   padding: 24px;
   color: #64748b;
 }
 
 .no-clients-notice p,
-.no-roles-notice p {
+.no-roles-notice p,
+.no-apps-notice p {
   margin: 0 0 12px 0;
 }
 
@@ -937,6 +1187,24 @@ function goBack() {
 }
 
 .role-full-name {
+  font-size: 12px;
+  color: #64748b;
+  font-family: monospace;
+}
+
+.app-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.app-code {
   font-size: 12px;
   color: #64748b;
   font-family: monospace;
@@ -1072,17 +1340,113 @@ function goBack() {
   font-size: 13px;
 }
 
+/* Dual-pane app picker styles (mirrors role picker) */
+.app-picker {
+  display: flex;
+  gap: 16px;
+  min-height: 350px;
+}
+
+.app-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.app-pane .pane-header {
+  padding: 12px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.app-pane .pane-header h4 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.selected-apps .pane-header h4 {
+  margin-bottom: 0;
+}
+
+.app-filter {
+  width: 100%;
+}
+
+.app-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.app-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.app-item:hover {
+  background: #f1f5f9;
+}
+
+.app-item.selected {
+  background: #eff6ff;
+}
+
+.app-item.selected-item {
+  background: #f8fafc;
+  cursor: default;
+}
+
+.app-item.selected-item:hover {
+  background: #f1f5f9;
+}
+
+.app-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.app-item-content .app-display-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.app-item-content .app-name-code {
+  font-size: 11px;
+  color: #64748b;
+  font-family: monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 768px) {
   .info-grid {
     grid-template-columns: 1fr;
   }
 
-  .role-picker {
+  .role-picker,
+  .app-picker {
     flex-direction: column;
     min-height: 500px;
   }
 
-  .role-pane {
+  .role-pane,
+  .app-pane {
     min-height: 200px;
   }
 }

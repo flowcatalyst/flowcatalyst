@@ -6,8 +6,8 @@ import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import tech.flowcatalyst.platform.principal.Principal;
+import tech.flowcatalyst.platform.principal.entity.PrincipalApplicationAccessEntity;
 import tech.flowcatalyst.platform.principal.entity.PrincipalEntity;
-import tech.flowcatalyst.platform.principal.entity.PrincipalManagedApplicationEntity;
 import tech.flowcatalyst.platform.principal.entity.PrincipalRoleEntity;
 import tech.flowcatalyst.platform.principal.mapper.PrincipalMapper;
 
@@ -41,7 +41,7 @@ public class PrincipalWriteRepository implements PanacheRepositoryBase<Principal
         saveRoles(principal.id, principal.roles);
 
         // Save managed applications to normalized table
-        saveManagedApplications(principal.id, principal.managedApplicationIds);
+        saveApplicationAccess(principal.id, principal.accessibleApplicationIds);
     }
 
     /**
@@ -59,7 +59,7 @@ public class PrincipalWriteRepository implements PanacheRepositoryBase<Principal
         saveRoles(principal.id, principal.roles);
 
         // Update managed applications in normalized table
-        saveManagedApplications(principal.id, principal.managedApplicationIds);
+        saveApplicationAccess(principal.id, principal.accessibleApplicationIds);
     }
 
     /**
@@ -85,8 +85,8 @@ public class PrincipalWriteRepository implements PanacheRepositoryBase<Principal
             .setParameter("id", id)
             .executeUpdate();
 
-        // Delete managed applications
-        em.createQuery("DELETE FROM PrincipalManagedApplicationEntity WHERE principalId = :id")
+        // Delete application access grants
+        em.createQuery("DELETE FROM PrincipalApplicationAccessEntity WHERE principalId = :id")
             .setParameter("id", id)
             .executeUpdate();
 
@@ -116,23 +116,23 @@ public class PrincipalWriteRepository implements PanacheRepositoryBase<Principal
     }
 
     /**
-     * Save managed applications to the normalized principal_managed_applications table.
-     * Replaces all existing managed applications for the principal.
+     * Save application access grants to the normalized principal_application_access table.
+     * Replaces all existing application access for the principal.
      */
-    private void saveManagedApplications(String principalId, List<String> applicationIds) {
-        // Delete existing managed applications
-        em.createQuery("DELETE FROM PrincipalManagedApplicationEntity WHERE principalId = :id")
+    private void saveApplicationAccess(String principalId, List<String> applicationIds) {
+        // Delete existing application access grants
+        em.createQuery("DELETE FROM PrincipalApplicationAccessEntity WHERE principalId = :id")
             .setParameter("id", principalId)
             .executeUpdate();
 
         // Flush to synchronize with database
         em.flush();
 
-        // Insert new managed applications using merge to handle any stale references
+        // Insert new application access using merge to handle any stale references
         if (applicationIds != null) {
-            List<PrincipalManagedApplicationEntity> entities =
-                PrincipalMapper.toManagedApplicationEntities(principalId, applicationIds);
-            for (PrincipalManagedApplicationEntity entity : entities) {
+            List<PrincipalApplicationAccessEntity> entities =
+                PrincipalMapper.toApplicationAccessEntities(principalId, applicationIds);
+            for (PrincipalApplicationAccessEntity entity : entities) {
                 em.merge(entity);
             }
         }

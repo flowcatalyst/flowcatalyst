@@ -9,8 +9,13 @@ import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
-import tech.flowcatalyst.platform.authentication.AuthProvider;
 import tech.flowcatalyst.platform.authentication.IdpType;
+import tech.flowcatalyst.platform.authentication.domain.EmailDomainMapping;
+import tech.flowcatalyst.platform.authentication.domain.EmailDomainMappingRepository;
+import tech.flowcatalyst.platform.authentication.domain.ScopeType;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProvider;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProviderRepository;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProviderType;
 import tech.flowcatalyst.platform.principal.*;
 import tech.flowcatalyst.platform.client.*;
 import tech.flowcatalyst.platform.application.Application;
@@ -62,10 +67,10 @@ public class DevDataSeeder {
     PrincipalRepository principalRepo;
 
     @Inject
-    AnchorDomainRepository anchorDomainRepo;
+    IdentityProviderRepository identityProviderRepo;
 
     @Inject
-    ClientAuthConfigRepository authConfigRepo;
+    EmailDomainMappingRepository emailDomainMappingRepo;
 
     @Inject
     ClientAccessGrantRepository grantRepo;
@@ -139,15 +144,37 @@ public class DevDataSeeder {
     }
 
     private void seedAnchorDomain() {
-        if (anchorDomainRepo.existsByDomain("flowcatalyst.local")) {
+        if (emailDomainMappingRepo.isAnchorDomain("flowcatalyst.local")) {
             return;
         }
 
-        AnchorDomain anchor = new AnchorDomain();
-        anchor.id = TsidGenerator.generate(EntityType.ANCHOR_DOMAIN);
-        anchor.domain = "flowcatalyst.local";
-        anchorDomainRepo.persist(anchor);
-        LOG.info("Created anchor domain: flowcatalyst.local");
+        // Ensure internal IDP exists
+        String internalIdpId = ensureInternalIdentityProvider();
+
+        // Create anchor domain mapping
+        EmailDomainMapping mapping = new EmailDomainMapping();
+        mapping.id = TsidGenerator.generate(EntityType.EMAIL_DOMAIN_MAPPING);
+        mapping.emailDomain = "flowcatalyst.local";
+        mapping.identityProviderId = internalIdpId;
+        mapping.scopeType = ScopeType.ANCHOR;
+        emailDomainMappingRepo.persist(mapping);
+        LOG.info("Created anchor domain mapping: flowcatalyst.local");
+    }
+
+    private String ensureInternalIdentityProvider() {
+        Optional<IdentityProvider> existing = identityProviderRepo.findByCode("internal");
+        if (existing.isPresent()) {
+            return existing.get().id;
+        }
+
+        IdentityProvider idp = new IdentityProvider();
+        idp.id = TsidGenerator.generate(EntityType.IDENTITY_PROVIDER);
+        idp.code = "internal";
+        idp.name = "Internal Authentication";
+        idp.type = IdentityProviderType.INTERNAL;
+        identityProviderRepo.persist(idp);
+        LOG.info("Created internal identity provider");
+        return idp.id;
     }
 
     private void seedClients() {
@@ -174,23 +201,29 @@ public class DevDataSeeder {
     }
 
     private void seedAuthConfig() {
-        createAuthConfigIfNotExists("flowcatalyst.local", AuthProvider.INTERNAL);
-        createAuthConfigIfNotExists("acme.com", AuthProvider.INTERNAL);
-        createAuthConfigIfNotExists("globex.com", AuthProvider.INTERNAL);
-        createAuthConfigIfNotExists("initech.com", AuthProvider.INTERNAL);
-        createAuthConfigIfNotExists("partner.io", AuthProvider.INTERNAL);
+        // Ensure internal IDP exists for all domain mappings
+        String internalIdpId = ensureInternalIdentityProvider();
+
+        // Create domain mappings (these link email domains to the internal IDP)
+        // flowcatalyst.local is created in seedAnchorDomain with scopeType=ANCHOR
+        createEmailDomainMappingIfNotExists("acme.com", internalIdpId, ScopeType.CLIENT);
+        createEmailDomainMappingIfNotExists("globex.com", internalIdpId, ScopeType.CLIENT);
+        createEmailDomainMappingIfNotExists("initech.com", internalIdpId, ScopeType.CLIENT);
+        createEmailDomainMappingIfNotExists("partner.io", internalIdpId, ScopeType.PARTNER);
     }
 
-    private void createAuthConfigIfNotExists(String domain, AuthProvider provider) {
-        if (authConfigRepo.findByEmailDomain(domain).isPresent()) {
+    private void createEmailDomainMappingIfNotExists(String domain, String idpId, ScopeType scopeType) {
+        if (emailDomainMappingRepo.findByEmailDomain(domain).isPresent()) {
             return;
         }
 
-        ClientAuthConfig config = new ClientAuthConfig();
-        config.id = TsidGenerator.generate(EntityType.CLIENT_AUTH_CONFIG);
-        config.emailDomain = domain;
-        config.authProvider = provider;
-        authConfigRepo.persist(config);
+        EmailDomainMapping mapping = new EmailDomainMapping();
+        mapping.id = TsidGenerator.generate(EntityType.EMAIL_DOMAIN_MAPPING);
+        mapping.emailDomain = domain;
+        mapping.identityProviderId = idpId;
+        mapping.scopeType = scopeType;
+        emailDomainMappingRepo.persist(mapping);
+        LOG.infof("Created email domain mapping: %s (%s)", domain, scopeType);
     }
 
     private void seedUsers() {

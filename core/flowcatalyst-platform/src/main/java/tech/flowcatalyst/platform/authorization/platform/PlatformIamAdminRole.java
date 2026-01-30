@@ -34,9 +34,19 @@ public class PlatformIamAdminRole {
             PlatformIamPermissions.OAUTH_CLIENT_CREATE,
             PlatformIamPermissions.OAUTH_CLIENT_UPDATE,
             PlatformIamPermissions.OAUTH_CLIENT_DELETE,
-            // Anchor domain management
+            // Anchor domain management (legacy)
             PlatformIamPermissions.ANCHOR_DOMAIN_VIEW,
-            PlatformIamPermissions.ANCHOR_DOMAIN_MANAGE
+            PlatformIamPermissions.ANCHOR_DOMAIN_MANAGE,
+            // Identity Provider management
+            PlatformIamPermissions.IDP_VIEW,
+            PlatformIamPermissions.IDP_CREATE,
+            PlatformIamPermissions.IDP_UPDATE,
+            PlatformIamPermissions.IDP_DELETE,
+            // Email Domain Mapping management
+            PlatformIamPermissions.DOMAIN_MAPPING_VIEW,
+            PlatformIamPermissions.DOMAIN_MAPPING_CREATE,
+            PlatformIamPermissions.DOMAIN_MAPPING_UPDATE,
+            PlatformIamPermissions.DOMAIN_MAPPING_DELETE
         ),
         "IAM administrator - manages users, roles, and service accounts"
     );

@@ -7,7 +7,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tech.flowcatalyst.platform.authentication.IdpType;
-import tech.flowcatalyst.platform.principal.AnchorDomainRepository;
+import tech.flowcatalyst.platform.authentication.domain.EmailDomainMappingRepository;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalType;
 import tech.flowcatalyst.platform.principal.UserIdentity;
@@ -37,7 +37,7 @@ import static org.mockito.Mockito.*;
 class ClientAccessServiceTest {
 
     @Mock
-    private AnchorDomainRepository anchorDomainRepo;
+    private EmailDomainMappingRepository emailDomainMappingRepo;
 
     @Mock
     private ClientRepository clientRepo;
@@ -58,7 +58,7 @@ class ClientAccessServiceTest {
         // Arrange: Anchor domain user
         Principal principal = createUserPrincipal("0HZTEST00001", "admin@mycompany.com", null);
 
-        when(anchorDomainRepo.existsByDomain("mycompany.com")).thenReturn(true);
+        when(emailDomainMappingRepo.isAnchorDomain("mycompany.com")).thenReturn(true);
 
         // Mock 5 active clients
         List<Client> allClients = List.of(
@@ -86,7 +86,7 @@ class ClientAccessServiceTest {
         // Arrange: Anchor user
         Principal principal = createUserPrincipal("0HZTEST00001", "admin@mycompany.com", null);
 
-        when(anchorDomainRepo.existsByDomain("mycompany.com")).thenReturn(true);
+        when(emailDomainMappingRepo.isAnchorDomain("mycompany.com")).thenReturn(true);
 
         // Only active clients returned (inactive already filtered by repository)
         List<Client> activeClients = List.of(
@@ -108,7 +108,7 @@ class ClientAccessServiceTest {
         // Arrange
         Principal principal = createUserPrincipal("0HZTEST00001", "admin@mycompany.com", null);
 
-        when(anchorDomainRepo.existsByDomain("mycompany.com")).thenReturn(true);
+        when(emailDomainMappingRepo.isAnchorDomain("mycompany.com")).thenReturn(true);
         when(clientRepo.findAllActive()).thenReturn(List.of());
 
         // Act
@@ -128,7 +128,7 @@ class ClientAccessServiceTest {
         // Arrange: User with home client, not anchor domain
         Principal principal = createUserPrincipal("0HZTEST00001", "user@customer.com", "0HZTEST00123");
 
-        when(anchorDomainRepo.existsByDomain("customer.com")).thenReturn(false);
+        when(emailDomainMappingRepo.isAnchorDomain("customer.com")).thenReturn(false);
         when(grantRepo.findByPrincipalId("0HZTEST00001")).thenReturn(List.of());
         when(clientRepo.findByIds(any())).thenAnswer(inv -> {
             Set<String> ids = inv.getArgument(0);
@@ -150,7 +150,7 @@ class ClientAccessServiceTest {
         // Arrange: Partner user with no home client, not anchor domain
         Principal principal = createUserPrincipal("0HZTEST00001", "partner@logistics.com", null);
 
-        when(anchorDomainRepo.existsByDomain("logistics.com")).thenReturn(false);
+        when(emailDomainMappingRepo.isAnchorDomain("logistics.com")).thenReturn(false);
         when(grantRepo.findByPrincipalId("0HZTEST00001")).thenReturn(List.of());
         // No need to mock findByIds - clientIds will be empty (no home client, no grants)
 
@@ -171,7 +171,7 @@ class ClientAccessServiceTest {
         // Arrange: Partner with no home client but 3 grants
         Principal principal = createUserPrincipal("0HZTEST00001", "partner@logistics.com", null);
 
-        when(anchorDomainRepo.existsByDomain("logistics.com")).thenReturn(false);
+        when(emailDomainMappingRepo.isAnchorDomain("logistics.com")).thenReturn(false);
 
         // Mock 3 valid grants (no expiry)
         List<ClientAccessGrant> grants = List.of(
@@ -200,7 +200,7 @@ class ClientAccessServiceTest {
         // Arrange
         Principal principal = createUserPrincipal("0HZTEST00001", "partner@logistics.com", null);
 
-        when(anchorDomainRepo.existsByDomain("logistics.com")).thenReturn(false);
+        when(emailDomainMappingRepo.isAnchorDomain("logistics.com")).thenReturn(false);
 
         Instant now = Instant.now();
         List<ClientAccessGrant> grants = List.of(
@@ -229,7 +229,7 @@ class ClientAccessServiceTest {
         // Arrange
         Principal principal = createUserPrincipal("0HZTEST00001", "partner@logistics.com", null);
 
-        when(anchorDomainRepo.existsByDomain("logistics.com")).thenReturn(false);
+        when(emailDomainMappingRepo.isAnchorDomain("logistics.com")).thenReturn(false);
 
         List<ClientAccessGrant> grants = List.of(
             createGrant("0HZTEST00001", "0HZTEST00100", null) // Never expires
@@ -255,7 +255,7 @@ class ClientAccessServiceTest {
         // Arrange
         Principal principal = createUserPrincipal("0HZTEST00001", "partner@logistics.com", null);
 
-        when(anchorDomainRepo.existsByDomain("logistics.com")).thenReturn(false);
+        when(emailDomainMappingRepo.isAnchorDomain("logistics.com")).thenReturn(false);
 
         Instant yesterday = Instant.now().minus(1, ChronoUnit.DAYS);
         List<ClientAccessGrant> grants = List.of(
@@ -282,7 +282,7 @@ class ClientAccessServiceTest {
         // Arrange: User with home client + 2 grants
         Principal principal = createUserPrincipal("0HZTEST00001", "user@customer.com", "0HZTEST00123");
 
-        when(anchorDomainRepo.existsByDomain("customer.com")).thenReturn(false);
+        when(emailDomainMappingRepo.isAnchorDomain("customer.com")).thenReturn(false);
 
         List<ClientAccessGrant> grants = List.of(
             createGrant("0HZTEST00001", "0HZTEST00456", null),
@@ -309,7 +309,7 @@ class ClientAccessServiceTest {
         // Arrange: Home client 123, grant also for 123
         Principal principal = createUserPrincipal("0HZTEST00001", "user@customer.com", "0HZTEST00123");
 
-        when(anchorDomainRepo.existsByDomain("customer.com")).thenReturn(false);
+        when(emailDomainMappingRepo.isAnchorDomain("customer.com")).thenReturn(false);
 
         List<ClientAccessGrant> grants = List.of(
             createGrant("0HZTEST00001", "0HZTEST00123", null), // Same as home client
@@ -337,7 +337,7 @@ class ClientAccessServiceTest {
         // Arrange: User has home client BUT also anchor domain
         Principal principal = createUserPrincipal("0HZTEST00001", "admin@mycompany.com", "0HZTEST00999");
 
-        when(anchorDomainRepo.existsByDomain("mycompany.com")).thenReturn(true);
+        when(emailDomainMappingRepo.isAnchorDomain("mycompany.com")).thenReturn(true);
 
         List<Client> allClients = List.of(
             createClient("0HZTEST00010", "Client 1"),
@@ -384,7 +384,7 @@ class ClientAccessServiceTest {
         assertThat(accessible).containsExactly("0HZTEST00123");
 
         // Should not check anchor domain (no email domain)
-        verify(anchorDomainRepo, never()).existsByDomain(anyString());
+        verify(emailDomainMappingRepo, never()).isAnchorDomain(anyString());
     }
 
     @Test
@@ -413,7 +413,7 @@ class ClientAccessServiceTest {
         // Arrange
         Principal principal = createUserPrincipal("0HZTEST00001", "user@customer.com", "0HZTEST00123");
 
-        when(anchorDomainRepo.existsByDomain("customer.com")).thenReturn(false);
+        when(emailDomainMappingRepo.isAnchorDomain("customer.com")).thenReturn(false);
         when(grantRepo.findByPrincipalId("0HZTEST00001")).thenReturn(List.of());
         when(clientRepo.findByIds(any())).thenAnswer(inv -> {
             Set<String> ids = inv.getArgument(0);
@@ -435,7 +435,7 @@ class ClientAccessServiceTest {
         // Arrange
         Principal principal = createUserPrincipal("0HZTEST00001", "partner@logistics.com", null);
 
-        when(anchorDomainRepo.existsByDomain("logistics.com")).thenReturn(false);
+        when(emailDomainMappingRepo.isAnchorDomain("logistics.com")).thenReturn(false);
 
         // Grant expires in exactly 1 second (edge case)
         Instant almostNow = Instant.now().plus(1, ChronoUnit.MILLIS);

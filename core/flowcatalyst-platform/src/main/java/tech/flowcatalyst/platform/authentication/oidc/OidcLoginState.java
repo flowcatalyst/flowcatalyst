@@ -7,39 +7,45 @@ import java.time.Instant;
  * Used to correlate the callback with the original login request
  * and prevent CSRF attacks.
  */
-
 public class OidcLoginState {
 
     public String state; // Random state parameter (also used as ID)
 
     /**
-     * The email domain that initiated this login
+     * The email domain that initiated this login.
      */
     public String emailDomain;
 
     /**
-     * The client auth config ID used for this login
+     * The identity provider ID used for this login.
+     * References the IdentityProvider entity.
      */
-    public String authConfigId;
+    public String identityProviderId;
 
     /**
-     * Nonce for ID token validation (prevents replay attacks)
+     * The email domain mapping ID used for this login.
+     * References the EmailDomainMapping entity for scope/client resolution.
+     */
+    public String emailDomainMappingId;
+
+    /**
+     * Nonce for ID token validation (prevents replay attacks).
      */
     public String nonce;
 
     /**
-     * PKCE code verifier (we generate and store it, send challenge to IDP)
+     * PKCE code verifier (we generate and store it, send challenge to IDP).
      */
     public String codeVerifier;
 
     /**
-     * Where to redirect after successful login
+     * Where to redirect after successful login.
      */
     public String returnUrl;
 
     /**
      * Original OAuth parameters if this login is part of an OAuth flow
-     * (i.e., a client app initiated login via /oauth/authorize)
+     * (i.e., a client app initiated login via /oauth/authorize).
      */
     public String oauthClientId;
     public String oauthRedirectUri;
@@ -52,7 +58,7 @@ public class OidcLoginState {
     public Instant createdAt = Instant.now();
 
     /**
-     * State expires after 10 minutes
+     * State expires after 10 minutes.
      */
     public Instant expiresAt = Instant.now().plusSeconds(600);
 

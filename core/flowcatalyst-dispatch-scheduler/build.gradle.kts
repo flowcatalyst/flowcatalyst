@@ -23,7 +23,6 @@ dependencies {
     // Core Quarkus
     implementation("io.quarkus:quarkus-arc")
     implementation("io.quarkus:quarkus-scheduler")
-    implementation("io.quarkus:quarkus-mongodb-panache")
 
     // JSON serialization
     implementation("io.quarkus:quarkus-jackson")

@@ -10,8 +10,9 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import org.jboss.logging.Logger;
-import tech.flowcatalyst.platform.client.ClientAuthConfig;
-import tech.flowcatalyst.platform.client.ClientAuthConfigRepository;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProvider;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProviderService;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProviderType;
 
 import java.util.Optional;
 
@@ -31,7 +32,7 @@ public class AuthDiscoveryResource {
     private static final Logger LOG = Logger.getLogger(AuthDiscoveryResource.class);
 
     @Inject
-    ClientAuthConfigRepository authConfigRepository;
+    IdentityProviderService idpService;
 
     /**
      * Check the authentication method for an email domain.
@@ -62,22 +63,22 @@ public class AuthDiscoveryResource {
         String domain = email.substring(atIndex + 1);
         LOG.debugf("Checking auth method for domain: %s", domain);
 
-        // Look up auth config for this domain
-        Optional<ClientAuthConfig> configOpt = authConfigRepository.findByEmailDomain(domain);
+        // Look up identity provider for this domain
+        Optional<IdentityProvider> idpOpt = idpService.findByEmailDomain(domain);
 
-        if (configOpt.isEmpty()) {
+        if (idpOpt.isEmpty()) {
             // Default to internal auth if no config
-            LOG.debugf("No auth config for domain %s, defaulting to internal", domain);
+            LOG.debugf("No identity provider for domain %s, defaulting to internal", domain);
             return Response.ok(new DomainCheckResponse("internal", null, null)).build();
         }
 
-        ClientAuthConfig config = configOpt.get();
+        IdentityProvider idp = idpOpt.get();
 
-        if (config.authProvider == AuthProvider.OIDC && config.oidcIssuerUrl != null) {
+        if (idp.type == IdentityProviderType.OIDC && idp.oidcIssuerUrl != null) {
             // Return the FlowCatalyst OIDC login URL (not the external IDP URL directly)
             String loginUrl = "/auth/oidc/login?domain=" + domain;
             LOG.debugf("Domain %s uses OIDC, login URL: %s", domain, loginUrl);
-            return Response.ok(new DomainCheckResponse("external", loginUrl, config.oidcIssuerUrl)).build();
+            return Response.ok(new DomainCheckResponse("external", loginUrl, idp.oidcIssuerUrl)).build();
         }
 
         // Internal auth

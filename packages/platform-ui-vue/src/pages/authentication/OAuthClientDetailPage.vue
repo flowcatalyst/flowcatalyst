@@ -57,12 +57,35 @@ const scopeOptions = [
   { label: 'offline_access', value: 'offline_access' },
 ];
 
+// Redirect URIs are required for authorization_code or refresh_token grants
+const requiresRedirectUri = computed(() => {
+  return editForm.value.grantTypes.includes('authorization_code') ||
+         editForm.value.grantTypes.includes('refresh_token');
+});
+
 const isValid = computed(() => {
-  return (
-    editForm.value.clientName.trim() !== '' &&
-    editForm.value.redirectUris.length > 0 &&
-    editForm.value.grantTypes.length > 0
-  );
+  const hasClientName = editForm.value.clientName.trim() !== '';
+  const hasGrantTypes = editForm.value.grantTypes.length > 0;
+  const hasRedirectUris = editForm.value.redirectUris.length > 0;
+
+  // Redirect URIs only required for authorization_code grant
+  const redirectUriValid = !requiresRedirectUri.value || hasRedirectUris;
+
+  return hasClientName && hasGrantTypes && redirectUriValid;
+});
+
+const validationErrors = computed(() => {
+  const errors: string[] = [];
+  if (editForm.value.clientName.trim() === '') {
+    errors.push('Client name is required');
+  }
+  if (editForm.value.grantTypes.length === 0) {
+    errors.push('At least one grant type is required');
+  }
+  if (requiresRedirectUri.value && editForm.value.redirectUris.length === 0) {
+    errors.push('At least one redirect URI is required for authorization_code or refresh_token grants');
+  }
+  return errors;
 });
 
 onMounted(async () => {
@@ -103,13 +126,13 @@ async function loadApplications() {
 function resetEditForm() {
   if (client.value) {
     editForm.value = {
-      clientName: client.value.clientName,
-      redirectUris: [...client.value.redirectUris],
+      clientName: client.value.clientName || '',
+      redirectUris: [...(client.value.redirectUris || [])],
       allowedOrigins: [...(client.value.allowedOrigins || [])],
-      grantTypes: [...client.value.grantTypes],
-      defaultScopes: [...client.value.defaultScopes],
-      pkceRequired: client.value.pkceRequired,
-      applicationIds: client.value.applications.map(a => a.id),
+      grantTypes: [...(client.value.grantTypes || [])],
+      defaultScopes: [...(client.value.defaultScopes || [])],
+      pkceRequired: client.value.pkceRequired ?? true,
+      applicationIds: (client.value.applications || []).map(a => a.id),
     };
   }
 }
@@ -580,6 +603,12 @@ function getClientTypeSeverity(clientType: string) {
               </small>
             </div>
 
+            <Message v-if="validationErrors.length > 0" severity="warn" :closable="false" class="validation-message">
+              <ul class="validation-list">
+                <li v-for="err in validationErrors" :key="err">{{ err }}</li>
+              </ul>
+            </Message>
+
             <div class="form-actions">
               <Button
                 label="Cancel"
@@ -847,5 +876,18 @@ function getClientTypeSeverity(clientType: string) {
 
 .w-full {
   width: 100%;
+}
+
+.validation-message {
+  margin-bottom: 0;
+}
+
+.validation-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.validation-list li {
+  margin: 2px 0;
 }
 </style>

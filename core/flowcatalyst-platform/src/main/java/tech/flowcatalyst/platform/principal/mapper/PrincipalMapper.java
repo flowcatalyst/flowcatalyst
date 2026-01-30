@@ -1,10 +1,9 @@
 package tech.flowcatalyst.platform.principal.mapper;
 
-import tech.flowcatalyst.platform.principal.ManagedApplicationScope;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.UserIdentity;
+import tech.flowcatalyst.platform.principal.entity.PrincipalApplicationAccessEntity;
 import tech.flowcatalyst.platform.principal.entity.PrincipalEntity;
-import tech.flowcatalyst.platform.principal.entity.PrincipalManagedApplicationEntity;
 import tech.flowcatalyst.platform.principal.entity.PrincipalRoleEntity;
 
 import java.util.ArrayList;
@@ -33,14 +32,11 @@ public final class PrincipalMapper {
         domain.type = entity.type;
         domain.scope = entity.scope;
         domain.clientId = entity.clientId;
-        domain.managedApplicationScope = entity.managedApplicationScope != null
-            ? entity.managedApplicationScope
-            : ManagedApplicationScope.NONE;
         domain.name = entity.name;
         domain.active = entity.active;
         domain.createdAt = entity.createdAt;
         domain.updatedAt = entity.updatedAt;
-        // Note: managedApplicationIds is loaded separately from principal_managed_applications table
+        // Note: accessibleApplicationIds is loaded separately from principal_application_access table
 
         // UserIdentity (from flat columns)
         if (entity.email != null) {
@@ -76,12 +72,11 @@ public final class PrincipalMapper {
         entity.type = domain.type;
         entity.scope = domain.scope;
         entity.clientId = domain.clientId;
-        entity.managedApplicationScope = domain.managedApplicationScope;
         entity.name = domain.name;
         entity.active = domain.active;
         entity.createdAt = domain.createdAt;
         entity.updatedAt = domain.updatedAt;
-        // Note: managedApplicationIds is persisted separately to principal_managed_applications table
+        // Note: accessibleApplicationIds is persisted separately to principal_application_access table
 
         // UserIdentity (to flat columns)
         if (domain.userIdentity != null) {
@@ -109,7 +104,6 @@ public final class PrincipalMapper {
         entity.type = domain.type;
         entity.scope = domain.scope;
         entity.clientId = domain.clientId;
-        entity.managedApplicationScope = domain.managedApplicationScope;
         entity.name = domain.name;
         entity.active = domain.active;
         entity.updatedAt = domain.updatedAt;
@@ -152,13 +146,13 @@ public final class PrincipalMapper {
     }
 
     // ========================================================================
-    // Managed Applications Mapping
+    // Application Access Mapping
     // ========================================================================
 
     /**
-     * Convert managed application entities to list of application IDs.
+     * Convert application access entities to list of application IDs.
      */
-    public static List<String> toManagedApplicationIds(List<PrincipalManagedApplicationEntity> entities) {
+    public static List<String> toAccessibleApplicationIds(List<PrincipalApplicationAccessEntity> entities) {
         if (entities == null) {
             return new ArrayList<>();
         }
@@ -168,15 +162,15 @@ public final class PrincipalMapper {
     }
 
     /**
-     * Convert list of application IDs to managed application entities.
+     * Convert list of application IDs to application access entities.
      */
-    public static List<PrincipalManagedApplicationEntity> toManagedApplicationEntities(
+    public static List<PrincipalApplicationAccessEntity> toApplicationAccessEntities(
             String principalId, List<String> applicationIds) {
         if (applicationIds == null) {
             return new ArrayList<>();
         }
         return applicationIds.stream()
-            .map(appId -> new PrincipalManagedApplicationEntity(principalId, appId))
+            .map(appId -> new PrincipalApplicationAccessEntity(principalId, appId))
             .collect(Collectors.toList());
     }
 

@@ -46,6 +46,8 @@ public enum EntityType {
     ANCHOR_DOMAIN("anc"),
     PLATFORM_CONFIG("pcf"),
     CONFIG_ACCESS("cfa"),
+    IDENTITY_PROVIDER("idp"),
+    EMAIL_DOMAIN_MAPPING("edm"),
 
     // Access management
     CLIENT_ACCESS_GRANT("gnt"),

@@ -20,6 +20,7 @@ public interface PrincipalRepository {
     List<Principal> findByType(PrincipalType type);
     List<Principal> findByClientId(String clientId);
     List<Principal> findByIds(Collection<String> ids);
+    List<Principal> findByAccessibleApplicationId(String applicationId);
     List<Principal> findUsersByClientId(String clientId);
     List<Principal> findActiveUsersByClientId(String clientId);
     List<Principal> findByClientIdAndTypeAndActive(String clientId, PrincipalType type, Boolean active);

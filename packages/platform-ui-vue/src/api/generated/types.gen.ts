@@ -25,18 +25,6 @@ export type AddSchemaRequest1 = {
   schemaType?: SchemaType;
 };
 
-export type AnchorDomainDto = {
-  id?: string;
-  domain?: string;
-  userCount?: number;
-  createdAt?: Instant;
-};
-
-export type AnchorDomainListResponse = {
-  domains?: Array<AnchorDomainDto>;
-  total?: number;
-};
-
 export type ApplicationListResponse = {
   items?: Array<ApplicationResponse>;
 };
@@ -68,6 +56,10 @@ export type ApplicationResponse1 = {
   code?: string;
   website?: string;
   logo?: string;
+};
+
+export type AssignApplicationAccessRequest = {
+  applicationIds: Array<string>;
 };
 
 export type AssignRoleRequest = {
@@ -108,36 +100,6 @@ export type AuditLogListResponse = {
   page?: number;
   pageSize?: number;
 };
-
-export type AuthConfigDto = {
-  id?: string;
-  emailDomain?: string;
-  configType?: AuthConfigType;
-  primaryClientId?: string;
-  additionalClientIds?: Array<string>;
-  grantedClientIds?: Array<string>;
-  /**
-   * @deprecated
-   */
-  clientId?: string;
-  authProvider?: AuthProvider;
-  oidcIssuerUrl?: string;
-  oidcClientId?: string;
-  hasClientSecret?: boolean;
-  oidcMultiTenant?: boolean;
-  oidcIssuerPattern?: string;
-  createdAt?: Instant;
-  updatedAt?: Instant;
-};
-
-export type AuthConfigListResponse = {
-  configs?: Array<AuthConfigDto>;
-  total?: number;
-};
-
-export type AuthConfigType = "ANCHOR" | "PARTNER" | "CLIENT";
-
-export type AuthProvider = "INTERNAL" | "OIDC";
 
 export type BatchDispatchJobResponse = {
   jobs?: Array<DispatchJobResponse>;
@@ -350,10 +312,6 @@ export type ContextDataResponse2 = {
   value?: string;
 };
 
-export type CreateAnchorDomainRequest = {
-  domain: string;
-};
-
 export type CreateApplicationRequest = {
   code?: string;
   name?: string;
@@ -459,6 +417,17 @@ export type CreateDispatchPoolRequest = {
   clientId?: string;
 };
 
+export type CreateEmailDomainMappingRequest = {
+  emailDomain?: string;
+  identityProviderId?: string;
+  scopeType?: string;
+  primaryClientId?: string;
+  additionalClientIds?: Array<string>;
+  grantedClientIds?: Array<string>;
+  requiredOidcTenantId?: string;
+  allowedRoleIds?: Array<string>;
+};
+
 export type CreateEventRequest = {
   specVersion?: string;
   type?: string;
@@ -498,29 +467,16 @@ export type CreateEventTypeRequest1 = {
   clientScoped?: boolean;
 };
 
-export type CreateInternalConfigRequest = {
-  emailDomain: string;
-  configType: AuthConfigType;
-  primaryClientId?: string;
-  /**
-   * @deprecated
-   */
-  clientId?: string;
-};
-
-export type CreateOidcConfigRequest = {
-  emailDomain: string;
-  configType: AuthConfigType;
-  primaryClientId?: string;
-  /**
-   * @deprecated
-   */
-  clientId?: string;
-  oidcIssuerUrl: string;
-  oidcClientId: string;
+export type CreateIdentityProviderRequest = {
+  code?: string;
+  name?: string;
+  type?: string;
+  oidcIssuerUrl?: string;
+  oidcClientId?: string;
   oidcClientSecretRef?: string;
   oidcMultiTenant?: boolean;
   oidcIssuerPattern?: string;
+  allowedEmailDomains?: Array<string>;
 };
 
 /**
@@ -658,12 +614,6 @@ export type CreateUserRequest1 = {
   password?: string;
   name: string;
   clientId?: string;
-};
-
-export type DeleteAnchorDomainResponse = {
-  domain?: string;
-  affectedUsers?: number;
-  message?: string;
 };
 
 export type DispatchAttemptResponse = {
@@ -809,12 +759,6 @@ export type DomainCheckRequest = {
 };
 
 export type DomainCheckResponse = {
-  domain?: string;
-  isAnchorDomain?: boolean;
-  userCount?: number;
-};
-
-export type DomainCheckResponse1 = {
   authMethod?: string;
   loginUrl?: string;
   idpIssuer?: string;
@@ -824,10 +768,32 @@ export type EmailDomainCheckResponse = {
   domain?: string;
   authProvider?: string;
   isAnchorDomain?: boolean;
-  hasAuthConfig?: boolean;
+  hasIdpConfig?: boolean;
   emailExists?: boolean;
   info?: string;
   warning?: string;
+};
+
+export type EmailDomainMappingDto = {
+  id?: string;
+  emailDomain?: string;
+  identityProviderId?: string;
+  identityProviderCode?: string;
+  identityProviderName?: string;
+  scopeType?: string;
+  primaryClientId?: string;
+  additionalClientIds?: Array<string>;
+  grantedClientIds?: Array<string>;
+  requiredOidcTenantId?: string;
+  allowedRoleIds?: Array<string>;
+  allAccessibleClientIds?: Array<string>;
+  createdAt?: Instant;
+  updatedAt?: Instant;
+};
+
+export type EmailDomainMappingListResponse = {
+  mappings?: Array<EmailDomainMappingDto>;
+  total?: number;
 };
 
 /**
@@ -1014,6 +980,26 @@ export type GrantClientAccessRequest = {
 export type HealthResponse = {
   status?: string;
   message?: string;
+};
+
+export type IdentityProviderDto = {
+  id?: string;
+  code?: string;
+  name?: string;
+  type?: string;
+  oidcIssuerUrl?: string;
+  oidcClientId?: string;
+  hasClientSecret?: boolean;
+  oidcMultiTenant?: boolean;
+  oidcIssuerPattern?: string;
+  allowedEmailDomains?: Array<string>;
+  createdAt?: Instant;
+  updatedAt?: Instant;
+};
+
+export type IdentityProviderListResponse = {
+  identityProviders?: Array<IdentityProviderDto>;
+  total?: number;
 };
 
 export type IdpType = "INTERNAL" | "OIDC";
@@ -1486,11 +1472,6 @@ export type RotateSecretResponse = {
 
 export type SchemaType = "JSON_SCHEMA" | "PROTO" | "XSD";
 
-export type SecretValidationResponse = {
-  valid?: boolean;
-  message?: string;
-};
-
 export type ServiceAccountDto = {
   id?: string;
   code?: string;
@@ -1735,10 +1716,6 @@ export type UpdateAccessRequest = {
   canWrite?: boolean;
 };
 
-export type UpdateAdditionalClientsRequest = {
-  clientIds?: Array<string>;
-};
-
 export type UpdateApplicationRequest = {
   name?: string;
   description?: string;
@@ -1762,10 +1739,6 @@ export type UpdateAuthTokenRequest = {
 
 export type UpdateClientApplicationsRequest = {
   enabledApplicationIds?: Array<string>;
-};
-
-export type UpdateClientBindingRequest = {
-  clientId?: string;
 };
 
 /**
@@ -1792,17 +1765,22 @@ export type UpdateClientRequest2 = {
   applicationIds?: Array<string>;
 };
 
-export type UpdateConfigTypeRequest = {
-  configType: AuthConfigType;
-  primaryClientId?: string;
-};
-
 export type UpdateDispatchPoolRequest = {
   name?: string;
   description?: string;
   rateLimit?: number;
   concurrency?: number;
   status?: DispatchPoolStatus;
+};
+
+export type UpdateEmailDomainMappingRequest = {
+  identityProviderId?: string;
+  scopeType?: string;
+  primaryClientId?: string;
+  additionalClientIds?: Array<string>;
+  grantedClientIds?: Array<string>;
+  requiredOidcTenantId?: string;
+  allowedRoleIds?: Array<string>;
 };
 
 export type UpdateEventTypeRequest = {
@@ -1815,16 +1793,14 @@ export type UpdateEventTypeRequest1 = {
   description?: string;
 };
 
-export type UpdateGrantedClientsRequest = {
-  clientIds?: Array<string>;
-};
-
-export type UpdateOidcConfigRequest = {
-  oidcIssuerUrl: string;
-  oidcClientId: string;
+export type UpdateIdentityProviderRequest = {
+  name?: string;
+  oidcIssuerUrl?: string;
+  oidcClientId?: string;
   oidcClientSecretRef?: string;
   oidcMultiTenant?: boolean;
   oidcIssuerPattern?: string;
+  allowedEmailDomains?: Array<string>;
 };
 
 /**
@@ -1904,10 +1880,6 @@ export type UpdateSubscriptionRequest = {
 
 export type UserScope = "ANCHOR" | "PARTNER" | "CLIENT";
 
-export type ValidateSecretRequest = {
-  secretRef: string;
-};
-
 export type ValueType =
   | "ARRAY"
   | "OBJECT"
@@ -1966,148 +1938,6 @@ export type GetWellKnownOpenidConfigurationResponses = {
 
 export type GetWellKnownOpenidConfigurationResponse =
   GetWellKnownOpenidConfigurationResponses[keyof GetWellKnownOpenidConfigurationResponses];
-
-export type ListAnchorDomainsData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/api/admin/anchor-domains";
-};
-
-export type ListAnchorDomainsErrors = {
-  /**
-   * Not authenticated
-   */
-  401: unknown;
-  /**
-   * Insufficient permissions
-   */
-  403: unknown;
-};
-
-export type ListAnchorDomainsResponses = {
-  /**
-   * List of anchor domains
-   */
-  200: AnchorDomainListResponse;
-};
-
-export type ListAnchorDomainsResponse =
-  ListAnchorDomainsResponses[keyof ListAnchorDomainsResponses];
-
-export type AddAnchorDomainData = {
-  body: CreateAnchorDomainRequest;
-  path?: never;
-  query?: never;
-  url: "/api/admin/anchor-domains";
-};
-
-export type AddAnchorDomainErrors = {
-  /**
-   * Invalid request or domain already exists
-   */
-  400: unknown;
-  /**
-   * Not authenticated
-   */
-  401: unknown;
-};
-
-export type AddAnchorDomainResponses = {
-  /**
-   * Anchor domain created
-   */
-  201: AnchorDomainDto;
-};
-
-export type AddAnchorDomainResponse =
-  AddAnchorDomainResponses[keyof AddAnchorDomainResponses];
-
-export type CheckAnchorDomainData = {
-  body?: never;
-  path: {
-    domain: string;
-  };
-  query?: never;
-  url: "/api/admin/anchor-domains/check/{domain}";
-};
-
-export type CheckAnchorDomainErrors = {
-  /**
-   * Not authenticated
-   */
-  401: unknown;
-};
-
-export type CheckAnchorDomainResponses = {
-  /**
-   * Domain check result
-   */
-  200: DomainCheckResponse;
-};
-
-export type CheckAnchorDomainResponse =
-  CheckAnchorDomainResponses[keyof CheckAnchorDomainResponses];
-
-export type RemoveAnchorDomainData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/api/admin/anchor-domains/{id}";
-};
-
-export type RemoveAnchorDomainErrors = {
-  /**
-   * Not authenticated
-   */
-  401: unknown;
-  /**
-   * Anchor domain not found
-   */
-  404: unknown;
-};
-
-export type RemoveAnchorDomainResponses = {
-  /**
-   * Anchor domain removed
-   */
-  200: DeleteAnchorDomainResponse;
-};
-
-export type RemoveAnchorDomainResponse =
-  RemoveAnchorDomainResponses[keyof RemoveAnchorDomainResponses];
-
-export type GetAnchorDomainData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/api/admin/anchor-domains/{id}";
-};
-
-export type GetAnchorDomainErrors = {
-  /**
-   * Not authenticated
-   */
-  401: unknown;
-  /**
-   * Anchor domain not found
-   */
-  404: unknown;
-};
-
-export type GetAnchorDomainResponses = {
-  /**
-   * Anchor domain details
-   */
-  200: AnchorDomainDto;
-};
-
-export type GetAnchorDomainResponse =
-  GetAnchorDomainResponses[keyof GetAnchorDomainResponses];
 
 export type ListApplicationsData = {
   body?: never;
@@ -2365,7 +2195,7 @@ export type ListAuditLogsData = {
      */
     entityId?: string;
     /**
-     * Filter by entity type (e.g., 'ClientAuthConfig', 'Role')
+     * Filter by entity type (e.g., 'IdentityProvider', 'Role')
      */
     entityType?: string;
     /**
@@ -2500,341 +2330,6 @@ export type GetAuditLogResponses = {
 
 export type GetAuditLogResponse =
   GetAuditLogResponses[keyof GetAuditLogResponses];
-
-export type ListAuthConfigsData = {
-  body?: never;
-  path?: never;
-  query?: {
-    /**
-     * Filter by client ID
-     */
-    clientId?: string;
-  };
-  url: "/api/admin/auth-configs";
-};
-
-export type ListAuthConfigsErrors = {
-  /**
-   * Not authenticated
-   */
-  401: unknown;
-  /**
-   * Insufficient permissions
-   */
-  403: unknown;
-};
-
-export type ListAuthConfigsResponses = {
-  /**
-   * List of auth configurations
-   */
-  200: AuthConfigListResponse;
-};
-
-export type ListAuthConfigsResponse =
-  ListAuthConfigsResponses[keyof ListAuthConfigsResponses];
-
-export type GetAuthConfigByDomainData = {
-  body?: never;
-  path: {
-    domain: string;
-  };
-  query?: never;
-  url: "/api/admin/auth-configs/by-domain/{domain}";
-};
-
-export type GetAuthConfigByDomainErrors = {
-  /**
-   * No configuration for this domain
-   */
-  404: unknown;
-};
-
-export type GetAuthConfigByDomainResponses = {
-  /**
-   * Auth configuration details
-   */
-  200: unknown;
-};
-
-export type CreateInternalAuthConfigData = {
-  body: CreateInternalConfigRequest;
-  path?: never;
-  query?: never;
-  url: "/api/admin/auth-configs/internal";
-};
-
-export type CreateInternalAuthConfigErrors = {
-  /**
-   * Invalid request or domain already configured
-   */
-  400: unknown;
-  /**
-   * Not authenticated
-   */
-  401: unknown;
-};
-
-export type CreateInternalAuthConfigResponses = {
-  /**
-   * Configuration created
-   */
-  201: AuthConfigDto;
-};
-
-export type CreateInternalAuthConfigResponse =
-  CreateInternalAuthConfigResponses[keyof CreateInternalAuthConfigResponses];
-
-export type CreateOidcAuthConfigData = {
-  body: CreateOidcConfigRequest;
-  path?: never;
-  query?: never;
-  url: "/api/admin/auth-configs/oidc";
-};
-
-export type CreateOidcAuthConfigErrors = {
-  /**
-   * Invalid request or domain already configured
-   */
-  400: unknown;
-  /**
-   * Not authenticated
-   */
-  401: unknown;
-};
-
-export type CreateOidcAuthConfigResponses = {
-  /**
-   * Configuration created
-   */
-  201: AuthConfigDto;
-};
-
-export type CreateOidcAuthConfigResponse =
-  CreateOidcAuthConfigResponses[keyof CreateOidcAuthConfigResponses];
-
-export type ValidateSecretReferenceData = {
-  body: ValidateSecretRequest;
-  path?: never;
-  query?: never;
-  url: "/api/admin/auth-configs/validate-secret";
-};
-
-export type ValidateSecretReferenceErrors = {
-  /**
-   * Bad Request
-   */
-  400: unknown;
-  /**
-   * Not authenticated
-   */
-  401: unknown;
-};
-
-export type ValidateSecretReferenceResponses = {
-  /**
-   * Validation result
-   */
-  200: SecretValidationResponse;
-};
-
-export type ValidateSecretReferenceResponse =
-  ValidateSecretReferenceResponses[keyof ValidateSecretReferenceResponses];
-
-export type DeleteAuthConfigData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/api/admin/auth-configs/{id}";
-};
-
-export type DeleteAuthConfigErrors = {
-  /**
-   * Configuration not found
-   */
-  404: unknown;
-};
-
-export type DeleteAuthConfigResponses = {
-  /**
-   * Configuration deleted
-   */
-  204: void;
-};
-
-export type DeleteAuthConfigResponse =
-  DeleteAuthConfigResponses[keyof DeleteAuthConfigResponses];
-
-export type GetAuthConfigData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/api/admin/auth-configs/{id}";
-};
-
-export type GetAuthConfigErrors = {
-  /**
-   * Not authenticated
-   */
-  401: unknown;
-  /**
-   * Auth configuration not found
-   */
-  404: unknown;
-};
-
-export type GetAuthConfigResponses = {
-  /**
-   * Auth configuration details
-   */
-  200: AuthConfigDto;
-};
-
-export type GetAuthConfigResponse =
-  GetAuthConfigResponses[keyof GetAuthConfigResponses];
-
-export type UpdateAuthConfigAdditionalClientsData = {
-  body: UpdateAdditionalClientsRequest;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/api/admin/auth-configs/{id}/additional-clients";
-};
-
-export type UpdateAuthConfigAdditionalClientsErrors = {
-  /**
-   * Invalid request or not a CLIENT type config
-   */
-  400: unknown;
-  /**
-   * Configuration not found
-   */
-  404: unknown;
-};
-
-export type UpdateAuthConfigAdditionalClientsResponses = {
-  /**
-   * Additional clients updated
-   */
-  200: unknown;
-};
-
-export type UpdateAuthConfigClientBindingData = {
-  body: UpdateClientBindingRequest;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/api/admin/auth-configs/{id}/client-binding";
-};
-
-export type UpdateAuthConfigClientBindingErrors = {
-  /**
-   * Bad Request
-   */
-  400: unknown;
-  /**
-   * Insufficient permissions
-   */
-  403: unknown;
-  /**
-   * Configuration not found
-   */
-  404: unknown;
-};
-
-export type UpdateAuthConfigClientBindingResponses = {
-  /**
-   * Client binding updated
-   */
-  200: unknown;
-};
-
-export type UpdateAuthConfigTypeData = {
-  body: UpdateConfigTypeRequest;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/api/admin/auth-configs/{id}/config-type";
-};
-
-export type UpdateAuthConfigTypeErrors = {
-  /**
-   * Invalid config type or constraint violation
-   */
-  400: unknown;
-  /**
-   * Configuration not found
-   */
-  404: unknown;
-};
-
-export type UpdateAuthConfigTypeResponses = {
-  /**
-   * Config type updated
-   */
-  200: unknown;
-};
-
-export type UpdateAuthConfigGrantedClientsData = {
-  body: UpdateGrantedClientsRequest;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/api/admin/auth-configs/{id}/granted-clients";
-};
-
-export type UpdateAuthConfigGrantedClientsErrors = {
-  /**
-   * Invalid request or not a PARTNER type config
-   */
-  400: unknown;
-  /**
-   * Configuration not found
-   */
-  404: unknown;
-};
-
-export type UpdateAuthConfigGrantedClientsResponses = {
-  /**
-   * Granted clients updated
-   */
-  200: unknown;
-};
-
-export type UpdateOidcConfigData = {
-  body: UpdateOidcConfigRequest;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/api/admin/auth-configs/{id}/oidc";
-};
-
-export type UpdateOidcConfigErrors = {
-  /**
-   * Invalid request or not an OIDC config
-   */
-  400: unknown;
-  /**
-   * Configuration not found
-   */
-  404: unknown;
-};
-
-export type UpdateOidcConfigResponses = {
-  /**
-   * Configuration updated
-   */
-  200: unknown;
-};
 
 export type ListClientsData = {
   body?: never;
@@ -3845,6 +3340,339 @@ export type PostApiAdminDispatchPoolsByIdSuspendResponses = {
   200: unknown;
 };
 
+export type ListEmailDomainMappingsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    identityProviderId?: string;
+    scopeType?: string;
+  };
+  url: "/api/admin/email-domain-mappings";
+};
+
+export type ListEmailDomainMappingsErrors = {
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+};
+
+export type ListEmailDomainMappingsResponses = {
+  /**
+   * List of email domain mappings
+   */
+  200: EmailDomainMappingListResponse;
+};
+
+export type ListEmailDomainMappingsResponse =
+  ListEmailDomainMappingsResponses[keyof ListEmailDomainMappingsResponses];
+
+export type CreateEmailDomainMappingData = {
+  body: CreateEmailDomainMappingRequest;
+  path?: never;
+  query?: never;
+  url: "/api/admin/email-domain-mappings";
+};
+
+export type CreateEmailDomainMappingErrors = {
+  /**
+   * Invalid request
+   */
+  400: unknown;
+  /**
+   * Identity provider or client not found
+   */
+  404: unknown;
+  /**
+   * Email domain mapping already exists
+   */
+  409: unknown;
+};
+
+export type CreateEmailDomainMappingResponses = {
+  /**
+   * Email domain mapping created
+   */
+  201: EmailDomainMappingDto;
+};
+
+export type CreateEmailDomainMappingResponse =
+  CreateEmailDomainMappingResponses[keyof CreateEmailDomainMappingResponses];
+
+export type GetEmailDomainMappingByDomainData = {
+  body?: never;
+  path: {
+    domain: string;
+  };
+  query?: never;
+  url: "/api/admin/email-domain-mappings/by-domain/{domain}";
+};
+
+export type GetEmailDomainMappingByDomainErrors = {
+  /**
+   * Mapping not found
+   */
+  404: unknown;
+};
+
+export type GetEmailDomainMappingByDomainResponses = {
+  /**
+   * Email domain mapping details
+   */
+  200: EmailDomainMappingDto;
+};
+
+export type GetEmailDomainMappingByDomainResponse =
+  GetEmailDomainMappingByDomainResponses[keyof GetEmailDomainMappingByDomainResponses];
+
+export type DeleteEmailDomainMappingData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/admin/email-domain-mappings/{id}";
+};
+
+export type DeleteEmailDomainMappingErrors = {
+  /**
+   * Mapping not found
+   */
+  404: unknown;
+};
+
+export type DeleteEmailDomainMappingResponses = {
+  /**
+   * Email domain mapping deleted
+   */
+  204: void;
+};
+
+export type DeleteEmailDomainMappingResponse =
+  DeleteEmailDomainMappingResponses[keyof DeleteEmailDomainMappingResponses];
+
+export type GetEmailDomainMappingData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/admin/email-domain-mappings/{id}";
+};
+
+export type GetEmailDomainMappingErrors = {
+  /**
+   * Mapping not found
+   */
+  404: unknown;
+};
+
+export type GetEmailDomainMappingResponses = {
+  /**
+   * Email domain mapping details
+   */
+  200: EmailDomainMappingDto;
+};
+
+export type GetEmailDomainMappingResponse =
+  GetEmailDomainMappingResponses[keyof GetEmailDomainMappingResponses];
+
+export type UpdateEmailDomainMappingData = {
+  body: UpdateEmailDomainMappingRequest;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/admin/email-domain-mappings/{id}";
+};
+
+export type UpdateEmailDomainMappingErrors = {
+  /**
+   * Invalid request
+   */
+  400: unknown;
+  /**
+   * Mapping, identity provider, or client not found
+   */
+  404: unknown;
+};
+
+export type UpdateEmailDomainMappingResponses = {
+  /**
+   * Email domain mapping updated
+   */
+  200: EmailDomainMappingDto;
+};
+
+export type UpdateEmailDomainMappingResponse =
+  UpdateEmailDomainMappingResponses[keyof UpdateEmailDomainMappingResponses];
+
+export type ListIdentityProvidersData = {
+  body?: never;
+  path?: never;
+  query?: {
+    type?: string;
+  };
+  url: "/api/admin/identity-providers";
+};
+
+export type ListIdentityProvidersErrors = {
+  /**
+   * Not authenticated
+   */
+  401: unknown;
+};
+
+export type ListIdentityProvidersResponses = {
+  /**
+   * List of identity providers
+   */
+  200: IdentityProviderListResponse;
+};
+
+export type ListIdentityProvidersResponse =
+  ListIdentityProvidersResponses[keyof ListIdentityProvidersResponses];
+
+export type CreateIdentityProviderData = {
+  body: CreateIdentityProviderRequest;
+  path?: never;
+  query?: never;
+  url: "/api/admin/identity-providers";
+};
+
+export type CreateIdentityProviderErrors = {
+  /**
+   * Invalid request
+   */
+  400: unknown;
+  /**
+   * Identity provider with this code already exists
+   */
+  409: unknown;
+};
+
+export type CreateIdentityProviderResponses = {
+  /**
+   * Identity provider created
+   */
+  201: IdentityProviderDto;
+};
+
+export type CreateIdentityProviderResponse =
+  CreateIdentityProviderResponses[keyof CreateIdentityProviderResponses];
+
+export type GetIdentityProviderByCodeData = {
+  body?: never;
+  path: {
+    code: string;
+  };
+  query?: never;
+  url: "/api/admin/identity-providers/by-code/{code}";
+};
+
+export type GetIdentityProviderByCodeErrors = {
+  /**
+   * Identity provider not found
+   */
+  404: unknown;
+};
+
+export type GetIdentityProviderByCodeResponses = {
+  /**
+   * Identity provider details
+   */
+  200: IdentityProviderDto;
+};
+
+export type GetIdentityProviderByCodeResponse =
+  GetIdentityProviderByCodeResponses[keyof GetIdentityProviderByCodeResponses];
+
+export type DeleteIdentityProviderData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/admin/identity-providers/{id}";
+};
+
+export type DeleteIdentityProviderErrors = {
+  /**
+   * Cannot delete - has dependent mappings
+   */
+  400: unknown;
+  /**
+   * Identity provider not found
+   */
+  404: unknown;
+};
+
+export type DeleteIdentityProviderResponses = {
+  /**
+   * Identity provider deleted
+   */
+  204: void;
+};
+
+export type DeleteIdentityProviderResponse =
+  DeleteIdentityProviderResponses[keyof DeleteIdentityProviderResponses];
+
+export type GetIdentityProviderData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/admin/identity-providers/{id}";
+};
+
+export type GetIdentityProviderErrors = {
+  /**
+   * Identity provider not found
+   */
+  404: unknown;
+};
+
+export type GetIdentityProviderResponses = {
+  /**
+   * Identity provider details
+   */
+  200: IdentityProviderDto;
+};
+
+export type GetIdentityProviderResponse =
+  GetIdentityProviderResponses[keyof GetIdentityProviderResponses];
+
+export type UpdateIdentityProviderData = {
+  body: UpdateIdentityProviderRequest;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/admin/identity-providers/{id}";
+};
+
+export type UpdateIdentityProviderErrors = {
+  /**
+   * Bad Request
+   */
+  400: unknown;
+  /**
+   * Identity provider not found
+   */
+  404: unknown;
+};
+
+export type UpdateIdentityProviderResponses = {
+  /**
+   * Identity provider updated
+   */
+  200: IdentityProviderDto;
+};
+
+export type UpdateIdentityProviderResponse =
+  UpdateIdentityProviderResponses[keyof UpdateIdentityProviderResponses];
+
 export type ListOAuthClientsData = {
   body?: never;
   path?: never;
@@ -4326,6 +4154,79 @@ export type ActivatePrincipalErrors = {
 export type ActivatePrincipalResponses = {
   /**
    * Principal activated
+   */
+  200: unknown;
+};
+
+export type GetPrincipalApplicationAccessData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/admin/principals/{id}/application-access";
+};
+
+export type GetPrincipalApplicationAccessErrors = {
+  /**
+   * Principal not found
+   */
+  404: unknown;
+};
+
+export type GetPrincipalApplicationAccessResponses = {
+  /**
+   * List of application access grants
+   */
+  200: unknown;
+};
+
+export type AssignPrincipalApplicationAccessData = {
+  body: AssignApplicationAccessRequest;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/admin/principals/{id}/application-access";
+};
+
+export type AssignPrincipalApplicationAccessErrors = {
+  /**
+   * Invalid application IDs or applications not accessible
+   */
+  400: unknown;
+  /**
+   * Principal not found
+   */
+  404: unknown;
+};
+
+export type AssignPrincipalApplicationAccessResponses = {
+  /**
+   * Application access assigned
+   */
+  200: unknown;
+};
+
+export type GetPrincipalAvailableApplicationsData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api/admin/principals/{id}/available-applications";
+};
+
+export type GetPrincipalAvailableApplicationsErrors = {
+  /**
+   * Principal not found
+   */
+  404: unknown;
+};
+
+export type GetPrincipalAvailableApplicationsResponses = {
+  /**
+   * List of available applications
    */
   200: unknown;
 };
@@ -7767,7 +7668,7 @@ export type PostAuthCheckDomainResponses = {
   /**
    * Domain check result
    */
-  200: DomainCheckResponse1;
+  200: DomainCheckResponse;
 };
 
 export type PostAuthCheckDomainResponse =

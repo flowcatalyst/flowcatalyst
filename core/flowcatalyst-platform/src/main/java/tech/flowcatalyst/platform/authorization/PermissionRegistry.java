@@ -73,6 +73,16 @@ public class PermissionRegistry {
         registerPermission(PlatformIamPermissions.SERVICE_ACCOUNT_UPDATE);
         registerPermission(PlatformIamPermissions.SERVICE_ACCOUNT_DELETE);
         registerPermission(PlatformIamPermissions.IDP_MANAGE);
+        // Identity Provider (granular permissions)
+        registerPermission(PlatformIamPermissions.IDP_VIEW);
+        registerPermission(PlatformIamPermissions.IDP_CREATE);
+        registerPermission(PlatformIamPermissions.IDP_UPDATE);
+        registerPermission(PlatformIamPermissions.IDP_DELETE);
+        // Email Domain Mapping
+        registerPermission(PlatformIamPermissions.DOMAIN_MAPPING_VIEW);
+        registerPermission(PlatformIamPermissions.DOMAIN_MAPPING_CREATE);
+        registerPermission(PlatformIamPermissions.DOMAIN_MAPPING_UPDATE);
+        registerPermission(PlatformIamPermissions.DOMAIN_MAPPING_DELETE);
         registerPermission(PlatformIamPermissions.OAUTH_CLIENT_VIEW);
         registerPermission(PlatformIamPermissions.OAUTH_CLIENT_CREATE);
         registerPermission(PlatformIamPermissions.OAUTH_CLIENT_UPDATE);

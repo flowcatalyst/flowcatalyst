@@ -50,7 +50,7 @@ public class SyncEventTypesUseCase {
         // Note: Application entity is optional - event types can exist for modules
         // that are not registered applications
         AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canManageResourceWithPrefix(codePrefix)) {
+        if (authz != null && !authz.canAccessResourceWithPrefix(codePrefix)) {
             return Result.failure(new UseCaseError.AuthorizationError(
                 "NOT_AUTHORIZED",
                 "Not authorized to sync event types for this application",

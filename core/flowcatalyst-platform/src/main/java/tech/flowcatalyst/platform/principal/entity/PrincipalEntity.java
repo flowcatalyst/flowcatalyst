@@ -7,7 +7,6 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import tech.flowcatalyst.platform.authentication.IdpType;
-import tech.flowcatalyst.platform.principal.ManagedApplicationScope;
 import tech.flowcatalyst.platform.principal.PrincipalType;
 import tech.flowcatalyst.platform.principal.UserScope;
 import java.time.Instant;
@@ -37,10 +36,6 @@ public class PrincipalEntity {
 
     @Column(name = "client_id", length = 17)
     public String clientId;
-
-    @Column(name = "managed_application_scope", length = 20)
-    @Enumerated(EnumType.STRING)
-    public ManagedApplicationScope managedApplicationScope;
 
     @Column(name = "name", nullable = false)
     public String name;

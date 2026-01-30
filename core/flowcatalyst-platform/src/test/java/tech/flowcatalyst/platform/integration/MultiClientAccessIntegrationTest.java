@@ -7,10 +7,11 @@ import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import tech.flowcatalyst.platform.principal.AnchorDomain;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.client.Client;
-import tech.flowcatalyst.platform.principal.AnchorDomainRepository;
+import tech.flowcatalyst.platform.authentication.domain.EmailDomainMapping;
+import tech.flowcatalyst.platform.authentication.domain.EmailDomainMappingRepository;
+import tech.flowcatalyst.platform.authentication.domain.ScopeType;
 import tech.flowcatalyst.platform.client.ClientService;
 import tech.flowcatalyst.platform.principal.UserService;
 import tech.flowcatalyst.platform.principal.UserScope;
@@ -38,7 +39,7 @@ class MultiClientAccessIntegrationTest {
     UserService userService;
 
     @Inject
-    AnchorDomainRepository anchorDomainRepo;
+    EmailDomainMappingRepository emailDomainMappingRepo;
 
     @Inject
     EntityManager em;
@@ -69,10 +70,11 @@ class MultiClientAccessIntegrationTest {
         // Arrange: Register anchor domain (e.g., internal company domain)
         String domain = uniqueDomain("mycompany");
         QuarkusTransaction.requiringNew().run(() -> {
-            AnchorDomain anchor = new AnchorDomain();
-            anchor.id = TsidGenerator.generate(EntityType.ANCHOR_DOMAIN);
-            anchor.domain = domain;
-            anchorDomainRepo.persist(anchor);
+            EmailDomainMapping mapping = new EmailDomainMapping();
+            mapping.id = TsidGenerator.generate(EntityType.EMAIL_DOMAIN_MAPPING);
+            mapping.emailDomain = domain;
+            mapping.scopeType = ScopeType.ANCHOR;
+            emailDomainMappingRepo.persist(mapping);
         });
 
         // Create several clients (customer accounts)
@@ -102,10 +104,11 @@ class MultiClientAccessIntegrationTest {
         // Arrange: Register anchor domain
         String domain = uniqueDomain("mycompany");
         QuarkusTransaction.requiringNew().run(() -> {
-            AnchorDomain anchor = new AnchorDomain();
-            anchor.id = TsidGenerator.generate(EntityType.ANCHOR_DOMAIN);
-            anchor.domain = domain;
-            anchorDomainRepo.persist(anchor);
+            EmailDomainMapping mapping = new EmailDomainMapping();
+            mapping.id = TsidGenerator.generate(EntityType.EMAIL_DOMAIN_MAPPING);
+            mapping.emailDomain = domain;
+            mapping.scopeType = ScopeType.ANCHOR;
+            emailDomainMappingRepo.persist(mapping);
         });
 
         // Create 3 clients
@@ -385,10 +388,11 @@ class MultiClientAccessIntegrationTest {
         // Arrange: Register anchor domain
         String domain = uniqueDomain("platform");
         QuarkusTransaction.requiringNew().run(() -> {
-            AnchorDomain anchor = new AnchorDomain();
-            anchor.id = TsidGenerator.generate(EntityType.ANCHOR_DOMAIN);
-            anchor.domain = domain;
-            anchorDomainRepo.persist(anchor);
+            EmailDomainMapping mapping = new EmailDomainMapping();
+            mapping.id = TsidGenerator.generate(EntityType.EMAIL_DOMAIN_MAPPING);
+            mapping.emailDomain = domain;
+            mapping.scopeType = ScopeType.ANCHOR;
+            emailDomainMappingRepo.persist(mapping);
         });
 
         // Create 3 customer clients

@@ -6,8 +6,8 @@ import jakarta.persistence.EntityManager;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
 import tech.flowcatalyst.platform.principal.PrincipalType;
+import tech.flowcatalyst.platform.principal.entity.PrincipalApplicationAccessEntity;
 import tech.flowcatalyst.platform.principal.entity.PrincipalEntity;
-import tech.flowcatalyst.platform.principal.entity.PrincipalManagedApplicationEntity;
 import tech.flowcatalyst.platform.principal.entity.PrincipalRoleEntity;
 import tech.flowcatalyst.platform.principal.mapper.PrincipalMapper;
 
@@ -42,7 +42,7 @@ public class PrincipalReadRepository implements PrincipalRepository {
         }
         Principal p = PrincipalMapper.toDomain(entity);
         p.roles = loadRoles(id);
-        p.managedApplicationIds = loadManagedApplicationIds(id);
+        p.accessibleApplicationIds = loadAccessibleApplicationIds(id);
         return Optional.of(p);
     }
 
@@ -58,7 +58,7 @@ public class PrincipalReadRepository implements PrincipalRepository {
         }
         Principal p = PrincipalMapper.toDomain(results.get(0));
         p.roles = loadRoles(p.id);
-        p.managedApplicationIds = loadManagedApplicationIds(p.id);
+        p.accessibleApplicationIds = loadAccessibleApplicationIds(p.id);
         return Optional.of(p);
     }
 
@@ -76,7 +76,7 @@ public class PrincipalReadRepository implements PrincipalRepository {
         }
         Principal p = PrincipalMapper.toDomain(results.get(0));
         p.roles = loadRoles(p.id);
-        p.managedApplicationIds = loadManagedApplicationIds(p.id);
+        p.accessibleApplicationIds = loadAccessibleApplicationIds(p.id);
         return Optional.of(p);
     }
 
@@ -93,7 +93,7 @@ public class PrincipalReadRepository implements PrincipalRepository {
         }
         Principal p = PrincipalMapper.toDomain(results.get(0));
         p.roles = loadRoles(p.id);
-        p.managedApplicationIds = loadManagedApplicationIds(p.id);
+        p.accessibleApplicationIds = loadAccessibleApplicationIds(p.id);
         return Optional.of(p);
     }
 
@@ -128,6 +128,22 @@ public class PrincipalReadRepository implements PrincipalRepository {
             .stream()
             .map(this::toDomainWithRoles)
             .toList();
+    }
+
+    @Override
+    public List<Principal> findByAccessibleApplicationId(String applicationId) {
+        // Find principal IDs that have access to this application
+        List<String> principalIds = em.createQuery(
+                "SELECT a.principalId FROM PrincipalApplicationAccessEntity a WHERE a.applicationId = :appId",
+                String.class)
+            .setParameter("appId", applicationId)
+            .getResultList();
+
+        if (principalIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        return findByIds(principalIds);
     }
 
     @Override
@@ -229,7 +245,7 @@ public class PrincipalReadRepository implements PrincipalRepository {
         }
         Principal p = PrincipalMapper.toDomain(results.get(0));
         p.roles = loadRoles(p.id);
-        p.managedApplicationIds = loadManagedApplicationIds(p.id);
+        p.accessibleApplicationIds = loadAccessibleApplicationIds(p.id);
         return Optional.of(p);
     }
 
@@ -268,7 +284,7 @@ public class PrincipalReadRepository implements PrincipalRepository {
     private Principal toDomainWithRoles(PrincipalEntity entity) {
         Principal p = PrincipalMapper.toDomain(entity);
         p.roles = loadRoles(entity.id);
-        p.managedApplicationIds = loadManagedApplicationIds(entity.id);
+        p.accessibleApplicationIds = loadAccessibleApplicationIds(entity.id);
         return p;
     }
 
@@ -282,13 +298,13 @@ public class PrincipalReadRepository implements PrincipalRepository {
         return PrincipalMapper.toRoleAssignments(roleEntities);
     }
 
-    private List<String> loadManagedApplicationIds(String principalId) {
-        List<PrincipalManagedApplicationEntity> entities = em.createQuery(
-                "SELECT m FROM PrincipalManagedApplicationEntity m WHERE m.principalId = :id",
-                PrincipalManagedApplicationEntity.class)
+    private List<String> loadAccessibleApplicationIds(String principalId) {
+        List<PrincipalApplicationAccessEntity> entities = em.createQuery(
+                "SELECT a FROM PrincipalApplicationAccessEntity a WHERE a.principalId = :id",
+                PrincipalApplicationAccessEntity.class)
             .setParameter("id", principalId)
             .getResultList();
 
-        return PrincipalMapper.toManagedApplicationIds(entities);
+        return PrincipalMapper.toAccessibleApplicationIds(entities);
     }
 }

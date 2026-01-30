@@ -8,6 +8,12 @@ import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 import tech.flowcatalyst.platform.authentication.IdpType;
+import tech.flowcatalyst.platform.authentication.domain.EmailDomainMapping;
+import tech.flowcatalyst.platform.authentication.domain.EmailDomainMappingRepository;
+import tech.flowcatalyst.platform.authentication.domain.ScopeType;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProvider;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProviderRepository;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProviderType;
 import tech.flowcatalyst.platform.principal.*;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
@@ -52,7 +58,10 @@ public class BootstrapService {
     PrincipalRepository principalRepository;
 
     @Inject
-    AnchorDomainRepository anchorDomainRepository;
+    IdentityProviderRepository identityProviderRepository;
+
+    @Inject
+    EmailDomainMappingRepository emailDomainMappingRepository;
 
     @Inject
     PasswordService passwordService;
@@ -111,13 +120,19 @@ public class BootstrapService {
             return;
         }
 
-        // Create anchor domain if it doesn't exist
-        if (!anchorDomainRepository.existsByDomain(emailDomain)) {
-            AnchorDomain anchorDomain = new AnchorDomain();
-            anchorDomain.id = TsidGenerator.generate(EntityType.ANCHOR_DOMAIN);
-            anchorDomain.domain = emailDomain;
-            anchorDomainRepository.persist(anchorDomain);
-            LOG.infof("Created anchor domain: %s", emailDomain);
+        // Create anchor domain mapping if it doesn't exist
+        if (!emailDomainMappingRepository.isAnchorDomain(emailDomain)) {
+            // Ensure we have an internal identity provider
+            String internalIdpId = ensureInternalIdentityProvider();
+
+            // Create email domain mapping with ANCHOR scope
+            EmailDomainMapping mapping = new EmailDomainMapping();
+            mapping.id = TsidGenerator.generate(EntityType.EMAIL_DOMAIN_MAPPING);
+            mapping.emailDomain = emailDomain;
+            mapping.identityProviderId = internalIdpId;
+            mapping.scopeType = ScopeType.ANCHOR;
+            emailDomainMappingRepository.persist(mapping);
+            LOG.infof("Created anchor domain mapping: %s", emailDomain);
         }
 
         // Validate and hash password
@@ -152,5 +167,30 @@ public class BootstrapService {
 
         LOG.infof("Created bootstrap admin: %s (%s)", bootstrapName, bootstrapEmail);
         LOG.info("This user has platform:super-admin role and ANCHOR scope");
+    }
+
+    /**
+     * Ensure an internal identity provider exists for password-based authentication.
+     * Creates one if it doesn't exist.
+     *
+     * @return the ID of the internal identity provider
+     */
+    private String ensureInternalIdentityProvider() {
+        // Check if internal IDP already exists
+        Optional<IdentityProvider> existing = identityProviderRepository.findByCode("internal");
+        if (existing.isPresent()) {
+            return existing.get().id;
+        }
+
+        // Create internal IDP
+        IdentityProvider idp = new IdentityProvider();
+        idp.id = TsidGenerator.generate(EntityType.IDENTITY_PROVIDER);
+        idp.code = "internal";
+        idp.name = "Internal Authentication";
+        idp.type = IdentityProviderType.INTERNAL;
+        identityProviderRepository.persist(idp);
+
+        LOG.info("Created internal identity provider");
+        return idp.id;
     }
 }

@@ -13,6 +13,7 @@ import tech.flowcatalyst.platform.client.ClientRepository;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.principal.ApplicationAccessCascadeService;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
 import tech.flowcatalyst.platform.shared.EntityType;
@@ -47,6 +48,9 @@ public class ApplicationService {
 
     @Inject
     UnitOfWork unitOfWork;
+
+    @Inject
+    ApplicationAccessCascadeService cascadeService;
 
     // ========================================================================
     // Client Configuration
@@ -105,6 +109,10 @@ public class ApplicationService {
     /**
      * Disable an application for a client with event sourcing.
      *
+     * <p>After disabling, this method triggers cascading revocation of user
+     * application access. Users who no longer have any clients with this
+     * application enabled will have their access to the application removed.
+     *
      * @param ctx Execution context for tracing
      * @param cmd The disable command
      * @return Result containing the event or error
@@ -117,6 +125,8 @@ public class ApplicationService {
             .orElseThrow(() -> new NotFoundException("Client not found"));
 
         Optional<ApplicationClientConfig> existingConfig = configRepo.findByApplicationAndClient(cmd.applicationId(), cmd.clientId());
+
+        Result<ApplicationDisabledForClient> result;
 
         if (existingConfig.isEmpty() || !existingConfig.get().enabled) {
             // Already disabled or never enabled - no-op but still emit event for idempotency
@@ -139,23 +149,30 @@ public class ApplicationService {
                 .clientName(client.name)
                 .build();
 
-            return unitOfWork.commit(config, event, cmd);
+            result = unitOfWork.commit(config, event, cmd);
+        } else {
+            ApplicationClientConfig config = existingConfig.get();
+            config.enabled = false;
+
+            ApplicationDisabledForClient event = ApplicationDisabledForClient.fromContext(ctx)
+                .configId(config.id)
+                .applicationId(app.id)
+                .applicationCode(app.code)
+                .applicationName(app.name)
+                .clientId(client.id)
+                .clientIdentifier(client.identifier)
+                .clientName(client.name)
+                .build();
+
+            result = unitOfWork.commit(config, event, cmd);
         }
 
-        ApplicationClientConfig config = existingConfig.get();
-        config.enabled = false;
+        // On success, cascade revocation to affected users
+        if (result instanceof Result.Success<ApplicationDisabledForClient>) {
+            cascadeService.cascadeApplicationDisabled(cmd.applicationId(), cmd.clientId(), ctx);
+        }
 
-        ApplicationDisabledForClient event = ApplicationDisabledForClient.fromContext(ctx)
-            .configId(config.id)
-            .applicationId(app.id)
-            .applicationCode(app.code)
-            .applicationName(app.name)
-            .clientId(client.id)
-            .clientIdentifier(client.identifier)
-            .clientName(client.name)
-            .build();
-
-        return unitOfWork.commit(config, event, cmd);
+        return result;
     }
 
     /**

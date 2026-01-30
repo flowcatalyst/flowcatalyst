@@ -36,14 +36,14 @@ export const NAVIGATION_CONFIG: NavGroup[] = [
         route: '/identity/service-accounts',
       },
       {
-        label: 'Domain IDPs',
+        label: 'Identity Providers',
         icon: 'pi pi-id-card',
-        route: '/authentication/domain-idps',
+        route: '/authentication/identity-providers',
       },
       {
-        label: 'Anchor Domains',
-        icon: 'pi pi-globe',
-        route: '/authentication/anchor-domains',
+        label: 'Email Domains',
+        icon: 'pi pi-envelope',
+        route: '/authentication/email-domain-mappings',
       },
       {
         label: 'OAuth Clients',

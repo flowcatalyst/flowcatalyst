@@ -57,6 +57,16 @@ public class PlatformSuperAdminRole {
             PlatformMessagingPermissions.DISPATCH_POOL_UPDATE,
             PlatformMessagingPermissions.DISPATCH_POOL_DELETE,
             PlatformIamPermissions.IDP_MANAGE,
+            // Identity Provider (granular permissions)
+            PlatformIamPermissions.IDP_VIEW,
+            PlatformIamPermissions.IDP_CREATE,
+            PlatformIamPermissions.IDP_UPDATE,
+            PlatformIamPermissions.IDP_DELETE,
+            // Email Domain Mapping
+            PlatformIamPermissions.DOMAIN_MAPPING_VIEW,
+            PlatformIamPermissions.DOMAIN_MAPPING_CREATE,
+            PlatformIamPermissions.DOMAIN_MAPPING_UPDATE,
+            PlatformIamPermissions.DOMAIN_MAPPING_DELETE,
             PlatformIamPermissions.OAUTH_CLIENT_VIEW,
             PlatformIamPermissions.OAUTH_CLIENT_CREATE,
             PlatformIamPermissions.OAUTH_CLIENT_UPDATE,

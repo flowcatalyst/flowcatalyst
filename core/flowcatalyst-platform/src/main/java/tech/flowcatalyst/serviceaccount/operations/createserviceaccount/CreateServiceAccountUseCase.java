@@ -8,7 +8,6 @@ import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
-import tech.flowcatalyst.platform.principal.ManagedApplicationScope;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalType;
 import tech.flowcatalyst.platform.security.secrets.SecretService;
@@ -154,11 +153,9 @@ public class CreateServiceAccountUseCase {
 
         // Set managed application scope if applicationId is provided
         if (command.applicationId() != null) {
-            principal.managedApplicationScope = ManagedApplicationScope.SPECIFIC;
-            principal.managedApplicationIds = List.of(command.applicationId());
+            principal.accessibleApplicationIds = List.of(command.applicationId());
         } else {
-            principal.managedApplicationScope = ManagedApplicationScope.NONE;
-            principal.managedApplicationIds = new ArrayList<>();
+            principal.accessibleApplicationIds = new ArrayList<>();
         }
 
         // ============================================================

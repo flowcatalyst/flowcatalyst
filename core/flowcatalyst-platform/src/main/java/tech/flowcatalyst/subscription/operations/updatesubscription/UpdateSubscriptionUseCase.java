@@ -71,7 +71,7 @@ public class UpdateSubscriptionUseCase {
             Optional<ServiceAccount> serviceAccountOpt = serviceAccountRepo.findByIdOptional(existing.serviceAccountId());
             if (serviceAccountOpt.isPresent()) {
                 ServiceAccount serviceAccount = serviceAccountOpt.get();
-                if (serviceAccount.applicationId != null && !authz.canManageApplication(serviceAccount.applicationId)) {
+                if (serviceAccount.applicationId != null && !authz.canAccessApplication(serviceAccount.applicationId)) {
                     return Result.failure(new UseCaseError.AuthorizationError(
                         "NOT_AUTHORIZED",
                         "Not authorized to update this subscription",

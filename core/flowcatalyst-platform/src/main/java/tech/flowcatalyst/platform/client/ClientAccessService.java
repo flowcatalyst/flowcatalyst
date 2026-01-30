@@ -2,10 +2,10 @@ package tech.flowcatalyst.platform.client;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import tech.flowcatalyst.platform.authentication.domain.EmailDomainMappingRepository;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalType;
 import tech.flowcatalyst.platform.principal.UserScope;
-import tech.flowcatalyst.platform.principal.AnchorDomainRepository;
 
 import java.time.Instant;
 import java.util.HashSet;
@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
  * 2. CLIENT scope -> Home client + IDP additional clients + explicit grants
  * 3. PARTNER scope -> IDP granted clients + explicit grants
  *
- * Legacy fallback: Check anchor domain table for backwards compatibility.
+ * Anchor domain check uses EmailDomainMapping with scopeType=ANCHOR.
  */
 @ApplicationScoped
 public class ClientAccessService {
@@ -31,13 +31,10 @@ public class ClientAccessService {
     ClientRepository clientRepo;
 
     @Inject
-    AnchorDomainRepository anchorDomainRepo;
+    EmailDomainMappingRepository emailDomainMappingRepo;
 
     @Inject
     ClientAccessGrantRepository grantRepo;
-
-    @Inject
-    ClientAuthConfigService authConfigService;
 
     /**
      * Calculate which clients a principal can access.
@@ -72,10 +69,10 @@ public class ClientAccessService {
                 }
             }
         } else {
-            // Legacy fallback: Check if anchor domain user (global access)
+            // Fallback: Check if anchor domain user (global access)
             if (principal.type == PrincipalType.USER && principal.userIdentity != null) {
                 String domain = principal.userIdentity.emailDomain;
-                if (domain != null && anchorDomainRepo.existsByDomain(domain)) {
+                if (domain != null && emailDomainMappingRepo.isAnchorDomain(domain)) {
                     // Return ALL active client IDs
                     return clientRepo.findAllActive().stream()
                         .map(c -> c.id)
@@ -83,7 +80,7 @@ public class ClientAccessService {
                 }
             }
 
-            // Add home client if exists (legacy behavior)
+            // Add home client if exists
             if (principal.clientId != null) {
                 clientIds.add(principal.clientId);
             }
@@ -112,7 +109,7 @@ public class ClientAccessService {
     }
 
     /**
-     * Add accessible clients from the user's IDP configuration.
+     * Add accessible clients from the user's email domain mapping.
      * For CLIENT type: adds additional clients
      * For PARTNER type: adds granted clients
      */
@@ -126,14 +123,8 @@ public class ClientAccessService {
             return;
         }
 
-        Optional<ClientAuthConfig> configOpt = authConfigService.findByEmailDomain(domain);
-        if (configOpt.isEmpty()) {
-            return;
-        }
-
-        ClientAuthConfig config = configOpt.get();
-        // getAllAccessibleClientIds returns the appropriate list based on config type
-        clientIds.addAll(config.getAllAccessibleClientIds());
+        emailDomainMappingRepo.findByEmailDomain(domain)
+            .ifPresent(mapping -> clientIds.addAll(mapping.getAllAccessibleClientIds()));
     }
 
     /**
@@ -148,23 +139,23 @@ public class ClientAccessService {
     }
 
     /**
-     * Check if principal has global access (ANCHOR scope or legacy anchor domain).
+     * Check if principal has global access (ANCHOR scope or anchor domain).
      *
      * @param principal The principal
      * @return true if anchor scope/domain user
      */
     public boolean isAnchorDomainUser(Principal principal) {
-        // Check new scope first
+        // Check explicit scope first
         if (principal.scope == UserScope.ANCHOR) {
             return true;
         }
 
-        // Legacy fallback: check anchor domain table
+        // Check email domain mapping for anchor scope
         if (principal.type != PrincipalType.USER || principal.userIdentity == null) {
             return false;
         }
 
         String domain = principal.userIdentity.emailDomain;
-        return domain != null && anchorDomainRepo.existsByDomain(domain);
+        return domain != null && emailDomainMappingRepo.isAnchorDomain(domain);
     }
 }

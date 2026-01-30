@@ -11,16 +11,6 @@ import type {
   GetWellKnownJwksJsonResponse,
   GetWellKnownOpenidConfigurationData,
   GetWellKnownOpenidConfigurationResponse,
-  ListAnchorDomainsData,
-  ListAnchorDomainsResponse,
-  AddAnchorDomainData,
-  AddAnchorDomainResponse,
-  CheckAnchorDomainData,
-  CheckAnchorDomainResponse,
-  RemoveAnchorDomainData,
-  RemoveAnchorDomainResponse,
-  GetAnchorDomainData,
-  GetAnchorDomainResponse,
   ListApplicationsData,
   CreateApplicationData,
   GetApplicationByCodeData,
@@ -42,24 +32,6 @@ import type {
   GetAuditLogOperationsData,
   GetAuditLogData,
   GetAuditLogResponse,
-  ListAuthConfigsData,
-  ListAuthConfigsResponse,
-  GetAuthConfigByDomainData,
-  CreateInternalAuthConfigData,
-  CreateInternalAuthConfigResponse,
-  CreateOidcAuthConfigData,
-  CreateOidcAuthConfigResponse,
-  ValidateSecretReferenceData,
-  ValidateSecretReferenceResponse,
-  DeleteAuthConfigData,
-  DeleteAuthConfigResponse,
-  GetAuthConfigData,
-  GetAuthConfigResponse,
-  UpdateAuthConfigAdditionalClientsData,
-  UpdateAuthConfigClientBindingData,
-  UpdateAuthConfigTypeData,
-  UpdateAuthConfigGrantedClientsData,
-  UpdateOidcConfigData,
   ListClientsData,
   ListClientsResponse,
   CreateClientData,
@@ -101,6 +73,30 @@ import type {
   PutApiAdminDispatchPoolsByIdResponse,
   PostApiAdminDispatchPoolsByIdActivateData,
   PostApiAdminDispatchPoolsByIdSuspendData,
+  ListEmailDomainMappingsData,
+  ListEmailDomainMappingsResponse,
+  CreateEmailDomainMappingData,
+  CreateEmailDomainMappingResponse,
+  GetEmailDomainMappingByDomainData,
+  GetEmailDomainMappingByDomainResponse,
+  DeleteEmailDomainMappingData,
+  DeleteEmailDomainMappingResponse,
+  GetEmailDomainMappingData,
+  GetEmailDomainMappingResponse,
+  UpdateEmailDomainMappingData,
+  UpdateEmailDomainMappingResponse,
+  ListIdentityProvidersData,
+  ListIdentityProvidersResponse,
+  CreateIdentityProviderData,
+  CreateIdentityProviderResponse,
+  GetIdentityProviderByCodeData,
+  GetIdentityProviderByCodeResponse,
+  DeleteIdentityProviderData,
+  DeleteIdentityProviderResponse,
+  GetIdentityProviderData,
+  GetIdentityProviderResponse,
+  UpdateIdentityProviderData,
+  UpdateIdentityProviderResponse,
   ListOAuthClientsData,
   ListOAuthClientsResponse,
   CreateOAuthClientData,
@@ -130,6 +126,9 @@ import type {
   GetPrincipalResponse,
   UpdatePrincipalData,
   ActivatePrincipalData,
+  GetPrincipalApplicationAccessData,
+  AssignPrincipalApplicationAccessData,
+  GetPrincipalAvailableApplicationsData,
   GetPrincipalClientAccessData,
   GrantPrincipalClientAccessData,
   RevokePrincipalClientAccessData,
@@ -437,93 +436,6 @@ export const getWellKnownOpenidConfiguration = <
 };
 
 /**
- * List all anchor domains
- * Returns all configured anchor domains. Users from these domains have access to all clients.
- */
-export const listAnchorDomains = <ThrowOnError extends boolean = false>(
-  options?: Options<ListAnchorDomainsData, ThrowOnError>,
-) => {
-  return (options?.client ?? _heyApiClient).get<
-    ListAnchorDomainsResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/anchor-domains",
-    ...options,
-  });
-};
-
-/**
- * Add anchor domain
- * Add a new anchor domain. Users from this domain will have access to all clients.
- */
-export const addAnchorDomain = <ThrowOnError extends boolean = false>(
-  options: Options<AddAnchorDomainData, ThrowOnError>,
-) => {
-  return (options.client ?? _heyApiClient).post<
-    AddAnchorDomainResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/anchor-domains",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
-};
-
-/**
- * Check if domain is an anchor domain
- */
-export const checkAnchorDomain = <ThrowOnError extends boolean = false>(
-  options: Options<CheckAnchorDomainData, ThrowOnError>,
-) => {
-  return (options.client ?? _heyApiClient).get<
-    CheckAnchorDomainResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/anchor-domains/check/{domain}",
-    ...options,
-  });
-};
-
-/**
- * Remove anchor domain
- * Remove an anchor domain. Users from this domain will lose global access.
- */
-export const removeAnchorDomain = <ThrowOnError extends boolean = false>(
-  options: Options<RemoveAnchorDomainData, ThrowOnError>,
-) => {
-  return (options.client ?? _heyApiClient).delete<
-    RemoveAnchorDomainResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/anchor-domains/{id}",
-    ...options,
-  });
-};
-
-/**
- * Get anchor domain by ID
- */
-export const getAnchorDomain = <ThrowOnError extends boolean = false>(
-  options: Options<GetAnchorDomainData, ThrowOnError>,
-) => {
-  return (options.client ?? _heyApiClient).get<
-    GetAnchorDomainResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/anchor-domains/{id}",
-    ...options,
-  });
-};
-
-/**
  * List all applications
  */
 export const listApplications = <ThrowOnError extends boolean = false>(
@@ -806,220 +718,6 @@ export const getAuditLog = <ThrowOnError extends boolean = false>(
   >({
     url: "/api/admin/audit-logs/{id}",
     ...options,
-  });
-};
-
-/**
- * List all auth configurations
- * Returns all domain auth configurations
- */
-export const listAuthConfigs = <ThrowOnError extends boolean = false>(
-  options?: Options<ListAuthConfigsData, ThrowOnError>,
-) => {
-  return (options?.client ?? _heyApiClient).get<
-    ListAuthConfigsResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/auth-configs",
-    ...options,
-  });
-};
-
-/**
- * Get auth configuration by email domain
- */
-export const getAuthConfigByDomain = <ThrowOnError extends boolean = false>(
-  options: Options<GetAuthConfigByDomainData, ThrowOnError>,
-) => {
-  return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/auth-configs/by-domain/{domain}",
-    ...options,
-  });
-};
-
-/**
- * Create internal auth configuration
- * Configure a domain to use internal (password) authentication
- */
-export const createInternalAuthConfig = <ThrowOnError extends boolean = false>(
-  options: Options<CreateInternalAuthConfigData, ThrowOnError>,
-) => {
-  return (options.client ?? _heyApiClient).post<
-    CreateInternalAuthConfigResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/auth-configs/internal",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
-};
-
-/**
- * Create OIDC auth configuration
- * Configure a domain to use external OIDC identity provider
- */
-export const createOidcAuthConfig = <ThrowOnError extends boolean = false>(
-  options: Options<CreateOidcAuthConfigData, ThrowOnError>,
-) => {
-  return (options.client ?? _heyApiClient).post<
-    CreateOidcAuthConfigResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/auth-configs/oidc",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
-};
-
-/**
- * Validate secret reference
- * Checks that a secret reference is valid and accessible without returning the value
- */
-export const validateSecretReference = <ThrowOnError extends boolean = false>(
-  options: Options<ValidateSecretReferenceData, ThrowOnError>,
-) => {
-  return (options.client ?? _heyApiClient).post<
-    ValidateSecretReferenceResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/auth-configs/validate-secret",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
-};
-
-/**
- * Delete auth configuration
- */
-export const deleteAuthConfig = <ThrowOnError extends boolean = false>(
-  options: Options<DeleteAuthConfigData, ThrowOnError>,
-) => {
-  return (options.client ?? _heyApiClient).delete<
-    DeleteAuthConfigResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/auth-configs/{id}",
-    ...options,
-  });
-};
-
-/**
- * Get auth configuration by ID
- */
-export const getAuthConfig = <ThrowOnError extends boolean = false>(
-  options: Options<GetAuthConfigData, ThrowOnError>,
-) => {
-  return (options.client ?? _heyApiClient).get<
-    GetAuthConfigResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/auth-configs/{id}",
-    ...options,
-  });
-};
-
-/**
- * Update additional clients
- * Set additional client IDs for CLIENT type configurations
- */
-export const updateAuthConfigAdditionalClients = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<UpdateAuthConfigAdditionalClientsData, ThrowOnError>,
-) => {
-  return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/auth-configs/{id}/additional-clients",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
-};
-
-/**
- * Update client binding
- * Change which client this domain is bound to, or remove binding for platform-wide access
- */
-export const updateAuthConfigClientBinding = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<UpdateAuthConfigClientBindingData, ThrowOnError>,
-) => {
-  return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/auth-configs/{id}/client-binding",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
-};
-
-/**
- * Update config type
- * Change the config type (ANCHOR, PARTNER, CLIENT). This will reset client associations.
- */
-export const updateAuthConfigType = <ThrowOnError extends boolean = false>(
-  options: Options<UpdateAuthConfigTypeData, ThrowOnError>,
-) => {
-  return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/auth-configs/{id}/config-type",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
-};
-
-/**
- * Update granted clients
- * Set granted client IDs for PARTNER type configurations
- */
-export const updateAuthConfigGrantedClients = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<UpdateAuthConfigGrantedClientsData, ThrowOnError>,
-) => {
-  return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/auth-configs/{id}/granted-clients",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
-};
-
-/**
- * Update OIDC configuration
- */
-export const updateOidcConfig = <ThrowOnError extends boolean = false>(
-  options: Options<UpdateOidcConfigData, ThrowOnError>,
-) => {
-  return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/auth-configs/{id}/oidc",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
   });
 };
 
@@ -1545,6 +1243,218 @@ export const postApiAdminDispatchPoolsByIdSuspend = <
 };
 
 /**
+ * List all email domain mappings
+ * Returns all email domain mappings. Filter by identity provider or scope type.
+ */
+export const listEmailDomainMappings = <ThrowOnError extends boolean = false>(
+  options?: Options<ListEmailDomainMappingsData, ThrowOnError>,
+) => {
+  return (options?.client ?? _heyApiClient).get<
+    ListEmailDomainMappingsResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/admin/email-domain-mappings",
+    ...options,
+  });
+};
+
+/**
+ * Create a new email domain mapping
+ */
+export const createEmailDomainMapping = <ThrowOnError extends boolean = false>(
+  options: Options<CreateEmailDomainMappingData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    CreateEmailDomainMappingResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/admin/email-domain-mappings",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Get email domain mapping by domain
+ */
+export const getEmailDomainMappingByDomain = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetEmailDomainMappingByDomainData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<
+    GetEmailDomainMappingByDomainResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/admin/email-domain-mappings/by-domain/{domain}",
+    ...options,
+  });
+};
+
+/**
+ * Delete an email domain mapping
+ */
+export const deleteEmailDomainMapping = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteEmailDomainMappingData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).delete<
+    DeleteEmailDomainMappingResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/admin/email-domain-mappings/{id}",
+    ...options,
+  });
+};
+
+/**
+ * Get email domain mapping by ID
+ */
+export const getEmailDomainMapping = <ThrowOnError extends boolean = false>(
+  options: Options<GetEmailDomainMappingData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<
+    GetEmailDomainMappingResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/admin/email-domain-mappings/{id}",
+    ...options,
+  });
+};
+
+/**
+ * Update an email domain mapping
+ */
+export const updateEmailDomainMapping = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateEmailDomainMappingData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).put<
+    UpdateEmailDomainMappingResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/admin/email-domain-mappings/{id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * List all identity providers
+ * Returns all identity providers. Filter by type if needed.
+ */
+export const listIdentityProviders = <ThrowOnError extends boolean = false>(
+  options?: Options<ListIdentityProvidersData, ThrowOnError>,
+) => {
+  return (options?.client ?? _heyApiClient).get<
+    ListIdentityProvidersResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/admin/identity-providers",
+    ...options,
+  });
+};
+
+/**
+ * Create a new identity provider
+ */
+export const createIdentityProvider = <ThrowOnError extends boolean = false>(
+  options: Options<CreateIdentityProviderData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    CreateIdentityProviderResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/admin/identity-providers",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Get identity provider by code
+ */
+export const getIdentityProviderByCode = <ThrowOnError extends boolean = false>(
+  options: Options<GetIdentityProviderByCodeData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<
+    GetIdentityProviderByCodeResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/admin/identity-providers/by-code/{code}",
+    ...options,
+  });
+};
+
+/**
+ * Delete an identity provider
+ */
+export const deleteIdentityProvider = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteIdentityProviderData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).delete<
+    DeleteIdentityProviderResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/admin/identity-providers/{id}",
+    ...options,
+  });
+};
+
+/**
+ * Get identity provider by ID
+ */
+export const getIdentityProvider = <ThrowOnError extends boolean = false>(
+  options: Options<GetIdentityProviderData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<
+    GetIdentityProviderResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/admin/identity-providers/{id}",
+    ...options,
+  });
+};
+
+/**
+ * Update an identity provider
+ */
+export const updateIdentityProvider = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateIdentityProviderData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).put<
+    UpdateIdentityProviderResponse,
+    unknown,
+    ThrowOnError
+  >({
+    url: "/api/admin/identity-providers/{id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
  * List all OAuth clients
  */
 export const listOAuthClients = <ThrowOnError extends boolean = false>(
@@ -1864,6 +1774,54 @@ export const activatePrincipal = <ThrowOnError extends boolean = false>(
       ...options,
     },
   );
+};
+
+/**
+ * Get principal's application access grants
+ */
+export const getPrincipalApplicationAccess = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetPrincipalApplicationAccessData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+    url: "/api/admin/principals/{id}/application-access",
+    ...options,
+  });
+};
+
+/**
+ * Batch assign application access to principal
+ * Sets the complete list of applications for a principal. Applications not in the list will be removed.
+ */
+export const assignPrincipalApplicationAccess = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<AssignPrincipalApplicationAccessData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
+    url: "/api/admin/principals/{id}/application-access",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Get applications available to grant to principal
+ * Returns applications that are enabled for at least one of the user's accessible clients
+ */
+export const getPrincipalAvailableApplications = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetPrincipalAvailableApplicationsData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+    url: "/api/admin/principals/{id}/available-applications",
+    ...options,
+  });
 };
 
 /**

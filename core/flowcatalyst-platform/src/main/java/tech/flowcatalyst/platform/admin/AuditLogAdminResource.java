@@ -63,7 +63,7 @@ public class AuditLogAdminResource {
         @APIResponse(responseCode = "401", description = "Not authenticated")
     })
     public Response listAuditLogs(
-            @Parameter(description = "Filter by entity type (e.g., 'ClientAuthConfig', 'Role')")
+            @Parameter(description = "Filter by entity type (e.g., 'IdentityProvider', 'Role')")
             @QueryParam("entityType") String entityType,
             @Parameter(description = "Filter by entity ID")
             @QueryParam("entityId") String entityId,

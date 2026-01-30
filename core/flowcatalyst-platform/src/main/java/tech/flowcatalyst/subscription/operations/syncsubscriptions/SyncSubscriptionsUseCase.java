@@ -67,7 +67,7 @@ public class SyncSubscriptionsUseCase {
 
         // Authorization check: can principal manage resources with this prefix?
         AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canManageResourceWithPrefix(codePrefix)) {
+        if (authz != null && !authz.canAccessResourceWithPrefix(codePrefix)) {
             return Result.failure(new UseCaseError.AuthorizationError(
                 "NOT_AUTHORIZED",
                 "Not authorized to sync subscriptions for this application",

@@ -35,7 +35,7 @@ public class UpdateRoleUseCase {
     public Result<RoleUpdated> execute(UpdateRoleCommand command, ExecutionContext context) {
         // Authorization check: can principal manage roles with this prefix?
         AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canManageResourceWithPrefix(command.roleName())) {
+        if (authz != null && !authz.canAccessResourceWithPrefix(command.roleName())) {
             return Result.failure(new UseCaseError.AuthorizationError(
                 "NOT_AUTHORIZED",
                 "Not authorized to update this role",

@@ -23,12 +23,12 @@ import tech.flowcatalyst.platform.authorization.AuthorizationService;
 import tech.flowcatalyst.platform.authorization.PrincipalRole;
 import tech.flowcatalyst.platform.authorization.RoleService;
 import tech.flowcatalyst.platform.authorization.platform.PlatformIamPermissions;
-import tech.flowcatalyst.platform.authentication.AuthProvider;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProvider;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProviderService;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProviderType;
 import tech.flowcatalyst.platform.client.ClientAccessGrant;
 import tech.flowcatalyst.platform.client.ClientAccessGrantRepository;
 import tech.flowcatalyst.platform.client.ClientAccessService;
-import tech.flowcatalyst.platform.client.ClientAuthConfig;
-import tech.flowcatalyst.platform.client.ClientAuthConfigRepository;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.TracingContext;
@@ -43,6 +43,12 @@ import tech.flowcatalyst.platform.principal.operations.grantclientaccess.GrantCl
 import tech.flowcatalyst.platform.principal.operations.revokeclientaccess.RevokeClientAccessCommand;
 import tech.flowcatalyst.platform.principal.operations.updateuser.UpdateUserCommand;
 import tech.flowcatalyst.platform.principal.operations.assignroles.AssignRolesCommand;
+import tech.flowcatalyst.platform.principal.operations.assignapplicationaccess.AssignApplicationAccessCommand;
+import tech.flowcatalyst.platform.application.Application;
+import tech.flowcatalyst.platform.application.ApplicationRepository;
+import tech.flowcatalyst.platform.application.ApplicationClientConfigRepository;
+import tech.flowcatalyst.platform.authentication.domain.EmailDomainMappingRepository;
+import tech.flowcatalyst.platform.principal.entity.PrincipalApplicationAccessEntity;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TypedId;
 
@@ -93,10 +99,19 @@ public class PrincipalAdminResource {
     ClientAccessService clientAccessService;
 
     @Inject
-    ClientAuthConfigRepository authConfigRepo;
+    IdentityProviderService idpService;
 
     @Inject
-    AnchorDomainRepository anchorDomainRepo;
+    EmailDomainMappingRepository emailDomainMappingRepo;
+
+    @Inject
+    ApplicationRepository applicationRepo;
+
+    @Inject
+    ApplicationClientConfigRepository appConfigRepo;
+
+    @Inject
+    jakarta.persistence.EntityManager em;
 
     @Inject
     AuditContext auditContext;
@@ -699,6 +714,192 @@ public class PrincipalAdminResource {
         };
     }
 
+    // ==================== Application Access ====================
+
+    /**
+     * Get application access grants for a principal.
+     */
+    @GET
+    @Path("/{id}/application-access")
+    @Operation(operationId = "getPrincipalApplicationAccess", summary = "Get principal's application access grants")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "List of application access grants"),
+        @APIResponse(responseCode = "404", description = "Principal not found")
+    })
+    public Response getApplicationAccess(@PathParam("id") String id) {
+
+        String principalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(principalId, PlatformIamPermissions.USER_VIEW.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_VIEW.toPermissionString()))
+                .build();
+        }
+
+        var principalOpt = principalRepo.findByIdOptional(id);
+        if (principalOpt.isEmpty()) {
+            return Response.status(Response.Status.NOT_FOUND)
+                .entity(new ErrorResponse("Principal not found"))
+                .build();
+        }
+
+        // Load application access grants from junction table
+        List<PrincipalApplicationAccessEntity> accessEntities = em.createQuery(
+                "SELECT a FROM PrincipalApplicationAccessEntity a WHERE a.principalId = :id",
+                PrincipalApplicationAccessEntity.class)
+            .setParameter("id", id)
+            .getResultList();
+
+        // Enrich with application details
+        Set<String> appIds = accessEntities.stream()
+            .map(a -> a.applicationId)
+            .collect(Collectors.toSet());
+
+        Map<String, Application> appsById = applicationRepo.findByIds(appIds).stream()
+            .collect(Collectors.toMap(a -> a.id, a -> a));
+
+        List<ApplicationAccessDto> dtos = accessEntities.stream()
+            .map(entity -> {
+                Application app = appsById.get(entity.applicationId);
+                return new ApplicationAccessDto(
+                    entity.applicationId,
+                    app != null ? app.code : null,
+                    app != null ? app.name : null,
+                    entity.grantedAt
+                );
+            })
+            .toList();
+
+        return Response.ok(new ApplicationAccessListResponse(dtos)).build();
+    }
+
+    /**
+     * Batch assign application access to a principal.
+     *
+     * <p>This is a declarative operation - the provided list represents the complete
+     * set of applications the user should have access to. Applications not in the list
+     * will be removed, new applications will be added.
+     */
+    @PUT
+    @Path("/{id}/application-access")
+    @Operation(operationId = "assignPrincipalApplicationAccess", summary = "Batch assign application access to principal",
+        description = "Sets the complete list of applications for a principal. Applications not in the list will be removed.")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "Application access assigned"),
+        @APIResponse(responseCode = "400", description = "Invalid application IDs or applications not accessible"),
+        @APIResponse(responseCode = "404", description = "Principal not found")
+    })
+    public Response assignApplicationAccess(
+            @PathParam("id") String id,
+            @Valid AssignApplicationAccessRequest request) {
+
+        String adminPrincipalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(adminPrincipalId, PlatformIamPermissions.USER_UPDATE.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_UPDATE.toPermissionString()))
+                .build();
+        }
+
+        ExecutionContext context = ExecutionContext.from(tracingContext, adminPrincipalId);
+
+        // Build command
+        AssignApplicationAccessCommand command = new AssignApplicationAccessCommand(id, request.applicationIds());
+
+        // Execute use case
+        Result<ApplicationAccessAssigned> result = userOperations.assignApplicationAccess(command, context);
+
+        return switch (result) {
+            case Result.Success<ApplicationAccessAssigned> s -> {
+                LOG.infof("Application access assigned to principal %s by principal %s: added=%s, removed=%s",
+                    id, adminPrincipalId, s.value().added(), s.value().removed());
+
+                // Return updated application access
+                List<PrincipalApplicationAccessEntity> accessEntities = em.createQuery(
+                        "SELECT a FROM PrincipalApplicationAccessEntity a WHERE a.principalId = :id",
+                        PrincipalApplicationAccessEntity.class)
+                    .setParameter("id", id)
+                    .getResultList();
+
+                Set<String> appIds = accessEntities.stream()
+                    .map(a -> a.applicationId)
+                    .collect(Collectors.toSet());
+
+                Map<String, Application> appsById = applicationRepo.findByIds(appIds).stream()
+                    .collect(Collectors.toMap(a -> a.id, a -> a));
+
+                List<ApplicationAccessDto> dtos = accessEntities.stream()
+                    .map(entity -> {
+                        Application app = appsById.get(entity.applicationId);
+                        return new ApplicationAccessDto(
+                            entity.applicationId,
+                            app != null ? app.code : null,
+                            app != null ? app.name : null,
+                            entity.grantedAt
+                        );
+                    })
+                    .toList();
+
+                yield Response.ok(new ApplicationAccessAssignedResponse(
+                    dtos,
+                    s.value().added(),
+                    s.value().removed()
+                )).build();
+            }
+            case Result.Failure<ApplicationAccessAssigned> f -> mapErrorToResponse(f.error());
+        };
+    }
+
+    /**
+     * Get available applications for a principal (filtered to client-accessible apps).
+     */
+    @GET
+    @Path("/{id}/available-applications")
+    @Operation(operationId = "getPrincipalAvailableApplications", summary = "Get applications available to grant to principal",
+        description = "Returns applications that are enabled for at least one of the user's accessible clients")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "List of available applications"),
+        @APIResponse(responseCode = "404", description = "Principal not found")
+    })
+    public Response getAvailableApplications(@PathParam("id") String id) {
+
+        String principalId = auditContext.requirePrincipalId();
+
+        if (!authorizationService.hasPermission(principalId, PlatformIamPermissions.USER_VIEW.toPermissionString())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(new ErrorResponse("Missing required permission: " + PlatformIamPermissions.USER_VIEW.toPermissionString()))
+                .build();
+        }
+
+        var principalOpt = principalRepo.findByIdOptional(id);
+        if (principalOpt.isEmpty()) {
+            return Response.status(Response.Status.NOT_FOUND)
+                .entity(new ErrorResponse("Principal not found"))
+                .build();
+        }
+
+        Principal principal = principalOpt.get();
+
+        // Get user's accessible clients
+        Set<String> accessibleClientIds = clientAccessService.getAccessibleClients(principal);
+
+        // Find all active applications that are enabled for at least one accessible client
+        List<Application> allApps = applicationRepo.findAllActive();
+        List<AvailableApplicationDto> availableApps = allApps.stream()
+            .filter(app -> {
+                for (String clientId : accessibleClientIds) {
+                    if (appConfigRepo.isApplicationEnabledForClient(app.id, clientId)) {
+                        return true;
+                    }
+                }
+                return false;
+            })
+            .map(app -> new AvailableApplicationDto(app.id, app.code, app.name))
+            .toList();
+
+        return Response.ok(new AvailableApplicationsResponse(availableApps)).build();
+    }
+
     // ==================== Helper Methods ====================
 
     private PrincipalDto toDto(Principal principal) {
@@ -804,10 +1005,10 @@ public class PrincipalAdminResource {
         boolean emailExists = principalRepo.findByEmail(email).isPresent();
 
         // Check if anchor domain
-        boolean isAnchorDomain = anchorDomainRepo.existsByDomain(domain);
+        boolean isAnchorDomain = emailDomainMappingRepo.isAnchorDomain(domain);
 
-        // Check auth configuration
-        var authConfigOpt = authConfigRepo.findByEmailDomain(domain);
+        // Check identity provider configuration
+        var idpOpt = idpService.findByEmailDomain(domain);
 
         String authProvider = null;
         String warning = null;
@@ -818,18 +1019,18 @@ public class PrincipalAdminResource {
             // Still determine auth provider for display
             if (isAnchorDomain) {
                 authProvider = "INTERNAL";
-            } else if (authConfigOpt.isPresent()) {
-                authProvider = authConfigOpt.get().authProvider.name();
+            } else if (idpOpt.isPresent()) {
+                authProvider = idpOpt.get().type.name();
             } else {
                 authProvider = "INTERNAL";
             }
         } else if (isAnchorDomain) {
             info = "This is an anchor domain. User will have access to all clients.";
             authProvider = "INTERNAL";
-        } else if (authConfigOpt.isPresent()) {
-            ClientAuthConfig config = authConfigOpt.get();
-            authProvider = config.authProvider.name();
-            if (config.authProvider == AuthProvider.OIDC) {
+        } else if (idpOpt.isPresent()) {
+            IdentityProvider idp = idpOpt.get();
+            authProvider = idp.type.name();
+            if (idp.type == IdentityProviderType.OIDC) {
                 info = "This domain uses external OIDC authentication. User will authenticate via their organization's identity provider.";
             } else {
                 info = "This domain uses internal authentication.";
@@ -843,7 +1044,7 @@ public class PrincipalAdminResource {
             domain,
             authProvider,
             isAnchorDomain,
-            authConfigOpt.isPresent(),
+            idpOpt.isPresent(),
             emailExists,
             info,
             warning
@@ -959,6 +1160,40 @@ public class PrincipalAdminResource {
         List<ClientAccessGrantDto> grants
     ) {}
 
+    // ========== Application Access DTOs ==========
+
+    public record ApplicationAccessDto(
+        String applicationId,
+        String applicationCode,
+        String applicationName,
+        Instant grantedAt
+    ) {}
+
+    public record ApplicationAccessListResponse(
+        List<ApplicationAccessDto> applications
+    ) {}
+
+    public record AssignApplicationAccessRequest(
+        @NotNull(message = "Application IDs list is required")
+        List<String> applicationIds
+    ) {}
+
+    public record ApplicationAccessAssignedResponse(
+        List<ApplicationAccessDto> applications,
+        List<String> added,
+        List<String> removed
+    ) {}
+
+    public record AvailableApplicationDto(
+        String id,
+        String code,
+        String name
+    ) {}
+
+    public record AvailableApplicationsResponse(
+        List<AvailableApplicationDto> applications
+    ) {}
+
     public record StatusResponse(
         String message
     ) {}
@@ -967,7 +1202,7 @@ public class PrincipalAdminResource {
         String domain,
         String authProvider,
         boolean isAnchorDomain,
-        boolean hasAuthConfig,
+        boolean hasIdpConfig,
         boolean emailExists,
         String info,
         String warning

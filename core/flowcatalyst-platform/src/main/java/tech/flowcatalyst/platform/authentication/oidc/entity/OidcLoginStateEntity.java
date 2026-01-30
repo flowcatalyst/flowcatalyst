@@ -21,8 +21,11 @@ public class OidcLoginStateEntity {
     @Column(name = "email_domain", nullable = false)
     public String emailDomain;
 
-    @Column(name = "auth_config_id", length = 17)
-    public String authConfigId;
+    @Column(name = "identity_provider_id", length = 17)
+    public String identityProviderId;
+
+    @Column(name = "email_domain_mapping_id", length = 17)
+    public String emailDomainMappingId;
 
     @Column(name = "nonce", length = 64)
     public String nonce;

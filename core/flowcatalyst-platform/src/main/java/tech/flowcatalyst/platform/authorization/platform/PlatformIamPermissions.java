@@ -92,12 +92,60 @@ public class PlatformIamPermissions {
     );
 
     // ========================================================================
-    // Identity Provider (IDP) Management
+    // Identity Provider Management
     // ========================================================================
 
+    public static final PermissionDefinition IDP_VIEW = PermissionDefinition.make(
+        "platform", "iam", "identity-provider", "view",
+        "View identity provider configurations"
+    );
+
+    public static final PermissionDefinition IDP_CREATE = PermissionDefinition.make(
+        "platform", "iam", "identity-provider", "create",
+        "Create identity provider configurations"
+    );
+
+    public static final PermissionDefinition IDP_UPDATE = PermissionDefinition.make(
+        "platform", "iam", "identity-provider", "update",
+        "Update identity provider configurations"
+    );
+
+    public static final PermissionDefinition IDP_DELETE = PermissionDefinition.make(
+        "platform", "iam", "identity-provider", "delete",
+        "Delete identity provider configurations"
+    );
+
+    /**
+     * @deprecated Use IDP_VIEW, IDP_CREATE, IDP_UPDATE, IDP_DELETE instead
+     */
+    @Deprecated
     public static final PermissionDefinition IDP_MANAGE = PermissionDefinition.make(
         "platform", "iam", "idp", "manage",
         "Manage identity provider configurations (create, update, delete domain IDPs)"
+    );
+
+    // ========================================================================
+    // Email Domain Mapping Management
+    // ========================================================================
+
+    public static final PermissionDefinition DOMAIN_MAPPING_VIEW = PermissionDefinition.make(
+        "platform", "iam", "email-domain-mapping", "view",
+        "View email domain mapping configurations"
+    );
+
+    public static final PermissionDefinition DOMAIN_MAPPING_CREATE = PermissionDefinition.make(
+        "platform", "iam", "email-domain-mapping", "create",
+        "Create email domain mapping configurations"
+    );
+
+    public static final PermissionDefinition DOMAIN_MAPPING_UPDATE = PermissionDefinition.make(
+        "platform", "iam", "email-domain-mapping", "update",
+        "Update email domain mapping configurations"
+    );
+
+    public static final PermissionDefinition DOMAIN_MAPPING_DELETE = PermissionDefinition.make(
+        "platform", "iam", "email-domain-mapping", "delete",
+        "Delete email domain mapping configurations"
     );
 
     // ========================================================================

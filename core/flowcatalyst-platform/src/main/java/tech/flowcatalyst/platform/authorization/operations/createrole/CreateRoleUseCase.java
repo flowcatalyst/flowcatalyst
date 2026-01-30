@@ -42,7 +42,7 @@ public class CreateRoleUseCase {
     public Result<RoleCreated> execute(CreateRoleCommand command, ExecutionContext context) {
         // Authorization check: can principal manage this application?
         AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canManageApplication(command.applicationId())) {
+        if (authz != null && !authz.canAccessApplication(command.applicationId())) {
             return Result.failure(new UseCaseError.AuthorizationError(
                 "NOT_AUTHORIZED",
                 "Not authorized to create roles for this application",

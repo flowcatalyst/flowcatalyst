@@ -56,11 +56,38 @@ export interface RolesAssignedResponse {
   removed: string[];
 }
 
+export interface ApplicationAccessGrant {
+  applicationId: string;
+  applicationCode: string | null;
+  applicationName: string | null;
+  grantedAt: string;
+}
+
+export interface ApplicationAccessListResponse {
+  applications: ApplicationAccessGrant[];
+}
+
+export interface ApplicationAccessAssignedResponse {
+  applications: ApplicationAccessGrant[];
+  added: string[];
+  removed: string[];
+}
+
+export interface AvailableApplication {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface AvailableApplicationsResponse {
+  applications: AvailableApplication[];
+}
+
 export interface EmailDomainCheckResponse {
   domain: string;
   authProvider: string;
   isAnchorDomain: boolean;
-  hasAuthConfig: boolean;
+  hasIdpConfig: boolean;
   emailExists: boolean;
   info: string | null;
   warning: string | null;
@@ -169,6 +196,35 @@ export const usersApi = {
     return apiFetch(`/admin/principals/${id}/roles`, {
       method: 'PUT',
       body: JSON.stringify({ roles }),
+    });
+  },
+
+  // Application access management
+
+  /**
+   * Get the application access grants for a user.
+   */
+  getApplicationAccess(id: string): Promise<ApplicationAccessListResponse> {
+    return apiFetch(`/admin/principals/${id}/application-access`);
+  },
+
+  /**
+   * Get applications available to grant to a user.
+   * Returns applications that are enabled for at least one of the user's accessible clients.
+   */
+  getAvailableApplications(id: string): Promise<AvailableApplicationsResponse> {
+    return apiFetch(`/admin/principals/${id}/available-applications`);
+  },
+
+  /**
+   * Batch assign application access to a user.
+   * This is a declarative operation - sets the complete application access list.
+   * Applications not in the list will be removed, new applications will be added.
+   */
+  assignApplicationAccess(id: string, applicationIds: string[]): Promise<ApplicationAccessAssignedResponse> {
+    return apiFetch(`/admin/principals/${id}/application-access`, {
+      method: 'PUT',
+      body: JSON.stringify({ applicationIds }),
     });
   },
 };

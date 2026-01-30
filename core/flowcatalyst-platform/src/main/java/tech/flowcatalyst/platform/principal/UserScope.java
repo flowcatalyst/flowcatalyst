@@ -9,7 +9,7 @@ package tech.flowcatalyst.platform.principal;
  * - CLIENT: Users bound to a single client (their home client).
  *
  * The scope can be:
- * 1. Derived from email domain configuration (ClientAuthConfig.clientId)
+ * 1. Derived from email domain mapping (EmailDomainMapping.scopeType)
  * 2. Explicitly set on the principal for override cases
  */
 public enum UserScope {

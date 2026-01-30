@@ -73,7 +73,7 @@ public class CreateEventTypeUseCase {
 
         // Authorization check: can principal manage event types with this prefix?
         AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canManageResourceWithPrefix(code)) {
+        if (authz != null && !authz.canAccessResourceWithPrefix(code)) {
             return Result.failure(new UseCaseError.AuthorizationError(
                 "NOT_AUTHORIZED",
                 "Not authorized to create event types for this application",

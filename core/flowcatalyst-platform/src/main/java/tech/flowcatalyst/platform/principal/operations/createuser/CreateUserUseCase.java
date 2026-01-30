@@ -2,15 +2,15 @@ package tech.flowcatalyst.platform.principal.operations.createuser;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import tech.flowcatalyst.platform.authentication.AuthProvider;
 import tech.flowcatalyst.platform.authentication.IdpType;
-import tech.flowcatalyst.platform.client.ClientAuthConfig;
-import tech.flowcatalyst.platform.client.ClientAuthConfigRepository;
+import tech.flowcatalyst.platform.authentication.domain.EmailDomainMappingRepository;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProvider;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProviderService;
+import tech.flowcatalyst.platform.authentication.idp.IdentityProviderType;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
-import tech.flowcatalyst.platform.principal.AnchorDomainRepository;
 import tech.flowcatalyst.platform.principal.PasswordService;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
@@ -36,10 +36,10 @@ public class CreateUserUseCase {
     PasswordService passwordService;
 
     @Inject
-    AnchorDomainRepository anchorDomainRepo;
+    EmailDomainMappingRepository emailDomainMappingRepo;
 
     @Inject
-    ClientAuthConfigRepository authConfigRepo;
+    IdentityProviderService idpService;
 
     @Inject
     UnitOfWork unitOfWork;
@@ -84,15 +84,15 @@ public class CreateUserUseCase {
         // Extract domain from email
         String emailDomain = extractDomain(command.email());
 
-        // Check if anchor domain user
-        boolean isAnchorUser = anchorDomainRepo.existsByDomain(emailDomain);
+        // Check if anchor domain user (email domain mapping with scopeType=ANCHOR)
+        boolean isAnchorUser = emailDomainMappingRepo.isAnchorDomain(emailDomain);
 
-        // Determine IdP type based on domain auth configuration
-        Optional<ClientAuthConfig> authConfig = authConfigRepo.findByEmailDomain(emailDomain);
+        // Determine IdP type based on identity provider configuration
+        Optional<IdentityProvider> idpOpt = idpService.findByEmailDomain(emailDomain);
         IdpType idpType;
         String passwordHash = null;
 
-        if (authConfig.isPresent() && authConfig.get().authProvider == AuthProvider.OIDC) {
+        if (idpOpt.isPresent() && idpOpt.get().type == IdentityProviderType.OIDC) {
             // OIDC user - no password required
             idpType = IdpType.OIDC;
             // Password should not be provided for OIDC users

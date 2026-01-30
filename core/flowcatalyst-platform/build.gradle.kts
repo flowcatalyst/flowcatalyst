@@ -198,6 +198,11 @@ tasks.withType<JavaCompile> {
     options.compilerArgs.add("-parameters")
 }
 
+// Suppress duplicate dependency warnings (common with Quarkus transitive dependencies)
+tasks.withType<Jar> {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 // ==========================================================================
 // Java 24+ Compatibility
 // ==========================================================================
