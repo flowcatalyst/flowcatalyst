@@ -47,7 +47,7 @@ const isValid = computed(() => {
   if (!isCodeValid.value) return false;
   if (form.value.type === 'OIDC') {
     if (!form.value.oidcClientId.trim()) return false;
-    if (!form.value.oidcMultiTenant && !form.value.oidcIssuerUrl.trim()) return false;
+    if (!form.value.oidcIssuerUrl.trim()) return false; // Always required for OIDC
   }
   return true;
 });
@@ -192,15 +192,20 @@ async function createProvider() {
             Enable for providers like Azure AD where the issuer varies per tenant
           </small>
 
-          <div v-if="!form.oidcMultiTenant" class="field">
+          <div class="field">
             <label for="issuerUrl">Issuer URL *</label>
             <InputText
               id="issuerUrl"
               v-model="form.oidcIssuerUrl"
-              placeholder="https://login.example.com"
+              :placeholder="form.oidcMultiTenant ? 'https://login.microsoftonline.com/organizations/v2.0' : 'https://login.example.com'"
               class="w-full"
             />
-            <small class="field-help">The OpenID Connect issuer URL</small>
+            <small class="field-help">
+              {{ form.oidcMultiTenant
+                ? 'Base URL for authorization/token endpoints (e.g., .../organizations/v2.0 or .../common/v2.0)'
+                : 'The OpenID Connect issuer URL'
+              }}
+            </small>
           </div>
 
           <div v-if="form.oidcMultiTenant" class="field">
@@ -208,10 +213,12 @@ async function createProvider() {
             <InputText
               id="issuerPattern"
               v-model="form.oidcIssuerPattern"
-              placeholder="https://login.microsoftonline.com/{tenant}/v2.0"
+              placeholder="https://login.microsoftonline.com/{tenantId}/v2.0"
               class="w-full"
             />
-            <small class="field-help">Pattern with {tenant} placeholder for multi-tenant IDPs</small>
+            <small class="field-help">
+              Pattern for validating token issuer. Use {tenantId} as placeholder. Leave empty to auto-derive from Issuer URL.
+            </small>
           </div>
 
           <div class="field">

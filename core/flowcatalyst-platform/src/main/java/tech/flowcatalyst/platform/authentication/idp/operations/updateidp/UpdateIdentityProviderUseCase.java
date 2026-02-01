@@ -10,6 +10,7 @@ import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
+import tech.flowcatalyst.platform.security.secrets.SecretService;
 
 import java.util.ArrayList;
 import java.util.Map;
@@ -25,6 +26,9 @@ public class UpdateIdentityProviderUseCase {
 
     @Inject
     UnitOfWork unitOfWork;
+
+    @Inject
+    SecretService secretService;
 
     public Result<IdentityProviderUpdated> execute(UpdateIdentityProviderCommand command, ExecutionContext context) {
         // Validate ID
@@ -59,8 +63,9 @@ public class UpdateIdentityProviderUseCase {
             idp.oidcClientId = command.oidcClientId();
         }
 
-        if (command.oidcClientSecretRef() != null) {
-            idp.oidcClientSecretRef = command.oidcClientSecretRef();
+        if (command.oidcClientSecretRef() != null && !command.oidcClientSecretRef().isBlank()) {
+            // Encrypt client secret before storing
+            idp.oidcClientSecretRef = secretService.prepareForStorage("encrypt:" + command.oidcClientSecretRef());
         }
 
         if (command.oidcMultiTenant() != null) {

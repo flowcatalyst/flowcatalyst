@@ -41,7 +41,7 @@ const deleteLoading = ref(false);
 const isValid = computed(() => {
   if (!editForm.value.name.trim()) return false;
   if (provider.value?.type === 'OIDC') {
-    if (!editForm.value.oidcMultiTenant && !editForm.value.oidcIssuerUrl.trim()) return false;
+    if (!editForm.value.oidcIssuerUrl.trim()) return false; // Always required for OIDC
     if (!editForm.value.oidcClientId.trim()) return false;
   }
   return true;
@@ -262,14 +262,15 @@ function getTypeSeverity(type: string) {
                 </span>
               </div>
 
-              <div class="field-group" v-if="!provider.oidcMultiTenant">
+              <div class="field-group">
                 <label>Issuer URL</label>
                 <span class="field-value">{{ provider.oidcIssuerUrl || '-' }}</span>
               </div>
 
-              <div class="field-group" v-if="provider.oidcMultiTenant">
+              <div class="field-group" v-if="provider.oidcMultiTenant && provider.oidcIssuerPattern">
                 <label>Issuer Pattern</label>
-                <span class="field-value">{{ provider.oidcIssuerPattern || '-' }}</span>
+                <span class="field-value">{{ provider.oidcIssuerPattern }}</span>
+                <small class="text-muted">Auto-derived from Issuer URL if not set</small>
               </div>
 
               <div class="field-group">
@@ -332,15 +333,20 @@ function getTypeSeverity(type: string) {
                 <label for="multiTenant" class="checkbox-label">Multi-Tenant Mode</label>
               </div>
 
-              <div v-if="!editForm.oidcMultiTenant" class="field">
+              <div class="field">
                 <label for="issuerUrl">Issuer URL *</label>
                 <InputText
                   id="issuerUrl"
                   v-model="editForm.oidcIssuerUrl"
-                  placeholder="https://login.example.com"
+                  :placeholder="editForm.oidcMultiTenant ? 'https://login.microsoftonline.com/common/v2.0' : 'https://login.example.com'"
                   class="w-full"
                 />
-                <small class="field-help">The OpenID Connect issuer URL</small>
+                <small class="field-help">
+                  {{ editForm.oidcMultiTenant
+                    ? 'Base URL for authorization/token endpoints (e.g., .../common/v2.0)'
+                    : 'The OpenID Connect issuer URL'
+                  }}
+                </small>
               </div>
 
               <div v-if="editForm.oidcMultiTenant" class="field">
@@ -348,10 +354,12 @@ function getTypeSeverity(type: string) {
                 <InputText
                   id="issuerPattern"
                   v-model="editForm.oidcIssuerPattern"
-                  placeholder="https://login.microsoftonline.com/{tenant}/v2.0"
+                  placeholder="https://login.microsoftonline.com/{tenantId}/v2.0"
                   class="w-full"
                 />
-                <small class="field-help">Pattern with {tenant} placeholder for multi-tenant IDPs</small>
+                <small class="field-help">
+                  Optional. Pattern for validating token issuer. Use {tenantId} as placeholder. Leave empty to auto-derive from Issuer URL.
+                </small>
               </div>
 
               <div class="field">

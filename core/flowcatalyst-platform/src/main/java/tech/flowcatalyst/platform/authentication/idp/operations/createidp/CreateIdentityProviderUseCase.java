@@ -10,6 +10,7 @@ import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
+import tech.flowcatalyst.platform.security.secrets.SecretService;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
 
@@ -28,6 +29,9 @@ public class CreateIdentityProviderUseCase {
 
     @Inject
     UnitOfWork unitOfWork;
+
+    @Inject
+    SecretService secretService;
 
     public Result<IdentityProviderCreated> execute(CreateIdentityProviderCommand command, ExecutionContext context) {
         // Validate code
@@ -118,7 +122,10 @@ public class CreateIdentityProviderUseCase {
         idp.type = command.type();
         idp.oidcIssuerUrl = command.oidcIssuerUrl();
         idp.oidcClientId = command.oidcClientId();
-        idp.oidcClientSecretRef = command.oidcClientSecretRef();
+        // Encrypt client secret if provided
+        if (command.oidcClientSecretRef() != null && !command.oidcClientSecretRef().isBlank()) {
+            idp.oidcClientSecretRef = secretService.prepareForStorage("encrypt:" + command.oidcClientSecretRef());
+        }
         idp.oidcMultiTenant = command.oidcMultiTenant();
         idp.oidcIssuerPattern = command.oidcIssuerPattern();
         idp.allowedEmailDomains = new ArrayList<>(normalizedDomains);

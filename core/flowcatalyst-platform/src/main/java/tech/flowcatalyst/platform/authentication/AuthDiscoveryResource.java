@@ -74,11 +74,17 @@ public class AuthDiscoveryResource {
 
         IdentityProvider idp = idpOpt.get();
 
-        if (idp.type == IdentityProviderType.OIDC && idp.oidcIssuerUrl != null) {
+        // Check if this is an OIDC identity provider
+        // For multi-tenant IDPs (like Entra), oidcIssuerUrl may be null but oidcIssuerPattern is set
+        boolean isOidcConfigured = idp.type == IdentityProviderType.OIDC &&
+            (idp.oidcIssuerUrl != null || (idp.oidcMultiTenant && idp.getEffectiveIssuerPattern() != null));
+
+        if (isOidcConfigured) {
             // Return the FlowCatalyst OIDC login URL (not the external IDP URL directly)
             String loginUrl = "/auth/oidc/login?domain=" + domain;
+            String issuerInfo = idp.oidcIssuerUrl != null ? idp.oidcIssuerUrl : idp.getEffectiveIssuerPattern();
             LOG.debugf("Domain %s uses OIDC, login URL: %s", domain, loginUrl);
-            return Response.ok(new DomainCheckResponse("external", loginUrl, idp.oidcIssuerUrl)).build();
+            return Response.ok(new DomainCheckResponse("external", loginUrl, issuerInfo)).build();
         }
 
         // Internal auth
