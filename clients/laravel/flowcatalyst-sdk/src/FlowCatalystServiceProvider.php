@@ -7,6 +7,7 @@ namespace FlowCatalyst;
 use FlowCatalyst\Auth\Contracts\OidcUserHandler;
 use FlowCatalyst\Auth\DefaultOidcUserHandler;
 use FlowCatalyst\Client\Auth\OidcTokenManager;
+use FlowCatalyst\Client\Auth\TokenProviderInterface;
 use FlowCatalyst\Client\FlowCatalystClient;
 use FlowCatalyst\Console\Commands\ScanDefinitionsCommand;
 use FlowCatalyst\Console\Commands\SyncDefinitionsCommand;
@@ -67,6 +68,9 @@ class FlowCatalystServiceProvider extends ServiceProvider
                 cacheKey: $config['token_cache']['key'] ?? 'flowcatalyst_access_token'
             );
         });
+
+        // Bind interface to concrete implementation (allows type-hinting against interface)
+        $this->app->bind(TokenProviderInterface::class, OidcTokenManager::class);
     }
 
     /**

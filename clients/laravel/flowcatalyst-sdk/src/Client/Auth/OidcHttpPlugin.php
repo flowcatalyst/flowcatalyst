@@ -11,7 +11,7 @@ use Psr\Http\Message\RequestInterface;
 class OidcHttpPlugin implements Plugin
 {
     public function __construct(
-        private readonly OidcTokenManager $tokenManager
+        private readonly TokenProviderInterface $tokenProvider
     ) {}
 
     public function handleRequest(
@@ -19,7 +19,7 @@ class OidcHttpPlugin implements Plugin
         callable $next,
         callable $first
     ): Promise {
-        $token = $this->tokenManager->getAccessToken();
+        $token = $this->tokenProvider->getAccessToken();
         $request = $request->withHeader('Authorization', "Bearer {$token}");
 
         return $next($request);

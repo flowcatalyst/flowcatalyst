@@ -25,9 +25,9 @@ class AuthenticationException extends FlowCatalystException
     /**
      * Create an exception for expired token.
      */
-    public static function tokenExpired(): static
+    public static function tokenExpired(?string $message = null): static
     {
-        return new static('Access token has expired and could not be refreshed.');
+        return new static($message ?? 'Access token has expired and could not be refreshed.');
     }
 
     /**

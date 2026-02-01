@@ -5,7 +5,7 @@
  * Uses neverthrow for typed error handling.
  */
 
-import { ResultAsync, ok, err } from 'neverthrow';
+import { ResultAsync, ok, err, errAsync } from 'neverthrow';
 import { createClient, createConfig } from './generated/client';
 import type { Client } from './generated/client';
 import { OidcTokenManager, type TokenManagerConfig } from './auth';
@@ -22,7 +22,10 @@ import { ApplicationsResource } from './resources/applications';
 import { ClientsResource } from './resources/clients';
 import { PrincipalsResource } from './resources/principals';
 
-export interface FlowCatalystConfig extends TokenManagerConfig {
+/**
+ * Configuration for client credentials authentication.
+ */
+export interface ClientCredentialsConfig extends TokenManagerConfig {
   /** Request timeout in milliseconds (default: 30000) */
   timeout?: number;
   /** Number of retry attempts for transient errors (default: 3) */
@@ -31,15 +34,40 @@ export interface FlowCatalystConfig extends TokenManagerConfig {
   retryDelay?: number;
 }
 
+/**
+ * Configuration for user token authentication.
+ * Use this when you already have a user access token (e.g., from login).
+ */
+export interface UserTokenConfig {
+  /** Base URL of the FlowCatalyst API */
+  baseUrl: string;
+  /**
+   * Access token or a function that returns the current access token.
+   * Use a function if the token may change (e.g., refreshed by your app).
+   */
+  accessToken: string | (() => string) | (() => Promise<string>);
+  /** Request timeout in milliseconds (default: 30000) */
+  timeout?: number;
+  /** Number of retry attempts for transient errors (default: 3) */
+  retryAttempts?: number;
+  /** Base delay between retries in ms (default: 100) */
+  retryDelay?: number;
+}
+
+export type FlowCatalystConfig = ClientCredentialsConfig | UserTokenConfig;
+
+function isUserTokenConfig(config: FlowCatalystConfig): config is UserTokenConfig {
+  return 'accessToken' in config;
+}
+
 type ResolvedConfig = {
   baseUrl: string;
-  clientId: string;
-  clientSecret: string;
-  tokenUrl?: string;
   timeout: number;
   retryAttempts: number;
   retryDelay: number;
 };
+
+type TokenProvider = () => Promise<string>;
 
 /**
  * Main FlowCatalyst SDK client.
@@ -64,7 +92,8 @@ type ResolvedConfig = {
  */
 export class FlowCatalystClient {
   private readonly httpClient: Client;
-  private readonly tokenManager: OidcTokenManager;
+  private readonly tokenManager: OidcTokenManager | null;
+  private readonly tokenProvider: TokenProvider | null;
   private readonly config: ResolvedConfig;
 
   // Lazy-loaded resource instances
@@ -79,19 +108,33 @@ export class FlowCatalystClient {
 
   constructor(config: FlowCatalystConfig) {
     this.config = {
-      timeout: 30000,
-      retryAttempts: 3,
-      retryDelay: 100,
-      ...config,
+      timeout: config.timeout ?? 30000,
+      retryAttempts: config.retryAttempts ?? 3,
+      retryDelay: config.retryDelay ?? 100,
       baseUrl: config.baseUrl.replace(/\/$/, ''),
     };
 
-    this.tokenManager = new OidcTokenManager({
-      baseUrl: this.config.baseUrl,
-      clientId: this.config.clientId,
-      clientSecret: this.config.clientSecret,
-      tokenUrl: this.config.tokenUrl,
-    });
+    if (isUserTokenConfig(config)) {
+      // User token mode - use provided token or token provider
+      this.tokenManager = null;
+      const tokenOrFn = config.accessToken;
+      if (typeof tokenOrFn === 'string') {
+        // Static token
+        this.tokenProvider = () => Promise.resolve(tokenOrFn);
+      } else {
+        // Function that returns token (sync or async)
+        this.tokenProvider = async () => tokenOrFn();
+      }
+    } else {
+      // Client credentials mode - use token manager
+      this.tokenManager = new OidcTokenManager({
+        baseUrl: this.config.baseUrl,
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        tokenUrl: config.tokenUrl,
+      });
+      this.tokenProvider = null;
+    }
 
     this.httpClient = createClient(
       createConfig({
@@ -153,8 +196,9 @@ export class FlowCatalystClient {
 
   /**
    * Get the token manager (for advanced usage).
+   * Returns null if using user token mode.
    */
-  getTokenManager(): OidcTokenManager {
+  getTokenManager(): OidcTokenManager | null {
     return this.tokenManager;
   }
 
@@ -169,16 +213,28 @@ export class FlowCatalystClient {
   request<T>(
     fn: (client: Client, headers: Record<string, string>) => Promise<{ data?: unknown; error?: unknown; response: Response }>
   ): ResultAsync<T, SdkError> {
-    return this.tokenManager
-      .getAccessToken()
-      .mapErr((e): SdkError => e)
-      .andThen((token) => this.executeWithRetry<T>(fn, token, 0));
+    if (this.tokenProvider) {
+      // User token mode
+      return ResultAsync.fromPromise(
+        this.tokenProvider(),
+        (e) => authError.tokenExpired(e instanceof Error ? e.message : 'Failed to get access token')
+      ).andThen((token) => this.executeWithRetry<T>(fn, token, 0, false));
+    } else if (this.tokenManager) {
+      // Client credentials mode
+      return this.tokenManager
+        .getAccessToken()
+        .mapErr((e): SdkError => e)
+        .andThen((token) => this.executeWithRetry<T>(fn, token, 0, true));
+    } else {
+      return errAsync(authError.tokenExpired('No authentication configured'));
+    }
   }
 
   private executeWithRetry<T>(
     fn: (client: Client, headers: Record<string, string>) => Promise<{ data?: unknown; error?: unknown; response: Response }>,
     token: string,
-    attempt: number
+    attempt: number,
+    canRefreshToken: boolean
   ): ResultAsync<T, SdkError> {
     const headers = {
       Authorization: `Bearer ${token}`,
@@ -197,19 +253,19 @@ export class FlowCatalystClient {
       if (result.error !== undefined || !result.response.ok) {
         const status = result.response.status;
 
-        // Handle 401 with token refresh
-        if (status === 401 && attempt === 0) {
+        // Handle 401 with token refresh (only for client credentials mode)
+        if (status === 401 && attempt === 0 && canRefreshToken && this.tokenManager) {
           return this.tokenManager
             .refreshToken()
             .mapErr((e): SdkError => e)
-            .andThen((newToken) => this.executeWithRetry<T>(fn, newToken, attempt + 1));
+            .andThen((newToken) => this.executeWithRetry<T>(fn, newToken, attempt + 1, canRefreshToken));
         }
 
         // Retry transient errors
         if (this.isRetryableStatus(status) && attempt < this.config.retryAttempts) {
           return ResultAsync.fromSafePromise<void, SdkError>(
             this.delay(this.config.retryDelay * Math.pow(2, attempt))
-          ).andThen(() => this.executeWithRetry<T>(fn, token, attempt + 1));
+          ).andThen(() => this.executeWithRetry<T>(fn, token, attempt + 1, canRefreshToken));
         }
 
         const sdkError = mapHttpStatusToError(status, result.error);

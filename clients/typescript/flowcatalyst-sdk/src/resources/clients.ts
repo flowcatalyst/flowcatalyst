@@ -11,6 +11,8 @@ import * as sdk from '../generated/sdk.gen';
 import type {
   ClientDto,
   ClientListResponse,
+  ClientApplicationsResponse,
+  UpdateClientApplicationsRequest,
   CreateClientRequest,
   UpdateClientRequest,
 } from '../generated/types.gen';
@@ -123,6 +125,59 @@ export class ClientsResource {
         headers,
         path: { id },
         body: { reason },
+      })
+    );
+  }
+
+  /**
+   * Get applications configured for a client.
+   */
+  getApplications(id: string): ResultAsync<ClientApplicationsResponse, SdkError> {
+    return this.client.request<ClientApplicationsResponse>((httpClient, headers) =>
+      sdk.getClientApplications({
+        client: httpClient,
+        headers,
+        path: { id },
+      })
+    );
+  }
+
+  /**
+   * Update the applications configured for a client.
+   */
+  updateApplications(id: string, data: UpdateClientApplicationsRequest): ResultAsync<ClientApplicationsResponse, SdkError> {
+    return this.client.request<ClientApplicationsResponse>((httpClient, headers) =>
+      sdk.updateClientApplications({
+        client: httpClient,
+        headers,
+        path: { id },
+        body: data,
+      })
+    );
+  }
+
+  /**
+   * Enable an application for a client.
+   */
+  enableApplication(clientId: string, applicationId: string): ResultAsync<void, SdkError> {
+    return this.client.request<void>((httpClient, headers) =>
+      sdk.enableClientApplication({
+        client: httpClient,
+        headers,
+        path: { id: clientId, applicationId },
+      })
+    );
+  }
+
+  /**
+   * Disable an application for a client.
+   */
+  disableApplication(clientId: string, applicationId: string): ResultAsync<void, SdkError> {
+    return this.client.request<void>((httpClient, headers) =>
+      sdk.disableClientApplication({
+        client: httpClient,
+        headers,
+        path: { id: clientId, applicationId },
       })
     );
   }

@@ -93,4 +93,55 @@ class Clients
 
         return Client::fromArray($response);
     }
+
+    /**
+     * Suspend a client with a reason.
+     */
+    public function suspend(string $id, string $reason): Client
+    {
+        $response = $this->client->request('POST', "/api/sdk/clients/{$id}/suspend", [
+            'json' => ['reason' => $reason],
+        ]);
+
+        return Client::fromArray($response);
+    }
+
+    /**
+     * Get applications configured for a client.
+     *
+     * @return array{applications: array<array{id: string, code: string, name: string, enabled: bool}>}
+     */
+    public function getApplications(string $id): array
+    {
+        return $this->client->request('GET', "/api/admin/clients/{$id}/applications");
+    }
+
+    /**
+     * Update the applications configured for a client.
+     *
+     * @param array{applicationIds: string[]} $data
+     * @return array{applications: array<array{id: string, code: string, name: string, enabled: bool}>}
+     */
+    public function updateApplications(string $id, array $data): array
+    {
+        return $this->client->request('PUT', "/api/admin/clients/{$id}/applications", [
+            'json' => $data,
+        ]);
+    }
+
+    /**
+     * Enable an application for a client.
+     */
+    public function enableApplication(string $clientId, string $applicationId): void
+    {
+        $this->client->request('POST', "/api/admin/clients/{$clientId}/applications/{$applicationId}/enable");
+    }
+
+    /**
+     * Disable an application for a client.
+     */
+    public function disableApplication(string $clientId, string $applicationId): void
+    {
+        $this->client->request('POST', "/api/admin/clients/{$clientId}/applications/{$applicationId}/disable");
+    }
 }

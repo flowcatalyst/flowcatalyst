@@ -9,7 +9,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 
-class OidcTokenManager
+class OidcTokenManager implements TokenProviderInterface
 {
     private Client $httpClient;
     private ?string $cachedToken = null;

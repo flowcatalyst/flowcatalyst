@@ -44,7 +44,12 @@
  */
 
 // Main client
-export { FlowCatalystClient, type FlowCatalystConfig } from './client';
+export {
+  FlowCatalystClient,
+  type FlowCatalystConfig,
+  type ClientCredentialsConfig,
+  type UserTokenConfig,
+} from './client';
 
 // Authentication
 export { OidcTokenManager, type TokenManagerConfig } from './auth';

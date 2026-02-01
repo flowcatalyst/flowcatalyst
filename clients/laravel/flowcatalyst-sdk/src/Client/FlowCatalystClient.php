@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace FlowCatalyst\Client;
 
 use FlowCatalyst\Client\Auth\OidcTokenManager;
+use FlowCatalyst\Client\Auth\TokenProviderInterface;
+use FlowCatalyst\Client\Auth\UserTokenProvider;
 use FlowCatalyst\Client\Resources\Applications;
 use FlowCatalyst\Client\Resources\Clients;
 use FlowCatalyst\Client\Resources\DispatchPools;
@@ -24,6 +26,7 @@ use GuzzleHttp\Exception\RequestException;
 class FlowCatalystClient
 {
     private Client $httpClient;
+    private TokenProviderInterface $tokenProvider;
     private ?GeneratedClient $generatedClient = null;
     private ?EventTypes $eventTypes = null;
     private ?Subscriptions $subscriptions = null;
@@ -34,18 +37,56 @@ class FlowCatalystClient
     private ?Clients $clients = null;
     private ?Principals $principals = null;
 
+    /**
+     * Create a new FlowCatalyst client.
+     *
+     * @param TokenProviderInterface|OidcTokenManager $tokenProvider Token provider for authentication
+     * @param string $baseUrl Base URL of the FlowCatalyst API
+     * @param int $timeout Request timeout in seconds
+     * @param int $retryAttempts Number of retry attempts for transient errors
+     * @param int $retryDelay Base delay between retries in milliseconds
+     */
     public function __construct(
-        private readonly OidcTokenManager $tokenManager,
+        TokenProviderInterface|OidcTokenManager $tokenProvider,
         private readonly string $baseUrl,
         private readonly int $timeout = 30,
         private readonly int $retryAttempts = 3,
         private readonly int $retryDelay = 100
     ) {
+        $this->tokenProvider = $tokenProvider;
         $this->httpClient = new Client([
             'base_uri' => rtrim($this->baseUrl, '/'),
             'timeout' => $this->timeout,
             'http_errors' => false,
         ]);
+    }
+
+    /**
+     * Create a client with a user access token.
+     *
+     * Use this when you already have a user access token (e.g., from OIDC login)
+     * and want to make API calls on behalf of that user.
+     *
+     * @param string|\Closure(): string $token The access token or a callable that returns it
+     * @param string $baseUrl Base URL of the FlowCatalyst API
+     * @param int $timeout Request timeout in seconds
+     * @param int $retryAttempts Number of retry attempts for transient errors
+     * @param int $retryDelay Base delay between retries in milliseconds
+     */
+    public static function withUserToken(
+        string|\Closure $token,
+        string $baseUrl,
+        int $timeout = 30,
+        int $retryAttempts = 3,
+        int $retryDelay = 100
+    ): self {
+        return new self(
+            new UserTokenProvider($token),
+            $baseUrl,
+            $timeout,
+            $retryAttempts,
+            $retryDelay
+        );
     }
 
     /**
@@ -118,7 +159,7 @@ class FlowCatalystClient
     public function generated(): GeneratedClient
     {
         return $this->generatedClient ??= GeneratedClientFactory::create(
-            $this->tokenManager,
+            $this->tokenProvider,
             $this->baseUrl
         );
     }
@@ -163,8 +204,8 @@ class FlowCatalystClient
     private function doRequest(string $method, string $endpoint, array $options, bool $isRetry): array
     {
         $token = $isRetry
-            ? $this->tokenManager->refreshToken()
-            : $this->tokenManager->getAccessToken();
+            ? $this->tokenProvider->refreshToken()
+            : $this->tokenProvider->getAccessToken();
 
         $options['headers'] = array_merge($options['headers'] ?? [], [
             'Authorization' => "Bearer {$token}",
@@ -266,10 +307,27 @@ class FlowCatalystClient
     }
 
     /**
-     * Get the token manager.
+     * Get the token provider.
+     */
+    public function getTokenProvider(): TokenProviderInterface
+    {
+        return $this->tokenProvider;
+    }
+
+    /**
+     * Get the token manager (for backward compatibility).
+     *
+     * @deprecated Use getTokenProvider() instead
+     * @throws \RuntimeException If the token provider is not an OidcTokenManager
      */
     public function getTokenManager(): OidcTokenManager
     {
-        return $this->tokenManager;
+        if (!$this->tokenProvider instanceof OidcTokenManager) {
+            throw new \RuntimeException(
+                'getTokenManager() is only available when using OidcTokenManager. Use getTokenProvider() instead.'
+            );
+        }
+
+        return $this->tokenProvider;
     }
 }
