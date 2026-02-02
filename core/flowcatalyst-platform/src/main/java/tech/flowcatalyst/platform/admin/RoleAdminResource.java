@@ -25,11 +25,11 @@ import tech.flowcatalyst.platform.authorization.operations.updaterole.UpdateRole
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.TracingContext;
+import tech.flowcatalyst.platform.common.api.ApiResponses;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -83,7 +83,12 @@ public class RoleAdminResource {
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of roles",
             content = @Content(schema = @Schema(implementation = RoleListResponse.class))),
-        @APIResponse(responseCode = "401", description = "Not authenticated")
+        @APIResponse(responseCode = "400", description = "Invalid source filter",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ErrorResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response listRoles(
             @QueryParam("application") String application,
@@ -108,7 +113,7 @@ public class RoleAdminResource {
                     .toList();
             } catch (IllegalArgumentException e) {
                 return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(new ErrorResponse("INVALID_SOURCE", "Invalid source. Must be CODE, DATABASE, or SDK"))
+                    .entity(new ApiResponses.ErrorResponse("INVALID_SOURCE", "Invalid source. Must be CODE, DATABASE, or SDK"))
                     .build();
             }
         }
@@ -130,7 +135,12 @@ public class RoleAdminResource {
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Role details with permissions",
             content = @Content(schema = @Schema(implementation = RoleDto.class))),
-        @APIResponse(responseCode = "404", description = "Role not found")
+        @APIResponse(responseCode = "404", description = "Role not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response getRole(@PathParam("roleName") String roleName) {
 
@@ -140,7 +150,7 @@ public class RoleAdminResource {
         return roleService.getRoleByName(roleName)
             .map(role -> Response.ok(toRoleDto(role)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("ROLE_NOT_FOUND", "Role not found: " + roleName))
+                .entity(new ApiResponses.NotFoundResponse("role", roleName))
                 .build());
     }
 
@@ -154,9 +164,16 @@ public class RoleAdminResource {
     @APIResponses({
         @APIResponse(responseCode = "201", description = "Role created",
             content = @Content(schema = @Schema(implementation = RoleDto.class))),
-        @APIResponse(responseCode = "400", description = "Invalid request"),
-        @APIResponse(responseCode = "404", description = "Application not found"),
-        @APIResponse(responseCode = "409", description = "Role already exists")
+        @APIResponse(responseCode = "400", description = "Invalid request",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Application not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "409", description = "Role already exists",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ConflictResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response createRole(CreateRoleRequest request) {
 
@@ -166,12 +183,12 @@ public class RoleAdminResource {
         // Validate request
         if (request.applicationCode() == null || request.applicationCode().isBlank()) {
             return Response.status(Response.Status.BAD_REQUEST)
-                .entity(new ErrorResponse("APPLICATION_CODE_REQUIRED", "applicationCode is required"))
+                .entity(new ApiResponses.ErrorResponse("APPLICATION_CODE_REQUIRED", "applicationCode is required"))
                 .build();
         }
         if (request.name() == null || request.name().isBlank()) {
             return Response.status(Response.Status.BAD_REQUEST)
-                .entity(new ErrorResponse("NAME_REQUIRED", "name is required"))
+                .entity(new ApiResponses.ErrorResponse("NAME_REQUIRED", "name is required"))
                 .build();
         }
 
@@ -180,7 +197,7 @@ public class RoleAdminResource {
             .orElse(null);
         if (app == null) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("APPLICATION_NOT_FOUND", "Application not found: " + request.applicationCode()))
+                .entity(new ApiResponses.NotFoundResponse("application", request.applicationCode()))
                 .build();
         }
 
@@ -221,7 +238,14 @@ public class RoleAdminResource {
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Role updated",
             content = @Content(schema = @Schema(implementation = RoleDto.class))),
-        @APIResponse(responseCode = "404", description = "Role not found")
+        @APIResponse(responseCode = "400", description = "Invalid request",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Role not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response updateRole(
             @PathParam("roleName") String roleName,
@@ -262,9 +286,16 @@ public class RoleAdminResource {
     @Operation(operationId = "deleteRole", summary = "Delete a role",
         description = "Deletes a role. Only DATABASE and SDK sourced roles can be deleted.")
     @APIResponses({
-        @APIResponse(responseCode = "204", description = "Role deleted"),
-        @APIResponse(responseCode = "400", description = "Cannot delete CODE-defined role"),
-        @APIResponse(responseCode = "404", description = "Role not found")
+        @APIResponse(responseCode = "200", description = "Role deleted",
+            content = @Content(schema = @Schema(implementation = ApiResponses.DeleteResponse.class))),
+        @APIResponse(responseCode = "400", description = "Cannot delete CODE-defined role",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Role not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response deleteRole(@PathParam("roleName") String roleName) {
 
@@ -279,7 +310,8 @@ public class RoleAdminResource {
         var result = roleOperations.deleteRole(command, context);
 
         return switch (result) {
-            case Result.Success<RoleDeleted> s -> Response.noContent().build();
+            case Result.Success<RoleDeleted> s ->
+                Response.ok(new ApiResponses.DeleteResponse(s.value().roleName(), "role")).build();
             case Result.Failure<RoleDeleted> f -> mapErrorToResponse(f.error());
         };
     }
@@ -297,7 +329,10 @@ public class RoleAdminResource {
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of permissions",
             content = @Content(schema = @Schema(implementation = PermissionListResponse.class))),
-        @APIResponse(responseCode = "401", description = "Not authenticated")
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response listPermissions() {
 
@@ -321,8 +356,14 @@ public class RoleAdminResource {
     @Path("/permissions/{permission}")
     @Operation(operationId = "getPermission", summary = "Get permission details")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Permission details"),
-        @APIResponse(responseCode = "404", description = "Permission not found")
+        @APIResponse(responseCode = "200", description = "Permission details",
+            content = @Content(schema = @Schema(implementation = PermissionDto.class))),
+        @APIResponse(responseCode = "404", description = "Permission not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response getPermission(@PathParam("permission") String permission) {
 
@@ -332,24 +373,30 @@ public class RoleAdminResource {
         return permissionRegistry.getPermission(permission)
             .map(perm -> Response.ok(toPermissionDto(perm)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("PERMISSION_NOT_FOUND", "Permission not found: " + permission))
+                .entity(new ApiResponses.NotFoundResponse("permission", permission))
                 .build());
     }
 
     // ==================== Helper Methods ====================
 
     private Response mapErrorToResponse(UseCaseError error) {
-        Response.Status status = switch (error) {
-            case UseCaseError.ValidationError v -> Response.Status.BAD_REQUEST;
-            case UseCaseError.NotFoundError n -> Response.Status.NOT_FOUND;
-            case UseCaseError.BusinessRuleViolation b -> Response.Status.CONFLICT;
-            case UseCaseError.ConcurrencyError c -> Response.Status.CONFLICT;
-            case UseCaseError.AuthorizationError a -> Response.Status.FORBIDDEN;
+        return switch (error) {
+            case UseCaseError.ValidationError v -> Response.status(Response.Status.BAD_REQUEST)
+                .entity(new ApiResponses.ErrorResponse(v.code(), v.message(), v.details()))
+                .build();
+            case UseCaseError.NotFoundError n -> Response.status(Response.Status.NOT_FOUND)
+                .entity(new ApiResponses.NotFoundResponse(n.code(), n.message(), "resource", null))
+                .build();
+            case UseCaseError.BusinessRuleViolation b -> Response.status(Response.Status.CONFLICT)
+                .entity(new ApiResponses.ConflictResponse(b.code(), b.message(), b.details()))
+                .build();
+            case UseCaseError.ConcurrencyError c -> Response.status(Response.Status.CONFLICT)
+                .entity(new ApiResponses.ConflictResponse(c.code(), c.message()))
+                .build();
+            case UseCaseError.AuthorizationError a -> Response.status(Response.Status.FORBIDDEN)
+                .entity(new ApiResponses.ForbiddenResponse(a.message()))
+                .build();
         };
-
-        return Response.status(status)
-            .entity(new ErrorResponse(error.code(), error.message(), error.details()))
-            .build();
     }
 
     private RoleDto toRoleDto(AuthRole role) {
@@ -453,10 +500,4 @@ public class RoleAdminResource {
         List<PermissionDto> permissions,
         int total
     ) {}
-
-    public record ErrorResponse(String code, String message, Map<String, Object> details) {
-        public ErrorResponse(String code, String message) {
-            this(code, message, Map.of());
-        }
-    }
 }

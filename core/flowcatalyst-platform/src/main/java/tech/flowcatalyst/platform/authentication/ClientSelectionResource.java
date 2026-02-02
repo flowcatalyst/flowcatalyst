@@ -151,21 +151,22 @@ public class ClientSelectionResource {
                 .build();
         }
 
-        // Deserialize typed client ID
-        String internalClientId = TypedId.Ops.deserialize(EntityType.CLIENT, request.clientId());
+        // Validate typed client ID format (IDs are stored with prefixes)
+        String clientId = request.clientId();
+        TypedId.Ops.validate(EntityType.CLIENT, clientId);
 
         // Verify access to requested client
         Set<String> accessibleClients = clientAccessService.getAccessibleClients(principal);
-        if (!accessibleClients.contains(internalClientId)) {
+        if (!accessibleClients.contains(clientId)) {
             LOG.warnf("Principal %s attempted to switch to unauthorized client %s",
-                principalId, internalClientId);
+                principalId, clientId);
             return Response.status(Response.Status.FORBIDDEN)
                 .entity(new ErrorResponse("Access denied to client"))
                 .build();
         }
 
         // Get client info
-        Client client = clientRepo.findByIdOptional(internalClientId)
+        Client client = clientRepo.findByIdOptional(clientId)
             .orElse(null);
 
         if (client == null) {
@@ -179,13 +180,13 @@ public class ClientSelectionResource {
 
         Set<String> permissions = permissionRegistry.getPermissionsForRoles(roles);
 
-        // Issue new token with client context (uses internal ID)
+        // Issue new token with client context
         String newToken = jwtKeyService.issueSessionTokenWithClient(
             principalId,
             principal.userIdentity != null ? principal.userIdentity.email : null,
             roles,
             permissions,
-            internalClientId
+            clientId
         );
 
         LOG.infof("Principal %s switched to client %s (%s)",

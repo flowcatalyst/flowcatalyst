@@ -6,8 +6,17 @@ export type AccessibleClientsResponse = {
   globalAccess?: boolean;
 };
 
+/**
+ * Request to add an audit note
+ */
 export type AddNoteRequest = {
+  /**
+   * Note category
+   */
   category: string;
+  /**
+   * Note text
+   */
   text: string;
 };
 
@@ -25,12 +34,98 @@ export type AddSchemaRequest1 = {
   schemaType?: SchemaType;
 };
 
+/**
+ * Cached allowed origins
+ */
+export type AllowedOriginsResponse = {
+  /**
+   * Set of allowed origin URLs
+   */
+  origins?: Array<string>;
+};
+
+/**
+ * Application summary for list views
+ */
+export type ApplicationListItem = {
+  /**
+   * Application ID
+   */
+  id?: string;
+  /**
+   * Application type
+   */
+  type?: string;
+  /**
+   * Unique application code
+   */
+  code?: string;
+  /**
+   * Display name
+   */
+  name?: string;
+  /**
+   * Description
+   */
+  description?: string;
+  /**
+   * Default base URL
+   */
+  defaultBaseUrl?: string;
+  /**
+   * Icon URL
+   */
+  iconUrl?: string;
+  /**
+   * Website URL
+   */
+  website?: string;
+  /**
+   * Logo MIME type
+   */
+  logoMimeType?: string;
+  /**
+   * Service account OAuth client ID
+   */
+  serviceAccountId?: string;
+  /**
+   * Service account principal ID
+   */
+  serviceAccountPrincipalId?: string;
+  /**
+   * Whether application is active
+   */
+  active?: boolean;
+  /**
+   * Creation timestamp
+   */
+  createdAt?: Instant;
+  /**
+   * Last update timestamp
+   */
+  updatedAt?: Instant;
+};
+
+/**
+ * Application list response
+ */
 export type ApplicationListResponse = {
-  items?: Array<ApplicationResponse>;
+  /**
+   * List of applications
+   */
+  applications?: Array<ApplicationListItem>;
+  /**
+   * Total count
+   */
+  total?: number;
 };
 
 export type ApplicationListResponse1 = {
   items?: Array<ApplicationResponse1>;
+};
+
+export type ApplicationListResponse2 = {
+  items?: Array<ApplicationResponse2>;
 };
 
 export type ApplicationRef = {
@@ -38,7 +133,81 @@ export type ApplicationRef = {
   name?: string;
 };
 
+/**
+ * Full application details
+ */
 export type ApplicationResponse = {
+  /**
+   * Application ID
+   */
+  id?: string;
+  /**
+   * Application type
+   */
+  type?: string;
+  /**
+   * Unique application code
+   */
+  code?: string;
+  /**
+   * Display name
+   */
+  name?: string;
+  /**
+   * Description
+   */
+  description?: string;
+  /**
+   * Default base URL
+   */
+  defaultBaseUrl?: string;
+  /**
+   * Icon URL
+   */
+  iconUrl?: string;
+  /**
+   * Website URL
+   */
+  website?: string;
+  /**
+   * Logo data (base64)
+   */
+  logo?: string;
+  /**
+   * Logo MIME type
+   */
+  logoMimeType?: string;
+  /**
+   * Service account OAuth client ID
+   */
+  serviceAccountId?: string;
+  /**
+   * Service account principal ID
+   */
+  serviceAccountPrincipalId?: string;
+  /**
+   * Whether application is active
+   */
+  active?: boolean;
+  /**
+   * Creation timestamp
+   */
+  createdAt?: Instant;
+  /**
+   * Last update timestamp
+   */
+  updatedAt?: Instant;
+  /**
+   * Service account details (only present after provisioning)
+   */
+  serviceAccount?: ServiceAccountInfo;
+  /**
+   * Warning message if any
+   */
+  warning?: string;
+};
+
+export type ApplicationResponse1 = {
   id?: string;
   code?: string;
   name?: string;
@@ -50,12 +219,62 @@ export type ApplicationResponse = {
   updatedAt?: string;
 };
 
-export type ApplicationResponse1 = {
+export type ApplicationResponse2 = {
   id?: string;
   name?: string;
   code?: string;
   website?: string;
   logo?: string;
+};
+
+/**
+ * Response for application roles query
+ */
+export type ApplicationRolesResponse = {
+  /**
+   * Application code
+   */
+  applicationCode?: string;
+  /**
+   * Instructions for getting roles
+   */
+  message?: string;
+};
+
+/**
+ * Response for application status changes
+ */
+export type ApplicationStatusResponse = {
+  /**
+   * Application ID
+   */
+  id?: string;
+  /**
+   * New status
+   */
+  status?: string;
+  /**
+   * Human-readable message
+   */
+  message?: string;
+};
+
+/**
+ * Response for bulk application update
+ */
+export type ApplicationsUpdatedResponse = {
+  /**
+   * Client ID
+   */
+  clientId?: string;
+  /**
+   * Number of applications now enabled
+   */
+  enabledCount?: number;
+  /**
+   * Human-readable message
+   */
+  message?: string;
 };
 
 export type AssignApplicationAccessRequest = {
@@ -84,20 +303,97 @@ export type AssignRolesRequest2 = {
   roles?: Array<string>;
 };
 
-export type AuditLogDto = {
+/**
+ * Audit log with full details including operation payload
+ */
+export type AuditLogDetailDto = {
+  /**
+   * Audit log ID
+   */
   id?: string;
+  /**
+   * Entity type
+   */
   entityType?: string;
+  /**
+   * Entity ID
+   */
   entityId?: string;
+  /**
+   * Operation performed
+   */
   operation?: string;
+  /**
+   * Full operation payload as JSON
+   */
+  operationJson?: string;
+  /**
+   * Principal ID who performed the operation
+   */
   principalId?: string;
+  /**
+   * Principal name (resolved)
+   */
   principalName?: string;
+  /**
+   * When the operation was performed
+   */
   performedAt?: Instant;
 };
 
+/**
+ * Audit log summary
+ */
+export type AuditLogDto = {
+  /**
+   * Audit log ID
+   */
+  id?: string;
+  /**
+   * Entity type (e.g., 'Client', 'Application')
+   */
+  entityType?: string;
+  /**
+   * Entity ID
+   */
+  entityId?: string;
+  /**
+   * Operation performed
+   */
+  operation?: string;
+  /**
+   * Principal ID who performed the operation
+   */
+  principalId?: string;
+  /**
+   * Principal name (resolved)
+   */
+  principalName?: string;
+  /**
+   * When the operation was performed
+   */
+  performedAt?: Instant;
+};
+
+/**
+ * Paginated audit log list response
+ */
 export type AuditLogListResponse = {
+  /**
+   * Audit log entries
+   */
   auditLogs?: Array<AuditLogDto>;
+  /**
+   * Total count of matching entries
+   */
   total?: number;
+  /**
+   * Current page (0-based)
+   */
   page?: number;
+  /**
+   * Page size
+   */
   pageSize?: number;
 };
 
@@ -145,21 +441,121 @@ export type ClientAccessListResponse = {
   grants?: Array<ClientAccessGrantDto>;
 };
 
+/**
+ * Application with enabled status for a client
+ */
 export type ClientApplicationDto = {
+  /**
+   * Application ID
+   */
   id?: string;
+  /**
+   * Application code
+   */
   code?: string;
+  /**
+   * Application name
+   */
   name?: string;
+  /**
+   * Application description
+   */
   description?: string;
+  /**
+   * Icon URL
+   */
   iconUrl?: string;
+  /**
+   * Default website URL
+   */
   website?: string;
+  /**
+   * Effective website URL (override or default)
+   */
   effectiveWebsite?: string;
+  /**
+   * Logo MIME type
+   */
   logoMimeType?: string;
+  /**
+   * Whether application is globally active
+   */
   active?: boolean;
+  /**
+   * Whether application is enabled for this client
+   */
   enabledForClient?: boolean;
 };
 
+/**
+ * Response for enable/disable application for client
+ */
+export type ClientApplicationStatusResponse = {
+  /**
+   * Application ID
+   */
+  applicationId?: string;
+  /**
+   * Client ID
+   */
+  clientId?: string;
+  /**
+   * Whether now enabled
+   */
+  enabled?: boolean;
+  /**
+   * Human-readable message
+   */
+  message?: string;
+};
+
+/**
+ * Response for enabling/disabling application for client
+ */
+export type ClientApplicationStatusResponse1 = {
+  /**
+   * Client ID
+   */
+  clientId?: string;
+  /**
+   * Application ID
+   */
+  applicationId?: string;
+  /**
+   * Whether now enabled
+   */
+  enabled?: boolean;
+  /**
+   * Human-readable message
+   */
+  message?: string;
+};
+
+/**
+ * Applications for a client
+ */
 export type ClientApplicationsResponse = {
+  /**
+   * List of applications with their enabled status
+   */
   applications?: Array<ClientApplicationDto>;
+  /**
+   * Total count
+   */
+  total?: number;
+};
+
+/**
+ * List of client configurations
+ */
+export type ClientConfigListResponse = {
+  /**
+   * Client configurations
+   */
+  clientConfigs?: Array<ClientConfigResponse>;
+  /**
+   * Total count
+   */
   total?: number;
 };
 
@@ -173,9 +569,99 @@ export type ClientConfigRequest = {
 };
 
 /**
+ * Application client configuration
+ */
+export type ClientConfigResponse = {
+  /**
+   * Config ID
+   */
+  id?: string;
+  /**
+   * Application ID
+   */
+  applicationId?: string;
+  /**
+   * Client ID
+   */
+  clientId?: string;
+  /**
+   * Client name
+   */
+  clientName?: string;
+  /**
+   * Client identifier
+   */
+  clientIdentifier?: string;
+  /**
+   * Whether enabled for this client
+   */
+  enabled?: boolean;
+  /**
+   * Base URL override for this client
+   */
+  baseUrlOverride?: string;
+  /**
+   * Website override for this client
+   */
+  websiteOverride?: string;
+  /**
+   * Effective base URL (override or default)
+   */
+  effectiveBaseUrl?: string;
+  /**
+   * Effective website (override or default)
+   */
+  effectiveWebsite?: string;
+  /**
+   * Additional configuration
+   */
+  config?: {
+    [key: string]: unknown;
+  };
+};
+
+/**
  * Client details
  */
 export type ClientDto = {
+  /**
+   * Client ID
+   */
+  id?: string;
+  /**
+   * Client name
+   */
+  name?: string;
+  /**
+   * Unique client identifier/slug
+   */
+  identifier?: string;
+  /**
+   * Client status
+   */
+  status?: ClientStatus;
+  /**
+   * Reason for current status
+   */
+  statusReason?: string;
+  /**
+   * When status was last changed
+   */
+  statusChangedAt?: Instant;
+  /**
+   * Creation timestamp
+   */
+  createdAt?: Instant;
+  /**
+   * Last update timestamp
+   */
+  updatedAt?: Instant;
+};
+
+/**
+ * Client details
+ */
+export type ClientDto1 = {
   /**
    * Client ID
    */
@@ -210,17 +696,6 @@ export type ClientDto = {
   updatedAt?: Instant;
 };
 
-export type ClientDto1 = {
-  id?: string;
-  name?: string;
-  identifier?: string;
-  status?: ClientStatus;
-  statusReason?: string;
-  statusChangedAt?: Instant;
-  createdAt?: Instant;
-  updatedAt?: Instant;
-};
-
 export type ClientDto2 = {
   id?: string;
   clientId?: string;
@@ -245,11 +720,11 @@ export type ClientInfo = {
 };
 
 /**
- * List of clients
+ * Client list response
  */
 export type ClientListResponse = {
   /**
-   * Client list
+   * List of clients
    */
   clients?: Array<ClientDto>;
   /**
@@ -258,8 +733,17 @@ export type ClientListResponse = {
   total?: number;
 };
 
+/**
+ * List of clients
+ */
 export type ClientListResponse1 = {
+  /**
+   * Client list
+   */
   clients?: Array<ClientDto1>;
+  /**
+   * Total count
+   */
   total?: number;
 };
 
@@ -281,6 +765,24 @@ export type ClientResponse = {
 
 export type ClientStatus = "ACTIVE" | "INACTIVE" | "SUSPENDED";
 
+/**
+ * Response for client status changes
+ */
+export type ClientStatusResponse = {
+  /**
+   * Client ID
+   */
+  id?: string;
+  /**
+   * New status
+   */
+  status?: string;
+  /**
+   * Human-readable message
+   */
+  message?: string;
+};
+
 export type ClientType = "PUBLIC" | "CONFIDENTIAL";
 
 export type ConfigEntry = {
@@ -291,6 +793,26 @@ export type ConfigEntry = {
 export type ConfigScope = "GLOBAL" | "CLIENT";
 
 export type ConfigValueType = "PLAIN" | "SECRET";
+
+/**
+ * Conflict error response (409)
+ */
+export type ConflictResponse = {
+  /**
+   * Error code
+   */
+  code?: string;
+  /**
+   * Human-readable error message
+   */
+  message?: string;
+  /**
+   * Additional conflict details
+   */
+  details?: {
+    [key: string]: unknown;
+  };
+};
 
 export type ContextData = {
   key?: string;
@@ -310,6 +832,60 @@ export type ContextDataResponse1 = {
 export type ContextDataResponse2 = {
   key?: string;
   value?: string;
+};
+
+/**
+ * Response after deleting a CORS origin
+ */
+export type CorsOriginDeletedResponse = {
+  /**
+   * Deleted origin ID
+   */
+  id?: string;
+  /**
+   * Human-readable message
+   */
+  message?: string;
+};
+
+/**
+ * CORS allowed origin
+ */
+export type CorsOriginDto = {
+  /**
+   * Origin ID
+   */
+  id?: string;
+  /**
+   * Origin URL
+   */
+  origin?: string;
+  /**
+   * Description of why this origin is allowed
+   */
+  description?: string;
+  /**
+   * Principal ID who created this entry
+   */
+  createdBy?: string;
+  /**
+   * When this entry was created
+   */
+  createdAt?: string;
+};
+
+/**
+ * List of CORS origins
+ */
+export type CorsOriginListResponse = {
+  /**
+   * CORS origin entries
+   */
+  items?: Array<CorsOriginDto>;
+  /**
+   * Total count
+   */
+  total?: number;
 };
 
 export type CreateApplicationRequest = {
@@ -333,9 +909,23 @@ export type CreateApplicationRequest1 = {
 };
 
 /**
- * Create client request
+ * Request to create a new client
  */
 export type CreateClientRequest = {
+  /**
+   * Client display name
+   */
+  name: string;
+  /**
+   * Unique client identifier/slug
+   */
+  identifier: string;
+};
+
+/**
+ * Create client request
+ */
+export type CreateClientRequest1 = {
   /**
    * Client name
    */
@@ -343,11 +933,6 @@ export type CreateClientRequest = {
   /**
    * Unique identifier/slug
    */
-  identifier: string;
-};
-
-export type CreateClientRequest1 = {
-  name: string;
   identifier: string;
 };
 
@@ -367,8 +952,17 @@ export type CreateClientResponse = {
   clientSecret?: string;
 };
 
+/**
+ * Request to create a new CORS origin
+ */
 export type CreateCorsOriginRequest = {
+  /**
+   * Origin URL
+   */
   origin?: string;
+  /**
+   * Description of why this origin is allowed
+   */
   description?: string;
 };
 
@@ -616,6 +1210,24 @@ export type CreateUserRequest1 = {
   clientId?: string;
 };
 
+/**
+ * Delete operation response
+ */
+export type DeleteResponse = {
+  /**
+   * ID of the deleted resource
+   */
+  id?: string;
+  /**
+   * Type of resource deleted
+   */
+  resourceType?: string;
+  /**
+   * Human-readable message
+   */
+  message?: string;
+};
+
 export type DispatchAttemptResponse = {
   id?: string;
   attemptNumber?: number;
@@ -797,17 +1409,55 @@ export type EmailDomainMappingListResponse = {
 };
 
 /**
- * Error response
+ * Audit logs for a specific entity
+ */
+export type EntityAuditLogsResponse = {
+  /**
+   * Audit log entries
+   */
+  auditLogs?: Array<AuditLogDto>;
+  /**
+   * Total count
+   */
+  total?: number;
+  /**
+   * Entity type
+   */
+  entityType?: string;
+  /**
+   * Entity ID
+   */
+  entityId?: string;
+};
+
+/**
+ * List of distinct entity types
+ */
+export type EntityTypesResponse = {
+  /**
+   * Distinct entity types with audit logs
+   */
+  entityTypes?: Array<string>;
+};
+
+/**
+ * Error response for client errors (400)
  */
 export type ErrorResponse = {
   /**
-   * Error code
+   * Error code for programmatic handling
    */
   code?: string;
   /**
-   * Error message
+   * Human-readable error message
    */
   message?: string;
+  /**
+   * Additional error details
+   */
+  details?: {
+    [key: string]: unknown;
+  };
 };
 
 /**
@@ -838,7 +1488,21 @@ export type ErrorResponse2 = {
   message?: string;
 };
 
+/**
+ * Error response
+ */
 export type ErrorResponse3 = {
+  /**
+   * Error code
+   */
+  code?: string;
+  /**
+   * Error message
+   */
+  message?: string;
+};
+
+export type ErrorResponse4 = {
   error?: string;
 };
 
@@ -936,6 +1600,17 @@ export type FeaturesConfig = {
   messagingEnabled?: boolean;
 };
 
+export type FieldError = {
+  /**
+   * Field name
+   */
+  field?: string;
+  /**
+   * Error message for this field
+   */
+  message?: string;
+};
+
 export type FilterOption = {
   value?: string;
   label?: string;
@@ -965,6 +1640,24 @@ export type FilterOptionsResponse2 = {
   subdomains?: Array<FilterOption1>;
   aggregates?: Array<FilterOption1>;
   types?: Array<FilterOption1>;
+};
+
+/**
+ * Forbidden error response (403)
+ */
+export type ForbiddenResponse = {
+  /**
+   * Error code
+   */
+  code?: string;
+  /**
+   * Human-readable error message
+   */
+  message?: string;
+  /**
+   * Required permission if applicable
+   */
+  requiredPermission?: string;
 };
 
 export type GrantAccessRequest = {
@@ -1023,9 +1716,187 @@ export type LoginResponse = {
   clientId?: string;
 };
 
+/**
+ * Simple message response
+ */
+export type MessageResponse = {
+  /**
+   * Human-readable message
+   */
+  message?: string;
+};
+
+/**
+ * Application enabled for a client
+ */
+export type MyApplicationDto = {
+  /**
+   * Application ID
+   */
+  id?: string;
+  /**
+   * Application code
+   */
+  code?: string;
+  /**
+   * Application name
+   */
+  name?: string;
+  /**
+   * Application description
+   */
+  description?: string;
+  /**
+   * Icon URL
+   */
+  iconUrl?: string;
+  /**
+   * Effective base URL for this client
+   */
+  baseUrl?: string;
+  /**
+   * Effective website URL for this client
+   */
+  website?: string;
+  /**
+   * Logo MIME type
+   */
+  logoMimeType?: string;
+};
+
+/**
+ * List of applications for a client
+ */
+export type MyApplicationsResponse = {
+  /**
+   * Applications enabled for this client
+   */
+  applications?: Array<MyApplicationDto>;
+  /**
+   * Total count
+   */
+  total?: number;
+  /**
+   * Client ID these applications belong to
+   */
+  clientId?: string;
+};
+
+/**
+ * Client the user has access to
+ */
+export type MyClientDto = {
+  /**
+   * Client ID
+   */
+  id?: string;
+  /**
+   * Client name
+   */
+  name?: string;
+  /**
+   * Client identifier/slug
+   */
+  identifier?: string;
+  /**
+   * Client status (ACTIVE, SUSPENDED, INACTIVE)
+   */
+  status?: string;
+  /**
+   * Creation timestamp
+   */
+  createdAt?: Instant;
+  /**
+   * Last update timestamp
+   */
+  updatedAt?: Instant;
+};
+
+/**
+ * List of accessible clients
+ */
+export type MyClientsResponse = {
+  /**
+   * Clients the user can access
+   */
+  clients?: Array<MyClientDto>;
+  /**
+   * Total count
+   */
+  total?: number;
+};
+
+/**
+ * Not found error response (404)
+ */
+export type NotFoundResponse = {
+  /**
+   * Error code
+   */
+  code?: string;
+  /**
+   * Human-readable error message
+   */
+  message?: string;
+  /**
+   * Type of resource that was not found
+   */
+  resourceType?: string;
+  /**
+   * ID that was searched for
+   */
+  resourceId?: string;
+};
+
+/**
+ * Response after adding an audit note
+ */
+export type NoteAddedResponse = {
+  /**
+   * Client ID
+   */
+  clientId?: string;
+  /**
+   * Note category
+   */
+  category?: string;
+  /**
+   * Human-readable message
+   */
+  message?: string;
+};
+
+/**
+ * OAuth client information
+ */
+export type OAuthClientInfo = {
+  /**
+   * OAuth client internal ID
+   */
+  id?: string;
+  /**
+   * OAuth client_id for authentication
+   */
+  clientId?: string;
+  /**
+   * OAuth client_secret (only returned at creation time)
+   */
+  clientSecret?: string;
+};
+
 export type OAuthCredentials = {
   clientId?: string;
   clientSecret?: string;
+};
+
+/**
+ * List of distinct operations
+ */
+export type OperationsResponse = {
+  /**
+   * Distinct operations with audit logs
+   */
+  operations?: Array<string>;
 };
 
 export type PagedDispatchJobReadResponse = {
@@ -1272,6 +2143,20 @@ export type ProcessResponse = {
   delaySeconds?: number;
 };
 
+/**
+ * Response after provisioning a service account
+ */
+export type ProvisionServiceAccountResponse = {
+  /**
+   * Status message
+   */
+  message?: string;
+  /**
+   * Service account details
+   */
+  serviceAccount?: ServiceAccountInfo;
+};
+
 export type RawDispatchJobResponse = {
   id?: string;
   externalId?: string;
@@ -1487,6 +2372,24 @@ export type ServiceAccountDto = {
   updatedAt?: Instant;
 };
 
+/**
+ * Service account information
+ */
+export type ServiceAccountInfo = {
+  /**
+   * Principal ID of the service account
+   */
+  principalId?: string;
+  /**
+   * Name of the service account
+   */
+  name?: string;
+  /**
+   * OAuth client details
+   */
+  oauthClient?: OAuthClientInfo;
+};
+
 export type ServiceAccountListResponse = {
   serviceAccounts?: Array<ServiceAccountDto>;
   total?: number;
@@ -1514,17 +2417,41 @@ export type SpecVersionResponse = {
 };
 
 /**
- * Status change request
+ * Request for status change with reason
  */
 export type StatusChangeRequest = {
+  /**
+   * Reason for status change
+   */
+  reason: string;
+};
+
+/**
+ * Status change request
+ */
+export type StatusChangeRequest1 = {
   /**
    * Reason for status change
    */
   reason?: string;
 };
 
-export type StatusChangeRequest1 = {
-  reason: string;
+/**
+ * Status change response
+ */
+export type StatusChangeResponse = {
+  /**
+   * ID of the affected resource
+   */
+  id?: string;
+  /**
+   * New status of the resource
+   */
+  status?: string;
+  /**
+   * Human-readable message
+   */
+  message?: string;
 };
 
 /**
@@ -1711,6 +2638,20 @@ export type SyncSubscriptionsRequest = {
   subscriptions?: Array<SyncSubscriptionItem>;
 };
 
+/**
+ * Unauthorized error response (401)
+ */
+export type UnauthorizedResponse = {
+  /**
+   * Error code
+   */
+  code?: string;
+  /**
+   * Human-readable error message
+   */
+  message?: string;
+};
+
 export type UpdateAccessRequest = {
   canRead?: boolean;
   canWrite?: boolean;
@@ -1737,21 +2678,33 @@ export type UpdateAuthTokenRequest = {
   authToken: string;
 };
 
+/**
+ * Request to update client applications
+ */
 export type UpdateClientApplicationsRequest = {
+  /**
+   * List of application IDs to enable for this client
+   */
   enabledApplicationIds?: Array<string>;
+};
+
+/**
+ * Request to update a client
+ */
+export type UpdateClientRequest = {
+  /**
+   * Client display name
+   */
+  name: string;
 };
 
 /**
  * Update client request
  */
-export type UpdateClientRequest = {
+export type UpdateClientRequest1 = {
   /**
    * Client name
    */
-  name: string;
-};
-
-export type UpdateClientRequest1 = {
   name: string;
 };
 
@@ -1880,6 +2833,24 @@ export type UpdateSubscriptionRequest = {
 
 export type UserScope = "ANCHOR" | "PARTNER" | "CLIENT";
 
+/**
+ * Validation error response (400)
+ */
+export type ValidationErrorResponse = {
+  /**
+   * Error code
+   */
+  code?: string;
+  /**
+   * General error message
+   */
+  message?: string;
+  /**
+   * Field-level validation errors
+   */
+  errors?: Array<FieldError>;
+};
+
 export type ValueType =
   | "ARRAY"
   | "OBJECT"
@@ -1949,12 +2920,33 @@ export type ListApplicationsData = {
   url: "/api/admin/applications";
 };
 
+export type ListApplicationsErrors = {
+  /**
+   * Invalid request
+   */
+  400: ErrorResponse;
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+};
+
+export type ListApplicationsError =
+  ListApplicationsErrors[keyof ListApplicationsErrors];
+
 export type ListApplicationsResponses = {
   /**
-   * OK
+   * Applications retrieved successfully
    */
-  200: unknown;
+  200: ApplicationListResponse;
 };
+
+export type ListApplicationsResponse =
+  ListApplicationsResponses[keyof ListApplicationsResponses];
 
 export type CreateApplicationData = {
   body: CreateApplicationRequest;
@@ -1965,17 +2957,35 @@ export type CreateApplicationData = {
 
 export type CreateApplicationErrors = {
   /**
-   * Bad Request
+   * Invalid request
    */
-  400: unknown;
+  400: ErrorResponse;
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * Application code already exists
+   */
+  409: ConflictResponse;
 };
+
+export type CreateApplicationError =
+  CreateApplicationErrors[keyof CreateApplicationErrors];
 
 export type CreateApplicationResponses = {
   /**
-   * OK
+   * Application created
    */
-  200: unknown;
+  201: ApplicationResponse;
 };
+
+export type CreateApplicationResponse =
+  CreateApplicationResponses[keyof CreateApplicationResponses];
 
 export type GetApplicationByCodeData = {
   body?: never;
@@ -1986,12 +2996,33 @@ export type GetApplicationByCodeData = {
   url: "/api/admin/applications/by-code/{code}";
 };
 
+export type GetApplicationByCodeErrors = {
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * Application not found
+   */
+  404: NotFoundResponse;
+};
+
+export type GetApplicationByCodeError =
+  GetApplicationByCodeErrors[keyof GetApplicationByCodeErrors];
+
 export type GetApplicationByCodeResponses = {
   /**
-   * OK
+   * Application found
    */
-  200: unknown;
+  200: ApplicationResponse;
 };
+
+export type GetApplicationByCodeResponse =
+  GetApplicationByCodeResponses[keyof GetApplicationByCodeResponses];
 
 export type DeleteApplicationData = {
   body?: never;
@@ -2002,12 +3033,37 @@ export type DeleteApplicationData = {
   url: "/api/admin/applications/{id}";
 };
 
+export type DeleteApplicationErrors = {
+  /**
+   * Application must be deactivated first
+   */
+  400: ErrorResponse;
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * Application not found
+   */
+  404: NotFoundResponse;
+};
+
+export type DeleteApplicationError =
+  DeleteApplicationErrors[keyof DeleteApplicationErrors];
+
 export type DeleteApplicationResponses = {
   /**
-   * OK
+   * Application deleted
    */
-  200: unknown;
+  200: ApplicationStatusResponse;
 };
+
+export type DeleteApplicationResponse =
+  DeleteApplicationResponses[keyof DeleteApplicationResponses];
 
 export type GetApplicationData = {
   body?: never;
@@ -2018,12 +3074,33 @@ export type GetApplicationData = {
   url: "/api/admin/applications/{id}";
 };
 
+export type GetApplicationErrors = {
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * Application not found
+   */
+  404: NotFoundResponse;
+};
+
+export type GetApplicationError =
+  GetApplicationErrors[keyof GetApplicationErrors];
+
 export type GetApplicationResponses = {
   /**
-   * OK
+   * Application found
    */
-  200: unknown;
+  200: ApplicationResponse;
 };
+
+export type GetApplicationResponse =
+  GetApplicationResponses[keyof GetApplicationResponses];
 
 export type UpdateApplicationData = {
   body: UpdateApplicationRequest;
@@ -2036,17 +3113,35 @@ export type UpdateApplicationData = {
 
 export type UpdateApplicationErrors = {
   /**
-   * Bad Request
+   * Invalid request
    */
-  400: unknown;
+  400: ErrorResponse;
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * Application not found
+   */
+  404: NotFoundResponse;
 };
+
+export type UpdateApplicationError =
+  UpdateApplicationErrors[keyof UpdateApplicationErrors];
 
 export type UpdateApplicationResponses = {
   /**
-   * OK
+   * Application updated
    */
-  200: unknown;
+  200: ApplicationResponse;
 };
+
+export type UpdateApplicationResponse =
+  UpdateApplicationResponses[keyof UpdateApplicationResponses];
 
 export type ActivateApplicationData = {
   body?: never;
@@ -2057,12 +3152,37 @@ export type ActivateApplicationData = {
   url: "/api/admin/applications/{id}/activate";
 };
 
+export type ActivateApplicationErrors = {
+  /**
+   * Invalid request
+   */
+  400: ErrorResponse;
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * Application not found
+   */
+  404: NotFoundResponse;
+};
+
+export type ActivateApplicationError =
+  ActivateApplicationErrors[keyof ActivateApplicationErrors];
+
 export type ActivateApplicationResponses = {
   /**
-   * OK
+   * Application activated
    */
-  200: unknown;
+  200: ApplicationStatusResponse;
 };
+
+export type ActivateApplicationResponse =
+  ActivateApplicationResponses[keyof ActivateApplicationResponses];
 
 export type GetApplicationClientConfigsData = {
   body?: never;
@@ -2073,12 +3193,33 @@ export type GetApplicationClientConfigsData = {
   url: "/api/admin/applications/{id}/clients";
 };
 
+export type GetApplicationClientConfigsErrors = {
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * Application not found
+   */
+  404: NotFoundResponse;
+};
+
+export type GetApplicationClientConfigsError =
+  GetApplicationClientConfigsErrors[keyof GetApplicationClientConfigsErrors];
+
 export type GetApplicationClientConfigsResponses = {
   /**
-   * OK
+   * Client configurations retrieved
    */
-  200: unknown;
+  200: ClientConfigListResponse;
 };
+
+export type GetApplicationClientConfigsResponse =
+  GetApplicationClientConfigsResponses[keyof GetApplicationClientConfigsResponses];
 
 export type ConfigureApplicationForClientData = {
   body: ClientConfigRequest;
@@ -2092,17 +3233,35 @@ export type ConfigureApplicationForClientData = {
 
 export type ConfigureApplicationForClientErrors = {
   /**
-   * Bad Request
+   * Invalid request
    */
-  400: unknown;
+  400: ErrorResponse;
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * Application or client not found
+   */
+  404: NotFoundResponse;
 };
+
+export type ConfigureApplicationForClientError =
+  ConfigureApplicationForClientErrors[keyof ConfigureApplicationForClientErrors];
 
 export type ConfigureApplicationForClientResponses = {
   /**
-   * OK
+   * Client configuration updated
    */
-  200: unknown;
+  200: ClientConfigResponse;
 };
+
+export type ConfigureApplicationForClientResponse =
+  ConfigureApplicationForClientResponses[keyof ConfigureApplicationForClientResponses];
 
 export type DisableApplicationForClientData = {
   body?: never;
@@ -2114,12 +3273,37 @@ export type DisableApplicationForClientData = {
   url: "/api/admin/applications/{id}/clients/{clientId}/disable";
 };
 
+export type DisableApplicationForClientErrors = {
+  /**
+   * Invalid request
+   */
+  400: ErrorResponse;
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * Application or client not found
+   */
+  404: NotFoundResponse;
+};
+
+export type DisableApplicationForClientError =
+  DisableApplicationForClientErrors[keyof DisableApplicationForClientErrors];
+
 export type DisableApplicationForClientResponses = {
   /**
-   * OK
+   * Application disabled for client
    */
-  200: unknown;
+  200: ClientApplicationStatusResponse;
 };
+
+export type DisableApplicationForClientResponse =
+  DisableApplicationForClientResponses[keyof DisableApplicationForClientResponses];
 
 export type EnableApplicationForClientData = {
   body?: never;
@@ -2131,12 +3315,37 @@ export type EnableApplicationForClientData = {
   url: "/api/admin/applications/{id}/clients/{clientId}/enable";
 };
 
+export type EnableApplicationForClientErrors = {
+  /**
+   * Invalid request
+   */
+  400: ErrorResponse;
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * Application or client not found
+   */
+  404: NotFoundResponse;
+};
+
+export type EnableApplicationForClientError =
+  EnableApplicationForClientErrors[keyof EnableApplicationForClientErrors];
+
 export type EnableApplicationForClientResponses = {
   /**
-   * OK
+   * Application enabled for client
    */
-  200: unknown;
+  200: ClientApplicationStatusResponse;
 };
+
+export type EnableApplicationForClientResponse =
+  EnableApplicationForClientResponses[keyof EnableApplicationForClientResponses];
 
 export type DeactivateApplicationData = {
   body?: never;
@@ -2147,12 +3356,37 @@ export type DeactivateApplicationData = {
   url: "/api/admin/applications/{id}/deactivate";
 };
 
+export type DeactivateApplicationErrors = {
+  /**
+   * Invalid request
+   */
+  400: ErrorResponse;
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * Application not found
+   */
+  404: NotFoundResponse;
+};
+
+export type DeactivateApplicationError =
+  DeactivateApplicationErrors[keyof DeactivateApplicationErrors];
+
 export type DeactivateApplicationResponses = {
   /**
-   * OK
+   * Application deactivated
    */
-  200: unknown;
+  200: ApplicationStatusResponse;
 };
+
+export type DeactivateApplicationResponse =
+  DeactivateApplicationResponses[keyof DeactivateApplicationResponses];
 
 export type ProvisionApplicationServiceAccountData = {
   body?: never;
@@ -2163,12 +3397,37 @@ export type ProvisionApplicationServiceAccountData = {
   url: "/api/admin/applications/{id}/provision-service-account";
 };
 
+export type ProvisionApplicationServiceAccountErrors = {
+  /**
+   * Invalid request or service account already exists
+   */
+  400: ErrorResponse;
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * Application not found
+   */
+  404: NotFoundResponse;
+};
+
+export type ProvisionApplicationServiceAccountError =
+  ProvisionApplicationServiceAccountErrors[keyof ProvisionApplicationServiceAccountErrors];
+
 export type ProvisionApplicationServiceAccountResponses = {
   /**
-   * OK
+   * Service account provisioned
    */
-  200: unknown;
+  200: ProvisionServiceAccountResponse;
 };
+
+export type ProvisionApplicationServiceAccountResponse =
+  ProvisionApplicationServiceAccountResponses[keyof ProvisionApplicationServiceAccountResponses];
 
 export type GetApplicationRolesData = {
   body?: never;
@@ -2179,12 +3438,33 @@ export type GetApplicationRolesData = {
   url: "/api/admin/applications/{id}/roles";
 };
 
+export type GetApplicationRolesErrors = {
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * Application not found
+   */
+  404: NotFoundResponse;
+};
+
+export type GetApplicationRolesError =
+  GetApplicationRolesErrors[keyof GetApplicationRolesErrors];
+
 export type GetApplicationRolesResponses = {
   /**
-   * OK
+   * Application roles info
    */
-  200: unknown;
+  200: ApplicationRolesResponse;
 };
+
+export type GetApplicationRolesResponse =
+  GetApplicationRolesResponses[keyof GetApplicationRolesResponses];
 
 export type ListAuditLogsData = {
   body?: never;
@@ -2222,8 +3502,14 @@ export type ListAuditLogsErrors = {
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
 };
+
+export type ListAuditLogsError = ListAuditLogsErrors[keyof ListAuditLogsErrors];
 
 export type ListAuditLogsResponses = {
   /**
@@ -2246,15 +3532,25 @@ export type GetAuditLogEntityTypesErrors = {
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
 };
+
+export type GetAuditLogEntityTypesError =
+  GetAuditLogEntityTypesErrors[keyof GetAuditLogEntityTypesErrors];
 
 export type GetAuditLogEntityTypesResponses = {
   /**
    * Entity types retrieved
    */
-  200: unknown;
+  200: EntityTypesResponse;
 };
+
+export type GetAuditLogEntityTypesResponse =
+  GetAuditLogEntityTypesResponses[keyof GetAuditLogEntityTypesResponses];
 
 export type GetEntityAuditLogsData = {
   body?: never;
@@ -2270,15 +3566,25 @@ export type GetEntityAuditLogsErrors = {
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
 };
+
+export type GetEntityAuditLogsError =
+  GetEntityAuditLogsErrors[keyof GetEntityAuditLogsErrors];
 
 export type GetEntityAuditLogsResponses = {
   /**
    * Audit logs retrieved
    */
-  200: unknown;
+  200: EntityAuditLogsResponse;
 };
+
+export type GetEntityAuditLogsResponse =
+  GetEntityAuditLogsResponses[keyof GetEntityAuditLogsResponses];
 
 export type GetAuditLogOperationsData = {
   body?: never;
@@ -2291,15 +3597,25 @@ export type GetAuditLogOperationsErrors = {
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
 };
+
+export type GetAuditLogOperationsError =
+  GetAuditLogOperationsErrors[keyof GetAuditLogOperationsErrors];
 
 export type GetAuditLogOperationsResponses = {
   /**
    * Operations retrieved
    */
-  200: unknown;
+  200: OperationsResponse;
 };
+
+export type GetAuditLogOperationsResponse =
+  GetAuditLogOperationsResponses[keyof GetAuditLogOperationsResponses];
 
 export type GetAuditLogData = {
   body?: never;
@@ -2314,18 +3630,24 @@ export type GetAuditLogErrors = {
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
   /**
    * Audit log not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type GetAuditLogError = GetAuditLogErrors[keyof GetAuditLogErrors];
 
 export type GetAuditLogResponses = {
   /**
    * Audit log retrieved
    */
-  200: AuditLogDto;
+  200: AuditLogDetailDto;
 };
 
 export type GetAuditLogResponse =
@@ -2347,25 +3669,27 @@ export type ListClientsErrors = {
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
   /**
    * Insufficient permissions
    */
-  403: unknown;
+  403: ForbiddenResponse;
 };
+
+export type ListClientsError = ListClientsErrors[keyof ListClientsErrors];
 
 export type ListClientsResponses = {
   /**
    * List of clients
    */
-  200: ClientListResponse1;
+  200: ClientListResponse;
 };
 
 export type ListClientsResponse =
   ListClientsResponses[keyof ListClientsResponses];
 
 export type CreateClientData = {
-  body: CreateClientRequest1;
+  body: CreateClientRequest;
   path?: never;
   query?: never;
   url: "/api/admin/clients";
@@ -2375,22 +3699,24 @@ export type CreateClientErrors = {
   /**
    * Invalid request or identifier already exists
    */
-  400: unknown;
+  400: ErrorResponse;
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
   /**
    * Insufficient permissions
    */
-  403: unknown;
+  403: ForbiddenResponse;
 };
+
+export type CreateClientError = CreateClientErrors[keyof CreateClientErrors];
 
 export type CreateClientResponses = {
   /**
    * Client created
    */
-  201: ClientDto1;
+  201: ClientDto;
 };
 
 export type CreateClientResponse2 =
@@ -2409,23 +3735,29 @@ export type GetClientByIdentifierErrors = {
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
   /**
    * Insufficient permissions
    */
-  403: unknown;
+  403: ForbiddenResponse;
   /**
    * Client not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type GetClientByIdentifierError =
+  GetClientByIdentifierErrors[keyof GetClientByIdentifierErrors];
 
 export type GetClientByIdentifierResponses = {
   /**
    * Client details
    */
-  200: unknown;
+  200: ClientDto;
 };
+
+export type GetClientByIdentifierResponse =
+  GetClientByIdentifierResponses[keyof GetClientByIdentifierResponses];
 
 export type SearchClientsData = {
   body?: never;
@@ -2451,18 +3783,20 @@ export type SearchClientsErrors = {
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
   /**
    * Insufficient permissions
    */
-  403: unknown;
+  403: ForbiddenResponse;
 };
+
+export type SearchClientsError = SearchClientsErrors[keyof SearchClientsErrors];
 
 export type SearchClientsResponses = {
   /**
    * Matching clients
    */
-  200: ClientListResponse1;
+  200: ClientListResponse;
 };
 
 export type SearchClientsResponse =
@@ -2481,32 +3815,34 @@ export type GetClientErrors = {
   /**
    * Invalid client ID format
    */
-  400: unknown;
+  400: ErrorResponse;
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
   /**
    * Insufficient permissions
    */
-  403: unknown;
+  403: ForbiddenResponse;
   /**
    * Client not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type GetClientError = GetClientErrors[keyof GetClientErrors];
 
 export type GetClientResponses = {
   /**
    * Client details
    */
-  200: ClientDto1;
+  200: ClientDto;
 };
 
 export type GetClientResponse = GetClientResponses[keyof GetClientResponses];
 
 export type UpdateClientData = {
-  body: UpdateClientRequest1;
+  body: UpdateClientRequest;
   path: {
     id: string;
   };
@@ -2518,27 +3854,32 @@ export type UpdateClientErrors = {
   /**
    * Invalid request or client ID format
    */
-  400: unknown;
+  400: ErrorResponse;
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
   /**
    * Insufficient permissions
    */
-  403: unknown;
+  403: ForbiddenResponse;
   /**
    * Client not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type UpdateClientError = UpdateClientErrors[keyof UpdateClientErrors];
 
 export type UpdateClientResponses = {
   /**
    * Client updated
    */
-  200: unknown;
+  200: ClientDto;
 };
+
+export type UpdateClientResponse =
+  UpdateClientResponses[keyof UpdateClientResponses];
 
 export type ActivateClientData = {
   body?: never;
@@ -2553,27 +3894,33 @@ export type ActivateClientErrors = {
   /**
    * Invalid client ID format
    */
-  400: unknown;
+  400: ErrorResponse;
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
   /**
    * Insufficient permissions
    */
-  403: unknown;
+  403: ForbiddenResponse;
   /**
    * Client not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type ActivateClientError =
+  ActivateClientErrors[keyof ActivateClientErrors];
 
 export type ActivateClientResponses = {
   /**
    * Client activated
    */
-  200: unknown;
+  200: ClientStatusResponse;
 };
+
+export type ActivateClientResponse =
+  ActivateClientResponses[keyof ActivateClientResponses];
 
 export type GetClientApplicationsData = {
   body?: never;
@@ -2588,20 +3935,23 @@ export type GetClientApplicationsErrors = {
   /**
    * Invalid client ID format
    */
-  400: unknown;
+  400: ErrorResponse;
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
   /**
    * Insufficient permissions
    */
-  403: unknown;
+  403: ForbiddenResponse;
   /**
    * Client not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type GetClientApplicationsError =
+  GetClientApplicationsErrors[keyof GetClientApplicationsErrors];
 
 export type GetClientApplicationsResponses = {
   /**
@@ -2626,27 +3976,33 @@ export type UpdateClientApplicationsErrors = {
   /**
    * Invalid ID format
    */
-  400: unknown;
+  400: ErrorResponse;
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
   /**
    * Insufficient permissions
    */
-  403: unknown;
+  403: ForbiddenResponse;
   /**
    * Client not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type UpdateClientApplicationsError =
+  UpdateClientApplicationsErrors[keyof UpdateClientApplicationsErrors];
 
 export type UpdateClientApplicationsResponses = {
   /**
    * Applications updated
    */
-  200: unknown;
+  200: ApplicationsUpdatedResponse;
 };
+
+export type UpdateClientApplicationsResponse =
+  UpdateClientApplicationsResponses[keyof UpdateClientApplicationsResponses];
 
 export type DisableClientApplicationData = {
   body?: never;
@@ -2662,27 +4018,33 @@ export type DisableClientApplicationErrors = {
   /**
    * Invalid ID format
    */
-  400: unknown;
+  400: ErrorResponse;
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
   /**
    * Insufficient permissions
    */
-  403: unknown;
+  403: ForbiddenResponse;
   /**
    * Client or application not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type DisableClientApplicationError =
+  DisableClientApplicationErrors[keyof DisableClientApplicationErrors];
 
 export type DisableClientApplicationResponses = {
   /**
    * Application disabled
    */
-  200: unknown;
+  200: ClientApplicationStatusResponse1;
 };
+
+export type DisableClientApplicationResponse =
+  DisableClientApplicationResponses[keyof DisableClientApplicationResponses];
 
 export type EnableClientApplicationData = {
   body?: never;
@@ -2698,30 +4060,36 @@ export type EnableClientApplicationErrors = {
   /**
    * Invalid ID format
    */
-  400: unknown;
+  400: ErrorResponse;
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
   /**
    * Insufficient permissions
    */
-  403: unknown;
+  403: ForbiddenResponse;
   /**
    * Client or application not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type EnableClientApplicationError =
+  EnableClientApplicationErrors[keyof EnableClientApplicationErrors];
 
 export type EnableClientApplicationResponses = {
   /**
    * Application enabled
    */
-  200: unknown;
+  200: ClientApplicationStatusResponse1;
 };
 
+export type EnableClientApplicationResponse =
+  EnableClientApplicationResponses[keyof EnableClientApplicationResponses];
+
 export type DeactivateClientData = {
-  body: StatusChangeRequest1;
+  body: StatusChangeRequest;
   path: {
     id: string;
   };
@@ -2733,27 +4101,33 @@ export type DeactivateClientErrors = {
   /**
    * Invalid client ID format
    */
-  400: unknown;
+  400: ErrorResponse;
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
   /**
    * Insufficient permissions
    */
-  403: unknown;
+  403: ForbiddenResponse;
   /**
    * Client not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type DeactivateClientError =
+  DeactivateClientErrors[keyof DeactivateClientErrors];
 
 export type DeactivateClientResponses = {
   /**
    * Client deactivated
    */
-  200: unknown;
+  200: ClientStatusResponse;
 };
+
+export type DeactivateClientResponse =
+  DeactivateClientResponses[keyof DeactivateClientResponses];
 
 export type AddClientAuditNoteData = {
   body: AddNoteRequest;
@@ -2768,30 +4142,36 @@ export type AddClientAuditNoteErrors = {
   /**
    * Invalid client ID format
    */
-  400: unknown;
+  400: ErrorResponse;
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
   /**
    * Insufficient permissions
    */
-  403: unknown;
+  403: ForbiddenResponse;
   /**
    * Client not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type AddClientAuditNoteError =
+  AddClientAuditNoteErrors[keyof AddClientAuditNoteErrors];
 
 export type AddClientAuditNoteResponses = {
   /**
    * Note added
    */
-  201: unknown;
+  201: NoteAddedResponse;
 };
 
+export type AddClientAuditNoteResponse =
+  AddClientAuditNoteResponses[keyof AddClientAuditNoteResponses];
+
 export type SuspendClientData = {
-  body: StatusChangeRequest1;
+  body: StatusChangeRequest;
   path: {
     id: string;
   };
@@ -2803,27 +4183,32 @@ export type SuspendClientErrors = {
   /**
    * Invalid client ID format
    */
-  400: unknown;
+  400: ErrorResponse;
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
   /**
    * Insufficient permissions
    */
-  403: unknown;
+  403: ForbiddenResponse;
   /**
    * Client not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type SuspendClientError = SuspendClientErrors[keyof SuspendClientErrors];
 
 export type SuspendClientResponses = {
   /**
    * Client suspended
    */
-  200: unknown;
+  200: ClientStatusResponse;
 };
+
+export type SuspendClientResponse =
+  SuspendClientResponses[keyof SuspendClientResponses];
 
 export type GetApiAdminConfigAccessByAppCodeData = {
   body?: never;
@@ -3908,56 +5293,107 @@ export type RotateOAuthClientSecretResponses = {
 export type RotateOAuthClientSecretResponse =
   RotateOAuthClientSecretResponses[keyof RotateOAuthClientSecretResponses];
 
-export type GetApiAdminPlatformCorsData = {
+export type ListCorsOriginsData = {
   body?: never;
   path?: never;
   query?: never;
   url: "/api/admin/platform/cors";
 };
 
-export type GetApiAdminPlatformCorsResponses = {
+export type ListCorsOriginsErrors = {
   /**
-   * OK
+   * Not authenticated
    */
-  200: unknown;
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
 };
 
-export type PostApiAdminPlatformCorsData = {
+export type ListCorsOriginsError =
+  ListCorsOriginsErrors[keyof ListCorsOriginsErrors];
+
+export type ListCorsOriginsResponses = {
+  /**
+   * CORS origins retrieved
+   */
+  200: CorsOriginListResponse;
+};
+
+export type ListCorsOriginsResponse =
+  ListCorsOriginsResponses[keyof ListCorsOriginsResponses];
+
+export type AddCorsOriginData = {
   body: CreateCorsOriginRequest;
   path?: never;
   query?: never;
   url: "/api/admin/platform/cors";
 };
 
-export type PostApiAdminPlatformCorsErrors = {
+export type AddCorsOriginErrors = {
   /**
-   * Bad Request
+   * Invalid request
    */
-  400: unknown;
+  400: ErrorResponse;
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * Origin already exists
+   */
+  409: ConflictResponse;
 };
 
-export type PostApiAdminPlatformCorsResponses = {
+export type AddCorsOriginError = AddCorsOriginErrors[keyof AddCorsOriginErrors];
+
+export type AddCorsOriginResponses = {
   /**
-   * OK
+   * CORS origin created
    */
-  200: unknown;
+  201: CorsOriginDto;
 };
 
-export type GetApiAdminPlatformCorsAllowedData = {
+export type AddCorsOriginResponse =
+  AddCorsOriginResponses[keyof AddCorsOriginResponses];
+
+export type GetAllowedCorsOriginsData = {
   body?: never;
   path?: never;
   query?: never;
   url: "/api/admin/platform/cors/allowed";
 };
 
-export type GetApiAdminPlatformCorsAllowedResponses = {
+export type GetAllowedCorsOriginsErrors = {
   /**
-   * OK
+   * Not authenticated
    */
-  200: unknown;
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
 };
 
-export type DeleteApiAdminPlatformCorsByIdData = {
+export type GetAllowedCorsOriginsError =
+  GetAllowedCorsOriginsErrors[keyof GetAllowedCorsOriginsErrors];
+
+export type GetAllowedCorsOriginsResponses = {
+  /**
+   * Allowed origins retrieved
+   */
+  200: AllowedOriginsResponse;
+};
+
+export type GetAllowedCorsOriginsResponse =
+  GetAllowedCorsOriginsResponses[keyof GetAllowedCorsOriginsResponses];
+
+export type DeleteCorsOriginData = {
   body?: never;
   path: {
     id: string;
@@ -3966,14 +5402,39 @@ export type DeleteApiAdminPlatformCorsByIdData = {
   url: "/api/admin/platform/cors/{id}";
 };
 
-export type DeleteApiAdminPlatformCorsByIdResponses = {
+export type DeleteCorsOriginErrors = {
   /**
-   * OK
+   * Invalid request
    */
-  200: unknown;
+  400: ErrorResponse;
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * CORS origin not found
+   */
+  404: NotFoundResponse;
 };
 
-export type GetApiAdminPlatformCorsByIdData = {
+export type DeleteCorsOriginError =
+  DeleteCorsOriginErrors[keyof DeleteCorsOriginErrors];
+
+export type DeleteCorsOriginResponses = {
+  /**
+   * CORS origin deleted
+   */
+  200: CorsOriginDeletedResponse;
+};
+
+export type DeleteCorsOriginResponse =
+  DeleteCorsOriginResponses[keyof DeleteCorsOriginResponses];
+
+export type GetCorsOriginData = {
   body?: never;
   path: {
     id: string;
@@ -3982,12 +5443,32 @@ export type GetApiAdminPlatformCorsByIdData = {
   url: "/api/admin/platform/cors/{id}";
 };
 
-export type GetApiAdminPlatformCorsByIdResponses = {
+export type GetCorsOriginErrors = {
   /**
-   * OK
+   * Not authenticated
    */
-  200: unknown;
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
+   * CORS origin not found
+   */
+  404: NotFoundResponse;
 };
+
+export type GetCorsOriginError = GetCorsOriginErrors[keyof GetCorsOriginErrors];
+
+export type GetCorsOriginResponses = {
+  /**
+   * CORS origin retrieved
+   */
+  200: CorsOriginDto;
+};
+
+export type GetCorsOriginResponse =
+  GetCorsOriginResponses[keyof GetCorsOriginResponses];
 
 export type ListPrincipalsData = {
   body?: never;
@@ -4474,10 +5955,20 @@ export type ListRolesData = {
 
 export type ListRolesErrors = {
   /**
+   * Invalid source filter
+   */
+  400: ErrorResponse;
+  /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
 };
+
+export type ListRolesError = ListRolesErrors[keyof ListRolesErrors];
 
 export type ListRolesResponses = {
   /**
@@ -4499,16 +5990,26 @@ export type CreateRoleErrors = {
   /**
    * Invalid request
    */
-  400: unknown;
+  400: ErrorResponse;
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
   /**
    * Application not found
    */
-  404: unknown;
+  404: NotFoundResponse;
   /**
    * Role already exists
    */
-  409: unknown;
+  409: ConflictResponse;
 };
+
+export type CreateRoleError = CreateRoleErrors[keyof CreateRoleErrors];
 
 export type CreateRoleResponses = {
   /**
@@ -4530,8 +6031,15 @@ export type ListPermissionsErrors = {
   /**
    * Not authenticated
    */
-  401: unknown;
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
 };
+
+export type ListPermissionsError =
+  ListPermissionsErrors[keyof ListPermissionsErrors];
 
 export type ListPermissionsResponses = {
   /**
@@ -4554,17 +6062,30 @@ export type GetPermissionData = {
 
 export type GetPermissionErrors = {
   /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
    * Permission not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type GetPermissionError = GetPermissionErrors[keyof GetPermissionErrors];
 
 export type GetPermissionResponses = {
   /**
    * Permission details
    */
-  200: unknown;
+  200: PermissionDto;
 };
+
+export type GetPermissionResponse =
+  GetPermissionResponses[keyof GetPermissionResponses];
 
 export type DeleteRoleData = {
   body?: never;
@@ -4579,18 +6100,28 @@ export type DeleteRoleErrors = {
   /**
    * Cannot delete CODE-defined role
    */
-  400: unknown;
+  400: ErrorResponse;
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
   /**
    * Role not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type DeleteRoleError = DeleteRoleErrors[keyof DeleteRoleErrors];
 
 export type DeleteRoleResponses = {
   /**
    * Role deleted
    */
-  204: void;
+  200: DeleteResponse;
 };
 
 export type DeleteRoleResponse = DeleteRoleResponses[keyof DeleteRoleResponses];
@@ -4606,10 +6137,20 @@ export type GetRoleData = {
 
 export type GetRoleErrors = {
   /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
+  /**
    * Role not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type GetRoleError = GetRoleErrors[keyof GetRoleErrors];
 
 export type GetRoleResponses = {
   /**
@@ -4631,14 +6172,24 @@ export type UpdateRoleData = {
 
 export type UpdateRoleErrors = {
   /**
-   * Bad Request
+   * Invalid request
    */
-  400: unknown;
+  400: ErrorResponse;
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * Insufficient permissions
+   */
+  403: ForbiddenResponse;
   /**
    * Role not found
    */
-  404: unknown;
+  404: NotFoundResponse;
 };
+
+export type UpdateRoleError = UpdateRoleErrors[keyof UpdateRoleErrors];
 
 export type UpdateRoleResponses = {
   /**
@@ -5144,7 +6695,7 @@ export type ListAppsResponses = {
   /**
    * List of applications
    */
-  200: ApplicationListResponse;
+  200: ApplicationListResponse1;
 };
 
 export type ListAppsResponse = ListAppsResponses[keyof ListAppsResponses];
@@ -5171,7 +6722,7 @@ export type CreateAppResponses = {
   /**
    * Application created
    */
-  201: ApplicationResponse;
+  201: ApplicationResponse1;
 };
 
 export type CreateAppResponse = CreateAppResponses[keyof CreateAppResponses];
@@ -5196,7 +6747,7 @@ export type GetAppByCodeResponses = {
   /**
    * Application found
    */
-  200: ApplicationResponse;
+  200: ApplicationResponse1;
 };
 
 export type GetAppByCodeResponse =
@@ -5560,7 +7111,7 @@ export type GetAppResponses = {
   /**
    * Application found
    */
-  200: ApplicationResponse;
+  200: ApplicationResponse1;
 };
 
 export type GetAppResponse = GetAppResponses[keyof GetAppResponses];
@@ -5589,7 +7140,7 @@ export type UpdateAppResponses = {
   /**
    * Application updated
    */
-  200: ApplicationResponse;
+  200: ApplicationResponse1;
 };
 
 export type UpdateAppResponse = UpdateAppResponses[keyof UpdateAppResponses];
@@ -5618,7 +7169,7 @@ export type ActivateAppResponses = {
   /**
    * Application activated
    */
-  200: ApplicationResponse;
+  200: ApplicationResponse1;
 };
 
 export type ActivateAppResponse =
@@ -5648,7 +7199,7 @@ export type DeactivateAppResponses = {
   /**
    * Application deactivated
    */
-  200: ApplicationResponse;
+  200: ApplicationResponse1;
 };
 
 export type DeactivateAppResponse =
@@ -5988,7 +7539,7 @@ export type GetApiClientsByIdApplicationsResponses = {
   /**
    * List of applications
    */
-  200: ApplicationListResponse1;
+  200: ApplicationListResponse2;
 };
 
 export type GetApiClientsByIdApplicationsResponse =
@@ -6052,11 +7603,11 @@ export type PostApiDispatchJobsErrors = {
   /**
    * Invalid request - missing or invalid fields
    */
-  400: ErrorResponse3;
+  400: ErrorResponse4;
   /**
    * Internal server error
    */
-  500: ErrorResponse3;
+  500: ErrorResponse4;
 };
 
 export type PostApiDispatchJobsError =
@@ -6083,11 +7634,11 @@ export type PostApiDispatchJobsBatchErrors = {
   /**
    * Invalid request or batch size exceeds limit
    */
-  400: ErrorResponse3;
+  400: ErrorResponse4;
   /**
    * Internal server error
    */
-  500: ErrorResponse3;
+  500: ErrorResponse4;
 };
 
 export type PostApiDispatchJobsBatchError =
@@ -6116,7 +7667,7 @@ export type GetApiDispatchJobsByIdErrors = {
   /**
    * Dispatch job not found
    */
-  404: ErrorResponse3;
+  404: ErrorResponse4;
 };
 
 export type GetApiDispatchJobsByIdError =
@@ -6145,7 +7696,7 @@ export type GetApiDispatchJobsByIdAttemptsErrors = {
   /**
    * Dispatch job not found
    */
-  404: ErrorResponse3;
+  404: ErrorResponse4;
 };
 
 export type GetApiDispatchJobsByIdAttemptsError =
@@ -6606,6 +8157,105 @@ export type GetApiHealthResponses = {
 export type GetApiHealthResponse =
   GetApiHealthResponses[keyof GetApiHealthResponses];
 
+export type GetMyClientsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/api/me/clients";
+};
+
+export type GetMyClientsErrors = {
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+};
+
+export type GetMyClientsError = GetMyClientsErrors[keyof GetMyClientsErrors];
+
+export type GetMyClientsResponses = {
+  /**
+   * List of accessible clients
+   */
+  200: MyClientsResponse;
+};
+
+export type GetMyClientsResponse =
+  GetMyClientsResponses[keyof GetMyClientsResponses];
+
+export type GetMyClientData = {
+  body?: never;
+  path: {
+    clientId: string;
+  };
+  query?: never;
+  url: "/api/me/clients/{clientId}";
+};
+
+export type GetMyClientErrors = {
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * No access to this client
+   */
+  403: ForbiddenResponse;
+  /**
+   * Client not found
+   */
+  404: NotFoundResponse;
+};
+
+export type GetMyClientError = GetMyClientErrors[keyof GetMyClientErrors];
+
+export type GetMyClientResponses = {
+  /**
+   * Client details
+   */
+  200: MyClientDto;
+};
+
+export type GetMyClientResponse =
+  GetMyClientResponses[keyof GetMyClientResponses];
+
+export type GetMyClientApplicationsData = {
+  body?: never;
+  path: {
+    clientId: string;
+  };
+  query?: never;
+  url: "/api/me/clients/{clientId}/applications";
+};
+
+export type GetMyClientApplicationsErrors = {
+  /**
+   * Not authenticated
+   */
+  401: UnauthorizedResponse;
+  /**
+   * No access to this client
+   */
+  403: ForbiddenResponse;
+  /**
+   * Client not found
+   */
+  404: NotFoundResponse;
+};
+
+export type GetMyClientApplicationsError =
+  GetMyClientApplicationsErrors[keyof GetMyClientApplicationsErrors];
+
+export type GetMyClientApplicationsResponses = {
+  /**
+   * List of applications
+   */
+  200: MyApplicationsResponse;
+};
+
+export type GetMyClientApplicationsResponse =
+  GetMyClientApplicationsResponses[keyof GetMyClientApplicationsResponses];
+
 export type GetApiPublicLoginThemeData = {
   body?: never;
   path?: never;
@@ -6724,14 +8374,14 @@ export type SdkListClientsResponses = {
   /**
    * List of clients
    */
-  200: ClientListResponse;
+  200: ClientListResponse1;
 };
 
 export type SdkListClientsResponse =
   SdkListClientsResponses[keyof SdkListClientsResponses];
 
 export type SdkCreateClientData = {
-  body: CreateClientRequest;
+  body: CreateClientRequest1;
   path?: never;
   query?: never;
   url: "/api/sdk/clients";
@@ -6756,7 +8406,7 @@ export type SdkCreateClientResponses = {
   /**
    * Client created
    */
-  201: ClientDto;
+  201: ClientDto1;
 };
 
 export type SdkCreateClientResponse =
@@ -6790,14 +8440,14 @@ export type SdkGetClientResponses = {
   /**
    * Client details
    */
-  200: ClientDto;
+  200: ClientDto1;
 };
 
 export type SdkGetClientResponse =
   SdkGetClientResponses[keyof SdkGetClientResponses];
 
 export type SdkUpdateClientData = {
-  body: UpdateClientRequest;
+  body: UpdateClientRequest1;
   path: {
     id: string;
   };
@@ -6828,7 +8478,7 @@ export type SdkUpdateClientResponses = {
   /**
    * Client updated
    */
-  200: ClientDto;
+  200: ClientDto1;
 };
 
 export type SdkUpdateClientResponse =
@@ -6869,7 +8519,7 @@ export type SdkActivateClientResponse =
   SdkActivateClientResponses[keyof SdkActivateClientResponses];
 
 export type SdkDeactivateClientData = {
-  body: StatusChangeRequest;
+  body: StatusChangeRequest1;
   path: {
     id: string;
   };
@@ -6907,7 +8557,7 @@ export type SdkDeactivateClientResponse =
   SdkDeactivateClientResponses[keyof SdkDeactivateClientResponses];
 
 export type SdkSuspendClientData = {
-  body: StatusChangeRequest;
+  body: StatusChangeRequest1;
   path: {
     id: string;
   };

@@ -12,45 +12,104 @@ import type {
   GetWellKnownOpenidConfigurationData,
   GetWellKnownOpenidConfigurationResponse,
   ListApplicationsData,
+  ListApplicationsResponse,
+  ListApplicationsError,
   CreateApplicationData,
+  CreateApplicationResponse,
+  CreateApplicationError,
   GetApplicationByCodeData,
+  GetApplicationByCodeResponse,
+  GetApplicationByCodeError,
   DeleteApplicationData,
+  DeleteApplicationResponse,
+  DeleteApplicationError,
   GetApplicationData,
+  GetApplicationResponse,
+  GetApplicationError,
   UpdateApplicationData,
+  UpdateApplicationResponse,
+  UpdateApplicationError,
   ActivateApplicationData,
+  ActivateApplicationResponse,
+  ActivateApplicationError,
   GetApplicationClientConfigsData,
+  GetApplicationClientConfigsResponse,
+  GetApplicationClientConfigsError,
   ConfigureApplicationForClientData,
+  ConfigureApplicationForClientResponse,
+  ConfigureApplicationForClientError,
   DisableApplicationForClientData,
+  DisableApplicationForClientResponse,
+  DisableApplicationForClientError,
   EnableApplicationForClientData,
+  EnableApplicationForClientResponse,
+  EnableApplicationForClientError,
   DeactivateApplicationData,
+  DeactivateApplicationResponse,
+  DeactivateApplicationError,
   ProvisionApplicationServiceAccountData,
+  ProvisionApplicationServiceAccountResponse,
+  ProvisionApplicationServiceAccountError,
   GetApplicationRolesData,
+  GetApplicationRolesResponse,
+  GetApplicationRolesError,
   ListAuditLogsData,
   ListAuditLogsResponse,
+  ListAuditLogsError,
   GetAuditLogEntityTypesData,
+  GetAuditLogEntityTypesResponse,
+  GetAuditLogEntityTypesError,
   GetEntityAuditLogsData,
+  GetEntityAuditLogsResponse,
+  GetEntityAuditLogsError,
   GetAuditLogOperationsData,
+  GetAuditLogOperationsResponse,
+  GetAuditLogOperationsError,
   GetAuditLogData,
   GetAuditLogResponse,
+  GetAuditLogError,
   ListClientsData,
   ListClientsResponse,
+  ListClientsError,
   CreateClientData,
   CreateClientResponse2,
+  CreateClientError,
   GetClientByIdentifierData,
+  GetClientByIdentifierResponse,
+  GetClientByIdentifierError,
   SearchClientsData,
   SearchClientsResponse,
+  SearchClientsError,
   GetClientData,
   GetClientResponse,
+  GetClientError,
   UpdateClientData,
+  UpdateClientResponse,
+  UpdateClientError,
   ActivateClientData,
+  ActivateClientResponse,
+  ActivateClientError,
   GetClientApplicationsData,
   GetClientApplicationsResponse,
+  GetClientApplicationsError,
   UpdateClientApplicationsData,
+  UpdateClientApplicationsResponse,
+  UpdateClientApplicationsError,
   DisableClientApplicationData,
+  DisableClientApplicationResponse,
+  DisableClientApplicationError,
   EnableClientApplicationData,
+  EnableClientApplicationResponse,
+  EnableClientApplicationError,
   DeactivateClientData,
+  DeactivateClientResponse,
+  DeactivateClientError,
   AddClientAuditNoteData,
+  AddClientAuditNoteResponse,
+  AddClientAuditNoteError,
   SuspendClientData,
+  SuspendClientResponse,
+  SuspendClientError,
   GetApiAdminConfigAccessByAppCodeData,
   PostApiAdminConfigAccessByAppCodeData,
   DeleteApiAdminConfigAccessByAppCodeByRoleCodeData,
@@ -111,11 +170,21 @@ import type {
   DeactivateOAuthClientData,
   RotateOAuthClientSecretData,
   RotateOAuthClientSecretResponse,
-  GetApiAdminPlatformCorsData,
-  PostApiAdminPlatformCorsData,
-  GetApiAdminPlatformCorsAllowedData,
-  DeleteApiAdminPlatformCorsByIdData,
-  GetApiAdminPlatformCorsByIdData,
+  ListCorsOriginsData,
+  ListCorsOriginsResponse,
+  ListCorsOriginsError,
+  AddCorsOriginData,
+  AddCorsOriginResponse,
+  AddCorsOriginError,
+  GetAllowedCorsOriginsData,
+  GetAllowedCorsOriginsResponse,
+  GetAllowedCorsOriginsError,
+  DeleteCorsOriginData,
+  DeleteCorsOriginResponse,
+  DeleteCorsOriginError,
+  GetCorsOriginData,
+  GetCorsOriginResponse,
+  GetCorsOriginError,
   ListPrincipalsData,
   ListPrincipalsResponse,
   CheckEmailDomainData,
@@ -142,17 +211,25 @@ import type {
   RemovePrincipalRoleResponse,
   ListRolesData,
   ListRolesResponse,
+  ListRolesError,
   CreateRoleData,
   CreateRoleResponse,
+  CreateRoleError,
   ListPermissionsData,
   ListPermissionsResponse,
+  ListPermissionsError,
   GetPermissionData,
+  GetPermissionResponse,
+  GetPermissionError,
   DeleteRoleData,
   DeleteRoleResponse,
+  DeleteRoleError,
   GetRoleData,
   GetRoleResponse,
+  GetRoleError,
   UpdateRoleData,
   UpdateRoleResponse,
+  UpdateRoleError,
   GetApiAdminServiceAccountsData,
   GetApiAdminServiceAccountsResponse,
   PostApiAdminServiceAccountsData,
@@ -286,6 +363,15 @@ import type {
   GetApiEventsByIdData,
   GetApiHealthData,
   GetApiHealthResponse,
+  GetMyClientsData,
+  GetMyClientsResponse,
+  GetMyClientsError,
+  GetMyClientData,
+  GetMyClientResponse,
+  GetMyClientError,
+  GetMyClientApplicationsData,
+  GetMyClientApplicationsResponse,
+  GetMyClientApplicationsError,
   GetApiPublicLoginThemeData,
   PostApiSampleWebhookData,
   PostApiSampleWebhookFailPermanentData,
@@ -441,12 +527,14 @@ export const getWellKnownOpenidConfiguration = <
 export const listApplications = <ThrowOnError extends boolean = false>(
   options?: Options<ListApplicationsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/applications",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<
+    ListApplicationsResponse,
+    ListApplicationsError,
+    ThrowOnError
+  >({
+    url: "/api/admin/applications",
+    ...options,
+  });
 };
 
 /**
@@ -455,16 +543,18 @@ export const listApplications = <ThrowOnError extends boolean = false>(
 export const createApplication = <ThrowOnError extends boolean = false>(
   options: Options<CreateApplicationData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/applications",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<
+    CreateApplicationResponse,
+    CreateApplicationError,
+    ThrowOnError
+  >({
+    url: "/api/admin/applications",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
@@ -473,7 +563,11 @@ export const createApplication = <ThrowOnError extends boolean = false>(
 export const getApplicationByCode = <ThrowOnError extends boolean = false>(
   options: Options<GetApplicationByCodeData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).get<
+    GetApplicationByCodeResponse,
+    GetApplicationByCodeError,
+    ThrowOnError
+  >({
     url: "/api/admin/applications/by-code/{code}",
     ...options,
   });
@@ -487,8 +581,8 @@ export const deleteApplication = <ThrowOnError extends boolean = false>(
   options: Options<DeleteApplicationData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).delete<
-    unknown,
-    unknown,
+    DeleteApplicationResponse,
+    DeleteApplicationError,
     ThrowOnError
   >({
     url: "/api/admin/applications/{id}",
@@ -502,7 +596,11 @@ export const deleteApplication = <ThrowOnError extends boolean = false>(
 export const getApplication = <ThrowOnError extends boolean = false>(
   options: Options<GetApplicationData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).get<
+    GetApplicationResponse,
+    GetApplicationError,
+    ThrowOnError
+  >({
     url: "/api/admin/applications/{id}",
     ...options,
   });
@@ -514,7 +612,11 @@ export const getApplication = <ThrowOnError extends boolean = false>(
 export const updateApplication = <ThrowOnError extends boolean = false>(
   options: Options<UpdateApplicationData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).put<
+    UpdateApplicationResponse,
+    UpdateApplicationError,
+    ThrowOnError
+  >({
     url: "/api/admin/applications/{id}",
     ...options,
     headers: {
@@ -530,12 +632,14 @@ export const updateApplication = <ThrowOnError extends boolean = false>(
 export const activateApplication = <ThrowOnError extends boolean = false>(
   options: Options<ActivateApplicationData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/applications/{id}/activate",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<
+    ActivateApplicationResponse,
+    ActivateApplicationError,
+    ThrowOnError
+  >({
+    url: "/api/admin/applications/{id}/activate",
+    ...options,
+  });
 };
 
 /**
@@ -546,7 +650,11 @@ export const getApplicationClientConfigs = <
 >(
   options: Options<GetApplicationClientConfigsData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).get<
+    GetApplicationClientConfigsResponse,
+    GetApplicationClientConfigsError,
+    ThrowOnError
+  >({
     url: "/api/admin/applications/{id}/clients",
     ...options,
   });
@@ -560,7 +668,11 @@ export const configureApplicationForClient = <
 >(
   options: Options<ConfigureApplicationForClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).put<
+    ConfigureApplicationForClientResponse,
+    ConfigureApplicationForClientError,
+    ThrowOnError
+  >({
     url: "/api/admin/applications/{id}/clients/{clientId}",
     ...options,
     headers: {
@@ -578,12 +690,14 @@ export const disableApplicationForClient = <
 >(
   options: Options<DisableApplicationForClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/applications/{id}/clients/{clientId}/disable",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<
+    DisableApplicationForClientResponse,
+    DisableApplicationForClientError,
+    ThrowOnError
+  >({
+    url: "/api/admin/applications/{id}/clients/{clientId}/disable",
+    ...options,
+  });
 };
 
 /**
@@ -594,12 +708,14 @@ export const enableApplicationForClient = <
 >(
   options: Options<EnableApplicationForClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/applications/{id}/clients/{clientId}/enable",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<
+    EnableApplicationForClientResponse,
+    EnableApplicationForClientError,
+    ThrowOnError
+  >({
+    url: "/api/admin/applications/{id}/clients/{clientId}/enable",
+    ...options,
+  });
 };
 
 /**
@@ -608,12 +724,14 @@ export const enableApplicationForClient = <
 export const deactivateApplication = <ThrowOnError extends boolean = false>(
   options: Options<DeactivateApplicationData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/applications/{id}/deactivate",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<
+    DeactivateApplicationResponse,
+    DeactivateApplicationError,
+    ThrowOnError
+  >({
+    url: "/api/admin/applications/{id}/deactivate",
+    ...options,
+  });
 };
 
 /**
@@ -625,12 +743,14 @@ export const provisionApplicationServiceAccount = <
 >(
   options: Options<ProvisionApplicationServiceAccountData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/applications/{id}/provision-service-account",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<
+    ProvisionApplicationServiceAccountResponse,
+    ProvisionApplicationServiceAccountError,
+    ThrowOnError
+  >({
+    url: "/api/admin/applications/{id}/provision-service-account",
+    ...options,
+  });
 };
 
 /**
@@ -639,7 +759,11 @@ export const provisionApplicationServiceAccount = <
 export const getApplicationRoles = <ThrowOnError extends boolean = false>(
   options: Options<GetApplicationRolesData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).get<
+    GetApplicationRolesResponse,
+    GetApplicationRolesError,
+    ThrowOnError
+  >({
     url: "/api/admin/applications/{id}/roles",
     ...options,
   });
@@ -654,7 +778,7 @@ export const listAuditLogs = <ThrowOnError extends boolean = false>(
 ) => {
   return (options?.client ?? _heyApiClient).get<
     ListAuditLogsResponse,
-    unknown,
+    ListAuditLogsError,
     ThrowOnError
   >({
     url: "/api/admin/audit-logs",
@@ -669,12 +793,14 @@ export const listAuditLogs = <ThrowOnError extends boolean = false>(
 export const getAuditLogEntityTypes = <ThrowOnError extends boolean = false>(
   options?: Options<GetAuditLogEntityTypesData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/audit-logs/entity-types",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<
+    GetAuditLogEntityTypesResponse,
+    GetAuditLogEntityTypesError,
+    ThrowOnError
+  >({
+    url: "/api/admin/audit-logs/entity-types",
+    ...options,
+  });
 };
 
 /**
@@ -684,7 +810,11 @@ export const getAuditLogEntityTypes = <ThrowOnError extends boolean = false>(
 export const getEntityAuditLogs = <ThrowOnError extends boolean = false>(
   options: Options<GetEntityAuditLogsData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).get<
+    GetEntityAuditLogsResponse,
+    GetEntityAuditLogsError,
+    ThrowOnError
+  >({
     url: "/api/admin/audit-logs/entity/{entityType}/{entityId}",
     ...options,
   });
@@ -697,12 +827,14 @@ export const getEntityAuditLogs = <ThrowOnError extends boolean = false>(
 export const getAuditLogOperations = <ThrowOnError extends boolean = false>(
   options?: Options<GetAuditLogOperationsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/audit-logs/operations",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<
+    GetAuditLogOperationsResponse,
+    GetAuditLogOperationsError,
+    ThrowOnError
+  >({
+    url: "/api/admin/audit-logs/operations",
+    ...options,
+  });
 };
 
 /**
@@ -713,7 +845,7 @@ export const getAuditLog = <ThrowOnError extends boolean = false>(
 ) => {
   return (options.client ?? _heyApiClient).get<
     GetAuditLogResponse,
-    unknown,
+    GetAuditLogError,
     ThrowOnError
   >({
     url: "/api/admin/audit-logs/{id}",
@@ -730,7 +862,7 @@ export const listClients = <ThrowOnError extends boolean = false>(
 ) => {
   return (options?.client ?? _heyApiClient).get<
     ListClientsResponse,
-    unknown,
+    ListClientsError,
     ThrowOnError
   >({
     url: "/api/admin/clients",
@@ -746,7 +878,7 @@ export const createClient = <ThrowOnError extends boolean = false>(
 ) => {
   return (options.client ?? _heyApiClient).post<
     CreateClientResponse2,
-    unknown,
+    CreateClientError,
     ThrowOnError
   >({
     url: "/api/admin/clients",
@@ -764,7 +896,11 @@ export const createClient = <ThrowOnError extends boolean = false>(
 export const getClientByIdentifier = <ThrowOnError extends boolean = false>(
   options: Options<GetClientByIdentifierData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).get<
+    GetClientByIdentifierResponse,
+    GetClientByIdentifierError,
+    ThrowOnError
+  >({
     url: "/api/admin/clients/by-identifier/{identifier}",
     ...options,
   });
@@ -779,7 +915,7 @@ export const searchClients = <ThrowOnError extends boolean = false>(
 ) => {
   return (options?.client ?? _heyApiClient).get<
     SearchClientsResponse,
-    unknown,
+    SearchClientsError,
     ThrowOnError
   >({
     url: "/api/admin/clients/search",
@@ -795,7 +931,7 @@ export const getClient = <ThrowOnError extends boolean = false>(
 ) => {
   return (options.client ?? _heyApiClient).get<
     GetClientResponse,
-    unknown,
+    GetClientError,
     ThrowOnError
   >({
     url: "/api/admin/clients/{id}",
@@ -809,7 +945,11 @@ export const getClient = <ThrowOnError extends boolean = false>(
 export const updateClient = <ThrowOnError extends boolean = false>(
   options: Options<UpdateClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).put<
+    UpdateClientResponse,
+    UpdateClientError,
+    ThrowOnError
+  >({
     url: "/api/admin/clients/{id}",
     ...options,
     headers: {
@@ -825,12 +965,14 @@ export const updateClient = <ThrowOnError extends boolean = false>(
 export const activateClient = <ThrowOnError extends boolean = false>(
   options: Options<ActivateClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/clients/{id}/activate",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<
+    ActivateClientResponse,
+    ActivateClientError,
+    ThrowOnError
+  >({
+    url: "/api/admin/clients/{id}/activate",
+    ...options,
+  });
 };
 
 /**
@@ -842,7 +984,7 @@ export const getClientApplications = <ThrowOnError extends boolean = false>(
 ) => {
   return (options.client ?? _heyApiClient).get<
     GetClientApplicationsResponse,
-    unknown,
+    GetClientApplicationsError,
     ThrowOnError
   >({
     url: "/api/admin/clients/{id}/applications",
@@ -857,7 +999,11 @@ export const getClientApplications = <ThrowOnError extends boolean = false>(
 export const updateClientApplications = <ThrowOnError extends boolean = false>(
   options: Options<UpdateClientApplicationsData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).put<
+    UpdateClientApplicationsResponse,
+    UpdateClientApplicationsError,
+    ThrowOnError
+  >({
     url: "/api/admin/clients/{id}/applications",
     ...options,
     headers: {
@@ -873,12 +1019,14 @@ export const updateClientApplications = <ThrowOnError extends boolean = false>(
 export const disableClientApplication = <ThrowOnError extends boolean = false>(
   options: Options<DisableClientApplicationData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/clients/{id}/applications/{applicationId}/disable",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<
+    DisableClientApplicationResponse,
+    DisableClientApplicationError,
+    ThrowOnError
+  >({
+    url: "/api/admin/clients/{id}/applications/{applicationId}/disable",
+    ...options,
+  });
 };
 
 /**
@@ -887,12 +1035,14 @@ export const disableClientApplication = <ThrowOnError extends boolean = false>(
 export const enableClientApplication = <ThrowOnError extends boolean = false>(
   options: Options<EnableClientApplicationData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/clients/{id}/applications/{applicationId}/enable",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<
+    EnableClientApplicationResponse,
+    EnableClientApplicationError,
+    ThrowOnError
+  >({
+    url: "/api/admin/clients/{id}/applications/{applicationId}/enable",
+    ...options,
+  });
 };
 
 /**
@@ -901,16 +1051,18 @@ export const enableClientApplication = <ThrowOnError extends boolean = false>(
 export const deactivateClient = <ThrowOnError extends boolean = false>(
   options: Options<DeactivateClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/clients/{id}/deactivate",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<
+    DeactivateClientResponse,
+    DeactivateClientError,
+    ThrowOnError
+  >({
+    url: "/api/admin/clients/{id}/deactivate",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
@@ -919,16 +1071,18 @@ export const deactivateClient = <ThrowOnError extends boolean = false>(
 export const addClientAuditNote = <ThrowOnError extends boolean = false>(
   options: Options<AddClientAuditNoteData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/clients/{id}/notes",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<
+    AddClientAuditNoteResponse,
+    AddClientAuditNoteError,
+    ThrowOnError
+  >({
+    url: "/api/admin/clients/{id}/notes",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
@@ -937,16 +1091,18 @@ export const addClientAuditNote = <ThrowOnError extends boolean = false>(
 export const suspendClient = <ThrowOnError extends boolean = false>(
   options: Options<SuspendClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/clients/{id}/suspend",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<
+    SuspendClientResponse,
+    SuspendClientError,
+    ThrowOnError
+  >({
+    url: "/api/admin/clients/{id}/suspend",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
@@ -1599,62 +1755,64 @@ export const rotateOAuthClientSecret = <ThrowOnError extends boolean = false>(
 /**
  * List all CORS origins
  */
-export const getApiAdminPlatformCors = <ThrowOnError extends boolean = false>(
-  options?: Options<GetApiAdminPlatformCorsData, ThrowOnError>,
+export const listCorsOrigins = <ThrowOnError extends boolean = false>(
+  options?: Options<ListCorsOriginsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/platform/cors",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<
+    ListCorsOriginsResponse,
+    ListCorsOriginsError,
+    ThrowOnError
+  >({
+    url: "/api/admin/platform/cors",
+    ...options,
+  });
 };
 
 /**
  * Add a new allowed origin
  */
-export const postApiAdminPlatformCors = <ThrowOnError extends boolean = false>(
-  options: Options<PostApiAdminPlatformCorsData, ThrowOnError>,
+export const addCorsOrigin = <ThrowOnError extends boolean = false>(
+  options: Options<AddCorsOriginData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/platform/cors",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<
+    AddCorsOriginResponse,
+    AddCorsOriginError,
+    ThrowOnError
+  >({
+    url: "/api/admin/platform/cors",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
  * Get allowed origins (cached)
  */
-export const getApiAdminPlatformCorsAllowed = <
-  ThrowOnError extends boolean = false,
->(
-  options?: Options<GetApiAdminPlatformCorsAllowedData, ThrowOnError>,
+export const getAllowedCorsOrigins = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAllowedCorsOriginsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/platform/cors/allowed",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<
+    GetAllowedCorsOriginsResponse,
+    GetAllowedCorsOriginsError,
+    ThrowOnError
+  >({
+    url: "/api/admin/platform/cors/allowed",
+    ...options,
+  });
 };
 
 /**
  * Delete a CORS origin
  */
-export const deleteApiAdminPlatformCorsById = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<DeleteApiAdminPlatformCorsByIdData, ThrowOnError>,
+export const deleteCorsOrigin = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteCorsOriginData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).delete<
-    unknown,
-    unknown,
+    DeleteCorsOriginResponse,
+    DeleteCorsOriginError,
     ThrowOnError
   >({
     url: "/api/admin/platform/cors/{id}",
@@ -1665,12 +1823,14 @@ export const deleteApiAdminPlatformCorsById = <
 /**
  * Get a CORS origin by ID
  */
-export const getApiAdminPlatformCorsById = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<GetApiAdminPlatformCorsByIdData, ThrowOnError>,
+export const getCorsOrigin = <ThrowOnError extends boolean = false>(
+  options: Options<GetCorsOriginData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).get<
+    GetCorsOriginResponse,
+    GetCorsOriginError,
+    ThrowOnError
+  >({
     url: "/api/admin/platform/cors/{id}",
     ...options,
   });
@@ -1978,7 +2138,7 @@ export const listRoles = <ThrowOnError extends boolean = false>(
 ) => {
   return (options?.client ?? _heyApiClient).get<
     ListRolesResponse,
-    unknown,
+    ListRolesError,
     ThrowOnError
   >({
     url: "/api/admin/roles",
@@ -1995,7 +2155,7 @@ export const createRole = <ThrowOnError extends boolean = false>(
 ) => {
   return (options.client ?? _heyApiClient).post<
     CreateRoleResponse,
-    unknown,
+    CreateRoleError,
     ThrowOnError
   >({
     url: "/api/admin/roles",
@@ -2016,7 +2176,7 @@ export const listPermissions = <ThrowOnError extends boolean = false>(
 ) => {
   return (options?.client ?? _heyApiClient).get<
     ListPermissionsResponse,
-    unknown,
+    ListPermissionsError,
     ThrowOnError
   >({
     url: "/api/admin/roles/permissions",
@@ -2030,7 +2190,11 @@ export const listPermissions = <ThrowOnError extends boolean = false>(
 export const getPermission = <ThrowOnError extends boolean = false>(
   options: Options<GetPermissionData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+  return (options.client ?? _heyApiClient).get<
+    GetPermissionResponse,
+    GetPermissionError,
+    ThrowOnError
+  >({
     url: "/api/admin/roles/permissions/{permission}",
     ...options,
   });
@@ -2045,7 +2209,7 @@ export const deleteRole = <ThrowOnError extends boolean = false>(
 ) => {
   return (options.client ?? _heyApiClient).delete<
     DeleteRoleResponse,
-    unknown,
+    DeleteRoleError,
     ThrowOnError
   >({
     url: "/api/admin/roles/{roleName}",
@@ -2061,7 +2225,7 @@ export const getRole = <ThrowOnError extends boolean = false>(
 ) => {
   return (options.client ?? _heyApiClient).get<
     GetRoleResponse,
-    unknown,
+    GetRoleError,
     ThrowOnError
   >({
     url: "/api/admin/roles/{roleName}",
@@ -2078,7 +2242,7 @@ export const updateRole = <ThrowOnError extends boolean = false>(
 ) => {
   return (options.client ?? _heyApiClient).put<
     UpdateRoleResponse,
-    unknown,
+    UpdateRoleError,
     ThrowOnError
   >({
     url: "/api/admin/roles/{roleName}",
@@ -3395,6 +3559,57 @@ export const getApiHealth = <ThrowOnError extends boolean = false>(
     ThrowOnError
   >({
     url: "/api/health",
+    ...options,
+  });
+};
+
+/**
+ * Get my accessible clients
+ * Returns clients the authenticated user can access based on their scope
+ */
+export const getMyClients = <ThrowOnError extends boolean = false>(
+  options?: Options<GetMyClientsData, ThrowOnError>,
+) => {
+  return (options?.client ?? _heyApiClient).get<
+    GetMyClientsResponse,
+    GetMyClientsError,
+    ThrowOnError
+  >({
+    url: "/api/me/clients",
+    ...options,
+  });
+};
+
+/**
+ * Get a specific accessible client
+ * Returns client details if the user has access to it
+ */
+export const getMyClient = <ThrowOnError extends boolean = false>(
+  options: Options<GetMyClientData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<
+    GetMyClientResponse,
+    GetMyClientError,
+    ThrowOnError
+  >({
+    url: "/api/me/clients/{clientId}",
+    ...options,
+  });
+};
+
+/**
+ * Get applications for an accessible client
+ * Returns applications enabled for a client the user has access to
+ */
+export const getMyClientApplications = <ThrowOnError extends boolean = false>(
+  options: Options<GetMyClientApplicationsData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<
+    GetMyClientApplicationsResponse,
+    GetMyClientApplicationsError,
+    ThrowOnError
+  >({
+    url: "/api/me/clients/{clientId}/applications",
     ...options,
   });
 };

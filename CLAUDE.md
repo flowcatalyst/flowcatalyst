@@ -2,6 +2,49 @@
 
 ## Java Style Guidelines
 
+### REST Response Types
+**IMPORTANT**: Always prioritize Java Records for REST responses. Never return `Map<String, Object>` or generic JSON wrappers. Every response must have a named schema to ensure OpenAPI/Swagger documentation is accurate.
+
+**Rules**:
+1. Define named record types for all response bodies (success AND error)
+2. Return `Response` object to support different response types per status code
+3. Use `@APIResponse` annotations to document all possible responses in OpenAPI
+
+```java
+// Response records - named schemas for OpenAPI
+public record UserResponse(String id, String email, String name) {}
+public record ErrorResponse(String code, String message, Map<String, Object> details) {}
+
+// CORRECT - Response object with @APIResponse annotations
+@GET
+@Path("/{id}")
+@APIResponse(responseCode = "200", description = "User found",
+    content = @Content(schema = @Schema(implementation = UserResponse.class)))
+@APIResponse(responseCode = "404", description = "User not found",
+    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+@APIResponse(responseCode = "400", description = "Invalid request",
+    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+public Response getUser(@PathParam("id") String id) {
+    return userService.findById(id)
+        .map(user -> Response.ok(UserResponse.from(user)).build())
+        .orElseGet(() -> Response.status(404)
+            .entity(new ErrorResponse("NOT_FOUND", "User not found", Map.of("id", id)))
+            .build());
+}
+
+// WRONG - Direct return type can't handle different response schemas
+@GET
+public UserResponse getUser(@PathParam("id") String id) {
+    return new UserResponse(...);  // Can't return ErrorResponse on 404!
+}
+
+// WRONG - Generic map loses type information in OpenAPI docs
+@GET
+public Map<String, Object> getUser(@PathParam("id") String id) {
+    return Map.of("id", user.id());  // No schema in OpenAPI!
+}
+```
+
 ### Local Variable Type Inference
 Prefer `var` for local variables when the type is obvious from the right-hand side:
 
@@ -255,13 +298,37 @@ type HealthCheckError =
 
 ## Java Error Handling - Result Pattern
 
-**IMPORTANT**: Use the `Result<T>` sealed interface for typed error handling in Java use cases. Do not use exceptions for business logic errors.
+**IMPORTANT**: Use the `Result<T>` sealed interface for typed error handling. Do not use exceptions for business logic errors.
 
-### Why Result
+### Why Result Over Exceptions
 - Exceptions are untyped in Java signatures - callers don't know what can fail
 - Result types make error paths explicit in method signatures
 - Sealed interfaces enable exhaustive pattern matching
+- Forces callers to handle errors - can't accidentally ignore them
 - `UnitOfWork.commit()` is the only way to create success - guarantees domain events are always emitted
+
+### When to Use What
+
+| Scenario | Approach |
+|----------|----------|
+| Business logic errors (validation, rules) | `Result<T>` |
+| "Not found" that caller must handle | `Result<T>` with `NotFoundError` |
+| "Not found" as normal empty case | `Optional<T>` |
+| Infrastructure failures (DB down, network) | Let exception propagate |
+| Programming errors (null, illegal state) | Let exception propagate |
+
+```java
+// Use Result for business operations that can fail
+public Result<Order> placeOrder(PlaceOrderCommand cmd) { ... }
+
+// Use Optional for simple lookups where "not found" is normal
+public Optional<User> findByEmail(String email) { ... }
+
+// Let infrastructure exceptions propagate - don't catch and wrap
+public void saveEvent(Event event) {
+    repository.persist(event);  // Let DB exceptions bubble up
+}
+```
 
 ### Core Types
 
@@ -349,12 +416,16 @@ private Response mapErrorToResponse(UseCaseError error) {
 ```
 
 ### Rules
-1. **Use cases**: Always return `Result<T>` (never throw for business logic)
-2. **Validation errors**: Return `Result.failure(new ValidationError(...))` for input issues
-3. **Business rules**: Return `Result.failure(new BusinessRuleViolation(...))` for constraint violations
-4. **Not found**: Return `Result.failure(new NotFoundError(...))` when entities don't exist
-5. **Success**: Only through `unitOfWork.commit()` - ensures events are emitted
-6. **API layer**: Pattern match on Result and map to appropriate HTTP status
+1. **Use cases & services**: Return `Result<T>` for any operation that can fail due to business logic
+2. **Never throw for business errors**: Validation failures, business rule violations, not-found errors are NOT exceptions
+3. **Validation errors**: Return `Result.failure(new ValidationError(...))` for input issues
+4. **Business rules**: Return `Result.failure(new BusinessRuleViolation(...))` for constraint violations
+5. **Not found (must handle)**: Return `Result.failure(new NotFoundError(...))` when caller must handle missing entity
+6. **Not found (normal case)**: Return `Optional<T>` for simple lookups where empty is a normal outcome
+7. **Infrastructure errors**: Let exceptions propagate (DB failures, network issues) - don't wrap in Result
+8. **Use case success**: Only through `unitOfWork.commit()` - ensures events are emitted
+9. **API layer**: Pattern match on Result and map to appropriate HTTP status
+10. **Chaining**: Use `andThen()`, `map()`, `mapErr()` to compose Result-returning functions
 
 ## Authorization Model - Two-Level Access Control
 

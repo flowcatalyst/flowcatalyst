@@ -82,7 +82,7 @@ class FlowCatalystServiceProvider extends ServiceProvider
             $config = $app['config']['flowcatalyst'];
 
             return new FlowCatalystClient(
-                tokenManager: $app->make(OidcTokenManager::class),
+                tokenProvider: $app->make(OidcTokenManager::class),
                 baseUrl: $config['base_url'],
                 timeout: $config['http']['timeout'] ?? 30,
                 retryAttempts: $config['http']['retry_attempts'] ?? 3,

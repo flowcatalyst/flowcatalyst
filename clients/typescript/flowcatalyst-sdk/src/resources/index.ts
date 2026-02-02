@@ -12,3 +12,4 @@ export { PermissionsResource } from './permissions';
 export { ApplicationsResource } from './applications';
 export { ClientsResource } from './clients';
 export { PrincipalsResource } from './principals';
+export { MeResource, type MyClient, type MyClientsResponse, type MyApplication, type MyApplicationsResponse } from './me';

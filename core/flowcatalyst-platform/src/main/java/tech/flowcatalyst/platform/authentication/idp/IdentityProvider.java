@@ -65,6 +65,12 @@ public class IdentityProvider {
     public String oidcClientSecretRef;
 
     /**
+     * Optional explicit JWKS URI for fetching public keys.
+     * If not set, derived from oidcIssuerUrl via OpenID Discovery.
+     */
+    public String oidcJwksUri;
+
+    /**
      * Whether this is a multi-tenant OIDC configuration.
      * When true, the issuer in tokens will vary by tenant (e.g., Entra ID).
      * The actual token issuer will be validated against oidcIssuerPattern.

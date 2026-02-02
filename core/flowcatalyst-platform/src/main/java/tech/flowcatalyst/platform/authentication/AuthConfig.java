@@ -56,6 +56,11 @@ public interface AuthConfig {
     RemoteConfig remote();
 
     /**
+     * Rate limiting configuration for authentication endpoints.
+     */
+    RateLimitConfig rateLimit();
+
+    /**
      * External base URL for OAuth/OIDC callbacks.
      * Set this to the public URL where users access the platform.
      * In dev: http://localhost:4200
@@ -204,5 +209,41 @@ public interface AuthConfig {
          */
         @WithName("platform-url")
         Optional<String> platformUrl();
+    }
+
+    /**
+     * Rate limiting configuration for authentication endpoints.
+     */
+    interface RateLimitConfig {
+        /**
+         * Whether rate limiting is enabled.
+         * Default: true
+         */
+        @WithDefault("true")
+        boolean enabled();
+
+        /**
+         * Maximum failed authentication attempts before rate limiting.
+         * Default: 5
+         */
+        @WithName("max-failed-attempts")
+        @WithDefault("5")
+        int maxFailedAttempts();
+
+        /**
+         * Time window for counting failed attempts.
+         * Default: 15 minutes
+         */
+        @WithName("window-duration")
+        @WithDefault("PT15M")
+        Duration windowDuration();
+
+        /**
+         * Lockout duration after max failures exceeded.
+         * Default: 15 minutes
+         */
+        @WithName("lockout-duration")
+        @WithDefault("PT15M")
+        Duration lockoutDuration();
     }
 }

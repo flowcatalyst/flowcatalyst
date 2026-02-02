@@ -18,6 +18,13 @@ import type {
 } from '../generated/types.gen';
 
 /**
+ * Response for status change operations (enable/disable).
+ */
+export interface StatusResponse {
+  message: string;
+}
+
+/**
  * Clients resource for managing platform clients (tenants).
  */
 export class ClientsResource {
@@ -159,8 +166,8 @@ export class ClientsResource {
   /**
    * Enable an application for a client.
    */
-  enableApplication(clientId: string, applicationId: string): ResultAsync<void, SdkError> {
-    return this.client.request<void>((httpClient, headers) =>
+  enableApplication(clientId: string, applicationId: string): ResultAsync<StatusResponse, SdkError> {
+    return this.client.request<StatusResponse>((httpClient, headers) =>
       sdk.enableClientApplication({
         client: httpClient,
         headers,
@@ -172,8 +179,8 @@ export class ClientsResource {
   /**
    * Disable an application for a client.
    */
-  disableApplication(clientId: string, applicationId: string): ResultAsync<void, SdkError> {
-    return this.client.request<void>((httpClient, headers) =>
+  disableApplication(clientId: string, applicationId: string): ResultAsync<StatusResponse, SdkError> {
+    return this.client.request<StatusResponse>((httpClient, headers) =>
       sdk.disableClientApplication({
         client: httpClient,
         headers,

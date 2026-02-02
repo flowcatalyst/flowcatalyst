@@ -13,6 +13,9 @@ import tech.flowcatalyst.platform.application.ApplicationClientConfig;
 import tech.flowcatalyst.platform.application.ApplicationClientConfigRepository;
 import tech.flowcatalyst.platform.application.ApplicationRepository;
 import tech.flowcatalyst.platform.authentication.*;
+import tech.flowcatalyst.platform.authentication.ratelimit.RateLimitService;
+import tech.flowcatalyst.platform.authentication.ratelimit.RateLimitService.AttemptType;
+import tech.flowcatalyst.platform.authentication.ratelimit.RateLimitService.RateLimitResult;
 import tech.flowcatalyst.platform.client.Client;
 import tech.flowcatalyst.platform.client.ClientRepository;
 import tech.flowcatalyst.platform.principal.PasswordService;
@@ -86,6 +89,9 @@ public class AuthorizationResource {
 
     @Inject
     ClientRepository clientRepository;
+
+    @Inject
+    RateLimitService rateLimitService;
 
     @Context
     UriInfo uriInfo;
@@ -212,8 +218,13 @@ public class AuthorizationResource {
 
         Principal principal = principalOpt.get();
 
-        // Note: We don't check application access here - the OAuth server just authenticates
-        // and issues tokens with the user's roles. Applications check permissions themselves.
+        // Enforce application access for OAuth clients with application restrictions
+        if (!checkUserApplicationAccess(principal, client)) {
+            LOG.warnf("Authorization denied: principal %s has no access to client %s applications",
+                principal.id, clientId);
+            return errorRedirect(redirectUri, "access_denied",
+                "You do not have access to this application", state);
+        }
 
         // Generate authorization code
         String code = generateAuthorizationCode();
@@ -303,7 +314,28 @@ public class AuthorizationResource {
             return tokenError("invalid_request", "grant_type is required");
         }
 
-        return switch (grantType) {
+        // Determine rate limit identifier and type based on grant type
+        String rateLimitIdentifier = determineRateLimitIdentifier(grantType, formClientId, username, authHeader);
+        AttemptType attemptType = mapGrantTypeToAttemptType(grantType);
+
+        // Check rate limit before processing
+        if (rateLimitIdentifier != null && attemptType != null) {
+            RateLimitResult rateLimitResult = rateLimitService.check(rateLimitIdentifier, attemptType);
+            if (!rateLimitResult.permitted()) {
+                LOG.warnf("Rate limit exceeded for %s:%s", attemptType, rateLimitIdentifier);
+                return Response.status(429)
+                    .header("Retry-After", rateLimitResult.retryAfter().toSeconds())
+                    .entity(Map.of(
+                        "error", "too_many_requests",
+                        "error_description", "Rate limit exceeded. Try again later.",
+                        "retry_after", rateLimitResult.retryAfter().toSeconds()
+                    ))
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+            }
+        }
+
+        Response response = switch (grantType) {
             case "authorization_code" -> handleAuthorizationCodeGrant(
                 authHeader, code, redirectUri, formClientId, formClientSecret, codeVerifier);
             case "refresh_token" -> handleRefreshTokenGrant(
@@ -313,6 +345,14 @@ public class AuthorizationResource {
             case "password" -> handlePasswordGrant(username, password);
             default -> tokenError("unsupported_grant_type", "Grant type not supported: " + grantType);
         };
+
+        // Record the attempt result for rate limiting
+        if (rateLimitIdentifier != null && attemptType != null) {
+            boolean success = response.getStatus() == 200;
+            rateLimitService.recordAttempt(rateLimitIdentifier, attemptType, success);
+        }
+
+        return response;
     }
 
     // ==================== Grant Handlers ====================
@@ -804,6 +844,41 @@ public class AuthorizationResource {
 
     private String urlEncode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Determine the identifier to use for rate limiting based on grant type.
+     */
+    private String determineRateLimitIdentifier(String grantType, String clientId, String username, String authHeader) {
+        return switch (grantType) {
+            case "password" -> username;
+            case "client_credentials" -> {
+                // Try to extract client ID from Basic auth header first
+                if (authHeader != null && authHeader.startsWith("Basic ")) {
+                    String[] credentials = parseBasicAuth(authHeader);
+                    if (credentials != null) {
+                        yield toInternalClientId(credentials[0]);
+                    }
+                }
+                yield clientId != null ? toInternalClientId(clientId) : null;
+            }
+            case "authorization_code" -> clientId != null ? toInternalClientId(clientId) : null;
+            case "refresh_token" -> clientId != null ? toInternalClientId(clientId) : null;
+            default -> null;
+        };
+    }
+
+    /**
+     * Map OAuth grant type to rate limit attempt type.
+     */
+    private AttemptType mapGrantTypeToAttemptType(String grantType) {
+        return switch (grantType) {
+            case "password" -> AttemptType.PASSWORD_GRANT;
+            case "client_credentials" -> AttemptType.CLIENT_CREDENTIALS;
+            case "authorization_code" -> AttemptType.AUTHORIZATION_CODE;
+            case "refresh_token" -> AttemptType.REFRESH_TOKEN;
+            default -> null;
+        };
     }
 
     /**

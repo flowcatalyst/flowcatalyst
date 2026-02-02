@@ -74,6 +74,9 @@ public class OidcLoginResource {
     @Inject
     ClientRepository clientRepository;
 
+    @Inject
+    JwksService jwksService;
+
     @Context
     UriInfo uriInfo;
 
@@ -257,13 +260,26 @@ public class OidcLoginResource {
             }
 
             // Validate OIDC tenant ID for multi-tenant identity providers
-            if (mapping.requiredOidcTenantId != null && !mapping.requiredOidcTenantId.isBlank()) {
+            // For multi-tenant IDPs, tenant ID validation is MANDATORY
+            if (idp.oidcMultiTenant) {
+                if (mapping.requiredOidcTenantId == null || mapping.requiredOidcTenantId.isBlank()) {
+                    LOG.errorf("SECURITY: Multi-tenant IDP %s missing requiredOidcTenantId for domain %s",
+                        idp.code, emailDomain);
+                    return errorRedirect("Configuration error: tenant ID required for this identity provider");
+                }
                 if (claims.tenantId() == null) {
-                    LOG.warnf("Tenant ID required for domain %s but not present in token", emailDomain);
-                    return errorRedirect("Authentication failed: tenant information not provided by identity provider");
+                    LOG.warnf("Tenant ID required but not in token for domain %s", emailDomain);
+                    return errorRedirect("Authentication failed: tenant information not provided");
                 }
                 if (!mapping.requiredOidcTenantId.equals(claims.tenantId())) {
-                    LOG.warnf("Tenant ID mismatch for domain %s: expected %s, got %s",
+                    LOG.warnf("Tenant ID mismatch for %s: expected %s, got %s",
+                        emailDomain, mapping.requiredOidcTenantId, claims.tenantId());
+                    return errorRedirect("Authentication failed: unauthorized tenant");
+                }
+            } else if (mapping.requiredOidcTenantId != null && !mapping.requiredOidcTenantId.isBlank()) {
+                // Single-tenant IDP with optional tenant ID check
+                if (claims.tenantId() != null && !mapping.requiredOidcTenantId.equals(claims.tenantId())) {
+                    LOG.warnf("Tenant ID mismatch for %s: expected %s, got %s",
                         emailDomain, mapping.requiredOidcTenantId, claims.tenantId());
                     return errorRedirect("Authentication failed: unauthorized tenant");
                 }
@@ -383,8 +399,18 @@ public class OidcLoginResource {
                 throw new OidcException("Invalid ID token format");
             }
 
-            // Decode payload (we're not validating signature here - that should be done with JWKS)
-            // TODO: Implement proper signature validation using JWKS
+            // Verify JWT signature using JWKS from the identity provider
+            try {
+                if (!jwksService.verifySignature(idToken, idp)) {
+                    LOG.warnf("JWT signature verification failed for IDP %s", idp.code);
+                    throw new OidcException("Invalid token signature");
+                }
+            } catch (JwksService.JwksException e) {
+                LOG.errorf(e, "Failed to verify JWT signature for IDP %s", idp.code);
+                throw new OidcException("Failed to verify token signature: " + e.getMessage());
+            }
+
+            // Decode and parse payload
             String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
             JsonNode payload = MAPPER.readTree(payloadJson);
 
@@ -402,6 +428,13 @@ public class OidcLoginResource {
                 LOG.warnf("Invalid issuer: expected pattern matching %s, got %s",
                     idp.getEffectiveIssuerPattern(), issuer);
                 throw new OidcException("Invalid token issuer");
+            }
+
+            // Validate audience - aud can be string or array per OIDC spec
+            JsonNode audNode = payload.path("aud");
+            if (!isValidAudience(audNode, idp.oidcClientId)) {
+                LOG.warnf("Invalid audience: expected %s, got %s", idp.oidcClientId, audNode);
+                throw new OidcException("Invalid token audience");
             }
 
             // Validate expiration
@@ -644,6 +677,26 @@ public class OidcLoginResource {
                 return id;
             })
             .toList();
+    }
+
+    /**
+     * Validate audience claim - can be string or array per OIDC spec.
+     */
+    private boolean isValidAudience(JsonNode audNode, String expectedClientId) {
+        if (audNode == null || audNode.isMissingNode()) {
+            return false;
+        }
+        if (audNode.isTextual()) {
+            return audNode.asText().equals(expectedClientId);
+        }
+        if (audNode.isArray()) {
+            for (JsonNode aud : audNode) {
+                if (aud.asText().equals(expectedClientId)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private String urlEncode(String value) {

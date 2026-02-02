@@ -11,6 +11,7 @@ use FlowCatalyst\Client\Resources\Applications;
 use FlowCatalyst\Client\Resources\Clients;
 use FlowCatalyst\Client\Resources\DispatchPools;
 use FlowCatalyst\Client\Resources\EventTypes;
+use FlowCatalyst\Client\Resources\Me;
 use FlowCatalyst\Client\Resources\Permissions;
 use FlowCatalyst\Client\Resources\Principals;
 use FlowCatalyst\Client\Resources\Roles;
@@ -36,6 +37,7 @@ class FlowCatalystClient
     private ?Applications $applications = null;
     private ?Clients $clients = null;
     private ?Principals $principals = null;
+    private ?Me $me = null;
 
     /**
      * Create a new FlowCatalyst client.
@@ -151,6 +153,17 @@ class FlowCatalystClient
     public function principals(): Principals
     {
         return $this->principals ??= new Principals($this);
+    }
+
+    /**
+     * Get the Me resource (user-scoped access to clients and applications).
+     *
+     * Use this when making requests on behalf of a user to get only
+     * the resources they have access to based on their scope.
+     */
+    public function me(): Me
+    {
+        return $this->me ??= new Me($this);
     }
 
     /**

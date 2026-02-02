@@ -16,12 +16,12 @@ import tech.flowcatalyst.platform.audit.AuditLogRepository;
 import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
 import tech.flowcatalyst.platform.authorization.AuthorizationService;
 import tech.flowcatalyst.platform.authorization.platform.PlatformAdminPermissions;
+import tech.flowcatalyst.platform.common.api.ApiResponses;
+import tech.flowcatalyst.platform.common.api.AuditLogResponses.*;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
 
-import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Admin API for viewing audit logs.
@@ -60,7 +60,10 @@ public class AuditLogAdminResource {
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Audit logs retrieved",
             content = @Content(schema = @Schema(implementation = AuditLogListResponse.class))),
-        @APIResponse(responseCode = "401", description = "Not authenticated")
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response listAuditLogs(
             @Parameter(description = "Filter by entity type (e.g., 'IdentityProvider', 'Role')")
@@ -100,14 +103,9 @@ public class AuditLogAdminResource {
             total = auditLogRepo.count();
         }
 
-        var response = logs.stream().map(this::toDto).toList();
+        var dtos = logs.stream().map(this::toDto).toList();
 
-        return Response.ok(Map.of(
-            "auditLogs", response,
-            "total", total,
-            "page", page,
-            "pageSize", pageSize
-        )).build();
+        return Response.ok(new AuditLogListResponse(dtos, total, page, pageSize)).build();
     }
 
     /**
@@ -118,9 +116,13 @@ public class AuditLogAdminResource {
     @Operation(operationId = "getAuditLog", summary = "Get audit log by ID")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Audit log retrieved",
-            content = @Content(schema = @Schema(implementation = AuditLogDto.class))),
-        @APIResponse(responseCode = "404", description = "Audit log not found"),
-        @APIResponse(responseCode = "401", description = "Not authenticated")
+            content = @Content(schema = @Schema(implementation = AuditLogDetailDto.class))),
+        @APIResponse(responseCode = "404", description = "Audit log not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response getAuditLog(@PathParam("id") String id) {
 
@@ -130,7 +132,7 @@ public class AuditLogAdminResource {
         AuditLog log = auditLogRepo.findById(id);
         if (log == null) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("Audit log not found"))
+                .entity(new ApiResponses.NotFoundResponse("auditLog", id))
                 .build();
         }
 
@@ -145,8 +147,12 @@ public class AuditLogAdminResource {
     @Operation(operationId = "getEntityAuditLogs", summary = "Get audit logs for entity",
         description = "Returns all audit logs for a specific entity")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Audit logs retrieved"),
-        @APIResponse(responseCode = "401", description = "Not authenticated")
+        @APIResponse(responseCode = "200", description = "Audit logs retrieved",
+            content = @Content(schema = @Schema(implementation = EntityAuditLogsResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response getAuditLogsForEntity(
             @PathParam("entityType") String entityType,
@@ -156,14 +162,9 @@ public class AuditLogAdminResource {
         authorizationService.requirePermission(principalId, PlatformAdminPermissions.AUDIT_LOG_VIEW);
 
         List<AuditLog> logs = auditLogRepo.findByEntity(entityType, entityId);
-        var response = logs.stream().map(this::toDto).toList();
+        var dtos = logs.stream().map(this::toDto).toList();
 
-        return Response.ok(Map.of(
-            "auditLogs", response,
-            "total", logs.size(),
-            "entityType", entityType,
-            "entityId", entityId
-        )).build();
+        return Response.ok(new EntityAuditLogsResponse(dtos, logs.size(), entityType, entityId)).build();
     }
 
     /**
@@ -174,8 +175,12 @@ public class AuditLogAdminResource {
     @Operation(operationId = "getAuditLogEntityTypes", summary = "Get entity types with audit logs",
         description = "Returns distinct entity types that have audit log entries")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Entity types retrieved"),
-        @APIResponse(responseCode = "401", description = "Not authenticated")
+        @APIResponse(responseCode = "200", description = "Entity types retrieved",
+            content = @Content(schema = @Schema(implementation = EntityTypesResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response getEntityTypes() {
 
@@ -185,7 +190,7 @@ public class AuditLogAdminResource {
         // Get distinct entity types using aggregation
         List<String> entityTypes = auditLogRepo.findDistinctEntityTypes();
 
-        return Response.ok(Map.of("entityTypes", entityTypes)).build();
+        return Response.ok(new EntityTypesResponse(entityTypes)).build();
     }
 
     /**
@@ -196,8 +201,12 @@ public class AuditLogAdminResource {
     @Operation(operationId = "getAuditLogOperations", summary = "Get operations with audit logs",
         description = "Returns distinct operation names that have audit log entries")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Operations retrieved"),
-        @APIResponse(responseCode = "401", description = "Not authenticated")
+        @APIResponse(responseCode = "200", description = "Operations retrieved",
+            content = @Content(schema = @Schema(implementation = OperationsResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response getOperations() {
 
@@ -207,10 +216,10 @@ public class AuditLogAdminResource {
         // Get distinct operations using aggregation
         List<String> operations = auditLogRepo.findDistinctOperations();
 
-        return Response.ok(Map.of("operations", operations)).build();
+        return Response.ok(new OperationsResponse(operations)).build();
     }
 
-    // ==================== DTOs ====================
+    // ==================== Helper Methods ====================
 
     private AuditLogDto toDto(AuditLog log) {
         String principalName = resolvePrincipalName(log.principalId);
@@ -258,36 +267,4 @@ public class AuditLogAdminResource {
         }
         return "Unknown";
     }
-
-    // ==================== Record Types ====================
-
-    public record AuditLogDto(
-        String id,
-        String entityType,
-        String entityId,
-        String operation,
-        String principalId,
-        String principalName,
-        Instant performedAt
-    ) {}
-
-    public record AuditLogDetailDto(
-        String id,
-        String entityType,
-        String entityId,
-        String operation,
-        String operationJson,
-        String principalId,
-        String principalName,
-        Instant performedAt
-    ) {}
-
-    public record AuditLogListResponse(
-        List<AuditLogDto> auditLogs,
-        long total,
-        int page,
-        int pageSize
-    ) {}
-
-    public record ErrorResponse(String error) {}
 }

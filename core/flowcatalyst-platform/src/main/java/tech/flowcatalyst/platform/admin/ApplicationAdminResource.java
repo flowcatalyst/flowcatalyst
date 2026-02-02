@@ -4,8 +4,14 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
 import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import tech.flowcatalyst.platform.application.Application;
+import tech.flowcatalyst.platform.common.api.ApiResponses.*;
+import tech.flowcatalyst.platform.common.api.ApplicationResponses.*;
 import tech.flowcatalyst.platform.application.ApplicationRepository;
 import tech.flowcatalyst.platform.application.ApplicationService;
 import tech.flowcatalyst.platform.application.ApplicationClientConfig;
@@ -100,6 +106,16 @@ public class ApplicationAdminResource {
 
     @GET
     @Operation(operationId = "listApplications", summary = "List all applications")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "Applications retrieved successfully",
+            content = @Content(schema = @Schema(implementation = ApplicationListResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid request",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ForbiddenResponse.class)))
+    })
     public Response listApplications(
             @QueryParam("activeOnly") @DefaultValue("false") boolean activeOnly,
             @QueryParam("type") String type) {
@@ -114,7 +130,7 @@ public class ApplicationAdminResource {
                 apps = applicationRepo.findByType(appType, activeOnly);
             } catch (IllegalArgumentException e) {
                 return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "Invalid type. Must be APPLICATION or INTEGRATION"))
+                    .entity(new ErrorResponse("INVALID_TYPE", "Invalid type. Must be APPLICATION or INTEGRATION"))
                     .build();
             }
         } else {
@@ -123,45 +139,73 @@ public class ApplicationAdminResource {
                 : applicationService.findAll();
         }
 
-        var response = apps.stream().map(this::toApplicationResponse).toList();
-
-        return Response.ok(Map.of(
-            "applications", response,
-            "total", apps.size()
-        )).build();
+        var items = apps.stream().map(ApplicationListItem::from).toList();
+        return Response.ok(new ApplicationListResponse(items, apps.size())).build();
     }
 
     @GET
     @Path("/{id}")
     @Operation(operationId = "getApplication", summary = "Get application by ID")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "Application found",
+            content = @Content(schema = @Schema(implementation = ApplicationResponse.class))),
+        @APIResponse(responseCode = "404", description = "Application not found",
+            content = @Content(schema = @Schema(implementation = NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ForbiddenResponse.class)))
+    })
     public Response getApplication(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();
         authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_VIEW);
 
         return applicationService.findById(id)
-            .map(app -> Response.ok(toApplicationDetailResponse(app)).build())
+            .map(app -> Response.ok(ApplicationResponse.from(app)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND)
-                .entity(Map.of("error", "Application not found"))
+                .entity(new NotFoundResponse("application", id))
                 .build());
     }
 
     @GET
     @Path("/by-code/{code}")
     @Operation(operationId = "getApplicationByCode", summary = "Get application by code")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "Application found",
+            content = @Content(schema = @Schema(implementation = ApplicationResponse.class))),
+        @APIResponse(responseCode = "404", description = "Application not found",
+            content = @Content(schema = @Schema(implementation = NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ForbiddenResponse.class)))
+    })
     public Response getApplicationByCode(@PathParam("code") String code) {
         String principalId = auditContext.requirePrincipalId();
         authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_VIEW);
 
         return applicationService.findByCode(code)
-            .map(app -> Response.ok(toApplicationDetailResponse(app)).build())
+            .map(app -> Response.ok(ApplicationResponse.from(app)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND)
-                .entity(Map.of("error", "Application not found"))
+                .entity(new NotFoundResponse("application", code))
                 .build());
     }
 
     @POST
     @Operation(operationId = "createApplication", summary = "Create a new application")
+    @APIResponses({
+        @APIResponse(responseCode = "201", description = "Application created",
+            content = @Content(schema = @Schema(implementation = ApplicationResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid request",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @APIResponse(responseCode = "409", description = "Application code already exists",
+            content = @Content(schema = @Schema(implementation = ConflictResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ForbiddenResponse.class)))
+    })
     public Response createApplication(CreateApplicationRequest request) {
         String principalId = auditContext.requirePrincipalId();
         authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_CREATE);
@@ -175,7 +219,7 @@ public class ApplicationAdminResource {
                 appType = Application.ApplicationType.valueOf(request.type.toUpperCase());
             } catch (IllegalArgumentException e) {
                 return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "Invalid type. Must be APPLICATION or INTEGRATION"))
+                    .entity(new ErrorResponse("INVALID_TYPE", "Invalid type. Must be APPLICATION or INTEGRATION"))
                     .build();
             }
         }
@@ -208,24 +252,24 @@ public class ApplicationAdminResource {
                     // Build response including service account credentials
                     // Re-fetch app since provisioning updated it
                     app = applicationRepo.findByIdOptional(s.value().applicationId()).orElse(app);
-                    var response = toApplicationDetailResponse(app);
-                    response.put("serviceAccount", Map.of(
-                        "principalId", TypedId.Ops.serialize(EntityType.PRINCIPAL, provisionResult.principal().id),
-                        "name", provisionResult.principal().name,
-                        "oauthClient", Map.of(
-                            "id", TypedId.Ops.serialize(EntityType.OAUTH_CLIENT, provisionResult.oauthClient().id),
-                            "clientId", provisionResult.oauthClient().clientId,
-                            "clientSecret", provisionResult.clientSecret()  // Only available at creation time!
+                    var serviceAccount = new ServiceAccountInfo(
+                        TypedId.Ops.serialize(EntityType.PRINCIPAL, provisionResult.principal().id),
+                        provisionResult.principal().name,
+                        new OAuthClientInfo(
+                            TypedId.Ops.serialize(EntityType.OAUTH_CLIENT, provisionResult.oauthClient().id),
+                            provisionResult.oauthClient().clientId,
+                            provisionResult.clientSecret()  // Only available at creation time!
                         )
-                    ));
+                    );
+                    var response = ApplicationResponse.from(app).withServiceAccount(serviceAccount);
 
                     yield Response.status(Response.Status.CREATED)
                         .entity(response)
                         .build();
                 } else {
                     // Service account provisioning failed, but app was created
-                    var response = toApplicationDetailResponse(app);
-                    response.put("warning", "Application created but service account provisioning failed: " + provisionResult.error().message());
+                    var response = ApplicationResponse.from(app)
+                        .withWarning("Application created but service account provisioning failed: " + provisionResult.error().message());
                     yield Response.status(Response.Status.CREATED)
                         .entity(response)
                         .build();
@@ -233,7 +277,7 @@ public class ApplicationAdminResource {
             }
             case Result.Failure<ApplicationCreated> f -> {
                 yield Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", f.error().message()))
+                    .entity(new ErrorResponse(f.error().code(), f.error().message()))
                     .build();
             }
         };
@@ -242,6 +286,18 @@ public class ApplicationAdminResource {
     @PUT
     @Path("/{id}")
     @Operation(operationId = "updateApplication", summary = "Update an application")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "Application updated",
+            content = @Content(schema = @Schema(implementation = ApplicationResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid request",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Application not found",
+            content = @Content(schema = @Schema(implementation = NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ForbiddenResponse.class)))
+    })
     public Response updateApplication(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id,
             UpdateApplicationRequest request) {
@@ -265,16 +321,16 @@ public class ApplicationAdminResource {
             case Result.Success<ApplicationUpdated> s -> {
                 // Fetch the updated application to return full details
                 Application app = applicationRepo.findByIdOptional(id).orElse(null);
-                yield Response.ok(toApplicationDetailResponse(app)).build();
+                yield Response.ok(ApplicationResponse.from(app)).build();
             }
             case Result.Failure<ApplicationUpdated> f -> {
                 if (f.error() instanceof UseCaseError.NotFoundError) {
                     yield Response.status(Response.Status.NOT_FOUND)
-                        .entity(Map.of("error", f.error().message()))
+                        .entity(new NotFoundResponse("application", id))
                         .build();
                 }
                 yield Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", f.error().message()))
+                    .entity(new ErrorResponse(f.error().code(), f.error().message()))
                     .build();
             }
         };
@@ -284,6 +340,18 @@ public class ApplicationAdminResource {
     @Path("/{id}")
     @Operation(operationId = "deleteApplication", summary = "Delete an application",
         description = "Permanently deletes an application. The application must be deactivated first.")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "Application deleted",
+            content = @Content(schema = @Schema(implementation = ApplicationStatusResponse.class))),
+        @APIResponse(responseCode = "400", description = "Application must be deactivated first",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Application not found",
+            content = @Content(schema = @Schema(implementation = NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ForbiddenResponse.class)))
+    })
     public Response deleteApplication(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();
@@ -295,15 +363,15 @@ public class ApplicationAdminResource {
 
         return switch (result) {
             case Result.Success<ApplicationDeleted> s ->
-                Response.ok(Map.of("message", "Application deleted")).build();
+                Response.ok(ApplicationStatusResponse.deleted(id)).build();
             case Result.Failure<ApplicationDeleted> f -> {
                 if (f.error() instanceof UseCaseError.NotFoundError) {
                     yield Response.status(Response.Status.NOT_FOUND)
-                        .entity(Map.of("error", f.error().message()))
+                        .entity(new NotFoundResponse("application", id))
                         .build();
                 }
                 yield Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", f.error().message()))
+                    .entity(new ErrorResponse(f.error().code(), f.error().message()))
                     .build();
             }
         };
@@ -312,6 +380,18 @@ public class ApplicationAdminResource {
     @POST
     @Path("/{id}/activate")
     @Operation(operationId = "activateApplication", summary = "Activate an application")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "Application activated",
+            content = @Content(schema = @Schema(implementation = ApplicationStatusResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid request",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Application not found",
+            content = @Content(schema = @Schema(implementation = NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ForbiddenResponse.class)))
+    })
     public Response activateApplication(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();
@@ -323,15 +403,15 @@ public class ApplicationAdminResource {
 
         return switch (result) {
             case Result.Success<ApplicationActivated> s ->
-                Response.ok(Map.of("message", "Application activated")).build();
+                Response.ok(ApplicationStatusResponse.activated(id)).build();
             case Result.Failure<ApplicationActivated> f -> {
                 if (f.error() instanceof UseCaseError.NotFoundError) {
                     yield Response.status(Response.Status.NOT_FOUND)
-                        .entity(Map.of("error", f.error().message()))
+                        .entity(new NotFoundResponse("application", id))
                         .build();
                 }
                 yield Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", f.error().message()))
+                    .entity(new ErrorResponse(f.error().code(), f.error().message()))
                     .build();
             }
         };
@@ -340,6 +420,18 @@ public class ApplicationAdminResource {
     @POST
     @Path("/{id}/deactivate")
     @Operation(operationId = "deactivateApplication", summary = "Deactivate an application")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "Application deactivated",
+            content = @Content(schema = @Schema(implementation = ApplicationStatusResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid request",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Application not found",
+            content = @Content(schema = @Schema(implementation = NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ForbiddenResponse.class)))
+    })
     public Response deactivateApplication(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();
@@ -351,15 +443,15 @@ public class ApplicationAdminResource {
 
         return switch (result) {
             case Result.Success<ApplicationDeactivated> s ->
-                Response.ok(Map.of("message", "Application deactivated")).build();
+                Response.ok(ApplicationStatusResponse.deactivated(id)).build();
             case Result.Failure<ApplicationDeactivated> f -> {
                 if (f.error() instanceof UseCaseError.NotFoundError) {
                     yield Response.status(Response.Status.NOT_FOUND)
-                        .entity(Map.of("error", f.error().message()))
+                        .entity(new NotFoundResponse("application", id))
                         .build();
                 }
                 yield Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", f.error().message()))
+                    .entity(new ErrorResponse(f.error().code(), f.error().message()))
                     .build();
             }
         };
@@ -370,6 +462,18 @@ public class ApplicationAdminResource {
     @Operation(operationId = "provisionApplicationServiceAccount", summary = "Provision a service account for an existing application",
         description = "Creates a service account and OAuth client for an application that doesn't have one. " +
             "The client secret is only returned once and cannot be retrieved later.")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "Service account provisioned",
+            content = @Content(schema = @Schema(implementation = ProvisionServiceAccountResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid request or service account already exists",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Application not found",
+            content = @Content(schema = @Schema(implementation = NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ForbiddenResponse.class)))
+    })
     public Response provisionServiceAccount(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();
@@ -380,27 +484,28 @@ public class ApplicationAdminResource {
         var provisionResult = provisionServiceAccountUseCase.execute(command, ctx);
 
         if (provisionResult.isSuccess()) {
-            return Response.ok(Map.of(
-                "message", "Service account provisioned",
-                "serviceAccount", Map.of(
-                    "principalId", TypedId.Ops.serialize(EntityType.PRINCIPAL, provisionResult.principal().id),
-                    "name", provisionResult.principal().name,
-                    "oauthClient", Map.of(
-                        "id", TypedId.Ops.serialize(EntityType.OAUTH_CLIENT, provisionResult.oauthClient().id),
-                        "clientId", provisionResult.oauthClient().clientId,
-                        "clientSecret", provisionResult.clientSecret()  // Only available now!
-                    )
+            var serviceAccount = new ServiceAccountInfo(
+                TypedId.Ops.serialize(EntityType.PRINCIPAL, provisionResult.principal().id),
+                provisionResult.principal().name,
+                new OAuthClientInfo(
+                    TypedId.Ops.serialize(EntityType.OAUTH_CLIENT, provisionResult.oauthClient().id),
+                    provisionResult.oauthClient().clientId,
+                    provisionResult.clientSecret()  // Only available now!
                 )
+            );
+            return Response.ok(new ProvisionServiceAccountResponse(
+                "Service account provisioned",
+                serviceAccount
             )).build();
         } else {
             var error = provisionResult.error();
             if (error instanceof UseCaseError.NotFoundError) {
                 return Response.status(Response.Status.NOT_FOUND)
-                    .entity(Map.of("error", error.message()))
+                    .entity(new NotFoundResponse("application", id))
                     .build();
             }
             return Response.status(Response.Status.BAD_REQUEST)
-                .entity(Map.of("error", error.message()))
+                .entity(new ErrorResponse(error.code(), error.message()))
                 .build();
         }
     }
@@ -412,29 +517,54 @@ public class ApplicationAdminResource {
     @GET
     @Path("/{id}/clients")
     @Operation(operationId = "getApplicationClientConfigs", summary = "Get client configurations for an application")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "Client configurations retrieved",
+            content = @Content(schema = @Schema(implementation = ClientConfigListResponse.class))),
+        @APIResponse(responseCode = "404", description = "Application not found",
+            content = @Content(schema = @Schema(implementation = NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ForbiddenResponse.class)))
+    })
     public Response getClientConfigs(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();
         authorizationService.requirePermission(principalId, PlatformAdminPermissions.APPLICATION_VIEW);
 
-        if (applicationService.findById(id).isEmpty()) {
+        Application app = applicationService.findById(id).orElse(null);
+        if (app == null) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity(Map.of("error", "Application not found"))
+                .entity(new NotFoundResponse("application", id))
                 .build();
         }
 
         List<ApplicationClientConfig> configs = applicationService.getConfigsForApplication(id);
-        var response = configs.stream().map(this::toClientConfigResponse).toList();
+        var response = configs.stream()
+            .map(config -> {
+                Client client = clientRepo.findByIdOptional(config.clientId).orElse(null);
+                return ClientConfigResponse.from(config, client, app);
+            })
+            .toList();
 
-        return Response.ok(Map.of(
-            "clientConfigs", response,
-            "total", configs.size()
-        )).build();
+        return Response.ok(new ClientConfigListResponse(response, configs.size())).build();
     }
 
     @PUT
     @Path("/{id}/clients/{clientId}")
     @Operation(operationId = "configureApplicationForClient", summary = "Configure application for a specific client")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "Client configuration updated",
+            content = @Content(schema = @Schema(implementation = ClientConfigResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid request",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Application or client not found",
+            content = @Content(schema = @Schema(implementation = NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ForbiddenResponse.class)))
+    })
     public Response configureClient(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String applicationId,
             @TypedIdParam(EntityType.CLIENT) @PathParam("clientId") String clientId,
@@ -459,38 +589,37 @@ public class ApplicationAdminResource {
 
             return switch (result) {
                 case Result.Success<ApplicationEnabledForClient> s -> {
-                    // Build response from event data to avoid transaction visibility issues
                     var event = s.value();
-                    var response = new java.util.HashMap<String, Object>();
-                    response.put("id", TypedId.Ops.serialize(EntityType.APP_CLIENT_CONFIG, event.configId()));
-                    response.put("applicationId", TypedId.Ops.serialize(EntityType.APPLICATION, event.applicationId()));
-                    response.put("clientId", TypedId.Ops.serialize(EntityType.CLIENT, event.clientId()));
-                    response.put("clientName", event.clientName());
-                    response.put("clientIdentifier", event.clientIdentifier());
-                    response.put("enabled", true);
-                    response.put("baseUrlOverride", request.baseUrlOverride);
-                    response.put("websiteOverride", request.websiteOverride);
-                    // Compute effective URLs
                     Application app = applicationRepo.findByIdOptional(applicationId).orElse(null);
                     String effectiveBaseUrl = (request.baseUrlOverride != null && !request.baseUrlOverride.isBlank())
                         ? request.baseUrlOverride
                         : (app != null ? app.defaultBaseUrl : null);
-                    response.put("effectiveBaseUrl", effectiveBaseUrl);
                     String effectiveWebsite = (request.websiteOverride != null && !request.websiteOverride.isBlank())
                         ? request.websiteOverride
                         : (app != null ? app.website : null);
-                    response.put("effectiveWebsite", effectiveWebsite);
-                    response.put("config", request.config);
+
+                    var response = ClientConfigResponse.enabled(
+                        TypedId.Ops.serialize(EntityType.APP_CLIENT_CONFIG, event.configId()),
+                        TypedId.Ops.serialize(EntityType.APPLICATION, event.applicationId()),
+                        TypedId.Ops.serialize(EntityType.CLIENT, event.clientId()),
+                        event.clientName(),
+                        event.clientIdentifier(),
+                        request.baseUrlOverride,
+                        request.websiteOverride,
+                        effectiveBaseUrl,
+                        effectiveWebsite,
+                        request.config
+                    );
                     yield Response.ok(response).build();
                 }
                 case Result.Failure<ApplicationEnabledForClient> f -> {
                     if (f.error() instanceof UseCaseError.NotFoundError) {
                         yield Response.status(Response.Status.NOT_FOUND)
-                            .entity(Map.of("error", f.error().message()))
+                            .entity(new NotFoundResponse("application or client", applicationId + "/" + clientId))
                             .build();
                     }
                     yield Response.status(Response.Status.BAD_REQUEST)
-                        .entity(Map.of("error", f.error().message()))
+                        .entity(new ErrorResponse(f.error().code(), f.error().message()))
                         .build();
                 }
             };
@@ -500,32 +629,28 @@ public class ApplicationAdminResource {
 
             return switch (result) {
                 case Result.Success<ApplicationDisabledForClient> s -> {
-                    // Build response from event data to avoid transaction visibility issues
                     var event = s.value();
-                    var response = new java.util.HashMap<String, Object>();
-                    response.put("id", TypedId.Ops.serialize(EntityType.APP_CLIENT_CONFIG, event.configId()));
-                    response.put("applicationId", TypedId.Ops.serialize(EntityType.APPLICATION, event.applicationId()));
-                    response.put("clientId", TypedId.Ops.serialize(EntityType.CLIENT, event.clientId()));
-                    response.put("clientName", event.clientName());
-                    response.put("clientIdentifier", event.clientIdentifier());
-                    response.put("enabled", false);
-                    response.put("baseUrlOverride", null);
-                    response.put("websiteOverride", null);
-                    // Compute effective URLs from app defaults
                     Application app = applicationRepo.findByIdOptional(applicationId).orElse(null);
-                    response.put("effectiveBaseUrl", app != null ? app.defaultBaseUrl : null);
-                    response.put("effectiveWebsite", app != null ? app.website : null);
-                    response.put("config", null);
+
+                    var response = ClientConfigResponse.disabled(
+                        TypedId.Ops.serialize(EntityType.APP_CLIENT_CONFIG, event.configId()),
+                        TypedId.Ops.serialize(EntityType.APPLICATION, event.applicationId()),
+                        TypedId.Ops.serialize(EntityType.CLIENT, event.clientId()),
+                        event.clientName(),
+                        event.clientIdentifier(),
+                        app != null ? app.defaultBaseUrl : null,
+                        app != null ? app.website : null
+                    );
                     yield Response.ok(response).build();
                 }
                 case Result.Failure<ApplicationDisabledForClient> f -> {
                     if (f.error() instanceof UseCaseError.NotFoundError) {
                         yield Response.status(Response.Status.NOT_FOUND)
-                            .entity(Map.of("error", f.error().message()))
+                            .entity(new NotFoundResponse("application or client", applicationId + "/" + clientId))
                             .build();
                     }
                     yield Response.status(Response.Status.BAD_REQUEST)
-                        .entity(Map.of("error", f.error().message()))
+                        .entity(new ErrorResponse(f.error().code(), f.error().message()))
                         .build();
                 }
             };
@@ -535,6 +660,18 @@ public class ApplicationAdminResource {
     @POST
     @Path("/{id}/clients/{clientId}/enable")
     @Operation(operationId = "enableApplicationForClient", summary = "Enable application for a client")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "Application enabled for client",
+            content = @Content(schema = @Schema(implementation = ClientApplicationStatusResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid request",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Application or client not found",
+            content = @Content(schema = @Schema(implementation = NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ForbiddenResponse.class)))
+    })
     public Response enableForClient(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String applicationId,
             @TypedIdParam(EntityType.CLIENT) @PathParam("clientId") String clientId) {
@@ -548,15 +685,15 @@ public class ApplicationAdminResource {
 
         return switch (result) {
             case Result.Success<ApplicationEnabledForClient> s ->
-                Response.ok(Map.of("message", "Application enabled for client")).build();
+                Response.ok(ClientApplicationStatusResponse.enabled(applicationId, clientId)).build();
             case Result.Failure<ApplicationEnabledForClient> f -> {
                 if (f.error() instanceof UseCaseError.NotFoundError) {
                     yield Response.status(Response.Status.NOT_FOUND)
-                        .entity(Map.of("error", f.error().message()))
+                        .entity(new NotFoundResponse("application or client", applicationId + "/" + clientId))
                         .build();
                 }
                 yield Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", f.error().message()))
+                    .entity(new ErrorResponse(f.error().code(), f.error().message()))
                     .build();
             }
         };
@@ -565,6 +702,18 @@ public class ApplicationAdminResource {
     @POST
     @Path("/{id}/clients/{clientId}/disable")
     @Operation(operationId = "disableApplicationForClient", summary = "Disable application for a client")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "Application disabled for client",
+            content = @Content(schema = @Schema(implementation = ClientApplicationStatusResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid request",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Application or client not found",
+            content = @Content(schema = @Schema(implementation = NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ForbiddenResponse.class)))
+    })
     public Response disableForClient(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String applicationId,
             @TypedIdParam(EntityType.CLIENT) @PathParam("clientId") String clientId) {
@@ -578,15 +727,15 @@ public class ApplicationAdminResource {
 
         return switch (result) {
             case Result.Success<ApplicationDisabledForClient> s ->
-                Response.ok(Map.of("message", "Application disabled for client")).build();
+                Response.ok(ClientApplicationStatusResponse.disabled(applicationId, clientId)).build();
             case Result.Failure<ApplicationDisabledForClient> f -> {
                 if (f.error() instanceof UseCaseError.NotFoundError) {
                     yield Response.status(Response.Status.NOT_FOUND)
-                        .entity(Map.of("error", f.error().message()))
+                        .entity(new NotFoundResponse("application or client", applicationId + "/" + clientId))
                         .build();
                 }
                 yield Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", f.error().message()))
+                    .entity(new ErrorResponse(f.error().code(), f.error().message()))
                     .build();
             }
         };
@@ -599,6 +748,16 @@ public class ApplicationAdminResource {
     @GET
     @Path("/{id}/roles")
     @Operation(operationId = "getApplicationRoles", summary = "Get all roles defined for this application")
+    @APIResponses({
+        @APIResponse(responseCode = "200", description = "Application roles info",
+            content = @Content(schema = @Schema(implementation = ApplicationRolesResponse.class))),
+        @APIResponse(responseCode = "404", description = "Application not found",
+            content = @Content(schema = @Schema(implementation = NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ForbiddenResponse.class)))
+    })
     public Response getApplicationRoles(
             @TypedIdParam(EntityType.APPLICATION) @PathParam("id") String id) {
         String principalId = auditContext.requirePrincipalId();
@@ -606,16 +765,15 @@ public class ApplicationAdminResource {
 
         return applicationService.findById(id)
             .map(app -> {
-                var roles = PermissionRegistry.extractApplicationCodes(List.of(app.code));
                 // This would need PermissionRegistry injection to get actual roles
                 // For now, return a placeholder
-                return Response.ok(Map.of(
-                    "applicationCode", app.code,
-                    "message", "Use GET /api/admin/platform/roles?application=" + app.code + " to get roles"
+                return Response.ok(new ApplicationRolesResponse(
+                    app.code,
+                    "Use GET /api/admin/platform/roles?application=" + app.code + " to get roles"
                 )).build();
             })
             .orElse(Response.status(Response.Status.NOT_FOUND)
-                .entity(Map.of("error", "Application not found"))
+                .entity(new NotFoundResponse("application", id))
                 .build());
     }
 
@@ -650,80 +808,5 @@ public class ApplicationAdminResource {
         public String baseUrlOverride;
         public String websiteOverride;
         public Map<String, Object> config;
-    }
-
-    private Map<String, Object> toApplicationResponse(Application app) {
-        var result = new java.util.HashMap<String, Object>();
-        result.put("id", TypedId.Ops.serialize(EntityType.APPLICATION, app.id));
-        result.put("type", app.type != null ? app.type.name() : "APPLICATION");
-        result.put("code", app.code);
-        result.put("name", app.name);
-        result.put("description", app.description);
-        result.put("defaultBaseUrl", app.defaultBaseUrl);
-        result.put("iconUrl", app.iconUrl);
-        result.put("website", app.website);
-        result.put("logoMimeType", app.logoMimeType);
-        result.put("serviceAccountId", app.serviceAccountId);
-        result.put("serviceAccountPrincipalId", TypedId.Ops.serialize(EntityType.PRINCIPAL, app.serviceAccountPrincipalId));
-        result.put("active", app.active);
-        result.put("createdAt", app.createdAt);
-        result.put("updatedAt", app.updatedAt);
-        return result;
-    }
-
-    private Map<String, Object> toApplicationDetailResponse(Application app) {
-        var result = new java.util.HashMap<String, Object>();
-        result.put("id", TypedId.Ops.serialize(EntityType.APPLICATION, app.id));
-        result.put("type", app.type != null ? app.type.name() : "APPLICATION");
-        result.put("code", app.code);
-        result.put("name", app.name);
-        result.put("description", app.description);
-        result.put("iconUrl", app.iconUrl);
-        result.put("website", app.website);
-        result.put("logo", app.logo);
-        result.put("logoMimeType", app.logoMimeType);
-        result.put("defaultBaseUrl", app.defaultBaseUrl);
-        result.put("serviceAccountId", app.serviceAccountId);
-        result.put("serviceAccountPrincipalId", TypedId.Ops.serialize(EntityType.PRINCIPAL, app.serviceAccountPrincipalId));
-        result.put("active", app.active);
-        result.put("createdAt", app.createdAt);
-        result.put("updatedAt", app.updatedAt);
-        return result;
-    }
-
-    private Map<String, Object> toClientConfigResponse(ApplicationClientConfig config) {
-        var result = new java.util.HashMap<String, Object>();
-        result.put("id", TypedId.Ops.serialize(EntityType.APP_CLIENT_CONFIG, config.id));
-        result.put("applicationId", TypedId.Ops.serialize(EntityType.APPLICATION, config.applicationId));
-        result.put("clientId", TypedId.Ops.serialize(EntityType.CLIENT, config.clientId));
-
-        // Look up client details
-        Client client = clientRepo.findByIdOptional(config.clientId).orElse(null);
-        if (client != null) {
-            result.put("clientName", client.name);
-            result.put("clientIdentifier", client.identifier);
-        } else {
-            result.put("clientName", null);
-            result.put("clientIdentifier", null);
-        }
-
-        result.put("enabled", config.enabled);
-        result.put("baseUrlOverride", config.baseUrlOverride);
-        result.put("websiteOverride", config.websiteOverride);
-
-        // Compute effective URLs
-        Application app = applicationRepo.findByIdOptional(config.applicationId).orElse(null);
-        String effectiveBaseUrl = (config.baseUrlOverride != null && !config.baseUrlOverride.isBlank())
-            ? config.baseUrlOverride
-            : (app != null ? app.defaultBaseUrl : null);
-        result.put("effectiveBaseUrl", effectiveBaseUrl);
-
-        String effectiveWebsite = (config.websiteOverride != null && !config.websiteOverride.isBlank())
-            ? config.websiteOverride
-            : (app != null ? app.website : null);
-        result.put("effectiveWebsite", effectiveWebsite);
-
-        result.put("config", config.configJson);
-        return result;
     }
 }

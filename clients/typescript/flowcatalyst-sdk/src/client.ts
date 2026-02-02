@@ -21,6 +21,7 @@ import { PermissionsResource } from './resources/permissions';
 import { ApplicationsResource } from './resources/applications';
 import { ClientsResource } from './resources/clients';
 import { PrincipalsResource } from './resources/principals';
+import { MeResource } from './resources/me';
 
 /**
  * Configuration for client credentials authentication.
@@ -105,6 +106,7 @@ export class FlowCatalystClient {
   private _applications?: ApplicationsResource;
   private _clients?: ClientsResource;
   private _principals?: PrincipalsResource;
+  private _me?: MeResource;
 
   constructor(config: FlowCatalystConfig) {
     this.config = {
@@ -183,6 +185,11 @@ export class FlowCatalystClient {
   /** Principals resource */
   principals(): PrincipalsResource {
     return (this._principals ??= new PrincipalsResource(this));
+  }
+
+  /** Me resource (user-scoped access to clients and applications) */
+  me(): MeResource {
+    return (this._me ??= new MeResource(this));
   }
 
   // ============ Internal Methods ============

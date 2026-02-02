@@ -25,6 +25,9 @@ import tech.flowcatalyst.platform.audit.AuditContext;
 import tech.flowcatalyst.platform.authorization.AuthorizationService;
 import tech.flowcatalyst.platform.authorization.platform.PlatformAdminPermissions;
 import tech.flowcatalyst.platform.common.Result;
+import tech.flowcatalyst.platform.common.api.ApiResponses;
+import tech.flowcatalyst.platform.common.api.ClientResponses;
+import tech.flowcatalyst.platform.common.api.ClientResponses.*;
 import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
 import tech.flowcatalyst.platform.client.Client;
 import tech.flowcatalyst.platform.client.ClientService;
@@ -34,7 +37,6 @@ import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TypedId;
 import tech.flowcatalyst.platform.shared.TypedIdParam;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -81,8 +83,10 @@ public class ClientAdminResource {
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of clients",
             content = @Content(schema = @Schema(implementation = ClientListResponse.class))),
-        @APIResponse(responseCode = "401", description = "Not authenticated"),
-        @APIResponse(responseCode = "403", description = "Insufficient permissions")
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response listClients(
             @QueryParam("status") @Parameter(description = "Filter by status") ClientStatus status) {
@@ -103,7 +107,7 @@ public class ClientAdminResource {
         }
 
         List<ClientDto> dtos = clients.stream()
-            .map(this::toDto)
+            .map(ClientDto::from)
             .toList();
 
         return Response.ok(new ClientListResponse(dtos, dtos.size())).build();
@@ -119,8 +123,10 @@ public class ClientAdminResource {
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Matching clients",
             content = @Content(schema = @Schema(implementation = ClientListResponse.class))),
-        @APIResponse(responseCode = "401", description = "Not authenticated"),
-        @APIResponse(responseCode = "403", description = "Insufficient permissions")
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response searchClients(
             @QueryParam("q") @Parameter(description = "Search query (name or identifier)") String query,
@@ -149,7 +155,7 @@ public class ClientAdminResource {
 
         List<ClientDto> dtos = stream
             .limit(limit)
-            .map(this::toDto)
+            .map(ClientDto::from)
             .toList();
 
         return Response.ok(new ClientListResponse(dtos, dtos.size())).build();
@@ -164,10 +170,14 @@ public class ClientAdminResource {
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Client details",
             content = @Content(schema = @Schema(implementation = ClientDto.class))),
-        @APIResponse(responseCode = "400", description = "Invalid client ID format"),
-        @APIResponse(responseCode = "404", description = "Client not found"),
-        @APIResponse(responseCode = "401", description = "Not authenticated"),
-        @APIResponse(responseCode = "403", description = "Insufficient permissions")
+        @APIResponse(responseCode = "400", description = "Invalid client ID format",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Client not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response getClient(
             @TypedIdParam(EntityType.CLIENT) @PathParam("id") String id) {
@@ -176,9 +186,9 @@ public class ClientAdminResource {
         authorizationService.requirePermission(principalId, PlatformAdminPermissions.CLIENT_VIEW);
 
         return clientService.findById(id)
-            .map(client -> Response.ok(toDto(client)).build())
+            .map(client -> Response.ok(ClientDto.from(client)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("Client not found"))
+                .entity(new ApiResponses.NotFoundResponse("client", id))
                 .build());
     }
 
@@ -189,10 +199,14 @@ public class ClientAdminResource {
     @Path("/by-identifier/{identifier}")
     @Operation(operationId = "getClientByIdentifier", summary = "Get client by identifier")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Client details"),
-        @APIResponse(responseCode = "404", description = "Client not found"),
-        @APIResponse(responseCode = "401", description = "Not authenticated"),
-        @APIResponse(responseCode = "403", description = "Insufficient permissions")
+        @APIResponse(responseCode = "200", description = "Client details",
+            content = @Content(schema = @Schema(implementation = ClientDto.class))),
+        @APIResponse(responseCode = "404", description = "Client not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response getClientByIdentifier(@PathParam("identifier") String identifier) {
 
@@ -200,9 +214,9 @@ public class ClientAdminResource {
         authorizationService.requirePermission(principalId, PlatformAdminPermissions.CLIENT_VIEW);
 
         return clientService.findByIdentifier(identifier)
-            .map(client -> Response.ok(toDto(client)).build())
+            .map(client -> Response.ok(ClientDto.from(client)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("Client not found"))
+                .entity(new ApiResponses.NotFoundResponse("client", identifier))
                 .build());
     }
 
@@ -214,9 +228,12 @@ public class ClientAdminResource {
     @APIResponses({
         @APIResponse(responseCode = "201", description = "Client created",
             content = @Content(schema = @Schema(implementation = ClientDto.class))),
-        @APIResponse(responseCode = "400", description = "Invalid request or identifier already exists"),
-        @APIResponse(responseCode = "401", description = "Not authenticated"),
-        @APIResponse(responseCode = "403", description = "Insufficient permissions")
+        @APIResponse(responseCode = "400", description = "Invalid request or identifier already exists",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ErrorResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response createClient(@Valid CreateClientRequest request, @Context UriInfo uriInfo) {
 
@@ -229,12 +246,12 @@ public class ClientAdminResource {
                 client.name, client.identifier, principalId);
 
             return Response.status(Response.Status.CREATED)
-                .entity(toDto(client))
+                .entity(ClientDto.from(client))
                 .location(uriInfo.getAbsolutePathBuilder().path(String.valueOf(client.id)).build())
                 .build();
         } catch (BadRequestException e) {
             return Response.status(Response.Status.BAD_REQUEST)
-                .entity(new ErrorResponse(e.getMessage()))
+                .entity(new ApiResponses.ErrorResponse("VALIDATION_ERROR", e.getMessage()))
                 .build();
         }
     }
@@ -246,11 +263,16 @@ public class ClientAdminResource {
     @Path("/{id}")
     @Operation(operationId = "updateClient", summary = "Update client details")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Client updated"),
-        @APIResponse(responseCode = "400", description = "Invalid request or client ID format"),
-        @APIResponse(responseCode = "404", description = "Client not found"),
-        @APIResponse(responseCode = "401", description = "Not authenticated"),
-        @APIResponse(responseCode = "403", description = "Insufficient permissions")
+        @APIResponse(responseCode = "200", description = "Client updated",
+            content = @Content(schema = @Schema(implementation = ClientDto.class))),
+        @APIResponse(responseCode = "400", description = "Invalid request or client ID format",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Client not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response updateClient(
             @TypedIdParam(EntityType.CLIENT) @PathParam("id") String id,
@@ -262,10 +284,10 @@ public class ClientAdminResource {
         try {
             Client client = clientService.updateClient(id, request.name());
             LOG.infof("Client updated: %s by principal %s", id, principalId);
-            return Response.ok(toDto(client)).build();
+            return Response.ok(ClientDto.from(client)).build();
         } catch (NotFoundException e) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("Client not found"))
+                .entity(new ApiResponses.NotFoundResponse("client", id))
                 .build();
         }
     }
@@ -279,11 +301,16 @@ public class ClientAdminResource {
     @Path("/{id}/activate")
     @Operation(operationId = "activateClient", summary = "Activate a client")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Client activated"),
-        @APIResponse(responseCode = "400", description = "Invalid client ID format"),
-        @APIResponse(responseCode = "404", description = "Client not found"),
-        @APIResponse(responseCode = "401", description = "Not authenticated"),
-        @APIResponse(responseCode = "403", description = "Insufficient permissions")
+        @APIResponse(responseCode = "200", description = "Client activated",
+            content = @Content(schema = @Schema(implementation = ClientStatusResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid client ID format",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Client not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response activateClient(
             @TypedIdParam(EntityType.CLIENT) @PathParam("id") String id) {
@@ -294,10 +321,11 @@ public class ClientAdminResource {
         try {
             clientService.activateClient(id, principalId);
             LOG.infof("Client %s activated by principal %s", id, principalId);
-            return Response.ok(new StatusChangeResponse("Client activated")).build();
+            String serializedId = TypedId.Ops.serialize(EntityType.CLIENT, id);
+            return Response.ok(ClientStatusResponse.activated(serializedId)).build();
         } catch (NotFoundException e) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("Client not found"))
+                .entity(new ApiResponses.NotFoundResponse("client", id))
                 .build();
         }
     }
@@ -309,11 +337,16 @@ public class ClientAdminResource {
     @Path("/{id}/suspend")
     @Operation(operationId = "suspendClient", summary = "Suspend a client")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Client suspended"),
-        @APIResponse(responseCode = "400", description = "Invalid client ID format"),
-        @APIResponse(responseCode = "404", description = "Client not found"),
-        @APIResponse(responseCode = "401", description = "Not authenticated"),
-        @APIResponse(responseCode = "403", description = "Insufficient permissions")
+        @APIResponse(responseCode = "200", description = "Client suspended",
+            content = @Content(schema = @Schema(implementation = ClientStatusResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid client ID format",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Client not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response suspendClient(
             @TypedIdParam(EntityType.CLIENT) @PathParam("id") String id,
@@ -325,10 +358,11 @@ public class ClientAdminResource {
         try {
             clientService.suspendClient(id, request.reason(), principalId);
             LOG.infof("Client %s suspended by principal %s: %s", id, principalId, request.reason());
-            return Response.ok(new StatusChangeResponse("Client suspended")).build();
+            String serializedId = TypedId.Ops.serialize(EntityType.CLIENT, id);
+            return Response.ok(ClientStatusResponse.suspended(serializedId)).build();
         } catch (NotFoundException e) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("Client not found"))
+                .entity(new ApiResponses.NotFoundResponse("client", id))
                 .build();
         }
     }
@@ -340,11 +374,16 @@ public class ClientAdminResource {
     @Path("/{id}/deactivate")
     @Operation(operationId = "deactivateClient", summary = "Deactivate a client")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Client deactivated"),
-        @APIResponse(responseCode = "400", description = "Invalid client ID format"),
-        @APIResponse(responseCode = "404", description = "Client not found"),
-        @APIResponse(responseCode = "401", description = "Not authenticated"),
-        @APIResponse(responseCode = "403", description = "Insufficient permissions")
+        @APIResponse(responseCode = "200", description = "Client deactivated",
+            content = @Content(schema = @Schema(implementation = ClientStatusResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid client ID format",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Client not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response deactivateClient(
             @TypedIdParam(EntityType.CLIENT) @PathParam("id") String id,
@@ -356,10 +395,11 @@ public class ClientAdminResource {
         try {
             clientService.deactivateClient(id, request.reason(), principalId);
             LOG.infof("Client %s deactivated by principal %s: %s", id, principalId, request.reason());
-            return Response.ok(new StatusChangeResponse("Client deactivated")).build();
+            String serializedId = TypedId.Ops.serialize(EntityType.CLIENT, id);
+            return Response.ok(ClientStatusResponse.deactivated(serializedId)).build();
         } catch (NotFoundException e) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("Client not found"))
+                .entity(new ApiResponses.NotFoundResponse("client", id))
                 .build();
         }
     }
@@ -373,11 +413,16 @@ public class ClientAdminResource {
     @Path("/{id}/notes")
     @Operation(operationId = "addClientAuditNote", summary = "Add audit note to client")
     @APIResponses({
-        @APIResponse(responseCode = "201", description = "Note added"),
-        @APIResponse(responseCode = "400", description = "Invalid client ID format"),
-        @APIResponse(responseCode = "404", description = "Client not found"),
-        @APIResponse(responseCode = "401", description = "Not authenticated"),
-        @APIResponse(responseCode = "403", description = "Insufficient permissions")
+        @APIResponse(responseCode = "201", description = "Note added",
+            content = @Content(schema = @Schema(implementation = NoteAddedResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid client ID format",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Client not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response addNote(
             @TypedIdParam(EntityType.CLIENT) @PathParam("id") String id,
@@ -388,12 +433,13 @@ public class ClientAdminResource {
 
         try {
             clientService.addNote(id, request.category(), request.text(), principalId);
+            String serializedId = TypedId.Ops.serialize(EntityType.CLIENT, id);
             return Response.status(Response.Status.CREATED)
-                .entity(new StatusChangeResponse("Note added"))
+                .entity(NoteAddedResponse.created(serializedId, request.category()))
                 .build();
         } catch (NotFoundException e) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("Client not found"))
+                .entity(new ApiResponses.NotFoundResponse("client", id))
                 .build();
         }
     }
@@ -410,10 +456,14 @@ public class ClientAdminResource {
     @APIResponses({
         @APIResponse(responseCode = "200", description = "List of applications with status",
             content = @Content(schema = @Schema(implementation = ClientApplicationsResponse.class))),
-        @APIResponse(responseCode = "400", description = "Invalid client ID format"),
-        @APIResponse(responseCode = "404", description = "Client not found"),
-        @APIResponse(responseCode = "401", description = "Not authenticated"),
-        @APIResponse(responseCode = "403", description = "Insufficient permissions")
+        @APIResponse(responseCode = "400", description = "Invalid client ID format",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Client not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response getClientApplications(
             @TypedIdParam(EntityType.CLIENT) @PathParam("id") String clientId) {
@@ -427,7 +477,7 @@ public class ClientAdminResource {
         var clientOpt = clientService.findById(clientId);
         if (clientOpt.isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("Client not found"))
+                .entity(new ApiResponses.NotFoundResponse("client", clientId))
                 .build();
         }
 
@@ -479,11 +529,16 @@ public class ClientAdminResource {
     @Path("/{id}/applications/{applicationId}/enable")
     @Operation(operationId = "enableClientApplication", summary = "Enable application for client")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Application enabled"),
-        @APIResponse(responseCode = "400", description = "Invalid ID format"),
-        @APIResponse(responseCode = "404", description = "Client or application not found"),
-        @APIResponse(responseCode = "401", description = "Not authenticated"),
-        @APIResponse(responseCode = "403", description = "Insufficient permissions")
+        @APIResponse(responseCode = "200", description = "Application enabled",
+            content = @Content(schema = @Schema(implementation = ClientApplicationStatusResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid ID format",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Client or application not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response enableApplicationForClient(
             @TypedIdParam(EntityType.CLIENT) @PathParam("id") String clientId,
@@ -501,16 +556,18 @@ public class ClientAdminResource {
 
             if (result instanceof Result.Failure<ApplicationEnabledForClient> f) {
                 return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(new ErrorResponse(f.error().message()))
+                    .entity(new ApiResponses.ErrorResponse("ENABLE_FAILED", f.error().message()))
                     .build();
             }
 
             LOG.infof("Application %s enabled for client %s by principal %s",
                 applicationId, clientId, principalId);
-            return Response.ok(new StatusChangeResponse("Application enabled for client")).build();
+            String serializedClientId = TypedId.Ops.serialize(EntityType.CLIENT, clientId);
+            String serializedAppId = TypedId.Ops.serialize(EntityType.APPLICATION, applicationId);
+            return Response.ok(ClientApplicationStatusResponse.enabled(serializedClientId, serializedAppId)).build();
         } catch (NotFoundException e) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse(e.getMessage()))
+                .entity(new ApiResponses.NotFoundResponse("NOT_FOUND", e.getMessage(), "resource", null))
                 .build();
         }
     }
@@ -522,11 +579,16 @@ public class ClientAdminResource {
     @Path("/{id}/applications/{applicationId}/disable")
     @Operation(operationId = "disableClientApplication", summary = "Disable application for client")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Application disabled"),
-        @APIResponse(responseCode = "400", description = "Invalid ID format"),
-        @APIResponse(responseCode = "404", description = "Client or application not found"),
-        @APIResponse(responseCode = "401", description = "Not authenticated"),
-        @APIResponse(responseCode = "403", description = "Insufficient permissions")
+        @APIResponse(responseCode = "200", description = "Application disabled",
+            content = @Content(schema = @Schema(implementation = ClientApplicationStatusResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid ID format",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Client or application not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response disableApplicationForClient(
             @TypedIdParam(EntityType.CLIENT) @PathParam("id") String clientId,
@@ -544,16 +606,18 @@ public class ClientAdminResource {
 
             if (result instanceof Result.Failure<ApplicationDisabledForClient> f) {
                 return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(new ErrorResponse(f.error().message()))
+                    .entity(new ApiResponses.ErrorResponse("DISABLE_FAILED", f.error().message()))
                     .build();
             }
 
             LOG.infof("Application %s disabled for client %s by principal %s",
                 applicationId, clientId, principalId);
-            return Response.ok(new StatusChangeResponse("Application disabled for client")).build();
+            String serializedClientId = TypedId.Ops.serialize(EntityType.CLIENT, clientId);
+            String serializedAppId = TypedId.Ops.serialize(EntityType.APPLICATION, applicationId);
+            return Response.ok(ClientApplicationStatusResponse.disabled(serializedClientId, serializedAppId)).build();
         } catch (NotFoundException e) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse(e.getMessage()))
+                .entity(new ApiResponses.NotFoundResponse("NOT_FOUND", e.getMessage(), "resource", null))
                 .build();
         }
     }
@@ -566,11 +630,16 @@ public class ClientAdminResource {
     @Path("/{id}/applications")
     @Operation(operationId = "updateClientApplications", summary = "Update applications for client", description = "Sets which applications are enabled for this client")
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Applications updated"),
-        @APIResponse(responseCode = "400", description = "Invalid ID format"),
-        @APIResponse(responseCode = "404", description = "Client not found"),
-        @APIResponse(responseCode = "401", description = "Not authenticated"),
-        @APIResponse(responseCode = "403", description = "Insufficient permissions")
+        @APIResponse(responseCode = "200", description = "Applications updated",
+            content = @Content(schema = @Schema(implementation = ApplicationsUpdatedResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid ID format",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ErrorResponse.class))),
+        @APIResponse(responseCode = "404", description = "Client not found",
+            content = @Content(schema = @Schema(implementation = ApiResponses.NotFoundResponse.class))),
+        @APIResponse(responseCode = "401", description = "Not authenticated",
+            content = @Content(schema = @Schema(implementation = ApiResponses.UnauthorizedResponse.class))),
+        @APIResponse(responseCode = "403", description = "Insufficient permissions",
+            content = @Content(schema = @Schema(implementation = ApiResponses.ForbiddenResponse.class)))
     })
     public Response updateClientApplications(
             @TypedIdParam(EntityType.CLIENT) @PathParam("id") String clientId,
@@ -585,13 +654,13 @@ public class ClientAdminResource {
         var clientOpt = clientService.findById(clientId);
         if (clientOpt.isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse("Client not found"))
+                .entity(new ApiResponses.NotFoundResponse("client", clientId))
                 .build();
         }
 
-        // Deserialize all application IDs from the request
+        // Validate all application IDs from the request (IDs are stored with prefixes)
         Set<String> enabledAppIds = request.enabledApplicationIds().stream()
-            .map(id -> TypedId.Ops.deserialize(EntityType.APPLICATION, id))
+            .peek(id -> TypedId.Ops.validate(EntityType.APPLICATION, id))
             .collect(Collectors.toSet());
 
         // Get all applications
@@ -616,98 +685,54 @@ public class ClientAdminResource {
 
         LOG.infof("Updated applications for client %s by principal %s: %d enabled",
             clientId, principalId, enabledAppIds.size());
-        return Response.ok(new StatusChangeResponse("Applications updated")).build();
+        String serializedClientId = TypedId.Ops.serialize(EntityType.CLIENT, clientId);
+        return Response.ok(ApplicationsUpdatedResponse.success(serializedClientId, enabledAppIds.size())).build();
     }
 
-    // ==================== Helper Methods ====================
+    // ==================== Request DTOs ====================
 
-    private ClientDto toDto(Client client) {
-        return new ClientDto(
-            TypedId.Ops.serialize(EntityType.CLIENT, client.id),
-            client.name,
-            client.identifier,
-            client.status,
-            client.statusReason,
-            client.statusChangedAt,
-            client.createdAt,
-            client.updatedAt
-        );
-    }
-
-    // ==================== DTOs ====================
-
-    public record ClientDto(
-        String id,
-        String name,
-        String identifier,
-        ClientStatus status,
-        String statusReason,
-        Instant statusChangedAt,
-        Instant createdAt,
-        Instant updatedAt
-    ) {}
-
-    public record ClientListResponse(
-        List<ClientDto> clients,
-        int total
-    ) {}
-
+    @Schema(description = "Request to create a new client")
     public record CreateClientRequest(
         @NotBlank(message = "Name is required")
         @Size(max = 255, message = "Name must be less than 255 characters")
+        @Schema(description = "Client display name", example = "Acme Corporation")
         String name,
 
         @NotBlank(message = "Identifier is required")
         @Size(min = 2, max = 100, message = "Identifier must be 2-100 characters")
+        @Schema(description = "Unique client identifier/slug", example = "acme-corp")
         String identifier
     ) {}
 
+    @Schema(description = "Request to update a client")
     public record UpdateClientRequest(
         @NotBlank(message = "Name is required")
         @Size(max = 255, message = "Name must be less than 255 characters")
+        @Schema(description = "Client display name", example = "Acme Corporation")
         String name
     ) {}
 
+    @Schema(description = "Request for status change with reason")
     public record StatusChangeRequest(
         @NotBlank(message = "Reason is required")
+        @Schema(description = "Reason for status change", example = "Account suspended due to non-payment")
         String reason
     ) {}
 
-    public record StatusChangeResponse(
-        String message
-    ) {}
-
+    @Schema(description = "Request to add an audit note")
     public record AddNoteRequest(
         @NotBlank(message = "Category is required")
+        @Schema(description = "Note category", example = "SUPPORT")
         String category,
 
         @NotBlank(message = "Text is required")
+        @Schema(description = "Note text", example = "Customer requested feature X")
         String text
     ) {}
 
-    public record ErrorResponse(
-        String error
-    ) {}
-
-    public record ClientApplicationDto(
-        String id,
-        String code,
-        String name,
-        String description,
-        String iconUrl,
-        String website,
-        String effectiveWebsite,
-        String logoMimeType,
-        boolean active,
-        boolean enabledForClient
-    ) {}
-
-    public record ClientApplicationsResponse(
-        List<ClientApplicationDto> applications,
-        int total
-    ) {}
-
+    @Schema(description = "Request to update client applications")
     public record UpdateClientApplicationsRequest(
+        @Schema(description = "List of application IDs to enable for this client")
         List<String> enabledApplicationIds
     ) {}
 }
