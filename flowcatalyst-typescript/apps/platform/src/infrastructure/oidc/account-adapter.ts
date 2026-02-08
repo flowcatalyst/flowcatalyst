@@ -8,6 +8,7 @@
 import type { FindAccount, Account, KoaContextWithOIDC, AccountClaims, ClaimsParameterMember } from 'oidc-provider';
 import type { PrincipalRepository } from '../persistence/repositories/principal-repository.js';
 import type { Principal } from '../../domain/principal/principal.js';
+import { extractApplicationCodes } from './jwt-key-service.js';
 
 /**
  * Maps a Principal to OIDC standard claims.
@@ -25,19 +26,21 @@ function principalToClaims(principal: Principal): AccountClaims {
 		claims['email_verified'] = true; // We trust our internal verification
 	}
 
-	// Add custom FlowCatalyst claims
-	claims['flowcatalyst:type'] = principal.type;
-	claims['flowcatalyst:scope'] = principal.scope;
-	claims['flowcatalyst:client_id'] = principal.clientId;
-	claims['flowcatalyst:roles'] = principal.roles.map((r) => r.roleName);
+	// Add custom claims (bare names, matching Java platform)
+	const roleNames = principal.roles.map((r) => r.roleName);
+	claims['type'] = principal.type;
+	claims['scope'] = principal.scope;
+	claims['client_id'] = principal.clientId;
+	claims['roles'] = roleNames;
+	claims['applications'] = extractApplicationCodes(roleNames);
 
 	// For ANCHOR users, clients = ["*"] (all clients)
 	// For PARTNER users, clients would be loaded from grants (not in scope here)
 	// For CLIENT users, clients = [clientId]
 	if (principal.scope === 'ANCHOR') {
-		claims['flowcatalyst:clients'] = ['*'];
+		claims['clients'] = ['*'];
 	} else if (principal.scope === 'CLIENT' && principal.clientId) {
-		claims['flowcatalyst:clients'] = [principal.clientId];
+		claims['clients'] = [principal.clientId];
 	}
 
 	return claims;
@@ -105,12 +108,12 @@ export function createFindAccount(principalRepository: PrincipalRepository): Fin
 				}
 
 				// FlowCatalyst custom claims (always included for now)
-				// In production, you might want to scope these
-				result['flowcatalyst:type'] = allClaims['flowcatalyst:type'];
-				result['flowcatalyst:scope'] = allClaims['flowcatalyst:scope'];
-				result['flowcatalyst:client_id'] = allClaims['flowcatalyst:client_id'];
-				result['flowcatalyst:roles'] = allClaims['flowcatalyst:roles'];
-				result['flowcatalyst:clients'] = allClaims['flowcatalyst:clients'];
+				result['type'] = allClaims['type'];
+				result['scope'] = allClaims['scope'];
+				result['client_id'] = allClaims['client_id'];
+				result['roles'] = allClaims['roles'];
+				result['clients'] = allClaims['clients'];
+				result['applications'] = allClaims['applications'];
 
 				// Remove rejected claims
 				for (const claim of rejected) {

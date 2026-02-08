@@ -90,6 +90,18 @@ public class EmailDomainMapping {
      */
     public List<String> allowedRoleIds = new ArrayList<>();
 
+    /**
+     * Whether to sync roles from the external IDP during OIDC login.
+     * When true, roles from the IDP token are mapped to internal roles via idp_role_mappings.
+     * When false (default), no role synchronization occurs during login.
+     * Only relevant for OIDC identity providers.
+     */
+    public boolean syncRolesFromIdp = false;
+
+    public boolean hasRoleRestrictions() {
+        return allowedRoleIds != null && !allowedRoleIds.isEmpty();
+    }
+
     public Instant createdAt = Instant.now();
 
     public Instant updatedAt = Instant.now();

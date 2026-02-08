@@ -32,8 +32,8 @@ import java.util.Map;
  * <p>This implementation ensures atomic commits of:
  * <ul>
  *   <li>Aggregate entity (create/update/delete)</li>
- *   <li>Domain event (in the events table + event_outbox)</li>
- *   <li>Dispatch jobs (in dispatch_jobs table + dispatch_job_outbox)</li>
+ *   <li>Domain event (in the events table + event_projection_feed)</li>
+ *   <li>Dispatch jobs (in dispatch_jobs table + dispatch_job_projection_feed)</li>
  *   <li>Audit log entry</li>
  * </ul>
  *
@@ -74,13 +74,13 @@ public class PanacheTransactionalUnitOfWork implements UnitOfWork {
             // 1. Persist/update aggregate
             aggregateRegistry.persist(aggregate);
 
-            // 2. Create domain event + event_outbox
+            // 2. Create domain event + event_projection_feed
             Event eventEntity = createEvent(event);
 
             // 3. Build dispatch jobs for matching subscriptions
             List<DispatchJob> dispatchJobs = eventDispatchService.buildDispatchJobsForEvents(List.of(eventEntity));
 
-            // 4. Persist dispatch jobs + dispatch_job_outbox
+            // 4. Persist dispatch jobs + dispatch_job_projection_feed
             if (!dispatchJobs.isEmpty()) {
                 persistDispatchJobs(dispatchJobs);
 
@@ -115,13 +115,13 @@ public class PanacheTransactionalUnitOfWork implements UnitOfWork {
             // 1. Delete aggregate
             aggregateRegistry.delete(aggregate);
 
-            // 2. Create domain event + event_outbox
+            // 2. Create domain event + event_projection_feed
             Event eventEntity = createEvent(event);
 
             // 3. Build dispatch jobs for matching subscriptions
             List<DispatchJob> dispatchJobs = eventDispatchService.buildDispatchJobsForEvents(List.of(eventEntity));
 
-            // 4. Persist dispatch jobs + dispatch_job_outbox
+            // 4. Persist dispatch jobs + dispatch_job_projection_feed
             if (!dispatchJobs.isEmpty()) {
                 persistDispatchJobs(dispatchJobs);
                 registerPostCommitQueueing(dispatchJobs);
@@ -156,13 +156,13 @@ public class PanacheTransactionalUnitOfWork implements UnitOfWork {
                 aggregateRegistry.persist(aggregate);
             }
 
-            // 2. Create domain event + event_outbox
+            // 2. Create domain event + event_projection_feed
             Event eventEntity = createEvent(event);
 
             // 3. Build dispatch jobs for matching subscriptions
             List<DispatchJob> dispatchJobs = eventDispatchService.buildDispatchJobsForEvents(List.of(eventEntity));
 
-            // 4. Persist dispatch jobs + dispatch_job_outbox
+            // 4. Persist dispatch jobs + dispatch_job_projection_feed
             if (!dispatchJobs.isEmpty()) {
                 persistDispatchJobs(dispatchJobs);
                 registerPostCommitQueueing(dispatchJobs);
@@ -198,13 +198,13 @@ public class PanacheTransactionalUnitOfWork implements UnitOfWork {
                 aggregateRegistry.delete(aggregate);
             }
 
-            // 2. Create domain event + event_outbox
+            // 2. Create domain event + event_projection_feed
             Event eventEntity = createEvent(event);
 
             // 3. Build dispatch jobs for matching subscriptions
             List<DispatchJob> dispatchJobs = eventDispatchService.buildDispatchJobsForEvents(List.of(eventEntity));
 
-            // 4. Persist dispatch jobs + dispatch_job_outbox
+            // 4. Persist dispatch jobs + dispatch_job_projection_feed
             if (!dispatchJobs.isEmpty()) {
                 persistDispatchJobs(dispatchJobs);
                 registerPostCommitQueueing(dispatchJobs);
@@ -232,7 +232,7 @@ public class PanacheTransactionalUnitOfWork implements UnitOfWork {
     // ========================================================================
 
     /**
-     * Creates an event in the events table and event_outbox for CQRS projection.
+     * Creates an event in the events table and event_projection_feed for CQRS projection.
      *
      * @param domainEvent The domain event from the use case
      * @return The Event entity created (for dispatch job building)
@@ -286,9 +286,9 @@ public class PanacheTransactionalUnitOfWork implements UnitOfWork {
         event.messageGroup = domainEvent.messageGroup();
         event.contextData = contextData;
 
-        // Insert into event_outbox for CQRS projection
+        // Insert into event_projection_feed for CQRS projection
         String outboxSql = """
-            INSERT INTO event_outbox (event_id, payload, created_at, processed)
+            INSERT INTO event_projection_feed (event_id, payload, created_at, processed)
             VALUES (:eventId, CAST(:payload AS jsonb), :createdAt, 0)
             """;
 
@@ -415,7 +415,7 @@ public class PanacheTransactionalUnitOfWork implements UnitOfWork {
 
             // Insert change record for projection
             String changeSql = """
-                INSERT INTO dispatch_job_changes (dispatch_job_id, operation, changes, created_at)
+                INSERT INTO dispatch_job_projection_feed (dispatch_job_id, operation, changes, created_at)
                 VALUES (:jobId, 'INSERT', CAST(:changes AS jsonb), :createdAt)
                 """;
 

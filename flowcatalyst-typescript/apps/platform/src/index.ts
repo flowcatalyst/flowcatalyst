@@ -4,7 +4,9 @@
  * IAM and Eventing service entry point.
  */
 
-import Fastify from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import {
@@ -29,12 +31,17 @@ import { getEnv, isDevelopment } from './env.js';
 import {
 	createOidcProvider,
 	mountOidcProvider,
-	registerWellKnownRedirects,
+	registerWellKnownRoutes,
 	registerOAuthCompatibilityRoutes,
 	registerAuthRoutes,
+	registerOidcFederationRoutes,
+	registerClientSelectionRoutes,
+	createJwtKeyService,
 } from './infrastructure/oidc/index.js';
-import { registerAdminRoutes, type AdminRoutesDeps } from './api/index.js';
-import { initializeAuthorization } from './authorization/index.js';
+import { registerAdminRoutes, type AdminRoutesDeps, registerBffRoutes, type BffRoutesDeps, registerSdkRoutes, type SdkRoutesDeps, registerMeApiRoutes, type MeRoutesDeps, registerPublicApiRoutes, registerPlatformConfigApiRoutes, registerDebugBffRoutes } from './api/index.js';
+import { createPlatformConfigService } from './domain/index.js';
+import { createEventDispatchService } from './infrastructure/dispatch/event-dispatch-service.js';
+import { initializeAuthorization, createGuardedUseCase, clientScopedGuard, clientAccessGuard } from './authorization/index.js';
 import {
 	createPrincipalRepository,
 	createAnchorDomainRepository,
@@ -47,6 +54,18 @@ import {
 	createClientAuthConfigRepository,
 	createOAuthClientRepository,
 	createAuditLogRepository,
+	createEventTypeRepository,
+	createDispatchPoolRepository,
+	createSubscriptionRepository,
+	createEventReadRepository,
+	createDispatchJobReadRepository,
+	createIdentityProviderRepository,
+	createEmailDomainMappingRepository,
+	createIdpRoleMappingRepository,
+	createOidcLoginStateRepository,
+	createCorsAllowedOriginRepository,
+	createPlatformConfigRepository,
+	createPlatformConfigAccessRepository,
 } from './infrastructure/persistence/index.js';
 import {
 	createCreateUserUseCase,
@@ -86,10 +105,63 @@ import {
 	createUpdateOAuthClientUseCase,
 	createRegenerateOAuthClientSecretUseCase,
 	createDeleteOAuthClientUseCase,
+	createCreateEventTypeUseCase,
+	createUpdateEventTypeUseCase,
+	createArchiveEventTypeUseCase,
+	createDeleteEventTypeUseCase,
+	createAddSchemaUseCase,
+	createFinaliseSchemaUseCase,
+	createDeprecateSchemaUseCase,
+	createSyncEventTypesUseCase,
+	createCreateDispatchPoolUseCase,
+	createUpdateDispatchPoolUseCase,
+	createDeleteDispatchPoolUseCase,
+	createSyncDispatchPoolsUseCase,
+	createCreateSubscriptionUseCase,
+	createUpdateSubscriptionUseCase,
+	createDeleteSubscriptionUseCase,
+	createSyncSubscriptionsUseCase,
+	createCreateIdentityProviderUseCase,
+	createUpdateIdentityProviderUseCase,
+	createDeleteIdentityProviderUseCase,
+	createCreateEmailDomainMappingUseCase,
+	createUpdateEmailDomainMappingUseCase,
+	createDeleteEmailDomainMappingUseCase,
+	createCreateServiceAccountUseCase,
+	createUpdateServiceAccountUseCase,
+	createDeleteServiceAccountUseCase,
+	createRegenerateAuthTokenUseCase,
+	createRegenerateSigningSecretUseCase,
+	createAssignServiceAccountRolesUseCase,
+	createAssignApplicationAccessUseCase,
+	createAddCorsOriginUseCase,
+	createDeleteCorsOriginUseCase,
 } from './application/index.js';
 
+/**
+ * Platform configuration options for in-process embedding.
+ */
+export interface PlatformConfig {
+	port?: number;
+	host?: string;
+	databaseUrl?: string;
+	logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+}
+
+/**
+ * Start the FlowCatalyst Platform service.
+ *
+ * @param config - Optional overrides for port, host, database, log level
+ * @returns The Fastify instance (ready and listening)
+ */
+export async function startPlatform(config?: PlatformConfig): Promise<FastifyInstance> {
 // Load environment
 const env = getEnv();
+
+const PORT = config?.port ?? env.PORT;
+const HOST = config?.host ?? env.HOST;
+const DATABASE_URL = config?.databaseUrl ?? env.DATABASE_URL;
+const LOG_LEVEL = config?.logLevel ?? env.LOG_LEVEL;
 
 // Initialize authorization system
 initializeAuthorization();
@@ -98,14 +170,14 @@ initializeAuthorization();
 const fastify = Fastify({
 	logger: createFastifyLoggerOptions({
 		serviceName: 'platform',
-		level: env.LOG_LEVEL,
+		level: LOG_LEVEL,
 	}),
 });
 
 fastify.log.info({ env: env.NODE_ENV }, 'Starting FlowCatalyst Platform service');
 
 // Create database connection
-const database = createDatabase({ url: env.DATABASE_URL });
+const database = createDatabase({ url: DATABASE_URL });
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = database.db as any;
 const transactionManager = createTransactionManager(db);
@@ -122,6 +194,24 @@ const clientAccessGrantRepository = createClientAccessGrantRepository(db);
 const clientAuthConfigRepository = createClientAuthConfigRepository(db);
 const oauthClientRepository = createOAuthClientRepository(db);
 const auditLogRepository = createAuditLogRepository(db);
+const eventTypeRepository = createEventTypeRepository(db);
+const dispatchPoolRepository = createDispatchPoolRepository(db);
+const subscriptionRepository = createSubscriptionRepository(db);
+const eventReadRepository = createEventReadRepository(db);
+const dispatchJobReadRepository = createDispatchJobReadRepository(db);
+const identityProviderRepository = createIdentityProviderRepository(db);
+const emailDomainMappingRepository = createEmailDomainMappingRepository(db);
+const idpRoleMappingRepository = createIdpRoleMappingRepository(db);
+const oidcLoginStateRepository = createOidcLoginStateRepository(db);
+const corsAllowedOriginRepository = createCorsAllowedOriginRepository(db);
+const platformConfigRepository = createPlatformConfigRepository(db);
+const platformConfigAccessRepository = createPlatformConfigAccessRepository(db);
+
+// Create platform config service
+const platformConfigService = createPlatformConfigService({
+	configRepository: platformConfigRepository,
+	accessRepository: platformConfigAccessRepository,
+});
 
 // Create aggregate registry and register handlers
 const aggregateRegistry = createAggregateRegistry();
@@ -134,6 +224,17 @@ aggregateRegistry.register(createAggregateHandler('AuthRole', roleRepository));
 aggregateRegistry.register(createAggregateHandler('ClientAccessGrant', clientAccessGrantRepository));
 aggregateRegistry.register(createAggregateHandler('ClientAuthConfig', clientAuthConfigRepository));
 aggregateRegistry.register(createAggregateHandler('OAuthClient', oauthClientRepository));
+aggregateRegistry.register(createAggregateHandler('EventType', eventTypeRepository));
+aggregateRegistry.register(createAggregateHandler('DispatchPool', dispatchPoolRepository));
+aggregateRegistry.register(createAggregateHandler('Subscription', subscriptionRepository));
+aggregateRegistry.register(createAggregateHandler('IdentityProvider', identityProviderRepository));
+aggregateRegistry.register(createAggregateHandler('EmailDomainMapping', emailDomainMappingRepository));
+aggregateRegistry.register(createAggregateHandler('CorsAllowedOrigin', corsAllowedOriginRepository));
+
+// Create event dispatch service (builds dispatch jobs for events inside UoW transaction)
+const eventDispatchService = createEventDispatchService({
+	subscriptionRepository,
+});
 
 // Create unit of work
 const unitOfWork = createDrizzleUnitOfWork({
@@ -145,6 +246,7 @@ const unitOfWork = createDrizzleUnitOfWork({
 		}
 		return null;
 	},
+	eventDispatchService,
 });
 
 // Create password service
@@ -155,7 +257,19 @@ const encryptionService = createEncryptionServiceFromEnv();
 
 // Compute OIDC issuer URL
 const oidcIssuer =
-	env.OIDC_ISSUER ?? env.EXTERNAL_BASE_URL ?? `http://localhost:${env.PORT}`;
+	env.OIDC_ISSUER ?? env.EXTERNAL_BASE_URL ?? `http://localhost:${PORT}`;
+
+// Initialize JWT key service (RS256 key pair)
+const jwtKeyService = await createJwtKeyService({
+	issuer: env.JWT_ISSUER,
+	privateKeyPath: env.JWT_PRIVATE_KEY_PATH,
+	publicKeyPath: env.JWT_PUBLIC_KEY_PATH,
+	devKeyDir: env.JWT_DEV_KEY_DIR,
+	sessionTokenTtl: env.OIDC_SESSION_TTL,
+	accessTokenTtl: env.OIDC_ACCESS_TOKEN_TTL,
+});
+
+fastify.log.info({ keyId: jwtKeyService.getKeyId() }, 'JWT key service initialized');
 
 // Create OIDC provider
 const oidcProvider = createOidcProvider({
@@ -165,6 +279,7 @@ const oidcProvider = createOidcProvider({
 	oauthClientRepository,
 	encryptionService,
 	cookieKeys: env.OIDC_COOKIES_KEYS,
+	jwks: jwtKeyService.getJwks(),
 	accessTokenTtl: env.OIDC_ACCESS_TOKEN_TTL,
 	idTokenTtl: env.OIDC_ID_TOKEN_TTL,
 	refreshTokenTtl: env.OIDC_REFRESH_TOKEN_TTL,
@@ -179,6 +294,8 @@ fastify.log.info({ issuer: oidcIssuer }, 'OIDC provider created');
 const createUserUseCase = createCreateUserUseCase({
 	principalRepository,
 	anchorDomainRepository,
+	emailDomainMappingRepository,
+	identityProviderRepository,
 	passwordService,
 	unitOfWork,
 });
@@ -203,31 +320,31 @@ const deleteUserUseCase = createDeleteUserUseCase({
 	unitOfWork,
 });
 
-// Client use cases
+// Client use cases (with resource-level guards)
 const createClientUseCase = createCreateClientUseCase({
 	clientRepository,
 	unitOfWork,
 });
 
-const updateClientUseCase = createUpdateClientUseCase({
-	clientRepository,
-	unitOfWork,
-});
+const updateClientUseCase = createGuardedUseCase(
+	createUpdateClientUseCase({ clientRepository, unitOfWork }),
+	clientAccessGuard((cmd) => cmd.clientId),
+);
 
-const changeClientStatusUseCase = createChangeClientStatusUseCase({
-	clientRepository,
-	unitOfWork,
-});
+const changeClientStatusUseCase = createGuardedUseCase(
+	createChangeClientStatusUseCase({ clientRepository, unitOfWork }),
+	clientAccessGuard((cmd) => cmd.clientId),
+);
 
-const deleteClientUseCase = createDeleteClientUseCase({
-	clientRepository,
-	unitOfWork,
-});
+const deleteClientUseCase = createGuardedUseCase(
+	createDeleteClientUseCase({ clientRepository, unitOfWork }),
+	clientAccessGuard((cmd) => cmd.clientId),
+);
 
-const addClientNoteUseCase = createAddClientNoteUseCase({
-	clientRepository,
-	unitOfWork,
-});
+const addClientNoteUseCase = createGuardedUseCase(
+	createAddClientNoteUseCase({ clientRepository, unitOfWork }),
+	clientAccessGuard((cmd) => cmd.clientId),
+);
 
 // Anchor domain use cases
 const createAnchorDomainUseCase = createCreateAnchorDomainUseCase({
@@ -261,17 +378,23 @@ const deleteApplicationUseCase = createDeleteApplicationUseCase({
 	unitOfWork,
 });
 
-const enableApplicationForClientUseCase = createEnableApplicationForClientUseCase({
-	applicationRepository,
-	clientRepository,
-	applicationClientConfigRepository,
-	unitOfWork,
-});
+const enableApplicationForClientUseCase = createGuardedUseCase(
+	createEnableApplicationForClientUseCase({
+		applicationRepository,
+		clientRepository,
+		applicationClientConfigRepository,
+		unitOfWork,
+	}),
+	clientAccessGuard((cmd) => cmd.clientId),
+);
 
-const disableApplicationForClientUseCase = createDisableApplicationForClientUseCase({
-	applicationClientConfigRepository,
-	unitOfWork,
-});
+const disableApplicationForClientUseCase = createGuardedUseCase(
+	createDisableApplicationForClientUseCase({
+		applicationClientConfigRepository,
+		unitOfWork,
+	}),
+	clientAccessGuard((cmd) => cmd.clientId),
+);
 
 const activateApplicationUseCase = createActivateApplicationUseCase({
 	applicationRepository,
@@ -306,18 +429,24 @@ const assignRolesUseCase = createAssignRolesUseCase({
 	unitOfWork,
 });
 
-const grantClientAccessUseCase = createGrantClientAccessUseCase({
-	principalRepository,
-	clientRepository,
-	clientAccessGrantRepository,
-	unitOfWork,
-});
+const grantClientAccessUseCase = createGuardedUseCase(
+	createGrantClientAccessUseCase({
+		principalRepository,
+		clientRepository,
+		clientAccessGrantRepository,
+		unitOfWork,
+	}),
+	clientAccessGuard((cmd) => cmd.clientId),
+);
 
-const revokeClientAccessUseCase = createRevokeClientAccessUseCase({
-	principalRepository,
-	clientAccessGrantRepository,
-	unitOfWork,
-});
+const revokeClientAccessUseCase = createGuardedUseCase(
+	createRevokeClientAccessUseCase({
+		principalRepository,
+		clientAccessGrantRepository,
+		unitOfWork,
+	}),
+	clientAccessGuard((cmd) => cmd.clientId),
+);
 
 // Auth config use cases
 const createInternalAuthConfigUseCase = createCreateInternalAuthConfigUseCase({
@@ -376,8 +505,228 @@ const deleteOAuthClientUseCase = createDeleteOAuthClientUseCase({
 	unitOfWork,
 });
 
+// EventType use cases
+const createEventTypeUseCase = createCreateEventTypeUseCase({
+	eventTypeRepository,
+	unitOfWork,
+});
+
+const updateEventTypeUseCase = createUpdateEventTypeUseCase({
+	eventTypeRepository,
+	unitOfWork,
+});
+
+const archiveEventTypeUseCase = createArchiveEventTypeUseCase({
+	eventTypeRepository,
+	unitOfWork,
+});
+
+const deleteEventTypeUseCase = createDeleteEventTypeUseCase({
+	eventTypeRepository,
+	unitOfWork,
+});
+
+const addSchemaUseCase = createAddSchemaUseCase({
+	eventTypeRepository,
+	unitOfWork,
+});
+
+const finaliseSchemaUseCase = createFinaliseSchemaUseCase({
+	eventTypeRepository,
+	unitOfWork,
+});
+
+const deprecateSchemaUseCase = createDeprecateSchemaUseCase({
+	eventTypeRepository,
+	unitOfWork,
+});
+
+const syncEventTypesUseCase = createSyncEventTypesUseCase({
+	eventTypeRepository,
+	unitOfWork,
+});
+
+// Dispatch Pool use cases (with client-scope guard for client-scoped pools)
+const createDispatchPoolUseCase = createGuardedUseCase(
+	createCreateDispatchPoolUseCase({
+		dispatchPoolRepository,
+		clientRepository,
+		unitOfWork,
+	}),
+	clientScopedGuard(),
+);
+
+const updateDispatchPoolUseCase = createUpdateDispatchPoolUseCase({
+	dispatchPoolRepository,
+	unitOfWork,
+});
+
+const deleteDispatchPoolUseCase = createDeleteDispatchPoolUseCase({
+	dispatchPoolRepository,
+	unitOfWork,
+});
+
+const syncDispatchPoolsUseCase = createSyncDispatchPoolsUseCase({
+	dispatchPoolRepository,
+	unitOfWork,
+});
+
+// Subscription use cases (with client-scope guard for client-scoped subs)
+const createSubscriptionUseCase = createGuardedUseCase(
+	createCreateSubscriptionUseCase({
+		subscriptionRepository,
+		dispatchPoolRepository,
+		unitOfWork,
+	}),
+	clientScopedGuard(),
+);
+
+const updateSubscriptionUseCase = createUpdateSubscriptionUseCase({
+	subscriptionRepository,
+	dispatchPoolRepository,
+	unitOfWork,
+});
+
+const deleteSubscriptionUseCase = createDeleteSubscriptionUseCase({
+	subscriptionRepository,
+	unitOfWork,
+});
+
+const syncSubscriptionsUseCase = createSyncSubscriptionsUseCase({
+	subscriptionRepository,
+	dispatchPoolRepository,
+	unitOfWork,
+});
+
+// Identity Provider use cases
+const createIdentityProviderUseCase = createCreateIdentityProviderUseCase({
+	identityProviderRepository,
+	unitOfWork,
+});
+
+const updateIdentityProviderUseCase = createUpdateIdentityProviderUseCase({
+	identityProviderRepository,
+	unitOfWork,
+});
+
+const deleteIdentityProviderUseCase = createDeleteIdentityProviderUseCase({
+	identityProviderRepository,
+	unitOfWork,
+});
+
+// Email Domain Mapping use cases
+const createEmailDomainMappingUseCase = createCreateEmailDomainMappingUseCase({
+	emailDomainMappingRepository,
+	identityProviderRepository,
+	unitOfWork,
+});
+
+const updateEmailDomainMappingUseCase = createUpdateEmailDomainMappingUseCase({
+	emailDomainMappingRepository,
+	identityProviderRepository,
+	unitOfWork,
+});
+
+const deleteEmailDomainMappingUseCase = createDeleteEmailDomainMappingUseCase({
+	emailDomainMappingRepository,
+	unitOfWork,
+});
+
+// Service Account use cases
+const createServiceAccountUseCase = createCreateServiceAccountUseCase({
+	principalRepository,
+	oauthClientRepository,
+	encryptionService,
+	unitOfWork,
+});
+
+const updateServiceAccountUseCase = createUpdateServiceAccountUseCase({
+	principalRepository,
+	unitOfWork,
+});
+
+const deleteServiceAccountUseCase = createDeleteServiceAccountUseCase({
+	principalRepository,
+	oauthClientRepository,
+	unitOfWork,
+});
+
+const regenerateAuthTokenUseCase = createRegenerateAuthTokenUseCase({
+	principalRepository,
+	encryptionService,
+	unitOfWork,
+});
+
+const regenerateSigningSecretUseCase = createRegenerateSigningSecretUseCase({
+	principalRepository,
+	encryptionService,
+	unitOfWork,
+});
+
+const assignServiceAccountRolesUseCase = createAssignServiceAccountRolesUseCase({
+	principalRepository,
+	roleRepository,
+	unitOfWork,
+});
+
+// CORS use cases
+const addCorsOriginUseCase = createAddCorsOriginUseCase({
+	corsAllowedOriginRepository,
+	unitOfWork,
+});
+
+const deleteCorsOriginUseCase = createDeleteCorsOriginUseCase({
+	corsAllowedOriginRepository,
+	unitOfWork,
+});
+
+// Application access use case
+const assignApplicationAccessUseCase = createAssignApplicationAccessUseCase({
+	principalRepository,
+	applicationRepository,
+	applicationClientConfigRepository,
+	clientAccessGrantRepository,
+	unitOfWork,
+});
+
 // Register plugins
 async function registerPlugins() {
+	// OpenAPI / Swagger
+	await fastify.register(swagger, {
+		openapi: {
+			openapi: '3.1.0',
+			info: {
+				title: 'FlowCatalyst Platform API',
+				version: '1.0.0',
+				description: 'IAM, Eventing, and Administration API for the FlowCatalyst platform.',
+			},
+			servers: [{ url: '/' }],
+			components: {
+				securitySchemes: {
+					bearerAuth: {
+						type: 'http',
+						scheme: 'bearer',
+						bearerFormat: 'JWT',
+					},
+					cookieAuth: {
+						type: 'apiKey',
+						in: 'cookie',
+						name: 'fc_session',
+					},
+				},
+			},
+			security: [{ bearerAuth: [] }],
+		},
+	});
+
+	await fastify.register(swaggerUi, {
+		routePrefix: '/docs',
+		uiConfig: {
+			docExpansion: 'list',
+			deepLinking: true,
+		},
+	});
+
 	// Cookie handling (required for session tokens)
 	await fastify.register(cookie);
 
@@ -387,18 +736,10 @@ async function registerPlugins() {
 	// Tracing (correlation IDs, execution IDs)
 	await fastify.register(tracingPlugin);
 
-	// Audit (authentication) - validates JWT tokens from oidc-provider
+	// Audit (authentication) - validates JWT tokens using RS256 key service
 	await fastify.register(auditPlugin, {
 		validateToken: async (token: string) => {
-			try {
-				// Use oidc-provider's token introspection
-				// For now, we'll decode and validate the JWT directly
-				// In production, use the introspection endpoint or JWKS validation
-				const payload = await validateOidcToken(token);
-				return payload?.sub ?? null;
-			} catch {
-				return null;
-			}
+			return jwtKeyService.validateAndGetPrincipalId(token);
 		},
 	});
 
@@ -411,24 +752,24 @@ async function registerPlugins() {
 	// Mount OIDC provider at /oidc
 	await mountOidcProvider(fastify, oidcProvider, '/oidc');
 
-	// Register well-known redirects for OIDC discovery
-	registerWellKnownRedirects(fastify, '/oidc');
+	// Register well-known routes (JWKS served directly, openid-configuration redirected)
+	registerWellKnownRoutes(fastify, '/oidc', jwtKeyService);
 
 	// Register OAuth compatibility routes (/oauth/* -> /oidc/*)
 	registerOAuthCompatibilityRoutes(fastify, oidcProvider, '/oidc');
 
-	// Register auth routes (/auth/login, /auth/logout, /auth/me)
+	// Register auth routes (/auth/login, /auth/logout, /auth/me, /auth/check-domain)
 	await registerAuthRoutes(fastify, {
 		principalRepository,
+		emailDomainMappingRepository,
+		identityProviderRepository,
+		clientRepository,
 		passwordService,
 		issueSessionToken: (principalId, email, roles, clients) => {
-			// Use oidc-provider's internal token issuance
-			// For now, create a simple JWT - in production this should use oidc-provider
-			return createSessionToken(principalId, email, roles, clients);
+			return jwtKeyService.issueSessionToken(principalId, email, roles, clients);
 		},
-		validateSessionToken: async (token) => {
-			const result = await validateOidcToken(token);
-			return result?.sub ?? null;
+		validateSessionToken: (token) => {
+			return jwtKeyService.validateAndGetPrincipalId(token);
 		},
 		cookieConfig: {
 			name: 'fc_session',
@@ -437,92 +778,55 @@ async function registerPlugins() {
 			maxAge: env.OIDC_SESSION_TTL ?? 86400,
 		},
 	});
-}
 
-/**
- * Validate an OIDC access token.
- * Uses jose to verify the JWT signature against the provider's JWKS.
- */
-async function validateOidcToken(token: string): Promise<{ sub: string } | null> {
-	try {
-		// Import jose dynamically to avoid circular dependencies
-		const { createRemoteJWKSet, jwtVerify } = await import('jose');
+	// Compute external base URL for OIDC federation callbacks
+	const externalBaseUrl = env.EXTERNAL_BASE_URL ?? `http://localhost:${PORT}`;
 
-		// Get JWKS from the provider
-		const jwksUri = new URL('/.well-known/jwks.json', oidcIssuer);
-		const JWKS = createRemoteJWKSet(jwksUri);
+	// Register OIDC federation routes (/auth/oidc/login, /auth/oidc/callback)
+	await registerOidcFederationRoutes(fastify, {
+		identityProviderRepository,
+		emailDomainMappingRepository,
+		principalRepository,
+		clientRepository,
+		roleRepository,
+		idpRoleMappingRepository,
+		oidcLoginStateRepository,
+		unitOfWork,
+		resolveClientSecret: async (idp) => {
+			if (!idp.oidcClientSecretRef) return undefined;
+			const result = encryptionService.decrypt(idp.oidcClientSecretRef);
+			return result.isOk() ? result.value : undefined;
+		},
+		issueSessionToken: (principalId, email, roles, clients) => {
+			return jwtKeyService.issueSessionToken(principalId, email, roles, clients);
+		},
+		cookieConfig: {
+			name: 'fc_session',
+			secure: !isDevelopment(),
+			sameSite: 'lax',
+			maxAge: env.OIDC_SESSION_TTL ?? 86400,
+		},
+		externalBaseUrl,
+	});
 
-		// Verify the token
-		const { payload } = await jwtVerify(token, JWKS, {
-			issuer: oidcIssuer,
-		});
-
-		if (typeof payload.sub === 'string') {
-			return { sub: payload.sub };
-		}
-
-		return null;
-	} catch {
-		return null;
-	}
-}
-
-// Session signing key (should be same as OIDC cookie keys in production)
-let sessionSigningKey: Uint8Array | null = null;
-
-/**
- * Get or create the session signing key.
- */
-function getSessionSigningKey(): Uint8Array {
-	if (!sessionSigningKey) {
-		// Use OIDC cookie keys if available, otherwise generate
-		const cookieKey = env.OIDC_COOKIES_KEYS?.[0] ?? 'flowcatalyst-dev-session-key';
-		sessionSigningKey = new TextEncoder().encode(cookieKey);
-	}
-	return sessionSigningKey;
-}
-
-/**
- * Create a session token for authenticated users.
- * This creates a JWT that can be validated by validateOidcToken.
- */
-function createSessionToken(
-	principalId: string,
-	email: string,
-	roles: string[],
-	clients: string[],
-): string {
-	// Use jose to create JWT synchronously with HS256
-	// Note: This is a simplified version - in production, use oidc-provider's token issuance
-	const { SignJWT } = require('jose') as typeof import('jose');
-	const key = getSessionSigningKey();
-
-	// Create JWT payload
-	const now = Math.floor(Date.now() / 1000);
-	const expiry = now + (env.OIDC_SESSION_TTL ?? 86400);
-
-	// Build JWT synchronously using the builder pattern
-	// Note: SignJWT.sign() is async, so we need to handle this differently
-	// For now, use a simple base64-encoded JSON token that we can validate
-	const payload = {
-		iss: oidcIssuer,
-		sub: principalId,
-		email,
-		roles,
-		'flowcatalyst:clients': clients,
-		iat: now,
-		exp: expiry,
-	};
-
-	// Simple HMAC-based token for session (not a full JWT, but signed)
-	const crypto = require('crypto');
-	const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
-	const signature = crypto
-		.createHmac('sha256', key)
-		.update(payloadB64)
-		.digest('base64url');
-
-	return `${payloadB64}.${signature}`;
+	// Register client selection routes (/auth/client/accessible, /auth/client/switch, /auth/client/current)
+	await registerClientSelectionRoutes(fastify, {
+		principalRepository,
+		clientRepository,
+		emailDomainMappingRepository,
+		issueSessionToken: (principalId, email, roles, clients) => {
+			return jwtKeyService.issueSessionToken(principalId, email, roles, clients);
+		},
+		validateSessionToken: (token) => {
+			return jwtKeyService.validateAndGetPrincipalId(token);
+		},
+		cookieConfig: {
+			name: 'fc_session',
+			secure: !isDevelopment(),
+			sameSite: 'lax',
+			maxAge: env.OIDC_SESSION_TTL ?? 86400,
+		},
+	});
 }
 
 // Register routes
@@ -594,38 +898,167 @@ async function registerRoutes() {
 		deleteOAuthClientUseCase,
 		// Audit log viewing
 		auditLogRepository,
+		// EventType management
+		eventTypeRepository,
+		createEventTypeUseCase,
+		updateEventTypeUseCase,
+		deleteEventTypeUseCase,
+		archiveEventTypeUseCase,
+		addSchemaUseCase,
+		finaliseSchemaUseCase,
+		deprecateSchemaUseCase,
+		syncEventTypesUseCase,
+		// Dispatch Pool management
+		dispatchPoolRepository,
+		createDispatchPoolUseCase,
+		updateDispatchPoolUseCase,
+		deleteDispatchPoolUseCase,
+		syncDispatchPoolsUseCase,
+		// Subscription management
+		subscriptionRepository,
+		createSubscriptionUseCase,
+		updateSubscriptionUseCase,
+		deleteSubscriptionUseCase,
+		syncSubscriptionsUseCase,
+		// Event & Dispatch Job read models
+		eventReadRepository,
+		dispatchJobReadRepository,
+		// Identity Provider management
+		identityProviderRepository,
+		createIdentityProviderUseCase,
+		updateIdentityProviderUseCase,
+		deleteIdentityProviderUseCase,
+		// Email Domain Mapping management
+		emailDomainMappingRepository,
+		createEmailDomainMappingUseCase,
+		updateEmailDomainMappingUseCase,
+		deleteEmailDomainMappingUseCase,
+		// Application access management
+		assignApplicationAccessUseCase,
+		// CORS origin management
+		corsAllowedOriginRepository,
+		addCorsOriginUseCase,
+		deleteCorsOriginUseCase,
+		// Platform config management
+		platformConfigService,
+		platformConfigAccessRepository,
+		// Service Account management
+		createServiceAccountUseCase,
+		updateServiceAccountUseCase,
+		deleteServiceAccountUseCase,
+		regenerateAuthTokenUseCase,
+		regenerateSigningSecretUseCase,
+		assignServiceAccountRolesUseCase,
 	};
 
 	await registerAdminRoutes(fastify, deps);
+
+	// BFF routes (frontend-facing)
+	const bffDeps: BffRoutesDeps = {
+		// Event type BFF
+		eventTypeRepository,
+		createEventTypeUseCase,
+		updateEventTypeUseCase,
+		deleteEventTypeUseCase,
+		archiveEventTypeUseCase,
+		addSchemaUseCase,
+		finaliseSchemaUseCase,
+		deprecateSchemaUseCase,
+		// Role BFF
+		roleRepository,
+		permissionRepository,
+		applicationRepository,
+		createRoleUseCase,
+		updateRoleUseCase,
+		deleteRoleUseCase,
+	};
+
+	await registerBffRoutes(fastify, bffDeps);
+
+	// SDK routes (external integrations)
+	const sdkDeps: SdkRoutesDeps = {
+		// SDK Clients
+		clientRepository,
+		createClientUseCase,
+		updateClientUseCase,
+		changeClientStatusUseCase,
+		deleteClientUseCase,
+		// SDK Roles
+		roleRepository,
+		applicationRepository,
+		createRoleUseCase,
+		updateRoleUseCase,
+		deleteRoleUseCase,
+		// SDK Principals
+		principalRepository,
+		clientAccessGrantRepository,
+		createUserUseCase,
+		updateUserUseCase,
+		activateUserUseCase,
+		deactivateUserUseCase,
+		assignRolesUseCase,
+		grantClientAccessUseCase,
+		revokeClientAccessUseCase,
+	};
+
+	await registerSdkRoutes(fastify, sdkDeps);
+
+	// User-facing /api/me routes
+	const meDeps: MeRoutesDeps = {
+		clientRepository,
+		applicationRepository,
+		applicationClientConfigRepository,
+	};
+
+	await registerMeApiRoutes(fastify, meDeps);
+
+	// Public routes (no auth required)
+	const publicDeps = {
+		platformConfigService,
+	};
+
+	await registerPublicApiRoutes(fastify, publicDeps);
+	await registerPlatformConfigApiRoutes(fastify, publicDeps);
+
+	// Debug BFF routes (raw event/dispatch job access)
+	const debugBffDeps = {
+		db,
+	};
+
+	await registerDebugBffRoutes(fastify, debugBffDeps);
 }
 
 // Start server
-async function start() {
-	try {
-		await registerPlugins();
-		await registerRoutes();
+await registerPlugins();
+await registerRoutes();
 
-		const port = env.PORT;
-		const host = env.HOST;
+fastify.log.info({ port: PORT, host: HOST }, 'Starting HTTP server');
 
-		fastify.log.info({ port, host }, 'Starting HTTP server');
+await fastify.listen({ port: PORT, host: HOST });
 
-		await fastify.listen({ port, host });
-
-		if (isDevelopment()) {
-			console.log(`\n  Platform API:     http://localhost:${port}/api`);
-			console.log(`  OIDC Discovery:   http://localhost:${port}/.well-known/openid-configuration`);
-			console.log(`  OIDC Auth:        http://localhost:${port}/oidc/auth`);
-			console.log(`  OIDC Token:       http://localhost:${port}/oidc/token`);
-			console.log(`  Health check:     http://localhost:${port}/health\n`);
-		}
-	} catch (err) {
-		fastify.log.error(err);
-		process.exit(1);
-	}
+if (isDevelopment()) {
+	console.log(`\n  Platform API:     http://localhost:${PORT}/api`);
+	console.log(`  OpenAPI Docs:     http://localhost:${PORT}/docs`);
+	console.log(`  OpenAPI JSON:     http://localhost:${PORT}/docs/json`);
+	console.log(`  OIDC Discovery:   http://localhost:${PORT}/.well-known/openid-configuration`);
+	console.log(`  OIDC Auth:        http://localhost:${PORT}/oidc/auth`);
+	console.log(`  OIDC Token:       http://localhost:${PORT}/oidc/token`);
+	console.log(`  OIDC Federation:  http://localhost:${PORT}/auth/oidc/login?domain=...`);
+	console.log(`  Health check:     http://localhost:${PORT}/health\n`);
 }
 
-start();
+return fastify;
+} // end startPlatform
 
-// Export app for testing
-export { fastify };
+// Run when executed as main module
+const isMainModule =
+	typeof process !== 'undefined' &&
+	process.argv[1] &&
+	(process.argv[1].endsWith('/index.ts') || process.argv[1].endsWith('/index.js'));
+
+if (isMainModule) {
+	startPlatform().catch((err) => {
+		console.error('Failed to start platform:', err);
+		process.exit(1);
+	});
+}

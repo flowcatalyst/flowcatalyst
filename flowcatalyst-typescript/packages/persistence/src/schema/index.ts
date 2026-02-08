@@ -39,14 +39,14 @@ export {
 	type DispatchErrorType,
 } from './dispatch-job-attempts.js';
 
-// Outbox schemas (CQRS change capture)
+// Projection feed schemas (CQRS change capture)
 export {
-	eventOutbox,
-	dispatchJobOutbox,
-	type EventOutboxRecord,
-	type NewEventOutboxRecord,
-	type DispatchJobOutboxRecord,
-	type NewDispatchJobOutboxRecord,
-	type OutboxOperation,
-	type OutboxProcessedStatus,
+	eventProjectionFeed,
+	dispatchJobProjectionFeed,
+	type EventProjectionFeedRecord,
+	type NewEventProjectionFeedRecord,
+	type DispatchJobProjectionFeedRecord,
+	type NewDispatchJobProjectionFeedRecord,
+	type ProjectionFeedOperation,
+	type ProjectionFeedProcessedStatus,
 } from './outbox.js';

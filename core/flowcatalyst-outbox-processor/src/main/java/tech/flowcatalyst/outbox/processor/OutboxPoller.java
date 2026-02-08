@@ -117,6 +117,9 @@ public class OutboxPoller {
             // Poll dispatch jobs
             pollItemType(OutboxItemType.DISPATCH_JOB);
 
+            // Poll audit logs
+            pollItemType(OutboxItemType.AUDIT_LOG);
+
         } catch (Exception e) {
             LOG.errorf(e, "Error during poll cycle");
         } finally {

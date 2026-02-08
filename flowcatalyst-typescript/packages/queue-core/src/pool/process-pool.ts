@@ -5,9 +5,9 @@ import type {
 	PoolStats,
 	QueueMessage,
 } from '@flowcatalyst/shared-types';
-import pLimit from 'p-limit';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import type { HttpMediator } from '../mediation/http-mediator.js';
+import { DynamicSemaphore } from './dynamic-semaphore.js';
 import { MessageGroupHandler } from './message-group-handler.js';
 
 /**
@@ -30,8 +30,8 @@ export class ProcessPool {
 	private state: PoolState = 'STARTING';
 	private readonly messageGroups = new Map<string, MessageGroupHandler>();
 
-	// Concurrency control
-	private concurrencyLimiter: ReturnType<typeof pLimit>;
+	// Concurrency control (in-place adjustable, unlike p-limit)
+	private readonly concurrencyLimiter: DynamicSemaphore;
 	// Rate limiting
 	private rateLimiter: RateLimiterMemory | null;
 
@@ -64,7 +64,7 @@ export class ProcessPool {
 		this.maxCapacity = Math.max(config.concurrency * 2, 50);
 
 		// Initialize concurrency limiter
-		this.concurrencyLimiter = pLimit(config.concurrency);
+		this.concurrencyLimiter = new DynamicSemaphore(config.concurrency);
 
 		// Initialize rate limiter
 		if (config.rateLimitPerMinute && config.rateLimitPerMinute > 0) {
@@ -178,7 +178,7 @@ export class ProcessPool {
 		}
 
 		// Step 2: Concurrency Control (Work logic)
-		await this.concurrencyLimiter(async () => {
+		await this.concurrencyLimiter.run(async () => {
 			try {
 				const startTime = Date.now();
 				const result = await this.mediator.process(message);
@@ -319,13 +319,10 @@ export class ProcessPool {
 		}
 
 		if (newConfig.concurrency !== undefined) {
-			// p-limit cannot update concurrency dynamically.
-			// We create a new limiter for future tasks.
-			// Existing tasks in the old queue will finish there.
-			this.concurrencyLimiter = pLimit(newConfig.concurrency);
+			this.concurrencyLimiter.setLimit(newConfig.concurrency);
 			this.logger.info(
 				{ concurrency: newConfig.concurrency },
-				'Concurrency updated (applies to new tasks)',
+				'Concurrency updated in-place',
 			);
 		}
 	}

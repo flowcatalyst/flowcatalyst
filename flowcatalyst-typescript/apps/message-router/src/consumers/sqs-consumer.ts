@@ -10,7 +10,6 @@ import type { Logger } from '@flowcatalyst/logging';
 import type {
 	MessageBatch,
 	MessagePointer,
-	MessagePointerSchema,
 	QueueMessage,
 	SqsQueueConfig,
 } from '@flowcatalyst/shared-types';

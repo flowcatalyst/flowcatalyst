@@ -1,25 +1,21 @@
-import { z } from 'zod';
-
 /**
  * Pool configuration - internal representation
  * Used for pool management, matches Java ProcessingPool
  */
-export const PoolConfigSchema = z.object({
+export interface PoolConfig {
 	/** Unique pool code */
-	code: z.string(),
+	code: string;
 	/** Max concurrent messages being processed */
-	concurrency: z.number().int().min(1).max(1000).default(10),
+	concurrency: number;
 	/** Rate limit in messages per minute (null = unlimited) */
-	rateLimitPerMinute: z.number().int().min(0).nullable().default(null),
+	rateLimitPerMinute: number | null;
 	/** Callback URL for HTTP mediation (optional for local/embedded pools) */
-	callbackUrl: z.string().url().optional(),
+	callbackUrl?: string | undefined;
 	/** Timeout for HTTP calls in milliseconds */
-	timeoutMs: z.number().int().min(1000).max(900000).default(60000).optional(),
+	timeoutMs?: number | undefined;
 	/** Number of retries for failed HTTP calls */
-	retries: z.number().int().min(0).max(10).default(3).optional(),
-});
-
-export type PoolConfig = z.infer<typeof PoolConfigSchema>;
+	retries?: number | undefined;
+}
 
 /**
  * Pool state for internal tracking

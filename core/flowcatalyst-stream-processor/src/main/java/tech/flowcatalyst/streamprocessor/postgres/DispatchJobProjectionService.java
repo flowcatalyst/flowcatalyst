@@ -22,12 +22,12 @@ import java.util.logging.Logger;
 /**
  * Projects dispatch job changes to dispatch_jobs_read using pure JDBC.
  *
- * <p>Reads from dispatch_job_changes table linearly (by id) and applies
+ * <p>Reads from dispatch_job_projection_feed table linearly (by id) and applies
  * INSERT or UPDATE operations to dispatch_jobs_read in batches.</p>
  *
  * <h2>Algorithm</h2>
  * <ol>
- *   <li>Poll: SELECT from dispatch_job_changes WHERE projected=false ORDER BY id LIMIT batchSize</li>
+ *   <li>Poll: SELECT from dispatch_job_projection_feed WHERE projected=false ORDER BY id LIMIT batchSize</li>
  *   <li>Batch INSERTs: multi-row INSERT ... ON CONFLICT</li>
  *   <li>Batch UPDATEs: UPDATE ... FROM (VALUES ...) with COALESCE</li>
  *   <li>Mark change records as projected</li>
@@ -171,7 +171,7 @@ public class DispatchJobProjectionService {
     private List<ChangeRecord> pollChanges() throws SQLException {
         String sql = """
             SELECT id, dispatch_job_id, operation, changes
-            FROM dispatch_job_changes
+            FROM dispatch_job_projection_feed
             WHERE projected = false
             ORDER BY id
             LIMIT ?
@@ -209,14 +209,16 @@ public class DispatchJobProjectionService {
                 target_url, protocol, service_account_id, client_id, subscription_id,
                 mode, dispatch_pool_id, message_group, status, max_retries,
                 attempt_count, last_attempt_at, completed_at, duration_millis, last_error,
-                created_at, updated_at, application, subdomain, aggregate
+                created_at, updated_at, application, subdomain, aggregate,
+                sequence, timeout_seconds, retry_strategy, scheduled_for, expires_at,
+                idempotency_key, is_completed, is_terminal, projected_at
             ) VALUES
             """);
 
-        // Build placeholders
+        // Build placeholders (37 columns)
         for (int i = 0; i < inserts.size(); i++) {
             if (i > 0) sql.append(",");
-            sql.append("\n(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            sql.append("\n(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         }
 
         sql.append("""
@@ -228,7 +230,12 @@ public class DispatchJobProjectionService {
                 completed_at = EXCLUDED.completed_at,
                 duration_millis = EXCLUDED.duration_millis,
                 last_error = EXCLUDED.last_error,
-                updated_at = EXCLUDED.updated_at
+                updated_at = EXCLUDED.updated_at,
+                scheduled_for = EXCLUDED.scheduled_for,
+                expires_at = EXCLUDED.expires_at,
+                is_completed = EXCLUDED.is_completed,
+                is_terminal = EXCLUDED.is_terminal,
+                projected_at = EXCLUDED.projected_at
             """);
 
         try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
@@ -241,7 +248,7 @@ public class DispatchJobProjectionService {
                 } catch (JsonProcessingException e) {
                     LOG.warning("Failed to parse INSERT changes for job " + change.dispatchJobId);
                     // Set all params to null for this row
-                    for (int i = 0; i < 28; i++) {
+                    for (int i = 0; i < 37; i++) {
                         ps.setNull(paramIndex++, Types.VARCHAR);
                     }
                     continue;
@@ -282,6 +289,16 @@ public class DispatchJobProjectionService {
                 ps.setString(paramIndex++, application);
                 ps.setString(paramIndex++, subdomain);
                 ps.setString(paramIndex++, aggregate);
+                // V2 columns
+                setNullableInt(ps, paramIndex++, getIntOrNull(job, "sequence"));
+                setNullableInt(ps, paramIndex++, getIntOrNull(job, "timeoutSeconds"));
+                ps.setString(paramIndex++, getTextOrNull(job, "retryStrategy"));
+                setNullableTimestamp(ps, paramIndex++, getInstantOrNull(job, "scheduledFor"));
+                setNullableTimestamp(ps, paramIndex++, getInstantOrNull(job, "expiresAt"));
+                ps.setString(paramIndex++, getTextOrNull(job, "idempotencyKey"));
+                setNullableBoolean(ps, paramIndex++, getBooleanOrNull(job, "isCompleted"));
+                setNullableBoolean(ps, paramIndex++, getBooleanOrNull(job, "isTerminal"));
+                setNullableTimestamp(ps, paramIndex++, Instant.now()); // projected_at
             }
 
             ps.executeUpdate();
@@ -313,7 +330,11 @@ public class DispatchJobProjectionService {
                 getInstantOrNull(patch, "completedAt"),
                 getLongOrNull(patch, "durationMillis"),
                 getTextOrNull(patch, "lastError"),
-                getInstantOrNull(patch, "updatedAt")
+                getInstantOrNull(patch, "updatedAt"),
+                getInstantOrNull(patch, "scheduledFor"),
+                getInstantOrNull(patch, "expiresAt"),
+                getBooleanOrNull(patch, "isCompleted"),
+                getBooleanOrNull(patch, "isTerminal")
             ));
         }
 
@@ -331,17 +352,22 @@ public class DispatchJobProjectionService {
                 completed_at = COALESCE(v.completed_at, t.completed_at),
                 duration_millis = COALESCE(v.duration_millis, t.duration_millis),
                 last_error = COALESCE(v.last_error, t.last_error),
-                updated_at = COALESCE(v.updated_at, t.updated_at)
+                updated_at = COALESCE(v.updated_at, t.updated_at),
+                scheduled_for = COALESCE(v.scheduled_for, t.scheduled_for),
+                expires_at = COALESCE(v.expires_at, t.expires_at),
+                is_completed = COALESCE(v.is_completed, t.is_completed),
+                is_terminal = COALESCE(v.is_terminal, t.is_terminal),
+                projected_at = NOW()
             FROM (VALUES
             """);
 
         for (int i = 0; i < rows.size(); i++) {
             if (i > 0) sql.append(",");
-            sql.append("\n(?, ?::varchar, ?::int, ?::timestamptz, ?::timestamptz, ?::bigint, ?::text, ?::timestamptz)");
+            sql.append("\n(?, ?::varchar, ?::int, ?::timestamptz, ?::timestamptz, ?::bigint, ?::text, ?::timestamptz, ?::timestamptz, ?::timestamptz, ?::boolean, ?::boolean)");
         }
 
         sql.append("""
-            ) AS v(id, status, attempt_count, last_attempt_at, completed_at, duration_millis, last_error, updated_at)
+            ) AS v(id, status, attempt_count, last_attempt_at, completed_at, duration_millis, last_error, updated_at, scheduled_for, expires_at, is_completed, is_terminal)
             WHERE t.id = v.id
             """);
 
@@ -357,6 +383,10 @@ public class DispatchJobProjectionService {
                 setNullableLong(ps, paramIndex++, row.durationMillis);
                 ps.setString(paramIndex++, row.lastError);
                 setNullableTimestamp(ps, paramIndex++, row.updatedAt);
+                setNullableTimestamp(ps, paramIndex++, row.scheduledFor);
+                setNullableTimestamp(ps, paramIndex++, row.expiresAt);
+                setNullableBoolean(ps, paramIndex++, row.isCompleted);
+                setNullableBoolean(ps, paramIndex++, row.isTerminal);
             }
 
             ps.executeUpdate();
@@ -364,7 +394,7 @@ public class DispatchJobProjectionService {
     }
 
     private void markProjected(Connection conn, List<ChangeRecord> changes) throws SQLException {
-        StringBuilder sql = new StringBuilder("UPDATE dispatch_job_changes SET projected = true WHERE id IN (");
+        StringBuilder sql = new StringBuilder("UPDATE dispatch_job_projection_feed SET projected = true WHERE id IN (");
         for (int i = 0; i < changes.size(); i++) {
             if (i > 0) sql.append(",");
             sql.append("?");
@@ -395,6 +425,10 @@ public class DispatchJobProjectionService {
         return node.has(field) && !node.get(field).isNull() ? node.get(field).asLong() : null;
     }
 
+    private Boolean getBooleanOrNull(JsonNode node, String field) {
+        return node.has(field) && !node.get(field).isNull() ? node.get(field).asBoolean() : null;
+    }
+
     private Instant getInstantOrNull(JsonNode node, String field) {
         if (node.has(field) && !node.get(field).isNull()) {
             try {
@@ -422,6 +456,14 @@ public class DispatchJobProjectionService {
         }
     }
 
+    private void setNullableBoolean(PreparedStatement ps, int index, Boolean value) throws SQLException {
+        if (value != null) {
+            ps.setBoolean(index, value);
+        } else {
+            ps.setNull(index, Types.BOOLEAN);
+        }
+    }
+
     private void setNullableTimestamp(PreparedStatement ps, int index, Instant value) throws SQLException {
         if (value != null) {
             ps.setTimestamp(index, Timestamp.from(value));
@@ -440,6 +482,10 @@ public class DispatchJobProjectionService {
         Instant completedAt,
         Long durationMillis,
         String lastError,
-        Instant updatedAt
+        Instant updatedAt,
+        Instant scheduledFor,
+        Instant expiresAt,
+        Boolean isCompleted,
+        Boolean isTerminal
     ) {}
 }

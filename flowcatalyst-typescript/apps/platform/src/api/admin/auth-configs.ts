@@ -12,8 +12,7 @@ import {
 	jsonSuccess,
 	noContent,
 	notFound,
-	badRequest,
-	safeValidate,
+	ErrorResponseSchema,
 } from '@flowcatalyst/http';
 import { Result } from '@flowcatalyst/application';
 import type { UseCase } from '@flowcatalyst/application';
@@ -39,7 +38,8 @@ import type { ClientAuthConfigRepository } from '../../infrastructure/persistenc
 import { requirePermission } from '../../authorization/index.js';
 import { AUTH_CONFIG_PERMISSIONS } from '../../authorization/permissions/platform-iam.js';
 
-// Request schemas using TypeBox
+// ─── Request Schemas ────────────────────────────────────────────────────────
+
 const CreateInternalAuthConfigSchema = Type.Object({
 	emailDomain: Type.String({ minLength: 1 }),
 	configType: Type.Union([Type.Literal('ANCHOR'), Type.Literal('PARTNER'), Type.Literal('CLIENT')]),
@@ -82,6 +82,14 @@ const UpdateGrantedClientsSchema = Type.Object({
 	clientIds: Type.Array(Type.String()),
 });
 
+const IdParam = Type.Object({ id: Type.String() });
+const DomainParam = Type.Object({ domain: Type.String() });
+
+const ListAuthConfigsQuery = Type.Object({
+	clientId: Type.Optional(Type.String()),
+	configType: Type.Optional(Type.String()),
+});
+
 type CreateInternalAuthConfigBody = Static<typeof CreateInternalAuthConfigSchema>;
 type CreateOidcAuthConfigBody = Static<typeof CreateOidcAuthConfigSchema>;
 type UpdateOidcSettingsBody = Static<typeof UpdateOidcSettingsSchema>;
@@ -89,28 +97,31 @@ type UpdateConfigTypeBody = Static<typeof UpdateConfigTypeSchema>;
 type UpdateAdditionalClientsBody = Static<typeof UpdateAdditionalClientsSchema>;
 type UpdateGrantedClientsBody = Static<typeof UpdateGrantedClientsSchema>;
 
-// Response schemas
-interface AuthConfigResponse {
-	id: string;
-	emailDomain: string;
-	configType: AuthConfigType;
-	primaryClientId: string | null;
-	additionalClientIds: string[];
-	grantedClientIds: string[];
-	authProvider: AuthProvider;
-	oidcIssuerUrl: string | null;
-	oidcClientId: string | null;
-	oidcMultiTenant: boolean;
-	oidcIssuerPattern: string | null;
-	hasClientSecret: boolean;
-	createdAt: string;
-	updatedAt: string;
-}
+// ─── Response Schemas ───────────────────────────────────────────────────────
 
-interface AuthConfigListResponse {
-	configs: AuthConfigResponse[];
-	total: number;
-}
+const AuthConfigResponseSchema = Type.Object({
+	id: Type.String(),
+	emailDomain: Type.String(),
+	configType: Type.String(),
+	primaryClientId: Type.Union([Type.String(), Type.Null()]),
+	additionalClientIds: Type.Array(Type.String()),
+	grantedClientIds: Type.Array(Type.String()),
+	authProvider: Type.String(),
+	oidcIssuerUrl: Type.Union([Type.String(), Type.Null()]),
+	oidcClientId: Type.Union([Type.String(), Type.Null()]),
+	oidcMultiTenant: Type.Boolean(),
+	oidcIssuerPattern: Type.Union([Type.String(), Type.Null()]),
+	hasClientSecret: Type.Boolean(),
+	createdAt: Type.String({ format: 'date-time' }),
+	updatedAt: Type.String({ format: 'date-time' }),
+});
+
+const AuthConfigListResponseSchema = Type.Object({
+	configs: Type.Array(AuthConfigResponseSchema),
+	total: Type.Integer(),
+});
+
+type AuthConfigResponse = Static<typeof AuthConfigResponseSchema>;
 
 /**
  * Dependencies for the auth configs API.
@@ -171,9 +182,15 @@ export async function registerAuthConfigsRoutes(
 		'/auth-configs',
 		{
 			preHandler: requirePermission(AUTH_CONFIG_PERMISSIONS.READ),
+			schema: {
+				querystring: ListAuthConfigsQuery,
+				response: {
+					200: AuthConfigListResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const query = request.query as { clientId?: string; configType?: string };
+			const query = request.query as Static<typeof ListAuthConfigsQuery>;
 
 			let configs: ClientAuthConfig[];
 			if (query.clientId) {
@@ -184,12 +201,10 @@ export async function registerAuthConfigsRoutes(
 				configs = await clientAuthConfigRepository.findAll();
 			}
 
-			const response: AuthConfigListResponse = {
+			return jsonSuccess(reply, {
 				configs: configs.map(toResponse),
 				total: configs.length,
-			};
-
-			return jsonSuccess(reply, response);
+			});
 		},
 	);
 
@@ -198,9 +213,16 @@ export async function registerAuthConfigsRoutes(
 		'/auth-configs/:id',
 		{
 			preHandler: requirePermission(AUTH_CONFIG_PERMISSIONS.READ),
+			schema: {
+				params: IdParam,
+				response: {
+					200: AuthConfigResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const config = await clientAuthConfigRepository.findById(id);
 
 			if (!config) {
@@ -216,9 +238,16 @@ export async function registerAuthConfigsRoutes(
 		'/auth-configs/by-domain/:domain',
 		{
 			preHandler: requirePermission(AUTH_CONFIG_PERMISSIONS.READ),
+			schema: {
+				params: DomainParam,
+				response: {
+					200: AuthConfigResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { domain } = request.params as { domain: string };
+			const { domain } = request.params as Static<typeof DomainParam>;
 			const config = await clientAuthConfigRepository.findByEmailDomain(domain);
 
 			if (!config) {
@@ -234,14 +263,17 @@ export async function registerAuthConfigsRoutes(
 		'/auth-configs/internal',
 		{
 			preHandler: requirePermission(AUTH_CONFIG_PERMISSIONS.CREATE),
+			schema: {
+				body: CreateInternalAuthConfigSchema,
+				response: {
+					201: AuthConfigResponseSchema,
+					400: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const bodyResult = safeValidate(request.body, CreateInternalAuthConfigSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as CreateInternalAuthConfigBody;
+			const body = request.body as CreateInternalAuthConfigBody;
 			const ctx = request.executionContext;
 
 			const command: CreateInternalAuthConfigCommand = {
@@ -270,14 +302,17 @@ export async function registerAuthConfigsRoutes(
 		'/auth-configs/oidc',
 		{
 			preHandler: requirePermission(AUTH_CONFIG_PERMISSIONS.CREATE),
+			schema: {
+				body: CreateOidcAuthConfigSchema,
+				response: {
+					201: AuthConfigResponseSchema,
+					400: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const bodyResult = safeValidate(request.body, CreateOidcAuthConfigSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as CreateOidcAuthConfigBody;
+			const body = request.body as CreateOidcAuthConfigBody;
 			const ctx = request.executionContext;
 
 			const command: CreateOidcAuthConfigCommand = {
@@ -311,15 +346,20 @@ export async function registerAuthConfigsRoutes(
 		'/auth-configs/:id/oidc',
 		{
 			preHandler: requirePermission(AUTH_CONFIG_PERMISSIONS.UPDATE),
+			schema: {
+				params: IdParam,
+				body: UpdateOidcSettingsSchema,
+				response: {
+					200: AuthConfigResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body, UpdateOidcSettingsSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as UpdateOidcSettingsBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as UpdateOidcSettingsBody;
 			const ctx = request.executionContext;
 
 			const command: UpdateOidcSettingsCommand = {
@@ -349,15 +389,20 @@ export async function registerAuthConfigsRoutes(
 		'/auth-configs/:id/config-type',
 		{
 			preHandler: requirePermission(AUTH_CONFIG_PERMISSIONS.UPDATE),
+			schema: {
+				params: IdParam,
+				body: UpdateConfigTypeSchema,
+				response: {
+					200: AuthConfigResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body, UpdateConfigTypeSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as UpdateConfigTypeBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as UpdateConfigTypeBody;
 			const ctx = request.executionContext;
 
 			const command: UpdateConfigTypeCommand = {
@@ -384,15 +429,19 @@ export async function registerAuthConfigsRoutes(
 		'/auth-configs/:id/additional-clients',
 		{
 			preHandler: requirePermission(AUTH_CONFIG_PERMISSIONS.UPDATE),
+			schema: {
+				params: IdParam,
+				body: UpdateAdditionalClientsSchema,
+				response: {
+					200: AuthConfigResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body, UpdateAdditionalClientsSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as UpdateAdditionalClientsBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as UpdateAdditionalClientsBody;
 			const ctx = request.executionContext;
 
 			const command: UpdateAdditionalClientsCommand = {
@@ -418,15 +467,19 @@ export async function registerAuthConfigsRoutes(
 		'/auth-configs/:id/granted-clients',
 		{
 			preHandler: requirePermission(AUTH_CONFIG_PERMISSIONS.UPDATE),
+			schema: {
+				params: IdParam,
+				body: UpdateGrantedClientsSchema,
+				response: {
+					200: AuthConfigResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body, UpdateGrantedClientsSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as UpdateGrantedClientsBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as UpdateGrantedClientsBody;
 			const ctx = request.executionContext;
 
 			const command: UpdateGrantedClientsCommand = {
@@ -452,9 +505,16 @@ export async function registerAuthConfigsRoutes(
 		'/auth-configs/:id',
 		{
 			preHandler: requirePermission(AUTH_CONFIG_PERMISSIONS.DELETE),
+			schema: {
+				params: IdParam,
+				response: {
+					204: Type.Null(),
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const ctx = request.executionContext;
 
 			const command: DeleteAuthConfigCommand = {

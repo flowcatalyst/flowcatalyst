@@ -72,6 +72,21 @@ public record EventType(
      */
     boolean clientScoped,
 
+    /**
+     * Application segment from code (first segment before ':').
+     */
+    String application,
+
+    /**
+     * Subdomain segment from code (second segment).
+     */
+    String subdomain,
+
+    /**
+     * Aggregate segment from code (third segment).
+     */
+    String aggregate,
+
     Instant createdAt,
 
     Instant updatedAt
@@ -131,6 +146,7 @@ public record EventType(
      */
     public static EventTypeBuilder create(String code, String name, boolean clientScoped) {
         var now = Instant.now();
+        var segments = parseCodeSegments(code);
         return EventType.builder()
             .id(TsidGenerator.generate(EntityType.EVENT_TYPE))
             .code(code)
@@ -139,6 +155,9 @@ public record EventType(
             .status(EventTypeStatus.CURRENT)
             .source(EventTypeSource.UI)
             .clientScoped(clientScoped)
+            .application(segments[0])
+            .subdomain(segments[1])
+            .aggregate(segments[2])
             .createdAt(now)
             .updatedAt(now);
     }
@@ -153,6 +172,7 @@ public record EventType(
      */
     public static EventTypeBuilder createFromApi(String code, String name, boolean clientScoped) {
         var now = Instant.now();
+        var segments = parseCodeSegments(code);
         return EventType.builder()
             .id(TsidGenerator.generate(EntityType.EVENT_TYPE))
             .code(code)
@@ -161,6 +181,9 @@ public record EventType(
             .status(EventTypeStatus.CURRENT)
             .source(EventTypeSource.API)
             .clientScoped(clientScoped)
+            .application(segments[0])
+            .subdomain(segments[1])
+            .aggregate(segments[2])
             .createdAt(now)
             .updatedAt(now);
     }
@@ -175,6 +198,7 @@ public record EventType(
      */
     public static EventTypeBuilder createFromCode(String code, String name, boolean clientScoped) {
         var now = Instant.now();
+        var segments = parseCodeSegments(code);
         return EventType.builder()
             .id(TsidGenerator.generate(EntityType.EVENT_TYPE))
             .code(code)
@@ -183,8 +207,24 @@ public record EventType(
             .status(EventTypeStatus.CURRENT)
             .source(EventTypeSource.CODE)
             .clientScoped(clientScoped)
+            .application(segments[0])
+            .subdomain(segments[1])
+            .aggregate(segments[2])
             .createdAt(now)
             .updatedAt(now);
+    }
+
+    /**
+     * Parse the first three segments from a code string (application:subdomain:aggregate:event).
+     * Returns a 3-element array: [application, subdomain, aggregate].
+     */
+    private static String[] parseCodeSegments(String code) {
+        var parts = code != null ? code.split(":") : new String[0];
+        return new String[] {
+            parts.length > 0 ? parts[0] : "",
+            parts.length > 1 ? parts[1] : "",
+            parts.length > 2 ? parts[2] : ""
+        };
     }
 
     /**

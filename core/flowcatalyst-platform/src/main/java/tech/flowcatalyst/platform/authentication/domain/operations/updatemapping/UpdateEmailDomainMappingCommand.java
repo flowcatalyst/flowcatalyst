@@ -15,6 +15,7 @@ import java.util.List;
  * @param grantedClientIds      New granted client IDs (optional)
  * @param requiredOidcTenantId  New required OIDC tenant ID (optional, use empty string to clear)
  * @param allowedRoleIds        New allowed role IDs (optional)
+ * @param syncRolesFromIdp      Whether to sync roles from the external IDP during OIDC login (optional, null = no change)
  */
 public record UpdateEmailDomainMappingCommand(
     String emailDomainMappingId,
@@ -24,5 +25,6 @@ public record UpdateEmailDomainMappingCommand(
     List<String> additionalClientIds,
     List<String> grantedClientIds,
     String requiredOidcTenantId,
-    List<String> allowedRoleIds
+    List<String> allowedRoleIds,
+    Boolean syncRolesFromIdp
 ) {}

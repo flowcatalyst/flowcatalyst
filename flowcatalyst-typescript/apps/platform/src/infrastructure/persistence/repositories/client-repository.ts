@@ -4,7 +4,7 @@
  * Data access for Client entities.
  */
 
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, inArray } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import {
 	type PaginatedRepository,
@@ -25,6 +25,8 @@ import { type Client, type NewClient, type ClientNote, type ClientStatus } from 
 export interface ClientRepository extends PaginatedRepository<Client> {
 	findByIdentifier(identifier: string, tx?: TransactionContext): Promise<Client | undefined>;
 	existsByIdentifier(identifier: string, tx?: TransactionContext): Promise<boolean>;
+	/** Paginated query scoped to accessible client IDs. Null = unrestricted. */
+	findPagedScoped(page: number, pageSize: number, clientIds: string[] | null, tx?: TransactionContext): Promise<PagedResult<Client>>;
 }
 
 /**
@@ -64,17 +66,32 @@ export function createClientRepository(defaultDb: AnyDb): ClientRepository {
 		},
 
 		async findPaged(page: number, pageSize: number, tx?: TransactionContext): Promise<PagedResult<Client>> {
-			const [countResult] = await db(tx)
-				.select({ count: sql<number>`count(*)` })
-				.from(clients);
+			return this.findPagedScoped(page, pageSize, null, tx);
+		},
+
+		async findPagedScoped(
+			page: number,
+			pageSize: number,
+			clientIds: string[] | null,
+			tx?: TransactionContext,
+		): Promise<PagedResult<Client>> {
+			const whereClause = clientIds && clientIds.length > 0
+				? inArray(clients.id, clientIds)
+				: clientIds !== null && clientIds?.length === 0
+					? sql`false` // No accessible clients = empty result
+					: undefined; // null = unrestricted
+
+			const countQuery = db(tx).select({ count: sql<number>`count(*)` }).from(clients);
+			const [countResult] = whereClause ? await countQuery.where(whereClause) : await countQuery;
 			const totalItems = Number(countResult?.count ?? 0);
 
-			const records = await db(tx)
+			const selectQuery = db(tx)
 				.select()
 				.from(clients)
 				.limit(pageSize)
 				.offset(page * pageSize)
 				.orderBy(clients.createdAt);
+			const records = whereClause ? await selectQuery.where(whereClause) : await selectQuery;
 
 			const items = records.map(recordToClient);
 			return createPagedResult(items, page, pageSize, totalItems);

@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 /**
  * Supported queue types
  */
@@ -15,72 +13,60 @@ export type QueueType = (typeof QueueType)[keyof typeof QueueType];
  * Base queue configuration - internal representation
  * Matches Java QueueConfig
  */
-export const BaseQueueConfigSchema = z.object({
+export interface BaseQueueConfig {
 	/** Queue URI (unique identifier) */
-	queueUri: z.string(),
+	queueUri: string;
 	/** Human-readable queue name */
-	queueName: z.string().nullable(),
+	queueName: string | null;
 	/** Number of parallel polling connections (null = use global) */
-	connections: z.number().int().min(1).max(10).nullable(),
-});
+	connections: number | null;
+}
 
 /**
  * SQS-specific configuration
  */
-export const SqsQueueConfigSchema = BaseQueueConfigSchema.extend({
-	type: z.literal('SQS'),
+export interface SqsQueueConfig extends BaseQueueConfig {
+	type: 'SQS';
 	/** AWS region */
-	region: z.string().default('us-east-1'),
+	region: string;
 	/** Long poll wait time in seconds */
-	waitTimeSeconds: z.number().int().min(0).max(20).default(20),
+	waitTimeSeconds: number;
 	/** Max messages per poll */
-	maxMessages: z.number().int().min(1).max(10).default(10),
+	maxMessages: number;
 	/** Visibility timeout in seconds */
-	visibilityTimeout: z.number().int().min(0).max(43200).default(30),
-});
-
-export type SqsQueueConfig = z.infer<typeof SqsQueueConfigSchema>;
+	visibilityTimeout: number;
+}
 
 /**
  * NATS-specific configuration
  */
-export const NatsQueueConfigSchema = BaseQueueConfigSchema.extend({
-	type: z.literal('NATS'),
+export interface NatsQueueConfig extends BaseQueueConfig {
+	type: 'NATS';
 	/** NATS server URLs */
-	servers: z.array(z.string()).min(1),
+	servers: string[];
 	/** Stream name */
-	stream: z.string(),
+	stream: string;
 	/** Consumer name */
-	consumer: z.string(),
+	consumer: string;
 	/** Subject to subscribe to */
-	subject: z.string(),
-});
-
-export type NatsQueueConfig = z.infer<typeof NatsQueueConfigSchema>;
+	subject: string;
+}
 
 /**
  * Embedded queue configuration (for local dev)
  */
-export const EmbeddedQueueConfigSchema = BaseQueueConfigSchema.extend({
-	type: z.literal('EMBEDDED'),
+export interface EmbeddedQueueConfig extends BaseQueueConfig {
+	type: 'EMBEDDED';
 	/** SQLite database path */
-	dbPath: z.string().default(':memory:'),
+	dbPath: string;
 	/** Visibility timeout in seconds */
-	visibilityTimeout: z.number().int().min(0).max(3600).default(30),
-});
-
-export type EmbeddedQueueConfig = z.infer<typeof EmbeddedQueueConfigSchema>;
+	visibilityTimeout: number;
+}
 
 /**
  * Union of all queue configurations
  */
-export const QueueConfigSchema = z.discriminatedUnion('type', [
-	SqsQueueConfigSchema,
-	NatsQueueConfigSchema,
-	EmbeddedQueueConfigSchema,
-]);
-
-export type QueueConfig = z.infer<typeof QueueConfigSchema>;
+export type QueueConfig = SqsQueueConfig | NatsQueueConfig | EmbeddedQueueConfig;
 
 /**
  * Internal queue statistics tracking

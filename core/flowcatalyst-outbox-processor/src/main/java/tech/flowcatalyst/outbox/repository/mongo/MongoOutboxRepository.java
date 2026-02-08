@@ -43,7 +43,10 @@ public class MongoOutboxRepository implements OutboxRepository {
         MongoCollection<Document> collection = getCollection(type);
         List<OutboxItem> items = new ArrayList<>();
 
-        Bson filter = Filters.eq("status", OutboxStatus.PENDING.getCode());
+        Bson filter = Filters.and(
+            Filters.eq("status", OutboxStatus.PENDING.getCode()),
+            Filters.eq("type", type.name())
+        );
         Bson sort = Sorts.ascending("messageGroup", "createdAt");
 
         try (MongoCursor<Document> cursor = collection.find(filter)
@@ -112,7 +115,10 @@ public class MongoOutboxRepository implements OutboxRepository {
         MongoCollection<Document> collection = getCollection(type);
         List<OutboxItem> items = new ArrayList<>();
 
-        Bson filter = Filters.eq("status", OutboxStatus.IN_PROGRESS.getCode());
+        Bson filter = Filters.and(
+            Filters.eq("status", OutboxStatus.IN_PROGRESS.getCode()),
+            Filters.eq("type", type.name())
+        );
         Bson sort = Sorts.ascending("createdAt");
 
         try (MongoCursor<Document> cursor = collection.find(filter).sort(sort).iterator()) {
@@ -175,6 +181,7 @@ public class MongoOutboxRepository implements OutboxRepository {
                 OutboxStatus.FORBIDDEN.getCode(),
                 OutboxStatus.GATEWAY_ERROR.getCode()
             ),
+            Filters.eq("type", type.name()),
             Filters.lt("updatedAt", cutoff)
         );
         Bson sort = Sorts.ascending("createdAt");
@@ -210,7 +217,10 @@ public class MongoOutboxRepository implements OutboxRepository {
     @Override
     public long countPending(OutboxItemType type) {
         MongoCollection<Document> collection = getCollection(type);
-        Bson filter = Filters.eq("status", OutboxStatus.PENDING.getCode());
+        Bson filter = Filters.and(
+            Filters.eq("status", OutboxStatus.PENDING.getCode()),
+            Filters.eq("type", type.name())
+        );
         return collection.countDocuments(filter);
     }
 
@@ -246,6 +256,12 @@ public class MongoOutboxRepository implements OutboxRepository {
                 stuckIndexOptions
             );
 
+            // SDK-specific: client polling
+            collection.createIndex(
+                Indexes.ascending("clientId", "status", "createdAt"),
+                new IndexOptions().name("idx_client_pending")
+            );
+
             LOG.infof("Created indexes on %s", collName);
         }
     }
@@ -257,7 +273,11 @@ public class MongoOutboxRepository implements OutboxRepository {
     }
 
     private String getCollectionName(OutboxItemType type) {
-        return type == OutboxItemType.EVENT ? config.eventsTable() : config.dispatchJobsTable();
+        return switch (type) {
+            case EVENT -> config.eventsTable();
+            case DISPATCH_JOB -> config.dispatchJobsTable();
+            case AUDIT_LOG -> config.auditLogsTable();
+        };
     }
 
     private OutboxItem mapDocument(Document doc, OutboxItemType type) {

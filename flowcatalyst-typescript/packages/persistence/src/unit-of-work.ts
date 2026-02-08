@@ -23,6 +23,7 @@ import type { AggregateRegistry } from './aggregate-registry.js';
 import type { TransactionContext, TransactionManager } from './transaction.js';
 import { events, type NewEvent, type EventContextData } from './schema/events.js';
 import { auditLogs, type NewAuditLog } from './schema/audit-logs.js';
+import { eventProjectionFeed } from './schema/outbox.js';
 
 /**
  * Configuration for the Drizzle Unit of Work.
@@ -34,6 +35,14 @@ export interface DrizzleUnitOfWorkConfig {
 	readonly aggregateRegistry: AggregateRegistry;
 	/** Optional: Function to extract client ID from aggregates */
 	readonly extractClientId?: (aggregate: Aggregate) => string | null;
+	/** Optional: Service to build dispatch jobs for events within the transaction */
+	readonly eventDispatchService?: {
+		buildDispatchJobsForEvent(
+			event: DomainEvent,
+			clientId: string | null,
+			db: PostgresJsDatabase,
+		): Promise<void>;
+	};
 }
 
 /**
@@ -55,7 +64,7 @@ export interface DrizzleUnitOfWorkConfig {
  * ```
  */
 export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOfWork {
-	const { transactionManager, aggregateRegistry, extractClientId } = config;
+	const { transactionManager, aggregateRegistry, extractClientId, eventDispatchService } = config;
 
 	return {
 		async commit<T extends DomainEvent>(aggregate: Aggregate, event: T, command: unknown): Promise<Result<T>> {
@@ -65,12 +74,18 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
 					await aggregateRegistry.persist(aggregate as never, tx);
 
 					// 2. Create the event record
-					await createEventRecord(tx.db, event, extractClientId?.(aggregate) ?? null);
+					const clientId = extractClientId?.(aggregate) ?? null;
+					await createEventRecord(tx.db, event, clientId);
 
-					// 3. Create the audit log
+					// 3. Build dispatch jobs for matching subscriptions
+					if (eventDispatchService) {
+						await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
+					}
+
+					// 4. Create the audit log
 					await createAuditLogRecord(tx.db, event, command);
 
-					// 4. Return success (only UnitOfWork can do this)
+					// 5. Return success (only UnitOfWork can do this)
 					return Result.success(RESULT_SUCCESS_TOKEN, event);
 				});
 			} catch (error) {
@@ -91,12 +106,18 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
 					await aggregateRegistry.delete(aggregate as never, tx);
 
 					// 2. Create the event record
-					await createEventRecord(tx.db, event, extractClientId?.(aggregate) ?? null);
+					const clientId = extractClientId?.(aggregate) ?? null;
+					await createEventRecord(tx.db, event, clientId);
 
-					// 3. Create the audit log
+					// 3. Build dispatch jobs for matching subscriptions
+					if (eventDispatchService) {
+						await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
+					}
+
+					// 4. Create the audit log
 					await createAuditLogRecord(tx.db, event, command);
 
-					// 4. Return success
+					// 5. Return success
 					return Result.success(RESULT_SUCCESS_TOKEN, event);
 				});
 			} catch (error) {
@@ -127,10 +148,15 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
 					const clientId = firstAggregate !== undefined ? (extractClientId?.(firstAggregate) ?? null) : null;
 					await createEventRecord(tx.db, event, clientId);
 
-					// 3. Create the audit log
+					// 3. Build dispatch jobs for matching subscriptions
+					if (eventDispatchService) {
+						await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
+					}
+
+					// 4. Create the audit log
 					await createAuditLogRecord(tx.db, event, command);
 
-					// 4. Return success
+					// 5. Return success
 					return Result.success(RESULT_SUCCESS_TOKEN, event);
 				});
 			} catch (error) {
@@ -180,6 +206,24 @@ async function createEventRecord(db: PostgresJsDatabase, event: DomainEvent, cli
 	};
 
 	await db.insert(events).values(newEvent);
+
+	// Write to event projection feed for stream-processor projection to events_read
+	await db.insert(eventProjectionFeed).values({
+		eventId: event.eventId,
+		payload: {
+			specVersion: event.specVersion,
+			type: event.eventType,
+			source: event.source,
+			subject: event.subject,
+			time: event.time.toISOString(),
+			data: event.toDataJson(),
+			correlationId: event.correlationId,
+			causationId: event.causationId,
+			deduplicationId: `${event.eventType}-${event.eventId}`,
+			messageGroup: event.messageGroup,
+			clientId,
+		},
+	});
 }
 
 /**

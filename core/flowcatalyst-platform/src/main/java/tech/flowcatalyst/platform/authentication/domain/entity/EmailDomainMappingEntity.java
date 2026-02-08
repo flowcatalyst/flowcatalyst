@@ -70,6 +70,9 @@ public class EmailDomainMappingEntity {
     @Column(name = "role_id", length = 17)
     public List<String> allowedRoleIds = new ArrayList<>();
 
+    @Column(name = "sync_roles_from_idp", nullable = false)
+    public boolean syncRolesFromIdp = false;
+
     @Column(name = "created_at", nullable = false)
     public Instant createdAt;
 

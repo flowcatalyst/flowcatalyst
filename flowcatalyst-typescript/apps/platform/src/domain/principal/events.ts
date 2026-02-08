@@ -196,6 +196,37 @@ export class RolesAssigned extends BaseDomainEvent<RolesAssignedData> {
 }
 
 // -----------------------------------------------------------------------------
+// ApplicationAccessAssigned
+// -----------------------------------------------------------------------------
+
+export interface ApplicationAccessAssignedData {
+	readonly userId: string;
+	readonly applicationIds: readonly string[];
+	readonly added: readonly string[];
+	readonly removed: readonly string[];
+	readonly [key: string]: unknown;
+}
+
+export class ApplicationAccessAssigned extends BaseDomainEvent<ApplicationAccessAssignedData> {
+	static readonly EVENT_TYPE = DomainEvent.eventType(APP, DOMAIN, 'user', 'application-access-assigned');
+	static readonly SPEC_VERSION = '1.0';
+
+	constructor(ctx: ExecutionContext, data: ApplicationAccessAssignedData) {
+		super(
+			{
+				eventType: ApplicationAccessAssigned.EVENT_TYPE,
+				specVersion: ApplicationAccessAssigned.SPEC_VERSION,
+				source: SOURCE,
+				subject: DomainEvent.subject(APP, 'user', data.userId),
+				messageGroup: DomainEvent.messageGroup(APP, 'user', data.userId),
+			},
+			ctx,
+			data,
+		);
+	}
+}
+
+// -----------------------------------------------------------------------------
 // ClientAccessGranted
 // -----------------------------------------------------------------------------
 

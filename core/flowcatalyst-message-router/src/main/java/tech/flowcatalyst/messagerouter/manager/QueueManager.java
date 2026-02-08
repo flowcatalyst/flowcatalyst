@@ -42,18 +42,18 @@ import java.util.concurrent.locks.ReentrantLock;
 public class QueueManager implements MessageCallback {
 
     private static final Logger LOG = Logger.getLogger(QueueManager.class);
-    private static final int MIN_QUEUE_CAPACITY = 50;  // Reduced from 500 to prevent large buffers
-    private static final int QUEUE_CAPACITY_MULTIPLIER = 2;  // Buffer size = concurrency * 2 (allows some headroom)
+    private static final int MIN_QUEUE_CAPACITY = 50;
+    private static final int QUEUE_CAPACITY_MULTIPLIER = 20;  // Buffer size = concurrency * 20 (generous headroom for burst traffic)
     private static final String DEFAULT_POOL_CODE = "DEFAULT-POOL";
     private static final int DEFAULT_POOL_CONCURRENCY = 20;
 
     @ConfigProperty(name = "message-router.enabled", defaultValue = "true")
     boolean messageRouterEnabled;
 
-    @ConfigProperty(name = "message-router.max-pools", defaultValue = "2000")
+    @ConfigProperty(name = "message-router.max-pools", defaultValue = "10000")
     int maxPools;
 
-    @ConfigProperty(name = "message-router.pool-warning-threshold", defaultValue = "1000")
+    @ConfigProperty(name = "message-router.pool-warning-threshold", defaultValue = "5000")
     int poolWarningThreshold;
 
     @Inject
@@ -1383,7 +1383,7 @@ public class QueueManager implements MessageCallback {
      * @return list of in-flight messages
      */
     public java.util.List<tech.flowcatalyst.messagerouter.model.InFlightMessage> getInFlightMessages(
-            int limit, String messageIdFilter) {
+            int limit, String messageIdFilter, String poolCodeFilter) {
         return inFlightTracker.stream()
             .map(tracked -> {
                 String brokerMessageId = tracked.pipelineKey();
@@ -1401,6 +1401,8 @@ public class QueueManager implements MessageCallback {
             })
             .filter(msg -> messageIdFilter == null || messageIdFilter.isEmpty() ||
                     msg.messageId().toLowerCase().contains(messageIdFilter.toLowerCase()))
+            .filter(msg -> poolCodeFilter == null || poolCodeFilter.isEmpty() ||
+                    msg.poolCode().equalsIgnoreCase(poolCodeFilter))
             .sorted(java.util.Comparator.comparingLong(
                 tech.flowcatalyst.messagerouter.model.InFlightMessage::elapsedTimeMs).reversed())
             .limit(limit)

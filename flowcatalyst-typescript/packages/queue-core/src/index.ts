@@ -2,6 +2,7 @@
 export * from './consumer/queue-consumer.js';
 
 // Process pool
+export * from './pool/dynamic-semaphore.js';
 export * from './pool/process-pool.js';
 export * from './pool/message-group-handler.js';
 

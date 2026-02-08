@@ -4,7 +4,7 @@
  * Loads and validates environment variables for the platform service.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
 
 const envSchema = z.object({
 	// Server
@@ -20,7 +20,7 @@ const envSchema = z.object({
 	LOG_PRETTY: z
 		.string()
 		.transform((v) => v === 'true')
-		.default('true'),
+		.prefault('true'),
 
 	// Auth / OIDC
 	JWT_SECRET: z.string().optional(),
@@ -36,6 +36,11 @@ const envSchema = z.object({
 		.string()
 		.optional()
 		.transform((v) => (v ? v.split(',') : undefined)), // Comma-separated cookie signing keys
+
+	// JWT RS256 key paths (production)
+	JWT_PRIVATE_KEY_PATH: z.string().optional(),
+	JWT_PUBLIC_KEY_PATH: z.string().optional(),
+	JWT_DEV_KEY_DIR: z.string().default('.jwt-keys'),
 
 	// Encryption key for secrets (Base64-encoded 32-byte key)
 	FLOWCATALYST_APP_KEY: z.string().optional(),

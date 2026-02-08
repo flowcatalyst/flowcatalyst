@@ -1,65 +1,69 @@
-import { OpenAPIHono } from '@hono/zod-openapi';
+import Fastify, { type FastifyInstance } from 'fastify';
 import type { Logger } from '@flowcatalyst/logging';
-import { healthRoutes } from './api/health.js';
-import { configRoutes } from './api/config.js';
-import { monitoringRoutes } from './api/monitoring.js';
-import { testRoutes } from './api/test.js';
-import { seedRoutes } from './api/seed.js';
-import { metricsRoutes } from './api/metrics.js';
-import { benchmarkRoutes } from './api/benchmark.js';
 import { createServices, type Services } from './services/index.js';
-import { createAuthMiddleware, type AuthConfig, type AuthUser } from './security/index.js';
+import { servicesPlugin } from './plugins/services-plugin.js';
+import { authPlugin, type AuthConfig } from './plugins/auth-plugin.js';
+import { healthRoutes } from './routes/health.js';
+import { configRoutes } from './routes/config.js';
+import { monitoringRoutes } from './routes/monitoring.js';
+import { testRoutes } from './routes/test.js';
+import { seedRoutes } from './routes/seed.js';
+import { metricsRoutes } from './routes/metrics.js';
+import { benchmarkRoutes } from './routes/benchmark.js';
 import { env } from './env.js';
 
 /**
- * Application context available in all routes
+ * Create the Fastify application with all routes
  */
-export interface AppContext {
-	Variables: {
-		logger: Logger;
-		services: Services;
-		user?: AuthUser;
-	};
-}
-
-/**
- * Create the Hono application with all routes
- */
-export function createApp(logger: Logger) {
-	const app = new OpenAPIHono<AppContext>();
+export async function createApp(logger: Logger): Promise<{ app: FastifyInstance; services: Services }> {
+	const app = Fastify({
+		logger: false, // We use our own pino logger
+	});
 
 	// Initialize services
 	const services = createServices(logger);
 
-	// Middleware to inject logger and services
-	app.use('*', async (c, next) => {
-		c.set('logger', logger);
-		c.set('services', services);
-		await next();
-	});
+	// Register plugins
+	await app.register(servicesPlugin, { services });
 
-	// Request logging middleware
-	app.use('*', async (c, next) => {
-		const start = Date.now();
-		await next();
-		const duration = Date.now() - start;
+	// Auth plugin
+	const authConfig: AuthConfig = {
+		enabled: env.AUTHENTICATION_ENABLED,
+		mode: env.AUTHENTICATION_MODE,
+		basic:
+			env.AUTH_BASIC_USERNAME && env.AUTH_BASIC_PASSWORD
+				? { username: env.AUTH_BASIC_USERNAME, password: env.AUTH_BASIC_PASSWORD }
+				: undefined,
+		oidc: env.OIDC_ISSUER_URL
+			? {
+					issuerUrl: env.OIDC_ISSUER_URL,
+					clientId: env.OIDC_CLIENT_ID,
+					audience: env.OIDC_AUDIENCE || env.OIDC_CLIENT_ID,
+				}
+			: undefined,
+	};
+	await app.register(authPlugin, { config: authConfig, logger });
 
-		// Skip logging for health checks in production
-		if (!c.req.path.startsWith('/health') || duration > 100) {
+	// Request logging hook
+	app.addHook('onResponse', (request, reply, done) => {
+		const duration = reply.elapsedTime;
+		// Skip logging for health checks in production unless slow
+		if (!request.url.startsWith('/health') || duration > 100) {
 			logger.info(
 				{
-					method: c.req.method,
-					path: c.req.path,
-					status: c.res.status,
-					duration,
+					method: request.method,
+					path: request.url,
+					status: reply.statusCode,
+					duration: Math.round(duration),
 				},
 				'Request completed',
 			);
 		}
+		done();
 	});
 
 	// Static assets
-	app.get('/tailwind.css', async (c) => {
+	app.get('/tailwind.css', async (_request, reply) => {
 		try {
 			const fs = await import('node:fs/promises');
 			const path = await import('node:path');
@@ -70,67 +74,48 @@ export function createApp(logger: Logger) {
 			const cssPath = path.join(__dirname, '../public/tailwind.css');
 
 			const css = await fs.readFile(cssPath, 'utf-8');
-			return c.text(css, 200, { 'Content-Type': 'text/css' });
+			return reply.type('text/css').send(css);
 		} catch {
-			return c.text('Not found', 404);
+			return reply.code(404).send('Not found');
 		}
 	});
 
-	// Create authentication middleware
-	const authConfig: AuthConfig = {
-		enabled: env.AUTHENTICATION_ENABLED,
-		mode: env.AUTHENTICATION_MODE,
-		basic: env.AUTH_BASIC_USERNAME && env.AUTH_BASIC_PASSWORD
-			? { username: env.AUTH_BASIC_USERNAME, password: env.AUTH_BASIC_PASSWORD }
-			: undefined,
-		oidc: env.OIDC_ISSUER_URL
-			? {
-					issuerUrl: env.OIDC_ISSUER_URL,
-					clientId: env.OIDC_CLIENT_ID,
-					audience: env.OIDC_AUDIENCE || env.OIDC_CLIENT_ID,
-				}
-			: undefined,
-	};
-
-	const authMiddleware = createAuthMiddleware(authConfig, logger);
-
-	// Apply authentication to protected routes
-	app.use('/api/*', authMiddleware);
-	app.use('/monitoring/*', authMiddleware);
-
 	// Mount routes - exact paths matching Java API
 	// Public routes (no auth required)
-	app.route('/health', healthRoutes);
-	app.route('/metrics', metricsRoutes);
+	await app.register(healthRoutes, { prefix: '/health' });
+	await app.register(metricsRoutes, { prefix: '/metrics' });
 
-	// Protected routes (auth required if enabled)
-	app.route('/api/config', configRoutes);
-	app.route('/api/test', testRoutes);
-	app.route('/api/seed', seedRoutes);
-	app.route('/api/benchmark', benchmarkRoutes);
-	app.route('/monitoring', monitoringRoutes);
+	// Protected routes (auth required if enabled - handled by auth plugin hook)
+	await app.register(configRoutes, { prefix: '/api/config' });
+	await app.register(testRoutes, { prefix: '/api/test' });
+	await app.register(seedRoutes, { prefix: '/api/seed' });
+	await app.register(benchmarkRoutes, { prefix: '/api/benchmark' });
+	await app.register(monitoringRoutes, { prefix: '/monitoring' });
 
 	// OpenAPI documentation
-	app.doc('/openapi.json', {
-		openapi: '3.1.0',
-		info: {
-			title: 'FlowCatalyst Message Router API',
-			version: '1.0.0',
-			description: 'Message routing and processing service',
+	await app.register(import('@fastify/swagger'), {
+		openapi: {
+			openapi: '3.1.0',
+			info: {
+				title: 'FlowCatalyst Message Router API',
+				version: '1.0.0',
+				description: 'Message routing and processing service',
+			},
 		},
+	});
+	await app.register(import('@fastify/swagger-ui'), {
+		routePrefix: '/docs',
 	});
 
 	// Error handler
-	app.onError((err, c) => {
-		logger.error({ err, path: c.req.path }, 'Unhandled error');
-		return c.json(
-			{
-				status: 'error',
-				message: err.message,
-			},
-			500,
-		);
+	app.setErrorHandler((error, request, reply) => {
+		const err = error as Error & { statusCode?: number };
+		logger.error({ err, path: request.url }, 'Unhandled error');
+		return reply.code(err.statusCode ?? 500).send({
+			status: 'error',
+			message: err.message,
+		});
 	});
 
-	return app;
+	return { app, services };
 }

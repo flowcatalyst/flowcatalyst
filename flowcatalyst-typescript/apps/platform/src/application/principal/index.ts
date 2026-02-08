@@ -59,3 +59,10 @@ export {
 	createRevokeClientAccessUseCase,
 	type RevokeClientAccessUseCaseDeps,
 } from './revoke-client-access/index.js';
+
+// Assign Application Access
+export {
+	type AssignApplicationAccessCommand,
+	createAssignApplicationAccessUseCase,
+	type AssignApplicationAccessUseCaseDeps,
+} from './assign-application-access/index.js';

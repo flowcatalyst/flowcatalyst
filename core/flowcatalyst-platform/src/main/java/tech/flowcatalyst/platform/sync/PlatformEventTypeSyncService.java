@@ -128,6 +128,7 @@ public class PlatformEventTypeSyncService {
                 }
 
                 // Create new event type
+                var segments = def.code().split(":");
                 EventType newType = new EventType(
                     TsidGenerator.generate(EntityType.EVENT_TYPE),
                     def.code(),
@@ -137,6 +138,9 @@ public class PlatformEventTypeSyncService {
                     EventTypeStatus.CURRENT,
                     EventTypeSource.CODE,
                     def.clientScoped(),
+                    segments.length > 0 ? segments[0] : "",
+                    segments.length > 1 ? segments[1] : "",
+                    segments.length > 2 ? segments[2] : "",
                     now,
                     now
                 );
@@ -155,6 +159,9 @@ public class PlatformEventTypeSyncService {
                         existing.status(),
                         EventTypeSource.CODE,
                         def.clientScoped(),
+                        existing.application(),
+                        existing.subdomain(),
+                        existing.aggregate(),
                         existing.createdAt(),
                         now
                     );

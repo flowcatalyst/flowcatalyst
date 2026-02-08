@@ -11,10 +11,12 @@ import org.jboss.logging.Logger;
 import tech.flowcatalyst.platform.authentication.AuthConfig;
 import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
 import tech.flowcatalyst.platform.authentication.JwtKeyService;
+import tech.flowcatalyst.platform.authentication.OidcSyncService;
 import tech.flowcatalyst.platform.authentication.domain.EmailDomainMapping;
 import tech.flowcatalyst.platform.authentication.idp.IdentityProvider;
 import tech.flowcatalyst.platform.authentication.idp.IdentityProviderService;
 import tech.flowcatalyst.platform.authentication.idp.IdentityProviderType;
+import tech.flowcatalyst.platform.authorization.AllowedRoleFilter;
 import tech.flowcatalyst.platform.client.Client;
 import tech.flowcatalyst.platform.client.ClientRepository;
 import tech.flowcatalyst.platform.principal.Principal;
@@ -73,6 +75,12 @@ public class OidcLoginResource {
 
     @Inject
     ClientRepository clientRepository;
+
+    @Inject
+    OidcSyncService oidcSyncService;
+
+    @Inject
+    AllowedRoleFilter allowedRoleFilter;
 
     @Inject
     JwksService jwksService;
@@ -287,6 +295,18 @@ public class OidcLoginResource {
 
             // Find or create user
             Principal principal = findOrCreateUser(claims, mapping);
+
+            // Sync IDP roles if enabled for this domain mapping
+            if (mapping.syncRolesFromIdp) {
+                var idpRoleNames = extractIdpRoles(tokens.idToken);
+                if (!idpRoleNames.isEmpty()) {
+                    var allowedNames = allowedRoleFilter.getAllowedRoleNames(mapping.emailDomain)
+                        .orElse(null);
+                    oidcSyncService.syncIdpRoles(principal, idpRoleNames, allowedNames);
+                    // Re-read principal to get updated roles after sync
+                    principal = userService.findById(principal.id).orElse(principal);
+                }
+            }
 
             // Load roles from embedded Principal.roles
             Set<String> roles = loadRoles(principal);
@@ -619,6 +639,58 @@ public class OidcLoginResource {
 
     private Set<String> loadRoles(Principal principal) {
         return principal.getRoleNames();
+    }
+
+    /**
+     * Extract role names from an ID token.
+     * Checks common claims: realm_access.roles (Keycloak), roles (generic), groups (Entra).
+     */
+    private List<String> extractIdpRoles(String idToken) {
+        try {
+            String[] parts = idToken.split("\\.");
+            if (parts.length != 3) return List.of();
+
+            String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+            JsonNode payload = MAPPER.readTree(payloadJson);
+
+            List<String> roles = new ArrayList<>();
+
+            // Keycloak: realm_access.roles
+            JsonNode realmAccess = payload.path("realm_access").path("roles");
+            if (realmAccess.isArray()) {
+                for (JsonNode role : realmAccess) {
+                    roles.add(role.asText());
+                }
+            }
+
+            // Generic: roles
+            JsonNode rolesNode = payload.path("roles");
+            if (rolesNode.isArray()) {
+                for (JsonNode role : rolesNode) {
+                    String roleName = role.asText();
+                    if (!roles.contains(roleName)) {
+                        roles.add(roleName);
+                    }
+                }
+            }
+
+            // Entra: groups
+            JsonNode groupsNode = payload.path("groups");
+            if (groupsNode.isArray()) {
+                for (JsonNode group : groupsNode) {
+                    String groupName = group.asText();
+                    if (!roles.contains(groupName)) {
+                        roles.add(groupName);
+                    }
+                }
+            }
+
+            LOG.debugf("Extracted %d IDP roles from token", roles.size());
+            return roles;
+        } catch (Exception e) {
+            LOG.warnf(e, "Failed to extract IDP roles from token");
+            return List.of();
+        }
     }
 
     /**

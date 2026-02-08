@@ -48,6 +48,15 @@ public class EventTypeEntity {
     @Column(name = "client_scoped", nullable = false)
     public boolean clientScoped;
 
+    @Column(name = "application", nullable = false, length = 100)
+    public String application;
+
+    @Column(name = "subdomain", nullable = false, length = 100)
+    public String subdomain;
+
+    @Column(name = "aggregate", nullable = false, length = 100)
+    public String aggregate;
+
     @Column(name = "created_at", nullable = false)
     public Instant createdAt;
 

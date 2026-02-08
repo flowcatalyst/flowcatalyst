@@ -12,7 +12,12 @@
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { PrincipalRepository } from '../persistence/repositories/principal-repository.js';
+import type { EmailDomainMappingRepository } from '../persistence/repositories/email-domain-mapping-repository.js';
+import type { IdentityProviderRepository } from '../persistence/repositories/identity-provider-repository.js';
+import type { ClientRepository } from '../persistence/repositories/client-repository.js';
 import type { PasswordService } from '@flowcatalyst/platform-crypto';
+import { getMappingAccessibleClientIds } from '../../domain/email-domain-mapping/email-domain-mapping.js';
+import { getEffectiveIssuerPattern } from '../../domain/identity-provider/identity-provider.js';
 
 /**
  * Session cookie configuration.
@@ -33,8 +38,11 @@ export interface SessionCookieConfig {
  */
 export interface AuthRoutesDeps {
 	principalRepository: PrincipalRepository;
+	emailDomainMappingRepository: EmailDomainMappingRepository;
+	identityProviderRepository: IdentityProviderRepository;
+	clientRepository: ClientRepository;
 	passwordService: PasswordService;
-	issueSessionToken: (principalId: string, email: string, roles: string[], clients: string[]) => string;
+	issueSessionToken: (principalId: string, email: string, roles: string[], clients: string[]) => Promise<string>;
 	validateSessionToken: (token: string) => Promise<string | null>;
 	cookieConfig: SessionCookieConfig;
 }
@@ -48,9 +56,20 @@ interface LoginRequest {
 }
 
 /**
- * Login response.
+ * Login response (used for POST /auth/login).
  */
 interface LoginResponse {
+	principalId: string;
+	name: string;
+	email: string;
+	roles: string[];
+	clientId: string | null;
+}
+
+/**
+ * Session user response (used for GET /auth/me).
+ */
+interface SessionUserResponse {
 	principalId: string;
 	name: string;
 	email: string;
@@ -119,11 +138,11 @@ export async function registerAuthRoutes(
 		// Load roles
 		const roles = principal.roles.map((r) => r.roleName);
 
-		// Determine accessible clients
-		const clients = determineAccessibleClients(principal);
+		// Determine accessible clients (using email domain mapping for richer client access)
+		const clients = await determineAccessibleClients(principal, deps);
 
 		// Issue session token
-		const token = issueSessionToken(
+		const token = await issueSessionToken(
 			principal.id,
 			principal.userIdentity.email,
 			roles,
@@ -198,7 +217,7 @@ export async function registerAuthRoutes(
 
 		const roles = principal.roles.map((r) => r.roleName);
 
-		const response: LoginResponse = {
+		const response: SessionUserResponse = {
 			principalId: principal.id,
 			name: principal.name,
 			email: principal.userIdentity?.email ?? '',
@@ -209,28 +228,87 @@ export async function registerAuthRoutes(
 		return reply.send(response);
 	});
 
-	fastify.log.info('Auth routes registered (/auth/login, /auth/logout, /auth/me)');
+	/**
+	 * POST /auth/check-domain
+	 * Determine authentication method for an email domain.
+	 * Returns 'internal' for password auth, 'external' with IDP URL for SSO.
+	 */
+	fastify.post<{ Body: { email?: string } }>('/auth/check-domain', async (request, reply) => {
+		const email = request.body?.email;
+
+		if (!email || typeof email !== 'string' || email.trim() === '') {
+			return reply.status(400).send({ error: 'Email is required' });
+		}
+
+		const normalised = email.toLowerCase().trim();
+		const atIndex = normalised.indexOf('@');
+		if (atIndex < 0) {
+			return reply.status(400).send({ error: 'Invalid email format' });
+		}
+
+		const domain = normalised.substring(atIndex + 1);
+
+		// Look up email domain mapping -> identity provider
+		const mapping = await deps.emailDomainMappingRepository.findByEmailDomain(domain);
+		if (!mapping) {
+			return reply.send({ authMethod: 'internal', loginUrl: null, idpIssuer: null });
+		}
+
+		const idp = await deps.identityProviderRepository.findById(mapping.identityProviderId);
+		if (!idp) {
+			return reply.send({ authMethod: 'internal', loginUrl: null, idpIssuer: null });
+		}
+
+		// Check if OIDC is configured (supports multi-tenant IDPs)
+		const isOidcConfigured = idp.type === 'OIDC' &&
+			(idp.oidcIssuerUrl !== null || (idp.oidcMultiTenant && getEffectiveIssuerPattern(idp) !== null));
+
+		if (isOidcConfigured) {
+			const loginUrl = `/auth/oidc/login?domain=${domain}`;
+			const issuerInfo = idp.oidcIssuerUrl ?? getEffectiveIssuerPattern(idp);
+			return reply.send({ authMethod: 'external', loginUrl, idpIssuer: issuerInfo });
+		}
+
+		return reply.send({ authMethod: 'internal', loginUrl: null, idpIssuer: null });
+	});
+
+	fastify.log.info('Auth routes registered (/auth/login, /auth/logout, /auth/me, /auth/check-domain)');
 }
 
 /**
- * Determine which clients the user can access based on their scope.
+ * Determine which clients the user can access based on their scope and email domain mapping.
+ * Uses EmailDomainMapping for richer client access (additionalClientIds, grantedClientIds).
  */
-function determineAccessibleClients(principal: {
-	scope: string | null;
-	clientId: string | null;
-	roles: readonly { roleName: string }[];
-}): string[] {
+async function determineAccessibleClients(
+	principal: {
+		scope: string | null;
+		clientId: string | null;
+		roles: readonly { roleName: string }[];
+		userIdentity: { emailDomain: string } | null;
+	},
+	deps: AuthRoutesDeps,
+): Promise<string[]> {
 	// Check explicit scope
 	if (principal.scope) {
 		switch (principal.scope) {
 			case 'ANCHOR':
 				return ['*'];
 			case 'CLIENT':
-			case 'PARTNER':
+			case 'PARTNER': {
+				// Try to use EmailDomainMapping for richer client access
+				if (principal.userIdentity?.emailDomain) {
+					const mapping = await deps.emailDomainMappingRepository.findByEmailDomain(principal.userIdentity.emailDomain);
+					if (mapping) {
+						const clientIds = getMappingAccessibleClientIds(mapping);
+						return formatClientEntries(clientIds, deps.clientRepository);
+					}
+				}
+				// Fallback to just the home client
 				if (principal.clientId) {
 					return [principal.clientId];
 				}
 				return [];
+			}
 		}
 	}
 
@@ -248,4 +326,22 @@ function determineAccessibleClients(principal: {
 	}
 
 	return [];
+}
+
+/**
+ * Format client IDs as "id:identifier" entries for the clients claim.
+ */
+async function formatClientEntries(clientIds: string[], clientRepository: ClientRepository): Promise<string[]> {
+	if (clientIds.length === 0) return [];
+
+	const entries: string[] = [];
+	for (const id of clientIds) {
+		const client = await clientRepository.findById(id);
+		if (client && 'identifier' in client && client.identifier) {
+			entries.push(`${id}:${client.identifier}`);
+		} else {
+			entries.push(id);
+		}
+	}
+	return entries;
 }

@@ -75,8 +75,8 @@ class QueueManagerTest {
             mockWarningService,
             mockMeterRegistry,
             true,  // messageRouterEnabled
-            2000,  // maxPools
-            1000   // poolWarningThreshold
+            10000, // maxPools
+            5000   // poolWarningThreshold
         );
 
         // Access internal fields (still need reflection for these, but only for verification)

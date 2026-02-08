@@ -8,7 +8,7 @@ export const envSchema = z.object({
 	PORT: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('8080'),
+		.prefault('8080'),
 	HOST: z.string().default('0.0.0.0'),
 	NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
@@ -19,24 +19,24 @@ export const envSchema = z.object({
 	MESSAGE_ROUTER_ENABLED: z
 		.string()
 		.transform((v) => v === 'true')
-		.default('true'),
+		.prefault('true'),
 	QUEUE_TYPE: z.enum(['SQS', 'NATS', 'ACTIVEMQ', 'EMBEDDED']).default('EMBEDDED'),
 	SYNC_INTERVAL_MS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('300000'), // 5 minutes
+		.prefault('300000'), // 5 minutes
 	MAX_POOLS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('2000'),
+		.prefault('10000'),
 	POOL_WARNING_THRESHOLD: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('1000'),
+		.prefault('5000'),
 	DEFAULT_CONNECTIONS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('1'),
+		.prefault('1'),
 
 	// AWS/SQS Configuration
 	AWS_REGION: z.string().default('eu-west-1'),
@@ -45,7 +45,7 @@ export const envSchema = z.object({
 	SQS_ENDPOINT: z.string().optional(), // For LocalStack
 
 	// Platform Configuration Client
-	PLATFORM_URL: z.string().url().optional(),
+	PLATFORM_URL: z.url().optional(),
 	PLATFORM_API_KEY: z.string().optional(),
 
 	// HTTP Mediation Configuration
@@ -68,7 +68,7 @@ export const envSchema = z.object({
 	MEDIATION_CONNECT_TIMEOUT_MS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('5000'),
+		.prefault('5000'),
 
 	/**
 	 * Request timeout in milliseconds.
@@ -78,7 +78,7 @@ export const envSchema = z.object({
 	MEDIATION_REQUEST_TIMEOUT_MS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('900000'),
+		.prefault('900000'),
 
 	/**
 	 * Headers timeout in milliseconds.
@@ -88,7 +88,7 @@ export const envSchema = z.object({
 	MEDIATION_HEADERS_TIMEOUT_MS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('30000'),
+		.prefault('30000'),
 
 	/**
 	 * Number of retries for failed HTTP calls.
@@ -98,7 +98,7 @@ export const envSchema = z.object({
 	MEDIATION_RETRIES: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('3'),
+		.prefault('3'),
 
 	/**
 	 * Initial retry delay in milliseconds.
@@ -108,7 +108,7 @@ export const envSchema = z.object({
 	MEDIATION_RETRY_DELAY_MS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('1000'),
+		.prefault('1000'),
 
 	// Instance identification
 	INSTANCE_ID: z.string().default(() => `router-${Date.now()}`),
@@ -121,7 +121,7 @@ export const envSchema = z.object({
 	AUTHENTICATION_ENABLED: z
 		.string()
 		.transform((v) => v === 'true')
-		.default('false'),
+		.prefault('false'),
 
 	/**
 	 * Authentication mode: NONE, BASIC, or OIDC.
@@ -163,7 +163,7 @@ export const envSchema = z.object({
 	NOTIFICATION_ENABLED: z
 		.string()
 		.transform((v) => v === 'true')
-		.default('false'),
+		.prefault('false'),
 
 	/**
 	 * Batch interval in milliseconds for grouping warnings.
@@ -172,7 +172,7 @@ export const envSchema = z.object({
 	NOTIFICATION_BATCH_INTERVAL_MS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('300000'),
+		.prefault('300000'),
 
 	/**
 	 * Minimum severity for notifications: INFO, WARNING, ERROR, CRITICAL.
@@ -190,7 +190,7 @@ export const envSchema = z.object({
 	NOTIFICATION_EMAIL_ENABLED: z
 		.string()
 		.transform((v) => v === 'true')
-		.default('false'),
+		.prefault('false'),
 
 	/**
 	 * Email sender address.
@@ -214,7 +214,7 @@ export const envSchema = z.object({
 	SMTP_PORT: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('587'),
+		.prefault('587'),
 
 	/**
 	 * SMTP username for authentication.
@@ -233,7 +233,7 @@ export const envSchema = z.object({
 	SMTP_SECURE: z
 		.string()
 		.transform((v) => v === 'true')
-		.default('true'),
+		.prefault('true'),
 
 	// Teams Webhook Notification Configuration
 	/**
@@ -243,7 +243,7 @@ export const envSchema = z.object({
 	NOTIFICATION_TEAMS_ENABLED: z
 		.string()
 		.transform((v) => v === 'true')
-		.default('false'),
+		.prefault('false'),
 
 	/**
 	 * Microsoft Teams incoming webhook URL.
@@ -298,7 +298,7 @@ export const envSchema = z.object({
 	NATS_MAX_MESSAGES_PER_POLL: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('10'),
+		.prefault('10'),
 
 	/**
 	 * Poll timeout in seconds.
@@ -307,7 +307,7 @@ export const envSchema = z.object({
 	NATS_POLL_TIMEOUT_SECONDS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('20'),
+		.prefault('20'),
 
 	/**
 	 * Ack wait timeout in seconds.
@@ -316,7 +316,7 @@ export const envSchema = z.object({
 	NATS_ACK_WAIT_SECONDS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('120'),
+		.prefault('120'),
 
 	/**
 	 * Max delivery attempts before message goes to DLQ.
@@ -325,7 +325,7 @@ export const envSchema = z.object({
 	NATS_MAX_DELIVER: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('10'),
+		.prefault('10'),
 
 	/**
 	 * Max messages awaiting acknowledgment.
@@ -334,7 +334,7 @@ export const envSchema = z.object({
 	NATS_MAX_ACK_PENDING: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('1000'),
+		.prefault('1000'),
 
 	/**
 	 * Storage type: 'file' for production, 'memory' for dev.
@@ -349,7 +349,7 @@ export const envSchema = z.object({
 	NATS_REPLICAS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('1'),
+		.prefault('1'),
 
 	/**
 	 * Max age of messages in days.
@@ -358,7 +358,7 @@ export const envSchema = z.object({
 	NATS_MAX_AGE_DAYS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('7'),
+		.prefault('7'),
 
 	// ActiveMQ Configuration
 	/**
@@ -374,7 +374,7 @@ export const envSchema = z.object({
 	ACTIVEMQ_PORT: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('61613'),
+		.prefault('61613'),
 
 	/**
 	 * ActiveMQ username.
@@ -395,7 +395,7 @@ export const envSchema = z.object({
 	ACTIVEMQ_RECEIVE_TIMEOUT_MS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('1000'),
+		.prefault('1000'),
 
 	/**
 	 * ActiveMQ prefetch count per consumer.
@@ -404,7 +404,7 @@ export const envSchema = z.object({
 	ACTIVEMQ_PREFETCH_COUNT: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('1'),
+		.prefault('1'),
 
 	/**
 	 * ActiveMQ redelivery delay in milliseconds.
@@ -413,7 +413,7 @@ export const envSchema = z.object({
 	ACTIVEMQ_REDELIVERY_DELAY_MS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('30000'),
+		.prefault('30000'),
 
 	// Embedded Queue Configuration
 	/**
@@ -431,7 +431,7 @@ export const envSchema = z.object({
 	EMBEDDED_VISIBILITY_TIMEOUT_SECONDS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('30'),
+		.prefault('30'),
 
 	/**
 	 * Poll interval when queue is empty in milliseconds.
@@ -440,7 +440,7 @@ export const envSchema = z.object({
 	EMBEDDED_RECEIVE_TIMEOUT_MS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('1000'),
+		.prefault('1000'),
 
 	/**
 	 * Maximum messages per batch for embedded queue.
@@ -449,7 +449,7 @@ export const envSchema = z.object({
 	EMBEDDED_MAX_MESSAGES: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('10'),
+		.prefault('10'),
 
 	/**
 	 * Metrics poll interval for embedded queue in milliseconds.
@@ -458,7 +458,7 @@ export const envSchema = z.object({
 	EMBEDDED_METRICS_POLL_INTERVAL_MS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('5000'),
+		.prefault('5000'),
 
 	// Traffic Management Configuration (Standby Mode)
 	/**
@@ -470,7 +470,7 @@ export const envSchema = z.object({
 	TRAFFIC_MANAGEMENT_ENABLED: z
 		.string()
 		.transform((v) => v === 'true')
-		.default('false'),
+		.prefault('false'),
 
 	/**
 	 * Traffic management strategy name.
@@ -499,7 +499,7 @@ export const envSchema = z.object({
 	ALB_TARGET_PORT: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('8080'),
+		.prefault('8080'),
 
 	/**
 	 * Deregistration delay in seconds (time to wait for connection draining).
@@ -508,7 +508,7 @@ export const envSchema = z.object({
 	ALB_DEREGISTRATION_DELAY_SECONDS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('300'),
+		.prefault('300'),
 
 	// Health Check Configuration
 	/**
@@ -518,7 +518,7 @@ export const envSchema = z.object({
 	HEALTH_CHECK_ENABLED: z
 		.string()
 		.transform((v) => v === 'true')
-		.default('true'),
+		.prefault('true'),
 
 	/**
 	 * Broker health check interval in milliseconds.
@@ -527,7 +527,7 @@ export const envSchema = z.object({
 	HEALTH_CHECK_INTERVAL_MS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('60000'),
+		.prefault('60000'),
 
 	/**
 	 * Broker health check timeout in milliseconds.
@@ -536,7 +536,7 @@ export const envSchema = z.object({
 	HEALTH_CHECK_TIMEOUT_MS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('5000'),
+		.prefault('5000'),
 
 	/**
 	 * Number of consecutive failures before generating warning.
@@ -545,7 +545,7 @@ export const envSchema = z.object({
 	HEALTH_CHECK_FAILURE_THRESHOLD: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('3'),
+		.prefault('3'),
 
 	// Queue Health Monitor Configuration
 	/**
@@ -555,7 +555,7 @@ export const envSchema = z.object({
 	QUEUE_HEALTH_MONITOR_ENABLED: z
 		.string()
 		.transform((v) => v === 'true')
-		.default('true'),
+		.prefault('true'),
 
 	/**
 	 * Queue backlog threshold - depth above this generates warning.
@@ -564,7 +564,7 @@ export const envSchema = z.object({
 	QUEUE_HEALTH_BACKLOG_THRESHOLD: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('1000'),
+		.prefault('1000'),
 
 	/**
 	 * Queue growth threshold - per-period growth above this counts as growing.
@@ -573,7 +573,7 @@ export const envSchema = z.object({
 	QUEUE_HEALTH_GROWTH_THRESHOLD: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('100'),
+		.prefault('100'),
 
 	/**
 	 * Queue health check interval in milliseconds.
@@ -582,7 +582,7 @@ export const envSchema = z.object({
 	QUEUE_HEALTH_INTERVAL_MS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('30000'),
+		.prefault('30000'),
 
 	/**
 	 * Number of consecutive growth periods before warning.
@@ -591,7 +591,7 @@ export const envSchema = z.object({
 	QUEUE_HEALTH_GROWTH_PERIODS: z
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
-		.default('3'),
+		.prefault('3'),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -179,7 +179,8 @@ public class EmailDomainMappingAdminResource {
             request.additionalClientIds(),
             request.grantedClientIds(),
             request.requiredOidcTenantId(),
-            request.allowedRoleIds()
+            request.allowedRoleIds(),
+            request.syncRolesFromIdp() != null && request.syncRolesFromIdp()
         );
 
         Result<EmailDomainMappingCreated> result = operations.createMapping(command, context);
@@ -230,7 +231,8 @@ public class EmailDomainMappingAdminResource {
             request.additionalClientIds(),
             request.grantedClientIds(),
             request.requiredOidcTenantId(),
-            request.allowedRoleIds()
+            request.allowedRoleIds(),
+            request.syncRolesFromIdp()
         );
 
         Result<EmailDomainMappingUpdated> result = operations.updateMapping(command, context);
@@ -302,6 +304,7 @@ public class EmailDomainMappingAdminResource {
             mapping.grantedClientIds,
             mapping.requiredOidcTenantId,
             mapping.allowedRoleIds,
+            mapping.syncRolesFromIdp,
             mapping.getAllAccessibleClientIds(),
             mapping.createdAt,
             mapping.updatedAt
@@ -322,6 +325,7 @@ public class EmailDomainMappingAdminResource {
         List<String> grantedClientIds,
         String requiredOidcTenantId,
         List<String> allowedRoleIds,
+        boolean syncRolesFromIdp,
         List<String> allAccessibleClientIds,
         Instant createdAt,
         Instant updatedAt
@@ -340,7 +344,8 @@ public class EmailDomainMappingAdminResource {
         List<String> additionalClientIds,
         List<String> grantedClientIds,
         String requiredOidcTenantId,
-        List<String> allowedRoleIds
+        List<String> allowedRoleIds,
+        Boolean syncRolesFromIdp
     ) {}
 
     public record UpdateEmailDomainMappingRequest(
@@ -350,7 +355,8 @@ public class EmailDomainMappingAdminResource {
         List<String> additionalClientIds,
         List<String> grantedClientIds,
         String requiredOidcTenantId,
-        List<String> allowedRoleIds
+        List<String> allowedRoleIds,
+        Boolean syncRolesFromIdp
     ) {}
 
     public record ErrorResponse(String code, String message, Map<String, Object> details) {

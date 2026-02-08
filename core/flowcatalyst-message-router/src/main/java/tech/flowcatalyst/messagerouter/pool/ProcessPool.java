@@ -16,7 +16,7 @@ public interface ProcessPool {
 
     /**
      * Submits a message to the process pool's blocking queue.
-     * Queue capacity is calculated as max(concurrency × 10, 500).
+     * Queue capacity is calculated as max(concurrency × 20, 50).
      *
      * @param message the message to process
      * @return true if message was accepted, false if queue is full

@@ -345,8 +345,11 @@ public class MonitoringResource {
             @Parameter(description = "Maximum number of messages to return (oldest first)") int limit,
 
             @jakarta.ws.rs.QueryParam("messageId")
-            @Parameter(description = "Filter by message ID (optional)") String messageId) {
-        return queueManager.getInFlightMessages(limit, messageId);
+            @Parameter(description = "Filter by message ID (optional)") String messageId,
+
+            @jakarta.ws.rs.QueryParam("poolCode")
+            @Parameter(description = "Filter by pool code (optional)") String poolCode) {
+        return queueManager.getInFlightMessages(limit, messageId, poolCode);
     }
 
     @GET

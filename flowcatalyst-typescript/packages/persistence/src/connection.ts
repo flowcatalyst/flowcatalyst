@@ -72,7 +72,7 @@ export function createDatabase(config: DatabaseConfig): Database {
 
 	const client = postgres(config.url, options);
 
-	const db = drizzle(client);
+	const db = drizzle({ client });
 
 	return {
 		db,
@@ -91,7 +91,7 @@ export function createDatabase(config: DatabaseConfig): Database {
  */
 export function createMigrationDatabase(config: DatabaseConfig): Database {
 	const client = postgres(config.url, { max: 1 });
-	const db = drizzle(client);
+	const db = drizzle({ client });
 
 	return {
 		db,

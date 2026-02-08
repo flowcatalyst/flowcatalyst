@@ -1,0 +1,25 @@
+{
+	"name": "@flowcatalyst/app",
+	"version": "0.0.1",
+	"description": "FlowCatalyst App - Production bundle with Platform and Stream Processor",
+	"type": "module",
+	"scripts": {
+		"dev": "tsx watch src/index.ts",
+		"build": "tsup",
+		"start": "node dist/index.js",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@flowcatalyst/config": "workspace:*",
+		"@flowcatalyst/logging": "workspace:*",
+		"@flowcatalyst/platform": "workspace:*",
+		"@flowcatalyst/stream-processor": "workspace:*",
+		"dotenv": "^16.4.7"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.6",
+		"tsup": "^8.5.1",
+		"tsx": "^4.19.2",
+		"typescript": "^5.7.3"
+	}
+}

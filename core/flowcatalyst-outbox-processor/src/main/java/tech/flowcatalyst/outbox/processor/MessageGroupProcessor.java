@@ -121,12 +121,11 @@ public class MessageGroupProcessor {
 
         try {
             // Call FlowCatalyst API
-            BatchResult result;
-            if (type == OutboxItemType.EVENT) {
-                result = apiClient.createEventsBatch(batch);
-            } else {
-                result = apiClient.createDispatchJobsBatch(batch);
-            }
+            BatchResult result = switch (type) {
+                case EVENT -> apiClient.createEventsBatch(batch);
+                case DISPATCH_JOB -> apiClient.createDispatchJobsBatch(batch);
+                case AUDIT_LOG -> apiClient.createAuditLogsBatch(batch);
+            };
 
             // Handle results
             handleBatchResult(batch, result);

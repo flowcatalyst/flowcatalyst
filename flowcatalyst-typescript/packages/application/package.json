@@ -27,7 +27,7 @@
 		"@types/node": "^22.10.6",
 		"tsup": "^8.5.1",
 		"typescript": "^5.7.3",
-		"vitest": "^2.1.9"
+		"vitest": "^4.0.18"
 	},
 	"files": [
 		"dist",

@@ -3,32 +3,18 @@
  *
  * Tables for storing principals (users and service accounts).
  * User identity fields are flattened directly into the principals table.
+ * Service account data is stored in the separate service_accounts table.
  * Roles are stored in the separate principal_roles junction table.
  */
 
-import { pgTable, varchar, boolean, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { tsidColumn, timestampColumn, baseEntityColumns } from '@flowcatalyst/persistence';
-
-/**
- * Service account data stored in JSONB (for SERVICE type principals).
- */
-export interface ServiceAccountJson {
-	code: string;
-	description: string | null;
-	whAuthType: string | null;
-	whAuthTokenRef: string | null;
-	whSigningSecretRef: string | null;
-	whSigningAlgorithm: string | null;
-	whCredentialsCreatedAt: string | null;
-	whCredentialsRegeneratedAt: string | null;
-	lastUsedAt: string | null;
-}
 
 /**
  * Principals table - stores users and service accounts.
  *
  * User identity fields (email, email_domain, etc.) are stored as flat columns.
- * Service account data (for SERVICE type) is stored as JSONB.
+ * Service account data is in the service_accounts table, linked via service_account_id.
  *
  * Note: Roles are stored in the principal_roles junction table, not here.
  */
@@ -51,8 +37,8 @@ export const principals = pgTable(
 		passwordHash: varchar('password_hash', { length: 255 }),
 		lastLoginAt: timestampColumn('last_login_at'),
 
-		// Service account data (for SERVICE type)
-		serviceAccount: jsonb('service_account').$type<ServiceAccountJson>(),
+		// FK to service_accounts table (for SERVICE type)
+		serviceAccountId: tsidColumn('service_account_id'),
 	},
 	(table) => [
 		index('idx_principals_type').on(table.type),
@@ -60,6 +46,7 @@ export const principals = pgTable(
 		index('idx_principals_active').on(table.active),
 		uniqueIndex('idx_principals_email').on(table.email),
 		index('idx_principals_email_domain').on(table.emailDomain),
+		uniqueIndex('idx_principals_service_account_id').on(table.serviceAccountId),
 	],
 );
 

@@ -13,7 +13,7 @@ import {
 	noContent,
 	notFound,
 	badRequest,
-	safeValidate,
+	ErrorResponseSchema,
 } from '@flowcatalyst/http';
 import { Result } from '@flowcatalyst/application';
 import type { UseCase } from '@flowcatalyst/application';
@@ -27,6 +27,7 @@ import type {
 	AssignRolesCommand,
 	GrantClientAccessCommand,
 	RevokeClientAccessCommand,
+	AssignApplicationAccessCommand,
 } from '../../application/index.js';
 import type {
 	UserCreated,
@@ -35,6 +36,7 @@ import type {
 	UserDeactivated,
 	UserDeleted,
 	RolesAssigned,
+	ApplicationAccessAssigned,
 	ClientAccessGranted,
 	ClientAccessRevoked,
 } from '../../domain/index.js';
@@ -43,11 +45,13 @@ import type {
 	ClientAccessGrantRepository,
 	AnchorDomainRepository,
 	ClientAuthConfigRepository,
+	ApplicationClientConfigRepository,
 } from '../../infrastructure/persistence/index.js';
 import { requirePermission } from '../../authorization/index.js';
 import { USER_PERMISSIONS, CLIENT_ACCESS_PERMISSIONS } from '../../authorization/permissions/platform-iam.js';
 
-// Request schemas using TypeBox
+// ─── Request Schemas ────────────────────────────────────────────────────────
+
 const CreateUserSchema = Type.Object({
 	email: Type.String({ format: 'email' }),
 	password: Type.Union([Type.String({ minLength: 8 }), Type.Null()]),
@@ -67,65 +71,79 @@ const GrantClientAccessSchema = Type.Object({
 	clientId: Type.String({ minLength: 17, maxLength: 17 }),
 });
 
-type CreateUserBody = Static<typeof CreateUserSchema>;
-type UpdateUserBody = Static<typeof UpdateUserSchema>;
-type AssignRolesBody = Static<typeof AssignRolesSchema>;
-type GrantClientAccessBody = Static<typeof GrantClientAccessSchema>;
+// ─── Param Schemas ──────────────────────────────────────────────────────────
 
-// Response schemas for user
-interface UserResponse {
-	id: string;
-	type: string;
-	scope: string | null;
-	clientId: string | null;
-	name: string;
-	active: boolean;
-	email: string | null;
-	emailDomain: string | null;
-	idpType: string | null;
-	createdAt: string;
-	updatedAt: string;
-}
+const IdParam = Type.Object({ id: Type.String() });
+const IdClientParam = Type.Object({ id: Type.String(), clientId: Type.String() });
 
-interface UsersListResponse {
-	users: UserResponse[];
-	total: number;
-	page: number;
-	pageSize: number;
-}
+// ─── Query Schemas ──────────────────────────────────────────────────────────
 
-interface RoleAssignmentResponse {
-	roleName: string;
-	assignmentSource: string;
-	assignedAt: string;
-}
+const UsersListQuery = Type.Object({
+	page: Type.Optional(Type.String()),
+	pageSize: Type.Optional(Type.String()),
+});
 
-interface UserRolesResponse {
-	userId: string;
-	roles: RoleAssignmentResponse[];
-}
+const EmailDomainCheckQuery = Type.Object({
+	email: Type.Optional(Type.String()),
+});
 
-interface ClientAccessGrantResponse {
-	id: string;
-	clientId: string;
-	grantedBy: string;
-	grantedAt: string;
-}
+// ─── Response Schemas ───────────────────────────────────────────────────────
 
-interface UserClientAccessResponse {
-	userId: string;
-	grants: ClientAccessGrantResponse[];
-}
+const UserResponseSchema = Type.Object({
+	id: Type.String(),
+	type: Type.String(),
+	scope: Type.Union([Type.String(), Type.Null()]),
+	clientId: Type.Union([Type.String(), Type.Null()]),
+	name: Type.String(),
+	active: Type.Boolean(),
+	email: Type.Union([Type.String(), Type.Null()]),
+	emailDomain: Type.Union([Type.String(), Type.Null()]),
+	idpType: Type.Union([Type.String(), Type.Null()]),
+	createdAt: Type.String({ format: 'date-time' }),
+	updatedAt: Type.String({ format: 'date-time' }),
+});
 
-interface EmailDomainCheckResponse {
-	domain: string;
-	authProvider: string;
-	isAnchorDomain: boolean;
-	hasAuthConfig: boolean;
-	emailExists: boolean;
-	info: string | null;
-	warning: string | null;
-}
+const UsersListResponseSchema = Type.Object({
+	users: Type.Array(UserResponseSchema),
+	total: Type.Integer(),
+	page: Type.Integer(),
+	pageSize: Type.Integer(),
+});
+
+const RoleAssignmentResponseSchema = Type.Object({
+	roleName: Type.String(),
+	assignmentSource: Type.String(),
+	assignedAt: Type.String({ format: 'date-time' }),
+});
+
+const UserRolesResponseSchema = Type.Object({
+	userId: Type.String(),
+	roles: Type.Array(RoleAssignmentResponseSchema),
+});
+
+const ClientAccessGrantResponseSchema = Type.Object({
+	id: Type.String(),
+	clientId: Type.String(),
+	grantedBy: Type.String(),
+	grantedAt: Type.String({ format: 'date-time' }),
+});
+
+const UserClientAccessResponseSchema = Type.Object({
+	userId: Type.String(),
+	grants: Type.Array(ClientAccessGrantResponseSchema),
+});
+
+const EmailDomainCheckResponseSchema = Type.Object({
+	domain: Type.String(),
+	authProvider: Type.String(),
+	isAnchorDomain: Type.Boolean(),
+	hasAuthConfig: Type.Boolean(),
+	emailExists: Type.Boolean(),
+	info: Type.Union([Type.String(), Type.Null()]),
+	warning: Type.Union([Type.String(), Type.Null()]),
+});
+
+type UserResponse = Static<typeof UserResponseSchema>;
 
 /**
  * Dependencies for the users API.
@@ -135,12 +153,14 @@ export interface UsersRoutesDeps {
 	readonly clientAccessGrantRepository: ClientAccessGrantRepository;
 	readonly anchorDomainRepository: AnchorDomainRepository;
 	readonly clientAuthConfigRepository: ClientAuthConfigRepository;
+	readonly applicationClientConfigRepository: ApplicationClientConfigRepository;
 	readonly createUserUseCase: UseCase<CreateUserCommand, UserCreated>;
 	readonly updateUserUseCase: UseCase<UpdateUserCommand, UserUpdated>;
 	readonly activateUserUseCase: UseCase<ActivateUserCommand, UserActivated>;
 	readonly deactivateUserUseCase: UseCase<DeactivateUserCommand, UserDeactivated>;
 	readonly deleteUserUseCase: UseCase<DeleteUserCommand, UserDeleted>;
 	readonly assignRolesUseCase: UseCase<AssignRolesCommand, RolesAssigned>;
+	readonly assignApplicationAccessUseCase: UseCase<AssignApplicationAccessCommand, ApplicationAccessAssigned>;
 	readonly grantClientAccessUseCase: UseCase<GrantClientAccessCommand, ClientAccessGranted>;
 	readonly revokeClientAccessUseCase: UseCase<RevokeClientAccessCommand, ClientAccessRevoked>;
 }
@@ -154,265 +174,346 @@ export async function registerUsersRoutes(fastify: FastifyInstance, deps: UsersR
 		clientAccessGrantRepository,
 		anchorDomainRepository,
 		clientAuthConfigRepository,
+		applicationClientConfigRepository,
 		createUserUseCase,
 		updateUserUseCase,
 		activateUserUseCase,
 		deactivateUserUseCase,
 		deleteUserUseCase,
 		assignRolesUseCase,
+		assignApplicationAccessUseCase,
 		grantClientAccessUseCase,
 		revokeClientAccessUseCase,
 	} = deps;
 
 	// POST /api/admin/users - Create user
-	fastify.post('/users', async (request, reply) => {
-		const bodyResult = safeValidate(request.body, CreateUserSchema);
-		if (!bodyResult.success) {
-			return badRequest(reply, bodyResult.error);
-		}
-
-		const body = bodyResult.data as CreateUserBody;
-		const ctx = request.executionContext;
-
-		const command: CreateUserCommand = {
-			email: body.email,
-			password: body.password,
-			name: body.name,
-			clientId: body.clientId ?? null,
-		};
-
-		const result = await createUserUseCase.execute(command, ctx);
-
-		if (Result.isSuccess(result)) {
-			const event = result.value;
-			const response: UserResponse = {
-				id: event.getData().userId,
-				type: 'USER',
-				scope: event.getData().scope,
-				clientId: event.getData().clientId,
-				name: event.getData().name,
-				active: true,
-				email: event.getData().email,
-				emailDomain: event.getData().emailDomain,
-				idpType: event.getData().idpType,
-				createdAt: event.time.toISOString(),
-				updatedAt: event.time.toISOString(),
-			};
-			return jsonCreated(reply, response);
-		}
-
-		return sendResult(reply, result);
-	});
-
-	// GET /api/admin/users - List users
-	fastify.get('/users', async (request, reply) => {
-		const query = request.query as { page?: string; pageSize?: string };
-		const page = parseInt(query.page ?? '0', 10);
-		const pageSize = Math.min(parseInt(query.pageSize ?? '20', 10), 100);
-
-		const pagedResult = await principalRepository.findPaged(page, pageSize);
-
-		const response: UsersListResponse = {
-			users: pagedResult.items
-				.filter((p) => p.type === 'USER')
-				.map((p) => ({
-					id: p.id,
-					type: p.type,
-					scope: p.scope,
-					clientId: p.clientId,
-					name: p.name,
-					active: p.active,
-					email: p.userIdentity?.email ?? null,
-					emailDomain: p.userIdentity?.emailDomain ?? null,
-					idpType: p.userIdentity?.idpType ?? null,
-					createdAt: p.createdAt.toISOString(),
-					updatedAt: p.updatedAt.toISOString(),
-				})),
-			total: pagedResult.totalItems,
-			page: pagedResult.page,
-			pageSize: pagedResult.pageSize,
-		};
-
-		return jsonSuccess(reply, response);
-	});
-
-	// GET /api/admin/users/:id - Get user by ID
-	fastify.get('/users/:id', async (request, reply) => {
-		const { id } = request.params as { id: string };
-		const principal = await principalRepository.findById(id);
-
-		if (!principal || principal.type !== 'USER') {
-			return notFound(reply, `User not found: ${id}`);
-		}
-
-		const response: UserResponse = {
-			id: principal.id,
-			type: principal.type,
-			scope: principal.scope,
-			clientId: principal.clientId,
-			name: principal.name,
-			active: principal.active,
-			email: principal.userIdentity?.email ?? null,
-			emailDomain: principal.userIdentity?.emailDomain ?? null,
-			idpType: principal.userIdentity?.idpType ?? null,
-			createdAt: principal.createdAt.toISOString(),
-			updatedAt: principal.updatedAt.toISOString(),
-		};
-
-		return jsonSuccess(reply, response);
-	});
-
-	// PUT /api/admin/users/:id - Update user
-	fastify.put('/users/:id', async (request, reply) => {
-		const { id } = request.params as { id: string };
-		const bodyResult = safeValidate(request.body, UpdateUserSchema);
-		if (!bodyResult.success) {
-			return badRequest(reply, bodyResult.error);
-		}
-
-		const body = bodyResult.data as UpdateUserBody;
-		const ctx = request.executionContext;
-
-		const command: UpdateUserCommand = {
-			userId: id,
-			name: body.name,
-		};
-
-		const result = await updateUserUseCase.execute(command, ctx);
-
-		if (Result.isSuccess(result)) {
-			const principal = await principalRepository.findById(id);
-			if (principal) {
-				const response: UserResponse = {
-					id: principal.id,
-					type: principal.type,
-					scope: principal.scope,
-					clientId: principal.clientId,
-					name: principal.name,
-					active: principal.active,
-					email: principal.userIdentity?.email ?? null,
-					emailDomain: principal.userIdentity?.emailDomain ?? null,
-					idpType: principal.userIdentity?.idpType ?? null,
-					createdAt: principal.createdAt.toISOString(),
-					updatedAt: principal.updatedAt.toISOString(),
-				};
-				return jsonSuccess(reply, response);
-			}
-		}
-
-		return sendResult(reply, result);
-	});
-
-	// POST /api/admin/users/:id/activate - Activate user
-	fastify.post('/users/:id/activate', async (request, reply) => {
-		const { id } = request.params as { id: string };
-		const ctx = request.executionContext;
-
-		const command: ActivateUserCommand = {
-			userId: id,
-		};
-
-		const result = await activateUserUseCase.execute(command, ctx);
-
-		if (Result.isSuccess(result)) {
-			const principal = await principalRepository.findById(id);
-			if (principal) {
-				const response: UserResponse = {
-					id: principal.id,
-					type: principal.type,
-					scope: principal.scope,
-					clientId: principal.clientId,
-					name: principal.name,
-					active: principal.active,
-					email: principal.userIdentity?.email ?? null,
-					emailDomain: principal.userIdentity?.emailDomain ?? null,
-					idpType: principal.userIdentity?.idpType ?? null,
-					createdAt: principal.createdAt.toISOString(),
-					updatedAt: principal.updatedAt.toISOString(),
-				};
-				return jsonSuccess(reply, response);
-			}
-		}
-
-		return sendResult(reply, result);
-	});
-
-	// POST /api/admin/users/:id/deactivate - Deactivate user
-	fastify.post('/users/:id/deactivate', async (request, reply) => {
-		const { id } = request.params as { id: string };
-		const ctx = request.executionContext;
-
-		const command: DeactivateUserCommand = {
-			userId: id,
-		};
-
-		const result = await deactivateUserUseCase.execute(command, ctx);
-
-		if (Result.isSuccess(result)) {
-			const principal = await principalRepository.findById(id);
-			if (principal) {
-				const response: UserResponse = {
-					id: principal.id,
-					type: principal.type,
-					scope: principal.scope,
-					clientId: principal.clientId,
-					name: principal.name,
-					active: principal.active,
-					email: principal.userIdentity?.email ?? null,
-					emailDomain: principal.userIdentity?.emailDomain ?? null,
-					idpType: principal.userIdentity?.idpType ?? null,
-					createdAt: principal.createdAt.toISOString(),
-					updatedAt: principal.updatedAt.toISOString(),
-				};
-				return jsonSuccess(reply, response);
-			}
-		}
-
-		return sendResult(reply, result);
-	});
-
-	// DELETE /api/admin/users/:id - Delete user
-	fastify.delete('/users/:id', async (request, reply) => {
-		const { id } = request.params as { id: string };
-		const ctx = request.executionContext;
-
-		const command: DeleteUserCommand = {
-			userId: id,
-		};
-
-		const result = await deleteUserUseCase.execute(command, ctx);
-
-		if (Result.isSuccess(result)) {
-			return noContent(reply);
-		}
-
-		return sendResult(reply, result);
-	});
-
-	// GET /api/admin/users/:id/roles - Get user roles
-	fastify.get(
-		'/users/:id/roles',
+	fastify.post(
+		'/users',
 		{
-			preHandler: requirePermission(USER_PERMISSIONS.READ),
+			schema: {
+				body: CreateUserSchema,
+				response: {
+					201: UserResponseSchema,
+					400: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const body = request.body as Static<typeof CreateUserSchema>;
+			const ctx = request.executionContext;
+
+			const command: CreateUserCommand = {
+				email: body.email,
+				password: body.password,
+				name: body.name,
+				clientId: body.clientId ?? null,
+			};
+
+			const result = await createUserUseCase.execute(command, ctx);
+
+			if (Result.isSuccess(result)) {
+				const event = result.value;
+				const response: UserResponse = {
+					id: event.getData().userId,
+					type: 'USER',
+					scope: event.getData().scope,
+					clientId: event.getData().clientId,
+					name: event.getData().name,
+					active: true,
+					email: event.getData().email,
+					emailDomain: event.getData().emailDomain,
+					idpType: event.getData().idpType,
+					createdAt: event.time.toISOString(),
+					updatedAt: event.time.toISOString(),
+				};
+				return jsonCreated(reply, response);
+			}
+
+			return sendResult(reply, result);
+		},
+	);
+
+	// GET /api/admin/users - List users
+	fastify.get(
+		'/users',
+		{
+			schema: {
+				querystring: UsersListQuery,
+				response: {
+					200: UsersListResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const query = request.query as Static<typeof UsersListQuery>;
+			const page = parseInt(query.page ?? '0', 10);
+			const pageSize = Math.min(parseInt(query.pageSize ?? '20', 10), 100);
+
+			const pagedResult = await principalRepository.findPaged(page, pageSize);
+
+			return jsonSuccess(reply, {
+				users: pagedResult.items
+					.filter((p) => p.type === 'USER')
+					.map((p) => ({
+						id: p.id,
+						type: p.type,
+						scope: p.scope,
+						clientId: p.clientId,
+						name: p.name,
+						active: p.active,
+						email: p.userIdentity?.email ?? null,
+						emailDomain: p.userIdentity?.emailDomain ?? null,
+						idpType: p.userIdentity?.idpType ?? null,
+						createdAt: p.createdAt.toISOString(),
+						updatedAt: p.updatedAt.toISOString(),
+					})),
+				total: pagedResult.totalItems,
+				page: pagedResult.page,
+				pageSize: pagedResult.pageSize,
+			});
+		},
+	);
+
+	// GET /api/admin/users/:id - Get user by ID
+	fastify.get(
+		'/users/:id',
+		{
+			schema: {
+				params: IdParam,
+				response: {
+					200: UserResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const { id } = request.params as Static<typeof IdParam>;
 			const principal = await principalRepository.findById(id);
 
 			if (!principal || principal.type !== 'USER') {
 				return notFound(reply, `User not found: ${id}`);
 			}
 
-			const response: UserRolesResponse = {
+			const response: UserResponse = {
+				id: principal.id,
+				type: principal.type,
+				scope: principal.scope,
+				clientId: principal.clientId,
+				name: principal.name,
+				active: principal.active,
+				email: principal.userIdentity?.email ?? null,
+				emailDomain: principal.userIdentity?.emailDomain ?? null,
+				idpType: principal.userIdentity?.idpType ?? null,
+				createdAt: principal.createdAt.toISOString(),
+				updatedAt: principal.updatedAt.toISOString(),
+			};
+
+			return jsonSuccess(reply, response);
+		},
+	);
+
+	// PUT /api/admin/users/:id - Update user
+	fastify.put(
+		'/users/:id',
+		{
+			schema: {
+				params: IdParam,
+				body: UpdateUserSchema,
+				response: {
+					200: UserResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as Static<typeof UpdateUserSchema>;
+			const ctx = request.executionContext;
+
+			const command: UpdateUserCommand = {
+				userId: id,
+				name: body.name,
+			};
+
+			const result = await updateUserUseCase.execute(command, ctx);
+
+			if (Result.isSuccess(result)) {
+				const principal = await principalRepository.findById(id);
+				if (principal) {
+					const response: UserResponse = {
+						id: principal.id,
+						type: principal.type,
+						scope: principal.scope,
+						clientId: principal.clientId,
+						name: principal.name,
+						active: principal.active,
+						email: principal.userIdentity?.email ?? null,
+						emailDomain: principal.userIdentity?.emailDomain ?? null,
+						idpType: principal.userIdentity?.idpType ?? null,
+						createdAt: principal.createdAt.toISOString(),
+						updatedAt: principal.updatedAt.toISOString(),
+					};
+					return jsonSuccess(reply, response);
+				}
+			}
+
+			return sendResult(reply, result);
+		},
+	);
+
+	// POST /api/admin/users/:id/activate - Activate user
+	fastify.post(
+		'/users/:id/activate',
+		{
+			schema: {
+				params: IdParam,
+				response: {
+					200: UserResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const { id } = request.params as Static<typeof IdParam>;
+			const ctx = request.executionContext;
+
+			const command: ActivateUserCommand = {
+				userId: id,
+			};
+
+			const result = await activateUserUseCase.execute(command, ctx);
+
+			if (Result.isSuccess(result)) {
+				const principal = await principalRepository.findById(id);
+				if (principal) {
+					const response: UserResponse = {
+						id: principal.id,
+						type: principal.type,
+						scope: principal.scope,
+						clientId: principal.clientId,
+						name: principal.name,
+						active: principal.active,
+						email: principal.userIdentity?.email ?? null,
+						emailDomain: principal.userIdentity?.emailDomain ?? null,
+						idpType: principal.userIdentity?.idpType ?? null,
+						createdAt: principal.createdAt.toISOString(),
+						updatedAt: principal.updatedAt.toISOString(),
+					};
+					return jsonSuccess(reply, response);
+				}
+			}
+
+			return sendResult(reply, result);
+		},
+	);
+
+	// POST /api/admin/users/:id/deactivate - Deactivate user
+	fastify.post(
+		'/users/:id/deactivate',
+		{
+			schema: {
+				params: IdParam,
+				response: {
+					200: UserResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const { id } = request.params as Static<typeof IdParam>;
+			const ctx = request.executionContext;
+
+			const command: DeactivateUserCommand = {
+				userId: id,
+			};
+
+			const result = await deactivateUserUseCase.execute(command, ctx);
+
+			if (Result.isSuccess(result)) {
+				const principal = await principalRepository.findById(id);
+				if (principal) {
+					const response: UserResponse = {
+						id: principal.id,
+						type: principal.type,
+						scope: principal.scope,
+						clientId: principal.clientId,
+						name: principal.name,
+						active: principal.active,
+						email: principal.userIdentity?.email ?? null,
+						emailDomain: principal.userIdentity?.emailDomain ?? null,
+						idpType: principal.userIdentity?.idpType ?? null,
+						createdAt: principal.createdAt.toISOString(),
+						updatedAt: principal.updatedAt.toISOString(),
+					};
+					return jsonSuccess(reply, response);
+				}
+			}
+
+			return sendResult(reply, result);
+		},
+	);
+
+	// DELETE /api/admin/users/:id - Delete user
+	fastify.delete(
+		'/users/:id',
+		{
+			schema: {
+				params: IdParam,
+				response: {
+					204: Type.Null(),
+					404: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const { id } = request.params as Static<typeof IdParam>;
+			const ctx = request.executionContext;
+
+			const command: DeleteUserCommand = {
+				userId: id,
+			};
+
+			const result = await deleteUserUseCase.execute(command, ctx);
+
+			if (Result.isSuccess(result)) {
+				return noContent(reply);
+			}
+
+			return sendResult(reply, result);
+		},
+	);
+
+	// GET /api/admin/users/:id/roles - Get user roles
+	fastify.get(
+		'/users/:id/roles',
+		{
+			preHandler: requirePermission(USER_PERMISSIONS.READ),
+			schema: {
+				params: IdParam,
+				response: {
+					200: UserRolesResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const { id } = request.params as Static<typeof IdParam>;
+			const principal = await principalRepository.findById(id);
+
+			if (!principal || principal.type !== 'USER') {
+				return notFound(reply, `User not found: ${id}`);
+			}
+
+			return jsonSuccess(reply, {
 				userId: principal.id,
 				roles: principal.roles.map((r) => ({
 					roleName: r.roleName,
 					assignmentSource: r.assignmentSource,
 					assignedAt: r.assignedAt.toISOString(),
 				})),
-			};
-
-			return jsonSuccess(reply, response);
+			});
 		},
 	);
 
@@ -421,15 +522,19 @@ export async function registerUsersRoutes(fastify: FastifyInstance, deps: UsersR
 		'/users/:id/roles',
 		{
 			preHandler: requirePermission(USER_PERMISSIONS.ASSIGN_ROLES),
+			schema: {
+				params: IdParam,
+				body: AssignRolesSchema,
+				response: {
+					200: UserRolesResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body, AssignRolesSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as AssignRolesBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as Static<typeof AssignRolesSchema>;
 			const ctx = request.executionContext;
 
 			const command: AssignRolesCommand = {
@@ -442,15 +547,14 @@ export async function registerUsersRoutes(fastify: FastifyInstance, deps: UsersR
 			if (Result.isSuccess(result)) {
 				const principal = await principalRepository.findById(id);
 				if (principal) {
-					const response: UserRolesResponse = {
+					return jsonSuccess(reply, {
 						userId: principal.id,
 						roles: principal.roles.map((r) => ({
 							roleName: r.roleName,
 							assignmentSource: r.assignmentSource,
 							assignedAt: r.assignedAt.toISOString(),
 						})),
-					};
-					return jsonSuccess(reply, response);
+					});
 				}
 			}
 
@@ -463,9 +567,16 @@ export async function registerUsersRoutes(fastify: FastifyInstance, deps: UsersR
 		'/users/:id/client-access',
 		{
 			preHandler: requirePermission(CLIENT_ACCESS_PERMISSIONS.READ),
+			schema: {
+				params: IdParam,
+				response: {
+					200: UserClientAccessResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const principal = await principalRepository.findById(id);
 
 			if (!principal || principal.type !== 'USER') {
@@ -474,7 +585,7 @@ export async function registerUsersRoutes(fastify: FastifyInstance, deps: UsersR
 
 			const grants = await clientAccessGrantRepository.findByPrincipal(id);
 
-			const response: UserClientAccessResponse = {
+			return jsonSuccess(reply, {
 				userId: principal.id,
 				grants: grants.map((g) => ({
 					id: g.id,
@@ -482,9 +593,7 @@ export async function registerUsersRoutes(fastify: FastifyInstance, deps: UsersR
 					grantedBy: g.grantedBy,
 					grantedAt: g.grantedAt.toISOString(),
 				})),
-			};
-
-			return jsonSuccess(reply, response);
+			});
 		},
 	);
 
@@ -493,15 +602,20 @@ export async function registerUsersRoutes(fastify: FastifyInstance, deps: UsersR
 		'/users/:id/client-access',
 		{
 			preHandler: requirePermission(CLIENT_ACCESS_PERMISSIONS.GRANT),
+			schema: {
+				params: IdParam,
+				body: GrantClientAccessSchema,
+				response: {
+					201: ClientAccessGrantResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body, GrantClientAccessSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as GrantClientAccessBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as Static<typeof GrantClientAccessSchema>;
 			const ctx = request.executionContext;
 
 			const command: GrantClientAccessCommand = {
@@ -514,13 +628,12 @@ export async function registerUsersRoutes(fastify: FastifyInstance, deps: UsersR
 			if (Result.isSuccess(result)) {
 				const grant = await clientAccessGrantRepository.findByPrincipalAndClient(id, body.clientId);
 				if (grant) {
-					const response: ClientAccessGrantResponse = {
+					return jsonCreated(reply, {
 						id: grant.id,
 						clientId: grant.clientId,
 						grantedBy: grant.grantedBy,
 						grantedAt: grant.grantedAt.toISOString(),
-					};
-					return jsonCreated(reply, response);
+					});
 				}
 			}
 
@@ -533,9 +646,16 @@ export async function registerUsersRoutes(fastify: FastifyInstance, deps: UsersR
 		'/users/:id/client-access/:clientId',
 		{
 			preHandler: requirePermission(CLIENT_ACCESS_PERMISSIONS.REVOKE),
+			schema: {
+				params: IdClientParam,
+				response: {
+					204: Type.Null(),
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id, clientId } = request.params as { id: string; clientId: string };
+			const { id, clientId } = request.params as Static<typeof IdClientParam>;
 			const ctx = request.executionContext;
 
 			const command: RevokeClientAccessCommand = {
@@ -558,9 +678,16 @@ export async function registerUsersRoutes(fastify: FastifyInstance, deps: UsersR
 		'/users/check-email-domain',
 		{
 			preHandler: requirePermission(USER_PERMISSIONS.READ),
+			schema: {
+				querystring: EmailDomainCheckQuery,
+				response: {
+					200: EmailDomainCheckResponseSchema,
+					400: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const query = request.query as { email?: string };
+			const query = request.query as Static<typeof EmailDomainCheckQuery>;
 			const email = query.email;
 
 			if (!email) {
@@ -608,7 +735,7 @@ export async function registerUsersRoutes(fastify: FastifyInstance, deps: UsersR
 				warning = 'A user with this email already exists.';
 			}
 
-			const response: EmailDomainCheckResponse = {
+			return jsonSuccess(reply, {
 				domain,
 				authProvider,
 				isAnchorDomain,
@@ -616,9 +743,125 @@ export async function registerUsersRoutes(fastify: FastifyInstance, deps: UsersR
 				emailExists,
 				info,
 				warning,
+			});
+		},
+	);
+
+	// GET /api/admin/users/:id/application-access - Get user application access
+	fastify.get(
+		'/users/:id/application-access',
+		{
+			preHandler: requirePermission(USER_PERMISSIONS.READ),
+			schema: {
+				params: IdParam,
+				response: {
+					200: Type.Object({ applicationIds: Type.Array(Type.String()) }),
+					404: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const { id } = request.params as Static<typeof IdParam>;
+			const principal = await principalRepository.findById(id);
+
+			if (!principal || principal.type !== 'USER') {
+				return notFound(reply, `User not found: ${id}`);
+			}
+
+			return jsonSuccess(reply, {
+				applicationIds: [...principal.accessibleApplicationIds],
+			});
+		},
+	);
+
+	// PUT /api/admin/users/:id/application-access - Set user application access
+	fastify.put(
+		'/users/:id/application-access',
+		{
+			preHandler: requirePermission(USER_PERMISSIONS.ASSIGN_ROLES),
+			schema: {
+				params: IdParam,
+				body: Type.Object({ applicationIds: Type.Array(Type.String()) }),
+				response: {
+					200: Type.Object({ applicationIds: Type.Array(Type.String()) }),
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as { applicationIds: string[] };
+			const ctx = request.executionContext;
+
+			const command: AssignApplicationAccessCommand = {
+				userId: id,
+				applicationIds: body.applicationIds,
 			};
 
-			return jsonSuccess(reply, response);
+			const result = await assignApplicationAccessUseCase.execute(command, ctx);
+
+			if (Result.isSuccess(result)) {
+				return jsonSuccess(reply, {
+					applicationIds: body.applicationIds,
+				});
+			}
+
+			return sendResult(reply, result);
+		},
+	);
+
+	// GET /api/admin/users/:id/available-applications - Get apps enabled for user's clients
+	fastify.get(
+		'/users/:id/available-applications',
+		{
+			preHandler: requirePermission(USER_PERMISSIONS.READ),
+			schema: {
+				params: IdParam,
+				response: {
+					200: Type.Object({
+						applications: Type.Array(Type.Object({
+							applicationId: Type.String(),
+						})),
+					}),
+					404: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const { id } = request.params as Static<typeof IdParam>;
+			const principal = await principalRepository.findById(id);
+
+			if (!principal || principal.type !== 'USER') {
+				return notFound(reply, `User not found: ${id}`);
+			}
+
+			// Get client IDs the user can access
+			const clientIds: string[] = [];
+
+			// For CLIENT/PARTNER scope: use home client + client access grants
+			if (principal.clientId) {
+				clientIds.push(principal.clientId);
+			}
+			const grants = await clientAccessGrantRepository.findByPrincipal(id);
+			for (const grant of grants) {
+				if (!clientIds.includes(grant.clientId)) {
+					clientIds.push(grant.clientId);
+				}
+			}
+
+			// Find applications enabled for any of these clients
+			const appIds = new Set<string>();
+			for (const cid of clientIds) {
+				const configs = await applicationClientConfigRepository.findByClient(cid);
+				for (const config of configs) {
+					appIds.add(config.applicationId);
+				}
+			}
+
+			return jsonSuccess(reply, {
+				applications: [...appIds].map((appId) => ({ applicationId: appId })),
+			});
 		},
 	);
 }

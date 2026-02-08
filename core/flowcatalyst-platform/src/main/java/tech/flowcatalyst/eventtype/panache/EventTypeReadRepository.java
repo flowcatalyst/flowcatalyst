@@ -109,34 +109,23 @@ public class EventTypeReadRepository implements EventTypeRepository {
     @Override
     public List<String> findDistinctApplications() {
         return em.createQuery(
-                "SELECT DISTINCT SUBSTRING(e.code, 1, LOCATE(':', e.code) - 1) " +
-                "FROM EventTypeEntity e " +
-                "WHERE e.code LIKE '%:%'", String.class)
+                "SELECT DISTINCT e.application FROM EventTypeEntity e ORDER BY e.application", String.class)
             .getResultList();
     }
 
     @Override
     public List<String> findDistinctSubdomains(String application) {
-        @SuppressWarnings("unchecked")
-        List<String> results = em.createNativeQuery(
-                "SELECT DISTINCT split_part(code, ':', 2) " +
-                "FROM event_types " +
-                "WHERE split_part(code, ':', 1) = :app " +
-                "AND code LIKE '%:%:%'")
+        return em.createQuery(
+                "SELECT DISTINCT e.subdomain FROM EventTypeEntity e WHERE e.application = :app ORDER BY e.subdomain", String.class)
             .setParameter("app", application)
             .getResultList();
-        return results;
     }
 
     @Override
     public List<String> findAllDistinctSubdomains() {
-        @SuppressWarnings("unchecked")
-        List<String> results = em.createNativeQuery(
-                "SELECT DISTINCT split_part(code, ':', 2) " +
-                "FROM event_types " +
-                "WHERE code LIKE '%:%:%'")
+        return em.createQuery(
+                "SELECT DISTINCT e.subdomain FROM EventTypeEntity e ORDER BY e.subdomain", String.class)
             .getResultList();
-        return results;
     }
 
     @Override
@@ -144,56 +133,41 @@ public class EventTypeReadRepository implements EventTypeRepository {
         if (applications == null || applications.isEmpty()) {
             return findAllDistinctSubdomains();
         }
-        @SuppressWarnings("unchecked")
-        List<String> results = em.createNativeQuery(
-                "SELECT DISTINCT split_part(code, ':', 2) " +
-                "FROM event_types " +
-                "WHERE split_part(code, ':', 1) IN :apps " +
-                "AND code LIKE '%:%:%'")
+        return em.createQuery(
+                "SELECT DISTINCT e.subdomain FROM EventTypeEntity e WHERE e.application IN :apps ORDER BY e.subdomain", String.class)
             .setParameter("apps", applications)
             .getResultList();
-        return results;
     }
 
     @Override
     public List<String> findDistinctAggregates(String application, String subdomain) {
-        @SuppressWarnings("unchecked")
-        List<String> results = em.createNativeQuery(
-                "SELECT DISTINCT split_part(code, ':', 3) " +
-                "FROM event_types " +
-                "WHERE split_part(code, ':', 1) = :app " +
-                "AND split_part(code, ':', 2) = :subdomain " +
-                "AND code LIKE '%:%:%:%'")
+        return em.createQuery(
+                "SELECT DISTINCT e.aggregate FROM EventTypeEntity e WHERE e.application = :app AND e.subdomain = :sub ORDER BY e.aggregate", String.class)
             .setParameter("app", application)
-            .setParameter("subdomain", subdomain)
+            .setParameter("sub", subdomain)
             .getResultList();
-        return results;
     }
 
     @Override
     public List<String> findAllDistinctAggregates() {
-        @SuppressWarnings("unchecked")
-        List<String> results = em.createNativeQuery(
-                "SELECT DISTINCT split_part(code, ':', 3) " +
-                "FROM event_types " +
-                "WHERE code LIKE '%:%:%:%'")
+        return em.createQuery(
+                "SELECT DISTINCT e.aggregate FROM EventTypeEntity e ORDER BY e.aggregate", String.class)
             .getResultList();
-        return results;
     }
 
     @Override
     public List<String> findDistinctAggregates(List<String> applications, List<String> subdomains) {
-        StringBuilder sql = new StringBuilder(
-            "SELECT DISTINCT split_part(code, ':', 3) FROM event_types WHERE code LIKE '%:%:%:%'");
+        var hql = new StringBuilder("SELECT DISTINCT e.aggregate FROM EventTypeEntity e WHERE 1=1");
 
         if (applications != null && !applications.isEmpty()) {
-            sql.append(" AND split_part(code, ':', 1) IN :apps");
+            hql.append(" AND e.application IN :apps");
         }
         if (subdomains != null && !subdomains.isEmpty()) {
-            sql.append(" AND split_part(code, ':', 2) IN :subdomains");
+            hql.append(" AND e.subdomain IN :subdomains");
         }
+        hql.append(" ORDER BY e.aggregate");
 
-        var query = em.createNativeQuery(sql.toString());
+        var query = em.createQuery(hql.toString(), String.class);
 
         if (applications != null && !applications.isEmpty()) {
             query.setParameter("apps", applications);
@@ -202,9 +176,7 @@ public class EventTypeReadRepository implements EventTypeRepository {
             query.setParameter("subdomains", subdomains);
         }
 
-        @SuppressWarnings("unchecked")
-        List<String> results = query.getResultList();
-        return results;
+        return query.getResultList();
     }
 
     @Override
@@ -214,59 +186,40 @@ public class EventTypeReadRepository implements EventTypeRepository {
             List<String> aggregates,
             EventTypeStatus status) {
 
-        // Build code filter conditions using native query for split_part
-        if ((applications != null && !applications.isEmpty()) ||
-            (subdomains != null && !subdomains.isEmpty()) ||
-            (aggregates != null && !aggregates.isEmpty())) {
+        var hql = new StringBuilder("FROM EventTypeEntity e WHERE 1=1");
 
-            StringBuilder sql = new StringBuilder("SELECT * FROM event_types WHERE 1=1");
-
-            if (status != null) {
-                sql.append(" AND status = :status");
-            }
-            if (applications != null && !applications.isEmpty()) {
-                sql.append(" AND split_part(code, ':', 1) IN :apps");
-            }
-            if (subdomains != null && !subdomains.isEmpty()) {
-                sql.append(" AND split_part(code, ':', 2) IN :subdomains");
-            }
-            if (aggregates != null && !aggregates.isEmpty()) {
-                sql.append(" AND split_part(code, ':', 3) IN :aggregates");
-            }
-
-            var query = em.createNativeQuery(sql.toString(), EventTypeEntity.class);
-
-            if (status != null) {
-                query.setParameter("status", status.name());
-            }
-            if (applications != null && !applications.isEmpty()) {
-                query.setParameter("apps", applications);
-            }
-            if (subdomains != null && !subdomains.isEmpty()) {
-                query.setParameter("subdomains", subdomains);
-            }
-            if (aggregates != null && !aggregates.isEmpty()) {
-                query.setParameter("aggregates", aggregates);
-            }
-
-            @SuppressWarnings("unchecked")
-            List<EventTypeEntity> results = query.getResultList();
-            return results.stream()
-                .map(EventTypeMapper::toDomain)
-                .toList();
-        }
-
-        // Simple case - only status filter or no filter
         if (status != null) {
-            return em.createQuery("FROM EventTypeEntity WHERE status = :status", EventTypeEntity.class)
-                .setParameter("status", status)
-                .getResultList()
-                .stream()
-                .map(EventTypeMapper::toDomain)
-                .toList();
+            hql.append(" AND e.status = :status");
+        }
+        if (applications != null && !applications.isEmpty()) {
+            hql.append(" AND e.application IN :apps");
+        }
+        if (subdomains != null && !subdomains.isEmpty()) {
+            hql.append(" AND e.subdomain IN :subdomains");
+        }
+        if (aggregates != null && !aggregates.isEmpty()) {
+            hql.append(" AND e.aggregate IN :aggregates");
+        }
+        hql.append(" ORDER BY e.code");
+
+        var query = em.createQuery(hql.toString(), EventTypeEntity.class);
+
+        if (status != null) {
+            query.setParameter("status", status);
+        }
+        if (applications != null && !applications.isEmpty()) {
+            query.setParameter("apps", applications);
+        }
+        if (subdomains != null && !subdomains.isEmpty()) {
+            query.setParameter("subdomains", subdomains);
+        }
+        if (aggregates != null && !aggregates.isEmpty()) {
+            query.setParameter("aggregates", aggregates);
         }
 
-        return listAll();
+        return query.getResultList().stream()
+            .map(EventTypeMapper::toDomain)
+            .toList();
     }
 
     // Write operations delegate to WriteRepository

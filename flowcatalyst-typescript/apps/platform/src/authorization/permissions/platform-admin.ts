@@ -56,6 +56,103 @@ export const APPLICATION_PERMISSIONS = {
 } as const;
 
 /**
+ * Event type permissions.
+ */
+export const EVENT_TYPE_PERMISSIONS = {
+	CREATE: makePermission(SUBDOMAIN, CONTEXT, 'event-type', 'create', 'Create event types'),
+	READ: makePermission(SUBDOMAIN, CONTEXT, 'event-type', 'read', 'Read event type details'),
+	UPDATE: makePermission(SUBDOMAIN, CONTEXT, 'event-type', 'update', 'Update event type details'),
+	DELETE: makePermission(SUBDOMAIN, CONTEXT, 'event-type', 'delete', 'Delete event types'),
+	MANAGE: makePermission(SUBDOMAIN, CONTEXT, 'event-type', 'manage', 'Full event type management'),
+	ARCHIVE: makePermission(SUBDOMAIN, CONTEXT, 'event-type', 'archive', 'Archive event types'),
+	MANAGE_SCHEMA: makePermission(SUBDOMAIN, CONTEXT, 'event-type', 'manage-schema', 'Manage event type schemas'),
+	SYNC: makePermission(SUBDOMAIN, CONTEXT, 'event-type', 'sync', 'Sync event types from SDK'),
+} as const;
+
+/**
+ * Dispatch pool permissions.
+ */
+export const DISPATCH_POOL_PERMISSIONS = {
+	CREATE: makePermission(SUBDOMAIN, CONTEXT, 'dispatch-pool', 'create', 'Create dispatch pools'),
+	READ: makePermission(SUBDOMAIN, CONTEXT, 'dispatch-pool', 'read', 'Read dispatch pool details'),
+	UPDATE: makePermission(SUBDOMAIN, CONTEXT, 'dispatch-pool', 'update', 'Update dispatch pool details'),
+	DELETE: makePermission(SUBDOMAIN, CONTEXT, 'dispatch-pool', 'delete', 'Delete dispatch pools'),
+	MANAGE: makePermission(SUBDOMAIN, CONTEXT, 'dispatch-pool', 'manage', 'Full dispatch pool management'),
+	SYNC: makePermission(SUBDOMAIN, CONTEXT, 'dispatch-pool', 'sync', 'Sync dispatch pools from SDK'),
+} as const;
+
+/**
+ * Subscription permissions.
+ */
+export const SUBSCRIPTION_PERMISSIONS = {
+	CREATE: makePermission(SUBDOMAIN, CONTEXT, 'subscription', 'create', 'Create subscriptions'),
+	READ: makePermission(SUBDOMAIN, CONTEXT, 'subscription', 'read', 'Read subscription details'),
+	UPDATE: makePermission(SUBDOMAIN, CONTEXT, 'subscription', 'update', 'Update subscription details'),
+	DELETE: makePermission(SUBDOMAIN, CONTEXT, 'subscription', 'delete', 'Delete subscriptions'),
+	MANAGE: makePermission(SUBDOMAIN, CONTEXT, 'subscription', 'manage', 'Full subscription management'),
+	SYNC: makePermission(SUBDOMAIN, CONTEXT, 'subscription', 'sync', 'Sync subscriptions from SDK'),
+} as const;
+
+/**
+ * Event read permissions (BFF).
+ */
+export const EVENT_PERMISSIONS = {
+	READ: makePermission(SUBDOMAIN, CONTEXT, 'event', 'read', 'Read events'),
+	VIEW_RAW: makePermission(SUBDOMAIN, CONTEXT, 'event', 'view-raw', 'View raw events (debug)'),
+} as const;
+
+/**
+ * Dispatch job read permissions (BFF).
+ */
+export const DISPATCH_JOB_PERMISSIONS = {
+	READ: makePermission(SUBDOMAIN, CONTEXT, 'dispatch-job', 'read', 'Read dispatch jobs'),
+	VIEW_RAW: makePermission(SUBDOMAIN, CONTEXT, 'dispatch-job', 'view-raw', 'View raw dispatch jobs (debug)'),
+} as const;
+
+/**
+ * Identity provider permissions.
+ */
+export const IDENTITY_PROVIDER_PERMISSIONS = {
+	CREATE: makePermission(SUBDOMAIN, CONTEXT, 'identity-provider', 'create', 'Create identity providers'),
+	READ: makePermission(SUBDOMAIN, CONTEXT, 'identity-provider', 'read', 'Read identity providers'),
+	UPDATE: makePermission(SUBDOMAIN, CONTEXT, 'identity-provider', 'update', 'Update identity providers'),
+	DELETE: makePermission(SUBDOMAIN, CONTEXT, 'identity-provider', 'delete', 'Delete identity providers'),
+	MANAGE: makePermission(SUBDOMAIN, CONTEXT, 'identity-provider', 'manage', 'Full identity provider management'),
+} as const;
+
+/**
+ * Email domain mapping permissions.
+ */
+export const EMAIL_DOMAIN_MAPPING_PERMISSIONS = {
+	CREATE: makePermission(SUBDOMAIN, CONTEXT, 'email-domain-mapping', 'create', 'Create email domain mappings'),
+	READ: makePermission(SUBDOMAIN, CONTEXT, 'email-domain-mapping', 'read', 'Read email domain mappings'),
+	UPDATE: makePermission(SUBDOMAIN, CONTEXT, 'email-domain-mapping', 'update', 'Update email domain mappings'),
+	DELETE: makePermission(SUBDOMAIN, CONTEXT, 'email-domain-mapping', 'delete', 'Delete email domain mappings'),
+	MANAGE: makePermission(SUBDOMAIN, CONTEXT, 'email-domain-mapping', 'manage', 'Full email domain mapping management'),
+} as const;
+
+/**
+ * Service account permissions.
+ */
+export const SERVICE_ACCOUNT_PERMISSIONS = {
+	CREATE: makePermission(SUBDOMAIN, CONTEXT, 'service-account', 'create', 'Create service accounts'),
+	READ: makePermission(SUBDOMAIN, CONTEXT, 'service-account', 'read', 'Read service accounts'),
+	UPDATE: makePermission(SUBDOMAIN, CONTEXT, 'service-account', 'update', 'Update service accounts'),
+	DELETE: makePermission(SUBDOMAIN, CONTEXT, 'service-account', 'delete', 'Delete service accounts'),
+	MANAGE: makePermission(SUBDOMAIN, CONTEXT, 'service-account', 'manage', 'Full service account management'),
+} as const;
+
+/**
+ * CORS origin permissions.
+ */
+export const CORS_ORIGIN_PERMISSIONS = {
+	CREATE: makePermission(SUBDOMAIN, CONTEXT, 'cors-origin', 'create', 'Create CORS origins'),
+	READ: makePermission(SUBDOMAIN, CONTEXT, 'cors-origin', 'read', 'Read CORS origins'),
+	DELETE: makePermission(SUBDOMAIN, CONTEXT, 'cors-origin', 'delete', 'Delete CORS origins'),
+	MANAGE: makePermission(SUBDOMAIN, CONTEXT, 'cors-origin', 'manage', 'Full CORS origin management'),
+} as const;
+
+/**
  * Audit log permissions.
  */
 export const AUDIT_LOG_PERMISSIONS = {
@@ -70,5 +167,14 @@ export const ADMIN_PERMISSIONS: readonly PermissionDefinition[] = [
 	...Object.values(CLIENT_PERMISSIONS),
 	...Object.values(ANCHOR_DOMAIN_PERMISSIONS),
 	...Object.values(APPLICATION_PERMISSIONS),
+	...Object.values(EVENT_TYPE_PERMISSIONS),
+	...Object.values(DISPATCH_POOL_PERMISSIONS),
+	...Object.values(SUBSCRIPTION_PERMISSIONS),
+	...Object.values(EVENT_PERMISSIONS),
+	...Object.values(DISPATCH_JOB_PERMISSIONS),
+	...Object.values(IDENTITY_PROVIDER_PERMISSIONS),
+	...Object.values(EMAIL_DOMAIN_MAPPING_PERMISSIONS),
+	...Object.values(SERVICE_ACCOUNT_PERMISSIONS),
+	...Object.values(CORS_ORIGIN_PERMISSIONS),
 	...Object.values(AUDIT_LOG_PERMISSIONS),
 ];

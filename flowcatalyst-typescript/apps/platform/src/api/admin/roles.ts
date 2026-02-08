@@ -13,7 +13,7 @@ import {
 	noContent,
 	notFound,
 	badRequest,
-	safeValidate,
+	ErrorResponseSchema,
 } from '@flowcatalyst/http';
 import { Result } from '@flowcatalyst/application';
 import type { UseCase } from '@flowcatalyst/application';
@@ -28,7 +28,8 @@ import type { RoleRepository, PermissionRepository } from '../../infrastructure/
 import { requirePermission } from '../../authorization/index.js';
 import { ROLE_PERMISSIONS, PERMISSION_PERMISSIONS } from '../../authorization/permissions/platform-iam.js';
 
-// Request schemas using TypeBox
+// ─── Request Schemas ────────────────────────────────────────────────────────
+
 const CreateRoleSchema = Type.Object({
 	applicationId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 	applicationCode: Type.Optional(Type.Union([Type.String({ maxLength: 50 }), Type.Null()])),
@@ -47,44 +48,66 @@ const UpdateRoleSchema = Type.Object({
 	clientManaged: Type.Optional(Type.Boolean()),
 });
 
+const IdParam = Type.Object({ id: Type.String() });
+const NameParam = Type.Object({ name: Type.String() });
+const SourceParam = Type.Object({ source: Type.String() });
+const ApplicationIdParam = Type.Object({ applicationId: Type.String() });
+const SubdomainParam = Type.Object({ subdomain: Type.String() });
+
+const ListRolesQuery = Type.Object({
+	page: Type.Optional(Type.String()),
+	pageSize: Type.Optional(Type.String()),
+	q: Type.Optional(Type.String()),
+	source: Type.Optional(Type.String()),
+	applicationId: Type.Optional(Type.String()),
+});
+
 type CreateRoleBody = Static<typeof CreateRoleSchema>;
 type UpdateRoleBody = Static<typeof UpdateRoleSchema>;
 
-// Response schemas
-interface RoleResponse {
-	id: string;
-	applicationId: string | null;
-	applicationCode: string | null;
-	name: string;
-	displayName: string;
-	description: string | null;
-	source: string;
-	permissions: string[];
-	clientManaged: boolean;
-	createdAt: string;
-	updatedAt: string;
-}
+// ─── Response Schemas ───────────────────────────────────────────────────────
 
-interface RolesListResponse {
-	roles: RoleResponse[];
-	total: number;
-	page: number;
-	pageSize: number;
-}
+const RoleResponseSchema = Type.Object({
+	id: Type.String(),
+	applicationId: Type.Union([Type.String(), Type.Null()]),
+	applicationCode: Type.Union([Type.String(), Type.Null()]),
+	name: Type.String(),
+	displayName: Type.String(),
+	description: Type.Union([Type.String(), Type.Null()]),
+	source: Type.String(),
+	permissions: Type.Array(Type.String()),
+	clientManaged: Type.Boolean(),
+	createdAt: Type.String({ format: 'date-time' }),
+	updatedAt: Type.String({ format: 'date-time' }),
+});
 
-interface PermissionResponse {
-	id: string;
-	code: string;
-	subdomain: string;
-	context: string;
-	aggregate: string;
-	action: string;
-	description: string | null;
-}
+const RolesListResponseSchema = Type.Object({
+	roles: Type.Array(RoleResponseSchema),
+	total: Type.Integer(),
+	page: Type.Integer(),
+	pageSize: Type.Integer(),
+});
 
-interface PermissionsListResponse {
-	permissions: PermissionResponse[];
-}
+const RolesArrayResponseSchema = Type.Object({
+	roles: Type.Array(RoleResponseSchema),
+});
+
+const PermissionResponseSchema = Type.Object({
+	id: Type.String(),
+	code: Type.String(),
+	subdomain: Type.String(),
+	context: Type.String(),
+	aggregate: Type.String(),
+	action: Type.String(),
+	description: Type.Union([Type.String(), Type.Null()]),
+});
+
+const PermissionsListResponseSchema = Type.Object({
+	permissions: Type.Array(PermissionResponseSchema),
+});
+
+type RoleResponse = Static<typeof RoleResponseSchema>;
+type PermissionResponse = Static<typeof PermissionResponseSchema>;
 
 /**
  * Dependencies for the roles API.
@@ -108,14 +131,17 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 		'/roles',
 		{
 			preHandler: requirePermission(ROLE_PERMISSIONS.CREATE),
+			schema: {
+				body: CreateRoleSchema,
+				response: {
+					201: RoleResponseSchema,
+					400: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const bodyResult = safeValidate(request.body, CreateRoleSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as CreateRoleBody;
+			const body = request.body as CreateRoleBody;
 			const ctx = request.executionContext;
 
 			const command: CreateRoleCommand = {
@@ -147,9 +173,15 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 		'/roles',
 		{
 			preHandler: requirePermission(ROLE_PERMISSIONS.READ),
+			schema: {
+				querystring: ListRolesQuery,
+				response: {
+					200: RolesListResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const query = request.query as { page?: string; pageSize?: string; q?: string; source?: string; applicationId?: string };
+			const query = request.query as Static<typeof ListRolesQuery>;
 			const page = parseInt(query.page ?? '0', 10);
 			const pageSize = Math.min(parseInt(query.pageSize ?? '20', 10), 100);
 
@@ -160,14 +192,12 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 				pagedResult = await roleRepository.findPaged(page, pageSize);
 			}
 
-			const response: RolesListResponse = {
+			return jsonSuccess(reply, {
 				roles: pagedResult.items.map(toRoleResponse),
 				total: pagedResult.totalItems,
 				page: pagedResult.page,
 				pageSize: pagedResult.pageSize,
-			};
-
-			return jsonSuccess(reply, response);
+			});
 		},
 	);
 
@@ -176,9 +206,16 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 		'/roles/:id',
 		{
 			preHandler: requirePermission(ROLE_PERMISSIONS.READ),
+			schema: {
+				params: IdParam,
+				response: {
+					200: RoleResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const role = await roleRepository.findById(id);
 
 			if (!role) {
@@ -194,9 +231,16 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 		'/roles/by-name/:name',
 		{
 			preHandler: requirePermission(ROLE_PERMISSIONS.READ),
+			schema: {
+				params: NameParam,
+				response: {
+					200: RoleResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { name } = request.params as { name: string };
+			const { name } = request.params as Static<typeof NameParam>;
 			const role = await roleRepository.findByName(name);
 
 			if (!role) {
@@ -212,9 +256,16 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 		'/roles/by-source/:source',
 		{
 			preHandler: requirePermission(ROLE_PERMISSIONS.READ),
+			schema: {
+				params: SourceParam,
+				response: {
+					200: RolesArrayResponseSchema,
+					400: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { source } = request.params as { source: string };
+			const { source } = request.params as Static<typeof SourceParam>;
 			const validSources = ['CODE', 'DATABASE', 'SDK'];
 
 			if (!validSources.includes(source.toUpperCase())) {
@@ -234,9 +285,15 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 		'/roles/by-application/:applicationId',
 		{
 			preHandler: requirePermission(ROLE_PERMISSIONS.READ),
+			schema: {
+				params: ApplicationIdParam,
+				response: {
+					200: RolesArrayResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { applicationId } = request.params as { applicationId: string };
+			const { applicationId } = request.params as Static<typeof ApplicationIdParam>;
 			const roles = await roleRepository.findByApplicationId(applicationId);
 
 			return jsonSuccess(reply, {
@@ -250,15 +307,20 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 		'/roles/:id',
 		{
 			preHandler: requirePermission(ROLE_PERMISSIONS.UPDATE),
+			schema: {
+				params: IdParam,
+				body: UpdateRoleSchema,
+				response: {
+					200: RoleResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body, UpdateRoleSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as UpdateRoleBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as UpdateRoleBody;
 			const ctx = request.executionContext;
 
 			const command: UpdateRoleCommand = {
@@ -287,9 +349,16 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 		'/roles/:id',
 		{
 			preHandler: requirePermission(ROLE_PERMISSIONS.DELETE),
+			schema: {
+				params: IdParam,
+				response: {
+					204: Type.Null(),
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const ctx = request.executionContext;
 
 			const command: DeleteRoleCommand = {
@@ -311,15 +380,18 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 		'/permissions',
 		{
 			preHandler: requirePermission(PERMISSION_PERMISSIONS.READ),
+			schema: {
+				response: {
+					200: PermissionsListResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
 			const permissions = await permissionRepository.findAll();
 
-			const response: PermissionsListResponse = {
+			return jsonSuccess(reply, {
 				permissions: permissions.map(toPermissionResponse),
-			};
-
-			return jsonSuccess(reply, response);
+			});
 		},
 	);
 
@@ -328,16 +400,20 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 		'/permissions/by-subdomain/:subdomain',
 		{
 			preHandler: requirePermission(PERMISSION_PERMISSIONS.READ),
+			schema: {
+				params: SubdomainParam,
+				response: {
+					200: PermissionsListResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { subdomain } = request.params as { subdomain: string };
+			const { subdomain } = request.params as Static<typeof SubdomainParam>;
 			const permissions = await permissionRepository.findBySubdomain(subdomain);
 
-			const response: PermissionsListResponse = {
+			return jsonSuccess(reply, {
 				permissions: permissions.map(toPermissionResponse),
-			};
-
-			return jsonSuccess(reply, response);
+			});
 		},
 	);
 }

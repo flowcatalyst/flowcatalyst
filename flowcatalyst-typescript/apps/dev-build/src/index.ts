@@ -1,8 +1,8 @@
 /**
  * FlowCatalyst Dev Build
  *
- * Combined development server that runs both Platform (IAM/OIDC) and
- * Message Router services in a single process.
+ * Combined development server that runs Platform, Message Router, and
+ * Stream Processor in a single Node.js process.
  *
  * This mirrors the Java flowcatalyst-dev-build module which combines
  * all FlowCatalyst components for local development.
@@ -10,12 +10,12 @@
  * Services:
  * - Platform: IAM, OIDC, Admin API (port 3000)
  * - Message Router: Queue processing, routing (port 8080)
+ * - Stream Processor: CQRS read model projections (same DB)
  */
 
 import { config } from 'dotenv';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn, type ChildProcess } from 'node:child_process';
 import { createLogger, setDefaultLogger } from '@flowcatalyst/logging';
 
 // Load .env file from dev-build directory
@@ -23,137 +23,47 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, '../.env') });
 
 // Configuration
-const PLATFORM_PORT = process.env['PLATFORM_PORT'] ?? '3000';
-const ROUTER_PORT = process.env['ROUTER_PORT'] ?? '8080';
-const LOG_LEVEL = process.env['LOG_LEVEL'] ?? 'info';
+const PLATFORM_PORT = Number(process.env['PLATFORM_PORT'] ?? '3000');
+const ROUTER_PORT = Number(process.env['ROUTER_PORT'] ?? '8080');
+const LOG_LEVEL = (process.env['LOG_LEVEL'] ?? 'info') as 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 const NODE_ENV = process.env['NODE_ENV'] ?? 'development';
+const DATABASE_URL = process.env['DATABASE_URL'] ?? 'postgres://localhost:5432/flowcatalyst';
+
+// Set dev environment defaults before importing services
+process.env['NODE_ENV'] = NODE_ENV;
+process.env['QUEUE_TYPE'] = process.env['QUEUE_TYPE'] ?? 'EMBEDDED';
+process.env['EMBEDDED_DB_PATH'] = process.env['EMBEDDED_DB_PATH'] ?? ':memory:';
+process.env['OIDC_ISSUER_URL'] = process.env['OIDC_ISSUER_URL'] ?? `http://localhost:${PLATFORM_PORT}`;
+process.env['PLATFORM_URL'] = process.env['PLATFORM_URL'] ?? `http://localhost:${PLATFORM_PORT}`;
+process.env['DATABASE_URL'] = DATABASE_URL;
 
 // Initialize logger
 const logger = createLogger({
-	level: LOG_LEVEL as 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal',
+	level: LOG_LEVEL,
 	serviceName: 'dev-build',
 	pretty: NODE_ENV === 'development',
 });
 setDefaultLogger(logger);
 
-// Track child processes for cleanup
-const children: ChildProcess[] = [];
-
-/**
- * Start the Platform service
- */
-function startPlatform(): ChildProcess {
-	logger.info({ port: PLATFORM_PORT }, 'Starting Platform service...');
-
-	const platformDir = resolve(__dirname, '../../platform');
-	const child = spawn('npx', ['tsx', 'src/index.ts'], {
-		cwd: platformDir,
-		stdio: ['inherit', 'pipe', 'pipe'],
-		env: {
-			...process.env,
-			PORT: PLATFORM_PORT,
-			NODE_ENV,
-			LOG_LEVEL,
-			// Platform-specific defaults for dev
-			OIDC_DEV_INTERACTIONS: 'true',
-		},
-	});
-
-	child.stdout?.on('data', (data) => {
-		const lines = data.toString().trim().split('\n');
-		for (const line of lines) {
-			if (line) {
-				try {
-					const parsed = JSON.parse(line);
-					logger.info({ ...parsed, service: 'platform' }, parsed.msg || 'Platform');
-				} catch {
-					logger.info({ service: 'platform' }, line);
-				}
-			}
-		}
-	});
-
-	child.stderr?.on('data', (data) => {
-		logger.error({ service: 'platform' }, data.toString().trim());
-	});
-
-	child.on('exit', (code) => {
-		logger.info({ code, service: 'platform' }, 'Platform service exited');
-	});
-
-	return child;
-}
-
-/**
- * Start the Message Router service
- */
-function startMessageRouter(): ChildProcess {
-	logger.info({ port: ROUTER_PORT }, 'Starting Message Router service...');
-
-	const routerDir = resolve(__dirname, '../../message-router');
-	const child = spawn('npx', ['tsx', 'src/index.ts'], {
-		cwd: routerDir,
-		stdio: ['inherit', 'pipe', 'pipe'],
-		env: {
-			...process.env,
-			PORT: ROUTER_PORT,
-			NODE_ENV,
-			LOG_LEVEL,
-			// Use embedded broker for development
-			QUEUE_TYPE: 'EMBEDDED',
-			EMBEDDED_DB_PATH: ':memory:',
-			// Point to local platform for OIDC
-			OIDC_ISSUER_URL: `http://localhost:${PLATFORM_PORT}`,
-			PLATFORM_URL: `http://localhost:${PLATFORM_PORT}`,
-		},
-	});
-
-	child.stdout?.on('data', (data) => {
-		const lines = data.toString().trim().split('\n');
-		for (const line of lines) {
-			if (line) {
-				try {
-					const parsed = JSON.parse(line);
-					logger.info({ ...parsed, service: 'router' }, parsed.msg || 'Router');
-				} catch {
-					logger.info({ service: 'router' }, line);
-				}
-			}
-		}
-	});
-
-	child.stderr?.on('data', (data) => {
-		logger.error({ service: 'router' }, data.toString().trim());
-	});
-
-	child.on('exit', (code) => {
-		logger.info({ code, service: 'router' }, 'Message Router service exited');
-	});
-
-	return child;
-}
+// Track started services for shutdown
+type StopFn = () => Promise<void>;
+const stopFns: StopFn[] = [];
 
 /**
  * Graceful shutdown handler
  */
-function shutdown(signal: string) {
+async function shutdown(signal: string) {
 	logger.info({ signal }, 'Shutting down dev-build...');
 
-	for (const child of children) {
-		if (!child.killed) {
-			child.kill('SIGTERM');
+	for (const stop of stopFns.reverse()) {
+		try {
+			await stop();
+		} catch (err) {
+			logger.error({ err }, 'Error during shutdown');
 		}
 	}
 
-	// Give processes time to shut down gracefully
-	setTimeout(() => {
-		for (const child of children) {
-			if (!child.killed) {
-				child.kill('SIGKILL');
-			}
-		}
-		process.exit(0);
-	}, 5000);
+	process.exit(0);
 }
 
 // Main startup
@@ -163,43 +73,78 @@ async function main() {
 			platformPort: PLATFORM_PORT,
 			routerPort: ROUTER_PORT,
 			env: NODE_ENV,
-			queueType: 'EMBEDDED',
+			queueType: process.env['QUEUE_TYPE'],
 		},
 		'Starting FlowCatalyst Dev Build',
 	);
 
 	console.log(`
 ╔═══════════════════════════════════════════════════════════════════╗
-║                    FlowCatalyst Dev Build                         ║
+║                    FlowCatalyst Dev Build                       ║
 ╠═══════════════════════════════════════════════════════════════════╣
-║  Platform (IAM/OIDC):    http://localhost:${PLATFORM_PORT.padEnd(5)}                   ║
-║  Message Router:         http://localhost:${ROUTER_PORT.padEnd(5)}                   ║
-║  Queue Type:             EMBEDDED (in-memory SQLite)              ║
+║  Platform (IAM/OIDC):    http://localhost:${String(PLATFORM_PORT).padEnd(5)}                 ║
+║  Message Router:         http://localhost:${String(ROUTER_PORT).padEnd(5)}                 ║
+║  Queue Type:             EMBEDDED (in-memory SQLite)            ║
 ╠═══════════════════════════════════════════════════════════════════╣
-║  Endpoints:                                                       ║
-║  ├─ Platform:                                                     ║
-║  │  ├─ Health:     http://localhost:${PLATFORM_PORT}/health                       ║
+║  Endpoints:                                                     ║
+║  ├─ Platform:                                                   ║
+║  │  ├─ Health:     http://localhost:${PLATFORM_PORT}/health                     ║
+║  │  ├─ OpenAPI:    http://localhost:${PLATFORM_PORT}/docs                       ║
 ║  │  ├─ OIDC:       http://localhost:${PLATFORM_PORT}/.well-known/openid-configuration
-║  │  ├─ Admin API:  http://localhost:${PLATFORM_PORT}/api/admin/*                  ║
-║  │  └─ OAuth:      http://localhost:${PLATFORM_PORT}/oauth/*                      ║
-║  └─ Router:                                                       ║
-║     ├─ Health:     http://localhost:${ROUTER_PORT}/health                        ║
-║     ├─ Metrics:    http://localhost:${ROUTER_PORT}/metrics                       ║
-║     ├─ Config:     http://localhost:${ROUTER_PORT}/api/config                    ║
-║     └─ OpenAPI:    http://localhost:${ROUTER_PORT}/openapi.json                  ║
+║  │  ├─ Admin API:  http://localhost:${PLATFORM_PORT}/api/admin/*                ║
+║  │  └─ OAuth:      http://localhost:${PLATFORM_PORT}/oauth/*                    ║
+║  ├─ Stream Processor:  running (same DB)                        ║
+║  └─ Router:                                                     ║
+║     ├─ Health:     http://localhost:${ROUTER_PORT}/health                      ║
+║     ├─ Metrics:    http://localhost:${ROUTER_PORT}/metrics                     ║
+║     └─ OpenAPI:    http://localhost:${ROUTER_PORT}/openapi.json                ║
 ╚═══════════════════════════════════════════════════════════════════╝
 `);
 
-	// Start services
-	const platform = startPlatform();
-	children.push(platform);
+	// 1. Start Platform
+	logger.info({ port: PLATFORM_PORT }, 'Starting Platform service...');
+	const { startPlatform } = await import('@flowcatalyst/platform');
+	const platformInstance = await startPlatform({
+		port: PLATFORM_PORT,
+		host: '0.0.0.0',
+		databaseUrl: DATABASE_URL,
+		logLevel: LOG_LEVEL,
+	});
+	stopFns.push(async () => {
+		logger.info('Stopping Platform...');
+		await platformInstance.close();
+	});
 
-	// Wait a bit for platform to start before starting router
-	// (router may need to connect to platform for OIDC discovery)
-	await new Promise((resolve) => setTimeout(resolve, 2000));
+	// 2. Start Stream Processor
+	logger.info('Starting Stream Processor...');
+	const { startStreamProcessor } = await import('@flowcatalyst/stream-processor');
+	const streamHandle = await startStreamProcessor({
+		databaseUrl: DATABASE_URL,
+		logLevel: LOG_LEVEL,
+	});
+	stopFns.push(async () => {
+		logger.info('Stopping Stream Processor...');
+		await streamHandle.stop();
+	});
 
-	const router = startMessageRouter();
-	children.push(router);
+	// 3. Start Message Router
+	logger.info({ port: ROUTER_PORT }, 'Starting Message Router...');
+	const { startRouter } = await import('@flowcatalyst/message-router');
+	const { server: routerServer, services: routerServices } = await startRouter({
+		port: ROUTER_PORT,
+		host: '0.0.0.0',
+		logLevel: LOG_LEVEL,
+	});
+	stopFns.push(async () => {
+		logger.info('Stopping Message Router...');
+		routerServer.close();
+		routerServices.brokerHealth.stop();
+		routerServices.queueHealthMonitor.stop();
+		await routerServices.notifications.stop();
+		await routerServices.queueManager.stop();
+	});
+
+	logger.info('All services started successfully');
 
 	// Handle shutdown signals
 	process.on('SIGINT', () => shutdown('SIGINT'));

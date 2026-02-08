@@ -360,7 +360,7 @@ public class EventTypeBffResource {
         String updatedAt
     ) {
         public static BffEventTypeResponse from(EventType et) {
-            String[] parts = et.code().split(":");
+            var parts = et.code().split(":");
             return new BffEventTypeResponse(
                 et.id() != null ? et.id().toString() : null,
                 et.code(),
@@ -368,9 +368,9 @@ public class EventTypeBffResource {
                 et.description(),
                 et.status(),
                 et.clientScoped(),
-                parts.length > 0 ? parts[0] : null,
-                parts.length > 1 ? parts[1] : null,
-                parts.length > 2 ? parts[2] : null,
+                et.application(),
+                et.subdomain(),
+                et.aggregate(),
                 parts.length > 3 ? parts[3] : null,
                 et.specVersions() != null
                     ? et.specVersions().stream().map(BffSpecVersionResponse::from).toList()

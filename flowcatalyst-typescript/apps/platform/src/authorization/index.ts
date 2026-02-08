@@ -17,11 +17,20 @@ export * from './authorization-service.js';
 // Fastify hooks
 export * from './require-permission.js';
 
+// Resource-level guards
+export * from './resource-guard.js';
+
+// Query scope filtering
+export * from './query-scope.js';
+
 // Permission definitions
 export * from './permissions/index.js';
 
 // Role definitions
 export * from './roles/index.js';
+
+// Allowed role filter
+export { getAllowedRoleNames, filterAllowedRoles } from './allowed-role-filter.js';
 
 // Initialization
 import { permissionRegistry } from './permission-registry.js';

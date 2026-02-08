@@ -10,13 +10,24 @@ export { tsidColumn, timestampColumn, baseEntityColumns, type BaseEntity, type N
 // Re-export core tables from persistence package
 export { events, auditLogs, type AuditLogRecord, type NewAuditLog } from '@flowcatalyst/persistence';
 
+// Re-export read model tables from persistence package
+export { eventsRead, type EventReadRecord, type NewEventReadRecord } from '@flowcatalyst/persistence';
+export { dispatchJobsRead, type DispatchJobReadRecord, type NewDispatchJobReadRecord } from '@flowcatalyst/persistence';
+export { dispatchJobAttempts, type DispatchJobAttemptRecord, type NewDispatchJobAttemptRecord } from '@flowcatalyst/persistence';
+
 // Principal tables
 export {
 	principals,
-	type ServiceAccountJson,
 	type PrincipalRecord,
 	type NewPrincipalRecord,
 } from './principals.js';
+
+// Service account tables
+export {
+	serviceAccounts,
+	type ServiceAccountRecord,
+	type NewServiceAccountRecord,
+} from './service-accounts.js';
 
 // Principal roles junction table
 export {
@@ -105,14 +116,105 @@ export {
 	type NewOidcPayloadRecord,
 } from './oidc-payloads.js';
 
-// Outbox tables (CQRS read model projection)
+// Event type tables
 export {
-	dispatchJobOutbox,
-	eventOutbox,
-	OutboxStatus,
-	type OutboxStatusValue,
-	type DispatchJobOutboxRecord,
-	type NewDispatchJobOutboxRecord,
-	type EventOutboxRecord,
-	type NewEventOutboxRecord,
+	eventTypes,
+	eventTypeSpecVersions,
+	type EventTypeRecord,
+	type NewEventTypeRecord,
+	type EventTypeSpecVersionRecord,
+	type NewEventTypeSpecVersionRecord,
+} from './event-types.js';
+
+// Dispatch pool tables
+export {
+	dispatchPools,
+	type DispatchPoolRecord,
+	type NewDispatchPoolRecord,
+} from './dispatch-pools.js';
+
+// Subscription tables
+export {
+	subscriptions,
+	subscriptionEventTypes,
+	subscriptionCustomConfigs,
+	type SubscriptionRecord,
+	type NewSubscriptionRecord,
+	type SubscriptionEventTypeRecord,
+	type NewSubscriptionEventTypeRecord,
+	type SubscriptionCustomConfigRecord,
+	type NewSubscriptionCustomConfigRecord,
+} from './subscriptions.js';
+
+// Identity provider tables
+export {
+	identityProviders,
+	identityProviderAllowedDomains,
+	type IdentityProviderRecord,
+	type NewIdentityProviderRecord,
+	type IdentityProviderAllowedDomainRecord,
+	type NewIdentityProviderAllowedDomainRecord,
+} from './identity-providers.js';
+
+// Email domain mapping tables
+export {
+	emailDomainMappings,
+	emailDomainMappingAdditionalClients,
+	emailDomainMappingGrantedClients,
+	emailDomainMappingAllowedRoles,
+	type EmailDomainMappingRecord,
+	type NewEmailDomainMappingRecord,
+	type EmailDomainMappingAdditionalClientRecord,
+	type EmailDomainMappingGrantedClientRecord,
+	type EmailDomainMappingAllowedRoleRecord,
+} from './email-domain-mappings.js';
+
+// IDP role mapping tables
+export {
+	idpRoleMappings,
+	type IdpRoleMappingRecord,
+	type NewIdpRoleMappingRecord,
+} from './idp-role-mappings.js';
+
+// OIDC login state tables
+export {
+	oidcLoginStates,
+	type OidcLoginStateRecord,
+	type NewOidcLoginStateRecord,
+} from './oidc-login-states.js';
+
+// Principal application access junction table
+export {
+	principalApplicationAccess,
+	type PrincipalApplicationAccessRecord,
+	type NewPrincipalApplicationAccessRecord,
+} from './principal-application-access.js';
+
+// Platform config tables
+export {
+	platformConfigs,
+	platformConfigAccess,
+	type PlatformConfigRecord,
+	type NewPlatformConfigRecord,
+	type PlatformConfigAccessRecord,
+	type NewPlatformConfigAccessRecord,
+} from './platform-configs.js';
+
+// CORS allowed origin tables
+export {
+	corsAllowedOrigins,
+	type CorsAllowedOriginRecord,
+	type NewCorsAllowedOriginRecord,
+} from './cors-allowed-origins.js';
+
+// Projection feed tables (CQRS read model projection)
+export {
+	dispatchJobProjectionFeed,
+	eventProjectionFeed,
+	ProjectionFeedStatus,
+	type ProjectionFeedStatusValue,
+	type DispatchJobProjectionFeedRecord,
+	type NewDispatchJobProjectionFeedRecord,
+	type EventProjectionFeedRecord,
+	type NewEventProjectionFeedRecord,
 } from './outbox.js';

@@ -195,7 +195,7 @@ public class DispatchJobWriteRepository implements PanacheRepositoryBase<Dispatc
 
     private void writeChangeRecord(String jobId, String changesJson) {
         em.createNativeQuery("""
-            INSERT INTO dispatch_job_changes (dispatch_job_id, operation, changes, created_at)
+            INSERT INTO dispatch_job_projection_feed (dispatch_job_id, operation, changes, created_at)
             VALUES (:jobId, 'UPDATE', CAST(:changes AS jsonb), NOW())
             """)
             .setParameter("jobId", jobId)

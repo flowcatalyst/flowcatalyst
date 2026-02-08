@@ -49,20 +49,7 @@
 import type { Result, DomainEvent, ExecutionContext } from '@flowcatalyst/domain-core';
 import type { Command } from './command.js';
 
-/**
- * UseCase interface for write operations.
- *
- * @typeParam TCommand - The command type (input data)
- * @typeParam TEvent - The domain event type (output on success)
- */
 export interface UseCase<TCommand extends Command, TEvent extends DomainEvent> {
-	/**
-	 * Execute the use case.
-	 *
-	 * @param command - The input command with operation data
-	 * @param context - Execution context with tracing and principal information
-	 * @returns Result containing the domain event on success, or an error on failure
-	 */
 	execute(command: TCommand, context: ExecutionContext): Promise<Result<TEvent>>;
 }
 
@@ -71,30 +58,11 @@ export interface UseCase<TCommand extends Command, TEvent extends DomainEvent> {
  * Prefer the async version for database operations.
  */
 export interface SyncUseCase<TCommand extends Command, TEvent extends DomainEvent> {
-	/**
-	 * Execute the use case synchronously.
-	 */
 	execute(command: TCommand, context: ExecutionContext): Result<TEvent>;
 }
 
-/**
- * Type for extracting the command type from a UseCase.
- *
- * @example
- * ```typescript
- * type Cmd = UseCaseCommand<CreateUserUseCase>; // CreateUserCommand
- * ```
- */
 export type UseCaseCommand<T> = T extends UseCase<infer TCommand, DomainEvent> ? TCommand : never;
 
-/**
- * Type for extracting the event type from a UseCase.
- *
- * @example
- * ```typescript
- * type Evt = UseCaseEvent<CreateUserUseCase>; // UserCreatedEvent
- * ```
- */
 export type UseCaseEvent<T> = T extends UseCase<Command, infer TEvent> ? TEvent : never;
 
 /**

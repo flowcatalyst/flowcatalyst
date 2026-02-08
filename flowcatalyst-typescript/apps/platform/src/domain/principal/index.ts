@@ -14,8 +14,10 @@ export {
 	type Principal,
 	type NewPrincipal,
 	createUserPrincipal,
+	createServicePrincipal,
 	getRoleNames,
 	hasRole,
+	hasApplicationAccess,
 	updatePrincipal,
 	assignRoles,
 } from './principal.js';
@@ -45,6 +47,7 @@ export {
 	UserDeactivated,
 	UserDeleted,
 	RolesAssigned,
+	ApplicationAccessAssigned,
 	ClientAccessGranted,
 	ClientAccessRevoked,
 	type UserCreatedData,
@@ -53,6 +56,7 @@ export {
 	type UserDeactivatedData,
 	type UserDeletedData,
 	type RolesAssignedData,
+	type ApplicationAccessAssignedData,
 	type ClientAccessGrantedData,
 	type ClientAccessRevokedData,
 } from './events.js';

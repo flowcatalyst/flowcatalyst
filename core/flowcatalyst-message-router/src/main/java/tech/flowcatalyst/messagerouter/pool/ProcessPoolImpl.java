@@ -60,11 +60,11 @@ import java.util.concurrent.locks.ReentrantLock;
  *   <li>Backward compatible: messages without messageGroupId use DEFAULT_GROUP</li>
  * </ul>
  *
- * <p>Buffer capacity is calculated as max(concurrency × 2, 50):
+ * <p>Buffer capacity is calculated as max(concurrency × 20, 50):
  * <ul>
- *   <li>5 workers → 50 buffer per group</li>
- *   <li>100 workers → 200 buffer per group</li>
- *   <li>200 workers → 400 buffer per group</li>
+ *   <li>5 workers → 100 buffer per group</li>
+ *   <li>100 workers → 2000 buffer per group</li>
+ *   <li>200 workers → 4000 buffer per group</li>
  * </ul>
  *
  * <h2>Concurrency Control</h2>
@@ -139,7 +139,7 @@ public class ProcessPoolImpl implements ProcessPool {
      *
      * @param poolCode unique identifier for this pool
      * @param concurrency number of concurrent workers
-     * @param queueCapacity blocking queue capacity (should be max(concurrency × 2, 50))
+     * @param queueCapacity blocking queue capacity (should be max(concurrency × 20, 50))
      * @param rateLimitPerMinute optional pool-level rate limit (null if not configured)
      * @param mediator mediator for processing messages
      * @param messageCallback callback for ack/nack operations

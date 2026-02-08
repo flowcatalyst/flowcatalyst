@@ -56,15 +56,26 @@ public interface OutboxProcessorConfig {
 
     /**
      * Table/collection name for events outbox.
+     * Defaults to shared "outbox_messages" table (single-table pattern).
+     * The processor uses the "type" column to filter by message type.
+     * Override to use separate tables per type if needed for high-volume deployments.
      */
-    @WithDefault("outbox_events")
+    @WithDefault("outbox_messages")
     String eventsTable();
 
     /**
      * Table/collection name for dispatch jobs outbox.
+     * Defaults to shared "outbox_messages" table (single-table pattern).
      */
-    @WithDefault("outbox_dispatch_jobs")
+    @WithDefault("outbox_messages")
     String dispatchJobsTable();
+
+    /**
+     * Table/collection name for audit logs outbox.
+     * Defaults to shared "outbox_messages" table (single-table pattern).
+     */
+    @WithDefault("outbox_messages")
+    String auditLogsTable();
 
     /**
      * FlowCatalyst API base URL.

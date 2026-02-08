@@ -82,6 +82,7 @@ export {
 export {
 	// Common
 	tsidColumn,
+	rawTsidColumn,
 	timestampColumn,
 	baseEntityColumns,
 	type BaseEntity,
@@ -91,8 +92,39 @@ export {
 	type Event,
 	type NewEvent,
 	type EventContextData,
+	// Events read (CQRS projection)
+	eventsRead,
+	type EventReadRecord,
+	type NewEventReadRecord,
 	// Audit logs
 	auditLogs,
 	type AuditLogRecord,
 	type NewAuditLog,
+	// Dispatch jobs
+	dispatchJobs,
+	type DispatchJobRecord,
+	type NewDispatchJobRecord,
+	type DispatchKind,
+	type DispatchProtocol,
+	type DispatchStatus,
+	type DispatchMode,
+	type DispatchJobMetadata,
+	// Dispatch jobs read (CQRS projection)
+	dispatchJobsRead,
+	type DispatchJobReadRecord,
+	type NewDispatchJobReadRecord,
+	// Dispatch job attempts
+	dispatchJobAttempts,
+	type DispatchJobAttemptRecord,
+	type NewDispatchJobAttemptRecord,
+	type DispatchErrorType,
+	// Projection feed
+	eventProjectionFeed,
+	dispatchJobProjectionFeed,
+	type EventProjectionFeedRecord,
+	type NewEventProjectionFeedRecord,
+	type DispatchJobProjectionFeedRecord,
+	type NewDispatchJobProjectionFeedRecord,
+	type ProjectionFeedOperation,
+	type ProjectionFeedProcessedStatus,
 } from './schema/index.js';

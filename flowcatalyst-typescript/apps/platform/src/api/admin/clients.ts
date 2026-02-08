@@ -12,8 +12,7 @@ import {
 	jsonSuccess,
 	noContent,
 	notFound,
-	badRequest,
-	safeValidate,
+	ErrorResponseSchema,
 } from '@flowcatalyst/http';
 import { Result } from '@flowcatalyst/application';
 import type { UseCase } from '@flowcatalyst/application';
@@ -34,10 +33,11 @@ import type {
 	ClientStatus,
 } from '../../domain/index.js';
 import type { ClientRepository } from '../../infrastructure/persistence/index.js';
-import { requirePermission } from '../../authorization/index.js';
+import { requirePermission, getAccessibleClientIds, canAccessResourceByClient } from '../../authorization/index.js';
 import { CLIENT_PERMISSIONS } from '../../authorization/permissions/platform-admin.js';
 
-// Request schemas using TypeBox
+// ─── Request Schemas ────────────────────────────────────────────────────────
+
 const CreateClientSchema = Type.Object({
 	name: Type.String({ minLength: 1, maxLength: 255 }),
 	identifier: Type.String({ minLength: 1, maxLength: 60 }),
@@ -57,37 +57,48 @@ const AddNoteSchema = Type.Object({
 	text: Type.String({ minLength: 1, maxLength: 1000 }),
 });
 
+const IdParam = Type.Object({ id: Type.String() });
+const IdentifierParam = Type.Object({ identifier: Type.String() });
+
+const ListClientsQuery = Type.Object({
+	page: Type.Optional(Type.String()),
+	pageSize: Type.Optional(Type.String()),
+});
+
 type CreateClientBody = Static<typeof CreateClientSchema>;
 type UpdateClientBody = Static<typeof UpdateClientSchema>;
 type ChangeStatusBody = Static<typeof ChangeStatusSchema>;
 type AddNoteBody = Static<typeof AddNoteSchema>;
 
-// Response schemas for client
-interface ClientNoteResponse {
-	category: string;
-	text: string;
-	addedBy: string;
-	addedAt: string;
-}
+// ─── Response Schemas ───────────────────────────────────────────────────────
 
-interface ClientResponse {
-	id: string;
-	name: string;
-	identifier: string;
-	status: string;
-	statusReason: string | null;
-	statusChangedAt: string | null;
-	notes: ClientNoteResponse[];
-	createdAt: string;
-	updatedAt: string;
-}
+const ClientNoteResponseSchema = Type.Object({
+	category: Type.String(),
+	text: Type.String(),
+	addedBy: Type.String(),
+	addedAt: Type.String({ format: 'date-time' }),
+});
 
-interface ClientsListResponse {
-	clients: ClientResponse[];
-	total: number;
-	page: number;
-	pageSize: number;
-}
+const ClientResponseSchema = Type.Object({
+	id: Type.String(),
+	name: Type.String(),
+	identifier: Type.String(),
+	status: Type.String(),
+	statusReason: Type.Union([Type.String(), Type.Null()]),
+	statusChangedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+	notes: Type.Array(ClientNoteResponseSchema),
+	createdAt: Type.String({ format: 'date-time' }),
+	updatedAt: Type.String({ format: 'date-time' }),
+});
+
+const ClientsListResponseSchema = Type.Object({
+	clients: Type.Array(ClientResponseSchema),
+	total: Type.Integer(),
+	page: Type.Integer(),
+	pageSize: Type.Integer(),
+});
+
+type ClientResponse = Static<typeof ClientResponseSchema>;
 
 /**
  * Dependencies for the clients API.
@@ -119,14 +130,17 @@ export async function registerClientsRoutes(fastify: FastifyInstance, deps: Clie
 		'/clients',
 		{
 			preHandler: requirePermission(CLIENT_PERMISSIONS.CREATE),
+			schema: {
+				body: CreateClientSchema,
+				response: {
+					201: ClientResponseSchema,
+					400: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const bodyResult = safeValidate(request.body, CreateClientSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as CreateClientBody;
+			const body = request.body as CreateClientBody;
 			const ctx = request.executionContext;
 
 			const command: CreateClientCommand = {
@@ -153,22 +167,27 @@ export async function registerClientsRoutes(fastify: FastifyInstance, deps: Clie
 		'/clients',
 		{
 			preHandler: requirePermission(CLIENT_PERMISSIONS.READ),
+			schema: {
+				querystring: ListClientsQuery,
+				response: {
+					200: ClientsListResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const query = request.query as { page?: string; pageSize?: string };
+			const query = request.query as Static<typeof ListClientsQuery>;
 			const page = parseInt(query.page ?? '0', 10);
 			const pageSize = Math.min(parseInt(query.pageSize ?? '20', 10), 100);
 
-			const pagedResult = await clientRepository.findPaged(page, pageSize);
+			const accessibleClientIds = getAccessibleClientIds();
+			const pagedResult = await clientRepository.findPagedScoped(page, pageSize, accessibleClientIds);
 
-			const response: ClientsListResponse = {
+			return jsonSuccess(reply, {
 				clients: pagedResult.items.map(toClientResponse),
 				total: pagedResult.totalItems,
 				page: pagedResult.page,
 				pageSize: pagedResult.pageSize,
-			};
-
-			return jsonSuccess(reply, response);
+			});
 		},
 	);
 
@@ -177,12 +196,19 @@ export async function registerClientsRoutes(fastify: FastifyInstance, deps: Clie
 		'/clients/:id',
 		{
 			preHandler: requirePermission(CLIENT_PERMISSIONS.READ),
+			schema: {
+				params: IdParam,
+				response: {
+					200: ClientResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const client = await clientRepository.findById(id);
 
-			if (!client) {
+			if (!client || !canAccessResourceByClient(client.id)) {
 				return notFound(reply, `Client not found: ${id}`);
 			}
 
@@ -195,12 +221,19 @@ export async function registerClientsRoutes(fastify: FastifyInstance, deps: Clie
 		'/clients/by-identifier/:identifier',
 		{
 			preHandler: requirePermission(CLIENT_PERMISSIONS.READ),
+			schema: {
+				params: IdentifierParam,
+				response: {
+					200: ClientResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { identifier } = request.params as { identifier: string };
+			const { identifier } = request.params as Static<typeof IdentifierParam>;
 			const client = await clientRepository.findByIdentifier(identifier);
 
-			if (!client) {
+			if (!client || !canAccessResourceByClient(client.id)) {
 				return notFound(reply, `Client not found with identifier: ${identifier}`);
 			}
 
@@ -213,15 +246,20 @@ export async function registerClientsRoutes(fastify: FastifyInstance, deps: Clie
 		'/clients/:id',
 		{
 			preHandler: requirePermission(CLIENT_PERMISSIONS.UPDATE),
+			schema: {
+				params: IdParam,
+				body: UpdateClientSchema,
+				response: {
+					200: ClientResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body, UpdateClientSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as UpdateClientBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as UpdateClientBody;
 			const ctx = request.executionContext;
 
 			const command: UpdateClientCommand = {
@@ -247,15 +285,20 @@ export async function registerClientsRoutes(fastify: FastifyInstance, deps: Clie
 		'/clients/:id/activate',
 		{
 			preHandler: requirePermission(CLIENT_PERMISSIONS.ACTIVATE),
+			schema: {
+				params: IdParam,
+				body: ChangeStatusSchema,
+				response: {
+					200: ClientResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body ?? {}, ChangeStatusSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = (bodyResult.data ?? {}) as ChangeStatusBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = (request.body ?? {}) as ChangeStatusBody;
 			const ctx = request.executionContext;
 
 			const command: ChangeClientStatusCommand = {
@@ -283,15 +326,20 @@ export async function registerClientsRoutes(fastify: FastifyInstance, deps: Clie
 		'/clients/:id/suspend',
 		{
 			preHandler: requirePermission(CLIENT_PERMISSIONS.SUSPEND),
+			schema: {
+				params: IdParam,
+				body: ChangeStatusSchema,
+				response: {
+					200: ClientResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body ?? {}, ChangeStatusSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = (bodyResult.data ?? {}) as ChangeStatusBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = (request.body ?? {}) as ChangeStatusBody;
 			const ctx = request.executionContext;
 
 			const command: ChangeClientStatusCommand = {
@@ -319,15 +367,20 @@ export async function registerClientsRoutes(fastify: FastifyInstance, deps: Clie
 		'/clients/:id/deactivate',
 		{
 			preHandler: requirePermission(CLIENT_PERMISSIONS.DEACTIVATE),
+			schema: {
+				params: IdParam,
+				body: ChangeStatusSchema,
+				response: {
+					200: ClientResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body ?? {}, ChangeStatusSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = (bodyResult.data ?? {}) as ChangeStatusBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = (request.body ?? {}) as ChangeStatusBody;
 			const ctx = request.executionContext;
 
 			const command: ChangeClientStatusCommand = {
@@ -355,15 +408,19 @@ export async function registerClientsRoutes(fastify: FastifyInstance, deps: Clie
 		'/clients/:id/notes',
 		{
 			preHandler: requirePermission(CLIENT_PERMISSIONS.UPDATE),
+			schema: {
+				params: IdParam,
+				body: AddNoteSchema,
+				response: {
+					200: ClientResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body, AddNoteSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as AddNoteBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as AddNoteBody;
 			const ctx = request.executionContext;
 
 			const command: AddClientNoteCommand = {
@@ -390,9 +447,16 @@ export async function registerClientsRoutes(fastify: FastifyInstance, deps: Clie
 		'/clients/:id',
 		{
 			preHandler: requirePermission(CLIENT_PERMISSIONS.DELETE),
+			schema: {
+				params: IdParam,
+				response: {
+					204: Type.Null(),
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const ctx = request.executionContext;
 
 			const command: DeleteClientCommand = {

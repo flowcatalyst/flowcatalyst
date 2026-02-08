@@ -1,62 +1,56 @@
-import { z } from 'zod';
-
 /**
  * Queue statistics - GET /monitoring/queue-stats
  * Map values keyed by queue name
  */
-export const QueueStatsSchema = z.object({
-	name: z.string(),
-	totalMessages: z.number(),
-	totalConsumed: z.number(),
-	totalFailed: z.number(),
-	successRate: z.number(),
-	currentSize: z.number(),
-	throughput: z.number(),
-	pendingMessages: z.number(),
-	messagesNotVisible: z.number(),
-	totalMessages5min: z.number(),
-	totalConsumed5min: z.number(),
-	totalFailed5min: z.number(),
-	successRate5min: z.number(),
-	totalMessages30min: z.number(),
-	totalConsumed30min: z.number(),
-	totalFailed30min: z.number(),
-	successRate30min: z.number(),
-	totalDeferred: z.number(),
-});
-
-export type QueueStats = z.infer<typeof QueueStatsSchema>;
+export interface QueueStats {
+	name: string;
+	totalMessages: number;
+	totalConsumed: number;
+	totalFailed: number;
+	successRate: number;
+	currentSize: number;
+	throughput: number;
+	pendingMessages: number;
+	messagesNotVisible: number;
+	totalMessages5min: number;
+	totalConsumed5min: number;
+	totalFailed5min: number;
+	successRate5min: number;
+	totalMessages30min: number;
+	totalConsumed30min: number;
+	totalFailed30min: number;
+	successRate30min: number;
+	totalDeferred: number;
+}
 
 /**
  * Pool statistics - GET /monitoring/pool-stats
  * Map values keyed by pool code
  */
-export const PoolStatsSchema = z.object({
-	poolCode: z.string(),
-	totalProcessed: z.number(),
-	totalSucceeded: z.number(),
-	totalFailed: z.number(),
-	totalRateLimited: z.number(),
-	successRate: z.number(),
-	activeWorkers: z.number().int(),
-	availablePermits: z.number().int(),
-	maxConcurrency: z.number().int(),
-	queueSize: z.number().int(),
-	maxQueueCapacity: z.number().int(),
-	averageProcessingTimeMs: z.number(),
-	totalProcessed5min: z.number(),
-	totalSucceeded5min: z.number(),
-	totalFailed5min: z.number(),
-	successRate5min: z.number(),
-	totalProcessed30min: z.number(),
-	totalSucceeded30min: z.number(),
-	totalFailed30min: z.number(),
-	successRate30min: z.number(),
-	totalRateLimited5min: z.number(),
-	totalRateLimited30min: z.number(),
-});
-
-export type PoolStats = z.infer<typeof PoolStatsSchema>;
+export interface PoolStats {
+	poolCode: string;
+	totalProcessed: number;
+	totalSucceeded: number;
+	totalFailed: number;
+	totalRateLimited: number;
+	successRate: number;
+	activeWorkers: number;
+	availablePermits: number;
+	maxConcurrency: number;
+	queueSize: number;
+	maxQueueCapacity: number;
+	averageProcessingTimeMs: number;
+	totalProcessed5min: number;
+	totalSucceeded5min: number;
+	totalFailed5min: number;
+	successRate5min: number;
+	totalProcessed30min: number;
+	totalSucceeded30min: number;
+	totalFailed30min: number;
+	successRate30min: number;
+	totalRateLimited5min: number;
+	totalRateLimited30min: number;
+}
 
 /**
  * Warning categories - exact match to Java enum
@@ -69,6 +63,8 @@ export const WarningCategory = {
 	CONFIGURATION: 'CONFIGURATION',
 	POOL_LIMIT: 'POOL_LIMIT',
 	BROKER_HEALTH: 'BROKER_HEALTH',
+	CONSUMER_RESTART: 'CONSUMER_RESTART',
+	CONSUMER_RESTART_FAILED: 'CONSUMER_RESTART_FAILED',
 } as const;
 
 export type WarningCategory = (typeof WarningCategory)[keyof typeof WarningCategory];
@@ -88,27 +84,23 @@ export type WarningSeverity = (typeof WarningSeverity)[keyof typeof WarningSever
 /**
  * Warning - GET /monitoring/warnings
  */
-export const WarningSchema = z.object({
-	id: z.string(),
-	category: z.string(),
-	severity: z.string(),
-	message: z.string(),
-	timestamp: z.string(),
-	source: z.string(),
-	acknowledged: z.boolean(),
-});
-
-export type Warning = z.infer<typeof WarningSchema>;
+export interface Warning {
+	id: string;
+	category: string;
+	severity: string;
+	message: string;
+	timestamp: string;
+	source: string;
+	acknowledged: boolean;
+}
 
 /**
  * Warning acknowledge response
  */
-export const WarningAcknowledgeResponseSchema = z.object({
-	status: z.string(),
-	message: z.string().optional(),
-});
-
-export type WarningAcknowledgeResponse = z.infer<typeof WarningAcknowledgeResponseSchema>;
+export interface WarningAcknowledgeResponse {
+	status: string;
+	message?: string | undefined;
+}
 
 /**
  * Circuit breaker state - exact match to Java
@@ -125,132 +117,110 @@ export type CircuitBreakerState = (typeof CircuitBreakerState)[keyof typeof Circ
  * Circuit breaker stats - GET /monitoring/circuit-breakers
  * Map values keyed by circuit breaker name (URL)
  */
-export const CircuitBreakerStatsSchema = z.object({
-	name: z.string(),
-	state: z.string(),
-	successfulCalls: z.number(),
-	failedCalls: z.number(),
-	rejectedCalls: z.number(),
-	failureRate: z.number(),
-	bufferedCalls: z.number().int(),
-	bufferSize: z.number().int(),
-});
-
-export type CircuitBreakerStats = z.infer<typeof CircuitBreakerStatsSchema>;
+export interface CircuitBreakerStats {
+	name: string;
+	state: string;
+	successfulCalls: number;
+	failedCalls: number;
+	rejectedCalls: number;
+	failureRate: number;
+	bufferedCalls: number;
+	bufferSize: number;
+}
 
 /**
  * Circuit breaker state response
  */
-export const CircuitBreakerStateResponseSchema = z.object({
-	name: z.string(),
-	state: z.string(),
-});
-
-export type CircuitBreakerStateResponse = z.infer<typeof CircuitBreakerStateResponseSchema>;
+export interface CircuitBreakerStateResponse {
+	name: string;
+	state: string;
+}
 
 /**
  * In-flight message - GET /monitoring/in-flight-messages
  */
-export const InFlightMessageSchema = z.object({
-	messageId: z.string(),
-	brokerMessageId: z.string(),
-	queueId: z.string(),
-	addedToInPipelineAt: z.string(),
-	elapsedTimeMs: z.number(),
-	poolCode: z.string(),
-});
-
-export type InFlightMessage = z.infer<typeof InFlightMessageSchema>;
+export interface InFlightMessage {
+	messageId: string;
+	brokerMessageId: string;
+	queueId: string;
+	addedToInPipelineAt: string;
+	elapsedTimeMs: number;
+	poolCode: string;
+}
 
 /**
  * Standby status - GET /monitoring/standby-status (disabled)
  */
-export const StandbyStatusDisabledSchema = z.object({
-	standbyEnabled: z.literal(false),
-});
+export interface StandbyStatusDisabled {
+	standbyEnabled: false;
+}
 
 /**
  * Standby status - GET /monitoring/standby-status (enabled)
  */
-export const StandbyStatusEnabledSchema = z.object({
-	standbyEnabled: z.literal(true),
-	instanceId: z.string(),
-	role: z.string(),
-	redisAvailable: z.boolean(),
-	currentLockHolder: z.string(),
-	lastSuccessfulRefresh: z.string().nullable(),
-	hasWarning: z.boolean(),
-});
+export interface StandbyStatusEnabled {
+	standbyEnabled: true;
+	instanceId: string;
+	role: string;
+	redisAvailable: boolean;
+	currentLockHolder: string;
+	lastSuccessfulRefresh: string | null;
+	hasWarning: boolean;
+}
 
-export const StandbyStatusResponseSchema = z.discriminatedUnion('standbyEnabled', [
-	StandbyStatusDisabledSchema,
-	StandbyStatusEnabledSchema,
-]);
-
-export type StandbyStatusResponse = z.infer<typeof StandbyStatusResponseSchema>;
+export type StandbyStatusResponse = StandbyStatusDisabled | StandbyStatusEnabled;
 
 /**
  * Traffic status - GET /monitoring/traffic-status (disabled)
  */
-export const TrafficStatusDisabledSchema = z.object({
-	enabled: z.literal(false),
-	message: z.string(),
-});
+export interface TrafficStatusDisabled {
+	enabled: false;
+	message: string;
+}
 
 /**
  * Traffic status - GET /monitoring/traffic-status (enabled)
  */
-export const TrafficStatusEnabledSchema = z.object({
-	enabled: z.literal(true),
-	strategyType: z.string(),
-	registered: z.boolean(),
-	targetInfo: z.string(),
-	lastOperation: z.string(),
-	lastError: z.string(),
-});
+export interface TrafficStatusEnabled {
+	enabled: true;
+	strategyType: string;
+	registered: boolean;
+	targetInfo: string;
+	lastOperation: string;
+	lastError: string;
+}
 
-export const TrafficStatusResponseSchema = z.discriminatedUnion('enabled', [
-	TrafficStatusDisabledSchema,
-	TrafficStatusEnabledSchema,
-]);
-
-export type TrafficStatusResponse = z.infer<typeof TrafficStatusResponseSchema>;
+export type TrafficStatusResponse = TrafficStatusDisabled | TrafficStatusEnabled;
 
 /**
  * Consumer health info - part of /monitoring/consumer-health
  */
-export const ConsumerHealthInfoSchema = z.object({
-	mapKey: z.string(),
-	queueIdentifier: z.string(),
-	consumerQueueIdentifier: z.string(),
-	instanceId: z.string(),
-	isHealthy: z.boolean(),
-	lastPollTimeMs: z.number(),
-	lastPollTime: z.string(),
-	timeSinceLastPollMs: z.number(),
-	timeSinceLastPollSeconds: z.number(),
-	isRunning: z.boolean(),
-});
-
-export type ConsumerHealthInfo = z.infer<typeof ConsumerHealthInfoSchema>;
+export interface ConsumerHealthInfo {
+	mapKey: string;
+	queueIdentifier: string;
+	consumerQueueIdentifier: string;
+	instanceId: string;
+	isHealthy: boolean;
+	lastPollTimeMs: number;
+	lastPollTime: string;
+	timeSinceLastPollMs: number;
+	timeSinceLastPollSeconds: number;
+	isRunning: boolean;
+}
 
 /**
  * Consumer health response - GET /monitoring/consumer-health
  */
-export const ConsumerHealthResponseSchema = z.object({
-	currentTimeMs: z.number(),
-	currentTime: z.string(),
-	consumers: z.record(z.string(), ConsumerHealthInfoSchema),
-});
-
-export type ConsumerHealthResponse = z.infer<typeof ConsumerHealthResponseSchema>;
+export interface ConsumerHealthResponse {
+	currentTimeMs: number;
+	currentTime: string;
+	consumers: Record<string, ConsumerHealthInfo>;
+}
 
 /**
  * Simple status response for various operations
  */
-export const StatusResponseSchema = z.object({
-	status: z.string(),
-	message: z.string().optional(),
-});
-
-export type StatusResponse = z.infer<typeof StatusResponseSchema>;
+export interface StatusResponse {
+	status: string;
+	message?: string | undefined;
+}

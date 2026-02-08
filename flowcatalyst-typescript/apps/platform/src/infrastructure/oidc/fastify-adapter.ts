@@ -7,6 +7,7 @@
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { OidcProvider } from './provider.js';
+import type { JwtKeyService } from './jwt-key-service.js';
 
 /**
  * Mount the OIDC provider on a Fastify instance.
@@ -93,20 +94,26 @@ export async function mountOidcProvider(
 }
 
 /**
- * Register well-known redirects for OIDC discovery.
+ * Register well-known routes for OIDC discovery and JWKS.
  *
- * This creates redirects from standard well-known paths to the OIDC provider:
- * - /.well-known/openid-configuration -> /oidc/.well-known/openid-configuration
- * - /.well-known/jwks.json -> /oidc/.well-known/jwks.json
+ * - /.well-known/openid-configuration -> redirect to oidc-provider
+ * - /.well-known/jwks.json -> served directly from JwtKeyService
+ *
+ * JWKS is served directly (not via redirect) so that token consumers
+ * (message router, SDKs) can verify session tokens without following redirects.
  */
-export function registerWellKnownRedirects(fastify: FastifyInstance, basePath = '/oidc'): void {
-	// OpenID Configuration discovery
+export function registerWellKnownRoutes(fastify: FastifyInstance, basePath = '/oidc', jwtKeyService?: JwtKeyService): void {
+	// OpenID Configuration discovery - redirect to oidc-provider
 	fastify.get('/.well-known/openid-configuration', async (request, reply) => {
 		return reply.redirect(`${basePath}/.well-known/openid-configuration`);
 	});
 
-	// JWKS endpoint
+	// JWKS endpoint - serve directly from our key service
 	fastify.get('/.well-known/jwks.json', async (request, reply) => {
+		if (jwtKeyService) {
+			return reply.send(jwtKeyService.getJwks());
+		}
+		// Fallback to redirect if no key service provided
 		return reply.redirect(`${basePath}/.well-known/jwks.json`);
 	});
 }

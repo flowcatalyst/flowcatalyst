@@ -43,7 +43,7 @@ public class PostgresOutboxRepository implements OutboxRepository {
         String sql = """
             SELECT id, type, message_group, payload, status, retry_count, created_at, updated_at, error_message
             FROM %s
-            WHERE status = %d
+            WHERE status = %d AND type = ?
             ORDER BY message_group, created_at
             LIMIT ?
             """.formatted(table, OutboxStatus.PENDING.getCode());
@@ -53,7 +53,8 @@ public class PostgresOutboxRepository implements OutboxRepository {
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-            stmt.setInt(1, limit);
+            stmt.setString(1, type.name());
+            stmt.setInt(2, limit);
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
@@ -138,18 +139,21 @@ public class PostgresOutboxRepository implements OutboxRepository {
         String sql = """
             SELECT id, type, message_group, payload, status, retry_count, created_at, updated_at, error_message
             FROM %s
-            WHERE status = %d
+            WHERE status = %d AND type = ?
             ORDER BY created_at
             """.formatted(table, OutboxStatus.IN_PROGRESS.getCode());
 
         List<OutboxItem> items = new ArrayList<>();
 
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-            while (rs.next()) {
-                items.add(mapRow(rs, type));
+            stmt.setString(1, type.name());
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    items.add(mapRow(rs, type));
+                }
             }
 
         } catch (SQLException e) {
@@ -201,6 +205,7 @@ public class PostgresOutboxRepository implements OutboxRepository {
             SELECT id, type, message_group, payload, status, retry_count, created_at, updated_at, error_message
             FROM %s
             WHERE status IN (%d, %d, %d, %d, %d, %d)
+              AND type = ?
               AND updated_at < NOW() - INTERVAL '%d seconds'
             ORDER BY created_at
             LIMIT ?
@@ -220,7 +225,8 @@ public class PostgresOutboxRepository implements OutboxRepository {
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-            stmt.setInt(1, limit);
+            stmt.setString(1, type.name());
+            stmt.setInt(2, limit);
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
@@ -255,16 +261,19 @@ public class PostgresOutboxRepository implements OutboxRepository {
     @Override
     public long countPending(OutboxItemType type) {
         String table = getTableName(type);
-        String sql = "SELECT COUNT(*) FROM %s WHERE status = %d".formatted(table, OutboxStatus.PENDING.getCode());
+        String sql = "SELECT COUNT(*) FROM %s WHERE status = %d AND type = ?".formatted(table, OutboxStatus.PENDING.getCode());
 
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-            if (rs.next()) {
-                return rs.getLong(1);
+            stmt.setString(1, type.name());
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getLong(1);
+                }
+                return 0;
             }
-            return 0;
 
         } catch (SQLException e) {
             LOG.errorf(e, "Failed to count pending items in %s", table);
@@ -274,7 +283,11 @@ public class PostgresOutboxRepository implements OutboxRepository {
 
     @Override
     public String getTableName(OutboxItemType type) {
-        return type == OutboxItemType.EVENT ? config.eventsTable() : config.dispatchJobsTable();
+        return switch (type) {
+            case EVENT -> config.eventsTable();
+            case DISPATCH_JOB -> config.dispatchJobsTable();
+            case AUDIT_LOG -> config.auditLogsTable();
+        };
     }
 
     @Override
@@ -297,7 +310,10 @@ public class PostgresOutboxRepository implements OutboxRepository {
                 retry_count SMALLINT NOT NULL DEFAULT 0,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                error_message TEXT
+                error_message TEXT,
+                client_id VARCHAR(26),
+                payload_size INTEGER,
+                headers JSONB
             )
             """.formatted(table);
 
@@ -326,11 +342,20 @@ public class PostgresOutboxRepository implements OutboxRepository {
             WHERE status = 9
             """.formatted(table, table);
 
+        // SDK-specific: client polling
+        String clientIndex = """
+            CREATE INDEX IF NOT EXISTS idx_%s_client_pending
+            ON %s(client_id, status, created_at)
+            """.formatted(table, table);
+
         try (Connection conn = dataSource.getConnection()) {
             try (PreparedStatement stmt = conn.prepareStatement(pendingIndex)) {
                 stmt.executeUpdate();
             }
             try (PreparedStatement stmt = conn.prepareStatement(stuckIndex)) {
+                stmt.executeUpdate();
+            }
+            try (PreparedStatement stmt = conn.prepareStatement(clientIndex)) {
                 stmt.executeUpdate();
             }
             LOG.debugf("Created indexes on %s", table);

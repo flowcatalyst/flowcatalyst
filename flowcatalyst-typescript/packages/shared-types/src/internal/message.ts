@@ -1,34 +1,21 @@
-import { z } from 'zod';
-
 /**
- * Message pointer schema - the envelope containing routing info
+ * Message pointer - the envelope containing routing info
  * Matches the Java MessagePointer class structure
  */
-export const MessagePointerSchema = z.object({
-	/** Unique message ID from the application */
-	messageId: z.string(),
-	/** Pool code for routing */
-	poolCode: z.string(),
-	/** Message group ID for FIFO ordering within a group */
-	messageGroupId: z.string(),
-	/** The actual message payload (opaque to router) */
-	payload: z.unknown().optional(),
-	/** Optional auth token for downstream calls */
-	authToken: z.string().optional(),
-	/** Optional callback URL override */
-	callbackUrl: z.string().optional(),
-	/** Timestamp when message was created */
-	createdAt: z.string().optional(),
-});
-
-/** MessagePointer type with undefined-friendly optional props for exactOptionalPropertyTypes */
 export type MessagePointer = {
+	/** Unique message ID from the application */
 	messageId: string;
+	/** Pool code for routing */
 	poolCode: string;
+	/** Message group ID for FIFO ordering within a group */
 	messageGroupId: string;
+	/** The actual message payload (opaque to router) */
 	payload?: unknown;
+	/** Optional auth token for downstream calls */
 	authToken?: string | undefined;
+	/** Optional callback URL override */
 	callbackUrl?: string | undefined;
+	/** Timestamp when message was created */
 	createdAt?: string | undefined;
 };
 

@@ -150,6 +150,11 @@ public class UpdateEmailDomainMappingUseCase {
             mapping.allowedRoleIds = new ArrayList<>(command.allowedRoleIds());
         }
 
+        // Update syncRolesFromIdp if provided
+        if (command.syncRolesFromIdp() != null) {
+            mapping.syncRolesFromIdp = command.syncRolesFromIdp();
+        }
+
         // Validate scope type constraints after updates
         var constraintResult = validateScopeTypeConstraints(mapping);
         if (constraintResult instanceof Result.Failure<Void> f) {

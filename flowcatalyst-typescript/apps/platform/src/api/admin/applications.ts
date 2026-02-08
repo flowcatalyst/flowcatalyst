@@ -12,8 +12,7 @@ import {
 	jsonSuccess,
 	noContent,
 	notFound,
-	badRequest,
-	safeValidate,
+	ErrorResponseSchema,
 } from '@flowcatalyst/http';
 import { Result } from '@flowcatalyst/application';
 import type { UseCase } from '@flowcatalyst/application';
@@ -44,7 +43,8 @@ import type {
 import { requirePermission } from '../../authorization/index.js';
 import { APPLICATION_PERMISSIONS } from '../../authorization/permissions/platform-admin.js';
 
-// Request schemas using TypeBox
+// ─── Request Schemas ────────────────────────────────────────────────────────
+
 const CreateApplicationSchema = Type.Object({
 	code: Type.String({ minLength: 1, maxLength: 50 }),
 	name: Type.String({ minLength: 1, maxLength: 255 }),
@@ -71,43 +71,61 @@ const ClientIdSchema = Type.Object({
 	clientId: Type.String({ minLength: 13, maxLength: 13 }),
 });
 
+const IdParam = Type.Object({ id: Type.String() });
+const CodeParam = Type.Object({ code: Type.String() });
+const IdClientIdParam = Type.Object({ id: Type.String(), clientId: Type.String() });
+
+const ListApplicationsQuery = Type.Object({
+	page: Type.Optional(Type.String()),
+	pageSize: Type.Optional(Type.String()),
+	type: Type.Optional(Type.String()),
+});
+
 type CreateApplicationBody = Static<typeof CreateApplicationSchema>;
 type UpdateApplicationBody = Static<typeof UpdateApplicationSchema>;
 type ClientIdBody = Static<typeof ClientIdSchema>;
 
-// Response schemas
-interface ApplicationResponse {
-	id: string;
-	type: string;
-	code: string;
-	name: string;
-	description: string | null;
-	iconUrl: string | null;
-	website: string | null;
-	logo: string | null;
-	logoMimeType: string | null;
-	defaultBaseUrl: string | null;
-	serviceAccountId: string | null;
-	active: boolean;
-	createdAt: string;
-	updatedAt: string;
-}
+// ─── Response Schemas ───────────────────────────────────────────────────────
 
-interface ApplicationsListResponse {
-	applications: ApplicationResponse[];
-	total: number;
-	page: number;
-	pageSize: number;
-}
+const ApplicationResponseSchema = Type.Object({
+	id: Type.String(),
+	type: Type.String(),
+	code: Type.String(),
+	name: Type.String(),
+	description: Type.Union([Type.String(), Type.Null()]),
+	iconUrl: Type.Union([Type.String(), Type.Null()]),
+	website: Type.Union([Type.String(), Type.Null()]),
+	logo: Type.Union([Type.String(), Type.Null()]),
+	logoMimeType: Type.Union([Type.String(), Type.Null()]),
+	defaultBaseUrl: Type.Union([Type.String(), Type.Null()]),
+	serviceAccountId: Type.Union([Type.String(), Type.Null()]),
+	active: Type.Boolean(),
+	createdAt: Type.String({ format: 'date-time' }),
+	updatedAt: Type.String({ format: 'date-time' }),
+});
 
-interface ApplicationClientConfigResponse {
-	id: string;
-	applicationId: string;
-	clientId: string;
-	enabled: boolean;
-	createdAt: string;
-	updatedAt: string;
-}
+const ApplicationsListResponseSchema = Type.Object({
+	applications: Type.Array(ApplicationResponseSchema),
+	total: Type.Integer(),
+	page: Type.Integer(),
+	pageSize: Type.Integer(),
+});
+
+const ApplicationClientConfigResponseSchema = Type.Object({
+	id: Type.String(),
+	applicationId: Type.String(),
+	clientId: Type.String(),
+	enabled: Type.Boolean(),
+	createdAt: Type.String({ format: 'date-time' }),
+	updatedAt: Type.String({ format: 'date-time' }),
+});
+
+const ApplicationClientConfigsListResponseSchema = Type.Object({
+	configs: Type.Array(ApplicationClientConfigResponseSchema),
+});
+
+type ApplicationResponse = Static<typeof ApplicationResponseSchema>;
+type ApplicationClientConfigResponse = Static<typeof ApplicationClientConfigResponseSchema>;
 
 /**
  * Dependencies for the applications API.
@@ -151,14 +169,17 @@ export async function registerApplicationsRoutes(
 		'/applications',
 		{
 			preHandler: requirePermission(APPLICATION_PERMISSIONS.CREATE),
+			schema: {
+				body: CreateApplicationSchema,
+				response: {
+					201: ApplicationResponseSchema,
+					400: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const bodyResult = safeValidate(request.body, CreateApplicationSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as CreateApplicationBody;
+			const body = request.body as CreateApplicationBody;
 			const ctx = request.executionContext;
 
 			const command: CreateApplicationCommand = {
@@ -191,22 +212,26 @@ export async function registerApplicationsRoutes(
 		'/applications',
 		{
 			preHandler: requirePermission(APPLICATION_PERMISSIONS.READ),
+			schema: {
+				querystring: ListApplicationsQuery,
+				response: {
+					200: ApplicationsListResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const query = request.query as { page?: string; pageSize?: string; type?: string };
+			const query = request.query as Static<typeof ListApplicationsQuery>;
 			const page = parseInt(query.page ?? '0', 10);
 			const pageSize = Math.min(parseInt(query.pageSize ?? '20', 10), 100);
 
 			const pagedResult = await applicationRepository.findPaged(page, pageSize);
 
-			const response: ApplicationsListResponse = {
+			return jsonSuccess(reply, {
 				applications: pagedResult.items.map(toApplicationResponse),
 				total: pagedResult.totalItems,
 				page: pagedResult.page,
 				pageSize: pagedResult.pageSize,
-			};
-
-			return jsonSuccess(reply, response);
+			});
 		},
 	);
 
@@ -215,9 +240,16 @@ export async function registerApplicationsRoutes(
 		'/applications/:id',
 		{
 			preHandler: requirePermission(APPLICATION_PERMISSIONS.READ),
+			schema: {
+				params: IdParam,
+				response: {
+					200: ApplicationResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const application = await applicationRepository.findById(id);
 
 			if (!application) {
@@ -233,9 +265,16 @@ export async function registerApplicationsRoutes(
 		'/applications/by-code/:code',
 		{
 			preHandler: requirePermission(APPLICATION_PERMISSIONS.READ),
+			schema: {
+				params: CodeParam,
+				response: {
+					200: ApplicationResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { code } = request.params as { code: string };
+			const { code } = request.params as Static<typeof CodeParam>;
 			const application = await applicationRepository.findByCode(code);
 
 			if (!application) {
@@ -251,15 +290,20 @@ export async function registerApplicationsRoutes(
 		'/applications/:id',
 		{
 			preHandler: requirePermission(APPLICATION_PERMISSIONS.UPDATE),
+			schema: {
+				params: IdParam,
+				body: UpdateApplicationSchema,
+				response: {
+					200: ApplicationResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body, UpdateApplicationSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as UpdateApplicationBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as UpdateApplicationBody;
 			const ctx = request.executionContext;
 
 			const command: UpdateApplicationCommand = {
@@ -291,9 +335,17 @@ export async function registerApplicationsRoutes(
 		'/applications/:id/activate',
 		{
 			preHandler: requirePermission(APPLICATION_PERMISSIONS.ACTIVATE),
+			schema: {
+				params: IdParam,
+				response: {
+					200: ApplicationResponseSchema,
+					404: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const ctx = request.executionContext;
 
 			const command: ActivateApplicationCommand = {
@@ -318,9 +370,17 @@ export async function registerApplicationsRoutes(
 		'/applications/:id/deactivate',
 		{
 			preHandler: requirePermission(APPLICATION_PERMISSIONS.DEACTIVATE),
+			schema: {
+				params: IdParam,
+				response: {
+					200: ApplicationResponseSchema,
+					404: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const ctx = request.executionContext;
 
 			const command: DeactivateApplicationCommand = {
@@ -345,9 +405,16 @@ export async function registerApplicationsRoutes(
 		'/applications/:id',
 		{
 			preHandler: requirePermission(APPLICATION_PERMISSIONS.DELETE),
+			schema: {
+				params: IdParam,
+				response: {
+					204: Type.Null(),
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const ctx = request.executionContext;
 
 			const command: DeleteApplicationCommand = {
@@ -369,9 +436,16 @@ export async function registerApplicationsRoutes(
 		'/applications/:id/clients',
 		{
 			preHandler: requirePermission(APPLICATION_PERMISSIONS.READ),
+			schema: {
+				params: IdParam,
+				response: {
+					200: ApplicationClientConfigsListResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 
 			// Verify application exists
 			const applicationExists = await applicationRepository.exists(id);
@@ -392,15 +466,20 @@ export async function registerApplicationsRoutes(
 		'/applications/:id/clients',
 		{
 			preHandler: requirePermission(APPLICATION_PERMISSIONS.ENABLE_CLIENT),
+			schema: {
+				params: IdParam,
+				body: ClientIdSchema,
+				response: {
+					201: ApplicationClientConfigResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body, ClientIdSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as ClientIdBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as ClientIdBody;
 			const ctx = request.executionContext;
 
 			const command: EnableApplicationForClientCommand = {
@@ -426,9 +505,16 @@ export async function registerApplicationsRoutes(
 		'/applications/:id/clients/:clientId',
 		{
 			preHandler: requirePermission(APPLICATION_PERMISSIONS.DISABLE_CLIENT),
+			schema: {
+				params: IdClientIdParam,
+				response: {
+					204: Type.Null(),
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id, clientId } = request.params as { id: string; clientId: string };
+			const { id, clientId } = request.params as Static<typeof IdClientIdParam>;
 			const ctx = request.executionContext;
 
 			const command: DisableApplicationForClientCommand = {

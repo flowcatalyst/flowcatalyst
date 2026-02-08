@@ -81,6 +81,46 @@ public class OidcSyncService {
      * @param idpRoleNames List of role names from the OIDC token (e.g., from realm_access.roles)
      * @return Set of accepted internal role names (e.g., "platform:tenant-admin")
      */
+    /**
+     * CRITICAL SECURITY: Synchronize IDP roles with an additional domain-level filter.
+     *
+     * Same as {@link #syncIdpRoles(Principal, List)} but additionally filters
+     * authorized role names by the allowed role names from the email domain mapping.
+     *
+     * @param principal The user principal
+     * @param idpRoleNames List of role names from the OIDC token
+     * @param allowedRoleNames If non-null and non-empty, only these internal role names are accepted
+     * @return Set of accepted internal role names
+     */
+    public Set<String> syncIdpRoles(Principal principal, List<String> idpRoleNames, Set<String> allowedRoleNames) {
+        var authorizedRoleNames = syncIdpRoles(principal, idpRoleNames);
+
+        if (allowedRoleNames != null && !allowedRoleNames.isEmpty()) {
+            var filtered = new HashSet<String>();
+            for (String roleName : authorizedRoleNames) {
+                if (allowedRoleNames.contains(roleName)) {
+                    filtered.add(roleName);
+                } else {
+                    Log.warn("SECURITY: Domain role filter REMOVED IDP-synced role '" + roleName +
+                        "' for principal " + principal.id + " (email: " + principal.userIdentity.email +
+                        "). Role not in email domain mapping's allowedRoleIds.");
+                    // Also remove the assignment that was just created
+                    try {
+                        roleService.removeRole(principal.id, roleName);
+                    } catch (Exception e) {
+                        Log.debug("Could not remove filtered role '" + roleName + "': " + e.getMessage());
+                    }
+                }
+            }
+            Log.info("Domain role filter applied for principal " + principal.id +
+                ": " + authorizedRoleNames.size() + " IDP roles authorized, " +
+                filtered.size() + " passed domain filter");
+            return filtered;
+        }
+
+        return authorizedRoleNames;
+    }
+
     public Set<String> syncIdpRoles(Principal principal, List<String> idpRoleNames) {
         Set<String> authorizedRoleNames = new HashSet<>();
 

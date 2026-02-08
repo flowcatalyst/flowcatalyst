@@ -128,6 +128,9 @@ public class CreateEventTypeUseCase {
             EventTypeStatus.CURRENT,
             EventTypeSource.UI,  // Created via UI/API, not sync
             command.clientScoped(),
+            command.application(),
+            command.subdomain(),
+            command.aggregate(),
             now,
             now
         );

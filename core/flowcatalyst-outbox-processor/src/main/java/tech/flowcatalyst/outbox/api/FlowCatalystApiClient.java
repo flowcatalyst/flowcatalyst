@@ -59,6 +59,21 @@ public class FlowCatalystApiClient {
     }
 
     /**
+     * Send a batch of audit logs to FlowCatalyst.
+     *
+     * @param items List of outbox items containing audit log payloads
+     * @return BatchResult with per-item status information
+     */
+    public BatchResult createAuditLogsBatch(List<OutboxItem> items) {
+        List<JsonNode> payloads = items.stream()
+            .map(this::parsePayload)
+            .toList();
+
+        List<String> ids = items.stream().map(OutboxItem::id).toList();
+        return post("/api/audit-logs/batch", payloads, ids);
+    }
+
+    /**
      * Send a batch of dispatch jobs to FlowCatalyst.
      *
      * @param items List of outbox items containing dispatch job payloads

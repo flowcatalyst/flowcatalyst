@@ -37,9 +37,17 @@ export {
 // Fastify integration
 export {
 	mountOidcProvider,
-	registerWellKnownRedirects,
+	registerWellKnownRoutes,
 	registerOAuthCompatibilityRoutes,
 } from './fastify-adapter.js';
+
+// JWT key service (RS256 signing, JWKS)
+export {
+	createJwtKeyService,
+	extractApplicationCodes,
+	type JwtKeyService,
+	type JwtKeyServiceConfig,
+} from './jwt-key-service.js';
 
 // Auth routes (login, logout, me)
 export {
@@ -47,3 +55,22 @@ export {
 	type AuthRoutesDeps,
 	type SessionCookieConfig,
 } from './auth-routes.js';
+
+// OIDC federation routes (external IDP login)
+export {
+	registerOidcFederationRoutes,
+	type OidcFederationDeps,
+} from './oidc-federation-routes.js';
+
+// Client selection routes (client context switching)
+export {
+	registerClientSelectionRoutes,
+	type ClientSelectionDeps,
+} from './client-selection-routes.js';
+
+// OIDC sync service (user + role sync)
+export {
+	createOrUpdateOidcUser,
+	syncIdpRoles,
+	extractIdpRoles,
+} from './oidc-sync-service.js';

@@ -5,39 +5,62 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { jsonSuccess, notFound } from '@flowcatalyst/http';
+import { Type, type Static } from '@sinclair/typebox';
+import { jsonSuccess, notFound, ErrorResponseSchema } from '@flowcatalyst/http';
 
 import type { AuditLog, AuditLogWithPrincipal } from '../../domain/index.js';
 import type { AuditLogRepository, PrincipalRepository } from '../../infrastructure/persistence/index.js';
 import { requirePermission } from '../../authorization/index.js';
 import { AUDIT_LOG_PERMISSIONS } from '../../authorization/permissions/platform-admin.js';
 
-// Response schemas
-interface AuditLogResponse {
-	id: string;
-	entityType: string;
-	entityId: string;
-	operation: string;
-	operationJson: unknown | null;
-	principalId: string | null;
-	principalName: string | null;
-	performedAt: string;
-}
+// ─── Param / Query Schemas ──────────────────────────────────────────────────
 
-interface AuditLogListResponse {
-	logs: AuditLogResponse[];
-	total: number;
-	limit: number;
-	offset: number;
-}
+const IdParam = Type.Object({ id: Type.String() });
+const EntityParam = Type.Object({ entityType: Type.String(), entityId: Type.String() });
 
-interface EntityTypesResponse {
-	entityTypes: string[];
-}
+const ListAuditLogsQuery = Type.Object({
+	entityType: Type.Optional(Type.String()),
+	entityId: Type.Optional(Type.String()),
+	principalId: Type.Optional(Type.String()),
+	operation: Type.Optional(Type.String()),
+	limit: Type.Optional(Type.String()),
+	offset: Type.Optional(Type.String()),
+});
 
-interface OperationsResponse {
-	operations: string[];
-}
+const EntityLogsQuery = Type.Object({
+	limit: Type.Optional(Type.String()),
+	offset: Type.Optional(Type.String()),
+});
+
+// ─── Response Schemas ───────────────────────────────────────────────────────
+
+const AuditLogResponseSchema = Type.Object({
+	id: Type.String(),
+	entityType: Type.String(),
+	entityId: Type.String(),
+	operation: Type.String(),
+	operationJson: Type.Union([Type.Unknown(), Type.Null()]),
+	principalId: Type.Union([Type.String(), Type.Null()]),
+	principalName: Type.Union([Type.String(), Type.Null()]),
+	performedAt: Type.String({ format: 'date-time' }),
+});
+
+const AuditLogListResponseSchema = Type.Object({
+	logs: Type.Array(AuditLogResponseSchema),
+	total: Type.Integer(),
+	limit: Type.Integer(),
+	offset: Type.Integer(),
+});
+
+const EntityTypesResponseSchema = Type.Object({
+	entityTypes: Type.Array(Type.String()),
+});
+
+const OperationsResponseSchema = Type.Object({
+	operations: Type.Array(Type.String()),
+});
+
+type AuditLogResponse = Static<typeof AuditLogResponseSchema>;
 
 /**
  * Dependencies for the audit logs API.
@@ -112,16 +135,15 @@ export async function registerAuditLogsRoutes(
 		'/audit-logs',
 		{
 			preHandler: requirePermission(AUDIT_LOG_PERMISSIONS.READ),
+			schema: {
+				querystring: ListAuditLogsQuery,
+				response: {
+					200: AuditLogListResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const query = request.query as {
-				entityType?: string;
-				entityId?: string;
-				principalId?: string;
-				operation?: string;
-				limit?: string;
-				offset?: string;
-			};
+			const query = request.query as Static<typeof ListAuditLogsQuery>;
 
 			const limit = Math.min(
 				Math.max(parseInt(query.limit ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 1),
@@ -141,14 +163,12 @@ export async function registerAuditLogsRoutes(
 
 			const logsWithPrincipals = await resolvePrincipalNames(result.logs, principalRepository);
 
-			const response: AuditLogListResponse = {
+			return jsonSuccess(reply, {
 				logs: logsWithPrincipals.map(toResponse),
 				total: result.total,
 				limit: result.limit,
 				offset: result.offset,
-			};
-
-			return jsonSuccess(reply, response);
+			});
 		},
 	);
 
@@ -157,9 +177,16 @@ export async function registerAuditLogsRoutes(
 		'/audit-logs/:id',
 		{
 			preHandler: requirePermission(AUDIT_LOG_PERMISSIONS.READ),
+			schema: {
+				params: IdParam,
+				response: {
+					200: AuditLogResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const log = await auditLogRepository.findById(id);
 
 			if (!log) {
@@ -177,10 +204,17 @@ export async function registerAuditLogsRoutes(
 		'/audit-logs/entity/:entityType/:entityId',
 		{
 			preHandler: requirePermission(AUDIT_LOG_PERMISSIONS.READ),
+			schema: {
+				params: EntityParam,
+				querystring: EntityLogsQuery,
+				response: {
+					200: AuditLogListResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { entityType, entityId } = request.params as { entityType: string; entityId: string };
-			const query = request.query as { limit?: string; offset?: string };
+			const { entityType, entityId } = request.params as Static<typeof EntityParam>;
+			const query = request.query as Static<typeof EntityLogsQuery>;
 
 			const limit = Math.min(
 				Math.max(parseInt(query.limit ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 1),
@@ -192,14 +226,12 @@ export async function registerAuditLogsRoutes(
 
 			const logsWithPrincipals = await resolvePrincipalNames(result.logs, principalRepository);
 
-			const response: AuditLogListResponse = {
+			return jsonSuccess(reply, {
 				logs: logsWithPrincipals.map(toResponse),
 				total: result.total,
 				limit: result.limit,
 				offset: result.offset,
-			};
-
-			return jsonSuccess(reply, response);
+			});
 		},
 	);
 
@@ -208,15 +240,18 @@ export async function registerAuditLogsRoutes(
 		'/audit-logs/entity-types',
 		{
 			preHandler: requirePermission(AUDIT_LOG_PERMISSIONS.READ),
+			schema: {
+				response: {
+					200: EntityTypesResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
 			const entityTypes = await auditLogRepository.findDistinctEntityTypes();
 
-			const response: EntityTypesResponse = {
+			return jsonSuccess(reply, {
 				entityTypes,
-			};
-
-			return jsonSuccess(reply, response);
+			});
 		},
 	);
 
@@ -225,15 +260,18 @@ export async function registerAuditLogsRoutes(
 		'/audit-logs/operations',
 		{
 			preHandler: requirePermission(AUDIT_LOG_PERMISSIONS.READ),
+			schema: {
+				response: {
+					200: OperationsResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
 			const operations = await auditLogRepository.findDistinctOperations();
 
-			const response: OperationsResponse = {
+			return jsonSuccess(reply, {
 				operations,
-			};
-
-			return jsonSuccess(reply, response);
+			});
 		},
 	);
 }

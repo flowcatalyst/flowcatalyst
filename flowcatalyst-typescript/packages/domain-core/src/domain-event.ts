@@ -240,7 +240,7 @@ export const DomainEvent = {
  * }
  * ```
  */
-export abstract class BaseDomainEvent<TData extends Record<string, unknown>> implements DomainEvent {
+export abstract class BaseDomainEvent<TData extends object> implements DomainEvent {
 	readonly eventId: string;
 	readonly eventType: string;
 	readonly specVersion: string;

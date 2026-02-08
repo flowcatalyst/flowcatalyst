@@ -35,6 +35,7 @@ public final class EmailDomainMappingMapper {
         domain.allowedRoleIds = entity.allowedRoleIds != null
             ? new ArrayList<>(entity.allowedRoleIds)
             : new ArrayList<>();
+        domain.syncRolesFromIdp = entity.syncRolesFromIdp;
         domain.createdAt = entity.createdAt;
         domain.updatedAt = entity.updatedAt;
         return domain;
@@ -61,6 +62,7 @@ public final class EmailDomainMappingMapper {
         entity.allowedRoleIds = domain.allowedRoleIds != null
             ? new ArrayList<>(domain.allowedRoleIds)
             : new ArrayList<>();
+        entity.syncRolesFromIdp = domain.syncRolesFromIdp;
         entity.createdAt = domain.createdAt;
         entity.updatedAt = domain.updatedAt;
         return entity;
@@ -84,6 +86,7 @@ public final class EmailDomainMappingMapper {
         if (domain.allowedRoleIds != null) {
             entity.allowedRoleIds.addAll(domain.allowedRoleIds);
         }
+        entity.syncRolesFromIdp = domain.syncRolesFromIdp;
         entity.updatedAt = domain.updatedAt;
     }
 }

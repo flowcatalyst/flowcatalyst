@@ -139,6 +139,7 @@ public class CreateEmailDomainMappingUseCase {
         mapping.allowedRoleIds = command.allowedRoleIds() != null
             ? new ArrayList<>(command.allowedRoleIds())
             : new ArrayList<>();
+        mapping.syncRolesFromIdp = command.syncRolesFromIdp();
 
         // Create domain event
         var event = EmailDomainMappingCreated.fromContext(context)

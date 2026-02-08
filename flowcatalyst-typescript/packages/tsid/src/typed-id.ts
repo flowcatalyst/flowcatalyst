@@ -43,6 +43,10 @@ export const EntityType = {
 	CORS_ORIGIN: 'cor',
 	ANCHOR_DOMAIN: 'anc',
 
+	// Identity & Access Management
+	IDENTITY_PROVIDER: 'idp',
+	EMAIL_DOMAIN_MAPPING: 'edm',
+
 	// Access management
 	CLIENT_ACCESS_GRANT: 'gnt',
 
@@ -58,6 +62,10 @@ export const EntityType = {
 
 	// Audit
 	AUDIT_LOG: 'aud',
+
+	// Platform configuration
+	PLATFORM_CONFIG: 'pcf',
+	CONFIG_ACCESS: 'cfa',
 } as const;
 
 /**

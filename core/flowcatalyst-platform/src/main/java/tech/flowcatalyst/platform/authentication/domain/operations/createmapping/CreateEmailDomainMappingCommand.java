@@ -15,6 +15,7 @@ import java.util.List;
  * @param grantedClientIds      Granted client IDs (for PARTNER scope)
  * @param requiredOidcTenantId  Required OIDC tenant ID for multi-tenant IDPs (optional)
  * @param allowedRoleIds        Allowed role IDs for users from this domain (optional)
+ * @param syncRolesFromIdp      Whether to sync roles from the external IDP during OIDC login
  */
 public record CreateEmailDomainMappingCommand(
     String emailDomain,
@@ -24,5 +25,6 @@ public record CreateEmailDomainMappingCommand(
     List<String> additionalClientIds,
     List<String> grantedClientIds,
     String requiredOidcTenantId,
-    List<String> allowedRoleIds
+    List<String> allowedRoleIds,
+    boolean syncRolesFromIdp
 ) {}

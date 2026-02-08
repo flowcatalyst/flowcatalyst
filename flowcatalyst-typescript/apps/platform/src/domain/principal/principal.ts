@@ -10,6 +10,7 @@ import type { PrincipalType } from './principal-type.js';
 import type { UserScope } from './user-scope.js';
 import type { UserIdentity } from './user-identity.js';
 import type { RoleAssignment } from './role-assignment.js';
+import type { ServiceAccountData } from '../service-account/service-account-data.js';
 
 /**
  * Principal entity - represents a user or service account.
@@ -64,8 +65,14 @@ export interface Principal {
 	/** Embedded user identity (for USER type) */
 	readonly userIdentity: UserIdentity | null;
 
+	/** Embedded service account data (for SERVICE type) */
+	readonly serviceAccount: ServiceAccountData | null;
+
 	/** Embedded role assignments (denormalized for fast lookup) */
 	readonly roles: readonly RoleAssignment[];
+
+	/** Application IDs this principal can access (populated from junction table) */
+	readonly accessibleApplicationIds: readonly string[];
 }
 
 /**
@@ -94,7 +101,33 @@ export function createUserPrincipal(params: {
 		name: params.name,
 		active: true,
 		userIdentity: params.userIdentity,
+		serviceAccount: null,
 		roles: [],
+		accessibleApplicationIds: [],
+	};
+}
+
+/**
+ * Create a new service account principal.
+ */
+export function createServicePrincipal(params: {
+	name: string;
+	applicationId: string | null;
+	clientId: string | null;
+	serviceAccount: ServiceAccountData;
+}): NewPrincipal {
+	return {
+		id: generate('PRINCIPAL'),
+		type: 'SERVICE',
+		scope: null,
+		clientId: params.clientId,
+		applicationId: params.applicationId,
+		name: params.name,
+		active: true,
+		userIdentity: null,
+		serviceAccount: params.serviceAccount,
+		roles: [],
+		accessibleApplicationIds: [],
 	};
 }
 
@@ -113,11 +146,18 @@ export function hasRole(principal: Principal, roleName: string): boolean {
 }
 
 /**
+ * Check if a principal has access to a specific application.
+ */
+export function hasApplicationAccess(principal: Principal, applicationId: string): boolean {
+	return principal.accessibleApplicationIds.includes(applicationId);
+}
+
+/**
  * Update a principal with new values.
  */
 export function updatePrincipal(
 	principal: Principal,
-	updates: Partial<Pick<Principal, 'name' | 'active' | 'scope' | 'clientId' | 'userIdentity' | 'roles'>>,
+	updates: Partial<Pick<Principal, 'name' | 'active' | 'scope' | 'clientId' | 'userIdentity' | 'serviceAccount' | 'roles' | 'accessibleApplicationIds'>>,
 ): Principal {
 	return {
 		...principal,

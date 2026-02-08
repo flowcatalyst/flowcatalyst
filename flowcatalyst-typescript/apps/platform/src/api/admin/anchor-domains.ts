@@ -12,8 +12,7 @@ import {
 	jsonSuccess,
 	noContent,
 	notFound,
-	badRequest,
-	safeValidate,
+	ErrorResponseSchema,
 } from '@flowcatalyst/http';
 import { Result } from '@flowcatalyst/application';
 import type { UseCase } from '@flowcatalyst/application';
@@ -28,7 +27,8 @@ import type { AnchorDomainRepository } from '../../infrastructure/persistence/in
 import { requirePermission } from '../../authorization/index.js';
 import { ANCHOR_DOMAIN_PERMISSIONS } from '../../authorization/permissions/platform-admin.js';
 
-// Request schemas using TypeBox
+// ─── Request Schemas ────────────────────────────────────────────────────────
+
 const CreateAnchorDomainSchema = Type.Object({
 	domain: Type.String({ minLength: 1, maxLength: 255 }),
 });
@@ -37,20 +37,22 @@ const UpdateAnchorDomainSchema = Type.Object({
 	domain: Type.String({ minLength: 1, maxLength: 255 }),
 });
 
-type CreateAnchorDomainBody = Static<typeof CreateAnchorDomainSchema>;
-type UpdateAnchorDomainBody = Static<typeof UpdateAnchorDomainSchema>;
+const IdParam = Type.Object({ id: Type.String() });
 
-// Response schemas for anchor domain
-interface AnchorDomainResponse {
-	id: string;
-	domain: string;
-	createdAt: string;
-}
+// ─── Response Schemas ───────────────────────────────────────────────────────
 
-interface AnchorDomainsListResponse {
-	anchorDomains: AnchorDomainResponse[];
-	total: number;
-}
+const AnchorDomainResponseSchema = Type.Object({
+	id: Type.String(),
+	domain: Type.String(),
+	createdAt: Type.String({ format: 'date-time' }),
+});
+
+const AnchorDomainsListResponseSchema = Type.Object({
+	anchorDomains: Type.Array(AnchorDomainResponseSchema),
+	total: Type.Integer(),
+});
+
+type AnchorDomainResponse = Static<typeof AnchorDomainResponseSchema>;
 
 /**
  * Dependencies for the anchor domains API.
@@ -81,14 +83,17 @@ export async function registerAnchorDomainsRoutes(
 		'/anchor-domains',
 		{
 			preHandler: requirePermission(ANCHOR_DOMAIN_PERMISSIONS.CREATE),
+			schema: {
+				body: CreateAnchorDomainSchema,
+				response: {
+					201: AnchorDomainResponseSchema,
+					400: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const bodyResult = safeValidate(request.body, CreateAnchorDomainSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as CreateAnchorDomainBody;
+			const body = request.body as Static<typeof CreateAnchorDomainSchema>;
 			const ctx = request.executionContext;
 
 			const command: CreateAnchorDomainCommand = {
@@ -113,17 +118,20 @@ export async function registerAnchorDomainsRoutes(
 		'/anchor-domains',
 		{
 			preHandler: requirePermission(ANCHOR_DOMAIN_PERMISSIONS.READ),
+			schema: {
+				response: {
+					200: AnchorDomainsListResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
 			const anchorDomains = await anchorDomainRepository.findAll();
 			const total = await anchorDomainRepository.count();
 
-			const response: AnchorDomainsListResponse = {
+			return jsonSuccess(reply, {
 				anchorDomains: anchorDomains.map(toAnchorDomainResponse),
 				total,
-			};
-
-			return jsonSuccess(reply, response);
+			});
 		},
 	);
 
@@ -132,9 +140,16 @@ export async function registerAnchorDomainsRoutes(
 		'/anchor-domains/:id',
 		{
 			preHandler: requirePermission(ANCHOR_DOMAIN_PERMISSIONS.READ),
+			schema: {
+				params: IdParam,
+				response: {
+					200: AnchorDomainResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const anchorDomain = await anchorDomainRepository.findById(id);
 
 			if (!anchorDomain) {
@@ -150,15 +165,19 @@ export async function registerAnchorDomainsRoutes(
 		'/anchor-domains/:id',
 		{
 			preHandler: requirePermission(ANCHOR_DOMAIN_PERMISSIONS.UPDATE),
+			schema: {
+				params: IdParam,
+				body: UpdateAnchorDomainSchema,
+				response: {
+					200: AnchorDomainResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body, UpdateAnchorDomainSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as UpdateAnchorDomainBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as Static<typeof UpdateAnchorDomainSchema>;
 			const ctx = request.executionContext;
 
 			const command: UpdateAnchorDomainCommand = {
@@ -184,9 +203,16 @@ export async function registerAnchorDomainsRoutes(
 		'/anchor-domains/:id',
 		{
 			preHandler: requirePermission(ANCHOR_DOMAIN_PERMISSIONS.DELETE),
+			schema: {
+				params: IdParam,
+				response: {
+					204: Type.Null(),
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const ctx = request.executionContext;
 
 			const command: DeleteAnchorDomainCommand = {

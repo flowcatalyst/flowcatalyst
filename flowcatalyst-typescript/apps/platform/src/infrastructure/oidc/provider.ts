@@ -15,6 +15,7 @@ import Provider, {
 	type UnknownObject,
 	type Interaction,
 } from 'oidc-provider';
+import type { JSONWebKeySet } from 'jose';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type { PrincipalRepository } from '../persistence/repositories/principal-repository.js';
 import type { OAuthClientRepository } from '../persistence/repositories/oauth-client-repository.js';
@@ -22,6 +23,7 @@ import type { EncryptionService } from '@flowcatalyst/platform-crypto';
 import { createDrizzleAdapterFactory } from './drizzle-adapter.js';
 import { createFindAccount } from './account-adapter.js';
 import { createClientLoader } from './client-adapter.js';
+import { extractApplicationCodes } from './jwt-key-service.js';
 
 /**
  * Configuration for creating the OIDC provider.
@@ -44,6 +46,9 @@ export interface OidcProviderConfig {
 
 	/** Cookie signing keys (at least one required in production) */
 	cookieKeys?: string[] | undefined;
+
+	/** JWKS containing our RSA signing key (from JwtKeyService) */
+	jwks?: JSONWebKeySet | undefined;
 
 	/** Access token TTL in seconds (default: 3600 = 1 hour) */
 	accessTokenTtl?: number | undefined;
@@ -71,11 +76,12 @@ export interface OidcProviderConfig {
  * Custom claims to add to tokens.
  */
 const CUSTOM_CLAIMS = [
-	'flowcatalyst:type',
-	'flowcatalyst:scope',
-	'flowcatalyst:client_id',
-	'flowcatalyst:roles',
-	'flowcatalyst:clients',
+	'type',
+	'scope',
+	'client_id',
+	'roles',
+	'clients',
+	'applications',
 ];
 
 /**
@@ -89,6 +95,7 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
 		oauthClientRepository,
 		encryptionService,
 		cookieKeys,
+		jwks: jwksConfig,
 		accessTokenTtl = 3600,
 		idTokenTtl = 3600,
 		refreshTokenTtl = 2592000,
@@ -186,15 +193,16 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
 
 		// Claims configuration
 		claims: {
-			openid: ['sub'],
+			openid: ['sub', ...CUSTOM_CLAIMS],
 			profile: ['name', 'updated_at'],
 			email: ['email', 'email_verified'],
-			// Custom FlowCatalyst claims
-			flowcatalyst: CUSTOM_CLAIMS,
 		},
 
 		// Scopes configuration
-		scopes: ['openid', 'profile', 'email', 'offline_access', 'flowcatalyst'],
+		scopes: ['openid', 'profile', 'email', 'offline_access'],
+
+		// Use our RSA signing keys if provided
+		...(jwksConfig ? { jwks: jwksConfig } : {}),
 
 		// Interaction URLs
 		interactions: {
@@ -226,12 +234,14 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
 			if (accountId) {
 				const principal = await principalRepository.findById(accountId);
 				if (principal) {
+					const roleNames = principal.roles.map((r) => r.roleName);
 					return {
-						'flowcatalyst:type': principal.type,
-						'flowcatalyst:scope': principal.scope,
-						'flowcatalyst:client_id': principal.clientId,
-						'flowcatalyst:roles': principal.roles.map((r) => r.roleName),
-						'flowcatalyst:clients':
+						type: principal.type,
+						scope: principal.scope,
+						client_id: principal.clientId,
+						roles: roleNames,
+						applications: extractApplicationCodes(roleNames),
+						clients:
 							principal.scope === 'ANCHOR'
 								? ['*']
 								: principal.clientId

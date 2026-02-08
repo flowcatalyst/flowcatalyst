@@ -74,8 +74,8 @@ UseCaseError error = f.error();        // Type not obvious from method name
   - Safe from JavaScript number precision issues
 
 ### Rules:
-1. **Entities**: Use `String id` for all `@BsonId` fields
-2. **Repositories**: Extend `PanacheMongoRepositoryBase<Entity, String>`
+1. **Entities**: Use `String id` with `@Id` annotation
+2. **Repositories**: Implement `PanacheRepositoryBase<Entity, String>`
 3. **DTOs**: All ID fields must be `String` type
 4. **Services/Commands**: All ID parameters must be `String` type
 5. **Frontend**: IDs are always strings (no parsing needed)
@@ -94,16 +94,40 @@ String strId = TsidGenerator.toString(786259737685263979L);
 
 ### Entity Pattern:
 ```java
-@MongoEntity(collection = "my_entities")
-public class MyEntity extends PanacheMongoEntityBase {
-    @BsonId
+@Entity
+@Table(name = "my_entities")
+public class MyEntity {
+
+    @Id
+    @Column(name = "id", length = 17)
     public String id;  // TSID Crockford Base32
 
-    public String relatedEntityId;  // Foreign key as String
+    @Column(name = "related_entity_id", length = 17)
+    public String relatedEntityId;
+
+    @Column(name = "created_at", nullable = false)
+    public Instant createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    public Instant updatedAt;
+
+    public MyEntity() {}
 }
 
-// Repository
-public class MyEntityRepository implements PanacheMongoRepositoryBase<MyEntity, String> {}
+// Write Repository (Panache for simple CRUD)
+@ApplicationScoped
+public class MyEntityWriteRepository implements PanacheRepositoryBase<MyEntity, String> {}
+
+// Read Repository (EntityManager for queries)
+@ApplicationScoped
+public class MyEntityReadRepository {
+    @Inject EntityManager em;
+
+    public Optional<MyDomain> findByIdOptional(String id) {
+        MyEntity entity = em.find(MyEntity.class, id);
+        return Optional.ofNullable(entity).map(MyEntityMapper::toDomain);
+    }
+}
 ```
 
 ### Why Not Long?
@@ -135,7 +159,19 @@ Session tokens include a `clients` claim:
 - `["*"]` for ANCHOR users (access all)
 - `["123", "456"]` for specific client IDs
 
-## Database Operations - CRITICAL RULES
+## Database - PostgreSQL with Hibernate/Panache
+
+### Stack
+- **Database**: PostgreSQL
+- **ORM**: Hibernate with Quarkus Panache
+- **Migrations**: Flyway (SQL files in `src/main/resources/db/migration/`)
+- **Simple CRUD**: `PanacheRepositoryBase<Entity, String>` (Write Repositories)
+- **Queries**: `EntityManager` with HQL or native SQL (Read Repositories)
+- **Dynamic Filtering**: JPA Criteria API (`CriteriaBuilder`, `Predicate`)
+- **JSON Columns**: `@JdbcTypeCode(SqlTypes.JSON)` with `jsonb` column type
+
+### Repository Pattern - Read/Write Split
+Write repositories extend Panache for simple persistence. Read repositories inject `EntityManager` for queries and return domain objects via mappers.
 
 ### No Foreign Keys
 **IMPORTANT**: Never use foreign key constraints in this project. Use indexes on join columns instead.
@@ -150,26 +186,13 @@ This allows for:
 - More flexible data cleanup strategies
 - Simpler cross-service data management
 
-### NEVER Drop Collections or Databases Without Permission
-**IMPORTANT**: NEVER drop MongoDB collections or databases without explicit user permission. Dropping data is destructive and irreversible.
+### NEVER Drop Tables or Databases Without Permission
+**IMPORTANT**: NEVER drop tables or databases without explicit user permission. Dropping data is destructive and irreversible.
 
-### Handling Data Type Mismatches
-When encountering MongoDB decode errors (e.g., "expected 'DATE_TIME' BsonType but got 'STRING'"), the proper fix is to **migrate the data**, not drop it:
-
-```javascript
-// Example: Fix Instant fields stored as STRING instead of DATE_TIME
-db.collection.find({ createdAt: { $type: "string" } }).forEach(function(doc) {
-  db.collection.updateOne(
-    { _id: doc._id },
-    { $set: { createdAt: new Date(doc.createdAt) } }
-  );
-});
-```
-
-### Migration vs Dropping
-- **Preferred**: Write a migration script to convert incorrect field types
-- **Alternative**: Ask user if they want to drop the affected collection
-- **Never**: Silently drop collections/databases as a "quick fix"
+### Migrations
+- Use Flyway versioned migrations: `V{number}__{description}.sql`
+- Always write forward-only migrations (no rollback scripts)
+- Prefer data migration over dropping and recreating tables
 
 ## TypeScript Error Handling - neverthrow
 

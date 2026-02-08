@@ -2,7 +2,7 @@
  * Dispatch Jobs Read Schema
  *
  * Read-optimized projection of dispatch jobs for efficient querying.
- * Populated by the outbox processor from dispatch_job_outbox.
+ * Populated by the stream processor from dispatch_job_projection_feed.
  *
  * Key differences from dispatch_jobs table:
  * - No payload/headers/metadata (stored in normalized tables)

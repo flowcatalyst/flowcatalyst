@@ -1,17 +1,17 @@
 /**
- * Outbox Database Schema
+ * Projection Feed Database Schema
  *
- * Tables for CQRS read model projection using the outbox pattern.
- * Items are written to outbox tables on changes and processed asynchronously.
+ * Tables for CQRS read model projection using the feed pattern.
+ * Items are written to feed tables on changes and processed asynchronously.
  */
 
 import { pgTable, bigserial, varchar, jsonb, smallint, text, index } from 'drizzle-orm/pg-core';
 import { rawTsidColumn, timestampColumn } from '@flowcatalyst/persistence';
 
 /**
- * Outbox status values (following postbox-processor pattern).
+ * Projection feed status values (following postbox-processor pattern).
  */
-export const OutboxStatus = {
+export const ProjectionFeedStatus = {
 	PENDING: 0,
 	SUCCESS: 1,
 	BAD_REQUEST: 2,
@@ -19,18 +19,18 @@ export const OutboxStatus = {
 	IN_PROGRESS: 9,
 } as const;
 
-export type OutboxStatusValue = (typeof OutboxStatus)[keyof typeof OutboxStatus];
+export type ProjectionFeedStatusValue = (typeof ProjectionFeedStatus)[keyof typeof ProjectionFeedStatus];
 
 /**
- * Dispatch job outbox table.
+ * Dispatch job projection feed table.
  *
- * Payload-based outbox: captures state at write time.
+ * Payload-based feed: captures state at write time.
  * - INSERT: full job payload
  * - UPDATE: patch with changed fields only
  * - DELETE: just the operation marker
  */
-export const dispatchJobOutbox = pgTable(
-	'dispatch_job_outbox',
+export const dispatchJobProjectionFeed = pgTable(
+	'dispatch_job_projection_feed',
 	{
 		id: bigserial('id', { mode: 'number' }).primaryKey(),
 		dispatchJobId: rawTsidColumn('dispatch_job_id').notNull(),
@@ -43,33 +43,33 @@ export const dispatchJobOutbox = pgTable(
 	},
 	(table) => [
 		// Index for polling unprocessed entries, ordered by job (message group) then sequence
-		index('idx_dispatch_job_outbox_unprocessed')
+		index('idx_dj_projection_feed_unprocessed')
 			.on(table.dispatchJobId, table.id)
 			.where({ processed: 0 } as never), // Partial index
 		// Index for crash recovery (find in-progress entries)
-		index('idx_dispatch_job_outbox_in_progress')
+		index('idx_dj_projection_feed_in_progress')
 			.on(table.id)
 			.where({ processed: 9 } as never), // Partial index
 		// Index for cleanup of old processed entries
-		index('idx_dispatch_job_outbox_processed_at')
+		index('idx_dj_projection_feed_processed_at')
 			.on(table.processedAt)
 			.where({ processed: 1 } as never), // Partial index
 	],
 );
 
-export type DispatchJobOutboxRecord = typeof dispatchJobOutbox.$inferSelect;
-export type NewDispatchJobOutboxRecord = typeof dispatchJobOutbox.$inferInsert;
+export type DispatchJobProjectionFeedRecord = typeof dispatchJobProjectionFeed.$inferSelect;
+export type NewDispatchJobProjectionFeedRecord = typeof dispatchJobProjectionFeed.$inferInsert;
 
 /**
- * Event outbox table.
+ * Event projection feed table.
  *
- * Events are simpler (immutable), but using outbox for:
+ * Events are simpler (immutable), but using feed for:
  * - Consistent processing pattern
  * - Crash recovery
  * - Error tracking
  */
-export const eventOutbox = pgTable(
-	'event_outbox',
+export const eventProjectionFeed = pgTable(
+	'event_projection_feed',
 	{
 		id: bigserial('id', { mode: 'number' }).primaryKey(),
 		eventId: rawTsidColumn('event_id').notNull(),
@@ -81,15 +81,15 @@ export const eventOutbox = pgTable(
 	},
 	(table) => [
 		// Index for polling unprocessed entries
-		index('idx_event_outbox_unprocessed')
+		index('idx_event_projection_feed_unprocessed')
 			.on(table.id)
 			.where({ processed: 0 } as never), // Partial index
 		// Index for crash recovery
-		index('idx_event_outbox_in_progress')
+		index('idx_event_projection_feed_in_progress')
 			.on(table.id)
 			.where({ processed: 9 } as never), // Partial index
 	],
 );
 
-export type EventOutboxRecord = typeof eventOutbox.$inferSelect;
-export type NewEventOutboxRecord = typeof eventOutbox.$inferInsert;
+export type EventProjectionFeedRecord = typeof eventProjectionFeed.$inferSelect;
+export type NewEventProjectionFeedRecord = typeof eventProjectionFeed.$inferInsert;

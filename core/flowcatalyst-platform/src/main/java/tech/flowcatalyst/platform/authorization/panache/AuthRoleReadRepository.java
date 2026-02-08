@@ -8,6 +8,7 @@ import tech.flowcatalyst.platform.authorization.AuthRoleRepository;
 import tech.flowcatalyst.platform.authorization.entity.AuthRoleEntity;
 import tech.flowcatalyst.platform.authorization.mapper.AuthRoleMapper;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,6 +31,17 @@ public class AuthRoleReadRepository implements AuthRoleRepository {
             .setParameter("name", name)
             .getResultList();
         return results.isEmpty() ? Optional.empty() : Optional.of(AuthRoleMapper.toDomain(results.get(0)));
+    }
+
+    @Override
+    public List<AuthRole> findByIds(Collection<String> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        return em.createQuery("FROM AuthRoleEntity WHERE id IN :ids", AuthRoleEntity.class)
+            .setParameter("ids", ids)
+            .getResultList()
+            .stream()
+            .map(AuthRoleMapper::toDomain)
+            .toList();
     }
 
     @Override

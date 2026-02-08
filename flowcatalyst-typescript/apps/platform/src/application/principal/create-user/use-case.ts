@@ -9,7 +9,12 @@ import { validateRequired, validateEmail, Result, ExecutionContext, UseCaseError
 import type { UnitOfWork } from '@flowcatalyst/domain-core';
 import type { PasswordService } from '@flowcatalyst/platform-crypto';
 
-import type { PrincipalRepository, AnchorDomainRepository } from '../../../infrastructure/persistence/index.js';
+import type {
+	PrincipalRepository,
+	AnchorDomainRepository,
+	EmailDomainMappingRepository,
+	IdentityProviderRepository,
+} from '../../../infrastructure/persistence/index.js';
 import {
 	createUserPrincipal,
 	createUserIdentity,
@@ -27,6 +32,8 @@ import type { CreateUserCommand } from './command.js';
 export interface CreateUserUseCaseDeps {
 	readonly principalRepository: PrincipalRepository;
 	readonly anchorDomainRepository: AnchorDomainRepository;
+	readonly emailDomainMappingRepository: EmailDomainMappingRepository;
+	readonly identityProviderRepository: IdentityProviderRepository;
 	readonly passwordService: PasswordService;
 	readonly unitOfWork: UnitOfWork;
 }
@@ -35,7 +42,7 @@ export interface CreateUserUseCaseDeps {
  * Create the CreateUserUseCase.
  */
 export function createCreateUserUseCase(deps: CreateUserUseCaseDeps): UseCase<CreateUserCommand, UserCreated> {
-	const { principalRepository, anchorDomainRepository, passwordService, unitOfWork } = deps;
+	const { principalRepository, anchorDomainRepository, emailDomainMappingRepository, identityProviderRepository, passwordService, unitOfWork } = deps;
 
 	return {
 		async execute(command: CreateUserCommand, context: ExecutionContext): Promise<Result<UserCreated>> {
@@ -73,13 +80,30 @@ export function createCreateUserUseCase(deps: CreateUserUseCaseDeps): UseCase<Cr
 			// Determine scope based on anchor domain
 			const scope: UserScope = isAnchorUser ? UserScope.ANCHOR : UserScope.CLIENT;
 
-			// For Phase 1, we only support INTERNAL auth
-			// OIDC support will be added in Phase 4
-			const idpType: IdpType = IdpType.INTERNAL;
+			// Determine IDP type based on email domain mapping
+			let idpType: IdpType = IdpType.INTERNAL;
+			const mapping = await emailDomainMappingRepository.findByEmailDomain(emailDomain);
+			if (mapping) {
+				const idp = await identityProviderRepository.findById(mapping.identityProviderId);
+				if (idp && idp.type === 'OIDC') {
+					idpType = IdpType.OIDC;
+				}
+			}
 
-			// Validate and hash password for INTERNAL auth
+			// Validate and hash password for INTERNAL auth, or reject for OIDC
 			let passwordHash: string | null = null;
-			if (idpType === IdpType.INTERNAL) {
+			if (idpType === IdpType.OIDC) {
+				// OIDC users should not have a password
+				if (command.password) {
+					return Result.failure(
+						UseCaseError.validation(
+							'PASSWORD_NOT_ALLOWED',
+							'Password is not allowed for OIDC-authenticated users. Authentication is handled by the external identity provider.',
+						),
+					);
+				}
+			} else {
+				// INTERNAL auth - require and validate password
 				if (!command.password) {
 					return Result.failure(
 						UseCaseError.validation('PASSWORD_REQUIRED', 'Password is required for internal authentication'),

@@ -1,19 +1,21 @@
 {
 	"name": "@flowcatalyst/dev-build",
 	"version": "0.0.1",
-	"description": "FlowCatalyst Dev Build - Combined Platform and Message Router for development",
+	"description": "FlowCatalyst Dev Build - Combined Platform, Message Router, and Stream Processor for development",
 	"type": "module",
 	"scripts": {
 		"dev": "tsx watch src/index.ts",
 		"build": "tsup",
 		"start": "node dist/index.js",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"build:sea": "tsup && node --experimental-sea-config sea-config.json && node scripts/build-sea.js"
 	},
 	"dependencies": {
 		"@flowcatalyst/config": "workspace:*",
 		"@flowcatalyst/logging": "workspace:*",
 		"@flowcatalyst/message-router": "workspace:*",
 		"@flowcatalyst/platform": "workspace:*",
+		"@flowcatalyst/stream-processor": "workspace:*",
 		"dotenv": "^16.4.7"
 	},
 	"devDependencies": {

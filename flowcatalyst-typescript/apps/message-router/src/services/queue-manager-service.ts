@@ -99,6 +99,9 @@ export class QueueManagerService {
 	// Cleanup interval
 	private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
+	// Health check interval for stalled consumer detection
+	private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
+
 	// Queue and pool statistics
 	private readonly queueStats = new Map<string, QueueStats>();
 
@@ -165,6 +168,7 @@ export class QueueManagerService {
 			// Use embedded mode with SQLite-backed queue
 			await this.initializeEmbeddedMode();
 			this.startCleanupTask();
+			this.startHealthMonitor();
 			this.running = true;
 			this.logger.info('Queue manager started in embedded mode');
 			return;
@@ -174,6 +178,7 @@ export class QueueManagerService {
 			// Use ActiveMQ mode
 			await this.initializeActiveMqMode();
 			this.startCleanupTask();
+			this.startHealthMonitor();
 			this.running = true;
 			this.logger.info('Queue manager started in ActiveMQ mode');
 			return;
@@ -183,6 +188,7 @@ export class QueueManagerService {
 			// Use NATS JetStream mode
 			await this.initializeNatsMode();
 			this.startCleanupTask();
+			this.startHealthMonitor();
 			this.running = true;
 			this.logger.info('Queue manager started in NATS mode');
 			return;
@@ -224,6 +230,7 @@ export class QueueManagerService {
 
 		// Start cleanup task (matches Java scheduled tasks)
 		this.startCleanupTask();
+		this.startHealthMonitor();
 
 		this.running = true;
 		this.logger.info('Queue manager started');
@@ -292,6 +299,226 @@ export class QueueManagerService {
 	}
 
 	/**
+	 * Start consumer health monitor.
+	 * Checks every 60s for stalled consumers and restarts them.
+	 * Matches Java QueueManager.monitorAndRestartUnhealthyConsumers()
+	 */
+	private startHealthMonitor(): void {
+		this.healthCheckInterval = setInterval(() => {
+			this.monitorAndRestartUnhealthyConsumers();
+		}, 60_000);
+		this.logger.debug('Consumer health monitor started (60s interval)');
+	}
+
+	/**
+	 * Check all consumers for stalled state and restart any that are unhealthy.
+	 * Matches Java QueueManager.monitorAndRestartUnhealthyConsumers()
+	 */
+	private async monitorAndRestartUnhealthyConsumers(): Promise<void> {
+		if (!this.running) return;
+
+		const consumerCount = this.consumers.size + this.activeMqConsumers.size + this.natsConsumers.size;
+		this.logger.info({ consumerCount }, 'Health check running');
+
+		// Check SQS consumers
+		for (const [queueUri, consumer] of this.consumers) {
+			const health = consumer.getHealth();
+			this.logger.debug({ queueUri, ...health }, 'Consumer health check');
+
+			if (!health.isHealthy) {
+				await this.restartSqsConsumer(queueUri, consumer);
+			}
+		}
+
+		// Check ActiveMQ consumers
+		for (const [queueName, consumer] of this.activeMqConsumers) {
+			const health = consumer.getHealth();
+			this.logger.debug({ queueName, ...health }, 'Consumer health check');
+
+			if (!health.isHealthy) {
+				await this.restartActiveMqConsumer(queueName, consumer);
+			}
+		}
+
+		// Check NATS consumers
+		for (const [queueId, consumer] of this.natsConsumers) {
+			const health = consumer.getHealth();
+			this.logger.debug({ queueId, ...health }, 'Consumer health check');
+
+			if (!health.isHealthy) {
+				await this.restartNatsConsumer(queueId, consumer);
+			}
+		}
+	}
+
+	/**
+	 * Restart a stalled SQS consumer
+	 */
+	private async restartSqsConsumer(queueUri: string, consumer: SqsConsumer): Promise<void> {
+		const health = consumer.getHealth();
+		this.logger.warn(
+			{ queueUri, timeSinceLastPollMs: health.timeSinceLastPollMs },
+			'Consumer unhealthy - initiating restart',
+		);
+		this.warnings.add(
+			'CONSUMER_RESTART',
+			'WARNING',
+			`Consumer for queue [${queueUri}] was unhealthy (last poll ${health.timeSinceLastPollSeconds}s ago) and has been restarted`,
+			'QueueManager',
+		);
+
+		try {
+			// Find queue config
+			const queueConfig = this.currentConfig?.queues.find((q) => q.queueUri === queueUri);
+			if (!queueConfig) {
+				this.logger.error({ queueUri }, 'Cannot restart consumer - queue configuration not found');
+				return;
+			}
+
+			// Stop unhealthy consumer, move to draining
+			consumer.stop();
+			this.consumers.delete(queueUri);
+			this.drainingConsumers.set(queueUri, consumer);
+
+			// Create and start replacement
+			const connections = queueConfig.connections || this.currentConfig?.connections || 1;
+			const newConsumer = this.createSqsConsumer(queueUri, queueConfig.queueName || '', connections);
+			await newConsumer.start();
+			this.consumers.set(queueUri, newConsumer);
+
+			this.logger.info({ queueUri }, 'Successfully restarted consumer');
+		} catch (error) {
+			this.logger.error({ err: error, queueUri }, 'Failed to restart consumer');
+			this.warnings.add(
+				'CONSUMER_RESTART_FAILED',
+				'CRITICAL',
+				`Failed to restart consumer for queue [${queueUri}]: ${error}`,
+				'QueueManager',
+			);
+		}
+	}
+
+	/**
+	 * Restart a stalled ActiveMQ consumer
+	 */
+	private async restartActiveMqConsumer(queueName: string, consumer: ActiveMqConsumer): Promise<void> {
+		const health = consumer.getHealth();
+		this.logger.warn(
+			{ queueName, timeSinceLastPollMs: health.timeSinceLastPollMs },
+			'Consumer unhealthy - initiating restart',
+		);
+		this.warnings.add(
+			'CONSUMER_RESTART',
+			'WARNING',
+			`Consumer for queue [${queueName}] was unhealthy (last poll ${health.timeSinceLastPollSeconds}s ago) and has been restarted`,
+			'QueueManager',
+		);
+
+		try {
+			// Stop unhealthy consumer
+			await consumer.stop();
+			this.activeMqConsumers.delete(queueName);
+
+			// Create replacement with same config from env
+			const consumerConfig: ActiveMqConsumerConfig = {
+				host: env.ACTIVEMQ_HOST,
+				port: env.ACTIVEMQ_PORT,
+				username: env.ACTIVEMQ_USERNAME,
+				password: env.ACTIVEMQ_PASSWORD,
+				queueName,
+				connections: env.DEFAULT_CONNECTIONS,
+				receiveTimeoutMs: env.ACTIVEMQ_RECEIVE_TIMEOUT_MS,
+				metricsPollIntervalMs: env.SYNC_INTERVAL_MS,
+				prefetchCount: env.ACTIVEMQ_PREFETCH_COUNT,
+				redeliveryDelayMs: env.ACTIVEMQ_REDELIVERY_DELAY_MS,
+			};
+
+			const newConsumer = new ActiveMqConsumer(
+				consumerConfig,
+				async (batch, callbacks) => this.handleActiveMqBatch(batch, callbacks),
+				this.logger,
+				env.INSTANCE_ID,
+			);
+
+			await newConsumer.start();
+			this.activeMqConsumers.set(queueName, newConsumer);
+
+			this.logger.info({ queueName }, 'Successfully restarted consumer');
+		} catch (error) {
+			this.logger.error({ err: error, queueName }, 'Failed to restart consumer');
+			this.warnings.add(
+				'CONSUMER_RESTART_FAILED',
+				'CRITICAL',
+				`Failed to restart consumer for queue [${queueName}]: ${error}`,
+				'QueueManager',
+			);
+		}
+	}
+
+	/**
+	 * Restart a stalled NATS consumer
+	 */
+	private async restartNatsConsumer(queueId: string, consumer: NatsConsumer): Promise<void> {
+		const health = consumer.getHealth();
+		this.logger.warn(
+			{ queueId, timeSinceLastPollMs: health.timeSinceLastPollMs },
+			'Consumer unhealthy - initiating restart',
+		);
+		this.warnings.add(
+			'CONSUMER_RESTART',
+			'WARNING',
+			`Consumer for queue [${queueId}] was unhealthy (last poll ${health.timeSinceLastPollSeconds}s ago) and has been restarted`,
+			'QueueManager',
+		);
+
+		try {
+			// Stop unhealthy consumer
+			await consumer.stop();
+			this.natsConsumers.delete(queueId);
+
+			// Create replacement with same config from env
+			const consumerConfig: NatsConsumerConfig = {
+				servers: env.NATS_SERVERS,
+				connectionName: env.NATS_CONNECTION_NAME,
+				username: env.NATS_USERNAME,
+				password: env.NATS_PASSWORD,
+				streamName: env.NATS_STREAM_NAME,
+				consumerName: env.NATS_CONSUMER_NAME,
+				subject: env.NATS_SUBJECT,
+				maxMessagesPerPoll: env.NATS_MAX_MESSAGES_PER_POLL,
+				pollTimeoutSeconds: env.NATS_POLL_TIMEOUT_SECONDS,
+				ackWaitSeconds: env.NATS_ACK_WAIT_SECONDS,
+				maxDeliver: env.NATS_MAX_DELIVER,
+				maxAckPending: env.NATS_MAX_ACK_PENDING,
+				storageType: env.NATS_STORAGE_TYPE,
+				replicas: env.NATS_REPLICAS,
+				maxAgeDays: env.NATS_MAX_AGE_DAYS,
+				metricsPollIntervalMs: env.SYNC_INTERVAL_MS,
+			};
+
+			const newConsumer = new NatsConsumer(
+				consumerConfig,
+				async (batch, callbacks) => this.handleNatsBatch(batch, callbacks),
+				this.logger,
+				env.INSTANCE_ID,
+			);
+
+			await newConsumer.start();
+			this.natsConsumers.set(queueId, newConsumer);
+
+			this.logger.info({ queueId }, 'Successfully restarted consumer');
+		} catch (error) {
+			this.logger.error({ err: error, queueId }, 'Failed to restart consumer');
+			this.warnings.add(
+				'CONSUMER_RESTART_FAILED',
+				'CRITICAL',
+				`Failed to restart consumer for queue [${queueId}]: ${error}`,
+				'QueueManager',
+			);
+		}
+	}
+
+	/**
 	 * Stop the queue manager
 	 */
 	async stop(): Promise<void> {
@@ -302,6 +529,12 @@ export class QueueManagerService {
 		if (this.cleanupInterval) {
 			clearInterval(this.cleanupInterval);
 			this.cleanupInterval = null;
+		}
+
+		// Stop health check interval
+		if (this.healthCheckInterval) {
+			clearInterval(this.healthCheckInterval);
+			this.healthCheckInterval = null;
 		}
 
 		// Stop traffic manager (handles ALB deregistration)
@@ -637,7 +870,7 @@ export class QueueManagerService {
 				}
 
 				// Calculate queue capacity (matches Java)
-				const queueCapacity = Math.max(poolConfig.concurrency * 2, 50);
+				const queueCapacity = Math.max(poolConfig.concurrency * 20, 50);
 
 				this.logger.info(
 					{
@@ -1529,7 +1762,7 @@ export class QueueManagerService {
 	/**
 	 * Get in-flight messages
 	 */
-	getInFlightMessages(limit: number, messageId?: string): InFlightMessage[] {
+	getInFlightMessages(limit: number, messageId?: string, poolCode?: string): InFlightMessage[] {
 		let messages = Array.from(this.inFlightMessages.values()).map((info) => ({
 			messageId: info.messageId,
 			brokerMessageId: info.brokerMessageId,
@@ -1541,9 +1774,20 @@ export class QueueManagerService {
 
 		if (messageId) {
 			messages = messages.filter(
-				(m) => m.messageId.includes(messageId) || m.brokerMessageId.includes(messageId),
+				(m) =>
+					m.messageId.toLowerCase().includes(messageId.toLowerCase()) ||
+					m.brokerMessageId.toLowerCase().includes(messageId.toLowerCase()),
 			);
 		}
+
+		if (poolCode) {
+			messages = messages.filter(
+				(m) => m.poolCode.toLowerCase() === poolCode.toLowerCase(),
+			);
+		}
+
+		// Sort by elapsed time descending (longest first), matching Java behavior
+		messages.sort((a, b) => b.elapsedTimeMs - a.elapsedTimeMs);
 
 		return messages.slice(0, limit);
 	}

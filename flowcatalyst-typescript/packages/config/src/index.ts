@@ -1,7 +1,7 @@
 import 'dotenv/config';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 
-export { z } from 'zod';
+export { z } from 'zod/v4';
 
 /**
  * Parse environment variables with Zod schema validation.
@@ -14,14 +14,15 @@ export function parseEnv<T extends z.ZodRawShape>(
 	const result = schema.safeParse(env);
 
 	if (!result.success) {
-		const formatted = result.error.format();
+		const tree = z.treeifyError(result.error);
 		const errors: string[] = [];
 
-		for (const [key, value] of Object.entries(formatted)) {
-			if (key === '_errors') continue;
-			const fieldErrors = value as { _errors?: string[] };
-			if (fieldErrors._errors?.length) {
-				errors.push(`  ${key}: ${fieldErrors._errors.join(', ')}`);
+		if ('properties' in tree && tree.properties) {
+			for (const [key, sub] of Object.entries(tree.properties)) {
+				const node = sub as { errors?: string[] };
+				if (node.errors?.length) {
+					errors.push(`  ${key}: ${node.errors.join(', ')}`);
+				}
 			}
 		}
 
@@ -32,7 +33,11 @@ export function parseEnv<T extends z.ZodRawShape>(
 }
 
 /**
- * Common environment variable schemas for reuse
+ * Common environment variable schemas for reuse.
+ *
+ * Note: In zod v4, .default() on a transformed schema expects the OUTPUT type.
+ * Use .prefault() to provide an INPUT default (applied before parsing), which
+ * matches the zod v3 .default() behavior for transform chains.
  */
 export const CommonEnvSchemas = {
 	/** Log level enum */
@@ -43,13 +48,13 @@ export const CommonEnvSchemas = {
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
 		.pipe(z.number().int().min(1).max(65535))
-		.default('3000'),
+		.prefault('3000'),
 
 	/** Boolean from string */
 	boolean: z
 		.string()
 		.transform((v) => v === 'true' || v === '1')
-		.default('false'),
+		.prefault('false'),
 
 	/** Positive integer from string */
 	positiveInt: z
@@ -58,10 +63,10 @@ export const CommonEnvSchemas = {
 		.pipe(z.number().int().positive()),
 
 	/** URL validation */
-	url: z.string().url(),
+	url: z.url(),
 
 	/** Optional URL */
-	optionalUrl: z.string().url().optional(),
+	optionalUrl: z.url().optional(),
 
 	/** AWS region */
 	awsRegion: z.string().default('us-east-1'),
@@ -76,7 +81,7 @@ export const CommonEnvSchemas = {
 	stringArray: z
 		.string()
 		.transform((v) => v.split(',').map((s) => s.trim()))
-		.default(''),
+		.prefault(''),
 };
 
 /**

@@ -12,5 +12,10 @@ public enum OutboxItemType {
     /**
      * A dispatch job to be sent to the FlowCatalyst Dispatch Jobs API.
      */
-    DISPATCH_JOB
+    DISPATCH_JOB,
+
+    /**
+     * An audit log entry to be sent to the FlowCatalyst Audit Logs API.
+     */
+    AUDIT_LOG
 }

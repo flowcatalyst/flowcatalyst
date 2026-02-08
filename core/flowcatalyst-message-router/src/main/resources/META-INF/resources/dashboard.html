@@ -122,7 +122,7 @@
         </div>
 
         <!-- Tabbed Content Section -->
-        <div class="bg-white rounded-lg shadow">
+        <div id="tabbedContentSection" class="bg-white rounded-lg shadow">
             <!-- Tab Navigation -->
             <div class="border-b border-gray-200">
                 <nav class="flex -mb-px">
@@ -207,6 +207,7 @@
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" data-sort="totalSucceeded">Success</th>
                                     <th id="poolRateHeader" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" data-sort="successRate"><span id="poolRateHeaderText">Success Rate</span></th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" data-sort="averageProcessingTimeMs">Avg Time</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="poolStatsTable" class="bg-white divide-y divide-gray-200">
@@ -287,6 +288,46 @@
                         No messages in flight
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Pool Detail View (hidden by default) -->
+        <div id="contentPoolDetail" class="hidden bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                        <button id="poolDetailBackBtn" class="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                            Back to Pools
+                        </button>
+                        <h3 class="text-lg font-semibold text-gray-900">
+                            Pool: <span id="poolDetailCode" class="text-blue-600"></span>
+                        </h3>
+                    </div>
+                    <div id="poolDetailRateLimitSummary" class="text-sm text-gray-600"></div>
+                </div>
+            </div>
+            <div class="px-6 py-4 border-b border-gray-200 bg-white">
+                <input type="text" id="poolDetailMessageFilter" placeholder="Search by message ID..."
+                       class="border border-gray-300 rounded px-3 py-2 text-sm w-64">
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Message ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Broker ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Queue</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Elapsed Time</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Added At</th>
+                        </tr>
+                    </thead>
+                    <tbody id="poolDetailTable" class="bg-white divide-y divide-gray-200">
+                    </tbody>
+                </table>
+            </div>
+            <div id="noPoolDetailMessages" class="hidden px-6 py-8 text-center text-gray-500">
+                No in-flight messages for this pool
             </div>
         </div>
     </div>
@@ -849,7 +890,7 @@
                 let poolEntries = Object.entries(this.data.poolStats);
 
                 if (poolEntries.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">No pool data available</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-gray-500">No pool data available</td></tr>';
                     return;
                 }
 
@@ -861,7 +902,7 @@
                 }
 
                 if (poolEntries.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">No pools match filter</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-gray-500">No pools match filter</td></tr>';
                     return;
                 }
 
@@ -926,6 +967,9 @@
                             </span>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${stats.averageProcessingTimeMs.toFixed(0)}ms</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            <button onclick="window.dashboard.showPoolDetail('${stats.poolCode}')" class="text-blue-600 hover:text-blue-800 text-xs font-medium hover:underline">View Messages</button>
+                        </td>
                     </tr>
                 `;
                 }).join('');
@@ -1125,6 +1169,154 @@
                 }
 
                 modal.classList.remove('hidden');
+            }
+
+            showPoolDetail(poolCode) {
+                this.poolDetailCode = poolCode;
+                this.poolDetailRefreshActive = true;
+
+                // Hide main tabbed content, show detail view
+                document.getElementById('tabbedContentSection').classList.add('hidden');
+                document.getElementById('contentPoolDetail').classList.remove('hidden');
+
+                // Set header
+                document.getElementById('poolDetailCode').textContent = poolCode;
+
+                // Show rate limit summary from pool stats
+                const poolStats = this.data.poolStats[poolCode];
+                if (poolStats) {
+                    const total = poolStats.totalRateLimited || 0;
+                    const last5m = poolStats.totalRateLimited5min !== undefined ? poolStats.totalRateLimited5min : '-';
+                    const last30m = poolStats.totalRateLimited30min !== undefined ? poolStats.totalRateLimited30min : '-';
+                    document.getElementById('poolDetailRateLimitSummary').innerHTML =
+                        `Rate Limited: <span class="font-medium text-orange-600">${total.toLocaleString()}</span> total` +
+                        ` | <span class="font-medium">${last5m.toLocaleString()}</span> (5m)` +
+                        ` | <span class="font-medium">${last30m.toLocaleString()}</span> (30m)`;
+                }
+
+                // Setup back button
+                document.getElementById('poolDetailBackBtn').onclick = () => this.hidePoolDetail();
+
+                // Setup message filter
+                document.getElementById('poolDetailMessageFilter').value = '';
+                document.getElementById('poolDetailMessageFilter').oninput = (e) => {
+                    this.filterPoolDetailMessages(e.target.value);
+                };
+
+                // Load messages
+                this.loadPoolDetailMessages(poolCode);
+
+                // Start detail refresh interval
+                this.poolDetailInterval = setInterval(() => {
+                    if (this.poolDetailRefreshActive) {
+                        this.loadPoolDetailMessages(this.poolDetailCode);
+                    }
+                }, 5000);
+            }
+
+            hidePoolDetail() {
+                this.poolDetailRefreshActive = false;
+                if (this.poolDetailInterval) {
+                    clearInterval(this.poolDetailInterval);
+                    this.poolDetailInterval = null;
+                }
+
+                // Show main tabbed content, hide detail view
+                document.getElementById('contentPoolDetail').classList.add('hidden');
+                document.getElementById('tabbedContentSection').classList.remove('hidden');
+
+                // Ensure Pools tab is active
+                this.switchTab('Pools');
+            }
+
+            async loadPoolDetailMessages(poolCode) {
+                try {
+                    var headers = authManager.getAuthHeaders();
+                    var response = await fetch(`/monitoring/in-flight-messages?limit=500&poolCode=${encodeURIComponent(poolCode)}`, { headers });
+                    if (response.status === 401 || response.status === 403) {
+                        authManager.logout();
+                        return;
+                    }
+                    if (!response.ok) {
+                        throw new Error('Failed to load pool detail messages');
+                    }
+                    var messages = await response.json();
+                    this.poolDetailMessages = messages;
+                    this.renderPoolDetailMessages(messages);
+
+                    // Also refresh pool stats for the rate limit summary
+                    var poolStatsResponse = await fetch('/monitoring/pool-stats', { headers });
+                    if (poolStatsResponse.ok) {
+                        this.data.poolStats = await poolStatsResponse.json();
+                        var poolStats = this.data.poolStats[poolCode];
+                        if (poolStats) {
+                            var total = poolStats.totalRateLimited || 0;
+                            var last5m = poolStats.totalRateLimited5min !== undefined ? poolStats.totalRateLimited5min : '-';
+                            var last30m = poolStats.totalRateLimited30min !== undefined ? poolStats.totalRateLimited30min : '-';
+                            document.getElementById('poolDetailRateLimitSummary').innerHTML =
+                                `Rate Limited: <span class="font-medium text-orange-600">${total.toLocaleString()}</span> total` +
+                                ` | <span class="font-medium">${last5m.toLocaleString()}</span> (5m)` +
+                                ` | <span class="font-medium">${last30m.toLocaleString()}</span> (30m)`;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load pool detail messages:', error);
+                    document.getElementById('poolDetailTable').innerHTML = '';
+                    document.getElementById('noPoolDetailMessages').classList.remove('hidden');
+                }
+            }
+
+            renderPoolDetailMessages(messages) {
+                var table = document.getElementById('poolDetailTable');
+                var noMessages = document.getElementById('noPoolDetailMessages');
+
+                if (!messages || messages.length === 0) {
+                    table.innerHTML = '';
+                    noMessages.classList.remove('hidden');
+                    return;
+                }
+
+                noMessages.classList.add('hidden');
+                table.innerHTML = messages.map(msg => {
+                    var addedAt = new Date(msg.addedToInPipelineAt);
+                    var elapsedSec = Math.floor(msg.elapsedTimeMs / 1000);
+                    var elapsedMin = Math.floor(elapsedSec / 60);
+                    var elapsedStr = elapsedMin > 0 ? `${elapsedMin}m ${elapsedSec % 60}s` : `${elapsedSec}s`;
+                    var brokerIdShort = msg.brokerMessageId ? msg.brokerMessageId.substring(0, 12) + '...' : 'N/A';
+
+                    return `
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 text-sm text-blue-600 font-mono max-w-xs truncate" title="${msg.messageId}">
+                                ${msg.messageId}
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-500 font-mono max-w-xs truncate" title="${msg.brokerMessageId || 'N/A'}">
+                                ${brokerIdShort}
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">
+                                ${msg.queueId}
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">
+                                ${elapsedStr}
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-500">
+                                ${addedAt.toLocaleString()}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            filterPoolDetailMessages(filter) {
+                if (!this.poolDetailMessages) return;
+                var filtered = this.poolDetailMessages;
+                if (filter && filter.trim()) {
+                    var lowerFilter = filter.toLowerCase();
+                    filtered = filtered.filter(msg =>
+                        msg.messageId.toLowerCase().includes(lowerFilter) ||
+                        msg.queueId.toLowerCase().includes(lowerFilter)
+                    );
+                }
+                this.renderPoolDetailMessages(filtered);
             }
 
             startPeriodicRefresh() {

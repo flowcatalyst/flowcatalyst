@@ -37,6 +37,9 @@ public final class EventTypeMapper {
             .status(entity.status != null ? entity.status : EventTypeStatus.CURRENT)
             .source(entity.source != null ? entity.source : EventTypeSource.UI)
             .clientScoped(entity.clientScoped)
+            .application(entity.application)
+            .subdomain(entity.subdomain)
+            .aggregate(entity.aggregate)
             .createdAt(entity.createdAt)
             .updatedAt(entity.updatedAt)
             .build();
@@ -56,6 +59,9 @@ public final class EventTypeMapper {
         entity.status = domain.status() != null ? domain.status() : EventTypeStatus.CURRENT;
         entity.source = domain.source() != null ? domain.source() : EventTypeSource.UI;
         entity.clientScoped = domain.clientScoped();
+        entity.application = domain.application();
+        entity.subdomain = domain.subdomain();
+        entity.aggregate = domain.aggregate();
         entity.createdAt = domain.createdAt();
         entity.updatedAt = domain.updatedAt();
         return entity;

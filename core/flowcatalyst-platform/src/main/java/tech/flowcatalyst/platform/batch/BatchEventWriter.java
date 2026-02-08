@@ -25,7 +25,7 @@ import java.util.List;
  * <ul>
  *   <li>events - Main event storage</li>
  *   <li>dispatch_jobs - Main dispatch job storage (metadata as JSONB)</li>
- *   <li>dispatch_job_changes - Change log for projection (INSERT with full job)</li>
+ *   <li>dispatch_job_projection_feed - Change log for projection (INSERT with full job)</li>
  * </ul>
  */
 @ApplicationScoped
@@ -198,7 +198,7 @@ public class BatchEventWriter {
         if (jobs.isEmpty()) return;
 
         String sql = """
-            INSERT INTO dispatch_job_changes (dispatch_job_id, operation, changes, created_at)
+            INSERT INTO dispatch_job_projection_feed (dispatch_job_id, operation, changes, created_at)
             VALUES (?, 'INSERT', ?::jsonb, NOW())
             """;
 

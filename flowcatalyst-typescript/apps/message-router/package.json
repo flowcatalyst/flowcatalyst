@@ -14,22 +14,25 @@
   "dependencies": {
     "@aws-sdk/client-elastic-load-balancing-v2": "^3.717.0",
     "@aws-sdk/client-sqs": "^3.717.0",
+    "@fastify/swagger": "^9.4.2",
+    "@fastify/swagger-ui": "^5.2.1",
     "@flowcatalyst/config": "workspace:*",
     "@flowcatalyst/logging": "workspace:*",
     "@flowcatalyst/queue-core": "workspace:*",
     "@flowcatalyst/shared-types": "workspace:*",
-    "@hono/node-server": "^1.13.8",
-    "@hono/zod-openapi": "^0.18.4",
+    "@sinclair/typebox": "^0.34.30",
     "dotenv": "^16.4.7",
-    "hono": "^4.6.16",
+    "fastify": "^5.2.1",
+    "fastify-plugin": "^5.0.1",
     "jose": "^6.1.3",
     "nats": "^2.29.3",
     "nodemailer": "^7.0.12",
+    "pino": "^9.6.0",
     "prom-client": "^15.1.3",
     "sql.js": "^1.12.0",
     "stompit": "^1.0.0",
     "undici": "^7.3.0",
-    "zod": "^3.24.1"
+    "zod": "^4.1.13"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",
@@ -39,6 +42,6 @@
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
-    "vitest": "^2.1.8"
+    "vitest": "^4.0.18"
   }
 }

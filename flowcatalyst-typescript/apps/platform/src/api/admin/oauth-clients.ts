@@ -12,8 +12,7 @@ import {
 	jsonSuccess,
 	noContent,
 	notFound,
-	badRequest,
-	safeValidate,
+	ErrorResponseSchema,
 } from '@flowcatalyst/http';
 import { Result } from '@flowcatalyst/application';
 import type { UseCase } from '@flowcatalyst/application';
@@ -37,7 +36,8 @@ import type { OAuthClientRepository } from '../../infrastructure/persistence/ind
 import { requirePermission } from '../../authorization/index.js';
 import { OAUTH_CLIENT_PERMISSIONS } from '../../authorization/permissions/platform-auth.js';
 
-// Request schemas using TypeBox
+// ─── Request Schemas ────────────────────────────────────────────────────────
+
 const OAuthClientTypeSchema = Type.Union([Type.Literal('PUBLIC'), Type.Literal('CONFIDENTIAL')]);
 
 const OAuthGrantTypeSchema = Type.Union([
@@ -75,33 +75,43 @@ const RegenerateSecretSchema = Type.Object({
 	newSecretRef: Type.String({ minLength: 1 }),
 });
 
+const IdParam = Type.Object({ id: Type.String() });
+const ClientIdParam = Type.Object({ clientId: Type.String() });
+
+const ListOAuthClientsQuery = Type.Object({
+	active: Type.Optional(Type.String()),
+});
+
 type CreateOAuthClientBody = Static<typeof CreateOAuthClientSchema>;
 type UpdateOAuthClientBody = Static<typeof UpdateOAuthClientSchema>;
 type RegenerateSecretBody = Static<typeof RegenerateSecretSchema>;
 
-// Response schemas
-interface OAuthClientResponse {
-	id: string;
-	clientId: string;
-	clientName: string;
-	clientType: OAuthClientType;
-	hasClientSecret: boolean;
-	redirectUris: string[];
-	allowedOrigins: string[];
-	grantTypes: OAuthGrantType[];
-	defaultScopes: string | null;
-	pkceRequired: boolean;
-	applicationIds: string[];
-	serviceAccountPrincipalId: string | null;
-	active: boolean;
-	createdAt: string;
-	updatedAt: string;
-}
+// ─── Response Schemas ───────────────────────────────────────────────────────
 
-interface OAuthClientListResponse {
-	clients: OAuthClientResponse[];
-	total: number;
-}
+const OAuthClientResponseSchema = Type.Object({
+	id: Type.String(),
+	clientId: Type.String(),
+	clientName: Type.String(),
+	clientType: Type.String(),
+	hasClientSecret: Type.Boolean(),
+	redirectUris: Type.Array(Type.String()),
+	allowedOrigins: Type.Array(Type.String()),
+	grantTypes: Type.Array(Type.String()),
+	defaultScopes: Type.Union([Type.String(), Type.Null()]),
+	pkceRequired: Type.Boolean(),
+	applicationIds: Type.Array(Type.String()),
+	serviceAccountPrincipalId: Type.Union([Type.String(), Type.Null()]),
+	active: Type.Boolean(),
+	createdAt: Type.String({ format: 'date-time' }),
+	updatedAt: Type.String({ format: 'date-time' }),
+});
+
+const OAuthClientListResponseSchema = Type.Object({
+	clients: Type.Array(OAuthClientResponseSchema),
+	total: Type.Integer(),
+});
+
+type OAuthClientResponse = Static<typeof OAuthClientResponseSchema>;
 
 /**
  * Dependencies for the OAuth clients API.
@@ -157,9 +167,15 @@ export async function registerOAuthClientsRoutes(
 		'/oauth-clients',
 		{
 			preHandler: requirePermission(OAUTH_CLIENT_PERMISSIONS.READ),
+			schema: {
+				querystring: ListOAuthClientsQuery,
+				response: {
+					200: OAuthClientListResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const query = request.query as { active?: string };
+			const query = request.query as Static<typeof ListOAuthClientsQuery>;
 
 			let clients: OAuthClient[];
 			if (query.active === 'true') {
@@ -168,12 +184,10 @@ export async function registerOAuthClientsRoutes(
 				clients = await oauthClientRepository.findAll();
 			}
 
-			const response: OAuthClientListResponse = {
+			return jsonSuccess(reply, {
 				clients: clients.map(toResponse),
 				total: clients.length,
-			};
-
-			return jsonSuccess(reply, response);
+			});
 		},
 	);
 
@@ -182,9 +196,16 @@ export async function registerOAuthClientsRoutes(
 		'/oauth-clients/:id',
 		{
 			preHandler: requirePermission(OAUTH_CLIENT_PERMISSIONS.READ),
+			schema: {
+				params: IdParam,
+				response: {
+					200: OAuthClientResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const client = await oauthClientRepository.findById(id);
 
 			if (!client) {
@@ -200,9 +221,16 @@ export async function registerOAuthClientsRoutes(
 		'/oauth-clients/by-client-id/:clientId',
 		{
 			preHandler: requirePermission(OAUTH_CLIENT_PERMISSIONS.READ),
+			schema: {
+				params: ClientIdParam,
+				response: {
+					200: OAuthClientResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { clientId } = request.params as { clientId: string };
+			const { clientId } = request.params as Static<typeof ClientIdParam>;
 			const client = await oauthClientRepository.findByClientId(clientId);
 
 			if (!client) {
@@ -218,14 +246,17 @@ export async function registerOAuthClientsRoutes(
 		'/oauth-clients',
 		{
 			preHandler: requirePermission(OAUTH_CLIENT_PERMISSIONS.CREATE),
+			schema: {
+				body: CreateOAuthClientSchema,
+				response: {
+					201: OAuthClientResponseSchema,
+					400: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const bodyResult = safeValidate(request.body, CreateOAuthClientSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as CreateOAuthClientBody;
+			const body = request.body as CreateOAuthClientBody;
 			const ctx = request.executionContext;
 
 			const command: CreateOAuthClientCommand = {
@@ -259,15 +290,20 @@ export async function registerOAuthClientsRoutes(
 		'/oauth-clients/:id',
 		{
 			preHandler: requirePermission(OAUTH_CLIENT_PERMISSIONS.UPDATE),
+			schema: {
+				params: IdParam,
+				body: UpdateOAuthClientSchema,
+				response: {
+					200: OAuthClientResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body, UpdateOAuthClientSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as UpdateOAuthClientBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as UpdateOAuthClientBody;
 			const ctx = request.executionContext;
 
 			const command: UpdateOAuthClientCommand = {
@@ -300,15 +336,19 @@ export async function registerOAuthClientsRoutes(
 		'/oauth-clients/:id/regenerate-secret',
 		{
 			preHandler: requirePermission(OAUTH_CLIENT_PERMISSIONS.REGENERATE_SECRET),
+			schema: {
+				params: IdParam,
+				body: RegenerateSecretSchema,
+				response: {
+					200: OAuthClientResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
-			const bodyResult = safeValidate(request.body, RegenerateSecretSchema);
-			if (!bodyResult.success) {
-				return badRequest(reply, bodyResult.error);
-			}
-
-			const body = bodyResult.data as RegenerateSecretBody;
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as RegenerateSecretBody;
 			const ctx = request.executionContext;
 
 			const command: RegenerateOAuthClientSecretCommand = {
@@ -334,9 +374,16 @@ export async function registerOAuthClientsRoutes(
 		'/oauth-clients/:id',
 		{
 			preHandler: requirePermission(OAUTH_CLIENT_PERMISSIONS.DELETE),
+			schema: {
+				params: IdParam,
+				response: {
+					204: Type.Null(),
+					404: ErrorResponseSchema,
+				},
+			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as { id: string };
+			const { id } = request.params as Static<typeof IdParam>;
 			const ctx = request.executionContext;
 
 			const command: DeleteOAuthClientCommand = {

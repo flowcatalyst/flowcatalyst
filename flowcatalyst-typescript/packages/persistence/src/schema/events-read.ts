@@ -2,7 +2,7 @@
  * Events Read Schema
  *
  * Read-optimized projection of events for efficient querying.
- * Populated by the outbox processor from event_outbox.
+ * Populated by the stream processor from event_projection_feed.
  *
  * Key differences from events table:
  * - Parsed application/subdomain/aggregate fields for filtering
