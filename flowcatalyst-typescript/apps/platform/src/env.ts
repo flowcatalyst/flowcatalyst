@@ -41,6 +41,8 @@ const envSchema = z.object({
 	JWT_PRIVATE_KEY_PATH: z.string().optional(),
 	JWT_PUBLIC_KEY_PATH: z.string().optional(),
 	JWT_DEV_KEY_DIR: z.string().default('.jwt-keys'),
+	/** Directory for key pairs (rotation-capable). Takes priority over single-file paths. */
+	JWT_KEY_DIR: z.string().optional(),
 
 	// Encryption key for secrets (Base64-encoded 32-byte key)
 	FLOWCATALYST_APP_KEY: z.string().optional(),
@@ -51,6 +53,11 @@ const envSchema = z.object({
 	OIDC_REFRESH_TOKEN_TTL: z.coerce.number().default(2592000), // 30 days
 	OIDC_SESSION_TTL: z.coerce.number().default(86400), // 24 hours
 	OIDC_AUTH_CODE_TTL: z.coerce.number().default(600), // 10 minutes
+
+	// Bootstrap admin (first-run setup)
+	FLOWCATALYST_BOOTSTRAP_ADMIN_EMAIL: z.string().optional(),
+	FLOWCATALYST_BOOTSTRAP_ADMIN_PASSWORD: z.string().optional(),
+	FLOWCATALYST_BOOTSTRAP_ADMIN_NAME: z.string().default('Bootstrap Admin'),
 });
 
 export type Env = z.infer<typeof envSchema>;

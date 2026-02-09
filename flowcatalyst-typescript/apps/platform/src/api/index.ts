@@ -6,7 +6,7 @@
 
 import type { FastifyInstance } from 'fastify';
 
-import { registerUsersRoutes, type UsersRoutesDeps } from './admin/users.js';
+import { registerPrincipalsRoutes, type PrincipalsRoutesDeps } from './admin/principals.js';
 import { registerClientsRoutes, type ClientsRoutesDeps } from './admin/clients.js';
 import { registerAnchorDomainsRoutes, type AnchorDomainsRoutesDeps } from './admin/anchor-domains.js';
 import { registerApplicationsRoutes, type ApplicationsRoutesDeps } from './admin/applications.js';
@@ -39,7 +39,7 @@ import { registerPublicConfigRoutes, type PublicConfigRoutesDeps } from './publi
  * Dependencies for admin routes.
  */
 export interface AdminRoutesDeps
-	extends UsersRoutesDeps,
+	extends PrincipalsRoutesDeps,
 		ClientsRoutesDeps,
 		AnchorDomainsRoutesDeps,
 		ApplicationsRoutesDeps,
@@ -65,7 +65,7 @@ export interface AdminRoutesDeps
 export async function registerAdminRoutes(fastify: FastifyInstance, deps: AdminRoutesDeps): Promise<void> {
 	await fastify.register(
 		async (adminRouter) => {
-			await registerUsersRoutes(adminRouter, deps);
+			await registerPrincipalsRoutes(adminRouter, deps);
 			await registerClientsRoutes(adminRouter, deps);
 			await registerAnchorDomainsRoutes(adminRouter, deps);
 			await registerApplicationsRoutes(adminRouter, deps);
@@ -182,7 +182,7 @@ export async function registerPlatformConfigApiRoutes(fastify: FastifyInstance, 
 
 export { type MeRoutesDeps } from './me.js';
 export { type PublicConfigRoutesDeps } from './public/config.js';
-export { type UsersRoutesDeps } from './admin/users.js';
+export { type PrincipalsRoutesDeps } from './admin/principals.js';
 export { type ClientsRoutesDeps } from './admin/clients.js';
 export { type AnchorDomainsRoutesDeps } from './admin/anchor-domains.js';
 export { type ApplicationsRoutesDeps } from './admin/applications.js';

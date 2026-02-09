@@ -6,7 +6,7 @@
  * Roles are stored in the separate principal_roles junction table.
  */
 
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, inArray } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import {
 	type PaginatedRepository,
@@ -38,6 +38,16 @@ import {
 /**
  * Principal repository interface.
  */
+/**
+ * Filters for the principal list endpoint.
+ */
+export interface PrincipalFilters {
+	type?: PrincipalType | undefined;
+	clientId?: string | undefined;
+	active?: boolean | undefined;
+	email?: string | undefined;
+}
+
 export interface PrincipalRepository extends PaginatedRepository<Principal> {
 	findByEmail(email: string, tx?: TransactionContext): Promise<Principal | undefined>;
 	findByClientId(clientId: string, tx?: TransactionContext): Promise<Principal[]>;
@@ -50,6 +60,8 @@ export interface PrincipalRepository extends PaginatedRepository<Principal> {
 	existsByServiceAccountCode(code: string, tx?: TransactionContext): Promise<boolean>;
 	/** Set application access for a principal (declarative replace). */
 	setApplicationAccess(principalId: string, applicationIds: string[], tx?: TransactionContext): Promise<void>;
+	/** Find principals with optional filters and pagination. */
+	findFilteredPaged(filters: PrincipalFilters, page: number, pageSize: number, tx?: TransactionContext): Promise<PagedResult<Principal>>;
 }
 
 /**
@@ -82,7 +94,7 @@ export function createPrincipalRepository(defaultDb: AnyDb): PrincipalRepository
 		const roleRecords = await db(tx)
 			.select()
 			.from(principalRoles)
-			.where(sql`${principalRoles.principalId} = ANY(${principalIds})`);
+			.where(inArray(principalRoles.principalId, principalIds));
 
 		const rolesMap = new Map<string, RoleAssignment[]>();
 		for (const record of roleRecords) {
@@ -110,7 +122,7 @@ export function createPrincipalRepository(defaultDb: AnyDb): PrincipalRepository
 		const saRecords = await db(tx)
 			.select()
 			.from(serviceAccounts)
-			.where(sql`${serviceAccounts.id} = ANY(${saIds})`);
+			.where(inArray(serviceAccounts.id, saIds));
 
 		const saMap = new Map<string, ServiceAccountData>();
 		for (const sa of saRecords) {
@@ -142,7 +154,7 @@ export function createPrincipalRepository(defaultDb: AnyDb): PrincipalRepository
 		const records = await db(tx)
 			.select()
 			.from(principalApplicationAccess)
-			.where(sql`${principalApplicationAccess.principalId} = ANY(${principalIds})`);
+			.where(inArray(principalApplicationAccess.principalId, principalIds));
 
 		const accessMap = new Map<string, string[]>();
 		for (const record of records) {
@@ -307,6 +319,38 @@ export function createPrincipalRepository(defaultDb: AnyDb): PrincipalRepository
 			const records = await db(tx)
 				.select()
 				.from(principals)
+				.limit(pageSize)
+				.offset(page * pageSize)
+				.orderBy(principals.createdAt);
+
+			const ids = records.map((r) => r.id);
+			const rolesMap = await fetchRolesForPrincipals(ids, tx);
+			const saMap = await fetchServiceAccountsForPrincipals(records, tx);
+			const appAccessMap = await fetchApplicationAccessForPrincipals(ids, tx);
+
+			const items = records.map((r) => recordToPrincipal(r, rolesMap.get(r.id) ?? [], undefined, saMap.get(r.serviceAccountId!), appAccessMap.get(r.id)));
+			return createPagedResult(items, page, pageSize, totalItems);
+		},
+
+		async findFilteredPaged(filters: PrincipalFilters, page: number, pageSize: number, tx?: TransactionContext): Promise<PagedResult<Principal>> {
+			const conditions: ReturnType<typeof eq>[] = [];
+			if (filters.type) conditions.push(eq(principals.type, filters.type));
+			if (filters.clientId) conditions.push(eq(principals.clientId, filters.clientId));
+			if (filters.active !== undefined) conditions.push(eq(principals.active, filters.active));
+			if (filters.email) conditions.push(eq(principals.email, filters.email.toLowerCase()));
+
+			const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+			const countQuery = whereClause
+				? db(tx).select({ count: sql<number>`count(*)` }).from(principals).where(whereClause)
+				: db(tx).select({ count: sql<number>`count(*)` }).from(principals);
+			const [countResult] = await countQuery;
+			const totalItems = Number(countResult?.count ?? 0);
+
+			const recordsQuery = whereClause
+				? db(tx).select().from(principals).where(whereClause)
+				: db(tx).select().from(principals);
+			const records = await recordsQuery
 				.limit(pageSize)
 				.offset(page * pageSize)
 				.orderBy(principals.createdAt);

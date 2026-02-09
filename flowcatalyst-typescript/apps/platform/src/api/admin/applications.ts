@@ -25,6 +25,7 @@ import type {
 	DisableApplicationForClientCommand,
 	ActivateApplicationCommand,
 	DeactivateApplicationCommand,
+	CreateServiceAccountCommand,
 } from '../../application/index.js';
 import type {
 	ApplicationCreated,
@@ -35,10 +36,13 @@ import type {
 	ApplicationActivated,
 	ApplicationDeactivated,
 	ApplicationType,
+	ServiceAccountCreated,
 } from '../../domain/index.js';
 import type {
 	ApplicationRepository,
 	ApplicationClientConfigRepository,
+	RoleRepository,
+	PrincipalRepository,
 } from '../../infrastructure/persistence/index.js';
 import { requirePermission } from '../../authorization/index.js';
 import { APPLICATION_PERMISSIONS } from '../../authorization/permissions/platform-admin.js';
@@ -124,6 +128,33 @@ const ApplicationClientConfigsListResponseSchema = Type.Object({
 	configs: Type.Array(ApplicationClientConfigResponseSchema),
 });
 
+const ApplicationRolesResponseSchema = Type.Object({
+	roles: Type.Array(
+		Type.Object({
+			id: Type.String(),
+			name: Type.String(),
+			displayName: Type.String(),
+			description: Type.Union([Type.String(), Type.Null()]),
+			permissions: Type.Array(Type.String()),
+			clientManaged: Type.Boolean(),
+		}),
+	),
+});
+
+const ProvisionServiceAccountResponseSchema = Type.Object({
+	id: Type.String(),
+	code: Type.String(),
+	name: Type.String(),
+	applicationId: Type.Union([Type.String(), Type.Null()]),
+	active: Type.Boolean(),
+	createdAt: Type.String({ format: 'date-time' }),
+});
+
+const ProvisionServiceAccountSchema = Type.Object({
+	code: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
+	name: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+});
+
 type ApplicationResponse = Static<typeof ApplicationResponseSchema>;
 type ApplicationClientConfigResponse = Static<typeof ApplicationClientConfigResponseSchema>;
 
@@ -133,6 +164,8 @@ type ApplicationClientConfigResponse = Static<typeof ApplicationClientConfigResp
 export interface ApplicationsRoutesDeps {
 	readonly applicationRepository: ApplicationRepository;
 	readonly applicationClientConfigRepository: ApplicationClientConfigRepository;
+	readonly roleRepository: RoleRepository;
+	readonly principalRepository: PrincipalRepository;
 	readonly createApplicationUseCase: UseCase<CreateApplicationCommand, ApplicationCreated>;
 	readonly updateApplicationUseCase: UseCase<UpdateApplicationCommand, ApplicationUpdated>;
 	readonly deleteApplicationUseCase: UseCase<DeleteApplicationCommand, ApplicationDeleted>;
@@ -143,6 +176,7 @@ export interface ApplicationsRoutesDeps {
 		DisableApplicationForClientCommand,
 		ApplicationDisabledForClient
 	>;
+	readonly createServiceAccountUseCase: UseCase<CreateServiceAccountCommand, ServiceAccountCreated>;
 }
 
 /**
@@ -155,6 +189,8 @@ export async function registerApplicationsRoutes(
 	const {
 		applicationRepository,
 		applicationClientConfigRepository,
+		roleRepository,
+		principalRepository,
 		createApplicationUseCase,
 		updateApplicationUseCase,
 		deleteApplicationUseCase,
@@ -162,6 +198,7 @@ export async function registerApplicationsRoutes(
 		deactivateApplicationUseCase,
 		enableApplicationForClientUseCase,
 		disableApplicationForClientUseCase,
+		createServiceAccountUseCase,
 	} = deps;
 
 	// POST /api/admin/applications - Create application
@@ -526,6 +563,111 @@ export async function registerApplicationsRoutes(
 
 			if (Result.isSuccess(result)) {
 				return noContent(reply);
+			}
+
+			return sendResult(reply, result);
+		},
+	);
+
+	// GET /api/admin/applications/:id/roles - Get roles for application (Java parity)
+	fastify.get(
+		'/applications/:id/roles',
+		{
+			preHandler: requirePermission(APPLICATION_PERMISSIONS.READ),
+			schema: {
+				params: IdParam,
+				response: {
+					200: ApplicationRolesResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const { id } = request.params as Static<typeof IdParam>;
+
+			const application = await applicationRepository.findById(id);
+			if (!application) {
+				return notFound(reply, `Application not found: ${id}`);
+			}
+
+			const roles = await roleRepository.findByApplicationId(id);
+
+			return jsonSuccess(reply, {
+				roles: roles.map((r) => ({
+					id: r.id,
+					name: r.name,
+					displayName: r.displayName,
+					description: r.description,
+					permissions: [...r.permissions],
+					clientManaged: r.clientManaged,
+				})),
+			});
+		},
+	);
+
+	// POST /api/admin/applications/:id/provision-service-account - Provision service account (Java parity)
+	fastify.post(
+		'/applications/:id/provision-service-account',
+		{
+			preHandler: requirePermission(APPLICATION_PERMISSIONS.UPDATE),
+			schema: {
+				params: IdParam,
+				body: ProvisionServiceAccountSchema,
+				response: {
+					201: ProvisionServiceAccountResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+					409: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as Static<typeof ProvisionServiceAccountSchema>;
+			const ctx = request.executionContext;
+
+			const application = await applicationRepository.findById(id);
+			if (!application) {
+				return notFound(reply, `Application not found: ${id}`);
+			}
+
+			// Check if application already has a service account
+			if (application.serviceAccountId) {
+				const existing = await principalRepository.findById(application.serviceAccountId);
+				if (existing && existing.serviceAccount) {
+					return jsonSuccess(reply, {
+						id: existing.id,
+						code: existing.serviceAccount.code,
+						name: existing.name,
+						applicationId: existing.applicationId,
+						active: existing.active,
+						createdAt: existing.createdAt.toISOString(),
+					});
+				}
+			}
+
+			const command: CreateServiceAccountCommand = {
+				code: body.code ?? `${application.code}-service`,
+				name: body.name ?? `${application.name} Service Account`,
+				description: `Auto-provisioned service account for ${application.name}`,
+				applicationId: id,
+				clientId: null,
+			};
+
+			const result = await createServiceAccountUseCase.execute(command, ctx);
+
+			if (Result.isSuccess(result)) {
+				const principal = await principalRepository.findById(result.value.getData().principalId);
+				if (principal) {
+					return jsonCreated(reply, {
+						id: principal.id,
+						code: principal.serviceAccount?.code ?? command.code,
+						name: principal.name,
+						applicationId: principal.applicationId,
+						active: principal.active,
+						createdAt: principal.createdAt.toISOString(),
+					});
+				}
 			}
 
 			return sendResult(reply, result);

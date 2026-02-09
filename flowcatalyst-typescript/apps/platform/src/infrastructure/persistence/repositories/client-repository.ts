@@ -4,7 +4,7 @@
  * Data access for Client entities.
  */
 
-import { eq, sql, inArray } from 'drizzle-orm';
+import { eq, sql, inArray, and, or, ilike } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import {
 	type PaginatedRepository,
@@ -27,6 +27,10 @@ export interface ClientRepository extends PaginatedRepository<Client> {
 	existsByIdentifier(identifier: string, tx?: TransactionContext): Promise<boolean>;
 	/** Paginated query scoped to accessible client IDs. Null = unrestricted. */
 	findPagedScoped(page: number, pageSize: number, clientIds: string[] | null, tx?: TransactionContext): Promise<PagedResult<Client>>;
+	/** Search clients by name/identifier with optional status filter. */
+	search(query: string, status: string | undefined, limit: number, clientIds: string[] | null, tx?: TransactionContext): Promise<Client[]>;
+	/** List clients with optional status filter. */
+	findByStatus(status: string, clientIds: string[] | null, tx?: TransactionContext): Promise<Client[]>;
 }
 
 /**
@@ -95,6 +99,52 @@ export function createClientRepository(defaultDb: AnyDb): ClientRepository {
 
 			const items = records.map(recordToClient);
 			return createPagedResult(items, page, pageSize, totalItems);
+		},
+
+		async search(
+			query: string,
+			status: string | undefined,
+			limit: number,
+			clientIds: string[] | null,
+			tx?: TransactionContext,
+		): Promise<Client[]> {
+			const conditions = [];
+			const searchPattern = `%${query}%`;
+			conditions.push(or(ilike(clients.name, searchPattern), ilike(clients.identifier, searchPattern))!);
+			if (status) conditions.push(eq(clients.status, status));
+			if (clientIds !== null) {
+				if (clientIds.length === 0) return [];
+				conditions.push(inArray(clients.id, clientIds));
+			}
+
+			const records = await db(tx)
+				.select()
+				.from(clients)
+				.where(and(...conditions))
+				.limit(limit)
+				.orderBy(clients.name);
+
+			return records.map(recordToClient);
+		},
+
+		async findByStatus(
+			status: string,
+			clientIds: string[] | null,
+			tx?: TransactionContext,
+		): Promise<Client[]> {
+			const conditions = [eq(clients.status, status)];
+			if (clientIds !== null) {
+				if (clientIds.length === 0) return [];
+				conditions.push(inArray(clients.id, clientIds));
+			}
+
+			const records = await db(tx)
+				.select()
+				.from(clients)
+				.where(and(...conditions))
+				.orderBy(clients.name);
+
+			return records.map(recordToClient);
 		},
 
 		async count(tx?: TransactionContext): Promise<number> {

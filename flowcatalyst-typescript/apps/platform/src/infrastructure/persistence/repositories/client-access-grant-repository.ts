@@ -4,7 +4,7 @@
  * Data access for ClientAccessGrant entities.
  */
 
-import { eq, sql, and } from 'drizzle-orm';
+import { eq, sql, and, inArray } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type { TransactionContext } from '@flowcatalyst/persistence';
 
@@ -45,6 +45,8 @@ export interface ClientAccessGrantRepository {
 	): Promise<boolean>;
 	persist(entity: NewClientAccessGrant, tx?: TransactionContext): Promise<ClientAccessGrant>;
 	delete(entity: ClientAccessGrant, tx?: TransactionContext): Promise<boolean>;
+	/** Batch load grants for multiple principal IDs. */
+	findByPrincipalIds(principalIds: string[], tx?: TransactionContext): Promise<Map<string, string[]>>;
 }
 
 /**
@@ -189,6 +191,23 @@ export function createClientAccessGrantRepository(defaultDb: AnyDb): ClientAcces
 
 		async delete(entity: ClientAccessGrant, tx?: TransactionContext): Promise<boolean> {
 			return this.deleteById(entity.id, tx);
+		},
+
+		async findByPrincipalIds(principalIds: string[], tx?: TransactionContext): Promise<Map<string, string[]>> {
+			if (principalIds.length === 0) return new Map();
+
+			const records = await db(tx)
+				.select({ principalId: clientAccessGrants.principalId, clientId: clientAccessGrants.clientId })
+				.from(clientAccessGrants)
+				.where(inArray(clientAccessGrants.principalId, principalIds));
+
+			const result = new Map<string, string[]>();
+			for (const record of records) {
+				const existing = result.get(record.principalId) ?? [];
+				existing.push(record.clientId);
+				result.set(record.principalId, existing);
+			}
+			return result;
 		},
 	};
 }

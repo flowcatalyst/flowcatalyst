@@ -17,7 +17,7 @@
  * for immutability.
  */
 
-import { generate, type EntityTypeKey } from '@flowcatalyst/tsid';
+import { generateRaw } from '@flowcatalyst/tsid';
 import type { ExecutionContext } from './execution-context.js';
 
 /**
@@ -121,7 +121,7 @@ export const DomainEvent = {
 	 * Generate a new event ID.
 	 */
 	generateId(): string {
-		return generate('EVENT');
+		return generateRaw();
 	},
 
 	/**
@@ -132,7 +132,7 @@ export const DomainEvent = {
 	 */
 	metadataFrom(ctx: ExecutionContext): DomainEventMetadata {
 		return {
-			eventId: generate('EVENT'),
+			eventId: generateRaw(),
 			executionId: ctx.executionId,
 			correlationId: ctx.correlationId,
 			causationId: ctx.causationId,

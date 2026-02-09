@@ -6,6 +6,7 @@
 
 export {
 	type PrincipalRepository,
+	type PrincipalFilters,
 	createPrincipalRepository,
 } from './principal-repository.js';
 

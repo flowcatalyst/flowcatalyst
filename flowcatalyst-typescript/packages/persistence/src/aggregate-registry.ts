@@ -108,9 +108,13 @@ export function isTaggedAggregate(obj: unknown): obj is TaggedAggregate {
 /**
  * Create an aggregate registry.
  *
+ * @param prefixMap - Optional mapping of ID prefixes to handler type names.
+ *   When aggregates are plain objects (no constructor name), the registry
+ *   extracts the prefix from the aggregate's `id` field to determine the type.
+ *   Example: `{ prn: 'Principal', clt: 'Client', idp: 'IdentityProvider' }`
  * @returns A new aggregate registry
  */
-export function createAggregateRegistry(): AggregateRegistry {
+export function createAggregateRegistry(prefixMap?: Record<string, string>): AggregateRegistry {
 	const handlers = new Map<string, AggregateHandler>();
 
 	return {
@@ -171,6 +175,22 @@ export function createAggregateRegistry(): AggregateRegistry {
 			const constructor = (aggregate as object).constructor;
 			if (constructor && constructor.name && constructor.name !== 'Object') {
 				return constructor.name;
+			}
+
+			// Fall back to ID prefix lookup
+			if (prefixMap) {
+				const obj = aggregate as Record<string, unknown>;
+				if (typeof obj['id'] === 'string') {
+					const id = obj['id'];
+					const underscoreIdx = id.indexOf('_');
+					if (underscoreIdx > 0) {
+						const prefix = id.slice(0, underscoreIdx);
+						const typeName = prefixMap[prefix];
+						if (typeName && handlers.has(typeName)) {
+							return typeName;
+						}
+					}
+				}
 			}
 
 			throw new Error(

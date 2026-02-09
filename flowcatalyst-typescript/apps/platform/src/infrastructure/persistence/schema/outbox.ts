@@ -6,6 +6,7 @@
  */
 
 import { pgTable, bigserial, varchar, jsonb, smallint, text, index } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { rawTsidColumn, timestampColumn } from '@flowcatalyst/persistence';
 
 /**
@@ -45,15 +46,15 @@ export const dispatchJobProjectionFeed = pgTable(
 		// Index for polling unprocessed entries, ordered by job (message group) then sequence
 		index('idx_dj_projection_feed_unprocessed')
 			.on(table.dispatchJobId, table.id)
-			.where({ processed: 0 } as never), // Partial index
+			.where(sql`${table.processed} = 0`),
 		// Index for crash recovery (find in-progress entries)
 		index('idx_dj_projection_feed_in_progress')
 			.on(table.id)
-			.where({ processed: 9 } as never), // Partial index
+			.where(sql`${table.processed} = 9`),
 		// Index for cleanup of old processed entries
 		index('idx_dj_projection_feed_processed_at')
 			.on(table.processedAt)
-			.where({ processed: 1 } as never), // Partial index
+			.where(sql`${table.processed} = 1`),
 	],
 );
 
@@ -83,11 +84,11 @@ export const eventProjectionFeed = pgTable(
 		// Index for polling unprocessed entries
 		index('idx_event_projection_feed_unprocessed')
 			.on(table.id)
-			.where({ processed: 0 } as never), // Partial index
+			.where(sql`${table.processed} = 0`),
 		// Index for crash recovery
 		index('idx_event_projection_feed_in_progress')
 			.on(table.id)
-			.where({ processed: 9 } as never), // Partial index
+			.where(sql`${table.processed} = 9`),
 	],
 );
 

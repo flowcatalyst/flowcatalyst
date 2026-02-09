@@ -4,27 +4,31 @@
  * Manages RSA key pairs for RS256 JWT signing and verification.
  * Ports the Java JwtKeyService to TypeScript using the `jose` library.
  *
- * Supports two modes:
- * 1. Auto-generated keys (development) - generates RSA key pair on startup,
- *    persists to disk so sessions survive restarts.
- * 2. File-based keys (production) - loads from configured PEM file paths.
+ * Supports three modes (checked in priority order):
+ * 1. Key directory (rotation-capable) — loads all key pairs from a directory,
+ *    newest by mtime is the signing key, all public keys appear in JWKS.
+ * 2. File-based keys (legacy/production) — loads from configured PEM file paths.
+ * 3. Auto-generated keys (development) — generates RSA key pair on startup,
+ *    persists to key directory so sessions survive restarts.
  *
  * Provides JWKS for token verification by other services (message router, SDKs).
  */
 
 import * as jose from 'jose';
-import { createHash } from 'crypto';
-import { readFile, writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
-import path from 'path';
+import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { computeKeyId, generateKeyPair, writeKeyPair, loadKeyDir } from './key-utils.js';
 
 export interface JwtKeyServiceConfig {
 	issuer: string;
-	/** Path to RSA private key PEM file (production) */
+	/** Directory containing key pairs: {kid}.private.pem + {kid}.public.pem */
+	keyDir?: string | undefined;
+	/** Path to RSA private key PEM file (legacy/production) */
 	privateKeyPath?: string | undefined;
-	/** Path to RSA public key PEM file (production) */
+	/** Path to RSA public key PEM file (legacy/production) */
 	publicKeyPath?: string | undefined;
-	/** Directory for auto-generated dev keys (default: '.jwt-keys') */
+	/** Directory for auto-generated dev keys (default: '.jwt-keys'). Deprecated: use keyDir. */
 	devKeyDir?: string | undefined;
 	/** Session token TTL in seconds (default: 86400 = 24 hours) */
 	sessionTokenTtl?: number | undefined;
@@ -36,7 +40,10 @@ export interface JwtKeyService {
 	issueSessionToken(principalId: string, email: string, roles: string[], clients: string[]): Promise<string>;
 	issueAccessToken(principalId: string, clientId: string, roles: string[]): Promise<string>;
 	validateAndGetPrincipalId(token: string): Promise<string | null>;
+	/** Public-only JWKS for the /.well-known/jwks.json endpoint */
 	getJwks(): jose.JSONWebKeySet;
+	/** JWKS with private key for oidc-provider (signing) */
+	getSigningJwks(): jose.JSONWebKeySet;
 	getKeyId(): string;
 }
 
@@ -59,11 +66,12 @@ export function extractApplicationCodes(roles: string[]): string[] {
 
 /**
  * Create and initialize a JwtKeyService.
- * Loads or generates RSA key pair, computes key ID.
+ * Loads or generates RSA key pair(s), computes key IDs, builds JWKS.
  */
 export async function createJwtKeyService(config: JwtKeyServiceConfig): Promise<JwtKeyService> {
 	const {
 		issuer,
+		keyDir,
 		privateKeyPath,
 		publicKeyPath,
 		devKeyDir = '.jwt-keys',
@@ -73,56 +81,52 @@ export async function createJwtKeyService(config: JwtKeyServiceConfig): Promise<
 
 	type JoseKey = Awaited<ReturnType<typeof jose.importPKCS8>>;
 
-	let privateKey: JoseKey;
-	let publicKey: JoseKey;
+	let signingPrivateKey: JoseKey;
+	let signingKeyId: string;
+	let jwks: jose.JSONWebKeySet; // public keys only (for JWKS endpoint)
+	let signingJwks: jose.JSONWebKeySet; // with private key (for oidc-provider)
 
-	if (privateKeyPath && publicKeyPath) {
-		// Production: load from PEM files
+	// Resolve the effective key directory
+	const effectiveKeyDir = keyDir ?? devKeyDir;
+
+	if (keyDir) {
+		// Mode 1: Directory-based multi-key (rotation-capable)
+		const result = await loadOrBootstrapKeyDir(effectiveKeyDir);
+		signingPrivateKey = result.signingPrivateKey;
+		signingKeyId = result.signingKeyId;
+		jwks = result.jwks;
+		signingJwks = result.signingJwks;
+	} else if (privateKeyPath && publicKeyPath) {
+		// Mode 2: Legacy single file-based keys (production)
 		const privatePem = await readFile(privateKeyPath, 'utf-8');
 		const publicPem = await readFile(publicKeyPath, 'utf-8');
-		privateKey = await jose.importPKCS8(privatePem, 'RS256');
-		publicKey = await jose.importSPKI(publicPem, 'RS256');
+		signingPrivateKey = await jose.importPKCS8(privatePem, 'RS256');
+		signingKeyId = computeKeyId(publicPem);
+
+		const publicKey = await jose.importSPKI(publicPem, 'RS256');
+		const publicJwk = await jose.exportJWK(publicKey);
+		publicJwk.kid = signingKeyId;
+		publicJwk.alg = 'RS256';
+		publicJwk.use = 'sig';
+		jwks = { keys: [publicJwk] };
+
+		const extractablePrivKey = await jose.importPKCS8(privatePem, 'RS256', { extractable: true });
+		const privateJwk = await jose.exportJWK(extractablePrivKey);
+		privateJwk.kid = signingKeyId;
+		privateJwk.alg = 'RS256';
+		privateJwk.use = 'sig';
+		signingJwks = { keys: [privateJwk] };
 	} else {
-		// Development: load persisted keys or generate new ones
-		const privKeyFile = path.join(devKeyDir, 'private.pem');
-		const pubKeyFile = path.join(devKeyDir, 'public.pem');
-
-		if (existsSync(privKeyFile) && existsSync(pubKeyFile)) {
-			const privatePem = await readFile(privKeyFile, 'utf-8');
-			const publicPem = await readFile(pubKeyFile, 'utf-8');
-			privateKey = await jose.importPKCS8(privatePem, 'RS256');
-			publicKey = await jose.importSPKI(publicPem, 'RS256');
-		} else {
-			const keyPair = await jose.generateKeyPair('RS256', {
-				modulusLength: 2048,
-				extractable: true,
-			});
-			privateKey = keyPair.privateKey;
-			publicKey = keyPair.publicKey;
-
-			// Persist for session survival across restarts
-			await mkdir(devKeyDir, { recursive: true });
-			const privatePem = await jose.exportPKCS8(privateKey);
-			const publicPem = await jose.exportSPKI(publicKey);
-			await writeFile(privKeyFile, privatePem, 'utf-8');
-			await writeFile(pubKeyFile, publicPem, 'utf-8');
-		}
+		// Mode 3: Auto-generate into devKeyDir (development)
+		const result = await loadOrBootstrapKeyDir(effectiveKeyDir);
+		signingPrivateKey = result.signingPrivateKey;
+		signingKeyId = result.signingKeyId;
+		jwks = result.jwks;
+		signingJwks = result.signingJwks;
 	}
 
-	// Generate key ID: SHA-256(SPKI DER bytes) -> base64url -> first 8 chars
-	// Matches Java's generateKeyId() which uses key.getEncoded() (X.509/SPKI DER)
-	const spkiPem = await jose.exportSPKI(publicKey);
-	const derBytes = pemToBuffer(spkiPem);
-	const hash = createHash('sha256').update(derBytes).digest();
-	const keyId = jose.base64url.encode(hash).substring(0, 8);
-
-	// Export public key as JWK for JWKS endpoint
-	const publicJwk = await jose.exportJWK(publicKey);
-	publicJwk.kid = keyId;
-	publicJwk.alg = 'RS256';
-	publicJwk.use = 'sig';
-
-	const jwks: jose.JSONWebKeySet = { keys: [publicJwk] };
+	// Create JWKS resolver for multi-key validation
+	const jwksGetKey = jose.createLocalJWKSet(jwks);
 
 	return {
 		async issueSessionToken(principalId: string, email: string, roles: string[], clients: string[]): Promise<string> {
@@ -135,12 +139,12 @@ export async function createJwtKeyService(config: JwtKeyServiceConfig): Promise<
 				clients,
 				applications,
 			})
-				.setProtectedHeader({ alg: 'RS256', kid: keyId })
+				.setProtectedHeader({ alg: 'RS256', kid: signingKeyId })
 				.setIssuer(issuer)
 				.setSubject(principalId)
 				.setIssuedAt()
 				.setExpirationTime(`${sessionTokenTtl}s`)
-				.sign(privateKey);
+				.sign(signingPrivateKey);
 		},
 
 		async issueAccessToken(principalId: string, clientId: string, roles: string[]): Promise<string> {
@@ -152,17 +156,17 @@ export async function createJwtKeyService(config: JwtKeyServiceConfig): Promise<
 				roles,
 				applications,
 			})
-				.setProtectedHeader({ alg: 'RS256', kid: keyId })
+				.setProtectedHeader({ alg: 'RS256', kid: signingKeyId })
 				.setIssuer(issuer)
 				.setSubject(principalId)
 				.setIssuedAt()
 				.setExpirationTime(`${accessTokenTtl}s`)
-				.sign(privateKey);
+				.sign(signingPrivateKey);
 		},
 
 		async validateAndGetPrincipalId(token: string): Promise<string | null> {
 			try {
-				const { payload } = await jose.jwtVerify(token, publicKey, {
+				const { payload } = await jose.jwtVerify(token, jwksGetKey, {
 					issuer,
 				});
 				return typeof payload.sub === 'string' ? payload.sub : null;
@@ -175,19 +179,70 @@ export async function createJwtKeyService(config: JwtKeyServiceConfig): Promise<
 			return jwks;
 		},
 
+		getSigningJwks(): jose.JSONWebKeySet {
+			return signingJwks;
+		},
+
 		getKeyId(): string {
-			return keyId;
+			return signingKeyId;
 		},
 	};
 }
 
 /**
- * Strip PEM headers/footers and decode base64 to get DER bytes.
+ * Load key pairs from a directory, or generate a new one if none exist.
+ * Returns the signing key (newest) and JWKS (all public keys).
  */
-function pemToBuffer(pem: string): Buffer {
-	const base64 = pem
-		.replace(/-----BEGIN [A-Z ]+-----/g, '')
-		.replace(/-----END [A-Z ]+-----/g, '')
-		.replace(/\s/g, '');
-	return Buffer.from(base64, 'base64');
+async function loadOrBootstrapKeyDir(dir: string) {
+	type JoseKey = Awaited<ReturnType<typeof jose.importPKCS8>>;
+
+	let pairs = await loadKeyDir(dir);
+
+	// Migrate legacy dev keys (private.pem + public.pem) to {kid}.* format
+	if (pairs.length === 0) {
+		const legacyPriv = path.join(dir, 'private.pem');
+		const legacyPub = path.join(dir, 'public.pem');
+		if (existsSync(legacyPriv) && existsSync(legacyPub)) {
+			const publicPem = await readFile(legacyPub, 'utf-8');
+			const privatePem = await readFile(legacyPriv, 'utf-8');
+			const kid = computeKeyId(publicPem);
+			await writeKeyPair(dir, kid, privatePem, publicPem);
+			pairs = await loadKeyDir(dir);
+		}
+	}
+
+	// No keys found — generate an initial key pair
+	if (pairs.length === 0) {
+		const { kid, privatePem, publicPem } = await generateKeyPair();
+		await writeKeyPair(dir, kid, privatePem, publicPem);
+		pairs = await loadKeyDir(dir);
+	}
+
+	// Newest key pair (last after sort by mtime) is the signing key
+	const signingPair = pairs[pairs.length - 1]!;
+	const signingPrivateKey: JoseKey = await jose.importPKCS8(signingPair.privatePem, 'RS256');
+	const signingKeyId = signingPair.kid;
+
+	// Build public JWKS (for JWKS endpoint) and signing JWKS (for oidc-provider)
+	const publicJwkKeys: jose.JWK[] = [];
+	for (const pair of pairs) {
+		const publicKey = await jose.importSPKI(pair.publicPem, 'RS256');
+		const jwk = await jose.exportJWK(publicKey);
+		jwk.kid = pair.kid;
+		jwk.alg = 'RS256';
+		jwk.use = 'sig';
+		publicJwkKeys.push(jwk);
+	}
+	const jwks: jose.JSONWebKeySet = { keys: publicJwkKeys };
+
+	// Signing JWKS includes the private key (needed by oidc-provider)
+	// Re-import as extractable so we can export to JWK format
+	const extractableKey = await jose.importPKCS8(signingPair.privatePem, 'RS256', { extractable: true });
+	const signingPrivateJwk = await jose.exportJWK(extractableKey);
+	signingPrivateJwk.kid = signingKeyId;
+	signingPrivateJwk.alg = 'RS256';
+	signingPrivateJwk.use = 'sig';
+	const signingJwks: jose.JSONWebKeySet = { keys: [signingPrivateJwk] };
+
+	return { signingPrivateKey, signingKeyId, jwks, signingJwks };
 }

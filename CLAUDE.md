@@ -1,5 +1,15 @@
 # FlowCatalyst Project Context
 
+## Environment Variables
+
+**IMPORTANT**: When adding, removing, or renaming environment variables in any application's `env.ts` (or `process.env` usage), you MUST update the corresponding `.env.example` file in that app's directory. This keeps the example files in sync with the actual configuration.
+
+| App | Example file |
+|-----|-------------|
+| `apps/flowcatalyst` | `apps/flowcatalyst/.env.example` |
+| `apps/message-router` | `apps/message-router/.env.example` |
+| `apps/stream-processor` | `apps/stream-processor/.env.example` |
+
 ## Java Style Guidelines
 
 ### REST Response Types

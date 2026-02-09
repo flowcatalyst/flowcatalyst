@@ -97,9 +97,23 @@ export async function registerPublicConfigRoutes(
 				);
 			}
 
+			// Support both storage formats:
+			// 1. Single JSON blob at property "theme" (how the settings page saves)
+			// 2. Individual properties (e.g. "brandName", "primaryColor")
+			let jsonBlob: Record<string, unknown> = {};
+			const themeJson = themeValues.get('theme');
+			if (themeJson) {
+				try {
+					jsonBlob = JSON.parse(themeJson);
+				} catch {
+					// Invalid JSON — ignore
+				}
+			}
+
 			const theme: Record<string, string | number | null> = {};
 			for (const prop of THEME_PROPERTIES) {
-				const value = themeValues.get(prop) ?? null;
+				// Individual property takes precedence over JSON blob
+				const value = themeValues.get(prop) ?? (jsonBlob[prop] != null ? String(jsonBlob[prop]) : null);
 				if (prop === 'logoHeight' && value !== null) {
 					theme[prop] = parseInt(value, 10) || null;
 				} else {

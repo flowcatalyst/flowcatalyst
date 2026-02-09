@@ -4,4 +4,4 @@
  * Administrative endpoints for platform management.
  */
 
-export { registerUsersRoutes, type UsersRoutesDeps } from './users.js';
+export { registerPrincipalsRoutes, type PrincipalsRoutesDeps } from './principals.js';

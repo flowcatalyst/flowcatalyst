@@ -4,6 +4,7 @@
  * IAM and Eventing service entry point.
  */
 
+import { existsSync } from 'node:fs';
 import Fastify, { type FastifyInstance } from 'fastify';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
@@ -146,6 +147,7 @@ export interface PlatformConfig {
 	host?: string;
 	databaseUrl?: string;
 	logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+	frontendDir?: string | undefined;
 }
 
 /**
@@ -214,7 +216,24 @@ const platformConfigService = createPlatformConfigService({
 });
 
 // Create aggregate registry and register handlers
-const aggregateRegistry = createAggregateRegistry();
+// Prefix map allows the registry to resolve plain-object aggregates by ID prefix
+const aggregateRegistry = createAggregateRegistry({
+	prn: 'Principal',
+	clt: 'Client',
+	anc: 'AnchorDomain',
+	app: 'Application',
+	apc: 'ApplicationClientConfig',
+	rol: 'AuthRole',
+	gnt: 'ClientAccessGrant',
+	cac: 'ClientAuthConfig',
+	oac: 'OAuthClient',
+	evt: 'EventType',
+	dpl: 'DispatchPool',
+	sub: 'Subscription',
+	idp: 'IdentityProvider',
+	edm: 'EmailDomainMapping',
+	cor: 'CorsAllowedOrigin',
+});
 aggregateRegistry.register(createAggregateHandler('Principal', principalRepository));
 aggregateRegistry.register(createAggregateHandler('Client', clientRepository));
 aggregateRegistry.register(createAggregateHandler('AnchorDomain', anchorDomainRepository));
@@ -252,6 +271,19 @@ const unitOfWork = createDrizzleUnitOfWork({
 // Create password service
 const passwordService = getPasswordService();
 
+// Bootstrap: sync permissions/roles to DB + create admin user
+const { runBootstrap } = await import('./bootstrap/index.js');
+await runBootstrap({
+	roleRepository,
+	permissionRepository,
+	principalRepository,
+	applicationRepository,
+	identityProviderRepository,
+	emailDomainMappingRepository,
+	passwordService,
+	logger: fastify.log,
+});
+
 // Create encryption service
 const encryptionService = createEncryptionServiceFromEnv();
 
@@ -262,6 +294,7 @@ const oidcIssuer =
 // Initialize JWT key service (RS256 key pair)
 const jwtKeyService = await createJwtKeyService({
 	issuer: env.JWT_ISSUER,
+	keyDir: env.JWT_KEY_DIR,
 	privateKeyPath: env.JWT_PRIVATE_KEY_PATH,
 	publicKeyPath: env.JWT_PUBLIC_KEY_PATH,
 	devKeyDir: env.JWT_DEV_KEY_DIR,
@@ -279,7 +312,7 @@ const oidcProvider = createOidcProvider({
 	oauthClientRepository,
 	encryptionService,
 	cookieKeys: env.OIDC_COOKIES_KEYS,
-	jwks: jwtKeyService.getJwks(),
+	jwks: jwtKeyService.getSigningJwks(),
 	accessTokenTtl: env.OIDC_ACCESS_TOKEN_TTL,
 	idTokenTtl: env.OIDC_ID_TOKEN_TTL,
 	refreshTokenTtl: env.OIDC_REFRESH_TOKEN_TTL,
@@ -738,8 +771,20 @@ async function registerPlugins() {
 
 	// Audit (authentication) - validates JWT tokens using RS256 key service
 	await fastify.register(auditPlugin, {
+		sessionCookieName: 'fc_session',
 		validateToken: async (token: string) => {
 			return jwtKeyService.validateAndGetPrincipalId(token);
+		},
+		loadPrincipal: async (principalId: string) => {
+			const principal = await principalRepository.findById(principalId);
+			if (!principal || !principal.active) return null;
+			return {
+				id: principal.id,
+				type: principal.type,
+				scope: principal.scope ?? 'CLIENT',
+				clientId: principal.clientId,
+				roles: new Set(principal.roles.map((r) => r.roleName)),
+			};
 		},
 	});
 
@@ -842,9 +887,10 @@ async function registerRoutes() {
 
 	// Admin API routes
 	const deps: AdminRoutesDeps = {
-		// User management
+		// Principal management
 		principalRepository,
 		clientAccessGrantRepository,
+		passwordService,
 		createUserUseCase,
 		updateUserUseCase,
 		activateUserUseCase,
@@ -1032,6 +1078,25 @@ async function registerRoutes() {
 await registerPlugins();
 await registerRoutes();
 
+// Serve frontend static files if configured
+if (config?.frontendDir && existsSync(config.frontendDir)) {
+	const fastifyStatic = (await import('@fastify/static')).default;
+	await fastify.register(fastifyStatic, {
+		root: config.frontendDir,
+		wildcard: false,
+	});
+
+	// SPA catch-all: serve index.html for navigation paths not matched by API routes
+	fastify.setNotFoundHandler(async (request, reply) => {
+		if (request.method === 'GET' && request.url.indexOf('.') === -1) {
+			return reply.sendFile('index.html');
+		}
+		reply.code(404).send({ error: 'Not Found' });
+	});
+
+	fastify.log.info({ frontendDir: config.frontendDir }, 'Frontend static serving enabled');
+}
+
 fastify.log.info({ port: PORT, host: HOST }, 'Starting HTTP server');
 
 await fastify.listen({ port: PORT, host: HOST });
@@ -1050,13 +1115,15 @@ if (isDevelopment()) {
 return fastify;
 } // end startPlatform
 
-// Run when executed as main module
-const isMainModule =
-	typeof process !== 'undefined' &&
-	process.argv[1] &&
-	(process.argv[1].endsWith('/index.ts') || process.argv[1].endsWith('/index.js'));
+// Key utilities (for CLI commands like rotate-keys)
+export { generateKeyPair, computeKeyId, loadKeyDir, writeKeyPair, removeKeyPair } from './infrastructure/oidc/key-utils.js';
 
-if (isMainModule) {
+// Run when executed as main module (not when imported by flowcatalyst app)
+import { fileURLToPath as _toPath } from 'node:url';
+import { resolve as _resolve } from 'node:path';
+const _self = _resolve(_toPath(import.meta.url));
+const _entry = process.argv[1] ? _resolve(process.argv[1]) : '';
+if (_self === _entry) {
 	startPlatform().catch((err) => {
 		console.error('Failed to start platform:', err);
 		process.exit(1);

@@ -48,11 +48,10 @@ const UpdateRoleSchema = Type.Object({
 	clientManaged: Type.Optional(Type.Boolean()),
 });
 
-const IdParam = Type.Object({ id: Type.String() });
 const NameParam = Type.Object({ name: Type.String() });
 const SourceParam = Type.Object({ source: Type.String() });
 const ApplicationIdParam = Type.Object({ applicationId: Type.String() });
-const SubdomainParam = Type.Object({ subdomain: Type.String() });
+const PermissionParam = Type.Object({ permission: Type.String() });
 
 const ListRolesQuery = Type.Object({
 	page: Type.Optional(Type.String()),
@@ -201,34 +200,9 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 		},
 	);
 
-	// GET /api/admin/roles/:id - Get role by ID
+	// GET /api/admin/roles/:name - Get role by name (Java parity: /roles/{roleName})
 	fastify.get(
-		'/roles/:id',
-		{
-			preHandler: requirePermission(ROLE_PERMISSIONS.READ),
-			schema: {
-				params: IdParam,
-				response: {
-					200: RoleResponseSchema,
-					404: ErrorResponseSchema,
-				},
-			},
-		},
-		async (request, reply) => {
-			const { id } = request.params as Static<typeof IdParam>;
-			const role = await roleRepository.findById(id);
-
-			if (!role) {
-				return notFound(reply, `Role not found: ${id}`);
-			}
-
-			return jsonSuccess(reply, toRoleResponse(role));
-		},
-	);
-
-	// GET /api/admin/roles/by-name/:name - Get role by name
-	fastify.get(
-		'/roles/by-name/:name',
+		'/roles/:name',
 		{
 			preHandler: requirePermission(ROLE_PERMISSIONS.READ),
 			schema: {
@@ -244,7 +218,7 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 			const role = await roleRepository.findByName(name);
 
 			if (!role) {
-				return notFound(reply, `Role not found with name: ${name}`);
+				return notFound(reply, `Role not found: ${name}`);
 			}
 
 			return jsonSuccess(reply, toRoleResponse(role));
@@ -302,13 +276,13 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 		},
 	);
 
-	// PUT /api/admin/roles/:id - Update role
+	// PUT /api/admin/roles/:name - Update role by name (Java parity: /roles/{roleName})
 	fastify.put(
-		'/roles/:id',
+		'/roles/:name',
 		{
 			preHandler: requirePermission(ROLE_PERMISSIONS.UPDATE),
 			schema: {
-				params: IdParam,
+				params: NameParam,
 				body: UpdateRoleSchema,
 				response: {
 					200: RoleResponseSchema,
@@ -319,12 +293,17 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as Static<typeof IdParam>;
+			const { name } = request.params as Static<typeof NameParam>;
 			const body = request.body as UpdateRoleBody;
 			const ctx = request.executionContext;
 
+			const role = await roleRepository.findByName(name);
+			if (!role) {
+				return notFound(reply, `Role not found: ${name}`);
+			}
+
 			const command: UpdateRoleCommand = {
-				roleId: id,
+				roleId: role.id,
 				displayName: body.displayName,
 				description: body.description ?? null,
 				...(body.permissions !== undefined && { permissions: body.permissions }),
@@ -334,9 +313,9 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 			const result = await updateRoleUseCase.execute(command, ctx);
 
 			if (Result.isSuccess(result)) {
-				const role = await roleRepository.findById(id);
-				if (role) {
-					return jsonSuccess(reply, toRoleResponse(role));
+				const updated = await roleRepository.findById(role.id);
+				if (updated) {
+					return jsonSuccess(reply, toRoleResponse(updated));
 				}
 			}
 
@@ -344,13 +323,13 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 		},
 	);
 
-	// DELETE /api/admin/roles/:id - Delete role
+	// DELETE /api/admin/roles/:name - Delete role by name (Java parity: /roles/{roleName})
 	fastify.delete(
-		'/roles/:id',
+		'/roles/:name',
 		{
 			preHandler: requirePermission(ROLE_PERMISSIONS.DELETE),
 			schema: {
-				params: IdParam,
+				params: NameParam,
 				response: {
 					204: Type.Null(),
 					404: ErrorResponseSchema,
@@ -358,11 +337,16 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 			},
 		},
 		async (request, reply) => {
-			const { id } = request.params as Static<typeof IdParam>;
+			const { name } = request.params as Static<typeof NameParam>;
 			const ctx = request.executionContext;
 
+			const role = await roleRepository.findByName(name);
+			if (!role) {
+				return notFound(reply, `Role not found: ${name}`);
+			}
+
 			const command: DeleteRoleCommand = {
-				roleId: id,
+				roleId: role.id,
 			};
 
 			const result = await deleteRoleUseCase.execute(command, ctx);
@@ -375,9 +359,9 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 		},
 	);
 
-	// GET /api/admin/permissions - List all permissions
+	// GET /api/admin/roles/permissions - List all permissions (Java parity: nested under /roles)
 	fastify.get(
-		'/permissions',
+		'/roles/permissions',
 		{
 			preHandler: requirePermission(PERMISSION_PERMISSIONS.READ),
 			schema: {
@@ -395,25 +379,28 @@ export async function registerRolesRoutes(fastify: FastifyInstance, deps: RolesR
 		},
 	);
 
-	// GET /api/admin/permissions/by-subdomain/:subdomain - List permissions by subdomain
+	// GET /api/admin/roles/permissions/:permission - Get permission by code (Java parity)
 	fastify.get(
-		'/permissions/by-subdomain/:subdomain',
+		'/roles/permissions/:permission',
 		{
 			preHandler: requirePermission(PERMISSION_PERMISSIONS.READ),
 			schema: {
-				params: SubdomainParam,
+				params: PermissionParam,
 				response: {
-					200: PermissionsListResponseSchema,
+					200: PermissionResponseSchema,
+					404: ErrorResponseSchema,
 				},
 			},
 		},
 		async (request, reply) => {
-			const { subdomain } = request.params as Static<typeof SubdomainParam>;
-			const permissions = await permissionRepository.findBySubdomain(subdomain);
+			const { permission: code } = request.params as Static<typeof PermissionParam>;
+			const perm = await permissionRepository.findByCode(code);
 
-			return jsonSuccess(reply, {
-				permissions: permissions.map(toPermissionResponse),
-			});
+			if (!perm) {
+				return notFound(reply, `Permission not found: ${code}`);
+			}
+
+			return jsonSuccess(reply, toPermissionResponse(perm));
 		},
 	);
 }

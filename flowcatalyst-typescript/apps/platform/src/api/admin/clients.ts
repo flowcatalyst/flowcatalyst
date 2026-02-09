@@ -23,6 +23,8 @@ import type {
 	ChangeClientStatusCommand,
 	DeleteClientCommand,
 	AddClientNoteCommand,
+	EnableApplicationForClientCommand,
+	DisableApplicationForClientCommand,
 } from '../../application/index.js';
 import type {
 	ClientCreated,
@@ -31,8 +33,10 @@ import type {
 	ClientDeleted,
 	ClientNoteAdded,
 	ClientStatus,
+	ApplicationEnabledForClient,
+	ApplicationDisabledForClient,
 } from '../../domain/index.js';
-import type { ClientRepository } from '../../infrastructure/persistence/index.js';
+import type { ClientRepository, ApplicationClientConfigRepository } from '../../infrastructure/persistence/index.js';
 import { requirePermission, getAccessibleClientIds, canAccessResourceByClient } from '../../authorization/index.js';
 import { CLIENT_PERMISSIONS } from '../../authorization/permissions/platform-admin.js';
 
@@ -61,8 +65,15 @@ const IdParam = Type.Object({ id: Type.String() });
 const IdentifierParam = Type.Object({ identifier: Type.String() });
 
 const ListClientsQuery = Type.Object({
+	status: Type.Optional(Type.String()),
 	page: Type.Optional(Type.String()),
 	pageSize: Type.Optional(Type.String()),
+});
+
+const SearchClientsQuery = Type.Object({
+	q: Type.Optional(Type.String()),
+	status: Type.Optional(Type.String()),
+	limit: Type.Optional(Type.String()),
 });
 
 type CreateClientBody = Static<typeof CreateClientSchema>;
@@ -105,11 +116,14 @@ type ClientResponse = Static<typeof ClientResponseSchema>;
  */
 export interface ClientsRoutesDeps {
 	readonly clientRepository: ClientRepository;
+	readonly applicationClientConfigRepository: ApplicationClientConfigRepository;
 	readonly createClientUseCase: UseCase<CreateClientCommand, ClientCreated>;
 	readonly updateClientUseCase: UseCase<UpdateClientCommand, ClientUpdated>;
 	readonly changeClientStatusUseCase: UseCase<ChangeClientStatusCommand, ClientStatusChanged>;
 	readonly deleteClientUseCase: UseCase<DeleteClientCommand, ClientDeleted>;
 	readonly addClientNoteUseCase: UseCase<AddClientNoteCommand, ClientNoteAdded>;
+	readonly enableApplicationForClientUseCase: UseCase<EnableApplicationForClientCommand, ApplicationEnabledForClient>;
+	readonly disableApplicationForClientUseCase: UseCase<DisableApplicationForClientCommand, ApplicationDisabledForClient>;
 }
 
 /**
@@ -118,11 +132,14 @@ export interface ClientsRoutesDeps {
 export async function registerClientsRoutes(fastify: FastifyInstance, deps: ClientsRoutesDeps): Promise<void> {
 	const {
 		clientRepository,
+		applicationClientConfigRepository,
 		createClientUseCase,
 		updateClientUseCase,
 		changeClientStatusUseCase,
 		deleteClientUseCase,
 		addClientNoteUseCase,
+		enableApplicationForClientUseCase,
+		disableApplicationForClientUseCase,
 	} = deps;
 
 	// POST /api/admin/clients - Create client
@@ -162,7 +179,7 @@ export async function registerClientsRoutes(fastify: FastifyInstance, deps: Clie
 		},
 	);
 
-	// GET /api/admin/clients - List clients
+	// GET /api/admin/clients - List clients (with optional status filter)
 	fastify.get(
 		'/clients',
 		{
@@ -178,8 +195,21 @@ export async function registerClientsRoutes(fastify: FastifyInstance, deps: Clie
 			const query = request.query as Static<typeof ListClientsQuery>;
 			const page = parseInt(query.page ?? '0', 10);
 			const pageSize = Math.min(parseInt(query.pageSize ?? '20', 10), 100);
-
 			const accessibleClientIds = getAccessibleClientIds();
+
+			if (query.status) {
+				// Filter by status
+				const filtered = await clientRepository.findByStatus(query.status, accessibleClientIds);
+				const start = page * pageSize;
+				const pageItems = filtered.slice(start, start + pageSize);
+				return jsonSuccess(reply, {
+					clients: pageItems.map(toClientResponse),
+					total: filtered.length,
+					page,
+					pageSize,
+				});
+			}
+
 			const pagedResult = await clientRepository.findPagedScoped(page, pageSize, accessibleClientIds);
 
 			return jsonSuccess(reply, {
@@ -187,6 +217,39 @@ export async function registerClientsRoutes(fastify: FastifyInstance, deps: Clie
 				total: pagedResult.totalItems,
 				page: pagedResult.page,
 				pageSize: pagedResult.pageSize,
+			});
+		},
+	);
+
+	// GET /api/admin/clients/search - Search clients
+	fastify.get(
+		'/clients/search',
+		{
+			preHandler: requirePermission(CLIENT_PERMISSIONS.READ),
+			schema: {
+				querystring: SearchClientsQuery,
+				response: {
+					200: ClientsListResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const query = request.query as Static<typeof SearchClientsQuery>;
+			const q = query.q ?? '';
+			const limit = Math.min(parseInt(query.limit ?? '20', 10), 100);
+			const accessibleClientIds = getAccessibleClientIds();
+
+			if (!q) {
+				return jsonSuccess(reply, { clients: [], total: 0, page: 0, pageSize: limit });
+			}
+
+			const results = await clientRepository.search(q, query.status, limit, accessibleClientIds);
+
+			return jsonSuccess(reply, {
+				clients: results.map(toClientResponse),
+				total: results.length,
+				page: 0,
+				pageSize: limit,
 			});
 		},
 	);
@@ -436,6 +499,109 @@ export async function registerClientsRoutes(fastify: FastifyInstance, deps: Clie
 				if (client) {
 					return jsonSuccess(reply, toClientResponse(client));
 				}
+			}
+
+			return sendResult(reply, result);
+		},
+	);
+
+	// GET /api/admin/clients/:id/applications - List applications for client
+	fastify.get(
+		'/clients/:id/applications',
+		{
+			preHandler: requirePermission(CLIENT_PERMISSIONS.READ),
+			schema: {
+				params: IdParam,
+				response: {
+					200: Type.Object({
+						clientId: Type.String(),
+						applications: Type.Array(Type.Object({
+							applicationId: Type.String(),
+							enabled: Type.Boolean(),
+						})),
+					}),
+					404: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const { id } = request.params as Static<typeof IdParam>;
+			const client = await clientRepository.findById(id);
+
+			if (!client || !canAccessResourceByClient(client.id)) {
+				return notFound(reply, `Client not found: ${id}`);
+			}
+
+			const configs = await applicationClientConfigRepository.findByClient(id);
+
+			return jsonSuccess(reply, {
+				clientId: id,
+				applications: configs.map((c) => ({
+					applicationId: c.applicationId,
+					enabled: c.enabled,
+				})),
+			});
+		},
+	);
+
+	// POST /api/admin/clients/:id/applications/:appId/enable - Enable application for client
+	fastify.post(
+		'/clients/:id/applications/:appId/enable',
+		{
+			preHandler: requirePermission(CLIENT_PERMISSIONS.UPDATE),
+			schema: {
+				params: Type.Object({ id: Type.String(), appId: Type.String() }),
+				response: {
+					200: Type.Object({ message: Type.String() }),
+					404: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const { id, appId } = request.params as { id: string; appId: string };
+			const ctx = request.executionContext;
+
+			const command: EnableApplicationForClientCommand = {
+				applicationId: appId,
+				clientId: id,
+			};
+
+			const result = await enableApplicationForClientUseCase.execute(command, ctx);
+
+			if (Result.isSuccess(result)) {
+				return jsonSuccess(reply, { message: 'Application enabled for client' });
+			}
+
+			return sendResult(reply, result);
+		},
+	);
+
+	// POST /api/admin/clients/:id/applications/:appId/disable - Disable application for client
+	fastify.post(
+		'/clients/:id/applications/:appId/disable',
+		{
+			preHandler: requirePermission(CLIENT_PERMISSIONS.UPDATE),
+			schema: {
+				params: Type.Object({ id: Type.String(), appId: Type.String() }),
+				response: {
+					200: Type.Object({ message: Type.String() }),
+					404: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const { id, appId } = request.params as { id: string; appId: string };
+			const ctx = request.executionContext;
+
+			const command: DisableApplicationForClientCommand = {
+				applicationId: appId,
+				clientId: id,
+			};
+
+			const result = await disableApplicationForClientUseCase.execute(command, ctx);
+
+			if (Result.isSuccess(result)) {
+				return jsonSuccess(reply, { message: 'Application disabled for client' });
 			}
 
 			return sendResult(reply, result);

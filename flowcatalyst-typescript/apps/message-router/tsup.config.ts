@@ -3,7 +3,7 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
 	entry: ['src/index.ts'],
 	format: ['esm'],
-	dts: false, // App doesn't need declaration files
+	dts: true,
 	clean: true,
 	sourcemap: true,
 	target: 'node22',

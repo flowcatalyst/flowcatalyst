@@ -5,6 +5,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.control.ActivateRequestContext;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 import tech.flowcatalyst.platform.authentication.IdpType;
@@ -67,6 +68,7 @@ public class BootstrapService {
     PasswordService passwordService;
 
     @ActivateRequestContext
+    @Transactional
     void onStart(@Observes StartupEvent event) {
         if (!shouldBootstrap()) {
             return;

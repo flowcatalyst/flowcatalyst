@@ -291,6 +291,9 @@ import type {
   ActivateAppResponse,
   DeactivateAppData,
   DeactivateAppResponse,
+  PostApiAuditLogsBatchData,
+  PostApiAuditLogsBatchResponse,
+  PostApiAuditLogsBatchError,
   GetApiBffDebugDispatchJobsData,
   GetApiBffDebugDispatchJobsResponse,
   GetApiBffDebugDispatchJobsByIdData,
@@ -2917,6 +2920,27 @@ export const deactivateApp = <ThrowOnError extends boolean = false>(
   >({
     url: "/api/applications/{id}/deactivate",
     ...options,
+  });
+};
+
+/**
+ * Create multiple audit logs in batch
+ * Creates multiple audit log entries in a single operation. Maximum batch size is 100.
+ */
+export const postApiAuditLogsBatch = <ThrowOnError extends boolean = false>(
+  options: Options<PostApiAuditLogsBatchData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    PostApiAuditLogsBatchResponse,
+    PostApiAuditLogsBatchError,
+    ThrowOnError
+  >({
+    url: "/api/audit-logs/batch",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
   });
 };
 

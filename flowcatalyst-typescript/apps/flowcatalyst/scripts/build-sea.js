@@ -11,6 +11,7 @@
  *
  * Prerequisites:
  * - Run `tsup` first to bundle dist/index.js
+ * - Run `node scripts/pack-migrations.js` to generate dist/migrations.json
  * - Run `node --experimental-sea-config sea-config.json` to generate dist/sea-prep.blob
  */
 
@@ -22,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const distDir = resolve(__dirname, '../dist');
 const blobPath = resolve(distDir, 'sea-prep.blob');
-const outputName = process.platform === 'win32' ? 'flowcatalyst-dev.exe' : 'flowcatalyst-dev';
+const outputName = process.platform === 'win32' ? 'flowcatalyst.exe' : 'flowcatalyst';
 const outputPath = resolve(distDir, outputName);
 
 function run(cmd, opts = {}) {
@@ -31,7 +32,7 @@ function run(cmd, opts = {}) {
 }
 
 async function main() {
-	console.log('Building FlowCatalyst Dev SEA...\n');
+	console.log('Building FlowCatalyst SEA...\n');
 
 	// Verify blob exists
 	if (!existsSync(blobPath)) {

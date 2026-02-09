@@ -397,6 +397,10 @@ export type AuditLogListResponse = {
   pageSize?: number;
 };
 
+export type BatchAuditLogResponse = {
+  count?: number;
+};
+
 export type BatchDispatchJobResponse = {
   jobs?: Array<DispatchJobResponse>;
   count?: number;
@@ -906,6 +910,17 @@ export type CreateApplicationRequest1 = {
   description?: string;
   defaultBaseUrl?: string;
   iconUrl?: string;
+};
+
+export type CreateAuditLogRequest = {
+  entityType?: string;
+  entityId?: string;
+  operation?: string;
+  operationData?: string;
+  principalId?: string;
+  performedAt?: Instant;
+  source?: string;
+  correlationId?: string;
 };
 
 /**
@@ -1506,6 +1521,11 @@ export type ErrorResponse3 = {
 
 export type ErrorResponse4 = {
   error?: string;
+};
+
+export type ErrorResponse5 = {
+  code?: string;
+  message?: string;
 };
 
 export type ErrorType = "TRANSIENT" | "NOT_TRANSIENT" | "UNKNOWN";
@@ -7207,6 +7227,33 @@ export type DeactivateAppResponses = {
 
 export type DeactivateAppResponse =
   DeactivateAppResponses[keyof DeactivateAppResponses];
+
+export type PostApiAuditLogsBatchData = {
+  body: Array<CreateAuditLogRequest>;
+  path?: never;
+  query?: never;
+  url: "/api/audit-logs/batch";
+};
+
+export type PostApiAuditLogsBatchErrors = {
+  /**
+   * Invalid request or batch size exceeds limit
+   */
+  400: ErrorResponse5;
+};
+
+export type PostApiAuditLogsBatchError =
+  PostApiAuditLogsBatchErrors[keyof PostApiAuditLogsBatchErrors];
+
+export type PostApiAuditLogsBatchResponses = {
+  /**
+   * Audit logs created successfully
+   */
+  201: BatchAuditLogResponse;
+};
+
+export type PostApiAuditLogsBatchResponse =
+  PostApiAuditLogsBatchResponses[keyof PostApiAuditLogsBatchResponses];
 
 export type GetApiBffDebugDispatchJobsData = {
   body?: never;

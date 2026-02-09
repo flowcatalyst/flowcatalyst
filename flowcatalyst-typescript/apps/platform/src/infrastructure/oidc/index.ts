@@ -49,6 +49,16 @@ export {
 	type JwtKeyServiceConfig,
 } from './jwt-key-service.js';
 
+// Key utilities (generation, rotation, directory management)
+export {
+	generateKeyPair,
+	computeKeyId,
+	loadKeyDir,
+	writeKeyPair,
+	removeKeyPair,
+	type KeyPairFiles,
+} from './key-utils.js';
+
 // Auth routes (login, logout, me)
 export {
 	registerAuthRoutes,

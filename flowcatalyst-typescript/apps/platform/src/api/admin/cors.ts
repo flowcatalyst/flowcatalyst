@@ -79,9 +79,9 @@ export async function registerCorsRoutes(
 		deleteCorsOriginUseCase,
 	} = deps;
 
-	// POST /api/admin/cors-origins - Add CORS origin
+	// POST /api/admin/platform/cors - Add CORS origin
 	fastify.post(
-		'/cors-origins',
+		'/platform/cors',
 		{
 			preHandler: requirePermission(CORS_ORIGIN_PERMISSIONS.CREATE),
 			schema: {
@@ -115,9 +115,9 @@ export async function registerCorsRoutes(
 		},
 	);
 
-	// GET /api/admin/cors-origins - List CORS origins
+	// GET /api/admin/platform/cors - List CORS origins
 	fastify.get(
-		'/cors-origins',
+		'/platform/cors',
 		{
 			preHandler: requirePermission(CORS_ORIGIN_PERMISSIONS.READ),
 			schema: {
@@ -137,9 +137,9 @@ export async function registerCorsRoutes(
 		},
 	);
 
-	// GET /api/admin/cors-origins/allowed - Get allowed origins (just the origin strings)
+	// GET /api/admin/platform/cors/allowed - Get allowed origins (just the origin strings)
 	fastify.get(
-		'/cors-origins/allowed',
+		'/platform/cors/allowed',
 		{
 			preHandler: requirePermission(CORS_ORIGIN_PERMISSIONS.READ),
 			schema: {
@@ -156,9 +156,9 @@ export async function registerCorsRoutes(
 		},
 	);
 
-	// GET /api/admin/cors-origins/:id - Get CORS origin by ID
+	// GET /api/admin/platform/cors/:id - Get CORS origin by ID
 	fastify.get(
-		'/cors-origins/:id',
+		'/platform/cors/:id',
 		{
 			preHandler: requirePermission(CORS_ORIGIN_PERMISSIONS.READ),
 			schema: {
@@ -181,9 +181,9 @@ export async function registerCorsRoutes(
 		},
 	);
 
-	// DELETE /api/admin/cors-origins/:id - Delete CORS origin
+	// DELETE /api/admin/platform/cors/:id - Delete CORS origin
 	fastify.delete(
-		'/cors-origins/:id',
+		'/platform/cors/:id',
 		{
 			preHandler: requirePermission(CORS_ORIGIN_PERMISSIONS.DELETE),
 			schema: {

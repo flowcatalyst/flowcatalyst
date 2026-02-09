@@ -44,6 +44,9 @@
 // Database connection
 export { createDatabase, createMigrationDatabase, type Database, type DatabaseConfig } from './connection.js';
 
+// Migration runner
+export { runMigrations } from './migrate.js';
+
 // Transaction management
 export {
 	createTransactionManager,
