@@ -13,16 +13,16 @@ import { tsidColumn, timestampColumn } from '@flowcatalyst/persistence';
  * Tracks which applications a user principal can access.
  */
 export const principalApplicationAccess = pgTable(
-	'principal_application_access',
-	{
-		principalId: tsidColumn('principal_id').notNull(),
-		applicationId: tsidColumn('application_id').notNull(),
-		grantedAt: timestampColumn('granted_at').notNull().defaultNow(),
-	},
-	(table) => [
-		primaryKey({ columns: [table.principalId, table.applicationId] }),
-		index('idx_principal_app_access_app_id').on(table.applicationId),
-	],
+  'principal_application_access',
+  {
+    principalId: tsidColumn('principal_id').notNull(),
+    applicationId: tsidColumn('application_id').notNull(),
+    grantedAt: timestampColumn('granted_at').notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.principalId, table.applicationId] }),
+    index('idx_principal_app_access_app_id').on(table.applicationId),
+  ],
 );
 
 // Type inference

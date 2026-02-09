@@ -30,7 +30,7 @@ const statusOptions = [
 ];
 
 const clientOptions = computed(() => {
-  return clients.value.map(c => ({
+  return clients.value.map((c) => ({
     label: c.name,
     value: c.id,
   }));
@@ -46,9 +46,8 @@ const filteredServiceAccounts = computed(() => {
   // Client-side search filter (name/code)
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase();
-    result = result.filter(sa =>
-      sa.name?.toLowerCase().includes(query) ||
-      sa.code?.toLowerCase().includes(query)
+    result = result.filter(
+      (sa) => sa.name?.toLowerCase().includes(query) || sa.code?.toLowerCase().includes(query),
     );
   }
 
@@ -69,8 +68,12 @@ async function loadServiceAccounts() {
   try {
     const response = await serviceAccountsApi.list({
       clientId: selectedClientId.value || undefined,
-      active: selectedStatus.value === 'active' ? true :
-        selectedStatus.value === 'inactive' ? false : undefined,
+      active:
+        selectedStatus.value === 'active'
+          ? true
+          : selectedStatus.value === 'inactive'
+            ? false
+            : undefined,
     });
     serviceAccounts.value = response.serviceAccounts;
   } catch (error) {
@@ -78,7 +81,7 @@ async function loadServiceAccounts() {
       severity: 'error',
       summary: 'Error',
       detail: 'Failed to load service accounts',
-      life: 5000
+      life: 5000,
     });
     console.error('Failed to fetch service accounts:', error);
   } finally {
@@ -114,14 +117,14 @@ function editServiceAccount(sa: ServiceAccount) {
 }
 
 function getClientName(clientId: string): string {
-  const client = clients.value.find(c => c.id === clientId);
+  const client = clients.value.find((c) => c.id === clientId);
   return client?.name || clientId;
 }
 
 function getClientNames(clientIds: string[]): string {
   if (!clientIds || clientIds.length === 0) return 'All';
   if (clientIds.length === 1) return getClientName(clientIds[0]);
-  if (clientIds.length <= 2) return clientIds.map(id => getClientName(id)).join(', ');
+  if (clientIds.length <= 2) return clientIds.map((id) => getClientName(id)).join(', ');
   return `${getClientName(clientIds[0])} +${clientIds.length - 1} more`;
 }
 
@@ -298,12 +301,7 @@ function formatDate(dateStr: string | undefined | null) {
           <div class="empty-message">
             <i class="pi pi-server"></i>
             <span>No service accounts found</span>
-            <Button
-              v-if="hasActiveFilters"
-              label="Clear filters"
-              link
-              @click="clearFilters"
-            />
+            <Button v-if="hasActiveFilters" label="Clear filters" link @click="clearFilters" />
           </div>
         </template>
       </DataTable>

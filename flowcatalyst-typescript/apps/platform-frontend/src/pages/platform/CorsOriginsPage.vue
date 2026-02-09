@@ -32,9 +32,10 @@ const deleteLoading = ref(false);
 const filteredOrigins = computed(() => {
   if (!searchQuery.value) return origins.value;
   const query = searchQuery.value.toLowerCase();
-  return origins.value.filter(origin =>
-    origin.origin.toLowerCase().includes(query) ||
-    origin.description?.toLowerCase().includes(query)
+  return origins.value.filter(
+    (origin) =>
+      origin.origin.toLowerCase().includes(query) ||
+      origin.description?.toLowerCase().includes(query),
   );
 });
 
@@ -110,7 +111,7 @@ async function deleteOrigin() {
 
   try {
     await corsApi.delete(originToDelete.value.id);
-    origins.value = origins.value.filter(o => o.id !== originToDelete.value?.id);
+    origins.value = origins.value.filter((o) => o.id !== originToDelete.value?.id);
     showDeleteDialog.value = false;
     toast.add({
       severity: 'success',
@@ -244,18 +245,8 @@ function formatDate(dateString: string) {
       </div>
 
       <template #footer>
-        <Button
-          label="Cancel"
-          text
-          @click="showAddDialog = false"
-          :disabled="addLoading"
-        />
-        <Button
-          label="Add Origin"
-          icon="pi pi-plus"
-          @click="addOrigin"
-          :loading="addLoading"
-        />
+        <Button label="Cancel" text @click="showAddDialog = false" :disabled="addLoading" />
+        <Button label="Add Origin" icon="pi pi-plus" @click="addOrigin" :loading="addLoading" />
       </template>
     </Dialog>
 
@@ -267,23 +258,17 @@ function formatDate(dateString: string) {
       :style="{ width: '450px' }"
     >
       <div class="dialog-content">
-        <p>
-          Are you sure you want to remove this CORS origin?
-        </p>
+        <p>Are you sure you want to remove this CORS origin?</p>
         <code class="origin-code-block">{{ originToDelete?.origin }}</code>
 
         <Message severity="warn" :closable="false" class="warning-message">
-          Requests from this origin will be blocked by browsers after the cache expires (up to 5 minutes).
+          Requests from this origin will be blocked by browsers after the cache expires (up to 5
+          minutes).
         </Message>
       </div>
 
       <template #footer>
-        <Button
-          label="Cancel"
-          text
-          @click="showDeleteDialog = false"
-          :disabled="deleteLoading"
-        />
+        <Button label="Cancel" text @click="showDeleteDialog = false" :disabled="deleteLoading" />
         <Button
           label="Remove"
           icon="pi pi-trash"

@@ -84,7 +84,7 @@ async function saveApplications() {
 
   savingApps.value = true;
   try {
-    const enabledIds = applications.value[1].map(app => app.id);
+    const enabledIds = applications.value[1].map((app) => app.id);
     await clientsApi.updateApplications(client.value.id, enabledIds);
     toast.add({
       severity: 'success',
@@ -191,7 +191,12 @@ async function deactivateClient(reason: string) {
   try {
     await clientsApi.deactivate(client.value.id, reason);
     client.value = await clientsApi.get(client.value.id);
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Client deactivated', life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Client deactivated',
+      life: 3000,
+    });
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to deactivate', life: 3000 });
   }
@@ -199,10 +204,14 @@ async function deactivateClient(reason: string) {
 
 function getStatusSeverity(status: string) {
   switch (status) {
-    case 'ACTIVE': return 'success';
-    case 'SUSPENDED': return 'warn';
-    case 'INACTIVE': return 'secondary';
-    default: return 'secondary';
+    case 'ACTIVE':
+      return 'success';
+    case 'SUSPENDED':
+      return 'warn';
+    case 'INACTIVE':
+      return 'secondary';
+    default:
+      return 'secondary';
   }
 }
 
@@ -232,10 +241,7 @@ function formatDate(dateString: string) {
             <h1 class="page-title">{{ client.name }}</h1>
             <code class="client-code">{{ client.identifier }}</code>
           </div>
-          <Tag
-            :value="client.status"
-            :severity="getStatusSeverity(client.status)"
-          />
+          <Tag :value="client.status" :severity="getStatusSeverity(client.status)" />
         </div>
       </header>
 
@@ -243,13 +249,7 @@ function formatDate(dateString: string) {
       <div class="section-card">
         <div class="card-header">
           <h3>Client Details</h3>
-          <Button
-            v-if="!editing"
-            icon="pi pi-pencil"
-            label="Edit"
-            text
-            @click="startEditing"
-          />
+          <Button v-if="!editing" icon="pi pi-pencil" label="Edit" text @click="startEditing" />
         </div>
         <div class="card-content">
           <template v-if="editing">
@@ -316,7 +316,7 @@ function formatDate(dateString: string) {
             v-model="applications"
             dataKey="id"
             :pt="{
-              list: { style: { height: '300px' } }
+              list: { style: { height: '300px' } },
             }"
           >
             <template #sourceheader>
@@ -331,17 +331,13 @@ function formatDate(dateString: string) {
                   <span class="app-name">{{ item.name }}</span>
                   <span class="app-code">{{ item.code }}</span>
                 </div>
-                <Tag
-                  v-if="!item.active"
-                  value="Inactive"
-                  severity="secondary"
-                  class="app-status"
-                />
+                <Tag v-if="!item.active" value="Inactive" severity="secondary" class="app-status" />
               </div>
             </template>
           </PickList>
           <p class="help-text">
-            Move applications between lists to enable or disable them for this client. Click Save to apply changes.
+            Move applications between lists to enable or disable them for this client. Click Save to
+            apply changes.
           </p>
         </div>
       </div>
@@ -358,12 +354,7 @@ function formatDate(dateString: string) {
                 <strong>Activate Client</strong>
                 <p>Make this client active and accessible.</p>
               </div>
-              <Button
-                label="Activate"
-                severity="success"
-                outlined
-                @click="confirmActivate"
-              />
+              <Button label="Activate" severity="success" outlined @click="confirmActivate" />
             </div>
 
             <div v-if="client.status === 'ACTIVE'" class="action-item">
@@ -371,12 +362,7 @@ function formatDate(dateString: string) {
                 <strong>Suspend Client</strong>
                 <p>Temporarily disable access to this client.</p>
               </div>
-              <Button
-                label="Suspend"
-                severity="warn"
-                outlined
-                @click="confirmSuspend"
-              />
+              <Button label="Suspend" severity="warn" outlined @click="confirmSuspend" />
             </div>
 
             <div v-if="client.status !== 'INACTIVE'" class="action-item">
@@ -384,12 +370,7 @@ function formatDate(dateString: string) {
                 <strong>Deactivate Client</strong>
                 <p>Soft delete this client. Can be reactivated later.</p>
               </div>
-              <Button
-                label="Deactivate"
-                severity="danger"
-                outlined
-                @click="confirmDeactivate"
-              />
+              <Button label="Deactivate" severity="danger" outlined @click="confirmDeactivate" />
             </div>
           </div>
         </div>

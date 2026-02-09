@@ -7,6 +7,7 @@ export interface EmailDomainMapping {
   emailDomain: string;
   identityProviderId: string;
   identityProviderName?: string;
+  identityProviderType?: string;
   scopeType: ScopeType;
   primaryClientId?: string;
   primaryClientName?: string;
@@ -54,7 +55,8 @@ export interface EmailDomainMappingSearchParams {
 export const emailDomainMappingsApi = {
   list(params?: EmailDomainMappingSearchParams): Promise<EmailDomainMappingListResponse> {
     const searchParams = new URLSearchParams();
-    if (params?.identityProviderId) searchParams.set('identityProviderId', params.identityProviderId);
+    if (params?.identityProviderId)
+      searchParams.set('identityProviderId', params.identityProviderId);
     if (params?.scopeType) searchParams.set('scopeType', params.scopeType);
     const queryString = searchParams.toString();
     return apiFetch(`/admin/email-domain-mappings${queryString ? `?${queryString}` : ''}`);

@@ -113,7 +113,7 @@ export const httpError = {
  */
 export const validationError = (
   message: string,
-  errors: Record<string, string[]> = {}
+  errors: Record<string, string[]> = {},
 ): ValidationError => ({
   type: 'validation',
   message,
@@ -159,13 +159,10 @@ export const rateLimitError = (message: string, retryAfterMs?: number): RateLimi
 /**
  * Map HTTP status code to appropriate error
  */
-export function mapHttpStatusToError(
-  status: number,
-  body?: unknown,
-  message?: string
-): SdkError {
+export function mapHttpStatusToError(status: number, body?: unknown, message?: string): SdkError {
   const errorBody = body as Record<string, unknown> | undefined;
-  const errorMessage = message ?? errorBody?.error?.toString() ?? errorBody?.message?.toString() ?? `HTTP ${status}`;
+  const errorMessage =
+    message ?? errorBody?.error?.toString() ?? errorBody?.message?.toString() ?? `HTTP ${status}`;
 
   switch (status) {
     case 401:
@@ -177,10 +174,7 @@ export function mapHttpStatusToError(
     case 409:
       return conflictError(errorMessage, errorBody?.code?.toString());
     case 422:
-      return validationError(
-        errorMessage,
-        (errorBody?.errors as Record<string, string[]>) ?? {}
-      );
+      return validationError(errorMessage, (errorBody?.errors as Record<string, string[]>) ?? {});
     case 429: {
       const retryAfter = errorBody?.retryAfter as number | undefined;
       return rateLimitError(errorMessage, retryAfter ? retryAfter * 1000 : undefined);

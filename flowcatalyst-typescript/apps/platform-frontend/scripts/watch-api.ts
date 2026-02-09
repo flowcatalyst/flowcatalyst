@@ -8,10 +8,10 @@
  * real-time type generation during development.
  */
 
-import { watch } from "fs";
-import { spawn } from "child_process";
+import { watch } from 'fs';
+import { spawn } from 'child_process';
 
-const JAVA_SOURCE_DIR = "../../core/flowcatalyst-platform/src/main/java";
+const JAVA_SOURCE_DIR = '../../core/flowcatalyst-platform/src/main/java';
 const DEBOUNCE_MS = 3000;
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -24,15 +24,15 @@ async function generateTypes(): Promise<void> {
   const start = performance.now();
 
   try {
-    console.log("Regenerating API types from live endpoint...");
+    console.log('Regenerating API types from live endpoint...');
 
     // Use live endpoint for dev watch mode
-    const proc = spawn("npm", ["run", "api:generate:live"], {
-      stdio: "inherit",
+    const proc = spawn('npm', ['run', 'api:generate:live'], {
+      stdio: 'inherit',
     });
 
     const exitCode = await new Promise<number>((resolve) => {
-      proc.on("close", (code) => resolve(code ?? 1));
+      proc.on('close', (code) => resolve(code ?? 1));
     });
 
     if (exitCode === 0) {
@@ -41,40 +41,36 @@ async function generateTypes(): Promise<void> {
       console.error(`✗ Generation failed with exit code ${exitCode}`);
     }
   } catch (error) {
-    console.error("✗ Failed to generate types:", error);
+    console.error('✗ Failed to generate types:', error);
   } finally {
     isGenerating = false;
   }
 }
 
 // Initial generation
-console.log("Generating initial API types...");
+console.log('Generating initial API types...');
 await generateTypes();
 
 // Watch for changes
 console.log(`\nWatching ${JAVA_SOURCE_DIR} for changes...`);
-console.log("Press Ctrl+C to stop\n");
+console.log('Press Ctrl+C to stop\n');
 
-const watcher = watch(
-  JAVA_SOURCE_DIR,
-  { recursive: true },
-  (event, filename) => {
-    if (!filename?.endsWith(".java")) return;
-    if (filename.includes("target") || filename.includes("build")) return;
+const watcher = watch(JAVA_SOURCE_DIR, { recursive: true }, (event, filename) => {
+  if (!filename?.endsWith('.java')) return;
+  if (filename.includes('target') || filename.includes('build')) return;
 
-    console.log(`Changed: ${filename}`);
+  console.log(`Changed: ${filename}`);
 
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-    }
-
-    debounceTimer = setTimeout(generateTypes, DEBOUNCE_MS);
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
   }
-);
+
+  debounceTimer = setTimeout(generateTypes, DEBOUNCE_MS);
+});
 
 // Graceful shutdown
-process.on("SIGINT", () => {
-  console.log("\nStopping watcher...");
+process.on('SIGINT', () => {
+  console.log('\nStopping watcher...');
   watcher.close();
   process.exit(0);
 });

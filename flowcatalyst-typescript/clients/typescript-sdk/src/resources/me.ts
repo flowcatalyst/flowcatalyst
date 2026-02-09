@@ -71,7 +71,7 @@ export class MeResource {
       httpClient.get({
         url: '/api/me/clients',
         headers,
-      })
+      }),
     );
   }
 
@@ -84,7 +84,7 @@ export class MeResource {
         url: '/api/me/clients/{clientId}',
         path: { clientId },
         headers,
-      })
+      }),
     );
   }
 
@@ -97,7 +97,7 @@ export class MeResource {
         url: '/api/me/clients/{clientId}/applications',
         path: { clientId },
         headers,
-      })
+      }),
     );
   }
 }

@@ -27,10 +27,11 @@ const deleteLoading = ref(false);
 const filteredProviders = computed(() => {
   if (!searchQuery.value) return providers.value;
   const query = searchQuery.value.toLowerCase();
-  return providers.value.filter(provider =>
-    provider.name.toLowerCase().includes(query) ||
-    provider.code.toLowerCase().includes(query) ||
-    provider.type.toLowerCase().includes(query)
+  return providers.value.filter(
+    (provider) =>
+      provider.name.toLowerCase().includes(query) ||
+      provider.code.toLowerCase().includes(query) ||
+      provider.type.toLowerCase().includes(query),
   );
 });
 
@@ -63,7 +64,7 @@ async function deleteProvider() {
 
   try {
     await identityProvidersApi.delete(providerToDelete.value.id);
-    providers.value = providers.value.filter(p => p.id !== providerToDelete.value?.id);
+    providers.value = providers.value.filter((p) => p.id !== providerToDelete.value?.id);
     showDeleteDialog.value = false;
     toast.add({
       severity: 'success',
@@ -102,7 +103,11 @@ function formatDate(dateString: string) {
           Configure external identity providers for federated authentication.
         </p>
       </div>
-      <Button label="Add Identity Provider" icon="pi pi-plus" @click="router.push('/authentication/identity-providers/new')" />
+      <Button
+        label="Add Identity Provider"
+        icon="pi pi-plus"
+        @click="router.push('/authentication/identity-providers/new')"
+      />
     </header>
 
     <Message v-if="error" severity="error" class="error-message">{{ error }}</Message>
@@ -140,10 +145,7 @@ function formatDate(dateString: string) {
         </Column>
         <Column field="type" header="Type" sortable>
           <template #body="{ data }">
-            <Tag
-              :value="data.type"
-              :severity="getTypeSeverity(data.type)"
-            />
+            <Tag :value="data.type" :severity="getTypeSeverity(data.type)" />
           </template>
         </Column>
         <Column header="Issuer">
@@ -208,7 +210,8 @@ function formatDate(dateString: string) {
       <div class="dialog-content">
         <p>
           Are you sure you want to delete the identity provider
-          <strong>{{ providerToDelete?.name }}</strong>?
+          <strong>{{ providerToDelete?.name }}</strong
+          >?
         </p>
 
         <Message severity="warn" :closable="false" class="warning-message">
@@ -217,12 +220,7 @@ function formatDate(dateString: string) {
       </div>
 
       <template #footer>
-        <Button
-          label="Cancel"
-          text
-          @click="showDeleteDialog = false"
-          :disabled="deleteLoading"
-        />
+        <Button label="Cancel" text @click="showDeleteDialog = false" :disabled="deleteLoading" />
         <Button
           label="Delete"
           icon="pi pi-trash"

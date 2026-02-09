@@ -51,7 +51,11 @@ function isActive(item: NavItem): boolean {
   <aside class="sidebar" :class="{ collapsed }">
     <!-- Logo Section -->
     <div class="sidebar-header">
-      <div v-if="!collapsed" class="logo-container" :style="{ height: `${appThemeStore.logoHeight}px` }">
+      <div
+        v-if="!collapsed"
+        class="logo-container"
+        :style="{ height: `${appThemeStore.logoHeight}px` }"
+      >
         <!-- Custom logo URL -->
         <img
           v-if="appThemeStore.logoUrl"
@@ -68,10 +72,21 @@ function isActive(item: NavItem): boolean {
           v-html="appThemeStore.logoSvg"
         />
         <!-- Default logo icon -->
-        <div v-else class="logo-icon" :style="{ width: `${appThemeStore.logoHeight}px`, height: `${appThemeStore.logoHeight}px` }">
+        <div
+          v-else
+          class="logo-icon"
+          :style="{
+            width: `${appThemeStore.logoHeight}px`,
+            height: `${appThemeStore.logoHeight}px`,
+          }"
+        >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-              d="M13 10V3L4 14h7v7l9-11h-7z" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              d="M13 10V3L4 14h7v7l9-11h-7z"
+            />
           </svg>
         </div>
       </div>

@@ -10,7 +10,11 @@ import Textarea from 'primevue/textarea';
 import ProgressSpinner from 'primevue/progressspinner';
 import Message from 'primevue/message';
 import Dialog from 'primevue/dialog';
-import { applicationsApi, type Application, type ServiceAccountCredentials } from '@/api/applications';
+import {
+  applicationsApi,
+  type Application,
+  type ServiceAccountCredentials,
+} from '@/api/applications';
 
 const route = useRoute();
 const router = useRouter();
@@ -87,7 +91,12 @@ async function saveChanges() {
       logoMimeType: editLogoMimeType.value || undefined,
     });
     editing.value = false;
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Application updated', life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Application updated',
+      life: 3000,
+    });
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update', life: 3000 });
   } finally {
@@ -110,7 +119,12 @@ async function activateApplication() {
   if (!id) return;
   try {
     application.value = await applicationsApi.activate(id);
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Application activated', life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Application activated',
+      life: 3000,
+    });
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to activate', life: 3000 });
   }
@@ -132,7 +146,12 @@ async function deactivateApplication() {
   if (!id) return;
   try {
     application.value = await applicationsApi.deactivate(id);
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Application deactivated', life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Application deactivated',
+      life: 3000,
+    });
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to deactivate', life: 3000 });
   }
@@ -152,12 +171,22 @@ function confirmDelete() {
 async function deleteApplication() {
   const id = application.value?.id || (route.params.id as string);
   if (!id) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Application ID not found', life: 3000 });
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Application ID not found',
+      life: 3000,
+    });
     return;
   }
   try {
     await applicationsApi.delete(id);
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Application deleted', life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Application deleted',
+      life: 3000,
+    });
     router.push('/applications');
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete', life: 3000 });
@@ -167,7 +196,12 @@ async function deleteApplication() {
 async function provisionServiceAccount() {
   const id = application.value?.id || (route.params.id as string);
   if (!id) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Application ID not found', life: 3000 });
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Application ID not found',
+      life: 3000,
+    });
     return;
   }
 
@@ -238,13 +272,7 @@ function formatDate(dateString: string) {
       <div class="section-card">
         <div class="card-header">
           <h3>Application Details</h3>
-          <Button
-            v-if="!editing"
-            icon="pi pi-pencil"
-            label="Edit"
-            text
-            @click="startEditing"
-          />
+          <Button v-if="!editing" icon="pi pi-pencil" label="Edit" text @click="startEditing" />
         </div>
         <div class="card-content">
           <template v-if="editing">
@@ -258,23 +286,44 @@ function formatDate(dateString: string) {
             </div>
             <div class="form-field">
               <label>Default Base URL</label>
-              <InputText v-model="editDefaultBaseUrl" class="full-width" placeholder="https://example.com" />
+              <InputText
+                v-model="editDefaultBaseUrl"
+                class="full-width"
+                placeholder="https://example.com"
+              />
             </div>
             <div class="form-field">
               <label>Icon URL</label>
-              <InputText v-model="editIconUrl" class="full-width" placeholder="https://example.com/icon.png" />
+              <InputText
+                v-model="editIconUrl"
+                class="full-width"
+                placeholder="https://example.com/icon.png"
+              />
             </div>
             <div class="form-field">
               <label>Website</label>
-              <InputText v-model="editWebsite" class="full-width" placeholder="https://www.example.com" />
+              <InputText
+                v-model="editWebsite"
+                class="full-width"
+                placeholder="https://www.example.com"
+              />
             </div>
             <div class="form-field">
               <label>Logo (SVG)</label>
-              <Textarea v-model="editLogo" :rows="4" class="full-width" placeholder="Paste SVG content here" />
+              <Textarea
+                v-model="editLogo"
+                :rows="4"
+                class="full-width"
+                placeholder="Paste SVG content here"
+              />
             </div>
             <div class="form-field" v-if="editLogo">
               <label>Logo MIME Type</label>
-              <InputText v-model="editLogoMimeType" class="full-width" placeholder="image/svg+xml" />
+              <InputText
+                v-model="editLogoMimeType"
+                class="full-width"
+                placeholder="image/svg+xml"
+              />
             </div>
             <div class="form-actions">
               <Button label="Cancel" severity="secondary" outlined @click="cancelEditing" />
@@ -344,15 +393,18 @@ function formatDate(dateString: string) {
               </div>
             </div>
             <Message severity="info" class="service-account-info">
-              Service account credentials are managed in the OAuth Clients section.
-              The client secret can only be viewed at creation time or when rotated.
+              Service account credentials are managed in the OAuth Clients section. The client
+              secret can only be viewed at creation time or when rotated.
             </Message>
           </template>
           <template v-else>
             <div class="action-item">
               <div class="action-info">
                 <strong>Provision Service Account</strong>
-                <p>Create a service account with OAuth credentials for machine-to-machine authentication.</p>
+                <p>
+                  Create a service account with OAuth credentials for machine-to-machine
+                  authentication.
+                </p>
               </div>
               <Button
                 label="Provision"
@@ -377,12 +429,7 @@ function formatDate(dateString: string) {
                 <strong>Activate Application</strong>
                 <p>Make this application available for use.</p>
               </div>
-              <Button
-                label="Activate"
-                severity="success"
-                outlined
-                @click="confirmActivate"
-              />
+              <Button label="Activate" severity="success" outlined @click="confirmActivate" />
             </div>
 
             <div v-else class="action-item">
@@ -390,12 +437,7 @@ function formatDate(dateString: string) {
                 <strong>Deactivate Application</strong>
                 <p>Prevent new event types from using this application.</p>
               </div>
-              <Button
-                label="Deactivate"
-                severity="warn"
-                outlined
-                @click="confirmDeactivate"
-              />
+              <Button label="Deactivate" severity="warn" outlined @click="confirmDeactivate" />
             </div>
           </div>
         </div>
@@ -476,7 +518,11 @@ function formatDate(dateString: string) {
       </div>
 
       <template #footer>
-        <Button label="I've saved the credentials" icon="pi pi-check" @click="onCredentialsDialogClose" />
+        <Button
+          label="I've saved the credentials"
+          icon="pi pi-check"
+          @click="onCredentialsDialogClose"
+        />
       </template>
     </Dialog>
   </div>

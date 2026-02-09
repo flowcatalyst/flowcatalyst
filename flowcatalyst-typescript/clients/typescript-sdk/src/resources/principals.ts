@@ -40,7 +40,7 @@ export class PrincipalsResource {
         client: httpClient,
         headers,
         query: filters,
-      })
+      }),
     );
   }
 
@@ -53,7 +53,7 @@ export class PrincipalsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -73,7 +73,7 @@ export class PrincipalsResource {
         client: httpClient,
         headers,
         body: data,
-      })
+      }),
     );
   }
 
@@ -87,7 +87,7 @@ export class PrincipalsResource {
         headers,
         path: { id },
         body: data,
-      })
+      }),
     );
   }
 
@@ -100,7 +100,7 @@ export class PrincipalsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -113,7 +113,7 @@ export class PrincipalsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -126,7 +126,7 @@ export class PrincipalsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -140,7 +140,7 @@ export class PrincipalsResource {
         headers,
         path: { id },
         body: { roleName },
-      })
+      }),
     );
   }
 
@@ -153,7 +153,7 @@ export class PrincipalsResource {
         client: httpClient,
         headers,
         path: { id, roleName },
-      })
+      }),
     );
   }
 
@@ -167,7 +167,7 @@ export class PrincipalsResource {
         headers,
         path: { id },
         body: { roles },
-      })
+      }),
     );
   }
 
@@ -180,7 +180,7 @@ export class PrincipalsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -194,7 +194,7 @@ export class PrincipalsResource {
         headers,
         path: { id },
         body: { clientId },
-      })
+      }),
     );
   }
 
@@ -207,7 +207,7 @@ export class PrincipalsResource {
         client: httpClient,
         headers,
         path: { id, clientId },
-      })
+      }),
     );
   }
 }

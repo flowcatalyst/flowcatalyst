@@ -29,15 +29,16 @@ const filteredPools = computed(() => {
   let result = pools.value;
 
   if (statusFilter.value) {
-    result = result.filter(pool => pool.status === statusFilter.value);
+    result = result.filter((pool) => pool.status === statusFilter.value);
   }
 
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase();
-    result = result.filter(pool =>
-      pool.code.toLowerCase().includes(query) ||
-      pool.name.toLowerCase().includes(query) ||
-      pool.clientIdentifier?.toLowerCase().includes(query)
+    result = result.filter(
+      (pool) =>
+        pool.code.toLowerCase().includes(query) ||
+        pool.name.toLowerCase().includes(query) ||
+        pool.clientIdentifier?.toLowerCase().includes(query),
     );
   }
 
@@ -63,10 +64,14 @@ async function loadPools() {
 
 function getStatusSeverity(status: DispatchPoolStatus) {
   switch (status) {
-    case 'ACTIVE': return 'success';
-    case 'SUSPENDED': return 'warn';
-    case 'ARCHIVED': return 'secondary';
-    default: return 'secondary';
+    case 'ACTIVE':
+      return 'success';
+    case 'SUSPENDED':
+      return 'warn';
+    case 'ARCHIVED':
+      return 'secondary';
+    default:
+      return 'secondary';
   }
 }
 
@@ -135,9 +140,7 @@ function getScopeLabel(pool: DispatchPool) {
           </template>
         </Column>
         <Column field="rateLimit" header="Rate Limit" sortable>
-          <template #body="{ data }">
-            {{ data.rateLimit }}/min
-          </template>
+          <template #body="{ data }"> {{ data.rateLimit }}/min </template>
         </Column>
         <Column field="concurrency" header="Concurrency" sortable />
         <Column field="status" header="Status" sortable>

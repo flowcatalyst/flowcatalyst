@@ -13,7 +13,11 @@ import AutoComplete from 'primevue/autocomplete';
 import PickList from 'primevue/picklist';
 import ToggleSwitch from 'primevue/toggleswitch';
 import { useToast } from 'primevue/usetoast';
-import { emailDomainMappingsApi, type EmailDomainMapping, type ScopeType } from '@/api/email-domain-mappings';
+import {
+  emailDomainMappingsApi,
+  type EmailDomainMapping,
+  type ScopeType,
+} from '@/api/email-domain-mappings';
 import { identityProvidersApi, type IdentityProvider } from '@/api/identity-providers';
 import { clientsApi, type Client } from '@/api/clients';
 import { rolesApi, type Role } from '@/api/roles';
@@ -101,15 +105,16 @@ function resetEditForm() {
       syncRolesFromIdp: mapping.value.syncRolesFromIdp ?? false,
     };
     if (mapping.value.primaryClientId) {
-      selectedPrimaryClient.value = clients.value.find(c => c.id === mapping.value?.primaryClientId) || null;
+      selectedPrimaryClient.value =
+        clients.value.find((c) => c.id === mapping.value?.primaryClientId) || null;
     } else {
       selectedPrimaryClient.value = null;
     }
 
     // Set up role picker
     const allowedRoleIds = new Set(mapping.value.allowedRoleIds || []);
-    const selectedRoles = allRoles.value.filter(r => allowedRoleIds.has(r.id));
-    const availableRoles = allRoles.value.filter(r => !allowedRoleIds.has(r.id));
+    const selectedRoles = allRoles.value.filter((r) => allowedRoleIds.has(r.id));
+    const availableRoles = allRoles.value.filter((r) => !allowedRoleIds.has(r.id));
     rolePickerModel.value = [availableRoles, selectedRoles];
   }
 }
@@ -132,8 +137,8 @@ const showRoleDisplay = computed(() => {
 
 function getAllowedRoleNames(): string[] {
   if (!mapping.value?.allowedRoleIds?.length) return [];
-  return mapping.value.allowedRoleIds.map(id => {
-    const role = allRoles.value.find(r => r.id === id);
+  return mapping.value.allowedRoleIds.map((id) => {
+    const role = allRoles.value.find((r) => r.id === id);
     return role?.displayName || role?.name || id;
   });
 }
@@ -150,9 +155,8 @@ function cancelEditing() {
 
 function searchClients(event: { query: string }) {
   const query = event.query.toLowerCase();
-  filteredClients.value = clients.value.filter(c =>
-    c.name.toLowerCase().includes(query) ||
-    c.identifier.toLowerCase().includes(query)
+  filteredClients.value = clients.value.filter(
+    (c) => c.name.toLowerCase().includes(query) || c.identifier.toLowerCase().includes(query),
   );
 }
 
@@ -189,7 +193,7 @@ async function saveChanges() {
 
     // Include allowed roles (send the selected roles' IDs)
     if (showRolePicker.value) {
-      updateData.allowedRoleIds = rolePickerModel.value[1].map(r => r.id);
+      updateData.allowedRoleIds = rolePickerModel.value[1].map((r) => r.id);
     }
 
     // Include syncRolesFromIdp for external IDPs with non-ANCHOR scope
@@ -202,7 +206,8 @@ async function saveChanges() {
 
     // Update the selected client display
     if (updated.primaryClientId) {
-      selectedPrimaryClient.value = clients.value.find(c => c.id === updated.primaryClientId) || null;
+      selectedPrimaryClient.value =
+        clients.value.find((c) => c.id === updated.primaryClientId) || null;
     } else {
       selectedPrimaryClient.value = null;
     }
@@ -254,16 +259,20 @@ function formatDate(dateString: string) {
 
 function getScopeTypeSeverity(scopeType: string) {
   switch (scopeType) {
-    case 'ANCHOR': return 'danger';
-    case 'PARTNER': return 'warn';
-    case 'CLIENT': return 'info';
-    default: return 'secondary';
+    case 'ANCHOR':
+      return 'danger';
+    case 'PARTNER':
+      return 'warn';
+    case 'CLIENT':
+      return 'info';
+    default:
+      return 'secondary';
   }
 }
 
 function getPrimaryClientName(): string {
   if (!mapping.value?.primaryClientId) return '-';
-  const client = clients.value.find(c => c.id === mapping.value?.primaryClientId);
+  const client = clients.value.find((c) => c.id === mapping.value?.primaryClientId);
   return client?.name || 'Unknown';
 }
 </script>
@@ -279,9 +288,7 @@ function getPrimaryClientName(): string {
           @click="router.push('/authentication/email-domain-mappings')"
         />
         <h1 class="page-title">{{ mapping?.emailDomain || 'Email Domain Mapping' }}</h1>
-        <p class="page-subtitle" v-if="provider">
-          Identity Provider: {{ provider.name }}
-        </p>
+        <p class="page-subtitle" v-if="provider">Identity Provider: {{ provider.name }}</p>
       </div>
       <div v-if="mapping && !isEditing" class="header-actions">
         <Button
@@ -291,11 +298,7 @@ function getPrimaryClientName(): string {
           text
           @click="showDeleteDialog = true"
         />
-        <Button
-          label="Edit"
-          icon="pi pi-pencil"
-          @click="startEditing"
-        />
+        <Button label="Edit" icon="pi pi-pencil" @click="startEditing" />
       </div>
     </header>
 
@@ -310,10 +313,7 @@ function getPrimaryClientName(): string {
         <div class="card-header">
           <h2 class="card-title">Mapping Configuration</h2>
           <div v-if="!isEditing" class="status-badges">
-            <Tag
-              :value="mapping.scopeType"
-              :severity="getScopeTypeSeverity(mapping.scopeType)"
-            />
+            <Tag :value="mapping.scopeType" :severity="getScopeTypeSeverity(mapping.scopeType)" />
           </div>
         </div>
 
@@ -351,11 +351,7 @@ function getPrimaryClientName(): string {
             <div class="field-group" v-if="showRoleDisplay">
               <label>Allowed Roles</label>
               <div v-if="mapping.allowedRoleIds?.length > 0" class="role-chips">
-                <Chip
-                  v-for="roleName in getAllowedRoleNames()"
-                  :key="roleName"
-                  :label="roleName"
-                />
+                <Chip v-for="roleName in getAllowedRoleNames()" :key="roleName" :label="roleName" />
               </div>
               <span class="field-value muted" v-else>All roles allowed</span>
             </div>
@@ -448,14 +444,16 @@ function getPrimaryClientName(): string {
                 class="w-full"
               />
               <small class="field-help">
-                For Azure AD/Entra, enter the tenant GUID. If set, only users from this tenant can authenticate for this domain. Leave empty to allow any tenant.
+                For Azure AD/Entra, enter the tenant GUID. If set, only users from this tenant can
+                authenticate for this domain. Leave empty to allow any tenant.
               </small>
             </div>
 
             <div v-if="showRolePicker" class="field">
               <label>Allowed Roles</label>
-              <small class="field-help" style="margin-bottom: 8px; display: block;">
-                Restrict which roles users from this domain can be assigned. Move roles to the right to allow them. Leave empty to allow all roles.
+              <small class="field-help" style="margin-bottom: 8px; display: block">
+                Restrict which roles users from this domain can be assigned. Move roles to the right
+                to allow them. Leave empty to allow all roles.
               </small>
               <PickList
                 v-model="rolePickerModel"
@@ -478,15 +476,14 @@ function getPrimaryClientName(): string {
             <div v-if="showRolePicker" class="field">
               <label for="syncRolesFromIdp">Sync Roles from IDP</label>
               <div class="toggle-row">
-                <ToggleSwitch
-                  id="syncRolesFromIdp"
-                  v-model="editForm.syncRolesFromIdp"
-                />
-                <span class="toggle-label">{{ editForm.syncRolesFromIdp ? 'Enabled' : 'Disabled' }}</span>
+                <ToggleSwitch id="syncRolesFromIdp" v-model="editForm.syncRolesFromIdp" />
+                <span class="toggle-label">{{
+                  editForm.syncRolesFromIdp ? 'Enabled' : 'Disabled'
+                }}</span>
               </div>
               <small class="field-help">
-                When enabled, roles from the external IDP token will be synchronized during OIDC login.
-                Synced roles are filtered by the allowed roles list above.
+                When enabled, roles from the external IDP token will be synchronized during OIDC
+                login. Synced roles are filtered by the allowed roles list above.
               </small>
             </div>
 
@@ -499,12 +496,7 @@ function getPrimaryClientName(): string {
             </Message>
 
             <div class="form-actions">
-              <Button
-                label="Cancel"
-                text
-                @click="cancelEditing"
-                :disabled="saving"
-              />
+              <Button label="Cancel" text @click="cancelEditing" :disabled="saving" />
               <Button
                 label="Save Changes"
                 icon="pi pi-check"
@@ -528,7 +520,8 @@ function getPrimaryClientName(): string {
       <div class="dialog-content">
         <p>
           Are you sure you want to delete the mapping for
-          <strong>{{ mapping?.emailDomain }}</strong>?
+          <strong>{{ mapping?.emailDomain }}</strong
+          >?
         </p>
 
         <Message severity="warn" :closable="false">
@@ -537,12 +530,7 @@ function getPrimaryClientName(): string {
       </div>
 
       <template #footer>
-        <Button
-          label="Cancel"
-          text
-          @click="showDeleteDialog = false"
-          :disabled="deleteLoading"
-        />
+        <Button label="Cancel" text @click="showDeleteDialog = false" :disabled="deleteLoading" />
         <Button
           label="Delete"
           icon="pi pi-trash"

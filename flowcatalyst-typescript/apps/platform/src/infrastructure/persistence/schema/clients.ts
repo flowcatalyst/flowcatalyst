@@ -11,10 +11,10 @@ import { tsidColumn, timestampColumn, baseEntityColumns } from '@flowcatalyst/pe
  * Client note structure stored in JSONB.
  */
 export interface ClientNoteJson {
-	category: string;
-	text: string;
-	addedBy: string;
-	addedAt: string; // ISO date string
+  category: string;
+  text: string;
+  addedBy: string;
+  addedAt: string; // ISO date string
 }
 
 /**
@@ -22,20 +22,20 @@ export interface ClientNoteJson {
  * Status uses VARCHAR to match Java schema (not enum).
  */
 export const clients = pgTable(
-	'clients',
-	{
-		...baseEntityColumns,
-		name: varchar('name', { length: 255 }).notNull(),
-		identifier: varchar('identifier', { length: 100 }).notNull().unique(),
-		status: varchar('status', { length: 50 }).notNull().default('ACTIVE'), // 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'
-		statusReason: varchar('status_reason', { length: 255 }),
-		statusChangedAt: timestampColumn('status_changed_at'),
-		notes: jsonb('notes').$type<ClientNoteJson[]>().default([]),
-	},
-	(table) => [
-		index('idx_clients_identifier').on(table.identifier),
-		index('idx_clients_status').on(table.status),
-	],
+  'clients',
+  {
+    ...baseEntityColumns,
+    name: varchar('name', { length: 255 }).notNull(),
+    identifier: varchar('identifier', { length: 100 }).notNull().unique(),
+    status: varchar('status', { length: 50 }).notNull().default('ACTIVE'), // 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'
+    statusReason: varchar('status_reason', { length: 255 }),
+    statusChangedAt: timestampColumn('status_changed_at'),
+    notes: jsonb('notes').$type<ClientNoteJson[]>().default([]),
+  },
+  (table) => [
+    index('idx_clients_identifier').on(table.identifier),
+    index('idx_clients_status').on(table.status),
+  ],
 );
 
 // Type inference

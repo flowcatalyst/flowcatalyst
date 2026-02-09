@@ -3,4 +3,7 @@
  */
 
 export { type DeactivateApplicationCommand } from './command.js';
-export { createDeactivateApplicationUseCase, type DeactivateApplicationUseCaseDeps } from './use-case.js';
+export {
+  createDeactivateApplicationUseCase,
+  type DeactivateApplicationUseCaseDeps,
+} from './use-case.js';

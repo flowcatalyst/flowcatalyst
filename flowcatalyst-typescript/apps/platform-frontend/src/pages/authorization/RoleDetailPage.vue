@@ -37,7 +37,7 @@ async function loadRole() {
       severity: 'error',
       summary: 'Error',
       detail: error.value,
-      life: 5000
+      life: 5000,
     });
   } finally {
     loading.value = false;
@@ -54,19 +54,27 @@ function editRole() {
 
 function getSourceSeverity(source: RoleSource) {
   switch (source) {
-    case 'CODE': return 'info';
-    case 'DATABASE': return 'success';
-    case 'SDK': return 'warn';
-    default: return 'secondary';
+    case 'CODE':
+      return 'info';
+    case 'DATABASE':
+      return 'success';
+    case 'SDK':
+      return 'warn';
+    default:
+      return 'secondary';
   }
 }
 
 function getSourceLabel(source: RoleSource) {
   switch (source) {
-    case 'CODE': return 'Code-defined';
-    case 'DATABASE': return 'Admin-created';
-    case 'SDK': return 'SDK-registered';
-    default: return source;
+    case 'CODE':
+      return 'Code-defined';
+    case 'DATABASE':
+      return 'Admin-created';
+    case 'SDK':
+      return 'SDK-registered';
+    default:
+      return source;
   }
 }
 
@@ -105,16 +113,8 @@ function parsePermission(permission: string) {
         </div>
       </div>
       <div v-if="role" class="header-right">
-        <Button
-          v-if="canEdit"
-          label="Edit Role"
-          icon="pi pi-pencil"
-          @click="editRole"
-        />
-        <Tag
-          :value="getSourceLabel(role.source)"
-          :severity="getSourceSeverity(role.source)"
-        />
+        <Button v-if="canEdit" label="Edit Role" icon="pi pi-pencil" @click="editRole" />
+        <Tag :value="getSourceLabel(role.source)" :severity="getSourceSeverity(role.source)" />
       </div>
     </header>
 
@@ -172,7 +172,7 @@ function parsePermission(permission: string) {
 
         <DataTable
           v-if="role.permissions && role.permissions.length > 0"
-          :value="role.permissions.map(p => ({ permission: p, ...parsePermission(p) }))"
+          :value="role.permissions.map((p) => ({ permission: p, ...parsePermission(p) }))"
           :paginator="role.permissions.length > 10"
           :rows="10"
           :rowsPerPageOptions="[10, 25, 50]"
@@ -217,11 +217,16 @@ function parsePermission(permission: string) {
 <script lang="ts">
 function getActionSeverity(action: string) {
   switch (action) {
-    case 'view': return 'info';
-    case 'create': return 'success';
-    case 'update': return 'warn';
-    case 'delete': return 'danger';
-    default: return 'secondary';
+    case 'view':
+      return 'info';
+    case 'create':
+      return 'success';
+    case 'update':
+      return 'warn';
+    case 'delete':
+      return 'danger';
+    default:
+      return 'secondary';
   }
 }
 </script>

@@ -11,7 +11,12 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
 import ProgressSpinner from 'primevue/progressspinner';
-import { serviceAccountsApi, type ServiceAccount, type RoleAssignment, type RolesAssignedResponse } from '@/api/service-accounts';
+import {
+  serviceAccountsApi,
+  type ServiceAccount,
+  type RoleAssignment,
+  type RolesAssignedResponse,
+} from '@/api/service-accounts';
 import { rolesApi, type Role } from '@/api/roles';
 import { clientsApi, type Client } from '@/api/clients';
 
@@ -35,7 +40,7 @@ const editDescription = ref('');
 const editClientIds = ref<string[]>([]);
 
 const clientOptions = computed(() => {
-  return clients.value.map(c => ({
+  return clients.value.map((c) => ({
     label: c.name,
     value: c.id,
   }));
@@ -59,14 +64,13 @@ const deleting = ref(false);
 
 const filteredAvailableRoles = computed(() => {
   const query = roleSearchQuery.value.toLowerCase();
-  return availableRoles.value.filter(r =>
-    r.name.toLowerCase().includes(query) ||
-    r.displayName?.toLowerCase().includes(query)
+  return availableRoles.value.filter(
+    (r) => r.name.toLowerCase().includes(query) || r.displayName?.toLowerCase().includes(query),
   );
 });
 
 const hasRoleChanges = computed(() => {
-  const currentRoles = new Set(roleAssignments.value.map(r => r.roleName));
+  const currentRoles = new Set(roleAssignments.value.map((r) => r.roleName));
   if (currentRoles.size !== selectedRoleNames.value.size) return true;
   for (const role of currentRoles) {
     if (!selectedRoleNames.value.has(role)) return true;
@@ -96,7 +100,7 @@ async function loadServiceAccount() {
       severity: 'error',
       summary: 'Error',
       detail: 'Failed to load service account',
-      life: 5000
+      life: 5000,
     });
     console.error('Failed to fetch service account:', error);
     router.push('/identity/service-accounts');
@@ -150,7 +154,7 @@ async function saveServiceAccount() {
       severity: 'error',
       summary: 'Error',
       detail: 'Name is required',
-      life: 3000
+      life: 3000,
     });
     return;
   }
@@ -160,7 +164,7 @@ async function saveServiceAccount() {
     await serviceAccountsApi.update(serviceAccountId, {
       name: editName.value,
       description: editDescription.value || undefined,
-      clientIds: editClientIds.value
+      clientIds: editClientIds.value,
     });
     serviceAccount.value!.name = editName.value;
     serviceAccount.value!.description = editDescription.value;
@@ -170,14 +174,14 @@ async function saveServiceAccount() {
       severity: 'success',
       summary: 'Success',
       detail: 'Service account updated successfully',
-      life: 3000
+      life: 3000,
     });
   } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'Error',
       detail: error?.message || 'Failed to update service account',
-      life: 5000
+      life: 5000,
     });
   } finally {
     saving.value = false;
@@ -194,14 +198,14 @@ async function regenerateToken() {
       severity: 'success',
       summary: 'Success',
       detail: 'Auth token regenerated',
-      life: 3000
+      life: 3000,
     });
   } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'Error',
       detail: error?.message || 'Failed to regenerate token',
-      life: 5000
+      life: 5000,
     });
   } finally {
     saving.value = false;
@@ -218,14 +222,14 @@ async function regenerateSecret() {
       severity: 'success',
       summary: 'Success',
       detail: 'Signing secret regenerated',
-      life: 3000
+      life: 3000,
     });
   } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'Error',
       detail: error?.message || 'Failed to regenerate secret',
-      life: 5000
+      life: 5000,
     });
   } finally {
     saving.value = false;
@@ -238,12 +242,12 @@ function copyToClipboard(text: string, label: string) {
     severity: 'info',
     summary: 'Copied',
     detail: `${label} copied to clipboard`,
-    life: 2000
+    life: 2000,
   });
 }
 
 function openRolePicker() {
-  selectedRoleNames.value = new Set(roleAssignments.value.map(r => r.roleName));
+  selectedRoleNames.value = new Set(roleAssignments.value.map((r) => r.roleName));
   roleSearchQuery.value = '';
   showRolePickerDialog.value = true;
 }
@@ -266,7 +270,10 @@ async function saveRoles() {
   savingRoles.value = true;
   try {
     const roles = Array.from(selectedRoleNames.value);
-    const response: RolesAssignedResponse = await serviceAccountsApi.assignRoles(serviceAccountId, roles);
+    const response: RolesAssignedResponse = await serviceAccountsApi.assignRoles(
+      serviceAccountId,
+      roles,
+    );
     roleAssignments.value = response.roles;
     if (serviceAccount.value) {
       serviceAccount.value.roles = roles;
@@ -288,14 +295,14 @@ async function saveRoles() {
       severity: 'success',
       summary: 'Success',
       detail,
-      life: 3000
+      life: 3000,
     });
   } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'Error',
       detail: error?.message || 'Failed to save roles',
-      life: 5000
+      life: 5000,
     });
   } finally {
     savingRoles.value = false;
@@ -303,21 +310,21 @@ async function saveRoles() {
 }
 
 function getRoleDisplay(roleName: string) {
-  const role = availableRoles.value.find(r => r.name === roleName);
+  const role = availableRoles.value.find((r) => r.name === roleName);
   return {
     displayName: role?.displayName || roleName.split(':').pop() || roleName,
-    fullName: roleName
+    fullName: roleName,
   };
 }
 
 function getClientName(clientId: string): string {
-  const client = clients.value.find(c => c.id === clientId);
+  const client = clients.value.find((c) => c.id === clientId);
   return client?.name || clientId;
 }
 
 function getClientNames(clientIds: string[]): string {
   if (!clientIds || clientIds.length === 0) return 'All clients (no restriction)';
-  return clientIds.map(id => getClientName(id)).join(', ');
+  return clientIds.map((id) => getClientName(id)).join(', ');
 }
 
 function formatDate(dateStr: string | null | undefined) {
@@ -337,7 +344,7 @@ async function deleteServiceAccount() {
       severity: 'success',
       summary: 'Success',
       detail: 'Service account deleted successfully',
-      life: 3000
+      life: 3000,
     });
     router.push('/identity/service-accounts');
   } catch (error: any) {
@@ -345,7 +352,7 @@ async function deleteServiceAccount() {
       severity: 'error',
       summary: 'Error',
       detail: error?.message || 'Failed to delete service account',
-      life: 5000
+      life: 5000,
     });
   } finally {
     deleting.value = false;
@@ -373,7 +380,9 @@ async function deleteServiceAccount() {
           />
           <div>
             <h1 class="page-title">{{ serviceAccount.name }}</h1>
-            <p class="page-subtitle"><code>{{ serviceAccount.code }}</code></p>
+            <p class="page-subtitle">
+              <code>{{ serviceAccount.code }}</code>
+            </p>
           </div>
           <Tag
             :value="serviceAccount.active ? 'Active' : 'Inactive'"
@@ -395,13 +404,7 @@ async function deleteServiceAccount() {
       <div class="fc-card">
         <div class="card-header">
           <h2 class="card-title">Service Account Information</h2>
-          <Button
-            v-if="!editMode"
-            label="Edit"
-            icon="pi pi-pencil"
-            text
-            @click="startEdit"
-          />
+          <Button v-if="!editMode" label="Edit" icon="pi pi-pencil" text @click="startEdit" />
           <div v-else class="edit-actions">
             <Button label="Cancel" text @click="cancelEdit" />
             <Button label="Save" icon="pi pi-check" :loading="saving" @click="saveServiceAccount" />
@@ -500,22 +503,12 @@ async function deleteServiceAccount() {
       <div class="fc-card">
         <div class="card-header">
           <h2 class="card-title">Roles</h2>
-          <Button
-            label="Manage Roles"
-            icon="pi pi-pencil"
-            text
-            @click="openRolePicker"
-          />
+          <Button label="Manage Roles" icon="pi pi-pencil" text @click="openRolePicker" />
         </div>
 
         <div v-if="roleAssignments.length === 0" class="no-roles-notice">
           <p>No roles assigned to this service account.</p>
-          <Button
-            label="Assign Roles"
-            icon="pi pi-plus"
-            text
-            @click="openRolePicker"
-          />
+          <Button label="Assign Roles" icon="pi pi-plus" text @click="openRolePicker" />
         </div>
 
         <DataTable v-else :value="roleAssignments" class="p-datatable-sm">
@@ -612,7 +605,11 @@ async function deleteServiceAccount() {
         <div class="role-pane available-roles">
           <div class="pane-header">
             <h4>Available Roles</h4>
-            <InputText v-model="roleSearchQuery" placeholder="Filter roles..." class="role-filter" />
+            <InputText
+              v-model="roleSearchQuery"
+              placeholder="Filter roles..."
+              class="role-filter"
+            />
           </div>
           <div class="role-list">
             <div

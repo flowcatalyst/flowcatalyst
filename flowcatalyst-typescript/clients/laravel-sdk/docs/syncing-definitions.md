@@ -9,10 +9,10 @@ There are two approaches:
 
 Choose the approach that best fits your needs:
 
-| Approach | Best For |
-|----------|----------|
+| Approach        | Best For                                                        |
+| --------------- | --------------------------------------------------------------- |
 | Attribute-based | Single-app deployments, code-first definitions, CI/CD pipelines |
-| Programmatic | Multi-app deployments, dynamic definitions, custom sync logic |
+| Programmatic    | Multi-app deployments, dynamic definitions, custom sync logic   |
 
 ---
 
@@ -151,6 +151,7 @@ php artisan flowcatalyst:scan
 ```
 
 Output:
+
 ```
 Scanning paths for FlowCatalyst definitions...
   - /var/www/app/FlowCatalyst
@@ -168,6 +169,7 @@ Definitions cached to: /var/www/storage/flowcatalyst/definitions.json
 ```
 
 Options:
+
 - `--clear` - Clear the cache before scanning
 
 ### Step 4: Sync to Platform
@@ -179,6 +181,7 @@ php artisan flowcatalyst:sync
 ```
 
 Output:
+
 ```
 Syncing definitions to application: my-application
 
@@ -193,6 +196,7 @@ Sync Summary:
 ```
 
 Options:
+
 - `--app=code` - Override the application code from config
 - `--roles` - Sync only roles
 - `--event-types` - Sync only event types
@@ -534,56 +538,56 @@ class FlowCatalystSyncProvider extends ServiceProvider
 
 ### RoleDefinition
 
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `name` | string | Yes | Unique role identifier |
-| `displayName` | string | No | Human-readable name |
-| `description` | string | No | Role description |
-| `permissions` | string[] | No | Permission codes this role grants |
-| `clientManaged` | bool | No | Whether clients can assign this role (default: false) |
+| Property        | Type     | Required | Description                                           |
+| --------------- | -------- | -------- | ----------------------------------------------------- |
+| `name`          | string   | Yes      | Unique role identifier                                |
+| `displayName`   | string   | No       | Human-readable name                                   |
+| `description`   | string   | No       | Role description                                      |
+| `permissions`   | string[] | No       | Permission codes this role grants                     |
+| `clientManaged` | bool     | No       | Whether clients can assign this role (default: false) |
 
 ### EventTypeDefinition
 
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `code` | string | Yes | Unique event type code |
-| `name` | string | Yes | Human-readable name |
-| `description` | string | No | Event type description |
+| Property      | Type   | Required | Description            |
+| ------------- | ------ | -------- | ---------------------- |
+| `code`        | string | Yes      | Unique event type code |
+| `name`        | string | Yes      | Human-readable name    |
+| `description` | string | No       | Event type description |
 
 ### SubscriptionDefinition
 
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `code` | string | Yes | Unique subscription code |
-| `name` | string | Yes | Human-readable name |
-| `target` | string | Yes | Webhook URL |
-| `queue` | string | Yes | Queue name for delivery |
-| `dispatchPoolCode` | string | Yes | Dispatch pool code |
-| `description` | string | No | Subscription description |
-| `eventTypeCode` | string | No | Event type to subscribe to |
-| `maxRetries` | int | No | Max retry attempts (default: 3) |
-| `retryDelaySeconds` | int | No | Delay between retries (default: 60) |
-| `timeoutSeconds` | int | No | Webhook timeout (default: 30) |
-| `active` | bool | No | Whether subscription is active (default: true) |
+| Property            | Type   | Required | Description                                    |
+| ------------------- | ------ | -------- | ---------------------------------------------- |
+| `code`              | string | Yes      | Unique subscription code                       |
+| `name`              | string | Yes      | Human-readable name                            |
+| `target`            | string | Yes      | Webhook URL                                    |
+| `queue`             | string | Yes      | Queue name for delivery                        |
+| `dispatchPoolCode`  | string | Yes      | Dispatch pool code                             |
+| `description`       | string | No       | Subscription description                       |
+| `eventTypeCode`     | string | No       | Event type to subscribe to                     |
+| `maxRetries`        | int    | No       | Max retry attempts (default: 3)                |
+| `retryDelaySeconds` | int    | No       | Delay between retries (default: 60)            |
+| `timeoutSeconds`    | int    | No       | Webhook timeout (default: 30)                  |
+| `active`            | bool   | No       | Whether subscription is active (default: true) |
 
 ### SyncResult
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `hasChanges()` | bool | Whether any changes were made |
-| `hasErrors()` | bool | Whether any errors occurred |
-| `getErrors()` | array | Error messages by type |
-| `getTotals()` | array | Aggregate counts across all types |
-| `hasRoleChanges()` | bool | Whether roles were changed |
-| `hasEventTypeChanges()` | bool | Whether event types were changed |
-| `hasSubscriptionChanges()` | bool | Whether subscriptions were changed |
+| Method                     | Returns | Description                        |
+| -------------------------- | ------- | ---------------------------------- |
+| `hasChanges()`             | bool    | Whether any changes were made      |
+| `hasErrors()`              | bool    | Whether any errors occurred        |
+| `getErrors()`              | array   | Error messages by type             |
+| `getTotals()`              | array   | Aggregate counts across all types  |
+| `hasRoleChanges()`         | bool    | Whether roles were changed         |
+| `hasEventTypeChanges()`    | bool    | Whether event types were changed   |
+| `hasSubscriptionChanges()` | bool    | Whether subscriptions were changed |
 
 ### SyncOptions Factory Methods
 
-| Method | Description |
-|--------|-------------|
-| `SyncOptions::defaults()` | Sync all types, don't remove unlisted |
-| `SyncOptions::withRemoveUnlisted()` | Sync all, remove unlisted |
-| `SyncOptions::rolesOnly()` | Only sync roles |
-| `SyncOptions::eventTypesOnly()` | Only sync event types |
-| `SyncOptions::subscriptionsOnly()` | Only sync subscriptions |
+| Method                              | Description                           |
+| ----------------------------------- | ------------------------------------- |
+| `SyncOptions::defaults()`           | Sync all types, don't remove unlisted |
+| `SyncOptions::withRemoveUnlisted()` | Sync all, remove unlisted             |
+| `SyncOptions::rolesOnly()`          | Only sync roles                       |
+| `SyncOptions::eventTypesOnly()`     | Only sync event types                 |
+| `SyncOptions::subscriptionsOnly()`  | Only sync subscriptions               |

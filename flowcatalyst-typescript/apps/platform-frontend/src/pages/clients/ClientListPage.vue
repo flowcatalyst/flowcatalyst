@@ -19,9 +19,9 @@ const searchQuery = ref('');
 const filteredClients = computed(() => {
   if (!searchQuery.value) return clients.value;
   const query = searchQuery.value.toLowerCase();
-  return clients.value.filter(client =>
-    client.identifier.toLowerCase().includes(query) ||
-    client.name.toLowerCase().includes(query)
+  return clients.value.filter(
+    (client) =>
+      client.identifier.toLowerCase().includes(query) || client.name.toLowerCase().includes(query),
   );
 });
 
@@ -44,10 +44,14 @@ async function loadClients() {
 
 function getStatusSeverity(status: string) {
   switch (status) {
-    case 'ACTIVE': return 'success';
-    case 'SUSPENDED': return 'warn';
-    case 'INACTIVE': return 'secondary';
-    default: return 'secondary';
+    case 'ACTIVE':
+      return 'success';
+    case 'SUSPENDED':
+      return 'warn';
+    case 'INACTIVE':
+      return 'secondary';
+    default:
+      return 'secondary';
   }
 }
 

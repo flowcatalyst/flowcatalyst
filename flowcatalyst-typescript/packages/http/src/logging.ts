@@ -15,16 +15,16 @@ import type { TracingData } from './types.js';
  * Configuration for logging.
  */
 export interface LoggingConfig {
-	/** Log level (default: 'info') */
-	readonly level?: string;
-	/** Service name for log context */
-	readonly serviceName?: string;
-	/** Paths to skip logging (e.g., /health) */
-	readonly skipPaths?: string[];
-	/** Additional base context to include in all logs */
-	readonly baseContext?: Record<string, unknown>;
-	/** Custom Pino options */
-	readonly pinoOptions?: LoggerOptions;
+  /** Log level (default: 'info') */
+  readonly level?: string;
+  /** Service name for log context */
+  readonly serviceName?: string;
+  /** Paths to skip logging (e.g., /health) */
+  readonly skipPaths?: string[];
+  /** Additional base context to include in all logs */
+  readonly baseContext?: Record<string, unknown>;
+  /** Custom Pino options */
+  readonly pinoOptions?: LoggerOptions;
 }
 
 /**
@@ -44,19 +44,19 @@ export interface LoggingConfig {
  * ```
  */
 export function createLogger(config: LoggingConfig = {}): Logger {
-	const { level = 'info', serviceName, baseContext = {}, pinoOptions = {} } = config;
+  const { level = 'info', serviceName, baseContext = {}, pinoOptions = {} } = config;
 
-	const options: LoggerOptions = {
-		level,
-		...pinoOptions,
-		base: {
-			...(serviceName ? { service: serviceName } : {}),
-			...baseContext,
-			...pinoOptions.base,
-		},
-	};
+  const options: LoggerOptions = {
+    level,
+    ...pinoOptions,
+    base: {
+      ...(serviceName ? { service: serviceName } : {}),
+      ...baseContext,
+      ...pinoOptions.base,
+    },
+  };
 
-	return pino(options);
+  return pino(options);
 }
 
 /**
@@ -67,11 +67,11 @@ export function createLogger(config: LoggingConfig = {}): Logger {
  * @returns Child logger with tracing fields
  */
 export function createRequestLogger(baseLogger: Logger, tracing: TracingData): Logger {
-	return baseLogger.child({
-		correlationId: tracing.correlationId,
-		executionId: tracing.executionId,
-		...(tracing.causationId ? { causationId: tracing.causationId } : {}),
-	});
+  return baseLogger.child({
+    correlationId: tracing.correlationId,
+    executionId: tracing.executionId,
+    ...(tracing.causationId ? { causationId: tracing.causationId } : {}),
+  });
 }
 
 /**
@@ -96,17 +96,17 @@ export function createRequestLogger(baseLogger: Logger, tracing: TracingData): L
  * ```
  */
 export function createFastifyLoggerOptions(config: LoggingConfig = {}): LoggerOptions | boolean {
-	const { level = 'info', serviceName, baseContext = {}, pinoOptions = {} } = config;
+  const { level = 'info', serviceName, baseContext = {}, pinoOptions = {} } = config;
 
-	return {
-		level,
-		...pinoOptions,
-		base: {
-			...(serviceName ? { service: serviceName } : {}),
-			...baseContext,
-			...pinoOptions.base,
-		},
-	};
+  return {
+    level,
+    ...pinoOptions,
+    base: {
+      ...(serviceName ? { service: serviceName } : {}),
+      ...baseContext,
+      ...pinoOptions.base,
+    },
+  };
 }
 
 export type { Logger, LoggerOptions };

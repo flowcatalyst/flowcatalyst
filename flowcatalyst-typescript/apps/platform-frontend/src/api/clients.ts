@@ -130,7 +130,10 @@ export const clientsApi = {
     });
   },
 
-  updateApplications(clientId: string, enabledApplicationIds: string[]): Promise<{ message: string }> {
+  updateApplications(
+    clientId: string,
+    enabledApplicationIds: string[],
+  ): Promise<{ message: string }> {
     return apiFetch(`/admin/clients/${clientId}/applications`, {
       method: 'PUT',
       body: JSON.stringify({ enabledApplicationIds }),

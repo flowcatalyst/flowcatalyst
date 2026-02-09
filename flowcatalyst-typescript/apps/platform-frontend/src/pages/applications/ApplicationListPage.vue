@@ -36,22 +36,23 @@ const filteredApplications = computed(() => {
 
   // Filter by type
   if (typeFilter.value !== 'ALL') {
-    result = result.filter(app => app.type === typeFilter.value);
+    result = result.filter((app) => app.type === typeFilter.value);
   }
 
   // Filter by active status
   if (activeFilter.value !== 'ALL') {
     const isActive = activeFilter.value === 'ACTIVE';
-    result = result.filter(app => app.active === isActive);
+    result = result.filter((app) => app.active === isActive);
   }
 
   // Filter by search query
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase();
-    result = result.filter(app =>
-      app.code.toLowerCase().includes(query) ||
-      app.name.toLowerCase().includes(query) ||
-      (app.description?.toLowerCase().includes(query) ?? false)
+    result = result.filter(
+      (app) =>
+        app.code.toLowerCase().includes(query) ||
+        app.name.toLowerCase().includes(query) ||
+        (app.description?.toLowerCase().includes(query) ?? false),
     );
   }
 
@@ -87,7 +88,11 @@ function formatDate(dateString: string) {
         <h1 class="page-title">Applications</h1>
         <p class="page-subtitle">Manage applications in the platform ecosystem</p>
       </div>
-      <Button label="Create Application" icon="pi pi-plus" @click="router.push('/applications/new')" />
+      <Button
+        label="Create Application"
+        icon="pi pi-plus"
+        @click="router.push('/applications/new')"
+      />
     </header>
 
     <Message v-if="error" severity="error" class="error-message">{{ error }}</Message>
@@ -152,7 +157,10 @@ function formatDate(dateString: string) {
         </Column>
         <Column field="active" header="Status" sortable>
           <template #body="{ data }">
-            <Tag :value="data.active ? 'Active' : 'Inactive'" :severity="data.active ? 'success' : 'secondary'" />
+            <Tag
+              :value="data.active ? 'Active' : 'Inactive'"
+              :severity="data.active ? 'success' : 'secondary'"
+            />
           </template>
         </Column>
         <Column field="createdAt" header="Created" sortable>

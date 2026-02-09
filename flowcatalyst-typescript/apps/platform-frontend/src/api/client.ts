@@ -13,7 +13,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
-    public code?: string
+    public code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -37,16 +37,13 @@ export function onApiError(listener: ApiErrorListener): () => void {
 }
 
 function emitApiError(status: number, message: string) {
-  errorListeners.forEach(listener => listener(status, message));
+  errorListeners.forEach((listener) => listener(status, message));
 }
 
 /**
  * Fetch from the main API endpoints.
  */
-export async function apiFetch<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
+export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   return baseFetch<T>(`${API_BASE_URL}${path}`, options);
 }
 
@@ -54,17 +51,11 @@ export async function apiFetch<T>(
  * Fetch from BFF (Backend For Frontend) endpoints.
  * BFF endpoints return IDs as strings to preserve precision for JavaScript.
  */
-export async function bffFetch<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
+export async function bffFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   return baseFetch<T>(`${BFF_BASE_URL}${path}`, options);
 }
 
-async function baseFetch<T>(
-  url: string,
-  options: RequestInit = {}
-): Promise<T> {
+async function baseFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(url, {
     ...options,
     credentials: 'include',

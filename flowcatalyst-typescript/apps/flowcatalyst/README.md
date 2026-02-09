@@ -50,12 +50,12 @@ node apps/flowcatalyst/dist/index.js serve
 
 ### CLI Commands
 
-| Command   | Description                                |
-|-----------|--------------------------------------------|
-| `serve`   | Start all enabled services (default)       |
-| `migrate` | Run database migrations and exit           |
-| `version` | Print version and exit                     |
-| `help`    | Show help message                          |
+| Command   | Description                          |
+| --------- | ------------------------------------ |
+| `serve`   | Start all enabled services (default) |
+| `migrate` | Run database migrations and exit     |
+| `version` | Print version and exit               |
+| `help`    | Show help message                    |
 
 ### Debug / Verbose Logging
 
@@ -78,28 +78,28 @@ With `tsx` in development, pretty-printed logs are enabled automatically.
 
 ### Service Toggles
 
-| Variable                     | Default | Description                              |
-|------------------------------|---------|------------------------------------------|
-| `PLATFORM_ENABLED`           | `true`  | Enable Platform (IAM/OIDC/Admin API)     |
-| `STREAM_PROCESSOR_ENABLED`   | `true`  | Enable Stream Processor (CQRS read models) |
-| `MESSAGE_ROUTER_ENABLED`     | `false` | Enable Message Router (queue processing) |
-| `AUTO_MIGRATE`               | `true` in dev | Run DB migrations on startup        |
+| Variable                   | Default       | Description                                |
+| -------------------------- | ------------- | ------------------------------------------ |
+| `PLATFORM_ENABLED`         | `true`        | Enable Platform (IAM/OIDC/Admin API)       |
+| `STREAM_PROCESSOR_ENABLED` | `true`        | Enable Stream Processor (CQRS read models) |
+| `MESSAGE_ROUTER_ENABLED`   | `false`       | Enable Message Router (queue processing)   |
+| `AUTO_MIGRATE`             | `true` in dev | Run DB migrations on startup               |
 
 ### Server
 
-| Variable         | Default     | Description                       |
-|------------------|-------------|-----------------------------------|
-| `DATABASE_URL`   | *(required)* | PostgreSQL connection string     |
-| `PLATFORM_PORT`  | `3000`      | Platform HTTP port                |
-| `ROUTER_PORT`    | `8080`      | Message Router port               |
-| `HOST`           | `0.0.0.0`  | Bind address                      |
-| `NODE_ENV`       | `development` | Environment mode               |
-| `LOG_LEVEL`      | `info`      | Log level: `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
+| Variable        | Default       | Description                                                   |
+| --------------- | ------------- | ------------------------------------------------------------- |
+| `DATABASE_URL`  | _(required)_  | PostgreSQL connection string                                  |
+| `PLATFORM_PORT` | `3000`        | Platform HTTP port                                            |
+| `ROUTER_PORT`   | `8080`        | Message Router port                                           |
+| `HOST`          | `0.0.0.0`     | Bind address                                                  |
+| `NODE_ENV`      | `development` | Environment mode                                              |
+| `LOG_LEVEL`     | `info`        | Log level: `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
 
 ### Frontend
 
-| Variable       | Default          | Description                                    |
-|----------------|------------------|------------------------------------------------|
-| `FRONTEND_DIR` | *(auto-detected)* | Path to built frontend assets. When omitted, checked in order: SEA embedded asset, `dist/frontend/`, sibling `platform-frontend/dist/`. |
+| Variable       | Default           | Description                                                                                                                             |
+| -------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `FRONTEND_DIR` | _(auto-detected)_ | Path to built frontend assets. When omitted, checked in order: SEA embedded asset, `dist/frontend/`, sibling `platform-frontend/dist/`. |
 
 See `.env.example` for the full list including OIDC, encryption, and bootstrap variables.

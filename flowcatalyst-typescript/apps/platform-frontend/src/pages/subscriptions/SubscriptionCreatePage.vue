@@ -11,7 +11,11 @@ import ToggleSwitch from 'primevue/toggleswitch';
 import MultiSelect from 'primevue/multiselect';
 import Message from 'primevue/message';
 import ClientSelect from '@/components/ClientSelect.vue';
-import { subscriptionsApi, type SubscriptionMode, type EventTypeBinding } from '@/api/subscriptions';
+import {
+  subscriptionsApi,
+  type SubscriptionMode,
+  type EventTypeBinding,
+} from '@/api/subscriptions';
 import { dispatchPoolsApi, type DispatchPool } from '@/api/dispatch-pools';
 import { eventTypesApi, type EventType } from '@/api/event-types';
 
@@ -85,13 +89,13 @@ const isFormValid = computed(() => {
 // Only show event types that match the subscription's clientScoped setting
 const eventTypeOptions = computed(() => {
   return eventTypes.value
-    .filter(et => et.specVersions.some(sv => sv.status === 'CURRENT'))
-    .filter(et => et.clientScoped === clientScoped.value)
-    .map(et => ({
+    .filter((et) => et.specVersions.some((sv) => sv.status === 'CURRENT'))
+    .filter((et) => et.clientScoped === clientScoped.value)
+    .map((et) => ({
       id: et.id,
       code: et.code,
       name: et.name,
-      currentVersion: et.specVersions.find(sv => sv.status === 'CURRENT')?.version || '',
+      currentVersion: et.specVersions.find((sv) => sv.status === 'CURRENT')?.version || '',
     }));
 });
 
@@ -133,8 +137,8 @@ async function loadEventTypes() {
 }
 
 function buildEventTypeBindings(): EventTypeBinding[] {
-  return selectedEventTypes.value.map(etId => {
-    const et = eventTypeOptions.value.find(e => e.id === etId);
+  return selectedEventTypes.value.map((etId) => {
+    const et = eventTypeOptions.value.find((e) => e.id === etId);
     return {
       eventTypeId: etId,
       eventTypeCode: et?.code || '',
@@ -167,7 +171,12 @@ async function onSubmit() {
       mode: mode.value,
       source: 'UI',
     });
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Subscription created', life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Subscription created',
+      life: 3000,
+    });
     router.push(`/subscriptions/${subscription.id}`);
   } catch (e) {
     errorMessage.value = e instanceof Error ? e.message : 'Failed to create subscription';
@@ -254,8 +263,8 @@ async function onSubmit() {
               </template>
             </MultiSelect>
             <small class="hint">
-              Select which event types this subscription will receive.
-              Only {{ clientScoped ? 'client-scoped' : 'non-client-scoped' }} event types are shown.
+              Select which event types this subscription will receive. Only
+              {{ clientScoped ? 'client-scoped' : 'non-client-scoped' }} event types are shown.
             </small>
           </div>
         </div>
@@ -274,21 +283,13 @@ async function onSubmit() {
             <small v-if="target && !isTargetValid" class="p-error">
               Must be a valid HTTP or HTTPS URL
             </small>
-            <small v-else class="hint">
-              The webhook URL where events will be delivered
-            </small>
+            <small v-else class="hint"> The webhook URL where events will be delivered </small>
           </div>
 
           <div class="form-field">
             <label>Queue <span class="required">*</span></label>
-            <InputText
-              v-model="queue"
-              placeholder="default"
-              class="full-width"
-            />
-            <small class="hint">
-              Queue name for routing dispatch jobs
-            </small>
+            <InputText v-model="queue" placeholder="default" class="full-width" />
+            <small class="hint"> Queue name for routing dispatch jobs </small>
           </div>
 
           <div class="form-field">
@@ -306,13 +307,14 @@ async function onSubmit() {
               <template #option="{ option }">
                 <div class="dropdown-option">
                   <span class="option-name">{{ option.name }}</span>
-                  <span class="option-code">{{ option.code }} ({{ option.rateLimit }}/min, {{ option.concurrency }} concurrent)</span>
+                  <span class="option-code"
+                    >{{ option.code }} ({{ option.rateLimit }}/min,
+                    {{ option.concurrency }} concurrent)</span
+                  >
                 </div>
               </template>
             </Select>
-            <small class="hint">
-              Rate-limiting pool for this subscription's dispatch jobs
-            </small>
+            <small class="hint"> Rate-limiting pool for this subscription's dispatch jobs </small>
           </div>
 
           <div class="form-field">
@@ -324,9 +326,7 @@ async function onSubmit() {
               optionValue="value"
               class="full-width"
             />
-            <small class="hint">
-              How to handle dispatch failures
-            </small>
+            <small class="hint"> How to handle dispatch failures </small>
           </div>
         </div>
 
@@ -336,21 +336,13 @@ async function onSubmit() {
           <div class="form-row">
             <div class="form-field">
               <label>Max Age (seconds)</label>
-              <InputNumber
-                v-model="maxAgeSeconds"
-                :min="1"
-                class="full-width"
-              />
+              <InputNumber v-model="maxAgeSeconds" :min="1" class="full-width" />
               <small class="hint">Maximum age before events expire</small>
             </div>
 
             <div class="form-field">
               <label>Timeout (seconds)</label>
-              <InputNumber
-                v-model="timeoutSeconds"
-                :min="1"
-                class="full-width"
-              />
+              <InputNumber v-model="timeoutSeconds" :min="1" class="full-width" />
               <small class="hint">Request timeout for webhook calls</small>
             </div>
           </div>
@@ -358,21 +350,13 @@ async function onSubmit() {
           <div class="form-row">
             <div class="form-field">
               <label>Delay (seconds)</label>
-              <InputNumber
-                v-model="delaySeconds"
-                :min="0"
-                class="full-width"
-              />
+              <InputNumber v-model="delaySeconds" :min="0" class="full-width" />
               <small class="hint">Delay before dispatching</small>
             </div>
 
             <div class="form-field">
               <label>Sequence</label>
-              <InputNumber
-                v-model="sequence"
-                :min="1"
-                class="full-width"
-              />
+              <InputNumber v-model="sequence" :min="1" class="full-width" />
               <small class="hint">Processing order (lower = earlier)</small>
             </div>
           </div>

@@ -23,168 +23,173 @@ import { generate } from '@flowcatalyst/tsid';
 export type ApplicationType = 'APPLICATION' | 'INTEGRATION';
 
 export const ApplicationType = {
-	/** User-facing application that users log into */
-	APPLICATION: 'APPLICATION' as const,
-	/** Third-party adapter or connector */
-	INTEGRATION: 'INTEGRATION' as const,
+  /** User-facing application that users log into */
+  APPLICATION: 'APPLICATION' as const,
+  /** Third-party adapter or connector */
+  INTEGRATION: 'INTEGRATION' as const,
 } as const;
 
 /**
  * Application entity.
  */
 export interface Application {
-	/** TSID primary key */
-	readonly id: string;
+  /** TSID primary key */
+  readonly id: string;
 
-	/**
-	 * Type of this entity.
-	 * APPLICATION = User-facing application
-	 * INTEGRATION = Third-party adapter/connector
-	 */
-	readonly type: ApplicationType;
+  /**
+   * Type of this entity.
+   * APPLICATION = User-facing application
+   * INTEGRATION = Third-party adapter/connector
+   */
+  readonly type: ApplicationType;
 
-	/**
-	 * Unique application code.
-	 * Used as a prefix for resources managed by this application.
-	 * Max 50 characters, lowercase, alphanumeric with hyphens.
-	 * Example: "crm", "inventory", "messaging", "sf" (for Salesforce)
-	 */
-	readonly code: string;
+  /**
+   * Unique application code.
+   * Used as a prefix for resources managed by this application.
+   * Max 50 characters, lowercase, alphanumeric with hyphens.
+   * Example: "crm", "inventory", "messaging", "sf" (for Salesforce)
+   */
+  readonly code: string;
 
-	/** Application display name */
-	readonly name: string;
+  /** Application display name */
+  readonly name: string;
 
-	/** Application description */
-	readonly description: string | null;
+  /** Application description */
+  readonly description: string | null;
 
-	/** Icon URL for this application */
-	readonly iconUrl: string | null;
+  /** Icon URL for this application */
+  readonly iconUrl: string | null;
 
-	/**
-	 * Public website URL for this application/integration.
-	 * Can be overridden per client via ApplicationClientConfig.
-	 */
-	readonly website: string | null;
+  /**
+   * Public website URL for this application/integration.
+   * Can be overridden per client via ApplicationClientConfig.
+   */
+  readonly website: string | null;
 
-	/**
-	 * Embedded logo content (SVG/vector format).
-	 * Stored directly in the database.
-	 */
-	readonly logo: string | null;
+  /**
+   * Embedded logo content (SVG/vector format).
+   * Stored directly in the database.
+   */
+  readonly logo: string | null;
 
-	/**
-	 * MIME type of the logo content.
-	 * Example: "image/svg+xml" for SVG logos.
-	 */
-	readonly logoMimeType: string | null;
+  /**
+   * MIME type of the logo content.
+   * Example: "image/svg+xml" for SVG logos.
+   */
+  readonly logoMimeType: string | null;
 
-	/**
-	 * Default base URL for the application.
-	 * Can be overridden per client via ApplicationClientConfig.
-	 * Primarily used for APPLICATION type.
-	 */
-	readonly defaultBaseUrl: string | null;
+  /**
+   * Default base URL for the application.
+   * Can be overridden per client via ApplicationClientConfig.
+   * Primarily used for APPLICATION type.
+   */
+  readonly defaultBaseUrl: string | null;
 
-	/**
-	 * Service account ID for this application.
-	 * Contains webhook credentials for dispatching.
-	 */
-	readonly serviceAccountId: string | null;
+  /**
+   * Service account ID for this application.
+   * Contains webhook credentials for dispatching.
+   */
+  readonly serviceAccountId: string | null;
 
-	/** Whether the application is active */
-	readonly active: boolean;
+  /** Whether the application is active */
+  readonly active: boolean;
 
-	/** When the application was created */
-	readonly createdAt: Date;
+  /** When the application was created */
+  readonly createdAt: Date;
 
-	/** When the application was last updated */
-	readonly updatedAt: Date;
+  /** When the application was last updated */
+  readonly updatedAt: Date;
 }
 
 /**
  * Input for creating a new Application.
  */
 export type NewApplication = Omit<Application, 'createdAt' | 'updatedAt'> & {
-	createdAt?: Date;
-	updatedAt?: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
 };
 
 /**
  * Create a new application.
  */
 export function createApplication(params: {
-	code: string;
-	name: string;
-	type?: ApplicationType;
-	description?: string | null;
-	iconUrl?: string | null;
-	website?: string | null;
-	logo?: string | null;
-	logoMimeType?: string | null;
-	defaultBaseUrl?: string | null;
+  code: string;
+  name: string;
+  type?: ApplicationType;
+  description?: string | null;
+  iconUrl?: string | null;
+  website?: string | null;
+  logo?: string | null;
+  logoMimeType?: string | null;
+  defaultBaseUrl?: string | null;
 }): NewApplication {
-	return {
-		id: generate('APPLICATION'),
-		type: params.type ?? ApplicationType.APPLICATION,
-		code: params.code.toLowerCase(),
-		name: params.name,
-		description: params.description ?? null,
-		iconUrl: params.iconUrl ?? null,
-		website: params.website ?? null,
-		logo: params.logo ?? null,
-		logoMimeType: params.logoMimeType ?? null,
-		defaultBaseUrl: params.defaultBaseUrl ?? null,
-		serviceAccountId: null,
-		active: true,
-	};
+  return {
+    id: generate('APPLICATION'),
+    type: params.type ?? ApplicationType.APPLICATION,
+    code: params.code.toLowerCase(),
+    name: params.name,
+    description: params.description ?? null,
+    iconUrl: params.iconUrl ?? null,
+    website: params.website ?? null,
+    logo: params.logo ?? null,
+    logoMimeType: params.logoMimeType ?? null,
+    defaultBaseUrl: params.defaultBaseUrl ?? null,
+    serviceAccountId: null,
+    active: true,
+  };
 }
 
 /**
  * Update an application.
  */
 export function updateApplication(
-	application: Application,
-	updates: Partial<Pick<Application, 'name' | 'description' | 'iconUrl' | 'website' | 'logo' | 'logoMimeType' | 'defaultBaseUrl'>>,
+  application: Application,
+  updates: Partial<
+    Pick<
+      Application,
+      'name' | 'description' | 'iconUrl' | 'website' | 'logo' | 'logoMimeType' | 'defaultBaseUrl'
+    >
+  >,
 ): Application {
-	return {
-		...application,
-		...updates,
-		updatedAt: new Date(),
-	};
+  return {
+    ...application,
+    ...updates,
+    updatedAt: new Date(),
+  };
 }
 
 /**
  * Activate an application.
  */
 export function activateApplication(application: Application): Application {
-	return {
-		...application,
-		active: true,
-		updatedAt: new Date(),
-	};
+  return {
+    ...application,
+    active: true,
+    updatedAt: new Date(),
+  };
 }
 
 /**
  * Deactivate an application.
  */
 export function deactivateApplication(application: Application): Application {
-	return {
-		...application,
-		active: false,
-		updatedAt: new Date(),
-	};
+  return {
+    ...application,
+    active: false,
+    updatedAt: new Date(),
+  };
 }
 
 /**
  * Check if this is a user-facing application.
  */
 export function isApplication(app: Application): boolean {
-	return app.type === ApplicationType.APPLICATION;
+  return app.type === ApplicationType.APPLICATION;
 }
 
 /**
  * Check if this is a third-party integration.
  */
 export function isIntegration(app: Application): boolean {
-	return app.type === ApplicationType.INTEGRATION;
+  return app.type === ApplicationType.INTEGRATION;
 }

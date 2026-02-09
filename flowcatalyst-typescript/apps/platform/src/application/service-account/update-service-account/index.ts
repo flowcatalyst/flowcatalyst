@@ -3,4 +3,7 @@
  */
 
 export type { UpdateServiceAccountCommand } from './command.js';
-export { createUpdateServiceAccountUseCase, type UpdateServiceAccountUseCaseDeps } from './use-case.js';
+export {
+  createUpdateServiceAccountUseCase,
+  type UpdateServiceAccountUseCaseDeps,
+} from './use-case.js';

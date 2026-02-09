@@ -49,8 +49,8 @@ onMounted(async () => {
 function searchAppCodes(event: { query: string }) {
   const query = event.query.toLowerCase();
   filteredAppCodes.value = applications.value
-    .map(app => app.code)
-    .filter(code => code.toLowerCase().includes(query));
+    .map((app) => app.code)
+    .filter((code) => code.toLowerCase().includes(query));
 }
 
 // Validation
@@ -90,7 +90,12 @@ async function onSubmit() {
       description: description.value || undefined,
       clientScoped: clientScoped.value,
     });
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Event type created', life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Event type created',
+      life: 3000,
+    });
     router.push(`/event-types/${eventType.id}`);
   } catch (e) {
     errorMessage.value = e instanceof Error ? e.message : 'Failed to create event type';
@@ -114,9 +119,7 @@ async function onSubmit() {
         <!-- Code Builder -->
         <section class="form-section">
           <h3 class="section-title">Event Type Code</h3>
-          <p class="section-description">
-            Format: <code>app:subdomain:aggregate:event</code>
-          </p>
+          <p class="section-description">Format: <code>app:subdomain:aggregate:event</code></p>
 
           <div v-if="loadingApps" class="loading-apps">
             <ProgressSpinner strokeWidth="4" style="width: 24px; height: 24px" />
@@ -221,8 +224,8 @@ async function onSubmit() {
               <label for="clientScoped" class="toggle-label">Client Scoped</label>
             </div>
             <small class="field-hint">
-              Enable if events of this type are specific to individual clients.
-              Client-scoped event types can only be used with client-scoped subscriptions.
+              Enable if events of this type are specific to individual clients. Client-scoped event
+              types can only be used with client-scoped subscriptions.
             </small>
           </div>
         </section>

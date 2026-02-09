@@ -42,50 +42,53 @@
 
 // Error types
 export {
-	UseCaseError,
-	type UseCaseErrorBase,
-	type ValidationError,
-	type NotFoundError,
-	type BusinessRuleViolation,
-	type ConcurrencyError,
+  UseCaseError,
+  type UseCaseErrorBase,
+  type ValidationError,
+  type NotFoundError,
+  type BusinessRuleViolation,
+  type ConcurrencyError,
 } from './errors.js';
 
 // Result type
 export {
-	Result,
-	isSuccess,
-	isFailure,
-	type Success,
-	type Failure,
-	// Internal exports for UnitOfWork implementations
-	RESULT_SUCCESS_TOKEN,
-	type ResultSuccessToken,
+  Result,
+  isSuccess,
+  isFailure,
+  type Success,
+  type Failure,
+  // Internal exports for UnitOfWork implementations
+  RESULT_SUCCESS_TOKEN,
+  type ResultSuccessToken,
 } from './result.js';
 
 // Tracing context
 export { TracingContext, type TracingContextData } from './tracing-context.js';
 
 // Execution context
-export { ExecutionContext, type ExecutionContext as ExecutionContextType } from './execution-context.js';
+export {
+  ExecutionContext,
+  type ExecutionContext as ExecutionContextType,
+} from './execution-context.js';
 
 // Audit context
 export {
-	AuditContext,
-	SYSTEM_PRINCIPAL_CODE,
-	SYSTEM_PRINCIPAL_NAME,
-	type AuditContextData,
-	type PrincipalInfo,
-	type PrincipalType,
-	type UserScope,
+  AuditContext,
+  SYSTEM_PRINCIPAL_CODE,
+  SYSTEM_PRINCIPAL_NAME,
+  type AuditContextData,
+  type PrincipalInfo,
+  type PrincipalType,
+  type UserScope,
 } from './audit-context.js';
 
 // Domain events
 export {
-	DomainEvent,
-	BaseDomainEvent,
-	type DomainEvent as DomainEventType,
-	type DomainEventBase,
-	type DomainEventMetadata,
+  DomainEvent,
+  BaseDomainEvent,
+  type DomainEvent as DomainEventType,
+  type DomainEventBase,
+  type DomainEventMetadata,
 } from './domain-event.js';
 
 // Audit log

@@ -13,29 +13,29 @@ import type postgres from 'postgres';
  * Contains the database instance scoped to the current transaction.
  */
 export interface TransactionContext {
-	/** DrizzleORM database instance scoped to this transaction */
-	readonly db: PostgresJsDatabase;
+  /** DrizzleORM database instance scoped to this transaction */
+  readonly db: PostgresJsDatabase;
 }
 
 /**
  * Transaction manager for executing atomic operations.
  */
 export interface TransactionManager {
-	/**
-	 * Execute a function within a database transaction.
-	 * If the function throws, the transaction is rolled back.
-	 * If the function returns, the transaction is committed.
-	 *
-	 * @param fn - The function to execute within the transaction
-	 * @returns The result of the function
-	 * @throws Re-throws any error from the function after rolling back
-	 */
-	inTransaction<T>(fn: (tx: TransactionContext) => Promise<T>): Promise<T>;
+  /**
+   * Execute a function within a database transaction.
+   * If the function throws, the transaction is rolled back.
+   * If the function returns, the transaction is committed.
+   *
+   * @param fn - The function to execute within the transaction
+   * @returns The result of the function
+   * @throws Re-throws any error from the function after rolling back
+   */
+  inTransaction<T>(fn: (tx: TransactionContext) => Promise<T>): Promise<T>;
 
-	/**
-	 * Get the database instance (for non-transactional queries).
-	 */
-	readonly db: PostgresJsDatabase;
+  /**
+   * Get the database instance (for non-transactional queries).
+   */
+  readonly db: PostgresJsDatabase;
 }
 
 /**
@@ -45,14 +45,14 @@ export interface TransactionManager {
  * @returns Transaction manager
  */
 export function createTransactionManager(db: PostgresJsDatabase): TransactionManager {
-	return {
-		db,
-		async inTransaction<T>(fn: (tx: TransactionContext) => Promise<T>): Promise<T> {
-			return db.transaction(async (tx) => {
-				return fn({ db: tx as unknown as PostgresJsDatabase });
-			});
-		},
-	};
+  return {
+    db,
+    async inTransaction<T>(fn: (tx: TransactionContext) => Promise<T>): Promise<T> {
+      return db.transaction(async (tx) => {
+        return fn({ db: tx as unknown as PostgresJsDatabase });
+      });
+    },
+  };
 }
 
 /**
@@ -62,6 +62,9 @@ export function createTransactionManager(db: PostgresJsDatabase): TransactionMan
  * @param tx - Optional transaction context
  * @returns The database instance to use
  */
-export function resolveDb(defaultDb: PostgresJsDatabase, tx?: TransactionContext): PostgresJsDatabase {
-	return tx?.db ?? defaultDb;
+export function resolveDb(
+  defaultDb: PostgresJsDatabase,
+  tx?: TransactionContext,
+): PostgresJsDatabase {
+  return tx?.db ?? defaultDb;
 }

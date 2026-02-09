@@ -3,4 +3,7 @@
  */
 
 export type { AssignServiceAccountRolesCommand } from './command.js';
-export { createAssignServiceAccountRolesUseCase, type AssignServiceAccountRolesUseCaseDeps } from './use-case.js';
+export {
+  createAssignServiceAccountRolesUseCase,
+  type AssignServiceAccountRolesUseCaseDeps,
+} from './use-case.js';

@@ -38,7 +38,7 @@ export class ClientsResource {
       sdk.listClients({
         client: httpClient,
         headers,
-      })
+      }),
     );
   }
 
@@ -51,7 +51,7 @@ export class ClientsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -64,7 +64,7 @@ export class ClientsResource {
         client: httpClient,
         headers,
         path: { identifier },
-      })
+      }),
     );
   }
 
@@ -77,7 +77,7 @@ export class ClientsResource {
         client: httpClient,
         headers,
         body: data,
-      })
+      }),
     );
   }
 
@@ -91,7 +91,7 @@ export class ClientsResource {
         headers,
         path: { id },
         body: data,
-      })
+      }),
     );
   }
 
@@ -104,7 +104,7 @@ export class ClientsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -118,7 +118,7 @@ export class ClientsResource {
         headers,
         path: { id },
         body: { reason },
-      })
+      }),
     );
   }
 
@@ -132,7 +132,7 @@ export class ClientsResource {
         headers,
         path: { id },
         body: { reason },
-      })
+      }),
     );
   }
 
@@ -145,47 +145,56 @@ export class ClientsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
   /**
    * Update the applications configured for a client.
    */
-  updateApplications(id: string, data: UpdateClientApplicationsRequest): ResultAsync<ClientApplicationsResponse, SdkError> {
+  updateApplications(
+    id: string,
+    data: UpdateClientApplicationsRequest,
+  ): ResultAsync<ClientApplicationsResponse, SdkError> {
     return this.client.request<ClientApplicationsResponse>((httpClient, headers) =>
       sdk.updateClientApplications({
         client: httpClient,
         headers,
         path: { id },
         body: data,
-      })
+      }),
     );
   }
 
   /**
    * Enable an application for a client.
    */
-  enableApplication(clientId: string, applicationId: string): ResultAsync<StatusResponse, SdkError> {
+  enableApplication(
+    clientId: string,
+    applicationId: string,
+  ): ResultAsync<StatusResponse, SdkError> {
     return this.client.request<StatusResponse>((httpClient, headers) =>
       sdk.enableClientApplication({
         client: httpClient,
         headers,
         path: { id: clientId, applicationId },
-      })
+      }),
     );
   }
 
   /**
    * Disable an application for a client.
    */
-  disableApplication(clientId: string, applicationId: string): ResultAsync<StatusResponse, SdkError> {
+  disableApplication(
+    clientId: string,
+    applicationId: string,
+  ): ResultAsync<StatusResponse, SdkError> {
     return this.client.request<StatusResponse>((httpClient, headers) =>
       sdk.disableClientApplication({
         client: httpClient,
         headers,
         path: { id: clientId, applicationId },
-      })
+      }),
     );
   }
 }

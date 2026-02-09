@@ -42,10 +42,11 @@ const hasActiveFilters = computed(() => {
 const filteredRoles = computed(() => {
   if (!searchQuery.value) return roles.value;
   const query = searchQuery.value.toLowerCase();
-  return roles.value.filter(role =>
-    role.name.toLowerCase().includes(query) ||
-    role.displayName?.toLowerCase().includes(query) ||
-    role.description?.toLowerCase().includes(query)
+  return roles.value.filter(
+    (role) =>
+      role.name.toLowerCase().includes(query) ||
+      role.displayName?.toLowerCase().includes(query) ||
+      role.description?.toLowerCase().includes(query),
   );
 });
 
@@ -94,7 +95,7 @@ async function loadRoles() {
       severity: 'error',
       summary: 'Error',
       detail: e instanceof Error ? e.message : 'Failed to load roles',
-      life: 5000
+      life: 5000,
     });
   } finally {
     loading.value = false;
@@ -154,7 +155,7 @@ async function createRole() {
       severity: 'success',
       summary: 'Success',
       detail: 'Role created successfully',
-      life: 3000
+      life: 3000,
     });
     showCreateDialog.value = false;
     loadRoles();
@@ -191,7 +192,7 @@ async function updateRole() {
       severity: 'success',
       summary: 'Success',
       detail: 'Role updated successfully',
-      life: 3000
+      life: 3000,
     });
     showEditDialog.value = false;
     loadRoles();
@@ -213,7 +214,7 @@ async function deleteRole(role: Role) {
       severity: 'success',
       summary: 'Success',
       detail: 'Role deleted successfully',
-      life: 3000
+      life: 3000,
     });
     loadRoles();
   } catch (e) {
@@ -221,26 +222,34 @@ async function deleteRole(role: Role) {
       severity: 'error',
       summary: 'Error',
       detail: e instanceof Error ? e.message : 'Failed to delete role',
-      life: 5000
+      life: 5000,
     });
   }
 }
 
 function getSourceSeverity(source: RoleSource) {
   switch (source) {
-    case 'CODE': return 'info';
-    case 'DATABASE': return 'success';
-    case 'SDK': return 'warn';
-    default: return 'secondary';
+    case 'CODE':
+      return 'info';
+    case 'DATABASE':
+      return 'success';
+    case 'SDK':
+      return 'warn';
+    default:
+      return 'secondary';
   }
 }
 
 function getSourceLabel(source: RoleSource) {
   switch (source) {
-    case 'CODE': return 'Code';
-    case 'DATABASE': return 'Admin';
-    case 'SDK': return 'SDK';
-    default: return source;
+    case 'CODE':
+      return 'Code';
+    case 'DATABASE':
+      return 'Admin';
+    case 'SDK':
+      return 'SDK';
+    default:
+      return source;
   }
 }
 </script>
@@ -252,11 +261,7 @@ function getSourceLabel(source: RoleSource) {
         <h1 class="page-title">Roles</h1>
         <p class="page-subtitle">Manage roles and their permissions</p>
       </div>
-      <Button
-        label="Create Role"
-        icon="pi pi-plus"
-        @click="openCreateDialog"
-      />
+      <Button label="Create Role" icon="pi pi-plus" @click="openCreateDialog" />
     </header>
 
     <!-- Filters -->
@@ -266,11 +271,7 @@ function getSourceLabel(source: RoleSource) {
           <label>Search</label>
           <span class="p-input-icon-left">
             <i class="pi pi-search" />
-            <InputText
-              v-model="searchQuery"
-              placeholder="Search roles..."
-              class="filter-input"
-            />
+            <InputText v-model="searchQuery" placeholder="Search roles..." class="filter-input" />
           </span>
         </div>
 
@@ -367,10 +368,7 @@ function getSourceLabel(source: RoleSource) {
 
         <Column header="Source" style="width: 10%">
           <template #body="{ data }">
-            <Tag
-              :value="getSourceLabel(data.source)"
-              :severity="getSourceSeverity(data.source)"
-            />
+            <Tag :value="getSourceLabel(data.source)" :severity="getSourceSeverity(data.source)" />
           </template>
         </Column>
 
@@ -411,12 +409,7 @@ function getSourceLabel(source: RoleSource) {
           <div class="empty-message">
             <i class="pi pi-inbox"></i>
             <span>No roles found</span>
-            <Button
-              v-if="hasActiveFilters"
-              label="Clear filters"
-              link
-              @click="clearFilters"
-            />
+            <Button v-if="hasActiveFilters" label="Clear filters" link @click="clearFilters" />
           </div>
         </template>
       </DataTable>
@@ -511,11 +504,7 @@ function getSourceLabel(source: RoleSource) {
         <div class="dialog-form">
           <div class="form-field">
             <label>Role Name</label>
-            <InputText
-              :model-value="editingRole?.name"
-              disabled
-              class="full-width"
-            />
+            <InputText :model-value="editingRole?.name" disabled class="full-width" />
           </div>
 
           <div class="form-field">
@@ -551,12 +540,7 @@ function getSourceLabel(source: RoleSource) {
           outlined
           @click="showEditDialog = false"
         />
-        <Button
-          label="Save Changes"
-          icon="pi pi-check"
-          :loading="updating"
-          @click="updateRole"
-        />
+        <Button label="Save Changes" icon="pi pi-check" :loading="updating" @click="updateRole" />
       </template>
     </Dialog>
   </div>

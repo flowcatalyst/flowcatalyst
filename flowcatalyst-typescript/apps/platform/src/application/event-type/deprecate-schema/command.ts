@@ -5,6 +5,6 @@
 import type { Command } from '@flowcatalyst/application';
 
 export interface DeprecateSchemaCommand extends Command {
-	readonly eventTypeId: string;
-	readonly version: string;
+  readonly eventTypeId: string;
+  readonly version: string;
 }

@@ -62,10 +62,10 @@ export async function fetchAuditLogById(id: string): Promise<AuditLogDetail> {
  */
 export async function fetchAuditLogsForEntity(
   entityType: string,
-  entityId: string
+  entityId: string,
 ): Promise<AuditLogListResponse> {
   return apiFetch<AuditLogListResponse>(
-    `/admin/audit-logs/entity/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}`
+    `/admin/audit-logs/entity/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}`,
   );
 }
 

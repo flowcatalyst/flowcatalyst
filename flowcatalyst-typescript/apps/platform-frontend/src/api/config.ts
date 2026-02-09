@@ -44,7 +44,13 @@ export const configApi = {
   },
 
   // Get a config value
-  getConfig(appCode: string, section: string, property: string, scope = 'GLOBAL', clientId?: string): Promise<PlatformConfig> {
+  getConfig(
+    appCode: string,
+    section: string,
+    property: string,
+    scope = 'GLOBAL',
+    clientId?: string,
+  ): Promise<PlatformConfig> {
     let url = `/admin/config/${appCode}/${section}/${property}?scope=${scope}`;
     if (clientId) url += `&clientId=${encodeURIComponent(clientId)}`;
     return apiFetch(url);
@@ -57,7 +63,7 @@ export const configApi = {
     property: string,
     data: SetConfigRequest,
     scope = 'GLOBAL',
-    clientId?: string
+    clientId?: string,
   ): Promise<PlatformConfig> {
     let url = `/admin/config/${appCode}/${section}/${property}?scope=${scope}`;
     if (clientId) url += `&clientId=${encodeURIComponent(clientId)}`;
@@ -68,7 +74,13 @@ export const configApi = {
   },
 
   // Delete a config
-  deleteConfig(appCode: string, section: string, property: string, scope = 'GLOBAL', clientId?: string): Promise<void> {
+  deleteConfig(
+    appCode: string,
+    section: string,
+    property: string,
+    scope = 'GLOBAL',
+    clientId?: string,
+  ): Promise<void> {
     let url = `/admin/config/${appCode}/${section}/${property}?scope=${scope}`;
     if (clientId) url += `&clientId=${encodeURIComponent(clientId)}`;
     return apiFetch(url, { method: 'DELETE' });

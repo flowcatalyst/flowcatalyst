@@ -4,7 +4,7 @@
 
 export type { CreateInternalAuthConfigCommand, CreateOidcAuthConfigCommand } from './command.js';
 export {
-	createCreateInternalAuthConfigUseCase,
-	createCreateOidcAuthConfigUseCase,
-	type CreateAuthConfigUseCaseDeps,
+  createCreateInternalAuthConfigUseCase,
+  createCreateOidcAuthConfigUseCase,
+  type CreateAuthConfigUseCaseDeps,
 } from './use-case.js';

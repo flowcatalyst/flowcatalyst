@@ -3,4 +3,7 @@
  */
 
 export type { RegenerateAuthTokenCommand } from './command.js';
-export { createRegenerateAuthTokenUseCase, type RegenerateAuthTokenUseCaseDeps } from './use-case.js';
+export {
+  createRegenerateAuthTokenUseCase,
+  type RegenerateAuthTokenUseCaseDeps,
+} from './use-case.js';

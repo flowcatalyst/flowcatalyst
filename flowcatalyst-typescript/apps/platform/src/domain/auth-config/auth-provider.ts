@@ -12,6 +12,6 @@
 export type AuthProvider = 'INTERNAL' | 'OIDC';
 
 export const AuthProvider = {
-	INTERNAL: 'INTERNAL' as const,
-	OIDC: 'OIDC' as const,
+  INTERNAL: 'INTERNAL' as const,
+  OIDC: 'OIDC' as const,
 } as const;

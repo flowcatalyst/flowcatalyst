@@ -13,7 +13,7 @@ export type ApplicationStatus = 'ACTIVE' | 'INACTIVE' | 'DEPRECATED';
  * Application status enum for use in code.
  */
 export const ApplicationStatus = {
-	ACTIVE: 'ACTIVE' as const,
-	INACTIVE: 'INACTIVE' as const,
-	DEPRECATED: 'DEPRECATED' as const,
+  ACTIVE: 'ACTIVE' as const,
+  INACTIVE: 'INACTIVE' as const,
+  DEPRECATED: 'DEPRECATED' as const,
 } as const;

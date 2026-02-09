@@ -17,7 +17,7 @@ import type { PermissionDefinition } from '../permission-definition.js';
  * All platform permissions.
  */
 export const ALL_PLATFORM_PERMISSIONS: readonly PermissionDefinition[] = [
-	...IAM_PERMISSIONS,
-	...ADMIN_PERMISSIONS,
-	...AUTH_PERMISSIONS,
+  ...IAM_PERMISSIONS,
+  ...ADMIN_PERMISSIONS,
+  ...AUTH_PERMISSIONS,
 ];

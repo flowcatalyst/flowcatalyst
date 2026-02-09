@@ -3,4 +3,7 @@
  */
 
 export type { RegenerateSigningSecretCommand } from './command.js';
-export { createRegenerateSigningSecretUseCase, type RegenerateSigningSecretUseCaseDeps } from './use-case.js';
+export {
+  createRegenerateSigningSecretUseCase,
+  type RegenerateSigningSecretUseCaseDeps,
+} from './use-case.js';

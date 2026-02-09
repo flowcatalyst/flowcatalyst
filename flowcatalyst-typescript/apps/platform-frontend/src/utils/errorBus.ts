@@ -31,7 +31,7 @@ export function onNotification(handler: NotificationHandler): () => void {
  * Emit a notification to all subscribers.
  */
 export function notify(notification: Notification): void {
-  handlers.forEach(handler => handler(notification));
+  handlers.forEach((handler) => handler(notification));
 }
 
 /**

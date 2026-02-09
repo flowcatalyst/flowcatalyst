@@ -9,6 +9,6 @@ import type { Command } from '@flowcatalyst/application';
  * The new plaintext token is returned once in the event data.
  */
 export interface RegenerateAuthTokenCommand extends Command {
-	/** Principal ID of the service account */
-	readonly serviceAccountId: string;
+  /** Principal ID of the service account */
+  readonly serviceAccountId: string;
 }

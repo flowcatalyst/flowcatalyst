@@ -36,9 +36,8 @@ const domainCheckComplete = computed(() => {
 
 // Determine if user needs internal authentication (password)
 const requiresPassword = computed(() => {
-  // If we haven't checked the domain yet, assume internal auth (show password fields)
-  if (!domainCheck.value) return true;
-  // Only INTERNAL auth provider requires a password
+  // Don't show password fields until domain check confirms internal auth
+  if (!domainCheck.value) return false;
   return domainCheck.value.authProvider === 'INTERNAL';
 });
 

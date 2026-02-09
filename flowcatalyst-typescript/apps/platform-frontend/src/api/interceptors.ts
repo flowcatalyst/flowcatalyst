@@ -30,7 +30,7 @@ function isRetryableError(error: unknown): boolean {
  * Sleep for a given number of milliseconds.
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -110,7 +110,9 @@ export function setupApiInterceptors(): void {
       // Check if we should retry
       if (isRetryableError(response) && currentRetry < MAX_RETRIES) {
         const delay = getBackoffDelay(currentRetry);
-        console.log(`Retrying request (attempt ${currentRetry + 1}/${MAX_RETRIES}) after ${delay}ms`);
+        console.log(
+          `Retrying request (attempt ${currentRetry + 1}/${MAX_RETRIES}) after ${delay}ms`,
+        );
 
         if (request) {
           retryCount.set(request, currentRetry + 1);
@@ -143,7 +145,7 @@ export function setupApiInterceptors(): void {
 export async function fetchWithRetry(
   input: RequestInfo | URL,
   init?: RequestInit,
-  options?: { maxRetries?: number; showErrorToast?: boolean }
+  options?: { maxRetries?: number; showErrorToast?: boolean },
 ): Promise<Response> {
   const maxRetries = options?.maxRetries ?? MAX_RETRIES;
   const showErrorToast = options?.showErrorToast ?? true;
@@ -172,7 +174,9 @@ export async function fetchWithRetry(
       // Network error (fetch threw)
       if (isRetryableError(error) && attempt < maxRetries) {
         const delay = getBackoffDelay(attempt);
-        console.log(`Retrying request after network error (attempt ${attempt + 1}/${maxRetries}) after ${delay}ms`);
+        console.log(
+          `Retrying request after network error (attempt ${attempt + 1}/${maxRetries}) after ${delay}ms`,
+        );
         await sleep(delay);
         continue;
       }

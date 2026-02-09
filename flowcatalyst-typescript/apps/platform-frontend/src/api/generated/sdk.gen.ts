@@ -5,7 +5,7 @@ import {
   type TDataShape,
   type Client,
   urlSearchParamsBodySerializer,
-} from "@hey-api/client-fetch";
+} from '@hey-api/client-fetch';
 import type {
   GetWellKnownJwksJsonData,
   GetWellKnownJwksJsonResponse,
@@ -467,8 +467,8 @@ import type {
   PutBffRolesByRoleNameData,
   GetOauthAuthorizeData,
   PostOauthTokenData,
-} from "./types.gen";
-import { client as _heyApiClient } from "./client.gen";
+} from './types.gen';
+import { client as _heyApiClient } from './client.gen';
 
 export type Options<
   TData extends TDataShape = TDataShape,
@@ -498,7 +498,7 @@ export const getWellKnownJwksJson = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/.well-known/jwks.json",
+    url: '/.well-known/jwks.json',
     ...options,
   });
 };
@@ -506,9 +506,7 @@ export const getWellKnownJwksJson = <ThrowOnError extends boolean = false>(
 /**
  * Get OpenID Connect discovery document
  */
-export const getWellKnownOpenidConfiguration = <
-  ThrowOnError extends boolean = false,
->(
+export const getWellKnownOpenidConfiguration = <ThrowOnError extends boolean = false>(
   options?: Options<GetWellKnownOpenidConfigurationData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
@@ -516,7 +514,7 @@ export const getWellKnownOpenidConfiguration = <
     unknown,
     ThrowOnError
   >({
-    url: "/.well-known/openid-configuration",
+    url: '/.well-known/openid-configuration',
     ...options,
   });
 };
@@ -532,7 +530,7 @@ export const listApplications = <ThrowOnError extends boolean = false>(
     ListApplicationsError,
     ThrowOnError
   >({
-    url: "/api/admin/applications",
+    url: '/api/admin/applications',
     ...options,
   });
 };
@@ -548,10 +546,10 @@ export const createApplication = <ThrowOnError extends boolean = false>(
     CreateApplicationError,
     ThrowOnError
   >({
-    url: "/api/admin/applications",
+    url: '/api/admin/applications',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -568,7 +566,7 @@ export const getApplicationByCode = <ThrowOnError extends boolean = false>(
     GetApplicationByCodeError,
     ThrowOnError
   >({
-    url: "/api/admin/applications/by-code/{code}",
+    url: '/api/admin/applications/by-code/{code}',
     ...options,
   });
 };
@@ -585,7 +583,7 @@ export const deleteApplication = <ThrowOnError extends boolean = false>(
     DeleteApplicationError,
     ThrowOnError
   >({
-    url: "/api/admin/applications/{id}",
+    url: '/api/admin/applications/{id}',
     ...options,
   });
 };
@@ -601,7 +599,7 @@ export const getApplication = <ThrowOnError extends boolean = false>(
     GetApplicationError,
     ThrowOnError
   >({
-    url: "/api/admin/applications/{id}",
+    url: '/api/admin/applications/{id}',
     ...options,
   });
 };
@@ -617,10 +615,10 @@ export const updateApplication = <ThrowOnError extends boolean = false>(
     UpdateApplicationError,
     ThrowOnError
   >({
-    url: "/api/admin/applications/{id}",
+    url: '/api/admin/applications/{id}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -637,7 +635,7 @@ export const activateApplication = <ThrowOnError extends boolean = false>(
     ActivateApplicationError,
     ThrowOnError
   >({
-    url: "/api/admin/applications/{id}/activate",
+    url: '/api/admin/applications/{id}/activate',
     ...options,
   });
 };
@@ -645,9 +643,7 @@ export const activateApplication = <ThrowOnError extends boolean = false>(
 /**
  * Get client configurations for an application
  */
-export const getApplicationClientConfigs = <
-  ThrowOnError extends boolean = false,
->(
+export const getApplicationClientConfigs = <ThrowOnError extends boolean = false>(
   options: Options<GetApplicationClientConfigsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
@@ -655,7 +651,7 @@ export const getApplicationClientConfigs = <
     GetApplicationClientConfigsError,
     ThrowOnError
   >({
-    url: "/api/admin/applications/{id}/clients",
+    url: '/api/admin/applications/{id}/clients',
     ...options,
   });
 };
@@ -663,9 +659,7 @@ export const getApplicationClientConfigs = <
 /**
  * Configure application for a specific client
  */
-export const configureApplicationForClient = <
-  ThrowOnError extends boolean = false,
->(
+export const configureApplicationForClient = <ThrowOnError extends boolean = false>(
   options: Options<ConfigureApplicationForClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<
@@ -673,10 +667,10 @@ export const configureApplicationForClient = <
     ConfigureApplicationForClientError,
     ThrowOnError
   >({
-    url: "/api/admin/applications/{id}/clients/{clientId}",
+    url: '/api/admin/applications/{id}/clients/{clientId}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -685,9 +679,7 @@ export const configureApplicationForClient = <
 /**
  * Disable application for a client
  */
-export const disableApplicationForClient = <
-  ThrowOnError extends boolean = false,
->(
+export const disableApplicationForClient = <ThrowOnError extends boolean = false>(
   options: Options<DisableApplicationForClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
@@ -695,7 +687,7 @@ export const disableApplicationForClient = <
     DisableApplicationForClientError,
     ThrowOnError
   >({
-    url: "/api/admin/applications/{id}/clients/{clientId}/disable",
+    url: '/api/admin/applications/{id}/clients/{clientId}/disable',
     ...options,
   });
 };
@@ -703,9 +695,7 @@ export const disableApplicationForClient = <
 /**
  * Enable application for a client
  */
-export const enableApplicationForClient = <
-  ThrowOnError extends boolean = false,
->(
+export const enableApplicationForClient = <ThrowOnError extends boolean = false>(
   options: Options<EnableApplicationForClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
@@ -713,7 +703,7 @@ export const enableApplicationForClient = <
     EnableApplicationForClientError,
     ThrowOnError
   >({
-    url: "/api/admin/applications/{id}/clients/{clientId}/enable",
+    url: '/api/admin/applications/{id}/clients/{clientId}/enable',
     ...options,
   });
 };
@@ -729,7 +719,7 @@ export const deactivateApplication = <ThrowOnError extends boolean = false>(
     DeactivateApplicationError,
     ThrowOnError
   >({
-    url: "/api/admin/applications/{id}/deactivate",
+    url: '/api/admin/applications/{id}/deactivate',
     ...options,
   });
 };
@@ -738,9 +728,7 @@ export const deactivateApplication = <ThrowOnError extends boolean = false>(
  * Provision a service account for an existing application
  * Creates a service account and OAuth client for an application that doesn't have one. The client secret is only returned once and cannot be retrieved later.
  */
-export const provisionApplicationServiceAccount = <
-  ThrowOnError extends boolean = false,
->(
+export const provisionApplicationServiceAccount = <ThrowOnError extends boolean = false>(
   options: Options<ProvisionApplicationServiceAccountData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
@@ -748,7 +736,7 @@ export const provisionApplicationServiceAccount = <
     ProvisionApplicationServiceAccountError,
     ThrowOnError
   >({
-    url: "/api/admin/applications/{id}/provision-service-account",
+    url: '/api/admin/applications/{id}/provision-service-account',
     ...options,
   });
 };
@@ -764,7 +752,7 @@ export const getApplicationRoles = <ThrowOnError extends boolean = false>(
     GetApplicationRolesError,
     ThrowOnError
   >({
-    url: "/api/admin/applications/{id}/roles",
+    url: '/api/admin/applications/{id}/roles',
     ...options,
   });
 };
@@ -781,7 +769,7 @@ export const listAuditLogs = <ThrowOnError extends boolean = false>(
     ListAuditLogsError,
     ThrowOnError
   >({
-    url: "/api/admin/audit-logs",
+    url: '/api/admin/audit-logs',
     ...options,
   });
 };
@@ -798,7 +786,7 @@ export const getAuditLogEntityTypes = <ThrowOnError extends boolean = false>(
     GetAuditLogEntityTypesError,
     ThrowOnError
   >({
-    url: "/api/admin/audit-logs/entity-types",
+    url: '/api/admin/audit-logs/entity-types',
     ...options,
   });
 };
@@ -815,7 +803,7 @@ export const getEntityAuditLogs = <ThrowOnError extends boolean = false>(
     GetEntityAuditLogsError,
     ThrowOnError
   >({
-    url: "/api/admin/audit-logs/entity/{entityType}/{entityId}",
+    url: '/api/admin/audit-logs/entity/{entityType}/{entityId}',
     ...options,
   });
 };
@@ -832,7 +820,7 @@ export const getAuditLogOperations = <ThrowOnError extends boolean = false>(
     GetAuditLogOperationsError,
     ThrowOnError
   >({
-    url: "/api/admin/audit-logs/operations",
+    url: '/api/admin/audit-logs/operations',
     ...options,
   });
 };
@@ -843,14 +831,12 @@ export const getAuditLogOperations = <ThrowOnError extends boolean = false>(
 export const getAuditLog = <ThrowOnError extends boolean = false>(
   options: Options<GetAuditLogData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    GetAuditLogResponse,
-    GetAuditLogError,
-    ThrowOnError
-  >({
-    url: "/api/admin/audit-logs/{id}",
-    ...options,
-  });
+  return (options.client ?? _heyApiClient).get<GetAuditLogResponse, GetAuditLogError, ThrowOnError>(
+    {
+      url: '/api/admin/audit-logs/{id}',
+      ...options,
+    },
+  );
 };
 
 /**
@@ -865,7 +851,7 @@ export const listClients = <ThrowOnError extends boolean = false>(
     ListClientsError,
     ThrowOnError
   >({
-    url: "/api/admin/clients",
+    url: '/api/admin/clients',
     ...options,
   });
 };
@@ -881,10 +867,10 @@ export const createClient = <ThrowOnError extends boolean = false>(
     CreateClientError,
     ThrowOnError
   >({
-    url: "/api/admin/clients",
+    url: '/api/admin/clients',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -901,7 +887,7 @@ export const getClientByIdentifier = <ThrowOnError extends boolean = false>(
     GetClientByIdentifierError,
     ThrowOnError
   >({
-    url: "/api/admin/clients/by-identifier/{identifier}",
+    url: '/api/admin/clients/by-identifier/{identifier}',
     ...options,
   });
 };
@@ -918,7 +904,7 @@ export const searchClients = <ThrowOnError extends boolean = false>(
     SearchClientsError,
     ThrowOnError
   >({
-    url: "/api/admin/clients/search",
+    url: '/api/admin/clients/search',
     ...options,
   });
 };
@@ -929,12 +915,8 @@ export const searchClients = <ThrowOnError extends boolean = false>(
 export const getClient = <ThrowOnError extends boolean = false>(
   options: Options<GetClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    GetClientResponse,
-    GetClientError,
-    ThrowOnError
-  >({
-    url: "/api/admin/clients/{id}",
+  return (options.client ?? _heyApiClient).get<GetClientResponse, GetClientError, ThrowOnError>({
+    url: '/api/admin/clients/{id}',
     ...options,
   });
 };
@@ -950,10 +932,10 @@ export const updateClient = <ThrowOnError extends boolean = false>(
     UpdateClientError,
     ThrowOnError
   >({
-    url: "/api/admin/clients/{id}",
+    url: '/api/admin/clients/{id}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -970,7 +952,7 @@ export const activateClient = <ThrowOnError extends boolean = false>(
     ActivateClientError,
     ThrowOnError
   >({
-    url: "/api/admin/clients/{id}/activate",
+    url: '/api/admin/clients/{id}/activate',
     ...options,
   });
 };
@@ -987,7 +969,7 @@ export const getClientApplications = <ThrowOnError extends boolean = false>(
     GetClientApplicationsError,
     ThrowOnError
   >({
-    url: "/api/admin/clients/{id}/applications",
+    url: '/api/admin/clients/{id}/applications',
     ...options,
   });
 };
@@ -1004,10 +986,10 @@ export const updateClientApplications = <ThrowOnError extends boolean = false>(
     UpdateClientApplicationsError,
     ThrowOnError
   >({
-    url: "/api/admin/clients/{id}/applications",
+    url: '/api/admin/clients/{id}/applications',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1024,7 +1006,7 @@ export const disableClientApplication = <ThrowOnError extends boolean = false>(
     DisableClientApplicationError,
     ThrowOnError
   >({
-    url: "/api/admin/clients/{id}/applications/{applicationId}/disable",
+    url: '/api/admin/clients/{id}/applications/{applicationId}/disable',
     ...options,
   });
 };
@@ -1040,7 +1022,7 @@ export const enableClientApplication = <ThrowOnError extends boolean = false>(
     EnableClientApplicationError,
     ThrowOnError
   >({
-    url: "/api/admin/clients/{id}/applications/{applicationId}/enable",
+    url: '/api/admin/clients/{id}/applications/{applicationId}/enable',
     ...options,
   });
 };
@@ -1056,10 +1038,10 @@ export const deactivateClient = <ThrowOnError extends boolean = false>(
     DeactivateClientError,
     ThrowOnError
   >({
-    url: "/api/admin/clients/{id}/deactivate",
+    url: '/api/admin/clients/{id}/deactivate',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1076,10 +1058,10 @@ export const addClientAuditNote = <ThrowOnError extends boolean = false>(
     AddClientAuditNoteError,
     ThrowOnError
   >({
-    url: "/api/admin/clients/{id}/notes",
+    url: '/api/admin/clients/{id}/notes',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1096,10 +1078,10 @@ export const suspendClient = <ThrowOnError extends boolean = false>(
     SuspendClientError,
     ThrowOnError
   >({
-    url: "/api/admin/clients/{id}/suspend",
+    url: '/api/admin/clients/{id}/suspend',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1108,13 +1090,11 @@ export const suspendClient = <ThrowOnError extends boolean = false>(
 /**
  * List access grants for an application
  */
-export const getApiAdminConfigAccessByAppCode = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiAdminConfigAccessByAppCode = <ThrowOnError extends boolean = false>(
   options: Options<GetApiAdminConfigAccessByAppCodeData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/config-access/{appCode}",
+    url: '/api/admin/config-access/{appCode}',
     ...options,
   });
 };
@@ -1122,40 +1102,31 @@ export const getApiAdminConfigAccessByAppCode = <
 /**
  * Grant config access to a role
  */
-export const postApiAdminConfigAccessByAppCode = <
-  ThrowOnError extends boolean = false,
->(
+export const postApiAdminConfigAccessByAppCode = <ThrowOnError extends boolean = false>(
   options: Options<PostApiAdminConfigAccessByAppCodeData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/config-access/{appCode}",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/config-access/{appCode}',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
  * Revoke config access from a role
  */
-export const deleteApiAdminConfigAccessByAppCodeByRoleCode = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    DeleteApiAdminConfigAccessByAppCodeByRoleCodeData,
-    ThrowOnError
-  >,
+export const deleteApiAdminConfigAccessByAppCodeByRoleCode = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteApiAdminConfigAccessByAppCodeByRoleCodeData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).delete<
     DeleteApiAdminConfigAccessByAppCodeByRoleCodeResponse,
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/config-access/{appCode}/{roleCode}",
+    url: '/api/admin/config-access/{appCode}/{roleCode}',
     ...options,
   });
 };
@@ -1163,19 +1134,14 @@ export const deleteApiAdminConfigAccessByAppCodeByRoleCode = <
 /**
  * Update config access for a role
  */
-export const putApiAdminConfigAccessByAppCodeByRoleCode = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    PutApiAdminConfigAccessByAppCodeByRoleCodeData,
-    ThrowOnError
-  >,
+export const putApiAdminConfigAccessByAppCodeByRoleCode = <ThrowOnError extends boolean = false>(
+  options: Options<PutApiAdminConfigAccessByAppCodeByRoleCodeData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/config-access/{appCode}/{roleCode}",
+    url: '/api/admin/config-access/{appCode}/{roleCode}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1184,13 +1150,11 @@ export const putApiAdminConfigAccessByAppCodeByRoleCode = <
 /**
  * List configs for an application
  */
-export const getApiAdminConfigByAppCode = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiAdminConfigByAppCode = <ThrowOnError extends boolean = false>(
   options: Options<GetApiAdminConfigByAppCodeData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/config/{appCode}",
+    url: '/api/admin/config/{appCode}',
     ...options,
   });
 };
@@ -1198,13 +1162,11 @@ export const getApiAdminConfigByAppCode = <
 /**
  * List configs for a section
  */
-export const getApiAdminConfigByAppCodeBySection = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiAdminConfigByAppCodeBySection = <ThrowOnError extends boolean = false>(
   options: Options<GetApiAdminConfigByAppCodeBySectionData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/config/{appCode}/{section}",
+    url: '/api/admin/config/{appCode}/{section}',
     ...options,
   });
 };
@@ -1215,17 +1177,14 @@ export const getApiAdminConfigByAppCodeBySection = <
 export const deleteApiAdminConfigByAppCodeBySectionByProperty = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<
-    DeleteApiAdminConfigByAppCodeBySectionByPropertyData,
-    ThrowOnError
-  >,
+  options: Options<DeleteApiAdminConfigByAppCodeBySectionByPropertyData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).delete<
     DeleteApiAdminConfigByAppCodeBySectionByPropertyResponse,
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/config/{appCode}/{section}/{property}",
+    url: '/api/admin/config/{appCode}/{section}/{property}',
     ...options,
   });
 };
@@ -1233,16 +1192,11 @@ export const deleteApiAdminConfigByAppCodeBySectionByProperty = <
 /**
  * Get a single config value
  */
-export const getApiAdminConfigByAppCodeBySectionByProperty = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    GetApiAdminConfigByAppCodeBySectionByPropertyData,
-    ThrowOnError
-  >,
+export const getApiAdminConfigByAppCodeBySectionByProperty = <ThrowOnError extends boolean = false>(
+  options: Options<GetApiAdminConfigByAppCodeBySectionByPropertyData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/config/{appCode}/{section}/{property}",
+    url: '/api/admin/config/{appCode}/{section}/{property}',
     ...options,
   });
 };
@@ -1250,19 +1204,14 @@ export const getApiAdminConfigByAppCodeBySectionByProperty = <
 /**
  * Set a config value
  */
-export const putApiAdminConfigByAppCodeBySectionByProperty = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    PutApiAdminConfigByAppCodeBySectionByPropertyData,
-    ThrowOnError
-  >,
+export const putApiAdminConfigByAppCodeBySectionByProperty = <ThrowOnError extends boolean = false>(
+  options: Options<PutApiAdminConfigByAppCodeBySectionByPropertyData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/config/{appCode}/{section}/{property}",
+    url: '/api/admin/config/{appCode}/{section}/{property}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1280,7 +1229,7 @@ export const getApiAdminDispatchPools = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/dispatch-pools",
+    url: '/api/admin/dispatch-pools',
     ...options,
   });
 };
@@ -1296,10 +1245,10 @@ export const postApiAdminDispatchPools = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/dispatch-pools",
+    url: '/api/admin/dispatch-pools',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1309,17 +1258,11 @@ export const postApiAdminDispatchPools = <ThrowOnError extends boolean = false>(
  * Delete dispatch pool
  * Archives the pool (soft delete)
  */
-export const deleteApiAdminDispatchPoolsById = <
-  ThrowOnError extends boolean = false,
->(
+export const deleteApiAdminDispatchPoolsById = <ThrowOnError extends boolean = false>(
   options: Options<DeleteApiAdminDispatchPoolsByIdData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).delete<
-    unknown,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/dispatch-pools/{id}",
+  return (options.client ?? _heyApiClient).delete<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/dispatch-pools/{id}',
     ...options,
   });
 };
@@ -1327,9 +1270,7 @@ export const deleteApiAdminDispatchPoolsById = <
 /**
  * Get dispatch pool by ID
  */
-export const getApiAdminDispatchPoolsById = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiAdminDispatchPoolsById = <ThrowOnError extends boolean = false>(
   options: Options<GetApiAdminDispatchPoolsByIdData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
@@ -1337,7 +1278,7 @@ export const getApiAdminDispatchPoolsById = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/dispatch-pools/{id}",
+    url: '/api/admin/dispatch-pools/{id}',
     ...options,
   });
 };
@@ -1345,9 +1286,7 @@ export const getApiAdminDispatchPoolsById = <
 /**
  * Update dispatch pool
  */
-export const putApiAdminDispatchPoolsById = <
-  ThrowOnError extends boolean = false,
->(
+export const putApiAdminDispatchPoolsById = <ThrowOnError extends boolean = false>(
   options: Options<PutApiAdminDispatchPoolsByIdData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<
@@ -1355,10 +1294,10 @@ export const putApiAdminDispatchPoolsById = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/dispatch-pools/{id}",
+    url: '/api/admin/dispatch-pools/{id}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1368,34 +1307,26 @@ export const putApiAdminDispatchPoolsById = <
  * Activate dispatch pool
  * Re-enable a suspended pool
  */
-export const postApiAdminDispatchPoolsByIdActivate = <
-  ThrowOnError extends boolean = false,
->(
+export const postApiAdminDispatchPoolsByIdActivate = <ThrowOnError extends boolean = false>(
   options: Options<PostApiAdminDispatchPoolsByIdActivateData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/dispatch-pools/{id}/activate",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/dispatch-pools/{id}/activate',
+    ...options,
+  });
 };
 
 /**
  * Suspend dispatch pool
  * Temporarily disable the pool
  */
-export const postApiAdminDispatchPoolsByIdSuspend = <
-  ThrowOnError extends boolean = false,
->(
+export const postApiAdminDispatchPoolsByIdSuspend = <ThrowOnError extends boolean = false>(
   options: Options<PostApiAdminDispatchPoolsByIdSuspendData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/dispatch-pools/{id}/suspend",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/dispatch-pools/{id}/suspend',
+    ...options,
+  });
 };
 
 /**
@@ -1410,7 +1341,7 @@ export const listEmailDomainMappings = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/email-domain-mappings",
+    url: '/api/admin/email-domain-mappings',
     ...options,
   });
 };
@@ -1426,10 +1357,10 @@ export const createEmailDomainMapping = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/email-domain-mappings",
+    url: '/api/admin/email-domain-mappings',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1438,9 +1369,7 @@ export const createEmailDomainMapping = <ThrowOnError extends boolean = false>(
 /**
  * Get email domain mapping by domain
  */
-export const getEmailDomainMappingByDomain = <
-  ThrowOnError extends boolean = false,
->(
+export const getEmailDomainMappingByDomain = <ThrowOnError extends boolean = false>(
   options: Options<GetEmailDomainMappingByDomainData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
@@ -1448,7 +1377,7 @@ export const getEmailDomainMappingByDomain = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/email-domain-mappings/by-domain/{domain}",
+    url: '/api/admin/email-domain-mappings/by-domain/{domain}',
     ...options,
   });
 };
@@ -1464,7 +1393,7 @@ export const deleteEmailDomainMapping = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/email-domain-mappings/{id}",
+    url: '/api/admin/email-domain-mappings/{id}',
     ...options,
   });
 };
@@ -1480,7 +1409,7 @@ export const getEmailDomainMapping = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/email-domain-mappings/{id}",
+    url: '/api/admin/email-domain-mappings/{id}',
     ...options,
   });
 };
@@ -1496,10 +1425,10 @@ export const updateEmailDomainMapping = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/email-domain-mappings/{id}",
+    url: '/api/admin/email-domain-mappings/{id}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1517,7 +1446,7 @@ export const listIdentityProviders = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/identity-providers",
+    url: '/api/admin/identity-providers',
     ...options,
   });
 };
@@ -1533,10 +1462,10 @@ export const createIdentityProvider = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/identity-providers",
+    url: '/api/admin/identity-providers',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1553,7 +1482,7 @@ export const getIdentityProviderByCode = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/identity-providers/by-code/{code}",
+    url: '/api/admin/identity-providers/by-code/{code}',
     ...options,
   });
 };
@@ -1569,7 +1498,7 @@ export const deleteIdentityProvider = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/identity-providers/{id}",
+    url: '/api/admin/identity-providers/{id}',
     ...options,
   });
 };
@@ -1580,12 +1509,8 @@ export const deleteIdentityProvider = <ThrowOnError extends boolean = false>(
 export const getIdentityProvider = <ThrowOnError extends boolean = false>(
   options: Options<GetIdentityProviderData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    GetIdentityProviderResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/identity-providers/{id}",
+  return (options.client ?? _heyApiClient).get<GetIdentityProviderResponse, unknown, ThrowOnError>({
+    url: '/api/admin/identity-providers/{id}',
     ...options,
   });
 };
@@ -1601,10 +1526,10 @@ export const updateIdentityProvider = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/identity-providers/{id}",
+    url: '/api/admin/identity-providers/{id}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1616,12 +1541,8 @@ export const updateIdentityProvider = <ThrowOnError extends boolean = false>(
 export const listOAuthClients = <ThrowOnError extends boolean = false>(
   options?: Options<ListOAuthClientsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<
-    ListOAuthClientsResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/oauth-clients",
+  return (options?.client ?? _heyApiClient).get<ListOAuthClientsResponse, unknown, ThrowOnError>({
+    url: '/api/admin/oauth-clients',
     ...options,
   });
 };
@@ -1633,15 +1554,11 @@ export const listOAuthClients = <ThrowOnError extends boolean = false>(
 export const createOAuthClient = <ThrowOnError extends boolean = false>(
   options: Options<CreateOAuthClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    CreateOAuthClientResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/oauth-clients",
+  return (options.client ?? _heyApiClient).post<CreateOAuthClientResponse, unknown, ThrowOnError>({
+    url: '/api/admin/oauth-clients',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1654,7 +1571,7 @@ export const getOAuthClientByClientId = <ThrowOnError extends boolean = false>(
   options: Options<GetOAuthClientByClientIdData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/oauth-clients/by-client-id/{clientId}",
+    url: '/api/admin/oauth-clients/by-client-id/{clientId}',
     ...options,
   });
 };
@@ -1665,14 +1582,12 @@ export const getOAuthClientByClientId = <ThrowOnError extends boolean = false>(
 export const deleteOAuthClient = <ThrowOnError extends boolean = false>(
   options: Options<DeleteOAuthClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).delete<
-    DeleteOAuthClientResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/oauth-clients/{id}",
-    ...options,
-  });
+  return (options.client ?? _heyApiClient).delete<DeleteOAuthClientResponse, unknown, ThrowOnError>(
+    {
+      url: '/api/admin/oauth-clients/{id}',
+      ...options,
+    },
+  );
 };
 
 /**
@@ -1681,12 +1596,8 @@ export const deleteOAuthClient = <ThrowOnError extends boolean = false>(
 export const getOAuthClient = <ThrowOnError extends boolean = false>(
   options: Options<GetOAuthClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    GetOAuthClientResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/oauth-clients/{id}",
+  return (options.client ?? _heyApiClient).get<GetOAuthClientResponse, unknown, ThrowOnError>({
+    url: '/api/admin/oauth-clients/{id}',
     ...options,
   });
 };
@@ -1698,10 +1609,10 @@ export const updateOAuthClient = <ThrowOnError extends boolean = false>(
   options: Options<UpdateOAuthClientData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/oauth-clients/{id}",
+    url: '/api/admin/oauth-clients/{id}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1713,12 +1624,10 @@ export const updateOAuthClient = <ThrowOnError extends boolean = false>(
 export const activateOAuthClient = <ThrowOnError extends boolean = false>(
   options: Options<ActivateOAuthClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/oauth-clients/{id}/activate",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/oauth-clients/{id}/activate',
+    ...options,
+  });
 };
 
 /**
@@ -1727,12 +1636,10 @@ export const activateOAuthClient = <ThrowOnError extends boolean = false>(
 export const deactivateOAuthClient = <ThrowOnError extends boolean = false>(
   options: Options<DeactivateOAuthClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/oauth-clients/{id}/deactivate",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/oauth-clients/{id}/deactivate',
+    ...options,
+  });
 };
 
 /**
@@ -1747,7 +1654,7 @@ export const rotateOAuthClientSecret = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/oauth-clients/{id}/rotate-secret",
+    url: '/api/admin/oauth-clients/{id}/rotate-secret',
     ...options,
   });
 };
@@ -1763,7 +1670,7 @@ export const listCorsOrigins = <ThrowOnError extends boolean = false>(
     ListCorsOriginsError,
     ThrowOnError
   >({
-    url: "/api/admin/platform/cors",
+    url: '/api/admin/platform/cors',
     ...options,
   });
 };
@@ -1779,10 +1686,10 @@ export const addCorsOrigin = <ThrowOnError extends boolean = false>(
     AddCorsOriginError,
     ThrowOnError
   >({
-    url: "/api/admin/platform/cors",
+    url: '/api/admin/platform/cors',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1799,7 +1706,7 @@ export const getAllowedCorsOrigins = <ThrowOnError extends boolean = false>(
     GetAllowedCorsOriginsError,
     ThrowOnError
   >({
-    url: "/api/admin/platform/cors/allowed",
+    url: '/api/admin/platform/cors/allowed',
     ...options,
   });
 };
@@ -1815,7 +1722,7 @@ export const deleteCorsOrigin = <ThrowOnError extends boolean = false>(
     DeleteCorsOriginError,
     ThrowOnError
   >({
-    url: "/api/admin/platform/cors/{id}",
+    url: '/api/admin/platform/cors/{id}',
     ...options,
   });
 };
@@ -1831,7 +1738,7 @@ export const getCorsOrigin = <ThrowOnError extends boolean = false>(
     GetCorsOriginError,
     ThrowOnError
   >({
-    url: "/api/admin/platform/cors/{id}",
+    url: '/api/admin/platform/cors/{id}',
     ...options,
   });
 };
@@ -1843,12 +1750,8 @@ export const getCorsOrigin = <ThrowOnError extends boolean = false>(
 export const listPrincipals = <ThrowOnError extends boolean = false>(
   options?: Options<ListPrincipalsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<
-    ListPrincipalsResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/principals",
+  return (options?.client ?? _heyApiClient).get<ListPrincipalsResponse, unknown, ThrowOnError>({
+    url: '/api/admin/principals',
     ...options,
   });
 };
@@ -1860,12 +1763,8 @@ export const listPrincipals = <ThrowOnError extends boolean = false>(
 export const checkEmailDomain = <ThrowOnError extends boolean = false>(
   options?: Options<CheckEmailDomainData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<
-    CheckEmailDomainResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/principals/check-email-domain",
+  return (options?.client ?? _heyApiClient).get<CheckEmailDomainResponse, unknown, ThrowOnError>({
+    url: '/api/admin/principals/check-email-domain',
     ...options,
   });
 };
@@ -1876,15 +1775,11 @@ export const checkEmailDomain = <ThrowOnError extends boolean = false>(
 export const createUser = <ThrowOnError extends boolean = false>(
   options: Options<CreateUserData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    CreateUserResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/principals/users",
+  return (options.client ?? _heyApiClient).post<CreateUserResponse, unknown, ThrowOnError>({
+    url: '/api/admin/principals/users',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1896,12 +1791,8 @@ export const createUser = <ThrowOnError extends boolean = false>(
 export const getPrincipal = <ThrowOnError extends boolean = false>(
   options: Options<GetPrincipalData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    GetPrincipalResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/principals/{id}",
+  return (options.client ?? _heyApiClient).get<GetPrincipalResponse, unknown, ThrowOnError>({
+    url: '/api/admin/principals/{id}',
     ...options,
   });
 };
@@ -1913,10 +1804,10 @@ export const updatePrincipal = <ThrowOnError extends boolean = false>(
   options: Options<UpdatePrincipalData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/principals/{id}",
+    url: '/api/admin/principals/{id}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1928,24 +1819,20 @@ export const updatePrincipal = <ThrowOnError extends boolean = false>(
 export const activatePrincipal = <ThrowOnError extends boolean = false>(
   options: Options<ActivatePrincipalData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/principals/{id}/activate",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/principals/{id}/activate',
+    ...options,
+  });
 };
 
 /**
  * Get principal's application access grants
  */
-export const getPrincipalApplicationAccess = <
-  ThrowOnError extends boolean = false,
->(
+export const getPrincipalApplicationAccess = <ThrowOnError extends boolean = false>(
   options: Options<GetPrincipalApplicationAccessData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/principals/{id}/application-access",
+    url: '/api/admin/principals/{id}/application-access',
     ...options,
   });
 };
@@ -1954,16 +1841,14 @@ export const getPrincipalApplicationAccess = <
  * Batch assign application access to principal
  * Sets the complete list of applications for a principal. Applications not in the list will be removed.
  */
-export const assignPrincipalApplicationAccess = <
-  ThrowOnError extends boolean = false,
->(
+export const assignPrincipalApplicationAccess = <ThrowOnError extends boolean = false>(
   options: Options<AssignPrincipalApplicationAccessData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/principals/{id}/application-access",
+    url: '/api/admin/principals/{id}/application-access',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -1973,13 +1858,11 @@ export const assignPrincipalApplicationAccess = <
  * Get applications available to grant to principal
  * Returns applications that are enabled for at least one of the user's accessible clients
  */
-export const getPrincipalAvailableApplications = <
-  ThrowOnError extends boolean = false,
->(
+export const getPrincipalAvailableApplications = <ThrowOnError extends boolean = false>(
   options: Options<GetPrincipalAvailableApplicationsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/principals/{id}/available-applications",
+    url: '/api/admin/principals/{id}/available-applications',
     ...options,
   });
 };
@@ -1991,7 +1874,7 @@ export const getPrincipalClientAccess = <ThrowOnError extends boolean = false>(
   options: Options<GetPrincipalClientAccessData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/principals/{id}/client-access",
+    url: '/api/admin/principals/{id}/client-access',
     ...options,
   });
 };
@@ -1999,29 +1882,23 @@ export const getPrincipalClientAccess = <ThrowOnError extends boolean = false>(
 /**
  * Grant client access to principal
  */
-export const grantPrincipalClientAccess = <
-  ThrowOnError extends boolean = false,
->(
+export const grantPrincipalClientAccess = <ThrowOnError extends boolean = false>(
   options: Options<GrantPrincipalClientAccessData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/principals/{id}/client-access",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/principals/{id}/client-access',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
  * Revoke client access from principal
  */
-export const revokePrincipalClientAccess = <
-  ThrowOnError extends boolean = false,
->(
+export const revokePrincipalClientAccess = <ThrowOnError extends boolean = false>(
   options: Options<RevokePrincipalClientAccessData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).delete<
@@ -2029,7 +1906,7 @@ export const revokePrincipalClientAccess = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/principals/{id}/client-access/{clientId}",
+    url: '/api/admin/principals/{id}/client-access/{clientId}',
     ...options,
   });
 };
@@ -2040,12 +1917,10 @@ export const revokePrincipalClientAccess = <
 export const deactivatePrincipal = <ThrowOnError extends boolean = false>(
   options: Options<DeactivatePrincipalData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/principals/{id}/deactivate",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/principals/{id}/deactivate',
+    ...options,
+  });
 };
 
 /**
@@ -2054,16 +1929,14 @@ export const deactivatePrincipal = <ThrowOnError extends boolean = false>(
 export const resetPrincipalPassword = <ThrowOnError extends boolean = false>(
   options: Options<ResetPrincipalPasswordData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/principals/{id}/reset-password",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/principals/{id}/reset-password',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
@@ -2073,7 +1946,7 @@ export const getPrincipalRoles = <ThrowOnError extends boolean = false>(
   options: Options<GetPrincipalRolesData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/principals/{id}/roles",
+    url: '/api/admin/principals/{id}/roles',
     ...options,
   });
 };
@@ -2084,16 +1957,14 @@ export const getPrincipalRoles = <ThrowOnError extends boolean = false>(
 export const assignPrincipalRole = <ThrowOnError extends boolean = false>(
   options: Options<AssignPrincipalRoleData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/principals/{id}/roles",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/principals/{id}/roles',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
@@ -2104,10 +1975,10 @@ export const assignPrincipalRoles = <ThrowOnError extends boolean = false>(
   options: Options<AssignPrincipalRolesData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/principals/{id}/roles",
+    url: '/api/admin/principals/{id}/roles',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2124,7 +1995,7 @@ export const removePrincipalRole = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/principals/{id}/roles/{roleName}",
+    url: '/api/admin/principals/{id}/roles/{roleName}',
     ...options,
   });
 };
@@ -2136,12 +2007,8 @@ export const removePrincipalRole = <ThrowOnError extends boolean = false>(
 export const listRoles = <ThrowOnError extends boolean = false>(
   options?: Options<ListRolesData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<
-    ListRolesResponse,
-    ListRolesError,
-    ThrowOnError
-  >({
-    url: "/api/admin/roles",
+  return (options?.client ?? _heyApiClient).get<ListRolesResponse, ListRolesError, ThrowOnError>({
+    url: '/api/admin/roles',
     ...options,
   });
 };
@@ -2153,15 +2020,11 @@ export const listRoles = <ThrowOnError extends boolean = false>(
 export const createRole = <ThrowOnError extends boolean = false>(
   options: Options<CreateRoleData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    CreateRoleResponse,
-    CreateRoleError,
-    ThrowOnError
-  >({
-    url: "/api/admin/roles",
+  return (options.client ?? _heyApiClient).post<CreateRoleResponse, CreateRoleError, ThrowOnError>({
+    url: '/api/admin/roles',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2179,7 +2042,7 @@ export const listPermissions = <ThrowOnError extends boolean = false>(
     ListPermissionsError,
     ThrowOnError
   >({
-    url: "/api/admin/roles/permissions",
+    url: '/api/admin/roles/permissions',
     ...options,
   });
 };
@@ -2195,7 +2058,7 @@ export const getPermission = <ThrowOnError extends boolean = false>(
     GetPermissionError,
     ThrowOnError
   >({
-    url: "/api/admin/roles/permissions/{permission}",
+    url: '/api/admin/roles/permissions/{permission}',
     ...options,
   });
 };
@@ -2212,7 +2075,7 @@ export const deleteRole = <ThrowOnError extends boolean = false>(
     DeleteRoleError,
     ThrowOnError
   >({
-    url: "/api/admin/roles/{roleName}",
+    url: '/api/admin/roles/{roleName}',
     ...options,
   });
 };
@@ -2223,12 +2086,8 @@ export const deleteRole = <ThrowOnError extends boolean = false>(
 export const getRole = <ThrowOnError extends boolean = false>(
   options: Options<GetRoleData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    GetRoleResponse,
-    GetRoleError,
-    ThrowOnError
-  >({
-    url: "/api/admin/roles/{roleName}",
+  return (options.client ?? _heyApiClient).get<GetRoleResponse, GetRoleError, ThrowOnError>({
+    url: '/api/admin/roles/{roleName}',
     ...options,
   });
 };
@@ -2240,15 +2099,11 @@ export const getRole = <ThrowOnError extends boolean = false>(
 export const updateRole = <ThrowOnError extends boolean = false>(
   options: Options<UpdateRoleData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).put<
-    UpdateRoleResponse,
-    UpdateRoleError,
-    ThrowOnError
-  >({
-    url: "/api/admin/roles/{roleName}",
+  return (options.client ?? _heyApiClient).put<UpdateRoleResponse, UpdateRoleError, ThrowOnError>({
+    url: '/api/admin/roles/{roleName}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2258,9 +2113,7 @@ export const updateRole = <ThrowOnError extends boolean = false>(
  * List service accounts
  * List all service accounts with optional filters
  */
-export const getApiAdminServiceAccounts = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiAdminServiceAccounts = <ThrowOnError extends boolean = false>(
   options?: Options<GetApiAdminServiceAccountsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
@@ -2268,7 +2121,7 @@ export const getApiAdminServiceAccounts = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/service-accounts",
+    url: '/api/admin/service-accounts',
     ...options,
   });
 };
@@ -2277,9 +2130,7 @@ export const getApiAdminServiceAccounts = <
  * Create a new service account
  * Creates a service account and returns credentials. Credentials are shown only once.
  */
-export const postApiAdminServiceAccounts = <
-  ThrowOnError extends boolean = false,
->(
+export const postApiAdminServiceAccounts = <ThrowOnError extends boolean = false>(
   options: Options<PostApiAdminServiceAccountsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
@@ -2287,10 +2138,10 @@ export const postApiAdminServiceAccounts = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/service-accounts",
+    url: '/api/admin/service-accounts',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2299,13 +2150,11 @@ export const postApiAdminServiceAccounts = <
 /**
  * Get service account by code
  */
-export const getApiAdminServiceAccountsCodeByCode = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiAdminServiceAccountsCodeByCode = <ThrowOnError extends boolean = false>(
   options: Options<GetApiAdminServiceAccountsCodeByCodeData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/service-accounts/code/{code}",
+    url: '/api/admin/service-accounts/code/{code}',
     ...options,
   });
 };
@@ -2313,17 +2162,11 @@ export const getApiAdminServiceAccountsCodeByCode = <
 /**
  * Delete service account
  */
-export const deleteApiAdminServiceAccountsById = <
-  ThrowOnError extends boolean = false,
->(
+export const deleteApiAdminServiceAccountsById = <ThrowOnError extends boolean = false>(
   options: Options<DeleteApiAdminServiceAccountsByIdData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).delete<
-    unknown,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/service-accounts/{id}",
+  return (options.client ?? _heyApiClient).delete<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/service-accounts/{id}',
     ...options,
   });
 };
@@ -2331,9 +2174,7 @@ export const deleteApiAdminServiceAccountsById = <
 /**
  * Get service account by ID
  */
-export const getApiAdminServiceAccountsById = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiAdminServiceAccountsById = <ThrowOnError extends boolean = false>(
   options: Options<GetApiAdminServiceAccountsByIdData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
@@ -2341,7 +2182,7 @@ export const getApiAdminServiceAccountsById = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/service-accounts/{id}",
+    url: '/api/admin/service-accounts/{id}',
     ...options,
   });
 };
@@ -2349,16 +2190,14 @@ export const getApiAdminServiceAccountsById = <
 /**
  * Update service account metadata
  */
-export const putApiAdminServiceAccountsById = <
-  ThrowOnError extends boolean = false,
->(
+export const putApiAdminServiceAccountsById = <ThrowOnError extends boolean = false>(
   options: Options<PutApiAdminServiceAccountsByIdData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/service-accounts/{id}",
+    url: '/api/admin/service-accounts/{id}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2368,16 +2207,14 @@ export const putApiAdminServiceAccountsById = <
  * Update auth token
  * Replace the auth token with a custom value
  */
-export const putApiAdminServiceAccountsByIdAuthToken = <
-  ThrowOnError extends boolean = false,
->(
+export const putApiAdminServiceAccountsByIdAuthToken = <ThrowOnError extends boolean = false>(
   options: Options<PutApiAdminServiceAccountsByIdAuthTokenData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/service-accounts/{id}/auth-token",
+    url: '/api/admin/service-accounts/{id}/auth-token',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2390,17 +2227,12 @@ export const putApiAdminServiceAccountsByIdAuthToken = <
 export const postApiAdminServiceAccountsByIdRegenerateSecret = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<
-    PostApiAdminServiceAccountsByIdRegenerateSecretData,
-    ThrowOnError
-  >,
+  options: Options<PostApiAdminServiceAccountsByIdRegenerateSecretData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/service-accounts/{id}/regenerate-secret",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/service-accounts/{id}/regenerate-secret',
+    ...options,
+  });
 };
 
 /**
@@ -2410,29 +2242,22 @@ export const postApiAdminServiceAccountsByIdRegenerateSecret = <
 export const postApiAdminServiceAccountsByIdRegenerateToken = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<
-    PostApiAdminServiceAccountsByIdRegenerateTokenData,
-    ThrowOnError
-  >,
+  options: Options<PostApiAdminServiceAccountsByIdRegenerateTokenData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/service-accounts/{id}/regenerate-token",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/service-accounts/{id}/regenerate-token',
+    ...options,
+  });
 };
 
 /**
  * Get assigned roles
  */
-export const getApiAdminServiceAccountsByIdRoles = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiAdminServiceAccountsByIdRoles = <ThrowOnError extends boolean = false>(
   options: Options<GetApiAdminServiceAccountsByIdRolesData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/service-accounts/{id}/roles",
+    url: '/api/admin/service-accounts/{id}/roles',
     ...options,
   });
 };
@@ -2441,16 +2266,14 @@ export const getApiAdminServiceAccountsByIdRoles = <
  * Assign roles
  * Replace all roles with the provided list (declarative assignment)
  */
-export const putApiAdminServiceAccountsByIdRoles = <
-  ThrowOnError extends boolean = false,
->(
+export const putApiAdminServiceAccountsByIdRoles = <ThrowOnError extends boolean = false>(
   options: Options<PutApiAdminServiceAccountsByIdRolesData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
-    url: "/api/admin/service-accounts/{id}/roles",
+    url: '/api/admin/service-accounts/{id}/roles',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2468,7 +2291,7 @@ export const getApiAdminSubscriptions = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/subscriptions",
+    url: '/api/admin/subscriptions',
     ...options,
   });
 };
@@ -2484,10 +2307,10 @@ export const postApiAdminSubscriptions = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/subscriptions",
+    url: '/api/admin/subscriptions',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2496,17 +2319,11 @@ export const postApiAdminSubscriptions = <ThrowOnError extends boolean = false>(
 /**
  * Delete subscription
  */
-export const deleteApiAdminSubscriptionsById = <
-  ThrowOnError extends boolean = false,
->(
+export const deleteApiAdminSubscriptionsById = <ThrowOnError extends boolean = false>(
   options: Options<DeleteApiAdminSubscriptionsByIdData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).delete<
-    unknown,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/admin/subscriptions/{id}",
+  return (options.client ?? _heyApiClient).delete<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/subscriptions/{id}',
     ...options,
   });
 };
@@ -2514,9 +2331,7 @@ export const deleteApiAdminSubscriptionsById = <
 /**
  * Get subscription by ID
  */
-export const getApiAdminSubscriptionsById = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiAdminSubscriptionsById = <ThrowOnError extends boolean = false>(
   options: Options<GetApiAdminSubscriptionsByIdData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
@@ -2524,7 +2339,7 @@ export const getApiAdminSubscriptionsById = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/subscriptions/{id}",
+    url: '/api/admin/subscriptions/{id}',
     ...options,
   });
 };
@@ -2532,9 +2347,7 @@ export const getApiAdminSubscriptionsById = <
 /**
  * Update subscription
  */
-export const putApiAdminSubscriptionsById = <
-  ThrowOnError extends boolean = false,
->(
+export const putApiAdminSubscriptionsById = <ThrowOnError extends boolean = false>(
   options: Options<PutApiAdminSubscriptionsByIdData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<
@@ -2542,10 +2355,10 @@ export const putApiAdminSubscriptionsById = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/admin/subscriptions/{id}",
+    url: '/api/admin/subscriptions/{id}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2555,34 +2368,26 @@ export const putApiAdminSubscriptionsById = <
  * Pause subscription
  * Stop creating dispatch jobs for this subscription
  */
-export const postApiAdminSubscriptionsByIdPause = <
-  ThrowOnError extends boolean = false,
->(
+export const postApiAdminSubscriptionsByIdPause = <ThrowOnError extends boolean = false>(
   options: Options<PostApiAdminSubscriptionsByIdPauseData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/subscriptions/{id}/pause",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/subscriptions/{id}/pause',
+    ...options,
+  });
 };
 
 /**
  * Resume subscription
  * Re-enable dispatch job creation
  */
-export const postApiAdminSubscriptionsByIdResume = <
-  ThrowOnError extends boolean = false,
->(
+export const postApiAdminSubscriptionsByIdResume = <ThrowOnError extends boolean = false>(
   options: Options<PostApiAdminSubscriptionsByIdResumeData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/admin/subscriptions/{id}/resume",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/admin/subscriptions/{id}/resume',
+    ...options,
+  });
 };
 
 /**
@@ -2592,12 +2397,8 @@ export const postApiAdminSubscriptionsByIdResume = <
 export const listApps = <ThrowOnError extends boolean = false>(
   options?: Options<ListAppsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<
-    ListAppsResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/applications",
+  return (options?.client ?? _heyApiClient).get<ListAppsResponse, unknown, ThrowOnError>({
+    url: '/api/applications',
     ...options,
   });
 };
@@ -2608,15 +2409,11 @@ export const listApps = <ThrowOnError extends boolean = false>(
 export const createApp = <ThrowOnError extends boolean = false>(
   options: Options<CreateAppData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    CreateAppResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/applications",
+  return (options.client ?? _heyApiClient).post<CreateAppResponse, unknown, ThrowOnError>({
+    url: '/api/applications',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2628,12 +2425,8 @@ export const createApp = <ThrowOnError extends boolean = false>(
 export const getAppByCode = <ThrowOnError extends boolean = false>(
   options: Options<GetAppByCodeData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    GetAppByCodeResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/applications/code/{code}",
+  return (options.client ?? _heyApiClient).get<GetAppByCodeResponse, unknown, ThrowOnError>({
+    url: '/api/applications/code/{code}',
     ...options,
   });
 };
@@ -2642,9 +2435,7 @@ export const getAppByCode = <ThrowOnError extends boolean = false>(
  * List anchor-level dispatch pools
  * Returns all anchor-level dispatch pools (clientId = null).
  */
-export const listApplicationDispatchPools = <
-  ThrowOnError extends boolean = false,
->(
+export const listApplicationDispatchPools = <ThrowOnError extends boolean = false>(
   options: Options<ListApplicationDispatchPoolsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
@@ -2652,7 +2443,7 @@ export const listApplicationDispatchPools = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/applications/{appCode}/dispatch-pools",
+    url: '/api/applications/{appCode}/dispatch-pools',
     ...options,
   });
 };
@@ -2661,9 +2452,7 @@ export const listApplicationDispatchPools = <
  * Sync dispatch pools
  * Bulk sync dispatch pools. Creates new pools, updates existing ones. Set removeUnlisted=true to archive pools not in the sync list.
  */
-export const syncApplicationDispatchPools = <
-  ThrowOnError extends boolean = false,
->(
+export const syncApplicationDispatchPools = <ThrowOnError extends boolean = false>(
   options: Options<SyncApplicationDispatchPoolsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
@@ -2671,10 +2460,10 @@ export const syncApplicationDispatchPools = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/applications/{appCode}/dispatch-pools/sync",
+    url: '/api/applications/{appCode}/dispatch-pools/sync',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2692,7 +2481,7 @@ export const listApplicationEventTypes = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/applications/{appCode}/event-types",
+    url: '/api/applications/{appCode}/event-types',
     ...options,
   });
 };
@@ -2709,10 +2498,10 @@ export const syncApplicationEventTypes = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/applications/{appCode}/event-types/sync",
+    url: '/api/applications/{appCode}/event-types/sync',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2725,14 +2514,12 @@ export const syncApplicationEventTypes = <ThrowOnError extends boolean = false>(
 export const listApplicationRoles = <ThrowOnError extends boolean = false>(
   options: Options<ListApplicationRolesData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    ListApplicationRolesResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/applications/{appCode}/roles",
-    ...options,
-  });
+  return (options.client ?? _heyApiClient).get<ListApplicationRolesResponse, unknown, ThrowOnError>(
+    {
+      url: '/api/applications/{appCode}/roles',
+      ...options,
+    },
+  );
 };
 
 /**
@@ -2747,10 +2534,10 @@ export const createApplicationRole = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/applications/{appCode}/roles",
+    url: '/api/applications/{appCode}/roles',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2768,10 +2555,10 @@ export const syncApplicationRoles = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/applications/{appCode}/roles/sync",
+    url: '/api/applications/{appCode}/roles/sync',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2789,7 +2576,7 @@ export const deleteApplicationRole = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/applications/{appCode}/roles/{roleName}",
+    url: '/api/applications/{appCode}/roles/{roleName}',
     ...options,
   });
 };
@@ -2798,9 +2585,7 @@ export const deleteApplicationRole = <ThrowOnError extends boolean = false>(
  * List anchor-level subscriptions
  * Returns all anchor-level subscriptions (clientId = null).
  */
-export const listApplicationSubscriptions = <
-  ThrowOnError extends boolean = false,
->(
+export const listApplicationSubscriptions = <ThrowOnError extends boolean = false>(
   options: Options<ListApplicationSubscriptionsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
@@ -2808,7 +2593,7 @@ export const listApplicationSubscriptions = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/applications/{appCode}/subscriptions",
+    url: '/api/applications/{appCode}/subscriptions',
     ...options,
   });
 };
@@ -2817,9 +2602,7 @@ export const listApplicationSubscriptions = <
  * Sync application subscriptions
  * Bulk sync subscriptions from an external application. Creates new subscriptions, updates existing API-sourced subscriptions. Set removeUnlisted=true to remove API-sourced subscriptions not in the sync list.
  */
-export const syncApplicationSubscriptions = <
-  ThrowOnError extends boolean = false,
->(
+export const syncApplicationSubscriptions = <ThrowOnError extends boolean = false>(
   options: Options<SyncApplicationSubscriptionsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
@@ -2827,10 +2610,10 @@ export const syncApplicationSubscriptions = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/applications/{appCode}/subscriptions/sync",
+    url: '/api/applications/{appCode}/subscriptions/sync',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2842,12 +2625,8 @@ export const syncApplicationSubscriptions = <
 export const deleteApp = <ThrowOnError extends boolean = false>(
   options: Options<DeleteAppData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).delete<
-    DeleteAppResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/applications/{id}",
+  return (options.client ?? _heyApiClient).delete<DeleteAppResponse, unknown, ThrowOnError>({
+    url: '/api/applications/{id}',
     ...options,
   });
 };
@@ -2858,12 +2637,8 @@ export const deleteApp = <ThrowOnError extends boolean = false>(
 export const getApp = <ThrowOnError extends boolean = false>(
   options: Options<GetAppData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    GetAppResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/applications/{id}",
+  return (options.client ?? _heyApiClient).get<GetAppResponse, unknown, ThrowOnError>({
+    url: '/api/applications/{id}',
     ...options,
   });
 };
@@ -2874,15 +2649,11 @@ export const getApp = <ThrowOnError extends boolean = false>(
 export const updateApp = <ThrowOnError extends boolean = false>(
   options: Options<UpdateAppData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).put<
-    UpdateAppResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/applications/{id}",
+  return (options.client ?? _heyApiClient).put<UpdateAppResponse, unknown, ThrowOnError>({
+    url: '/api/applications/{id}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -2894,12 +2665,8 @@ export const updateApp = <ThrowOnError extends boolean = false>(
 export const activateApp = <ThrowOnError extends boolean = false>(
   options: Options<ActivateAppData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    ActivateAppResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/applications/{id}/activate",
+  return (options.client ?? _heyApiClient).post<ActivateAppResponse, unknown, ThrowOnError>({
+    url: '/api/applications/{id}/activate',
     ...options,
   });
 };
@@ -2910,12 +2677,8 @@ export const activateApp = <ThrowOnError extends boolean = false>(
 export const deactivateApp = <ThrowOnError extends boolean = false>(
   options: Options<DeactivateAppData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    DeactivateAppResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/applications/{id}/deactivate",
+  return (options.client ?? _heyApiClient).post<DeactivateAppResponse, unknown, ThrowOnError>({
+    url: '/api/applications/{id}/deactivate',
     ...options,
   });
 };
@@ -2924,9 +2687,7 @@ export const deactivateApp = <ThrowOnError extends boolean = false>(
  * List raw dispatch jobs
  * List raw dispatch jobs from the transactional collection (debug/admin only)
  */
-export const getApiBffDebugDispatchJobs = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiBffDebugDispatchJobs = <ThrowOnError extends boolean = false>(
   options?: Options<GetApiBffDebugDispatchJobsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
@@ -2934,7 +2695,7 @@ export const getApiBffDebugDispatchJobs = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/bff/debug/dispatch-jobs",
+    url: '/api/bff/debug/dispatch-jobs',
     ...options,
   });
 };
@@ -2943,13 +2704,11 @@ export const getApiBffDebugDispatchJobs = <
  * Get raw dispatch job by ID
  * Get a single raw dispatch job by its ID (debug/admin only)
  */
-export const getApiBffDebugDispatchJobsById = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiBffDebugDispatchJobsById = <ThrowOnError extends boolean = false>(
   options: Options<GetApiBffDebugDispatchJobsByIdData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/bff/debug/dispatch-jobs/{id}",
+    url: '/api/bff/debug/dispatch-jobs/{id}',
     ...options,
   });
 };
@@ -2966,7 +2725,7 @@ export const getApiBffDebugEvents = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/bff/debug/events",
+    url: '/api/bff/debug/events',
     ...options,
   });
 };
@@ -2979,7 +2738,7 @@ export const getApiBffDebugEventsById = <ThrowOnError extends boolean = false>(
   options: Options<GetApiBffDebugEventsByIdData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/bff/debug/events/{id}",
+    url: '/api/bff/debug/events/{id}',
     ...options,
   });
 };
@@ -2996,7 +2755,7 @@ export const getApiBffDispatchJobs = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/bff/dispatch-jobs",
+    url: '/api/bff/dispatch-jobs',
     ...options,
   });
 };
@@ -3005,9 +2764,7 @@ export const getApiBffDispatchJobs = <ThrowOnError extends boolean = false>(
  * Get filter options
  * Get available filter values for cascading filters. Each level is narrowed by selections at higher levels (client → application → subdomain → aggregate → code).
  */
-export const getApiBffDispatchJobsFilterOptions = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiBffDispatchJobsFilterOptions = <ThrowOnError extends boolean = false>(
   options?: Options<GetApiBffDispatchJobsFilterOptionsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
@@ -3015,7 +2772,7 @@ export const getApiBffDispatchJobsFilterOptions = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/bff/dispatch-jobs/filter-options",
+    url: '/api/bff/dispatch-jobs/filter-options',
     ...options,
   });
 };
@@ -3028,7 +2785,7 @@ export const getApiBffDispatchJobsById = <ThrowOnError extends boolean = false>(
   options: Options<GetApiBffDispatchJobsByIdData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/bff/dispatch-jobs/{id}",
+    url: '/api/bff/dispatch-jobs/{id}',
     ...options,
   });
 };
@@ -3040,12 +2797,8 @@ export const getApiBffDispatchJobsById = <ThrowOnError extends boolean = false>(
 export const getApiBffEvents = <ThrowOnError extends boolean = false>(
   options?: Options<GetApiBffEventsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<
-    GetApiBffEventsResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/bff/events",
+  return (options?.client ?? _heyApiClient).get<GetApiBffEventsResponse, unknown, ThrowOnError>({
+    url: '/api/bff/events',
     ...options,
   });
 };
@@ -3054,9 +2807,7 @@ export const getApiBffEvents = <ThrowOnError extends boolean = false>(
  * Get filter options
  * Get available filter values for cascading filters. Each level is narrowed by selections at higher levels (client → application → subdomain → aggregate → type).
  */
-export const getApiBffEventsFilterOptions = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiBffEventsFilterOptions = <ThrowOnError extends boolean = false>(
   options?: Options<GetApiBffEventsFilterOptionsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
@@ -3064,7 +2815,7 @@ export const getApiBffEventsFilterOptions = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/bff/events/filter-options",
+    url: '/api/bff/events/filter-options',
     ...options,
   });
 };
@@ -3077,7 +2828,7 @@ export const getApiBffEventsById = <ThrowOnError extends boolean = false>(
   options: Options<GetApiBffEventsByIdData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/bff/events/{id}",
+    url: '/api/bff/events/{id}',
     ...options,
   });
 };
@@ -3089,12 +2840,8 @@ export const getApiBffEventsById = <ThrowOnError extends boolean = false>(
 export const getApiClients = <ThrowOnError extends boolean = false>(
   options?: Options<GetApiClientsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<
-    GetApiClientsResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/clients",
+  return (options?.client ?? _heyApiClient).get<GetApiClientsResponse, unknown, ThrowOnError>({
+    url: '/api/clients',
     ...options,
   });
 };
@@ -3106,12 +2853,8 @@ export const getApiClients = <ThrowOnError extends boolean = false>(
 export const getApiClientsById = <ThrowOnError extends boolean = false>(
   options: Options<GetApiClientsByIdData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    GetApiClientsByIdResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/clients/{id}",
+  return (options.client ?? _heyApiClient).get<GetApiClientsByIdResponse, unknown, ThrowOnError>({
+    url: '/api/clients/{id}',
     ...options,
   });
 };
@@ -3120,9 +2863,7 @@ export const getApiClientsById = <ThrowOnError extends boolean = false>(
  * Get applications for client
  * Returns applications enabled for the specified client.
  */
-export const getApiClientsByIdApplications = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiClientsByIdApplications = <ThrowOnError extends boolean = false>(
   options: Options<GetApiClientsByIdApplicationsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
@@ -3130,7 +2871,7 @@ export const getApiClientsByIdApplications = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/clients/{id}/applications",
+    url: '/api/clients/{id}/applications',
     ...options,
   });
 };
@@ -3147,7 +2888,7 @@ export const getApiConfigPlatform = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/config/platform",
+    url: '/api/config/platform',
     ...options,
   });
 };
@@ -3159,12 +2900,8 @@ export const getApiConfigPlatform = <ThrowOnError extends boolean = false>(
 export const getApiDispatchJobs = <ThrowOnError extends boolean = false>(
   options?: Options<GetApiDispatchJobsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<
-    GetApiDispatchJobsResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/dispatch/jobs",
+  return (options?.client ?? _heyApiClient).get<GetApiDispatchJobsResponse, unknown, ThrowOnError>({
+    url: '/api/dispatch/jobs',
     ...options,
   });
 };
@@ -3181,10 +2918,10 @@ export const postApiDispatchJobs = <ThrowOnError extends boolean = false>(
     PostApiDispatchJobsError,
     ThrowOnError
   >({
-    url: "/api/dispatch/jobs",
+    url: '/api/dispatch/jobs',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -3202,10 +2939,10 @@ export const postApiDispatchJobsBatch = <ThrowOnError extends boolean = false>(
     PostApiDispatchJobsBatchError,
     ThrowOnError
   >({
-    url: "/api/dispatch/jobs/batch",
+    url: '/api/dispatch/jobs/batch',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -3223,7 +2960,7 @@ export const getApiDispatchJobsById = <ThrowOnError extends boolean = false>(
     GetApiDispatchJobsByIdError,
     ThrowOnError
   >({
-    url: "/api/dispatch/jobs/{id}",
+    url: '/api/dispatch/jobs/{id}',
     ...options,
   });
 };
@@ -3232,9 +2969,7 @@ export const getApiDispatchJobsById = <ThrowOnError extends boolean = false>(
  * Get all attempts for a dispatch job
  * Retrieves the full history of webhook delivery attempts for a job
  */
-export const getApiDispatchJobsByIdAttempts = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiDispatchJobsByIdAttempts = <ThrowOnError extends boolean = false>(
   options: Options<GetApiDispatchJobsByIdAttemptsData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<
@@ -3242,7 +2977,7 @@ export const getApiDispatchJobsByIdAttempts = <
     GetApiDispatchJobsByIdAttemptsError,
     ThrowOnError
   >({
-    url: "/api/dispatch/jobs/{id}/attempts",
+    url: '/api/dispatch/jobs/{id}/attempts',
     ...options,
   });
 };
@@ -3259,10 +2994,10 @@ export const postApiDispatchProcess = <ThrowOnError extends boolean = false>(
     PostApiDispatchProcessError,
     ThrowOnError
   >({
-    url: "/api/dispatch/process",
+    url: '/api/dispatch/process',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -3275,12 +3010,8 @@ export const postApiDispatchProcess = <ThrowOnError extends boolean = false>(
 export const getApiEventTypes = <ThrowOnError extends boolean = false>(
   options?: Options<GetApiEventTypesData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<
-    GetApiEventTypesResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/event-types",
+  return (options?.client ?? _heyApiClient).get<GetApiEventTypesResponse, unknown, ThrowOnError>({
+    url: '/api/event-types',
     ...options,
   });
 };
@@ -3291,15 +3022,11 @@ export const getApiEventTypes = <ThrowOnError extends boolean = false>(
 export const postApiEventTypes = <ThrowOnError extends boolean = false>(
   options: Options<PostApiEventTypesData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    PostApiEventTypesResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/event-types",
+  return (options.client ?? _heyApiClient).post<PostApiEventTypesResponse, unknown, ThrowOnError>({
+    url: '/api/event-types',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -3308,9 +3035,7 @@ export const postApiEventTypes = <ThrowOnError extends boolean = false>(
 /**
  * Get distinct aggregates, optionally filtered by applications and subdomains
  */
-export const getApiEventTypesFiltersAggregates = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiEventTypesFiltersAggregates = <ThrowOnError extends boolean = false>(
   options?: Options<GetApiEventTypesFiltersAggregatesData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
@@ -3318,7 +3043,7 @@ export const getApiEventTypesFiltersAggregates = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/event-types/filters/aggregates",
+    url: '/api/event-types/filters/aggregates',
     ...options,
   });
 };
@@ -3326,9 +3051,7 @@ export const getApiEventTypesFiltersAggregates = <
 /**
  * Get distinct application names for filtering
  */
-export const getApiEventTypesFiltersApplications = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiEventTypesFiltersApplications = <ThrowOnError extends boolean = false>(
   options?: Options<GetApiEventTypesFiltersApplicationsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
@@ -3336,7 +3059,7 @@ export const getApiEventTypesFiltersApplications = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/event-types/filters/applications",
+    url: '/api/event-types/filters/applications',
     ...options,
   });
 };
@@ -3344,9 +3067,7 @@ export const getApiEventTypesFiltersApplications = <
 /**
  * Get distinct subdomains, optionally filtered by applications
  */
-export const getApiEventTypesFiltersSubdomains = <
-  ThrowOnError extends boolean = false,
->(
+export const getApiEventTypesFiltersSubdomains = <ThrowOnError extends boolean = false>(
   options?: Options<GetApiEventTypesFiltersSubdomainsData, ThrowOnError>,
 ) => {
   return (options?.client ?? _heyApiClient).get<
@@ -3354,7 +3075,7 @@ export const getApiEventTypesFiltersSubdomains = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/event-types/filters/subdomains",
+    url: '/api/event-types/filters/subdomains',
     ...options,
   });
 };
@@ -3370,7 +3091,7 @@ export const deleteApiEventTypesById = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/event-types/{id}",
+    url: '/api/event-types/{id}',
     ...options,
   });
 };
@@ -3381,14 +3102,12 @@ export const deleteApiEventTypesById = <ThrowOnError extends boolean = false>(
 export const getApiEventTypesById = <ThrowOnError extends boolean = false>(
   options: Options<GetApiEventTypesByIdData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    GetApiEventTypesByIdResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/event-types/{id}",
-    ...options,
-  });
+  return (options.client ?? _heyApiClient).get<GetApiEventTypesByIdResponse, unknown, ThrowOnError>(
+    {
+      url: '/api/event-types/{id}',
+      ...options,
+    },
+  );
 };
 
 /**
@@ -3402,10 +3121,10 @@ export const patchApiEventTypesById = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/event-types/{id}",
+    url: '/api/event-types/{id}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -3414,9 +3133,7 @@ export const patchApiEventTypesById = <ThrowOnError extends boolean = false>(
 /**
  * Archive an event type (CURRENT → ARCHIVE)
  */
-export const postApiEventTypesByIdArchive = <
-  ThrowOnError extends boolean = false,
->(
+export const postApiEventTypesByIdArchive = <ThrowOnError extends boolean = false>(
   options: Options<PostApiEventTypesByIdArchiveData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
@@ -3424,7 +3141,7 @@ export const postApiEventTypesByIdArchive = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/event-types/{id}/archive",
+    url: '/api/event-types/{id}/archive',
     ...options,
   });
 };
@@ -3432,9 +3149,7 @@ export const postApiEventTypesByIdArchive = <
 /**
  * Add a new schema version to an event type
  */
-export const postApiEventTypesByIdSchemas = <
-  ThrowOnError extends boolean = false,
->(
+export const postApiEventTypesByIdSchemas = <ThrowOnError extends boolean = false>(
   options: Options<PostApiEventTypesByIdSchemasData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
@@ -3442,10 +3157,10 @@ export const postApiEventTypesByIdSchemas = <
     unknown,
     ThrowOnError
   >({
-    url: "/api/event-types/{id}/schemas",
+    url: '/api/event-types/{id}/schemas',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -3457,17 +3172,14 @@ export const postApiEventTypesByIdSchemas = <
 export const postApiEventTypesByIdSchemasByVersionDeprecate = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<
-    PostApiEventTypesByIdSchemasByVersionDeprecateData,
-    ThrowOnError
-  >,
+  options: Options<PostApiEventTypesByIdSchemasByVersionDeprecateData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
     PostApiEventTypesByIdSchemasByVersionDeprecateResponse,
     unknown,
     ThrowOnError
   >({
-    url: "/api/event-types/{id}/schemas/{version}/deprecate",
+    url: '/api/event-types/{id}/schemas/{version}/deprecate',
     ...options,
   });
 };
@@ -3475,20 +3187,15 @@ export const postApiEventTypesByIdSchemasByVersionDeprecate = <
 /**
  * Finalise a schema version (FINALISING → CURRENT)
  */
-export const postApiEventTypesByIdSchemasByVersionFinalise = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    PostApiEventTypesByIdSchemasByVersionFinaliseData,
-    ThrowOnError
-  >,
+export const postApiEventTypesByIdSchemasByVersionFinalise = <ThrowOnError extends boolean = false>(
+  options: Options<PostApiEventTypesByIdSchemasByVersionFinaliseData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).post<
     PostApiEventTypesByIdSchemasByVersionFinaliseResponse,
     unknown,
     ThrowOnError
   >({
-    url: "/api/event-types/{id}/schemas/{version}/finalise",
+    url: '/api/event-types/{id}/schemas/{version}/finalise',
     ...options,
   });
 };
@@ -3500,15 +3207,11 @@ export const postApiEventTypesByIdSchemasByVersionFinalise = <
 export const postApiEvents = <ThrowOnError extends boolean = false>(
   options: Options<PostApiEventsData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    PostApiEventsResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/events",
+  return (options.client ?? _heyApiClient).post<PostApiEventsResponse, unknown, ThrowOnError>({
+    url: '/api/events',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -3521,15 +3224,11 @@ export const postApiEvents = <ThrowOnError extends boolean = false>(
 export const postApiEventsBatch = <ThrowOnError extends boolean = false>(
   options: Options<PostApiEventsBatchData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    PostApiEventsBatchResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/events/batch",
+  return (options.client ?? _heyApiClient).post<PostApiEventsBatchResponse, unknown, ThrowOnError>({
+    url: '/api/events/batch',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -3542,7 +3241,7 @@ export const getApiEventsById = <ThrowOnError extends boolean = false>(
   options: Options<GetApiEventsByIdData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/api/events/{id}",
+    url: '/api/events/{id}',
     ...options,
   });
 };
@@ -3553,12 +3252,8 @@ export const getApiEventsById = <ThrowOnError extends boolean = false>(
 export const getApiHealth = <ThrowOnError extends boolean = false>(
   options?: Options<GetApiHealthData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<
-    GetApiHealthResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/health",
+  return (options?.client ?? _heyApiClient).get<GetApiHealthResponse, unknown, ThrowOnError>({
+    url: '/api/health',
     ...options,
   });
 };
@@ -3575,7 +3270,7 @@ export const getMyClients = <ThrowOnError extends boolean = false>(
     GetMyClientsError,
     ThrowOnError
   >({
-    url: "/api/me/clients",
+    url: '/api/me/clients',
     ...options,
   });
 };
@@ -3587,14 +3282,12 @@ export const getMyClients = <ThrowOnError extends boolean = false>(
 export const getMyClient = <ThrowOnError extends boolean = false>(
   options: Options<GetMyClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    GetMyClientResponse,
-    GetMyClientError,
-    ThrowOnError
-  >({
-    url: "/api/me/clients/{clientId}",
-    ...options,
-  });
+  return (options.client ?? _heyApiClient).get<GetMyClientResponse, GetMyClientError, ThrowOnError>(
+    {
+      url: '/api/me/clients/{clientId}',
+      ...options,
+    },
+  );
 };
 
 /**
@@ -3609,7 +3302,7 @@ export const getMyClientApplications = <ThrowOnError extends boolean = false>(
     GetMyClientApplicationsError,
     ThrowOnError
   >({
-    url: "/api/me/clients/{clientId}/applications",
+    url: '/api/me/clients/{clientId}/applications',
     ...options,
   });
 };
@@ -3621,12 +3314,10 @@ export const getMyClientApplications = <ThrowOnError extends boolean = false>(
 export const getApiPublicLoginTheme = <ThrowOnError extends boolean = false>(
   options?: Options<GetApiPublicLoginThemeData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/public/login-theme",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+    url: '/api/public/login-theme',
+    ...options,
+  });
 };
 
 /**
@@ -3635,56 +3326,46 @@ export const getApiPublicLoginTheme = <ThrowOnError extends boolean = false>(
 export const postApiSampleWebhook = <ThrowOnError extends boolean = false>(
   options: Options<PostApiSampleWebhookData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/sample/webhook",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/sample/webhook',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
  * Receive Webhook Permanent Failure
  */
-export const postApiSampleWebhookFailPermanent = <
-  ThrowOnError extends boolean = false,
->(
+export const postApiSampleWebhookFailPermanent = <ThrowOnError extends boolean = false>(
   options: Options<PostApiSampleWebhookFailPermanentData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/sample/webhook/fail-permanent",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/sample/webhook/fail-permanent',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
  * Receive Webhook Transient Failure
  */
-export const postApiSampleWebhookFailTransient = <
-  ThrowOnError extends boolean = false,
->(
+export const postApiSampleWebhookFailTransient = <ThrowOnError extends boolean = false>(
   options: Options<PostApiSampleWebhookFailTransientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/sample/webhook/fail-transient",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/sample/webhook/fail-transient',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
@@ -3693,16 +3374,14 @@ export const postApiSampleWebhookFailTransient = <
 export const postApiSampleWebhookSlow = <ThrowOnError extends boolean = false>(
   options: Options<PostApiSampleWebhookSlowData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/api/sample/webhook/slow",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/api/sample/webhook/slow',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
@@ -3711,12 +3390,8 @@ export const postApiSampleWebhookSlow = <ThrowOnError extends boolean = false>(
 export const sdkListClients = <ThrowOnError extends boolean = false>(
   options?: Options<SdkListClientsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<
-    SdkListClientsResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/clients",
+  return (options?.client ?? _heyApiClient).get<SdkListClientsResponse, unknown, ThrowOnError>({
+    url: '/api/sdk/clients',
     ...options,
   });
 };
@@ -3727,15 +3402,11 @@ export const sdkListClients = <ThrowOnError extends boolean = false>(
 export const sdkCreateClient = <ThrowOnError extends boolean = false>(
   options: Options<SdkCreateClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    SdkCreateClientResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/clients",
+  return (options.client ?? _heyApiClient).post<SdkCreateClientResponse, unknown, ThrowOnError>({
+    url: '/api/sdk/clients',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -3747,12 +3418,8 @@ export const sdkCreateClient = <ThrowOnError extends boolean = false>(
 export const sdkGetClient = <ThrowOnError extends boolean = false>(
   options: Options<SdkGetClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    SdkGetClientResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/clients/{id}",
+  return (options.client ?? _heyApiClient).get<SdkGetClientResponse, unknown, ThrowOnError>({
+    url: '/api/sdk/clients/{id}',
     ...options,
   });
 };
@@ -3763,15 +3430,11 @@ export const sdkGetClient = <ThrowOnError extends boolean = false>(
 export const sdkUpdateClient = <ThrowOnError extends boolean = false>(
   options: Options<SdkUpdateClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).put<
-    SdkUpdateClientResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/clients/{id}",
+  return (options.client ?? _heyApiClient).put<SdkUpdateClientResponse, unknown, ThrowOnError>({
+    url: '/api/sdk/clients/{id}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -3783,12 +3446,8 @@ export const sdkUpdateClient = <ThrowOnError extends boolean = false>(
 export const sdkActivateClient = <ThrowOnError extends boolean = false>(
   options: Options<SdkActivateClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    SdkActivateClientResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/clients/{id}/activate",
+  return (options.client ?? _heyApiClient).post<SdkActivateClientResponse, unknown, ThrowOnError>({
+    url: '/api/sdk/clients/{id}/activate',
     ...options,
   });
 };
@@ -3799,18 +3458,16 @@ export const sdkActivateClient = <ThrowOnError extends boolean = false>(
 export const sdkDeactivateClient = <ThrowOnError extends boolean = false>(
   options: Options<SdkDeactivateClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    SdkDeactivateClientResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/clients/{id}/deactivate",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
+  return (options.client ?? _heyApiClient).post<SdkDeactivateClientResponse, unknown, ThrowOnError>(
+    {
+      url: '/api/sdk/clients/{id}/deactivate',
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
     },
-  });
+  );
 };
 
 /**
@@ -3819,15 +3476,11 @@ export const sdkDeactivateClient = <ThrowOnError extends boolean = false>(
 export const sdkSuspendClient = <ThrowOnError extends boolean = false>(
   options: Options<SdkSuspendClientData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    SdkSuspendClientResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/clients/{id}/suspend",
+  return (options.client ?? _heyApiClient).post<SdkSuspendClientResponse, unknown, ThrowOnError>({
+    url: '/api/sdk/clients/{id}/suspend',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -3839,12 +3492,8 @@ export const sdkSuspendClient = <ThrowOnError extends boolean = false>(
 export const sdkListPrincipals = <ThrowOnError extends boolean = false>(
   options?: Options<SdkListPrincipalsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<
-    SdkListPrincipalsResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/principals",
+  return (options?.client ?? _heyApiClient).get<SdkListPrincipalsResponse, unknown, ThrowOnError>({
+    url: '/api/sdk/principals',
     ...options,
   });
 };
@@ -3860,10 +3509,10 @@ export const sdkCreateServicePrincipal = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/sdk/principals/service",
+    url: '/api/sdk/principals/service',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -3880,10 +3529,10 @@ export const sdkCreateUserPrincipal = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/sdk/principals/user",
+    url: '/api/sdk/principals/user',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -3895,12 +3544,8 @@ export const sdkCreateUserPrincipal = <ThrowOnError extends boolean = false>(
 export const sdkGetPrincipal = <ThrowOnError extends boolean = false>(
   options: Options<SdkGetPrincipalData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    SdkGetPrincipalResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/principals/{id}",
+  return (options.client ?? _heyApiClient).get<SdkGetPrincipalResponse, unknown, ThrowOnError>({
+    url: '/api/sdk/principals/{id}',
     ...options,
   });
 };
@@ -3911,15 +3556,11 @@ export const sdkGetPrincipal = <ThrowOnError extends boolean = false>(
 export const sdkUpdatePrincipal = <ThrowOnError extends boolean = false>(
   options: Options<SdkUpdatePrincipalData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).put<
-    SdkUpdatePrincipalResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/principals/{id}",
+  return (options.client ?? _heyApiClient).put<SdkUpdatePrincipalResponse, unknown, ThrowOnError>({
+    url: '/api/sdk/principals/{id}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -3936,7 +3577,7 @@ export const sdkActivatePrincipal = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/sdk/principals/{id}/activate",
+    url: '/api/sdk/principals/{id}/activate',
     ...options,
   });
 };
@@ -3952,7 +3593,7 @@ export const sdkGetPrincipalClients = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/sdk/principals/{id}/clients",
+    url: '/api/sdk/principals/{id}/clients',
     ...options,
   });
 };
@@ -3968,7 +3609,7 @@ export const sdkRevokeClientAccess = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/sdk/principals/{id}/clients/{clientId}",
+    url: '/api/sdk/principals/{id}/clients/{clientId}',
     ...options,
   });
 };
@@ -3984,7 +3625,7 @@ export const sdkGrantClientAccess = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/sdk/principals/{id}/clients/{clientId}",
+    url: '/api/sdk/principals/{id}/clients/{clientId}',
     ...options,
   });
 };
@@ -4000,7 +3641,7 @@ export const sdkDeactivatePrincipal = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/sdk/principals/{id}/deactivate",
+    url: '/api/sdk/principals/{id}/deactivate',
     ...options,
   });
 };
@@ -4011,14 +3652,12 @@ export const sdkDeactivatePrincipal = <ThrowOnError extends boolean = false>(
 export const sdkGetPrincipalRoles = <ThrowOnError extends boolean = false>(
   options: Options<SdkGetPrincipalRolesData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    SdkGetPrincipalRolesResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/principals/{id}/roles",
-    ...options,
-  });
+  return (options.client ?? _heyApiClient).get<SdkGetPrincipalRolesResponse, unknown, ThrowOnError>(
+    {
+      url: '/api/sdk/principals/{id}/roles',
+      ...options,
+    },
+  );
 };
 
 /**
@@ -4032,10 +3671,10 @@ export const sdkAssignPrincipalRoles = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/sdk/principals/{id}/roles",
+    url: '/api/sdk/principals/{id}/roles',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -4052,7 +3691,7 @@ export const sdkRemovePrincipalRole = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/api/sdk/principals/{id}/roles/{roleName}",
+    url: '/api/sdk/principals/{id}/roles/{roleName}',
     ...options,
   });
 };
@@ -4063,14 +3702,12 @@ export const sdkRemovePrincipalRole = <ThrowOnError extends boolean = false>(
 export const sdkAddPrincipalRole = <ThrowOnError extends boolean = false>(
   options: Options<SdkAddPrincipalRoleData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    SdkAddPrincipalRoleResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/principals/{id}/roles/{roleName}",
-    ...options,
-  });
+  return (options.client ?? _heyApiClient).post<SdkAddPrincipalRoleResponse, unknown, ThrowOnError>(
+    {
+      url: '/api/sdk/principals/{id}/roles/{roleName}',
+      ...options,
+    },
+  );
 };
 
 /**
@@ -4079,12 +3716,8 @@ export const sdkAddPrincipalRole = <ThrowOnError extends boolean = false>(
 export const sdkListRoles = <ThrowOnError extends boolean = false>(
   options?: Options<SdkListRolesData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<
-    SdkListRolesResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/roles",
+  return (options?.client ?? _heyApiClient).get<SdkListRolesResponse, unknown, ThrowOnError>({
+    url: '/api/sdk/roles',
     ...options,
   });
 };
@@ -4095,15 +3728,11 @@ export const sdkListRoles = <ThrowOnError extends boolean = false>(
 export const sdkCreateRole = <ThrowOnError extends boolean = false>(
   options: Options<SdkCreateRoleData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    SdkCreateRoleResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/roles",
+  return (options.client ?? _heyApiClient).post<SdkCreateRoleResponse, unknown, ThrowOnError>({
+    url: '/api/sdk/roles',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -4115,12 +3744,8 @@ export const sdkCreateRole = <ThrowOnError extends boolean = false>(
 export const sdkDeleteRole = <ThrowOnError extends boolean = false>(
   options: Options<SdkDeleteRoleData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).delete<
-    SdkDeleteRoleResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/roles/{roleName}",
+  return (options.client ?? _heyApiClient).delete<SdkDeleteRoleResponse, unknown, ThrowOnError>({
+    url: '/api/sdk/roles/{roleName}',
     ...options,
   });
 };
@@ -4131,12 +3756,8 @@ export const sdkDeleteRole = <ThrowOnError extends boolean = false>(
 export const sdkGetRole = <ThrowOnError extends boolean = false>(
   options: Options<SdkGetRoleData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).get<
-    SdkGetRoleResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/roles/{roleName}",
+  return (options.client ?? _heyApiClient).get<SdkGetRoleResponse, unknown, ThrowOnError>({
+    url: '/api/sdk/roles/{roleName}',
     ...options,
   });
 };
@@ -4147,15 +3768,11 @@ export const sdkGetRole = <ThrowOnError extends boolean = false>(
 export const sdkUpdateRole = <ThrowOnError extends boolean = false>(
   options: Options<SdkUpdateRoleData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).put<
-    SdkUpdateRoleResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/sdk/roles/{roleName}",
+  return (options.client ?? _heyApiClient).put<SdkUpdateRoleResponse, unknown, ThrowOnError>({
+    url: '/api/sdk/roles/{roleName}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -4167,12 +3784,8 @@ export const sdkUpdateRole = <ThrowOnError extends boolean = false>(
 export const getApiStats = <ThrowOnError extends boolean = false>(
   options?: Options<GetApiStatsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<
-    GetApiStatsResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/api/stats",
+  return (options?.client ?? _heyApiClient).get<GetApiStatsResponse, unknown, ThrowOnError>({
+    url: '/api/stats',
     ...options,
   });
 };
@@ -4184,18 +3797,16 @@ export const getApiStats = <ThrowOnError extends boolean = false>(
 export const postAuthCheckDomain = <ThrowOnError extends boolean = false>(
   options: Options<PostAuthCheckDomainData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    PostAuthCheckDomainResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/auth/check-domain",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
+  return (options.client ?? _heyApiClient).post<PostAuthCheckDomainResponse, unknown, ThrowOnError>(
+    {
+      url: '/auth/check-domain',
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
     },
-  });
+  );
 };
 
 /**
@@ -4209,7 +3820,7 @@ export const getAuthClientAccessible = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/auth/client/accessible",
+    url: '/auth/client/accessible',
     ...options,
   });
 };
@@ -4220,12 +3831,10 @@ export const getAuthClientAccessible = <ThrowOnError extends boolean = false>(
 export const getAuthClientCurrent = <ThrowOnError extends boolean = false>(
   options?: Options<GetAuthClientCurrentData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/auth/client/current",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+    url: '/auth/client/current',
+    ...options,
+  });
 };
 
 /**
@@ -4239,10 +3848,10 @@ export const postAuthClientSwitch = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    url: "/auth/client/switch",
+    url: '/auth/client/switch',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -4254,15 +3863,11 @@ export const postAuthClientSwitch = <ThrowOnError extends boolean = false>(
 export const postAuthLogin = <ThrowOnError extends boolean = false>(
   options: Options<PostAuthLoginData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<
-    PostAuthLoginResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/auth/login",
+  return (options.client ?? _heyApiClient).post<PostAuthLoginResponse, unknown, ThrowOnError>({
+    url: '/auth/login',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -4274,12 +3879,8 @@ export const postAuthLogin = <ThrowOnError extends boolean = false>(
 export const postAuthLogout = <ThrowOnError extends boolean = false>(
   options?: Options<PostAuthLogoutData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).post<
-    unknown,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/auth/logout",
+  return (options?.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/auth/logout',
     ...options,
   });
 };
@@ -4290,12 +3891,8 @@ export const postAuthLogout = <ThrowOnError extends boolean = false>(
 export const getAuthMe = <ThrowOnError extends boolean = false>(
   options?: Options<GetAuthMeData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<
-    GetAuthMeResponse,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/auth/me",
+  return (options?.client ?? _heyApiClient).get<GetAuthMeResponse, unknown, ThrowOnError>({
+    url: '/auth/me',
     ...options,
   });
 };
@@ -4307,12 +3904,10 @@ export const getAuthMe = <ThrowOnError extends boolean = false>(
 export const getAuthOidcCallback = <ThrowOnError extends boolean = false>(
   options?: Options<GetAuthOidcCallbackData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/auth/oidc/callback",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+    url: '/auth/oidc/callback',
+    ...options,
+  });
 };
 
 /**
@@ -4323,7 +3918,7 @@ export const getAuthOidcLogin = <ThrowOnError extends boolean = false>(
   options: Options<GetAuthOidcLoginData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/auth/oidc/login",
+    url: '/auth/oidc/login',
     ...options,
   });
 };
@@ -4334,12 +3929,10 @@ export const getAuthOidcLogin = <ThrowOnError extends boolean = false>(
 export const getBffEventTypes = <ThrowOnError extends boolean = false>(
   options?: Options<GetBffEventTypesData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/bff/event-types",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+    url: '/bff/event-types',
+    ...options,
+  });
 };
 
 /**
@@ -4348,64 +3941,50 @@ export const getBffEventTypes = <ThrowOnError extends boolean = false>(
 export const postBffEventTypes = <ThrowOnError extends boolean = false>(
   options: Options<PostBffEventTypesData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/bff/event-types",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/bff/event-types',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
  * Get distinct aggregates
  */
-export const getBffEventTypesFiltersAggregates = <
-  ThrowOnError extends boolean = false,
->(
+export const getBffEventTypesFiltersAggregates = <ThrowOnError extends boolean = false>(
   options?: Options<GetBffEventTypesFiltersAggregatesData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/bff/event-types/filters/aggregates",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+    url: '/bff/event-types/filters/aggregates',
+    ...options,
+  });
 };
 
 /**
  * Get distinct application names
  */
-export const getBffEventTypesFiltersApplications = <
-  ThrowOnError extends boolean = false,
->(
+export const getBffEventTypesFiltersApplications = <ThrowOnError extends boolean = false>(
   options?: Options<GetBffEventTypesFiltersApplicationsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/bff/event-types/filters/applications",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+    url: '/bff/event-types/filters/applications',
+    ...options,
+  });
 };
 
 /**
  * Get distinct subdomains
  */
-export const getBffEventTypesFiltersSubdomains = <
-  ThrowOnError extends boolean = false,
->(
+export const getBffEventTypesFiltersSubdomains = <ThrowOnError extends boolean = false>(
   options?: Options<GetBffEventTypesFiltersSubdomainsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/bff/event-types/filters/subdomains",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+    url: '/bff/event-types/filters/subdomains',
+    ...options,
+  });
 };
 
 /**
@@ -4414,12 +3993,8 @@ export const getBffEventTypesFiltersSubdomains = <
 export const deleteBffEventTypesById = <ThrowOnError extends boolean = false>(
   options: Options<DeleteBffEventTypesByIdData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).delete<
-    unknown,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/bff/event-types/{id}",
+  return (options.client ?? _heyApiClient).delete<unknown, unknown, ThrowOnError>({
+    url: '/bff/event-types/{id}',
     ...options,
   });
 };
@@ -4431,7 +4006,7 @@ export const getBffEventTypesById = <ThrowOnError extends boolean = false>(
   options: Options<GetBffEventTypesByIdData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/bff/event-types/{id}",
+    url: '/bff/event-types/{id}',
     ...options,
   });
 };
@@ -4442,15 +4017,11 @@ export const getBffEventTypesById = <ThrowOnError extends boolean = false>(
 export const patchBffEventTypesById = <ThrowOnError extends boolean = false>(
   options: Options<PatchBffEventTypesByIdData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).patch<
-    unknown,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/bff/event-types/{id}",
+  return (options.client ?? _heyApiClient).patch<unknown, unknown, ThrowOnError>({
+    url: '/bff/event-types/{id}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -4459,37 +4030,29 @@ export const patchBffEventTypesById = <ThrowOnError extends boolean = false>(
 /**
  * Archive an event type (BFF)
  */
-export const postBffEventTypesByIdArchive = <
-  ThrowOnError extends boolean = false,
->(
+export const postBffEventTypesByIdArchive = <ThrowOnError extends boolean = false>(
   options: Options<PostBffEventTypesByIdArchiveData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/bff/event-types/{id}/archive",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/bff/event-types/{id}/archive',
+    ...options,
+  });
 };
 
 /**
  * Add a schema version (BFF)
  */
-export const postBffEventTypesByIdSchemas = <
-  ThrowOnError extends boolean = false,
->(
+export const postBffEventTypesByIdSchemas = <ThrowOnError extends boolean = false>(
   options: Options<PostBffEventTypesByIdSchemasData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/bff/event-types/{id}/schemas",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/bff/event-types/{id}/schemas',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
@@ -4498,36 +4061,24 @@ export const postBffEventTypesByIdSchemas = <
 export const postBffEventTypesByIdSchemasByVersionDeprecate = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<
-    PostBffEventTypesByIdSchemasByVersionDeprecateData,
-    ThrowOnError
-  >,
+  options: Options<PostBffEventTypesByIdSchemasByVersionDeprecateData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/bff/event-types/{id}/schemas/{version}/deprecate",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/bff/event-types/{id}/schemas/{version}/deprecate',
+    ...options,
+  });
 };
 
 /**
  * Finalise a schema version (BFF)
  */
-export const postBffEventTypesByIdSchemasByVersionFinalise = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    PostBffEventTypesByIdSchemasByVersionFinaliseData,
-    ThrowOnError
-  >,
+export const postBffEventTypesByIdSchemasByVersionFinalise = <ThrowOnError extends boolean = false>(
+  options: Options<PostBffEventTypesByIdSchemasByVersionFinaliseData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/bff/event-types/{id}/schemas/{version}/finalise",
-      ...options,
-    },
-  );
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/bff/event-types/{id}/schemas/{version}/finalise',
+    ...options,
+  });
 };
 
 /**
@@ -4536,12 +4087,10 @@ export const postBffEventTypesByIdSchemasByVersionFinalise = <
 export const getBffRoles = <ThrowOnError extends boolean = false>(
   options?: Options<GetBffRolesData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/bff/roles",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+    url: '/bff/roles',
+    ...options,
+  });
 };
 
 /**
@@ -4550,32 +4099,26 @@ export const getBffRoles = <ThrowOnError extends boolean = false>(
 export const postBffRoles = <ThrowOnError extends boolean = false>(
   options: Options<PostBffRolesData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      url: "/bff/roles",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    url: '/bff/roles',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
     },
-  );
+  });
 };
 
 /**
  * Get applications for role filter
  */
-export const getBffRolesFiltersApplications = <
-  ThrowOnError extends boolean = false,
->(
+export const getBffRolesFiltersApplications = <ThrowOnError extends boolean = false>(
   options?: Options<GetBffRolesFiltersApplicationsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/bff/roles/filters/applications",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+    url: '/bff/roles/filters/applications',
+    ...options,
+  });
 };
 
 /**
@@ -4584,24 +4127,20 @@ export const getBffRolesFiltersApplications = <
 export const getBffRolesPermissions = <ThrowOnError extends boolean = false>(
   options?: Options<GetBffRolesPermissionsData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/bff/roles/permissions",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+    url: '/bff/roles/permissions',
+    ...options,
+  });
 };
 
 /**
  * Get permission by string (BFF)
  */
-export const getBffRolesPermissionsByPermission = <
-  ThrowOnError extends boolean = false,
->(
+export const getBffRolesPermissionsByPermission = <ThrowOnError extends boolean = false>(
   options: Options<GetBffRolesPermissionsByPermissionData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/bff/roles/permissions/{permission}",
+    url: '/bff/roles/permissions/{permission}',
     ...options,
   });
 };
@@ -4612,12 +4151,8 @@ export const getBffRolesPermissionsByPermission = <
 export const deleteBffRolesByRoleName = <ThrowOnError extends boolean = false>(
   options: Options<DeleteBffRolesByRoleNameData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).delete<
-    unknown,
-    unknown,
-    ThrowOnError
-  >({
-    url: "/bff/roles/{roleName}",
+  return (options.client ?? _heyApiClient).delete<unknown, unknown, ThrowOnError>({
+    url: '/bff/roles/{roleName}',
     ...options,
   });
 };
@@ -4629,7 +4164,7 @@ export const getBffRolesByRoleName = <ThrowOnError extends boolean = false>(
   options: Options<GetBffRolesByRoleNameData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-    url: "/bff/roles/{roleName}",
+    url: '/bff/roles/{roleName}',
     ...options,
   });
 };
@@ -4641,10 +4176,10 @@ export const putBffRolesByRoleName = <ThrowOnError extends boolean = false>(
   options: Options<PutBffRolesByRoleNameData, ThrowOnError>,
 ) => {
   return (options.client ?? _heyApiClient).put<unknown, unknown, ThrowOnError>({
-    url: "/bff/roles/{roleName}",
+    url: '/bff/roles/{roleName}',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -4656,12 +4191,10 @@ export const putBffRolesByRoleName = <ThrowOnError extends boolean = false>(
 export const getOauthAuthorize = <ThrowOnError extends boolean = false>(
   options?: Options<GetOauthAuthorizeData, ThrowOnError>,
 ) => {
-  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>(
-    {
-      url: "/oauth/authorize",
-      ...options,
-    },
-  );
+  return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+    url: '/oauth/authorize',
+    ...options,
+  });
 };
 
 /**
@@ -4670,15 +4203,13 @@ export const getOauthAuthorize = <ThrowOnError extends boolean = false>(
 export const postOauthToken = <ThrowOnError extends boolean = false>(
   options: Options<PostOauthTokenData, ThrowOnError>,
 ) => {
-  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>(
-    {
-      ...urlSearchParamsBodySerializer,
-      url: "/oauth/token",
-      ...options,
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        ...options?.headers,
-      },
+  return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
+    ...urlSearchParamsBodySerializer,
+    url: '/oauth/token',
+    ...options,
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      ...options?.headers,
     },
-  );
+  });
 };

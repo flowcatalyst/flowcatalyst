@@ -8,7 +8,11 @@ import Textarea from 'primevue/textarea';
 import Message from 'primevue/message';
 import SelectButton from 'primevue/selectbutton';
 import Dialog from 'primevue/dialog';
-import { applicationsApi, type ApplicationType, type ApplicationWithServiceAccount } from '@/api/applications';
+import {
+  applicationsApi,
+  type ApplicationType,
+  type ApplicationWithServiceAccount,
+} from '@/api/applications';
 
 const router = useRouter();
 const toast = useToast();
@@ -75,7 +79,12 @@ async function onSubmit() {
     if (application.serviceAccount) {
       showCredentialsDialog.value = true;
     } else {
-      toast.add({ severity: 'success', summary: 'Success', detail: 'Application created', life: 3000 });
+      toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: 'Application created',
+        life: 3000,
+      });
       router.push(`/applications/${application.id}`);
     }
   } catch (e) {
@@ -122,9 +131,18 @@ function copyToClipboard(text: string) {
 
           <div class="form-field">
             <label>Type <span class="required">*</span></label>
-            <SelectButton v-model="type" :options="typeOptions" optionLabel="label" optionValue="value" />
+            <SelectButton
+              v-model="type"
+              :options="typeOptions"
+              optionLabel="label"
+              optionValue="value"
+            />
             <small class="hint">
-              {{ type === 'APPLICATION' ? 'User-facing application that users can log into' : 'Third-party adapter or connector for integrations' }}
+              {{
+                type === 'APPLICATION'
+                  ? 'User-facing application that users can log into'
+                  : 'Third-party adapter or connector for integrations'
+              }}
             </small>
           </div>
 
@@ -191,11 +209,7 @@ function copyToClipboard(text: string) {
 
           <div class="form-field">
             <label>Website</label>
-            <InputText
-              v-model="website"
-              placeholder="https://www.example.com"
-              class="full-width"
-            />
+            <InputText v-model="website" placeholder="https://www.example.com" class="full-width" />
             <small class="hint">Public website URL for this application</small>
           </div>
 
@@ -212,11 +226,7 @@ function copyToClipboard(text: string) {
 
           <div class="form-field" v-if="logo">
             <label>Logo MIME Type</label>
-            <InputText
-              v-model="logoMimeType"
-              placeholder="image/svg+xml"
-              class="full-width"
-            />
+            <InputText v-model="logoMimeType" placeholder="image/svg+xml" class="full-width" />
             <small class="hint">MIME type of the logo (e.g., image/svg+xml)</small>
           </div>
         </section>
@@ -292,7 +302,11 @@ function copyToClipboard(text: string) {
       </div>
 
       <template #footer>
-        <Button label="I've saved the credentials" icon="pi pi-check" @click="onCredentialsDialogClose" />
+        <Button
+          label="I've saved the credentials"
+          icon="pi pi-check"
+          @click="onCredentialsDialogClose"
+        />
       </template>
     </Dialog>
   </div>

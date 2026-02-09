@@ -11,16 +11,16 @@
  * Permission definition interface.
  */
 export interface PermissionDefinition {
-	/** Subdomain (e.g., "platform") */
-	readonly subdomain: string;
-	/** Context/bounded context (e.g., "iam") */
-	readonly context: string;
-	/** Aggregate/resource (e.g., "user") */
-	readonly aggregate: string;
-	/** Action (e.g., "create", "read", "update", "delete", "manage") */
-	readonly action: string;
-	/** Human-readable description */
-	readonly description: string;
+  /** Subdomain (e.g., "platform") */
+  readonly subdomain: string;
+  /** Context/bounded context (e.g., "iam") */
+  readonly context: string;
+  /** Aggregate/resource (e.g., "user") */
+  readonly aggregate: string;
+  /** Action (e.g., "create", "read", "update", "delete", "manage") */
+  readonly action: string;
+  /** Human-readable description */
+  readonly description: string;
 }
 
 /**
@@ -30,7 +30,7 @@ export interface PermissionDefinition {
  * @returns Permission string (e.g., "platform:iam:user:create")
  */
 export function permissionToString(permission: PermissionDefinition): string {
-	return `${permission.subdomain}:${permission.context}:${permission.aggregate}:${permission.action}`;
+  return `${permission.subdomain}:${permission.context}:${permission.aggregate}:${permission.action}`;
 }
 
 /**
@@ -40,17 +40,17 @@ export function permissionToString(permission: PermissionDefinition): string {
  * @returns Parsed components or null if invalid
  */
 export function parsePermissionString(
-	permissionString: string,
+  permissionString: string,
 ): { subdomain: string; context: string; aggregate: string; action: string } | null {
-	const parts = permissionString.split(':');
-	if (parts.length !== 4) {
-		return null;
-	}
-	const [subdomain, context, aggregate, action] = parts;
-	if (!subdomain || !context || !aggregate || !action) {
-		return null;
-	}
-	return { subdomain, context, aggregate, action };
+  const parts = permissionString.split(':');
+  if (parts.length !== 4) {
+    return null;
+  }
+  const [subdomain, context, aggregate, action] = parts;
+  if (!subdomain || !context || !aggregate || !action) {
+    return null;
+  }
+  return { subdomain, context, aggregate, action };
 }
 
 /**
@@ -64,19 +64,19 @@ export function parsePermissionString(
  * @returns Permission definition
  */
 export function makePermission(
-	subdomain: string,
-	context: string,
-	aggregate: string,
-	action: string,
-	description: string,
+  subdomain: string,
+  context: string,
+  aggregate: string,
+  action: string,
+  description: string,
 ): PermissionDefinition {
-	return {
-		subdomain,
-		context,
-		aggregate,
-		action,
-		description,
-	};
+  return {
+    subdomain,
+    context,
+    aggregate,
+    action,
+    description,
+  };
 }
 
 /**
@@ -93,18 +93,18 @@ export function makePermission(
  * matchesPattern("platform:iam:user:create", "other:iam:user:create") // false
  */
 export function matchesPattern(permission: string, pattern: string): boolean {
-	const permParts = permission.split(':');
-	const patternParts = pattern.split(':');
+  const permParts = permission.split(':');
+  const patternParts = pattern.split(':');
 
-	if (permParts.length !== 4 || patternParts.length !== 4) {
-		return false;
-	}
+  if (permParts.length !== 4 || patternParts.length !== 4) {
+    return false;
+  }
 
-	for (let i = 0; i < 4; i++) {
-		if (patternParts[i] !== '*' && patternParts[i] !== permParts[i]) {
-			return false;
-		}
-	}
+  for (let i = 0; i < 4; i++) {
+    if (patternParts[i] !== '*' && patternParts[i] !== permParts[i]) {
+      return false;
+    }
+  }
 
-	return true;
+  return true;
 }

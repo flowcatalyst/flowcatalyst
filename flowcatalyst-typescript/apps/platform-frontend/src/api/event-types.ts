@@ -68,9 +68,9 @@ export interface EventTypeFilters {
 export const eventTypesApi = {
   list(filters: EventTypeFilters = {}): Promise<EventTypeListResponse> {
     const params = new URLSearchParams();
-    filters.applications?.forEach(a => params.append('application', a));
-    filters.subdomains?.forEach(s => params.append('subdomain', s));
-    filters.aggregates?.forEach(a => params.append('aggregate', a));
+    filters.applications?.forEach((a) => params.append('application', a));
+    filters.subdomains?.forEach((s) => params.append('subdomain', s));
+    filters.aggregates?.forEach((a) => params.append('aggregate', a));
     if (filters.status) params.set('status', filters.status);
 
     const query = params.toString();
@@ -129,15 +129,15 @@ export const eventTypesApi = {
 
   getSubdomains(applications?: string[]): Promise<FilterOptionsResponse> {
     const params = new URLSearchParams();
-    applications?.forEach(a => params.append('application', a));
+    applications?.forEach((a) => params.append('application', a));
     const query = params.toString();
     return bffFetch(`/event-types/filters/subdomains${query ? `?${query}` : ''}`);
   },
 
   getAggregates(applications?: string[], subdomains?: string[]): Promise<FilterOptionsResponse> {
     const params = new URLSearchParams();
-    applications?.forEach(a => params.append('application', a));
-    subdomains?.forEach(s => params.append('subdomain', s));
+    applications?.forEach((a) => params.append('application', a));
+    subdomains?.forEach((s) => params.append('subdomain', s));
     const query = params.toString();
     return bffFetch(`/event-types/filters/aggregates${query ? `?${query}` : ''}`);
   },

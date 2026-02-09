@@ -23,17 +23,17 @@ const selectedAction = ref<string | null>(null);
 
 // Compute unique filter options
 const applicationOptions = computed(() => {
-  const unique = [...new Set(permissions.value.map(p => p.application))];
-  return unique.sort().map(s => ({ label: s, value: s }));
+  const unique = [...new Set(permissions.value.map((p) => p.application))];
+  return unique.sort().map((s) => ({ label: s, value: s }));
 });
 
 const contextOptions = computed(() => {
   let filtered = permissions.value;
   if (selectedApplication.value) {
-    filtered = filtered.filter(p => p.application === selectedApplication.value);
+    filtered = filtered.filter((p) => p.application === selectedApplication.value);
   }
-  const unique = [...new Set(filtered.map(p => p.context))];
-  return unique.sort().map(c => ({ label: c, value: c }));
+  const unique = [...new Set(filtered.map((p) => p.context))];
+  return unique.sort().map((c) => ({ label: c, value: c }));
 });
 
 const actionOptions = computed(() => [
@@ -45,7 +45,9 @@ const actionOptions = computed(() => [
 ]);
 
 const hasActiveFilters = computed(() => {
-  return searchQuery.value || selectedApplication.value || selectedContext.value || selectedAction.value;
+  return (
+    searchQuery.value || selectedApplication.value || selectedContext.value || selectedAction.value
+  );
 });
 
 const filteredPermissions = computed(() => {
@@ -53,22 +55,22 @@ const filteredPermissions = computed(() => {
 
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase();
-    result = result.filter(p =>
-      p.permission.toLowerCase().includes(query) ||
-      p.description?.toLowerCase().includes(query)
+    result = result.filter(
+      (p) =>
+        p.permission.toLowerCase().includes(query) || p.description?.toLowerCase().includes(query),
     );
   }
 
   if (selectedApplication.value) {
-    result = result.filter(p => p.application === selectedApplication.value);
+    result = result.filter((p) => p.application === selectedApplication.value);
   }
 
   if (selectedContext.value) {
-    result = result.filter(p => p.context === selectedContext.value);
+    result = result.filter((p) => p.context === selectedContext.value);
   }
 
   if (selectedAction.value) {
-    result = result.filter(p => p.action === selectedAction.value);
+    result = result.filter((p) => p.action === selectedAction.value);
   }
 
   return result;
@@ -88,7 +90,7 @@ async function loadPermissions() {
       severity: 'error',
       summary: 'Error',
       detail: e instanceof Error ? e.message : 'Failed to load permissions',
-      life: 5000
+      life: 5000,
     });
   } finally {
     loading.value = false;
@@ -104,11 +106,16 @@ function clearFilters() {
 
 function getActionSeverity(action: string) {
   switch (action) {
-    case 'view': return 'info';
-    case 'create': return 'success';
-    case 'update': return 'warn';
-    case 'delete': return 'danger';
-    default: return 'secondary';
+    case 'view':
+      return 'info';
+    case 'create':
+      return 'success';
+    case 'update':
+      return 'warn';
+    case 'delete':
+      return 'danger';
+    default:
+      return 'secondary';
   }
 }
 </script>
@@ -247,12 +254,7 @@ function getActionSeverity(action: string) {
           <div class="empty-message">
             <i class="pi pi-lock"></i>
             <span>No permissions found</span>
-            <Button
-              v-if="hasActiveFilters"
-              label="Clear filters"
-              link
-              @click="clearFilters"
-            />
+            <Button v-if="hasActiveFilters" label="Clear filters" link @click="clearFilters" />
           </div>
         </template>
       </DataTable>

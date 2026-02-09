@@ -39,7 +39,7 @@ export class DispatchPoolsResource {
         client: httpClient,
         headers,
         query: filters,
-      })
+      }),
     );
   }
 
@@ -52,7 +52,7 @@ export class DispatchPoolsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -65,7 +65,7 @@ export class DispatchPoolsResource {
         client: httpClient,
         headers,
         body: data,
-      })
+      }),
     );
   }
 
@@ -79,7 +79,7 @@ export class DispatchPoolsResource {
         headers,
         path: { id },
         body: data,
-      })
+      }),
     );
   }
 
@@ -92,7 +92,7 @@ export class DispatchPoolsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -105,7 +105,7 @@ export class DispatchPoolsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -118,7 +118,7 @@ export class DispatchPoolsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -131,7 +131,7 @@ export class DispatchPoolsResource {
         client: httpClient,
         headers,
         path: { appCode },
-      })
+      }),
     );
   }
 
@@ -141,7 +141,7 @@ export class DispatchPoolsResource {
   sync(
     appCode: string,
     pools: SyncPoolsRequest['pools'],
-    removeUnlisted = false
+    removeUnlisted = false,
   ): ResultAsync<SyncResponse, SdkError> {
     return this.client.request<SyncResponse>((httpClient, headers) =>
       sdk.syncApplicationDispatchPools({
@@ -150,7 +150,7 @@ export class DispatchPoolsResource {
         path: { appCode },
         query: { removeUnlisted },
         body: { pools },
-      })
+      }),
     );
   }
 }

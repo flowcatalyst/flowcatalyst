@@ -31,7 +31,7 @@ const canArchive = computed(() => {
   const et = eventType.value;
   if (!et || et.status !== 'CURRENT') return false;
   if (et.specVersions.length === 0) return true;
-  return et.specVersions.every(sv => sv.status === 'DEPRECATED');
+  return et.specVersions.every((sv) => sv.status === 'DEPRECATED');
 });
 
 const canDelete = computed(() => {
@@ -39,7 +39,7 @@ const canDelete = computed(() => {
   if (!et) return false;
   if (et.status === 'ARCHIVE') return true;
   if (et.status === 'CURRENT' && et.specVersions.length === 0) return true;
-  return et.status === 'CURRENT' && et.specVersions.every(sv => sv.status === 'FINALISING');
+  return et.status === 'CURRENT' && et.specVersions.every((sv) => sv.status === 'FINALISING');
 });
 
 onMounted(async () => {
@@ -82,7 +82,12 @@ async function saveChanges() {
       description: editDescription.value,
     });
     editing.value = false;
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Event type updated', life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Event type updated',
+      life: 3000,
+    });
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update', life: 3000 });
   } finally {
@@ -92,19 +97,27 @@ async function saveChanges() {
 
 function getSchemaStatusSeverity(status: string) {
   switch (status) {
-    case 'CURRENT': return 'success';
-    case 'FINALISING': return 'info';
-    case 'DEPRECATED': return 'warn';
-    default: return 'secondary';
+    case 'CURRENT':
+      return 'success';
+    case 'FINALISING':
+      return 'info';
+    case 'DEPRECATED':
+      return 'warn';
+    default:
+      return 'secondary';
   }
 }
 
 function formatSchemaType(type: string) {
   switch (type) {
-    case 'JSON_SCHEMA': return 'JSON Schema';
-    case 'PROTO': return 'Protocol Buffers';
-    case 'XSD': return 'XML Schema';
-    default: return type;
+    case 'JSON_SCHEMA':
+      return 'JSON Schema';
+    case 'PROTO':
+      return 'Protocol Buffers';
+    case 'XSD':
+      return 'XML Schema';
+    default:
+      return type;
   }
 }
 
@@ -122,7 +135,12 @@ async function finaliseSchema(version: string) {
   if (!eventType.value) return;
   try {
     eventType.value = await eventTypesApi.finaliseSchema(eventType.value.id, version);
-    toast.add({ severity: 'success', summary: 'Success', detail: `Schema ${version} finalised`, life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: `Schema ${version} finalised`,
+      life: 3000,
+    });
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to finalise', life: 3000 });
   }
@@ -143,7 +161,12 @@ async function deprecateSchema(version: string) {
   if (!eventType.value) return;
   try {
     eventType.value = await eventTypesApi.deprecateSchema(eventType.value.id, version);
-    toast.add({ severity: 'success', summary: 'Success', detail: `Schema ${version} deprecated`, life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: `Schema ${version} deprecated`,
+      life: 3000,
+    });
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to deprecate', life: 3000 });
   }
@@ -164,7 +187,12 @@ async function archiveEventType() {
   if (!eventType.value) return;
   try {
     eventType.value = await eventTypesApi.archive(eventType.value.id);
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Event type archived', life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Event type archived',
+      life: 3000,
+    });
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to archive', life: 3000 });
   }
@@ -185,7 +213,12 @@ async function deleteEventType() {
   if (!eventType.value) return;
   try {
     await eventTypesApi.delete(eventType.value.id);
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Event type deleted', life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Event type deleted',
+      life: 3000,
+    });
     router.push('/event-types');
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete', life: 3000 });

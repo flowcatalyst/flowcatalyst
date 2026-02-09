@@ -2,9 +2,7 @@
   "version": "8",
   "dialect": "postgres",
   "id": "62753889-5718-4ac2-a3a1-6f600c7af93b",
-  "prevIds": [
-    "00000000-0000-0000-0000-000000000000"
-  ],
+  "prevIds": ["00000000-0000-0000-0000-000000000000"],
   "ddl": [
     {
       "isRlsEnabled": false,
@@ -7577,14 +7575,10 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "oauth_client_id"
-      ],
+      "columns": ["oauth_client_id"],
       "schemaTo": "public",
       "tableTo": "oauth_clients",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "oauth_client_allowed_origins_v1HZdHOs0PKp_fkey",
@@ -7594,14 +7588,10 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "oauth_client_id"
-      ],
+      "columns": ["oauth_client_id"],
       "schemaTo": "public",
       "tableTo": "oauth_clients",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "oauth_client_application_ids_rkmPMUhQYrzk_fkey",
@@ -7611,14 +7601,10 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "oauth_client_id"
-      ],
+      "columns": ["oauth_client_id"],
       "schemaTo": "public",
       "tableTo": "oauth_clients",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "oauth_client_grant_types_oauth_client_id_oauth_clients_id_fkey",
@@ -7628,14 +7614,10 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "oauth_client_id"
-      ],
+      "columns": ["oauth_client_id"],
       "schemaTo": "public",
       "tableTo": "oauth_clients",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "oauth_client_redirect_uris_2MtuKyU2pJ9Z_fkey",
@@ -7645,14 +7627,10 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "principal_id"
-      ],
+      "columns": ["principal_id"],
       "schemaTo": "public",
       "tableTo": "principals",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "principal_roles_principal_id_principals_id_fkey",
@@ -7661,10 +7639,7 @@
       "table": "principal_roles"
     },
     {
-      "columns": [
-        "oauth_client_id",
-        "allowed_origin"
-      ],
+      "columns": ["oauth_client_id", "allowed_origin"],
       "nameExplicit": false,
       "name": "oauth_client_allowed_origins_pkey",
       "entityType": "pks",
@@ -7672,10 +7647,7 @@
       "table": "oauth_client_allowed_origins"
     },
     {
-      "columns": [
-        "oauth_client_id",
-        "application_id"
-      ],
+      "columns": ["oauth_client_id", "application_id"],
       "nameExplicit": false,
       "name": "oauth_client_application_ids_pkey",
       "entityType": "pks",
@@ -7683,10 +7655,7 @@
       "table": "oauth_client_application_ids"
     },
     {
-      "columns": [
-        "oauth_client_id",
-        "grant_type"
-      ],
+      "columns": ["oauth_client_id", "grant_type"],
       "nameExplicit": false,
       "name": "oauth_client_grant_types_pkey",
       "entityType": "pks",
@@ -7694,10 +7663,7 @@
       "table": "oauth_client_grant_types"
     },
     {
-      "columns": [
-        "oauth_client_id",
-        "redirect_uri"
-      ],
+      "columns": ["oauth_client_id", "redirect_uri"],
       "nameExplicit": false,
       "name": "oauth_client_redirect_uris_pkey",
       "entityType": "pks",
@@ -7705,10 +7671,7 @@
       "table": "oauth_client_redirect_uris"
     },
     {
-      "columns": [
-        "principal_id",
-        "application_id"
-      ],
+      "columns": ["principal_id", "application_id"],
       "nameExplicit": false,
       "name": "principal_application_access_pkey",
       "entityType": "pks",
@@ -7716,10 +7679,7 @@
       "table": "principal_application_access"
     },
     {
-      "columns": [
-        "principal_id",
-        "role_name"
-      ],
+      "columns": ["principal_id", "role_name"],
       "nameExplicit": false,
       "name": "principal_roles_pkey",
       "entityType": "pks",
@@ -7727,9 +7687,7 @@
       "table": "principal_roles"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "anchor_domains_pkey",
       "schema": "public",
@@ -7737,9 +7695,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "application_client_configs_pkey",
       "schema": "public",
@@ -7747,9 +7703,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "applications_pkey",
       "schema": "public",
@@ -7757,9 +7711,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "audit_logs_pkey",
       "schema": "public",
@@ -7767,9 +7719,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "auth_permissions_pkey",
       "schema": "public",
@@ -7777,9 +7727,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "auth_roles_pkey",
       "schema": "public",
@@ -7787,9 +7735,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "client_access_grants_pkey",
       "schema": "public",
@@ -7797,9 +7743,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "client_auth_configs_pkey",
       "schema": "public",
@@ -7807,9 +7751,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "clients_pkey",
       "schema": "public",
@@ -7817,9 +7759,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "cors_allowed_origins_pkey",
       "schema": "public",
@@ -7827,9 +7767,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "dispatch_job_attempts_pkey",
       "schema": "public",
@@ -7837,9 +7775,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "dispatch_job_projection_feed_pkey",
       "schema": "public",
@@ -7847,9 +7783,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "dispatch_jobs_read_pkey",
       "schema": "public",
@@ -7857,9 +7791,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "dispatch_pools_pkey",
       "schema": "public",
@@ -7867,9 +7799,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "email_domain_mapping_additional_clients_pkey",
       "schema": "public",
@@ -7877,9 +7807,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "email_domain_mapping_allowed_roles_pkey",
       "schema": "public",
@@ -7887,9 +7815,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "email_domain_mapping_granted_clients_pkey",
       "schema": "public",
@@ -7897,9 +7823,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "email_domain_mappings_pkey",
       "schema": "public",
@@ -7907,9 +7831,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "event_projection_feed_pkey",
       "schema": "public",
@@ -7917,9 +7839,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "event_type_spec_versions_pkey",
       "schema": "public",
@@ -7927,9 +7847,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "event_types_pkey",
       "schema": "public",
@@ -7937,9 +7855,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "events_pkey",
       "schema": "public",
@@ -7947,9 +7863,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "events_read_pkey",
       "schema": "public",
@@ -7957,9 +7871,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "identity_provider_allowed_domains_pkey",
       "schema": "public",
@@ -7967,9 +7879,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "identity_providers_pkey",
       "schema": "public",
@@ -7977,9 +7887,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "idp_role_mappings_pkey",
       "schema": "public",
@@ -7987,9 +7895,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "oauth_clients_pkey",
       "schema": "public",
@@ -7997,9 +7903,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "state"
-      ],
+      "columns": ["state"],
       "nameExplicit": false,
       "name": "oidc_login_states_pkey",
       "schema": "public",
@@ -8007,9 +7911,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "oidc_payloads_pkey",
       "schema": "public",
@@ -8017,9 +7919,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "platform_config_access_pkey",
       "schema": "public",
@@ -8027,9 +7927,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "platform_configs_pkey",
       "schema": "public",
@@ -8037,9 +7935,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "principals_pkey",
       "schema": "public",
@@ -8047,9 +7943,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "service_accounts_pkey",
       "schema": "public",
@@ -8057,9 +7951,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "subscription_custom_configs_pkey",
       "schema": "public",
@@ -8067,9 +7959,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "subscription_event_types_pkey",
       "schema": "public",
@@ -8077,9 +7967,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "subscriptions_pkey",
       "schema": "public",
@@ -8088,10 +7976,7 @@
     },
     {
       "nameExplicit": true,
-      "columns": [
-        "application_id",
-        "client_id"
-      ],
+      "columns": ["application_id", "client_id"],
       "nullsNotDistinct": false,
       "name": "uq_app_client_configs_app_client",
       "entityType": "uniques",
@@ -8100,10 +7985,7 @@
     },
     {
       "nameExplicit": true,
-      "columns": [
-        "principal_id",
-        "client_id"
-      ],
+      "columns": ["principal_id", "client_id"],
       "nullsNotDistinct": false,
       "name": "uq_client_access_grants_principal_client",
       "entityType": "uniques",
@@ -8112,10 +7994,7 @@
     },
     {
       "nameExplicit": true,
-      "columns": [
-        "event_type_id",
-        "version"
-      ],
+      "columns": ["event_type_id", "version"],
       "nullsNotDistinct": false,
       "name": "uq_spec_versions_event_type_version",
       "entityType": "uniques",
@@ -8124,10 +8003,7 @@
     },
     {
       "nameExplicit": true,
-      "columns": [
-        "application_code",
-        "role_code"
-      ],
+      "columns": ["application_code", "role_code"],
       "nullsNotDistinct": false,
       "name": "uq_config_access_role",
       "entityType": "uniques",
@@ -8136,13 +8012,7 @@
     },
     {
       "nameExplicit": true,
-      "columns": [
-        "application_code",
-        "section",
-        "property",
-        "scope",
-        "client_id"
-      ],
+      "columns": ["application_code", "section", "property", "scope", "client_id"],
       "nullsNotDistinct": false,
       "name": "uq_platform_config_key",
       "entityType": "uniques",
@@ -8151,9 +8021,7 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "domain"
-      ],
+      "columns": ["domain"],
       "nullsNotDistinct": false,
       "name": "anchor_domains_domain_key",
       "schema": "public",
@@ -8162,9 +8030,7 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "code"
-      ],
+      "columns": ["code"],
       "nullsNotDistinct": false,
       "name": "applications_code_key",
       "schema": "public",
@@ -8173,9 +8039,7 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "code"
-      ],
+      "columns": ["code"],
       "nullsNotDistinct": false,
       "name": "auth_permissions_code_key",
       "schema": "public",
@@ -8184,9 +8048,7 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "name"
-      ],
+      "columns": ["name"],
       "nullsNotDistinct": false,
       "name": "auth_roles_name_key",
       "schema": "public",
@@ -8195,9 +8057,7 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "email_domain"
-      ],
+      "columns": ["email_domain"],
       "nullsNotDistinct": false,
       "name": "client_auth_configs_email_domain_key",
       "schema": "public",
@@ -8206,9 +8066,7 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "identifier"
-      ],
+      "columns": ["identifier"],
       "nullsNotDistinct": false,
       "name": "clients_identifier_key",
       "schema": "public",
@@ -8217,9 +8075,7 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "origin"
-      ],
+      "columns": ["origin"],
       "nullsNotDistinct": false,
       "name": "cors_allowed_origins_origin_key",
       "schema": "public",
@@ -8228,9 +8084,7 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "code"
-      ],
+      "columns": ["code"],
       "nullsNotDistinct": false,
       "name": "event_types_code_key",
       "schema": "public",
@@ -8239,9 +8093,7 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "client_id"
-      ],
+      "columns": ["client_id"],
       "nullsNotDistinct": false,
       "name": "oauth_clients_client_id_key",
       "schema": "public",

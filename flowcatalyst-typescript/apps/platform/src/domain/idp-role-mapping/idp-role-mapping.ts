@@ -7,11 +7,11 @@
  */
 
 export interface IdpRoleMapping {
-	readonly id: string;
-	/** Role name from external IDP token (e.g., from realm_access.roles) */
-	readonly idpRoleName: string;
-	/** Internal platform role name this maps to */
-	readonly internalRoleName: string;
-	readonly createdAt: Date;
-	readonly updatedAt: Date;
+  readonly id: string;
+  /** Role name from external IDP token (e.g., from realm_access.roles) */
+  readonly idpRoleName: string;
+  /** Internal platform role name this maps to */
+  readonly internalRoleName: string;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
 }

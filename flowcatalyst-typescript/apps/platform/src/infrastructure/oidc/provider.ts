@@ -6,14 +6,14 @@
  */
 
 import Provider, {
-	type Configuration,
-	type KoaContextWithOIDC,
-	type ResourceServer,
-	type Client,
-	type AccessToken,
-	type ClientCredentials,
-	type UnknownObject,
-	type Interaction,
+  type Configuration,
+  type KoaContextWithOIDC,
+  type ResourceServer,
+  type Client,
+  type AccessToken,
+  type ClientCredentials,
+  type UnknownObject,
+  type Interaction,
 } from 'oidc-provider';
 import type { JSONWebKeySet } from 'jose';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
@@ -29,280 +29,265 @@ import { extractApplicationCodes } from './jwt-key-service.js';
  * Configuration for creating the OIDC provider.
  */
 export interface OidcProviderConfig {
-	/** The issuer URL (e.g., https://auth.example.com) */
-	issuer: string;
+  /** The issuer URL (e.g., https://auth.example.com) */
+  issuer: string;
 
-	/** Database instance for the adapter */
-	db: PostgresJsDatabase;
+  /** Database instance for the adapter */
+  db: PostgresJsDatabase;
 
-	/** Principal repository for account lookup */
-	principalRepository: PrincipalRepository;
+  /** Principal repository for account lookup */
+  principalRepository: PrincipalRepository;
 
-	/** OAuth client repository for client lookup */
-	oauthClientRepository: OAuthClientRepository;
+  /** OAuth client repository for client lookup */
+  oauthClientRepository: OAuthClientRepository;
 
-	/** Encryption service for decrypting client secrets */
-	encryptionService: EncryptionService;
+  /** Encryption service for decrypting client secrets */
+  encryptionService: EncryptionService;
 
-	/** Cookie signing keys (at least one required in production) */
-	cookieKeys?: string[] | undefined;
+  /** Cookie signing keys (at least one required in production) */
+  cookieKeys?: string[] | undefined;
 
-	/** JWKS containing our RSA signing key (from JwtKeyService) */
-	jwks?: JSONWebKeySet | undefined;
+  /** JWKS containing our RSA signing key (from JwtKeyService) */
+  jwks?: JSONWebKeySet | undefined;
 
-	/** Access token TTL in seconds (default: 3600 = 1 hour) */
-	accessTokenTtl?: number | undefined;
+  /** Access token TTL in seconds (default: 3600 = 1 hour) */
+  accessTokenTtl?: number | undefined;
 
-	/** ID token TTL in seconds (default: 3600 = 1 hour) */
-	idTokenTtl?: number | undefined;
+  /** ID token TTL in seconds (default: 3600 = 1 hour) */
+  idTokenTtl?: number | undefined;
 
-	/** Refresh token TTL in seconds (default: 2592000 = 30 days) */
-	refreshTokenTtl?: number | undefined;
+  /** Refresh token TTL in seconds (default: 2592000 = 30 days) */
+  refreshTokenTtl?: number | undefined;
 
-	/** Session TTL in seconds (default: 86400 = 24 hours) */
-	sessionTtl?: number | undefined;
+  /** Session TTL in seconds (default: 86400 = 24 hours) */
+  sessionTtl?: number | undefined;
 
-	/** Authorization code TTL in seconds (default: 600 = 10 minutes) */
-	authCodeTtl?: number | undefined;
+  /** Authorization code TTL in seconds (default: 600 = 10 minutes) */
+  authCodeTtl?: number | undefined;
 
-	/** Whether to enable dev interactions (login/consent pages) */
-	devInteractions?: boolean | undefined;
+  /** Whether to enable dev interactions (login/consent pages) */
+  devInteractions?: boolean | undefined;
 
-	/** Base path for interactions (login/consent) */
-	interactionsPath?: string | undefined;
+  /** Base path for interactions (login/consent) */
+  interactionsPath?: string | undefined;
 }
 
 /**
  * Custom claims to add to tokens.
  */
-const CUSTOM_CLAIMS = [
-	'type',
-	'scope',
-	'client_id',
-	'roles',
-	'clients',
-	'applications',
-];
+const CUSTOM_CLAIMS = ['type', 'scope', 'client_id', 'roles', 'clients', 'applications'];
 
 /**
  * Creates and configures the OIDC provider.
  */
 export function createOidcProvider(config: OidcProviderConfig): Provider {
-	const {
-		issuer,
-		db,
-		principalRepository,
-		oauthClientRepository,
-		encryptionService,
-		cookieKeys,
-		jwks: jwksConfig,
-		accessTokenTtl = 3600,
-		idTokenTtl = 3600,
-		refreshTokenTtl = 2592000,
-		sessionTtl = 86400,
-		authCodeTtl = 600,
-		devInteractions = false,
-		interactionsPath = '/oidc/interaction',
-	} = config;
+  const {
+    issuer,
+    db,
+    principalRepository,
+    oauthClientRepository,
+    encryptionService,
+    cookieKeys,
+    jwks: jwksConfig,
+    accessTokenTtl = 3600,
+    idTokenTtl = 3600,
+    refreshTokenTtl = 2592000,
+    sessionTtl = 86400,
+    authCodeTtl = 600,
+    devInteractions = false,
+    interactionsPath = '/oidc/interaction',
+  } = config;
 
-	// Create adapter factory
-	const AdapterFactory = createDrizzleAdapterFactory(db as PostgresJsDatabase);
+  // Create adapter factory
+  const AdapterFactory = createDrizzleAdapterFactory(db as PostgresJsDatabase);
 
-	// Create client loader for dynamic client registration
-	const loadClient = createClientLoader(oauthClientRepository, encryptionService);
+  // Create client loader for dynamic client registration
+  const loadClient = createClientLoader(oauthClientRepository, encryptionService);
 
-	// Create find account function
-	const findAccount = createFindAccount(principalRepository);
+  // Create find account function
+  const findAccount = createFindAccount(principalRepository);
 
-	// Build configuration
-	const providerConfig: Configuration = {
-		// Adapter for persistent storage
-		adapter: AdapterFactory,
+  // Build configuration
+  const providerConfig: Configuration = {
+    // Adapter for persistent storage
+    adapter: AdapterFactory,
 
-		// Account lookup function
-		findAccount,
+    // Account lookup function
+    findAccount,
 
-		// Client loading
-		// Note: oidc-provider doesn't have a direct "loadClient" option
-		// We'll use the clients array or use extraClientMetadata
-		clients: [], // Empty - we'll load dynamically
+    // Client loading
+    // Note: oidc-provider doesn't have a direct "loadClient" option
+    // We'll use the clients array or use extraClientMetadata
+    clients: [], // Empty - we'll load dynamically
 
-		// Cookie configuration
-		cookies: {
-			keys: cookieKeys ?? ['flowcatalyst-dev-key-change-in-production'],
-			long: {
-				signed: true,
-				httpOnly: true,
-				overwrite: true,
-				sameSite: 'lax',
-			},
-			short: {
-				signed: true,
-				httpOnly: true,
-				overwrite: true,
-				sameSite: 'lax',
-			},
-		},
+    // Cookie configuration
+    cookies: {
+      keys: cookieKeys ?? ['flowcatalyst-dev-key-change-in-production'],
+      long: {
+        signed: true,
+        httpOnly: true,
+        overwrite: true,
+        sameSite: 'lax',
+      },
+      short: {
+        signed: true,
+        httpOnly: true,
+        overwrite: true,
+        sameSite: 'lax',
+      },
+    },
 
-		// Token TTLs
-		ttl: {
-			AccessToken: accessTokenTtl,
-			AuthorizationCode: authCodeTtl,
-			IdToken: idTokenTtl,
-			RefreshToken: refreshTokenTtl,
-			Session: sessionTtl,
-			Interaction: 3600, // 1 hour for login/consent interactions
-			Grant: refreshTokenTtl, // Same as refresh token
-			DeviceCode: 600, // 10 minutes for device flow
-		},
+    // Token TTLs
+    ttl: {
+      AccessToken: accessTokenTtl,
+      AuthorizationCode: authCodeTtl,
+      IdToken: idTokenTtl,
+      RefreshToken: refreshTokenTtl,
+      Session: sessionTtl,
+      Interaction: 3600, // 1 hour for login/consent interactions
+      Grant: refreshTokenTtl, // Same as refresh token
+      DeviceCode: 600, // 10 minutes for device flow
+    },
 
-		// Features
-		features: {
-			// Disable dev interactions in production
-			devInteractions: {
-				enabled: devInteractions,
-			},
+    // Features
+    features: {
+      // Disable dev interactions in production
+      devInteractions: {
+        enabled: devInteractions,
+      },
 
-			// Enable refresh token rotation for security
-			revocation: { enabled: true },
+      // Enable refresh token rotation for security
+      revocation: { enabled: true },
 
-			// Resource indicators for audience restriction
-			resourceIndicators: {
-				enabled: true,
-				getResourceServerInfo: async (
-					_ctx: KoaContextWithOIDC,
-					resourceIndicator: string,
-				): Promise<ResourceServer> => {
-					// Allow any resource indicator for now
-					// In production, validate against known APIs
-					return {
-						scope: 'openid profile email',
-						audience: resourceIndicator,
-						accessTokenTTL: accessTokenTtl,
-						accessTokenFormat: 'jwt',
-					};
-				},
-			},
+      // Resource indicators for audience restriction
+      resourceIndicators: {
+        enabled: true,
+        getResourceServerInfo: async (
+          _ctx: KoaContextWithOIDC,
+          resourceIndicator: string,
+        ): Promise<ResourceServer> => {
+          // Allow any resource indicator for now
+          // In production, validate against known APIs
+          return {
+            scope: 'openid profile email',
+            audience: resourceIndicator,
+            accessTokenTTL: accessTokenTtl,
+            accessTokenFormat: 'jwt',
+          };
+        },
+      },
 
-			// Client credentials grant
-			clientCredentials: { enabled: true },
+      // Client credentials grant
+      clientCredentials: { enabled: true },
 
-			// Introspection and revocation
-			introspection: { enabled: true },
-		},
+      // Introspection and revocation
+      introspection: { enabled: true },
+    },
 
-		// Claims configuration
-		claims: {
-			openid: ['sub', ...CUSTOM_CLAIMS],
-			profile: ['name', 'updated_at'],
-			email: ['email', 'email_verified'],
-		},
+    // Claims configuration
+    claims: {
+      openid: ['sub', ...CUSTOM_CLAIMS],
+      profile: ['name', 'updated_at'],
+      email: ['email', 'email_verified'],
+    },
 
-		// Scopes configuration
-		scopes: ['openid', 'profile', 'email', 'offline_access'],
+    // Scopes configuration
+    scopes: ['openid', 'profile', 'email', 'offline_access'],
 
-		// Use our RSA signing keys if provided
-		...(jwksConfig ? { jwks: jwksConfig } : {}),
+    // Use our RSA signing keys if provided
+    ...(jwksConfig ? { jwks: jwksConfig } : {}),
 
-		// Interaction URLs
-		interactions: {
-			url: (_ctx: KoaContextWithOIDC, interaction: Interaction): string => {
-				return `${interactionsPath}/${interaction.uid}`;
-			},
-		},
+    // Interaction URLs
+    interactions: {
+      url: (_ctx: KoaContextWithOIDC, interaction: Interaction): string => {
+        return `${interactionsPath}/${interaction.uid}`;
+      },
+    },
 
-		// PKCE configuration - require for public clients
-		pkce: {
-			required: (_ctx: KoaContextWithOIDC, client: Client): boolean => {
-				// Require PKCE for all public clients
-				return client.tokenEndpointAuthMethod === 'none';
-			},
-		},
+    // PKCE configuration - require for public clients
+    pkce: {
+      required: (_ctx: KoaContextWithOIDC, client: Client): boolean => {
+        // Require PKCE for all public clients
+        return client.tokenEndpointAuthMethod === 'none';
+      },
+    },
 
-		// Rotate refresh tokens on use
-		rotateRefreshToken: (_ctx: KoaContextWithOIDC): boolean => {
-			// Always rotate for better security
-			return true;
-		},
+    // Rotate refresh tokens on use
+    rotateRefreshToken: (_ctx: KoaContextWithOIDC): boolean => {
+      // Always rotate for better security
+      return true;
+    },
 
-		// Extra access token claims
-		extraTokenClaims: async (
-			_ctx: KoaContextWithOIDC,
-			token: AccessToken | ClientCredentials,
-		): Promise<UnknownObject | undefined> => {
-			const accountId = 'accountId' in token ? token.accountId : undefined;
-			if (accountId) {
-				const principal = await principalRepository.findById(accountId);
-				if (principal) {
-					const roleNames = principal.roles.map((r) => r.roleName);
-					return {
-						type: principal.type,
-						scope: principal.scope,
-						client_id: principal.clientId,
-						roles: roleNames,
-						applications: extractApplicationCodes(roleNames),
-						clients:
-							principal.scope === 'ANCHOR'
-								? ['*']
-								: principal.clientId
-									? [principal.clientId]
-									: [],
-					};
-				}
-			}
-			return undefined;
-		},
+    // Extra access token claims
+    extraTokenClaims: async (
+      _ctx: KoaContextWithOIDC,
+      token: AccessToken | ClientCredentials,
+    ): Promise<UnknownObject | undefined> => {
+      const accountId = 'accountId' in token ? token.accountId : undefined;
+      if (accountId) {
+        const principal = await principalRepository.findById(accountId);
+        if (principal) {
+          const roleNames = principal.roles.map((r) => r.roleName);
+          return {
+            type: principal.type,
+            scope: principal.scope,
+            client_id: principal.clientId,
+            roles: roleNames,
+            applications: extractApplicationCodes(roleNames),
+            clients:
+              principal.scope === 'ANCHOR' ? ['*'] : principal.clientId ? [principal.clientId] : [],
+          };
+        }
+      }
+      return undefined;
+    },
 
-		// Response types
-		responseTypes: ['code'],
+    // Response types
+    responseTypes: ['code'],
 
-		// Subject types
-		subjectTypes: ['public'],
+    // Subject types
+    subjectTypes: ['public'],
 
-		// Enable CORS
-		clientBasedCORS: (
-			_ctx: KoaContextWithOIDC,
-			_origin: string,
-			_client: Client,
-		): boolean => {
-			// We handle CORS separately in Fastify middleware
-			// Allow all origins here, actual validation happens in our CORS handler
-			return true;
-		},
-	};
+    // Enable CORS
+    clientBasedCORS: (_ctx: KoaContextWithOIDC, _origin: string, _client: Client): boolean => {
+      // We handle CORS separately in Fastify middleware
+      // Allow all origins here, actual validation happens in our CORS handler
+      return true;
+    },
+  };
 
-	// Create provider
-	const provider = new Provider(issuer, providerConfig);
+  // Create provider
+  const provider = new Provider(issuer, providerConfig);
 
-	// Add dynamic client loading via middleware
-	provider.use(async (ctx: KoaContextWithOIDC, next: () => Promise<void>) => {
-		// Intercept client lookup - load client from our repository if not found
-		const existingClient = ctx.oidc?.client;
+  // Add dynamic client loading via middleware
+  provider.use(async (ctx: KoaContextWithOIDC, next: () => Promise<void>) => {
+    // Intercept client lookup - load client from our repository if not found
+    const existingClient = ctx.oidc?.client;
 
-		if (!existingClient && ctx.oidc?.params) {
-			const clientId = ctx.oidc.params['client_id'] as string | undefined;
-			if (clientId) {
-				const clientMetadata = await loadClient(clientId);
+    if (!existingClient && ctx.oidc?.params) {
+      const clientId = ctx.oidc.params['client_id'] as string | undefined;
+      if (clientId) {
+        const clientMetadata = await loadClient(clientId);
 
-				if (clientMetadata) {
-					// Provider.Client.find will use the adapter to find/create the client
-					// Note: oidc-provider will handle setting the client on the context
-					await provider.Client.find(clientId);
-				}
-			}
-		}
+        if (clientMetadata) {
+          // Provider.Client.find will use the adapter to find/create the client
+          // Note: oidc-provider will handle setting the client on the context
+          await provider.Client.find(clientId);
+        }
+      }
+    }
 
-		await next();
-	});
+    await next();
+  });
 
-	return provider;
+  return provider;
 }
 
 /**
  * Get the OIDC provider callback handler for use with Fastify.
  */
 export function getProviderCallback(provider: Provider) {
-	return provider.callback();
+  return provider.callback();
 }
 
 /**

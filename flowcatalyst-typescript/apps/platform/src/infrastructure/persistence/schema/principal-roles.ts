@@ -17,18 +17,20 @@ import { principals } from './principals.js';
  * Each row represents one role assignment to one principal.
  */
 export const principalRoles = pgTable(
-	'principal_roles',
-	{
-		principalId: tsidColumn('principal_id').notNull().references(() => principals.id, { onDelete: 'cascade' }),
-		roleName: varchar('role_name', { length: 100 }).notNull(),
-		assignmentSource: varchar('assignment_source', { length: 50 }), // 'MANUAL' | 'AUTO' | 'IDP_SYNC'
-		assignedAt: timestampColumn('assigned_at').notNull().defaultNow(),
-	},
-	(table) => [
-		primaryKey({ columns: [table.principalId, table.roleName] }),
-		index('idx_principal_roles_role_name').on(table.roleName),
-		index('idx_principal_roles_assigned_at').on(table.assignedAt),
-	],
+  'principal_roles',
+  {
+    principalId: tsidColumn('principal_id')
+      .notNull()
+      .references(() => principals.id, { onDelete: 'cascade' }),
+    roleName: varchar('role_name', { length: 100 }).notNull(),
+    assignmentSource: varchar('assignment_source', { length: 50 }), // 'MANUAL' | 'AUTO' | 'IDP_SYNC'
+    assignedAt: timestampColumn('assigned_at').notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.principalId, table.roleName] }),
+    index('idx_principal_roles_role_name').on(table.roleName),
+    index('idx_principal_roles_assigned_at').on(table.assignedAt),
+  ],
 );
 
 // Type inference

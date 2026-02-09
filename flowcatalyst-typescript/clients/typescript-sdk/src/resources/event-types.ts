@@ -43,7 +43,7 @@ export class EventTypesResource {
         client: httpClient,
         headers,
         query: filters,
-      })
+      }),
     );
   }
 
@@ -56,7 +56,7 @@ export class EventTypesResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -69,7 +69,7 @@ export class EventTypesResource {
         client: httpClient,
         headers,
         body: data,
-      })
+      }),
     );
   }
 
@@ -83,7 +83,7 @@ export class EventTypesResource {
         headers,
         path: { id },
         body: data,
-      })
+      }),
     );
   }
 
@@ -97,7 +97,7 @@ export class EventTypesResource {
       mimeType?: string;
       schema?: string;
       schemaType?: SchemaType;
-    }
+    },
   ): ResultAsync<EventTypeResponse, SdkError> {
     return this.client.request<EventTypeResponse>((httpClient, headers) =>
       sdk.postApiEventTypesByIdSchemas({
@@ -105,7 +105,7 @@ export class EventTypesResource {
         headers,
         path: { id },
         body: schema,
-      })
+      }),
     );
   }
 
@@ -118,7 +118,7 @@ export class EventTypesResource {
         client: httpClient,
         headers,
         path: { id, version },
-      })
+      }),
     );
   }
 
@@ -131,7 +131,7 @@ export class EventTypesResource {
         client: httpClient,
         headers,
         path: { id, version },
-      })
+      }),
     );
   }
 
@@ -144,7 +144,7 @@ export class EventTypesResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -157,7 +157,7 @@ export class EventTypesResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -169,7 +169,7 @@ export class EventTypesResource {
       sdk.getApiEventTypesFiltersApplications({
         client: httpClient,
         headers,
-      })
+      }),
     );
   }
 
@@ -182,7 +182,7 @@ export class EventTypesResource {
         client: httpClient,
         headers,
         query: { application },
-      })
+      }),
     );
   }
 
@@ -191,14 +191,14 @@ export class EventTypesResource {
    */
   filterAggregates(
     application?: string[],
-    subdomain?: string[]
+    subdomain?: string[],
   ): ResultAsync<FilterOptionsResponse, SdkError> {
     return this.client.request<FilterOptionsResponse>((httpClient, headers) =>
       sdk.getApiEventTypesFiltersAggregates({
         client: httpClient,
         headers,
         query: { application, subdomain },
-      })
+      }),
     );
   }
 
@@ -207,7 +207,7 @@ export class EventTypesResource {
    */
   listForApplication(
     appCode: string,
-    source?: string
+    source?: string,
   ): ResultAsync<EventTypeListResponse1, SdkError> {
     return this.client.request<EventTypeListResponse1>((httpClient, headers) =>
       sdk.listApplicationEventTypes({
@@ -215,7 +215,7 @@ export class EventTypesResource {
         headers,
         path: { appCode },
         query: { source },
-      })
+      }),
     );
   }
 
@@ -225,7 +225,7 @@ export class EventTypesResource {
   sync(
     appCode: string,
     eventTypes: SyncEventTypesRequest['eventTypes'],
-    removeUnlisted = false
+    removeUnlisted = false,
   ): ResultAsync<SyncResponse1, SdkError> {
     return this.client.request<SyncResponse1>((httpClient, headers) =>
       sdk.syncApplicationEventTypes({
@@ -234,7 +234,7 @@ export class EventTypesResource {
         path: { appCode },
         query: { removeUnlisted },
         body: { eventTypes },
-      })
+      }),
     );
   }
 }

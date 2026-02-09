@@ -21,9 +21,7 @@ export const useAppThemeStore = defineStore('appTheme', () => {
   const isLoaded = ref(false);
 
   // Computed
-  const hasCustomLogo = computed(() =>
-    Boolean(theme.value.logoUrl || theme.value.logoSvg)
-  );
+  const hasCustomLogo = computed(() => Boolean(theme.value.logoUrl || theme.value.logoSvg));
 
   const brandName = computed(() => theme.value.brandName);
   const logoUrl = computed(() => theme.value.logoUrl);

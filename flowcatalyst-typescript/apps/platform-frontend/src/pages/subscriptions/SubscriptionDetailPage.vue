@@ -13,7 +13,12 @@ import ProgressSpinner from 'primevue/progressspinner';
 import Message from 'primevue/message';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
-import { subscriptionsApi, type Subscription, type SubscriptionStatus, type SubscriptionMode } from '@/api/subscriptions';
+import {
+  subscriptionsApi,
+  type Subscription,
+  type SubscriptionStatus,
+  type SubscriptionMode,
+} from '@/api/subscriptions';
 
 const route = useRoute();
 const router = useRouter();
@@ -96,7 +101,12 @@ async function saveChanges() {
       mode: editMode.value,
     });
     editing.value = false;
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Subscription updated', life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Subscription updated',
+      life: 3000,
+    });
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update', life: 3000 });
   } finally {
@@ -120,7 +130,12 @@ async function pauseSubscription() {
   try {
     await subscriptionsApi.pause(subscription.value.id);
     subscription.value = await subscriptionsApi.get(subscription.value.id);
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Subscription paused', life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Subscription paused',
+      life: 3000,
+    });
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to pause', life: 3000 });
   }
@@ -141,7 +156,12 @@ async function resumeSubscription() {
   try {
     await subscriptionsApi.resume(subscription.value.id);
     subscription.value = await subscriptionsApi.get(subscription.value.id);
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Subscription resumed', life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Subscription resumed',
+      life: 3000,
+    });
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to resume', life: 3000 });
   }
@@ -162,7 +182,12 @@ async function deleteSubscription() {
   if (!subscription.value) return;
   try {
     await subscriptionsApi.delete(subscription.value.id);
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Subscription deleted', life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Subscription deleted',
+      life: 3000,
+    });
     router.push('/subscriptions');
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete', life: 3000 });
@@ -171,18 +196,25 @@ async function deleteSubscription() {
 
 function getStatusSeverity(status: SubscriptionStatus) {
   switch (status) {
-    case 'ACTIVE': return 'success';
-    case 'PAUSED': return 'warn';
-    default: return 'secondary';
+    case 'ACTIVE':
+      return 'success';
+    case 'PAUSED':
+      return 'warn';
+    default:
+      return 'secondary';
   }
 }
 
 function getModeLabel(mode: SubscriptionMode) {
   switch (mode) {
-    case 'IMMEDIATE': return 'Immediate';
-    case 'NEXT_ON_ERROR': return 'Next on Error';
-    case 'BLOCK_ON_ERROR': return 'Block on Error';
-    default: return mode;
+    case 'IMMEDIATE':
+      return 'Immediate';
+    case 'NEXT_ON_ERROR':
+      return 'Next on Error';
+    case 'BLOCK_ON_ERROR':
+      return 'Block on Error';
+    default:
+      return mode;
   }
 }
 
@@ -219,10 +251,7 @@ function getScopeLabel(sub: Subscription) {
             <h1 class="page-title">{{ subscription.name }}</h1>
             <code class="sub-code">{{ subscription.code }}</code>
           </div>
-          <Tag
-            :value="subscription.status"
-            :severity="getStatusSeverity(subscription.status)"
-          />
+          <Tag :value="subscription.status" :severity="getStatusSeverity(subscription.status)" />
         </div>
       </header>
 
@@ -230,13 +259,7 @@ function getScopeLabel(sub: Subscription) {
       <div class="section-card">
         <div class="card-header">
           <h3>Subscription Details</h3>
-          <Button
-            v-if="!editing"
-            icon="pi pi-pencil"
-            label="Edit"
-            text
-            @click="startEditing"
-          />
+          <Button v-if="!editing" icon="pi pi-pencil" label="Edit" text @click="startEditing" />
         </div>
         <div class="card-content">
           <template v-if="editing">
@@ -278,7 +301,13 @@ function getScopeLabel(sub: Subscription) {
             </div>
             <div class="form-field">
               <label>Mode</label>
-              <Select v-model="editMode" :options="modeOptions" optionLabel="label" optionValue="value" class="full-width" />
+              <Select
+                v-model="editMode"
+                :options="modeOptions"
+                optionLabel="label"
+                optionValue="value"
+                class="full-width"
+              />
             </div>
             <div class="form-actions">
               <Button label="Cancel" severity="secondary" outlined @click="cancelEditing" />
@@ -342,7 +371,10 @@ function getScopeLabel(sub: Subscription) {
               </div>
               <div class="detail-item">
                 <label>Status</label>
-                <Tag :value="subscription.status" :severity="getStatusSeverity(subscription.status)" />
+                <Tag
+                  :value="subscription.status"
+                  :severity="getStatusSeverity(subscription.status)"
+                />
               </div>
               <div class="detail-item">
                 <label>Created</label>

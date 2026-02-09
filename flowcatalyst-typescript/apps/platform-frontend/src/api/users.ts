@@ -27,7 +27,7 @@ export interface UserListResponse {
 
 export interface CreateUserRequest {
   email: string;
-  password?: string;  // Optional - only required for INTERNAL auth users
+  password?: string; // Optional - only required for INTERNAL auth users
   name: string;
   clientId?: string;
 }
@@ -143,7 +143,7 @@ export const usersApi = {
   resetPassword(id: string, newPassword: string): Promise<{ message: string }> {
     return apiFetch(`/admin/principals/${id}/reset-password`, {
       method: 'POST',
-      body: JSON.stringify({newPassword}),
+      body: JSON.stringify({ newPassword }),
     });
   },
 
@@ -155,7 +155,7 @@ export const usersApi = {
   grantClientAccess(id: string, clientId: string): Promise<ClientAccessGrant> {
     return apiFetch(`/admin/principals/${id}/client-access`, {
       method: 'POST',
-      body: JSON.stringify({clientId}),
+      body: JSON.stringify({ clientId }),
     });
   },
 
@@ -221,7 +221,10 @@ export const usersApi = {
    * This is a declarative operation - sets the complete application access list.
    * Applications not in the list will be removed, new applications will be added.
    */
-  assignApplicationAccess(id: string, applicationIds: string[]): Promise<ApplicationAccessAssignedResponse> {
+  assignApplicationAccess(
+    id: string,
+    applicationIds: string[],
+  ): Promise<ApplicationAccessAssignedResponse> {
     return apiFetch(`/admin/principals/${id}/application-access`, {
       method: 'PUT',
       body: JSON.stringify({ applicationIds }),

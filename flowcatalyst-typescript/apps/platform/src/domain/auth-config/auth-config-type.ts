@@ -13,7 +13,7 @@
 export type AuthConfigType = 'ANCHOR' | 'PARTNER' | 'CLIENT';
 
 export const AuthConfigType = {
-	ANCHOR: 'ANCHOR' as const,
-	PARTNER: 'PARTNER' as const,
-	CLIENT: 'CLIENT' as const,
+  ANCHOR: 'ANCHOR' as const,
+  PARTNER: 'PARTNER' as const,
+  CLIENT: 'CLIENT' as const,
 } as const;

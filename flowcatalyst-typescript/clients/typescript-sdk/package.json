@@ -2,21 +2,34 @@
   "name": "@flowcatalyst/sdk",
   "version": "0.2.0",
   "description": "TypeScript/JavaScript SDK for FlowCatalyst platform",
-  "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
+  "keywords": [
+    "event-driven",
+    "flowcatalyst",
+    "messaging",
+    "sdk",
+    "typescript"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/flowcatalyst.git",
+    "directory": "clients/typescript-sdk"
   },
   "files": [
     "dist",
     "migrations",
     "README.md"
   ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -27,19 +40,6 @@
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist src/generated"
   },
-  "keywords": [
-    "flowcatalyst",
-    "event-driven",
-    "messaging",
-    "sdk",
-    "typescript"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/yourusername/flowcatalyst.git",
-    "directory": "clients/typescript-sdk"
-  },
-  "license": "Apache-2.0",
   "dependencies": {
     "neverthrow": "^8.1.1"
   },

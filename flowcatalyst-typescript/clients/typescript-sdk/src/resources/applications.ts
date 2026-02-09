@@ -30,7 +30,7 @@ export class ApplicationsResource {
       sdk.listApplications({
         client: httpClient,
         headers,
-      })
+      }),
     );
   }
 
@@ -43,7 +43,7 @@ export class ApplicationsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -56,7 +56,7 @@ export class ApplicationsResource {
         client: httpClient,
         headers,
         path: { code },
-      })
+      }),
     );
   }
 
@@ -69,7 +69,7 @@ export class ApplicationsResource {
         client: httpClient,
         headers,
         body: data,
-      })
+      }),
     );
   }
 
@@ -83,7 +83,7 @@ export class ApplicationsResource {
         headers,
         path: { id },
         body: data,
-      })
+      }),
     );
   }
 
@@ -96,7 +96,7 @@ export class ApplicationsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -109,7 +109,7 @@ export class ApplicationsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -122,7 +122,7 @@ export class ApplicationsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -135,7 +135,7 @@ export class ApplicationsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 }

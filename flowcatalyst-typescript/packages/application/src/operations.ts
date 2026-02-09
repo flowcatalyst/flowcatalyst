@@ -45,19 +45,23 @@ import type { UseCase } from './use-case.js';
  * Type for a write operation function in an operations service.
  */
 export type WriteOperation<TCommand extends Command, TEvent extends DomainEvent> = (
-	command: TCommand,
-	context: ExecutionContext,
+  command: TCommand,
+  context: ExecutionContext,
 ) => Promise<Result<TEvent>>;
 
 /**
  * Type for a read operation function in an operations service.
  */
-export type ReadOperation<TResult, TParams extends unknown[] = []> = (...params: TParams) => Promise<TResult>;
+export type ReadOperation<TResult, TParams extends unknown[] = []> = (
+  ...params: TParams
+) => Promise<TResult>;
 
 /**
  * Type for a synchronous read operation function.
  */
-export type SyncReadOperation<TResult, TParams extends unknown[] = []> = (...params: TParams) => TResult;
+export type SyncReadOperation<TResult, TParams extends unknown[] = []> = (
+  ...params: TParams
+) => TResult;
 
 /**
  * Helper to create a write operation from a use case.
@@ -75,9 +79,9 @@ export type SyncReadOperation<TResult, TParams extends unknown[] = []> = (...par
  * ```
  */
 export function wrapUseCase<TCommand extends Command, TEvent extends DomainEvent>(
-	useCase: UseCase<TCommand, TEvent>,
+  useCase: UseCase<TCommand, TEvent>,
 ): WriteOperation<TCommand, TEvent> {
-	return (command, context) => useCase.execute(command, context);
+  return (command, context) => useCase.execute(command, context);
 }
 
 /**
@@ -99,63 +103,64 @@ export function wrapUseCase<TCommand extends Command, TEvent extends DomainEvent
  * ```
  */
 export function createOperationsService(): OperationsBuilder<object> {
-	return new OperationsBuilder({});
+  return new OperationsBuilder({});
 }
 
 /**
  * Builder class for operations services.
  */
 class OperationsBuilder<T extends object> {
-	constructor(private readonly ops: T) {}
+  constructor(private readonly ops: T) {}
 
-	/**
-	 * Add a write operation backed by a use case.
-	 */
-	write<TName extends string, TCommand extends Command, TEvent extends DomainEvent>(
-		name: TName,
-		useCase: UseCase<TCommand, TEvent>,
-	): OperationsBuilder<T & { [K in TName]: WriteOperation<TCommand, TEvent> }> {
-		const newOps = { ...this.ops, [name]: wrapUseCase(useCase) } as T & {
-			[K in TName]: WriteOperation<TCommand, TEvent>;
-		};
-		return new OperationsBuilder(newOps);
-	}
+  /**
+   * Add a write operation backed by a use case.
+   */
+  write<TName extends string, TCommand extends Command, TEvent extends DomainEvent>(
+    name: TName,
+    useCase: UseCase<TCommand, TEvent>,
+  ): OperationsBuilder<T & { [K in TName]: WriteOperation<TCommand, TEvent> }> {
+    const newOps = { ...this.ops, [name]: wrapUseCase(useCase) } as T & {
+      [K in TName]: WriteOperation<TCommand, TEvent>;
+    };
+    return new OperationsBuilder(newOps);
+  }
 
-	/**
-	 * Add an async read operation.
-	 */
-	read<TName extends string, TResult, TParams extends unknown[]>(
-		name: TName,
-		operation: (...params: TParams) => Promise<TResult>,
-	): OperationsBuilder<T & { [K in TName]: (...params: TParams) => Promise<TResult> }> {
-		const newOps = { ...this.ops, [name]: operation } as T & {
-			[K in TName]: (...params: TParams) => Promise<TResult>;
-		};
-		return new OperationsBuilder(newOps);
-	}
+  /**
+   * Add an async read operation.
+   */
+  read<TName extends string, TResult, TParams extends unknown[]>(
+    name: TName,
+    operation: (...params: TParams) => Promise<TResult>,
+  ): OperationsBuilder<T & { [K in TName]: (...params: TParams) => Promise<TResult> }> {
+    const newOps = { ...this.ops, [name]: operation } as T & {
+      [K in TName]: (...params: TParams) => Promise<TResult>;
+    };
+    return new OperationsBuilder(newOps);
+  }
 
-	/**
-	 * Add a synchronous read operation.
-	 */
-	syncRead<TName extends string, TResult, TParams extends unknown[]>(
-		name: TName,
-		operation: (...params: TParams) => TResult,
-	): OperationsBuilder<T & { [K in TName]: (...params: TParams) => TResult }> {
-		const newOps = { ...this.ops, [name]: operation } as T & {
-			[K in TName]: (...params: TParams) => TResult;
-		};
-		return new OperationsBuilder(newOps);
-	}
+  /**
+   * Add a synchronous read operation.
+   */
+  syncRead<TName extends string, TResult, TParams extends unknown[]>(
+    name: TName,
+    operation: (...params: TParams) => TResult,
+  ): OperationsBuilder<T & { [K in TName]: (...params: TParams) => TResult }> {
+    const newOps = { ...this.ops, [name]: operation } as T & {
+      [K in TName]: (...params: TParams) => TResult;
+    };
+    return new OperationsBuilder(newOps);
+  }
 
-	/**
-	 * Build the operations service.
-	 */
-	build(): T {
-		return this.ops;
-	}
+  /**
+   * Build the operations service.
+   */
+  build(): T {
+    return this.ops;
+  }
 }
 
 /**
  * Type helper to extract the operations type from a builder.
  */
-export type OperationsType<T extends OperationsBuilder<object>> = T extends OperationsBuilder<infer U> ? U : never;
+export type OperationsType<T extends OperationsBuilder<object>> =
+  T extends OperationsBuilder<infer U> ? U : never;

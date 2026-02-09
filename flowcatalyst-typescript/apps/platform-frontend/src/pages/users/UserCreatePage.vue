@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import {ref, computed} from 'vue';
-import {useRouter} from 'vue-router';
-import {useToast} from 'primevue/usetoast';
+import { ref, computed } from 'vue';
+import { useRouter } from 'vue-router';
+import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Password from 'primevue/password';
 import Message from 'primevue/message';
-import {usersApi, type EmailDomainCheckResponse} from '@/api/users';
+import { usersApi, type EmailDomainCheckResponse } from '@/api/users';
 
 const router = useRouter();
 const toast = useToast();
@@ -36,9 +36,8 @@ const domainCheckComplete = computed(() => {
 
 // Determine if user needs internal authentication (password)
 const requiresPassword = computed(() => {
-  // If we haven't checked the domain yet, assume internal auth (show password fields)
-  if (!domainCheck.value) return true;
-  // Only INTERNAL auth provider requires a password
+  // Don't show password fields until domain check confirms internal auth
+  if (!domainCheck.value) return false;
   return domainCheck.value.authProvider === 'INTERNAL';
 });
 
@@ -51,18 +50,21 @@ const isFormValid = computed(() => {
   // Block if email already exists
   if (emailAlreadyExists.value) return false;
 
-  const baseValid = email.value &&
-      name.value &&
-      !emailError.value &&
-      !nameError.value &&
-      !checkingDomain.value &&
-      domainCheckComplete.value;  // Must have completed domain check
+  const baseValid =
+    email.value &&
+    name.value &&
+    !emailError.value &&
+    !nameError.value &&
+    !checkingDomain.value &&
+    domainCheckComplete.value; // Must have completed domain check
 
   if (requiresPassword.value) {
-    return baseValid &&
-        password.value &&
-        password.value === confirmPassword.value &&
-        !passwordError.value;
+    return (
+      baseValid &&
+      password.value &&
+      password.value === confirmPassword.value &&
+      !passwordError.value
+    );
   }
 
   return baseValid;
@@ -170,7 +172,7 @@ async function createUser() {
       severity: 'success',
       summary: 'Success',
       detail: 'User created successfully',
-      life: 3000
+      life: 3000,
     });
 
     // Redirect to user detail/edit page
@@ -181,7 +183,7 @@ async function createUser() {
       severity: 'error',
       summary: 'Error',
       detail: message,
-      life: 5000
+      life: 5000,
     });
   } finally {
     saving.value = false;
@@ -198,12 +200,12 @@ function cancel() {
     <header class="page-header">
       <div class="header-left">
         <Button
-            icon="pi pi-arrow-left"
-            text
-            rounded
-            severity="secondary"
-            @click="cancel"
-            v-tooltip.right="'Back to users'"
+          icon="pi pi-arrow-left"
+          text
+          rounded
+          severity="secondary"
+          @click="cancel"
+          v-tooltip.right="'Back to users'"
         />
         <div>
           <h1 class="page-title">Add User</h1>
@@ -211,18 +213,13 @@ function cancel() {
         </div>
       </div>
       <div class="header-right">
+        <Button label="Cancel" severity="secondary" text @click="cancel" />
         <Button
-            label="Cancel"
-            severity="secondary"
-            text
-            @click="cancel"
-        />
-        <Button
-            label="Create User"
-            icon="pi pi-check"
-            :loading="saving"
-            :disabled="!isFormValid"
-            @click="createUser"
+          label="Create User"
+          icon="pi pi-check"
+          :loading="saving"
+          :disabled="!isFormValid"
+          @click="createUser"
         />
       </div>
     </header>
@@ -234,12 +231,12 @@ function cancel() {
         <div class="form-field">
           <label for="name">Full Name <span class="required">*</span></label>
           <InputText
-              id="name"
-              v-model="name"
-              placeholder="e.g., John Smith"
-              class="w-full"
-              :invalid="!!nameError"
-              @blur="validateName"
+            id="name"
+            v-model="name"
+            placeholder="e.g., John Smith"
+            class="w-full"
+            :invalid="!!nameError"
+            @blur="validateName"
           />
           <small v-if="nameError" class="p-error">{{ nameError }}</small>
         </div>
@@ -247,13 +244,13 @@ function cancel() {
         <div class="form-field">
           <label for="email">Email Address <span class="required">*</span></label>
           <InputText
-              id="email"
-              v-model="email"
-              type="email"
-              placeholder="e.g., john.smith@example.com"
-              class="w-full"
-              :invalid="!!emailError || emailAlreadyExists"
-              @blur="validateEmail"
+            id="email"
+            v-model="email"
+            type="email"
+            placeholder="e.g., john.smith@example.com"
+            class="w-full"
+            :invalid="!!emailError || emailAlreadyExists"
+            @blur="validateEmail"
           />
           <small v-if="emailError" class="p-error">{{ emailError }}</small>
           <small v-else-if="checkingDomain" class="domain-checking">
@@ -274,15 +271,15 @@ function cancel() {
           <div class="form-field">
             <label for="password">Password <span class="required">*</span></label>
             <Password
-                id="password"
-                v-model="password"
-                placeholder="Minimum 12 characters"
-                class="w-full"
-                :invalid="!!passwordError"
-                :feedback="true"
-                toggleMask
-                appendTo="self"
-                @blur="validatePassword"
+              id="password"
+              v-model="password"
+              placeholder="Minimum 12 characters"
+              class="w-full"
+              :invalid="!!passwordError"
+              :feedback="true"
+              toggleMask
+              appendTo="self"
+              @blur="validatePassword"
             />
             <small v-if="passwordError" class="p-error">{{ passwordError }}</small>
           </div>
@@ -290,14 +287,14 @@ function cancel() {
           <div class="form-field">
             <label for="confirmPassword">Confirm Password <span class="required">*</span></label>
             <Password
-                id="confirmPassword"
-                v-model="confirmPassword"
-                placeholder="Re-enter password"
-                class="w-full"
-                :invalid="password !== confirmPassword && confirmPassword !== ''"
-                :feedback="false"
-                toggleMask
-                @blur="validatePassword"
+              id="confirmPassword"
+              v-model="confirmPassword"
+              placeholder="Re-enter password"
+              class="w-full"
+              :invalid="password !== confirmPassword && confirmPassword !== ''"
+              :feedback="false"
+              toggleMask
+              @blur="validatePassword"
             />
             <small v-if="confirmPassword && password !== confirmPassword" class="p-error">
               Passwords do not match
@@ -308,19 +305,31 @@ function cancel() {
     </div>
 
     <!-- Only show info message after domain check completes and email doesn't exist -->
-    <Message v-if="domainCheckComplete && !emailAlreadyExists && requiresPassword" severity="info" :closable="false" class="info-message">
+    <Message
+      v-if="domainCheckComplete && !emailAlreadyExists && requiresPassword"
+      severity="info"
+      :closable="false"
+      class="info-message"
+    >
       <template #icon>
         <i class="pi pi-info-circle"></i>
       </template>
-      The user will be created with internal authentication. Client access will be determined based on the email domain.
-      After creation, you can manage additional client access on the user detail page.
+      The user will be created with internal authentication. Client access will be determined based
+      on the email domain. After creation, you can manage additional client access on the user
+      detail page.
     </Message>
-    <Message v-else-if="domainCheckComplete && !emailAlreadyExists && !requiresPassword" severity="info" :closable="false" class="info-message">
+    <Message
+      v-else-if="domainCheckComplete && !emailAlreadyExists && !requiresPassword"
+      severity="info"
+      :closable="false"
+      class="info-message"
+    >
       <template #icon>
         <i class="pi pi-info-circle"></i>
       </template>
-      This user will authenticate via their organization's identity provider ({{ domainCheck?.authProvider }}).
-      No password is required. Client access will be determined based on the email domain.
+      This user will authenticate via their organization's identity provider ({{
+        domainCheck?.authProvider
+      }}). No password is required. Client access will be determined based on the email domain.
     </Message>
   </div>
 </template>

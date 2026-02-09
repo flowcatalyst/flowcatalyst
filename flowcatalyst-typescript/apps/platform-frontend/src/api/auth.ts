@@ -30,7 +30,7 @@ function mapLoginResponseToUser(response: LoginResponse): User {
     name: response.name,
     clientId: response.clientId,
     roles: response.roles,
-    permissions: [],  // Permissions are loaded separately or derived from roles
+    permissions: [], // Permissions are loaded separately or derived from roles
   };
 }
 
@@ -98,8 +98,16 @@ export async function login(credentials: LoginCredentials): Promise<void> {
     if (urlParams.get('oauth') === 'true') {
       // Rebuild OAuth authorize URL with all params
       const oauthParams = new URLSearchParams();
-      const oauthFields = ['response_type', 'client_id', 'redirect_uri', 'scope', 'state',
-                          'code_challenge', 'code_challenge_method', 'nonce'];
+      const oauthFields = [
+        'response_type',
+        'client_id',
+        'redirect_uri',
+        'scope',
+        'state',
+        'code_challenge',
+        'code_challenge_method',
+        'nonce',
+      ];
       for (const field of oauthFields) {
         const value = urlParams.get(field);
         if (value) oauthParams.set(field, value);

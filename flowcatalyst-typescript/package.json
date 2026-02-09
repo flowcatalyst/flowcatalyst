@@ -3,10 +3,6 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@9.15.4",
-  "engines": {
-    "node": ">=24.0.0"
-  },
   "scripts": {
     "build": "pnpm -r build",
     "build:platform": "pnpm --filter @flowcatalyst/platform build",
@@ -33,16 +29,20 @@
     "db:push": "pnpm --filter @flowcatalyst/flowcatalyst db:push",
     "db:studio": "pnpm --filter @flowcatalyst/flowcatalyst db:studio"
   },
-  "devDependencies": {
-    "oxlint": "^1.43.0",
-    "oxfmt": "^0.28.0",
-    "@types/node": "^22.10.7",
-    "typescript": "^5.7.3",
-    "vitest": "^4.0.18"
-  },
   "dependencies": {
     "neverthrow": "^8.2.0"
   },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "oxfmt": "^0.28.0",
+    "oxlint": "^1.43.0",
+    "typescript": "^5.7.3",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@9.15.4",
   "pnpm": {
     "overrides": {
       "drizzle-orm": "1.0.0-beta.15-859cf75"

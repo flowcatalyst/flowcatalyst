@@ -4,6 +4,6 @@
 
 export { type DisableApplicationForClientCommand } from './command.js';
 export {
-	type DisableApplicationForClientUseCaseDeps,
-	createDisableApplicationForClientUseCase,
+  type DisableApplicationForClientUseCaseDeps,
+  createDisableApplicationForClientUseCase,
 } from './use-case.js';

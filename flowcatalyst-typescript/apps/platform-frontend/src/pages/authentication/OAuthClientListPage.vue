@@ -27,10 +27,11 @@ const deleteLoading = ref(false);
 const filteredClients = computed(() => {
   if (!searchQuery.value) return clients.value;
   const query = searchQuery.value.toLowerCase();
-  return clients.value.filter(client =>
-    client.clientName.toLowerCase().includes(query) ||
-    client.clientId.toLowerCase().includes(query) ||
-    client.applications.some(app => app.name.toLowerCase().includes(query))
+  return clients.value.filter(
+    (client) =>
+      client.clientName.toLowerCase().includes(query) ||
+      client.clientId.toLowerCase().includes(query) ||
+      client.applications.some((app) => app.name.toLowerCase().includes(query)),
   );
 });
 
@@ -63,7 +64,7 @@ async function deleteClient() {
 
   try {
     await oauthClientsApi.delete(clientToDelete.value.id);
-    clients.value = clients.value.filter(c => c.id !== clientToDelete.value?.id);
+    clients.value = clients.value.filter((c) => c.id !== clientToDelete.value?.id);
     showDeleteDialog.value = false;
     toast.add({
       severity: 'success',
@@ -130,10 +131,15 @@ function formatDate(dateString: string) {
       <div>
         <h1 class="page-title">OAuth Clients</h1>
         <p class="page-subtitle">
-          Manage OAuth2/OIDC client registrations for applications that use FlowCatalyst as their identity provider.
+          Manage OAuth2/OIDC client registrations for applications that use FlowCatalyst as their
+          identity provider.
         </p>
       </div>
-      <Button label="Add OAuth Client" icon="pi pi-plus" @click="router.push('/authentication/oauth-clients/new')" />
+      <Button
+        label="Add OAuth Client"
+        icon="pi pi-plus"
+        @click="router.push('/authentication/oauth-clients/new')"
+      />
     </header>
 
     <Message v-if="error" severity="error" class="error-message">{{ error }}</Message>
@@ -171,10 +177,7 @@ function formatDate(dateString: string) {
         </Column>
         <Column field="clientType" header="Type" sortable>
           <template #body="{ data }">
-            <Tag
-              :value="data.clientType"
-              :severity="getClientTypeSeverity(data.clientType)"
-            />
+            <Tag :value="data.clientType" :severity="getClientTypeSeverity(data.clientType)" />
           </template>
         </Column>
         <Column header="Applications">
@@ -249,7 +252,8 @@ function formatDate(dateString: string) {
       <div class="dialog-content">
         <p>
           Are you sure you want to delete the OAuth client
-          <strong>{{ clientToDelete?.clientName }}</strong>?
+          <strong>{{ clientToDelete?.clientName }}</strong
+          >?
         </p>
 
         <Message severity="warn" :closable="false" class="warning-message">
@@ -258,12 +262,7 @@ function formatDate(dateString: string) {
       </div>
 
       <template #footer>
-        <Button
-          label="Cancel"
-          text
-          @click="showDeleteDialog = false"
-          :disabled="deleteLoading"
-        />
+        <Button label="Cancel" text @click="showDeleteDialog = false" :disabled="deleteLoading" />
         <Button
           label="Delete"
           icon="pi pi-trash"

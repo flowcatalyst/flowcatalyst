@@ -23,31 +23,31 @@ const distDir = resolve(__dirname, '../dist');
 const outputPath = resolve(distDir, 'migrations.json');
 
 if (!existsSync(drizzleDir)) {
-	console.error(`Drizzle migrations directory not found: ${drizzleDir}`);
-	console.error('Run `pnpm db:generate` first to generate migrations.');
-	process.exit(1);
+  console.error(`Drizzle migrations directory not found: ${drizzleDir}`);
+  console.error('Run `pnpm db:generate` first to generate migrations.');
+  process.exit(1);
 }
 
 const journalPath = resolve(drizzleDir, 'meta', '_journal.json');
 if (!existsSync(journalPath)) {
-	console.error(`Journal file not found: ${journalPath}`);
-	console.error('Run `pnpm db:generate` first to generate migrations.');
-	process.exit(1);
+  console.error(`Journal file not found: ${journalPath}`);
+  console.error('Run `pnpm db:generate` first to generate migrations.');
+  process.exit(1);
 }
 
 const journal = readFileSync(journalPath, 'utf8');
 
 const files = {};
 for (const entry of readdirSync(drizzleDir)) {
-	if (entry.endsWith('.sql')) {
-		files[entry] = readFileSync(resolve(drizzleDir, entry), 'utf8');
-	}
+  if (entry.endsWith('.sql')) {
+    files[entry] = readFileSync(resolve(drizzleDir, entry), 'utf8');
+  }
 }
 
 const sqlCount = Object.keys(files).length;
 if (sqlCount === 0) {
-	console.error('No .sql migration files found in drizzle/ directory.');
-	process.exit(1);
+  console.error('No .sql migration files found in drizzle/ directory.');
+  process.exit(1);
 }
 
 mkdirSync(distDir, { recursive: true });

@@ -107,7 +107,9 @@ function addAllowedDomain() {
 }
 
 function removeAllowedDomain(domain: string) {
-  editForm.value.allowedEmailDomains = editForm.value.allowedEmailDomains.filter(d => d !== domain);
+  editForm.value.allowedEmailDomains = editForm.value.allowedEmailDomains.filter(
+    (d) => d !== domain,
+  );
 }
 
 async function saveChanges() {
@@ -207,11 +209,7 @@ function getTypeSeverity(type: string) {
           text
           @click="showDeleteDialog = true"
         />
-        <Button
-          label="Edit"
-          icon="pi pi-pencil"
-          @click="startEditing"
-        />
+        <Button label="Edit" icon="pi pi-pencil" @click="startEditing" />
       </div>
     </header>
 
@@ -226,10 +224,7 @@ function getTypeSeverity(type: string) {
         <div class="card-header">
           <h2 class="card-title">Provider Configuration</h2>
           <div v-if="!isEditing" class="status-badges">
-            <Tag
-              :value="provider.type"
-              :severity="getTypeSeverity(provider.type)"
-            />
+            <Tag :value="provider.type" :severity="getTypeSeverity(provider.type)" />
           </div>
         </div>
 
@@ -257,7 +252,13 @@ function getTypeSeverity(type: string) {
               <div class="field-group">
                 <label>Multi-Tenant</label>
                 <span class="field-value">
-                  <i :class="provider.oidcMultiTenant ? 'pi pi-check text-success' : 'pi pi-times text-muted'" />
+                  <i
+                    :class="
+                      provider.oidcMultiTenant
+                        ? 'pi pi-check text-success'
+                        : 'pi pi-times text-muted'
+                    "
+                  />
                   {{ provider.oidcMultiTenant ? 'Yes' : 'No' }}
                 </span>
               </div>
@@ -267,7 +268,10 @@ function getTypeSeverity(type: string) {
                 <span class="field-value">{{ provider.oidcIssuerUrl || '-' }}</span>
               </div>
 
-              <div class="field-group" v-if="provider.oidcMultiTenant && provider.oidcIssuerPattern">
+              <div
+                class="field-group"
+                v-if="provider.oidcMultiTenant && provider.oidcIssuerPattern"
+              >
                 <label>Issuer Pattern</label>
                 <span class="field-value">{{ provider.oidcIssuerPattern }}</span>
                 <small class="text-muted">Auto-derived from Issuer URL if not set</small>
@@ -283,7 +287,13 @@ function getTypeSeverity(type: string) {
               <div class="field-group">
                 <label>Client Secret</label>
                 <span class="field-value">
-                  <i :class="provider.hasClientSecret ? 'pi pi-check text-success' : 'pi pi-times text-muted'" />
+                  <i
+                    :class="
+                      provider.hasClientSecret
+                        ? 'pi pi-check text-success'
+                        : 'pi pi-times text-muted'
+                    "
+                  />
                   {{ provider.hasClientSecret ? 'Configured' : 'Not configured' }}
                 </span>
               </div>
@@ -316,20 +326,12 @@ function getTypeSeverity(type: string) {
           <template v-else>
             <div class="field">
               <label for="name">Name *</label>
-              <InputText
-                id="name"
-                v-model="editForm.name"
-                class="w-full"
-              />
+              <InputText id="name" v-model="editForm.name" class="w-full" />
             </div>
 
             <template v-if="provider.type === 'OIDC'">
               <div class="field checkbox-field">
-                <Checkbox
-                  id="multiTenant"
-                  v-model="editForm.oidcMultiTenant"
-                  :binary="true"
-                />
+                <Checkbox id="multiTenant" v-model="editForm.oidcMultiTenant" :binary="true" />
                 <label for="multiTenant" class="checkbox-label">Multi-Tenant Mode</label>
               </div>
 
@@ -338,13 +340,18 @@ function getTypeSeverity(type: string) {
                 <InputText
                   id="issuerUrl"
                   v-model="editForm.oidcIssuerUrl"
-                  :placeholder="editForm.oidcMultiTenant ? 'https://login.microsoftonline.com/common/v2.0' : 'https://login.example.com'"
+                  :placeholder="
+                    editForm.oidcMultiTenant
+                      ? 'https://login.microsoftonline.com/common/v2.0'
+                      : 'https://login.example.com'
+                  "
                   class="w-full"
                 />
                 <small class="field-help">
-                  {{ editForm.oidcMultiTenant
-                    ? 'Base URL for authorization/token endpoints (e.g., .../common/v2.0)'
-                    : 'The OpenID Connect issuer URL'
+                  {{
+                    editForm.oidcMultiTenant
+                      ? 'Base URL for authorization/token endpoints (e.g., .../common/v2.0)'
+                      : 'The OpenID Connect issuer URL'
                   }}
                 </small>
               </div>
@@ -358,17 +365,14 @@ function getTypeSeverity(type: string) {
                   class="w-full"
                 />
                 <small class="field-help">
-                  Optional. Pattern for validating token issuer. Use {tenantId} as placeholder. Leave empty to auto-derive from Issuer URL.
+                  Optional. Pattern for validating token issuer. Use {tenantId} as placeholder.
+                  Leave empty to auto-derive from Issuer URL.
                 </small>
               </div>
 
               <div class="field">
                 <label for="clientId">Client ID *</label>
-                <InputText
-                  id="clientId"
-                  v-model="editForm.oidcClientId"
-                  class="w-full"
-                />
+                <InputText id="clientId" v-model="editForm.oidcClientId" class="w-full" />
               </div>
 
               <div class="field">
@@ -381,7 +385,11 @@ function getTypeSeverity(type: string) {
                   class="w-full"
                 />
                 <small class="field-help">
-                  {{ provider.hasClientSecret ? 'Current secret is configured. Enter a new value to replace it.' : 'Enter the client secret' }}
+                  {{
+                    provider.hasClientSecret
+                      ? 'Current secret is configured. Enter a new value to replace it.'
+                      : 'Enter the client secret'
+                  }}
                 </small>
               </div>
             </template>
@@ -416,12 +424,7 @@ function getTypeSeverity(type: string) {
             </div>
 
             <div class="form-actions">
-              <Button
-                label="Cancel"
-                text
-                @click="cancelEditing"
-                :disabled="saving"
-              />
+              <Button label="Cancel" text @click="cancelEditing" :disabled="saving" />
               <Button
                 label="Save Changes"
                 icon="pi pi-check"
@@ -445,7 +448,8 @@ function getTypeSeverity(type: string) {
       <div class="dialog-content">
         <p>
           Are you sure you want to delete the identity provider
-          <strong>{{ provider?.name }}</strong>?
+          <strong>{{ provider?.name }}</strong
+          >?
         </p>
 
         <Message severity="warn" :closable="false">
@@ -454,12 +458,7 @@ function getTypeSeverity(type: string) {
       </div>
 
       <template #footer>
-        <Button
-          label="Cancel"
-          text
-          @click="showDeleteDialog = false"
-          :disabled="deleteLoading"
-        />
+        <Button label="Cancel" text @click="showDeleteDialog = false" :disabled="deleteLoading" />
         <Button
           label="Delete"
           icon="pi pi-trash"

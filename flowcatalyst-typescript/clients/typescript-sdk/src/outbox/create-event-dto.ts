@@ -47,10 +47,7 @@ export class CreateEventDto {
     this.headers = params.headers ?? {};
   }
 
-  static create(
-    type: string,
-    data: Record<string, unknown>,
-  ): CreateEventDto {
+  static create(type: string, data: Record<string, unknown>): CreateEventDto {
     return new CreateEventDto({ type, data });
   }
 
@@ -85,9 +82,7 @@ export class CreateEventDto {
     });
   }
 
-  withContextData(
-    contextData: Array<{ key: string; value: string }>,
-  ): CreateEventDto {
+  withContextData(contextData: Array<{ key: string; value: string }>): CreateEventDto {
     return new CreateEventDto({
       ...this.toParams(),
       contextData: [...this.contextData, ...contextData],
@@ -126,9 +121,7 @@ export class CreateEventDto {
   }
 }
 
-function filterNulls(
-  obj: Record<string, unknown>,
-): Record<string, unknown> {
+function filterNulls(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     if (value !== null && value !== undefined) {

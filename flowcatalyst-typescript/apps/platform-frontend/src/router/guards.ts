@@ -12,7 +12,7 @@ import { checkSession } from '@/api/auth';
 export async function authGuard(
   to: RouteLocationNormalized,
   from: RouteLocationNormalized,
-  next: NavigationGuardNext
+  next: NavigationGuardNext,
 ): Promise<void> {
   const authStore = useAuthStore();
   const platformConfigStore = usePlatformConfigStore();
@@ -51,7 +51,7 @@ export async function authGuard(
 export async function guestGuard(
   to: RouteLocationNormalized,
   from: RouteLocationNormalized,
-  next: NavigationGuardNext
+  next: NavigationGuardNext,
 ): Promise<void> {
   const authStore = useAuthStore();
 
@@ -65,8 +65,16 @@ export async function guestGuard(
     // Check if this is an OAuth flow - redirect to /oauth/authorize to complete it
     if (to.query.oauth === 'true') {
       const oauthParams = new URLSearchParams();
-      const oauthFields = ['response_type', 'client_id', 'redirect_uri', 'scope', 'state',
-                          'code_challenge', 'code_challenge_method', 'nonce'];
+      const oauthFields = [
+        'response_type',
+        'client_id',
+        'redirect_uri',
+        'scope',
+        'state',
+        'code_challenge',
+        'code_challenge_method',
+        'nonce',
+      ];
       for (const field of oauthFields) {
         const value = to.query[field];
         if (value && typeof value === 'string') {
@@ -93,7 +101,7 @@ export function roleGuard(requiredRole: string) {
   return (
     to: RouteLocationNormalized,
     from: RouteLocationNormalized,
-    next: NavigationGuardNext
+    next: NavigationGuardNext,
   ): void => {
     const authStore = useAuthStore();
     const roles = authStore.user?.roles || [];
@@ -115,7 +123,7 @@ export function permissionGuard(requiredPermission: string) {
   return (
     to: RouteLocationNormalized,
     from: RouteLocationNormalized,
-    next: NavigationGuardNext
+    next: NavigationGuardNext,
   ): void => {
     const authStore = useAuthStore();
     const permissionsStore = usePermissionsStore();
@@ -151,7 +159,7 @@ export function createRoutePermissionGuard() {
   return (
     to: RouteLocationNormalized,
     from: RouteLocationNormalized,
-    next: NavigationGuardNext
+    next: NavigationGuardNext,
   ): void => {
     const authStore = useAuthStore();
     const permissionsStore = usePermissionsStore();
@@ -174,7 +182,13 @@ export function createRoutePermissionGuard() {
 
     // Platform admins bypass all permission checks
     const adminRoles = ['platform:super-admin', 'platform:platform-admin', 'platform:admin'];
-    if (roles.some(role => adminRoles.includes(role) || role.toLowerCase().includes('platform') && role.toLowerCase().includes('admin'))) {
+    if (
+      roles.some(
+        (role) =>
+          adminRoles.includes(role) ||
+          (role.toLowerCase().includes('platform') && role.toLowerCase().includes('admin')),
+      )
+    ) {
       next();
       return;
     }

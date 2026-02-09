@@ -22,16 +22,16 @@ import { AuditContext, type PrincipalInfo } from '@flowcatalyst/domain-core';
  * - `denied`: Principal has no access (shouldn't normally happen after auth)
  */
 export type QueryScope<T> =
-	| { readonly type: 'unrestricted' }
-	| { readonly type: 'restricted'; readonly filter: T }
-	| { readonly type: 'denied' };
+  | { readonly type: 'unrestricted' }
+  | { readonly type: 'restricted'; readonly filter: T }
+  | { readonly type: 'denied' };
 
 /**
  * Client scope filter - determines which client IDs the principal can access.
  */
 export interface ClientScopeFilter {
-	/** Client IDs the principal can access */
-	readonly clientIds: string[];
+  /** Client IDs the principal can access */
+  readonly clientIds: string[];
 }
 
 /**
@@ -40,12 +40,12 @@ export interface ClientScopeFilter {
  * @returns QueryScope with client ID filter
  */
 export function getClientQueryScope(): QueryScope<ClientScopeFilter> {
-	const principal = AuditContext.getPrincipal();
-	if (!principal) {
-		return { type: 'denied' };
-	}
+  const principal = AuditContext.getPrincipal();
+  if (!principal) {
+    return { type: 'denied' };
+  }
 
-	return getClientQueryScopeForPrincipal(principal);
+  return getClientQueryScopeForPrincipal(principal);
 }
 
 /**
@@ -55,27 +55,29 @@ export function getClientQueryScope(): QueryScope<ClientScopeFilter> {
  * - PARTNER: restricted to home client + granted clients
  * - CLIENT: restricted to home client only
  */
-export function getClientQueryScopeForPrincipal(principal: PrincipalInfo): QueryScope<ClientScopeFilter> {
-	switch (principal.scope) {
-		case 'ANCHOR':
-			return { type: 'unrestricted' };
+export function getClientQueryScopeForPrincipal(
+  principal: PrincipalInfo,
+): QueryScope<ClientScopeFilter> {
+  switch (principal.scope) {
+    case 'ANCHOR':
+      return { type: 'unrestricted' };
 
-		case 'PARTNER': {
-			const clientIds = principal.clientId ? [principal.clientId] : [];
-			// TODO: Add explicitly granted client IDs from client access grants
-			return { type: 'restricted', filter: { clientIds } };
-		}
+    case 'PARTNER': {
+      const clientIds = principal.clientId ? [principal.clientId] : [];
+      // TODO: Add explicitly granted client IDs from client access grants
+      return { type: 'restricted', filter: { clientIds } };
+    }
 
-		case 'CLIENT': {
-			if (!principal.clientId) {
-				return { type: 'denied' };
-			}
-			return { type: 'restricted', filter: { clientIds: [principal.clientId] } };
-		}
+    case 'CLIENT': {
+      if (!principal.clientId) {
+        return { type: 'denied' };
+      }
+      return { type: 'restricted', filter: { clientIds: [principal.clientId] } };
+    }
 
-		default:
-			return { type: 'denied' };
-	}
+    default:
+      return { type: 'denied' };
+  }
 }
 
 /**
@@ -86,21 +88,21 @@ export function getClientQueryScopeForPrincipal(principal: PrincipalInfo): Query
  * @param clientId - The client ID of the resource (null for unscoped resources)
  */
 export function canAccessResourceByClient(clientId: string | null): boolean {
-	if (!clientId) {
-		// Unscoped resource, allow
-		return true;
-	}
+  if (!clientId) {
+    // Unscoped resource, allow
+    return true;
+  }
 
-	const scope = getClientQueryScope();
+  const scope = getClientQueryScope();
 
-	switch (scope.type) {
-		case 'unrestricted':
-			return true;
-		case 'restricted':
-			return scope.filter.clientIds.includes(clientId);
-		case 'denied':
-			return false;
-	}
+  switch (scope.type) {
+    case 'unrestricted':
+      return true;
+    case 'restricted':
+      return scope.filter.clientIds.includes(clientId);
+    case 'denied':
+      return false;
+  }
 }
 
 /**
@@ -110,14 +112,14 @@ export function canAccessResourceByClient(clientId: string | null): boolean {
  * @returns Array of accessible client IDs, or null for unrestricted access
  */
 export function getAccessibleClientIds(): string[] | null {
-	const scope = getClientQueryScope();
+  const scope = getClientQueryScope();
 
-	switch (scope.type) {
-		case 'unrestricted':
-			return null; // No filter needed
-		case 'restricted':
-			return scope.filter.clientIds;
-		case 'denied':
-			return []; // Empty array = no results
-	}
+  switch (scope.type) {
+    case 'unrestricted':
+      return null; // No filter needed
+    case 'restricted':
+      return scope.filter.clientIds;
+    case 'denied':
+      return []; // Empty array = no results
+  }
 }

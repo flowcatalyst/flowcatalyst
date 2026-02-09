@@ -37,10 +37,14 @@ function viewEventType(eventType: EventType) {
 
 function getSchemaStatusSeverity(status: string) {
   switch (status) {
-    case 'CURRENT': return 'success';
-    case 'FINALISING': return 'info';
-    case 'DEPRECATED': return 'warn';
-    default: return 'secondary';
+    case 'CURRENT':
+      return 'success';
+    case 'FINALISING':
+      return 'info';
+    case 'DEPRECATED':
+      return 'warn';
+    default:
+      return 'secondary';
   }
 }
 </script>
@@ -184,9 +188,7 @@ function getSchemaStatusSeverity(status: string) {
                 :severity="getSchemaStatusSeverity(sv.status)"
                 v-tooltip.top="sv.status"
               />
-              <span v-if="data.specVersions.length === 0" class="no-schemas">
-                No schemas
-              </span>
+              <span v-if="data.specVersions.length === 0" class="no-schemas"> No schemas </span>
             </div>
           </template>
         </Column>
@@ -217,12 +219,7 @@ function getSchemaStatusSeverity(status: string) {
           <div class="empty-message">
             <i class="pi pi-inbox"></i>
             <span>No event types found</span>
-            <Button
-              v-if="hasActiveFilters"
-              label="Clear filters"
-              link
-              @click="clearFilters"
-            />
+            <Button v-if="hasActiveFilters" label="Clear filters" link @click="clearFilters" />
           </div>
         </template>
       </DataTable>

@@ -40,7 +40,11 @@ const showSecretDialog = ref(false);
 const clientSecret = ref<string | null>(null);
 
 const clientTypeOptions = [
-  { label: 'Public (SPA, Mobile)', value: 'PUBLIC', description: 'No client secret, PKCE required' },
+  {
+    label: 'Public (SPA, Mobile)',
+    value: 'PUBLIC',
+    description: 'No client secret, PKCE required',
+  },
   { label: 'Confidential (Server)', value: 'CONFIDENTIAL', description: 'Has client secret' },
 ];
 
@@ -58,16 +62,15 @@ const scopeOptions = [
 ];
 
 const isValid = computed(() => {
-  const valid = (
+  const valid =
     form.value.clientName.trim() !== '' &&
     form.value.redirectUris.length > 0 &&
-    form.value.grantTypes.length > 0
-  );
+    form.value.grantTypes.length > 0;
   console.log('Form validation:', {
     clientName: form.value.clientName,
     redirectUris: form.value.redirectUris,
     grantTypes: form.value.grantTypes,
-    isValid: valid
+    isValid: valid,
   });
   return valid;
 });
@@ -114,7 +117,7 @@ function addRedirectUri() {
 }
 
 function removeRedirectUri(uri: string) {
-  form.value.redirectUris = form.value.redirectUris.filter(u => u !== uri);
+  form.value.redirectUris = form.value.redirectUris.filter((u) => u !== uri);
 }
 
 function addAllowedOrigin() {
@@ -148,7 +151,7 @@ function addAllowedOrigin() {
 }
 
 function removeAllowedOrigin(origin: string) {
-  form.value.allowedOrigins = form.value.allowedOrigins.filter(o => o !== origin);
+  form.value.allowedOrigins = form.value.allowedOrigins.filter((o) => o !== origin);
 }
 
 async function createClient() {
@@ -219,12 +222,19 @@ function closeSecretDialog() {
         />
         <h1 class="page-title">Create OAuth Client</h1>
         <p class="page-subtitle">
-          Register a new OAuth2/OIDC client for applications that use FlowCatalyst as their identity provider.
+          Register a new OAuth2/OIDC client for applications that use FlowCatalyst as their identity
+          provider.
         </p>
       </div>
     </header>
 
-    <Message v-if="error" severity="error" class="error-message" :closable="true" @close="error = null">
+    <Message
+      v-if="error"
+      severity="error"
+      class="error-message"
+      :closable="true"
+      @close="error = null"
+    >
       {{ error }}
     </Message>
 
@@ -269,11 +279,7 @@ function closeSecretDialog() {
               class="flex-grow"
               @keyup.enter="addRedirectUri"
             />
-            <Button
-              icon="pi pi-plus"
-              @click="addRedirectUri"
-              :disabled="!newRedirectUri.trim()"
-            />
+            <Button icon="pi pi-plus" @click="addRedirectUri" :disabled="!newRedirectUri.trim()" />
           </div>
           <div v-if="form.redirectUris.length > 0" class="uri-list">
             <Chip
@@ -284,7 +290,9 @@ function closeSecretDialog() {
               @remove="removeRedirectUri(uri)"
             />
           </div>
-          <small class="field-help">Allowed callback URLs for OAuth redirects. Must use HTTPS (except localhost).</small>
+          <small class="field-help"
+            >Allowed callback URLs for OAuth redirects. Must use HTTPS (except localhost).</small
+          >
         </div>
 
         <div class="field">
@@ -311,7 +319,10 @@ function closeSecretDialog() {
               @remove="removeAllowedOrigin(origin)"
             />
           </div>
-          <small class="field-help">Origins allowed to make browser requests to the token endpoint. Must use HTTPS (except localhost).</small>
+          <small class="field-help"
+            >Origins allowed to make browser requests to the token endpoint. Must use HTTPS (except
+            localhost).</small
+          >
         </div>
 
         <div class="field">
@@ -373,7 +384,8 @@ function closeSecretDialog() {
             </template>
           </MultiSelect>
           <small class="field-help">
-            Only users with access to these applications can authenticate. Leave empty for no restrictions.
+            Only users with access to these applications can authenticate. Leave empty for no
+            restrictions.
           </small>
         </div>
 
@@ -410,21 +422,12 @@ function closeSecretDialog() {
 
         <div class="secret-display">
           <code class="secret-code">{{ clientSecret }}</code>
-          <Button
-            icon="pi pi-copy"
-            text
-            v-tooltip="'Copy to clipboard'"
-            @click="copySecret"
-          />
+          <Button icon="pi pi-copy" text v-tooltip="'Copy to clipboard'" @click="copySecret" />
         </div>
       </div>
 
       <template #footer>
-        <Button
-          label="I've copied the secret"
-          icon="pi pi-check"
-          @click="closeSecretDialog"
-        />
+        <Button label="I've copied the secret" icon="pi pi-check" @click="closeSecretDialog" />
       </template>
     </Dialog>
   </div>

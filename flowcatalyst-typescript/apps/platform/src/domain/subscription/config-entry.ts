@@ -5,6 +5,6 @@
  */
 
 export interface ConfigEntry {
-	readonly key: string;
-	readonly value: string;
+  readonly key: string;
+  readonly value: string;
 }

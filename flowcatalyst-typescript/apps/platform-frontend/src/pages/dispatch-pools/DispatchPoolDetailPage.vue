@@ -147,10 +147,14 @@ async function deletePool() {
 
 function getStatusSeverity(status: DispatchPoolStatus) {
   switch (status) {
-    case 'ACTIVE': return 'success';
-    case 'SUSPENDED': return 'warn';
-    case 'ARCHIVED': return 'secondary';
-    default: return 'secondary';
+    case 'ACTIVE':
+      return 'success';
+    case 'SUSPENDED':
+      return 'warn';
+    case 'ARCHIVED':
+      return 'secondary';
+    default:
+      return 'secondary';
   }
 }
 
@@ -187,10 +191,7 @@ function getScopeLabel(p: DispatchPool) {
             <h1 class="page-title">{{ pool.name }}</h1>
             <code class="pool-code">{{ pool.code }}</code>
           </div>
-          <Tag
-            :value="pool.status"
-            :severity="getStatusSeverity(pool.status)"
-          />
+          <Tag :value="pool.status" :severity="getStatusSeverity(pool.status)" />
         </div>
       </header>
 
@@ -287,12 +288,7 @@ function getScopeLabel(p: DispatchPool) {
                 <strong>Activate Pool</strong>
                 <p>Enable this pool for processing dispatch jobs.</p>
               </div>
-              <Button
-                label="Activate"
-                severity="success"
-                outlined
-                @click="confirmActivate"
-              />
+              <Button label="Activate" severity="success" outlined @click="confirmActivate" />
             </div>
 
             <div v-if="pool.status === 'ACTIVE'" class="action-item">
@@ -300,12 +296,7 @@ function getScopeLabel(p: DispatchPool) {
                 <strong>Suspend Pool</strong>
                 <p>Temporarily stop processing jobs in this pool.</p>
               </div>
-              <Button
-                label="Suspend"
-                severity="warn"
-                outlined
-                @click="confirmSuspend"
-              />
+              <Button label="Suspend" severity="warn" outlined @click="confirmSuspend" />
             </div>
 
             <div class="action-item">
@@ -313,12 +304,7 @@ function getScopeLabel(p: DispatchPool) {
                 <strong>Delete Pool</strong>
                 <p>Archive this pool. Cannot be undone if there are active subscriptions.</p>
               </div>
-              <Button
-                label="Delete"
-                severity="danger"
-                outlined
-                @click="confirmDelete"
-              />
+              <Button label="Delete" severity="danger" outlined @click="confirmDelete" />
             </div>
           </div>
         </div>

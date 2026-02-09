@@ -110,18 +110,18 @@ function formatOperationName(operation: string): string {
   // Convert camelCase/PascalCase to readable format
   return operation
     .replace(/([A-Z])/g, ' $1')
-    .replace(/^./, str => str.toUpperCase())
+    .replace(/^./, (str) => str.toUpperCase())
     .trim();
 }
 
 function getEntityTypeSeverity(entityType: string): string {
   const types: Record<string, string> = {
-    'ClientAuthConfig': 'info',
-    'Role': 'warn',
-    'Principal': 'success',
-    'Application': 'secondary',
-    'Client': 'secondary',
-    'EventType': 'info',
+    ClientAuthConfig: 'info',
+    Role: 'warn',
+    Principal: 'success',
+    Application: 'secondary',
+    Client: 'secondary',
+    EventType: 'info',
   };
   return types[entityType] || 'secondary';
 }
@@ -220,10 +220,7 @@ onMounted(async () => {
 
         <Column field="entityType" header="Entity Type" style="width: 15%">
           <template #body="{ data }">
-            <Tag
-              :value="data.entityType"
-              :severity="getEntityTypeSeverity(data.entityType)"
-            />
+            <Tag :value="data.entityType" :severity="getEntityTypeSeverity(data.entityType)" />
           </template>
         </Column>
 
@@ -262,12 +259,7 @@ onMounted(async () => {
           <div class="empty-message">
             <i class="pi pi-inbox"></i>
             <span>No audit logs found</span>
-            <Button
-              v-if="hasActiveFilters"
-              label="Clear filters"
-              link
-              @click="clearFilters"
-            />
+            <Button v-if="hasActiveFilters" label="Clear filters" link @click="clearFilters" />
           </div>
         </template>
       </DataTable>
@@ -294,7 +286,10 @@ onMounted(async () => {
 
           <div class="detail-row">
             <span class="detail-label">Entity Type</span>
-            <Tag :value="selectedLog.entityType" :severity="getEntityTypeSeverity(selectedLog.entityType)" />
+            <Tag
+              :value="selectedLog.entityType"
+              :severity="getEntityTypeSeverity(selectedLog.entityType)"
+            />
           </div>
 
           <div class="detail-row">

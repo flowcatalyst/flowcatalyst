@@ -5,5 +5,5 @@
 import type { Command } from '@flowcatalyst/application';
 
 export interface DeleteEventTypeCommand extends Command {
-	readonly eventTypeId: string;
+  readonly eventTypeId: string;
 }

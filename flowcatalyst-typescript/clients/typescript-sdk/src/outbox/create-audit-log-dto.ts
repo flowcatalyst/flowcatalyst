@@ -48,11 +48,7 @@ export class CreateAuditLogDto {
     this.headers = params.headers ?? {};
   }
 
-  static create(
-    entityType: string,
-    entityId: string,
-    operation: string,
-  ): CreateAuditLogDto {
+  static create(entityType: string, entityId: string, operation: string): CreateAuditLogDto {
     return new CreateAuditLogDto({ entityType, entityId, operation });
   }
 
@@ -101,8 +97,7 @@ export class CreateAuditLogDto {
       performedAt: (this.performedAt ?? new Date()).toISOString(),
       source: this.source,
       correlationId: this.correlationId,
-      metadata:
-        Object.keys(this.metadata).length > 0 ? this.metadata : null,
+      metadata: Object.keys(this.metadata).length > 0 ? this.metadata : null,
     });
   }
 
@@ -122,9 +117,7 @@ export class CreateAuditLogDto {
   }
 }
 
-function filterNulls(
-  obj: Record<string, unknown>,
-): Record<string, unknown> {
+function filterNulls(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     if (value !== null && value !== undefined) {

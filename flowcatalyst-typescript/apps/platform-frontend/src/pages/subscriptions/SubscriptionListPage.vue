@@ -28,33 +28,38 @@ const statusOptions = [
 
 const applicationOptions = computed(() => {
   const codes = new Set<string>();
-  subscriptions.value.forEach(sub => {
+  subscriptions.value.forEach((sub) => {
     if (sub.applicationCode) {
       codes.add(sub.applicationCode);
     }
   });
-  return Array.from(codes).sort().map(code => ({ label: code, value: code }));
+  return Array.from(codes)
+    .sort()
+    .map((code) => ({ label: code, value: code }));
 });
 
 const filteredSubscriptions = computed(() => {
   let result = subscriptions.value;
 
   if (statusFilter.value) {
-    result = result.filter(sub => sub.status === statusFilter.value);
+    result = result.filter((sub) => sub.status === statusFilter.value);
   }
 
   if (applicationFilter.value.length > 0) {
-    result = result.filter(sub => sub.applicationCode && applicationFilter.value.includes(sub.applicationCode));
+    result = result.filter(
+      (sub) => sub.applicationCode && applicationFilter.value.includes(sub.applicationCode),
+    );
   }
 
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase();
-    result = result.filter(sub =>
-      sub.code.toLowerCase().includes(query) ||
-      sub.name.toLowerCase().includes(query) ||
-      sub.target.toLowerCase().includes(query) ||
-      sub.applicationCode?.toLowerCase().includes(query) ||
-      sub.clientIdentifier?.toLowerCase().includes(query)
+    result = result.filter(
+      (sub) =>
+        sub.code.toLowerCase().includes(query) ||
+        sub.name.toLowerCase().includes(query) ||
+        sub.target.toLowerCase().includes(query) ||
+        sub.applicationCode?.toLowerCase().includes(query) ||
+        sub.clientIdentifier?.toLowerCase().includes(query),
     );
   }
 
@@ -80,18 +85,25 @@ async function loadSubscriptions() {
 
 function getStatusSeverity(status: SubscriptionStatus) {
   switch (status) {
-    case 'ACTIVE': return 'success';
-    case 'PAUSED': return 'warn';
-    default: return 'secondary';
+    case 'ACTIVE':
+      return 'success';
+    case 'PAUSED':
+      return 'warn';
+    default:
+      return 'secondary';
   }
 }
 
 function getModeLabel(mode: string) {
   switch (mode) {
-    case 'IMMEDIATE': return 'Immediate';
-    case 'NEXT_ON_ERROR': return 'Next on Error';
-    case 'BLOCK_ON_ERROR': return 'Block on Error';
-    default: return mode;
+    case 'IMMEDIATE':
+      return 'Immediate';
+    case 'NEXT_ON_ERROR':
+      return 'Next on Error';
+    case 'BLOCK_ON_ERROR':
+      return 'Block on Error';
+    default:
+      return mode;
   }
 }
 
@@ -119,7 +131,11 @@ function getEventTypesLabel(sub: Subscription) {
         <h1 class="page-title">Subscriptions</h1>
         <p class="page-subtitle">Manage event subscriptions and webhook routing</p>
       </div>
-      <Button label="Create Subscription" icon="pi pi-plus" @click="router.push('/subscriptions/new')" />
+      <Button
+        label="Create Subscription"
+        icon="pi pi-plus"
+        @click="router.push('/subscriptions/new')"
+      />
     </header>
 
     <Message v-if="error" severity="error" class="error-message">{{ error }}</Message>

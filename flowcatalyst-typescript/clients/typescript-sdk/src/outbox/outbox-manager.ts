@@ -25,10 +25,7 @@ export class OutboxManager {
   private readonly driver: OutboxDriver;
   private readonly clientId: string;
 
-  constructor(
-    driver: OutboxDriver,
-    clientId: string,
-  ) {
+  constructor(driver: OutboxDriver, clientId: string) {
     this.driver = driver;
     this.clientId = clientId;
   }
@@ -87,13 +84,7 @@ export class OutboxManager {
     const id = generate();
     const payload = JSON.stringify(job.toPayload());
 
-    const message = this.buildMessage(
-      id,
-      'DISPATCH_JOB',
-      payload,
-      job.messageGroup,
-      null,
-    );
+    const message = this.buildMessage(id, 'DISPATCH_JOB', payload, job.messageGroup, null);
 
     await this.driver.insert(message);
     return id;
@@ -112,15 +103,7 @@ export class OutboxManager {
       ids.push(id);
       const payload = JSON.stringify(job.toPayload());
 
-      messages.push(
-        this.buildMessage(
-          id,
-          'DISPATCH_JOB',
-          payload,
-          job.messageGroup,
-          null,
-        ),
-      );
+      messages.push(this.buildMessage(id, 'DISPATCH_JOB', payload, job.messageGroup, null));
     }
 
     await this.driver.insertBatch(messages);

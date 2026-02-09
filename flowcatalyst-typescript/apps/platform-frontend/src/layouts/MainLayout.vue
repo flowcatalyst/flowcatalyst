@@ -12,15 +12,9 @@ function toggleSidebar() {
 
 <template>
   <div class="layout-container">
-    <AppSidebar
-      :collapsed="sidebarCollapsed"
-      @toggle-collapse="toggleSidebar"
-    />
+    <AppSidebar :collapsed="sidebarCollapsed" @toggle-collapse="toggleSidebar" />
     <div class="layout-main" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-      <AppHeader
-        :sidebar-collapsed="sidebarCollapsed"
-        @toggle-sidebar="toggleSidebar"
-      />
+      <AppHeader :sidebar-collapsed="sidebarCollapsed" @toggle-sidebar="toggleSidebar" />
       <main class="layout-content">
         <RouterView />
       </main>

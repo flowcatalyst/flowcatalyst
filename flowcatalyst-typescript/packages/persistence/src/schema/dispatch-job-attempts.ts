@@ -17,37 +17,40 @@ export type DispatchErrorType = 'TIMEOUT' | 'CONNECTION' | 'HTTP_ERROR' | 'VALID
  * Dispatch job attempts table schema.
  */
 export const dispatchJobAttempts = pgTable(
-	'dispatch_job_attempts',
-	{
-		// Primary key
-		id: tsidColumn('id').primaryKey(),
+  'dispatch_job_attempts',
+  {
+    // Primary key
+    id: tsidColumn('id').primaryKey(),
 
-		// Reference to parent dispatch job (unprefixed - dispatch_jobs use raw TSIDs)
-		dispatchJobId: rawTsidColumn('dispatch_job_id').notNull(),
+    // Reference to parent dispatch job (unprefixed - dispatch_jobs use raw TSIDs)
+    dispatchJobId: rawTsidColumn('dispatch_job_id').notNull(),
 
-		// Attempt tracking
-		attemptNumber: integer('attempt_number'),
-		status: varchar('status', { length: 20 }),
+    // Attempt tracking
+    attemptNumber: integer('attempt_number'),
+    status: varchar('status', { length: 20 }),
 
-		// Response details
-		responseCode: integer('response_code'),
-		responseBody: text('response_body'),
-		errorMessage: text('error_message'),
-		errorStackTrace: text('error_stack_trace'),
-		errorType: varchar('error_type', { length: 20 }).$type<DispatchErrorType>(),
+    // Response details
+    responseCode: integer('response_code'),
+    responseBody: text('response_body'),
+    errorMessage: text('error_message'),
+    errorStackTrace: text('error_stack_trace'),
+    errorType: varchar('error_type', { length: 20 }).$type<DispatchErrorType>(),
 
-		// Timing
-		durationMillis: bigint('duration_millis', { mode: 'number' }),
-		attemptedAt: timestampColumn('attempted_at'),
-		completedAt: timestampColumn('completed_at'),
-		createdAt: timestampColumn('created_at'),
-	},
-	(table) => [
-		// Unique constraint for job + attempt number
-		uniqueIndex('idx_dispatch_job_attempts_job_number').on(table.dispatchJobId, table.attemptNumber),
-		// Index for finding attempts by job
-		index('idx_dispatch_job_attempts_job').on(table.dispatchJobId),
-	],
+    // Timing
+    durationMillis: bigint('duration_millis', { mode: 'number' }),
+    attemptedAt: timestampColumn('attempted_at'),
+    completedAt: timestampColumn('completed_at'),
+    createdAt: timestampColumn('created_at'),
+  },
+  (table) => [
+    // Unique constraint for job + attempt number
+    uniqueIndex('idx_dispatch_job_attempts_job_number').on(
+      table.dispatchJobId,
+      table.attemptNumber,
+    ),
+    // Index for finding attempts by job
+    index('idx_dispatch_job_attempts_job').on(table.dispatchJobId),
+  ],
 );
 
 /**

@@ -47,15 +47,15 @@ import { roleCodeToDbName } from '../bootstrap/bootstrap-service.js';
  * regardless of which name format the principal's role assignments use.
  */
 export function initializeAuthorization(): void {
-	permissionRegistry.registerPermissions(ALL_PLATFORM_PERMISSIONS);
-	permissionRegistry.registerRoles(ALL_PLATFORM_ROLES);
+  permissionRegistry.registerPermissions(ALL_PLATFORM_PERMISSIONS);
+  permissionRegistry.registerRoles(ALL_PLATFORM_ROLES);
 
-	// Also register under DB names (e.g. "platform:super-admin") since that's
-	// what gets stored in principal role assignments.
-	for (const role of ALL_PLATFORM_ROLES) {
-		const dbName = roleCodeToDbName(role.code);
-		if (dbName !== role.code) {
-			permissionRegistry.registerRole({ ...role, code: dbName });
-		}
-	}
+  // Also register under DB names (e.g. "platform:super-admin") since that's
+  // what gets stored in principal role assignments.
+  for (const role of ALL_PLATFORM_ROLES) {
+    const dbName = roleCodeToDbName(role.code);
+    if (dbName !== role.code) {
+      permissionRegistry.registerRole({ ...role, code: dbName });
+    }
+  }
 }

@@ -58,7 +58,12 @@ async function onSubmit() {
       concurrency: concurrency.value,
       clientId: isAnchorLevel.value ? undefined : clientId.value || undefined,
     });
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Dispatch pool created', life: 3000 });
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Dispatch pool created',
+      life: 3000,
+    });
     router.push(`/dispatch-pools/${pool.id}`);
   } catch (e) {
     errorMessage.value = e instanceof Error ? e.message : 'Failed to create dispatch pool';
@@ -93,9 +98,7 @@ async function onSubmit() {
             <small v-if="code && !isCodeValid" class="p-error">
               Lowercase letters, numbers, hyphens only. Must start with a letter.
             </small>
-            <small v-else class="hint">
-              Unique identifier for this pool (2-100 characters)
-            </small>
+            <small v-else class="hint"> Unique identifier for this pool (2-100 characters) </small>
           </div>
 
           <div class="form-field">
@@ -126,21 +129,13 @@ async function onSubmit() {
           <div class="form-row">
             <div class="form-field">
               <label>Rate Limit (per minute) <span class="required">*</span></label>
-              <InputNumber
-                v-model="rateLimit"
-                :min="1"
-                class="full-width"
-              />
+              <InputNumber v-model="rateLimit" :min="1" class="full-width" />
               <small class="hint">Maximum dispatches per minute</small>
             </div>
 
             <div class="form-field">
               <label>Concurrency <span class="required">*</span></label>
-              <InputNumber
-                v-model="concurrency"
-                :min="1"
-                class="full-width"
-              />
+              <InputNumber v-model="concurrency" :min="1" class="full-width" />
               <small class="hint">Maximum concurrent dispatches</small>
             </div>
           </div>
@@ -161,10 +156,7 @@ async function onSubmit() {
 
           <div class="form-field" v-if="!isAnchorLevel">
             <label>Client</label>
-            <ClientSelect
-              v-model="clientId"
-              placeholder="Search for a client (optional)"
-            />
+            <ClientSelect v-model="clientId" placeholder="Search for a client (optional)" />
             <small class="hint">
               If specified, this pool will only be used for jobs scoped to this client.
             </small>

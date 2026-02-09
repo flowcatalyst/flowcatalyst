@@ -30,7 +30,8 @@ export const rawTsidColumn = (name: string) => varchar(name, { length: 13 });
 /**
  * Standard timestamp column with timezone.
  */
-export const timestampColumn = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
+export const timestampColumn = (name: string) =>
+  timestamp(name, { withTimezone: true, mode: 'date' });
 
 /**
  * Base entity fields that all entities should have.
@@ -39,18 +40,18 @@ export const timestampColumn = (name: string) => timestamp(name, { withTimezone:
  * - updatedAt: When the entity was last modified
  */
 export const baseEntityColumns = {
-	id: tsidColumn('id').primaryKey(),
-	createdAt: timestampColumn('created_at').notNull().defaultNow(),
-	updatedAt: timestampColumn('updated_at').notNull().defaultNow(),
+  id: tsidColumn('id').primaryKey(),
+  createdAt: timestampColumn('created_at').notNull().defaultNow(),
+  updatedAt: timestampColumn('updated_at').notNull().defaultNow(),
 };
 
 /**
  * Base entity type with common fields.
  */
 export interface BaseEntity {
-	readonly id: string;
-	readonly createdAt: Date;
-	readonly updatedAt: Date;
+  readonly id: string;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
 }
 
 /**
@@ -58,6 +59,6 @@ export interface BaseEntity {
  * createdAt and updatedAt are auto-populated.
  */
 export type NewEntity<T extends BaseEntity> = Omit<T, 'createdAt' | 'updatedAt'> & {
-	createdAt?: Date;
-	updatedAt?: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
 };

@@ -59,8 +59,10 @@ const scopeOptions = [
 
 // Redirect URIs are required for authorization_code or refresh_token grants
 const requiresRedirectUri = computed(() => {
-  return editForm.value.grantTypes.includes('authorization_code') ||
-         editForm.value.grantTypes.includes('refresh_token');
+  return (
+    editForm.value.grantTypes.includes('authorization_code') ||
+    editForm.value.grantTypes.includes('refresh_token')
+  );
 });
 
 const isValid = computed(() => {
@@ -83,7 +85,9 @@ const validationErrors = computed(() => {
     errors.push('At least one grant type is required');
   }
   if (requiresRedirectUri.value && editForm.value.redirectUris.length === 0) {
-    errors.push('At least one redirect URI is required for authorization_code or refresh_token grants');
+    errors.push(
+      'At least one redirect URI is required for authorization_code or refresh_token grants',
+    );
   }
   return errors;
 });
@@ -132,7 +136,7 @@ function resetEditForm() {
       grantTypes: [...(client.value.grantTypes || [])],
       defaultScopes: [...(client.value.defaultScopes || [])],
       pkceRequired: client.value.pkceRequired ?? true,
-      applicationIds: (client.value.applications || []).map(a => a.id),
+      applicationIds: (client.value.applications || []).map((a) => a.id),
     };
   }
 }
@@ -166,7 +170,7 @@ function addRedirectUri() {
 }
 
 function removeRedirectUri(uri: string) {
-  editForm.value.redirectUris = editForm.value.redirectUris.filter(u => u !== uri);
+  editForm.value.redirectUris = editForm.value.redirectUris.filter((u) => u !== uri);
 }
 
 function addAllowedOrigin() {
@@ -197,7 +201,7 @@ function addAllowedOrigin() {
 }
 
 function removeAllowedOrigin(origin: string) {
-  editForm.value.allowedOrigins = editForm.value.allowedOrigins.filter(o => o !== origin);
+  editForm.value.allowedOrigins = editForm.value.allowedOrigins.filter((o) => o !== origin);
 }
 
 async function saveChanges() {
@@ -356,11 +360,7 @@ function getClientTypeSeverity(clientType: string) {
           text
           @click="toggleActive"
         />
-        <Button
-          label="Edit"
-          icon="pi pi-pencil"
-          @click="startEditing"
-        />
+        <Button label="Edit" icon="pi pi-pencil" @click="startEditing" />
       </div>
     </header>
 
@@ -375,10 +375,7 @@ function getClientTypeSeverity(clientType: string) {
         <div class="card-header">
           <h2 class="card-title">Client Configuration</h2>
           <div v-if="!isEditing" class="status-badges">
-            <Tag
-              :value="client.clientType"
-              :severity="getClientTypeSeverity(client.clientType)"
-            />
+            <Tag :value="client.clientType" :severity="getClientTypeSeverity(client.clientType)" />
             <Tag
               :value="client.active ? 'Active' : 'Inactive'"
               :severity="client.active ? 'success' : 'secondary'"
@@ -397,22 +394,17 @@ function getClientTypeSeverity(clientType: string) {
             <div class="field-group">
               <label>Redirect URIs</label>
               <div class="uri-list">
-                <Chip
-                  v-for="uri in client.redirectUris"
-                  :key="uri"
-                  :label="uri"
-                />
+                <Chip v-for="uri in client.redirectUris" :key="uri" :label="uri" />
               </div>
             </div>
 
             <div class="field-group">
               <label>Allowed CORS Origins</label>
-              <div v-if="client.allowedOrigins && client.allowedOrigins.length > 0" class="uri-list">
-                <Chip
-                  v-for="origin in client.allowedOrigins"
-                  :key="origin"
-                  :label="origin"
-                />
+              <div
+                v-if="client.allowedOrigins && client.allowedOrigins.length > 0"
+                class="uri-list"
+              >
+                <Chip v-for="origin in client.allowedOrigins" :key="origin" :label="origin" />
               </div>
               <span v-else class="text-muted">No CORS origins configured</span>
             </div>
@@ -444,7 +436,11 @@ function getClientTypeSeverity(clientType: string) {
             <div class="field-group">
               <label>PKCE Required</label>
               <span class="field-value">
-                <i :class="client.pkceRequired ? 'pi pi-check text-success' : 'pi pi-times text-muted'" />
+                <i
+                  :class="
+                    client.pkceRequired ? 'pi pi-check text-success' : 'pi pi-times text-muted'
+                  "
+                />
                 {{ client.pkceRequired ? 'Yes' : 'No' }}
               </span>
             </div>
@@ -476,7 +472,8 @@ function getClientTypeSeverity(clientType: string) {
             <div v-if="client.clientType === 'CONFIDENTIAL'" class="secret-section">
               <h3 class="section-title">Client Secret</h3>
               <p class="section-description">
-                The client secret is encrypted and cannot be displayed. If you need a new secret, you can rotate it.
+                The client secret is encrypted and cannot be displayed. If you need a new secret,
+                you can rotate it.
               </p>
               <Button
                 label="Rotate Secret"
@@ -491,11 +488,7 @@ function getClientTypeSeverity(clientType: string) {
           <template v-else>
             <div class="field">
               <label for="clientName">Client Name *</label>
-              <InputText
-                id="clientName"
-                v-model="editForm.clientName"
-                class="w-full"
-              />
+              <InputText id="clientName" v-model="editForm.clientName" class="w-full" />
             </div>
 
             <div class="field">
@@ -549,7 +542,10 @@ function getClientTypeSeverity(clientType: string) {
                   @remove="removeAllowedOrigin(origin)"
                 />
               </div>
-              <small class="field-help">Origins allowed to make browser requests to the token endpoint. Must use HTTPS (except localhost).</small>
+              <small class="field-help"
+                >Origins allowed to make browser requests to the token endpoint. Must use HTTPS
+                (except localhost).</small
+              >
             </div>
 
             <div class="field">
@@ -599,23 +595,24 @@ function getClientTypeSeverity(clientType: string) {
                 filter
               />
               <small class="field-help">
-                Only users with access to these applications can authenticate. Leave empty for no restrictions.
+                Only users with access to these applications can authenticate. Leave empty for no
+                restrictions.
               </small>
             </div>
 
-            <Message v-if="validationErrors.length > 0" severity="warn" :closable="false" class="validation-message">
+            <Message
+              v-if="validationErrors.length > 0"
+              severity="warn"
+              :closable="false"
+              class="validation-message"
+            >
               <ul class="validation-list">
                 <li v-for="err in validationErrors" :key="err">{{ err }}</li>
               </ul>
             </Message>
 
             <div class="form-actions">
-              <Button
-                label="Cancel"
-                text
-                @click="cancelEditing"
-                :disabled="saving"
-              />
+              <Button label="Cancel" text @click="cancelEditing" :disabled="saving" />
               <Button
                 label="Save Changes"
                 icon="pi pi-check"
@@ -638,7 +635,8 @@ function getClientTypeSeverity(clientType: string) {
     >
       <div class="dialog-content">
         <Message severity="warn" :closable="false">
-          This will invalidate the current secret. Any applications using the old secret will stop working.
+          This will invalidate the current secret. Any applications using the old secret will stop
+          working.
         </Message>
         <p>Are you sure you want to rotate the client secret?</p>
       </div>
@@ -675,12 +673,7 @@ function getClientTypeSeverity(clientType: string) {
 
         <div class="secret-display">
           <code class="secret-code">{{ newClientSecret }}</code>
-          <Button
-            icon="pi pi-copy"
-            text
-            v-tooltip="'Copy to clipboard'"
-            @click="copySecret"
-          />
+          <Button icon="pi pi-copy" text v-tooltip="'Copy to clipboard'" @click="copySecret" />
         </div>
       </div>
 

@@ -141,7 +141,7 @@ export class FlowCatalystClient {
     this.httpClient = createClient(
       createConfig({
         baseUrl: this.config.baseUrl,
-      })
+      }),
     );
   }
 
@@ -218,13 +218,15 @@ export class FlowCatalystClient {
    * - Typed error handling via neverthrow
    */
   request<T>(
-    fn: (client: Client, headers: Record<string, string>) => Promise<{ data?: unknown; error?: unknown; response: Response }>
+    fn: (
+      client: Client,
+      headers: Record<string, string>,
+    ) => Promise<{ data?: unknown; error?: unknown; response: Response }>,
   ): ResultAsync<T, SdkError> {
     if (this.tokenProvider) {
       // User token mode
-      return ResultAsync.fromPromise(
-        this.tokenProvider(),
-        (e) => authError.tokenExpired(e instanceof Error ? e.message : 'Failed to get access token')
+      return ResultAsync.fromPromise(this.tokenProvider(), (e) =>
+        authError.tokenExpired(e instanceof Error ? e.message : 'Failed to get access token'),
       ).andThen((token) => this.executeWithRetry<T>(fn, token, 0, false));
     } else if (this.tokenManager) {
       // Client credentials mode
@@ -238,24 +240,27 @@ export class FlowCatalystClient {
   }
 
   private executeWithRetry<T>(
-    fn: (client: Client, headers: Record<string, string>) => Promise<{ data?: unknown; error?: unknown; response: Response }>,
+    fn: (
+      client: Client,
+      headers: Record<string, string>,
+    ) => Promise<{ data?: unknown; error?: unknown; response: Response }>,
     token: string,
     attempt: number,
-    canRefreshToken: boolean
+    canRefreshToken: boolean,
   ): ResultAsync<T, SdkError> {
     const headers = {
       Authorization: `Bearer ${token}`,
     };
 
-    return ResultAsync.fromPromise(
-      this.executeWithTimeout(fn, headers),
-      (e) => {
-        if (e instanceof Error && e.name === 'AbortError') {
-          return httpError.timeout(this.config.timeout);
-        }
-        return httpError.network(e instanceof Error ? e.message : 'Network error', e instanceof Error ? e : undefined);
+    return ResultAsync.fromPromise(this.executeWithTimeout(fn, headers), (e) => {
+      if (e instanceof Error && e.name === 'AbortError') {
+        return httpError.timeout(this.config.timeout);
       }
-    ).andThen((result) => {
+      return httpError.network(
+        e instanceof Error ? e.message : 'Network error',
+        e instanceof Error ? e : undefined,
+      );
+    }).andThen((result) => {
       // Check if we got an error response
       if (result.error !== undefined || !result.response.ok) {
         const status = result.response.status;
@@ -265,13 +270,15 @@ export class FlowCatalystClient {
           return this.tokenManager
             .refreshToken()
             .mapErr((e): SdkError => e)
-            .andThen((newToken) => this.executeWithRetry<T>(fn, newToken, attempt + 1, canRefreshToken));
+            .andThen((newToken) =>
+              this.executeWithRetry<T>(fn, newToken, attempt + 1, canRefreshToken),
+            );
         }
 
         // Retry transient errors
         if (this.isRetryableStatus(status) && attempt < this.config.retryAttempts) {
           return ResultAsync.fromSafePromise<void, SdkError>(
-            this.delay(this.config.retryDelay * Math.pow(2, attempt))
+            this.delay(this.config.retryDelay * Math.pow(2, attempt)),
           ).andThen(() => this.executeWithRetry<T>(fn, token, attempt + 1, canRefreshToken));
         }
 
@@ -284,8 +291,11 @@ export class FlowCatalystClient {
   }
 
   private async executeWithTimeout(
-    fn: (client: Client, headers: Record<string, string>) => Promise<{ data?: unknown; error?: unknown; response: Response }>,
-    headers: Record<string, string>
+    fn: (
+      client: Client,
+      headers: Record<string, string>,
+    ) => Promise<{ data?: unknown; error?: unknown; response: Response }>,
+    headers: Record<string, string>,
   ): Promise<{ data?: unknown; error?: unknown; response: Response }> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);

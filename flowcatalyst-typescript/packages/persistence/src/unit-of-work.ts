@@ -9,13 +9,13 @@
  */
 
 import {
-	type UnitOfWork,
-	type Aggregate,
-	type DomainEvent,
-	Result,
-	RESULT_SUCCESS_TOKEN,
-	UseCaseError,
-	DomainEvent as DomainEventUtils,
+  type UnitOfWork,
+  type Aggregate,
+  type DomainEvent,
+  Result,
+  RESULT_SUCCESS_TOKEN,
+  UseCaseError,
+  DomainEvent as DomainEventUtils,
 } from '@flowcatalyst/domain-core';
 import { generate } from '@flowcatalyst/tsid';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
@@ -29,20 +29,20 @@ import { eventProjectionFeed } from './schema/outbox.js';
  * Configuration for the Drizzle Unit of Work.
  */
 export interface DrizzleUnitOfWorkConfig {
-	/** Transaction manager for database operations */
-	readonly transactionManager: TransactionManager;
-	/** Registry for dispatching aggregate persistence */
-	readonly aggregateRegistry: AggregateRegistry;
-	/** Optional: Function to extract client ID from aggregates */
-	readonly extractClientId?: (aggregate: Aggregate) => string | null;
-	/** Optional: Service to build dispatch jobs for events within the transaction */
-	readonly eventDispatchService?: {
-		buildDispatchJobsForEvent(
-			event: DomainEvent,
-			clientId: string | null,
-			db: PostgresJsDatabase,
-		): Promise<void>;
-	};
+  /** Transaction manager for database operations */
+  readonly transactionManager: TransactionManager;
+  /** Registry for dispatching aggregate persistence */
+  readonly aggregateRegistry: AggregateRegistry;
+  /** Optional: Function to extract client ID from aggregates */
+  readonly extractClientId?: (aggregate: Aggregate) => string | null;
+  /** Optional: Service to build dispatch jobs for events within the transaction */
+  readonly eventDispatchService?: {
+    buildDispatchJobsForEvent(
+      event: DomainEvent,
+      clientId: string | null,
+      db: PostgresJsDatabase,
+    ): Promise<void>;
+  };
 }
 
 /**
@@ -64,220 +64,238 @@ export interface DrizzleUnitOfWorkConfig {
  * ```
  */
 export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOfWork {
-	const { transactionManager, aggregateRegistry, extractClientId, eventDispatchService } = config;
+  const { transactionManager, aggregateRegistry, extractClientId, eventDispatchService } = config;
 
-	return {
-		async commit<T extends DomainEvent>(aggregate: Aggregate, event: T, command: unknown): Promise<Result<T>> {
-			try {
-				return await transactionManager.inTransaction(async (tx) => {
-					// 1. Persist the aggregate
-					await aggregateRegistry.persist(aggregate as never, tx);
+  return {
+    async commit<T extends DomainEvent>(
+      aggregate: Aggregate,
+      event: T,
+      command: unknown,
+    ): Promise<Result<T>> {
+      try {
+        return await transactionManager.inTransaction(async (tx) => {
+          // 1. Persist the aggregate
+          await aggregateRegistry.persist(aggregate as never, tx);
 
-					// 2. Create the event record
-					const clientId = extractClientId?.(aggregate) ?? null;
-					await createEventRecord(tx.db, event, clientId);
+          // 2. Create the event record
+          const clientId = extractClientId?.(aggregate) ?? null;
+          await createEventRecord(tx.db, event, clientId);
 
-					// 3. Build dispatch jobs for matching subscriptions
-					if (eventDispatchService) {
-						await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
-					}
+          // 3. Build dispatch jobs for matching subscriptions
+          if (eventDispatchService) {
+            await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
+          }
 
-					// 4. Create the audit log
-					await createAuditLogRecord(tx.db, event, command);
+          // 4. Create the audit log
+          await createAuditLogRecord(tx.db, event, command);
 
-					// 5. Return success (only UnitOfWork can do this)
-					return Result.success(RESULT_SUCCESS_TOKEN, event);
-				});
-			} catch (error) {
-				return Result.failure(
-					UseCaseError.businessRule(
-						'COMMIT_FAILED',
-						error instanceof Error ? error.message : 'Unknown error during commit',
-						{ cause: error instanceof Error ? error.name : 'Unknown' },
-					),
-				);
-			}
-		},
+          // 5. Return success (only UnitOfWork can do this)
+          return Result.success(RESULT_SUCCESS_TOKEN, event);
+        });
+      } catch (error) {
+        return Result.failure(
+          UseCaseError.businessRule(
+            'COMMIT_FAILED',
+            error instanceof Error ? error.message : 'Unknown error during commit',
+            { cause: error instanceof Error ? error.name : 'Unknown' },
+          ),
+        );
+      }
+    },
 
-		async commitDelete<T extends DomainEvent>(aggregate: Aggregate, event: T, command: unknown): Promise<Result<T>> {
-			try {
-				return await transactionManager.inTransaction(async (tx) => {
-					// 1. Delete the aggregate
-					await aggregateRegistry.delete(aggregate as never, tx);
+    async commitDelete<T extends DomainEvent>(
+      aggregate: Aggregate,
+      event: T,
+      command: unknown,
+    ): Promise<Result<T>> {
+      try {
+        return await transactionManager.inTransaction(async (tx) => {
+          // 1. Delete the aggregate
+          await aggregateRegistry.delete(aggregate as never, tx);
 
-					// 2. Create the event record
-					const clientId = extractClientId?.(aggregate) ?? null;
-					await createEventRecord(tx.db, event, clientId);
+          // 2. Create the event record
+          const clientId = extractClientId?.(aggregate) ?? null;
+          await createEventRecord(tx.db, event, clientId);
 
-					// 3. Build dispatch jobs for matching subscriptions
-					if (eventDispatchService) {
-						await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
-					}
+          // 3. Build dispatch jobs for matching subscriptions
+          if (eventDispatchService) {
+            await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
+          }
 
-					// 4. Create the audit log
-					await createAuditLogRecord(tx.db, event, command);
+          // 4. Create the audit log
+          await createAuditLogRecord(tx.db, event, command);
 
-					// 5. Return success
-					return Result.success(RESULT_SUCCESS_TOKEN, event);
-				});
-			} catch (error) {
-				return Result.failure(
-					UseCaseError.businessRule(
-						'DELETE_FAILED',
-						error instanceof Error ? error.message : 'Unknown error during delete',
-						{ cause: error instanceof Error ? error.name : 'Unknown' },
-					),
-				);
-			}
-		},
+          // 5. Return success
+          return Result.success(RESULT_SUCCESS_TOKEN, event);
+        });
+      } catch (error) {
+        return Result.failure(
+          UseCaseError.businessRule(
+            'DELETE_FAILED',
+            error instanceof Error ? error.message : 'Unknown error during delete',
+            { cause: error instanceof Error ? error.name : 'Unknown' },
+          ),
+        );
+      }
+    },
 
-		async commitAll<T extends DomainEvent>(
-			aggregates: Aggregate[],
-			event: T,
-			command: unknown,
-		): Promise<Result<T>> {
-			try {
-				return await transactionManager.inTransaction(async (tx) => {
-					// 1. Persist all aggregates
-					for (const aggregate of aggregates) {
-						await aggregateRegistry.persist(aggregate as never, tx);
-					}
+    async commitAll<T extends DomainEvent>(
+      aggregates: Aggregate[],
+      event: T,
+      command: unknown,
+    ): Promise<Result<T>> {
+      try {
+        return await transactionManager.inTransaction(async (tx) => {
+          // 1. Persist all aggregates
+          for (const aggregate of aggregates) {
+            await aggregateRegistry.persist(aggregate as never, tx);
+          }
 
-					// 2. Create the event record (use first aggregate for client ID)
-					const firstAggregate = aggregates[0];
-					const clientId = firstAggregate !== undefined ? (extractClientId?.(firstAggregate) ?? null) : null;
-					await createEventRecord(tx.db, event, clientId);
+          // 2. Create the event record (use first aggregate for client ID)
+          const firstAggregate = aggregates[0];
+          const clientId =
+            firstAggregate !== undefined ? (extractClientId?.(firstAggregate) ?? null) : null;
+          await createEventRecord(tx.db, event, clientId);
 
-					// 3. Build dispatch jobs for matching subscriptions
-					if (eventDispatchService) {
-						await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
-					}
+          // 3. Build dispatch jobs for matching subscriptions
+          if (eventDispatchService) {
+            await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
+          }
 
-					// 4. Create the audit log
-					await createAuditLogRecord(tx.db, event, command);
+          // 4. Create the audit log
+          await createAuditLogRecord(tx.db, event, command);
 
-					// 5. Return success
-					return Result.success(RESULT_SUCCESS_TOKEN, event);
-				});
-			} catch (error) {
-				return Result.failure(
-					UseCaseError.businessRule(
-						'COMMIT_ALL_FAILED',
-						error instanceof Error ? error.message : 'Unknown error during commit',
-						{ cause: error instanceof Error ? error.name : 'Unknown' },
-					),
-				);
-			}
-		},
-	};
+          // 5. Return success
+          return Result.success(RESULT_SUCCESS_TOKEN, event);
+        });
+      } catch (error) {
+        return Result.failure(
+          UseCaseError.businessRule(
+            'COMMIT_ALL_FAILED',
+            error instanceof Error ? error.message : 'Unknown error during commit',
+            { cause: error instanceof Error ? error.name : 'Unknown' },
+          ),
+        );
+      }
+    },
+  };
 }
 
 /**
  * Create an event record in the database.
  */
-async function createEventRecord(db: PostgresJsDatabase, event: DomainEvent, clientId: string | null): Promise<void> {
-	const contextData: EventContextData[] = [];
+async function createEventRecord(
+  db: PostgresJsDatabase,
+  event: DomainEvent,
+  clientId: string | null,
+): Promise<void> {
+  const contextData: EventContextData[] = [];
 
-	// Add aggregate type and ID to context data for filtering
-	const aggregateType = DomainEventUtils.extractAggregateType(event.subject);
-	const entityId = DomainEventUtils.extractEntityId(event.subject);
+  // Add aggregate type and ID to context data for filtering
+  const aggregateType = DomainEventUtils.extractAggregateType(event.subject);
+  const entityId = DomainEventUtils.extractEntityId(event.subject);
 
-	if (aggregateType !== 'Unknown') {
-		contextData.push({ key: 'aggregateType', value: aggregateType });
-	}
-	if (entityId) {
-		contextData.push({ key: 'entityId', value: entityId });
-	}
+  if (aggregateType !== 'Unknown') {
+    contextData.push({ key: 'aggregateType', value: aggregateType });
+  }
+  if (entityId) {
+    contextData.push({ key: 'entityId', value: entityId });
+  }
 
-	const newEvent: NewEvent = {
-		id: event.eventId,
-		specVersion: event.specVersion,
-		type: event.eventType,
-		source: event.source,
-		subject: event.subject,
-		time: event.time,
-		data: JSON.parse(event.toDataJson()),
-		correlationId: event.correlationId,
-		causationId: event.causationId,
-		deduplicationId: `${event.eventType}-${event.eventId}`,
-		messageGroup: event.messageGroup,
-		clientId,
-		contextData: contextData.length > 0 ? contextData : null,
-	};
+  const newEvent: NewEvent = {
+    id: event.eventId,
+    specVersion: event.specVersion,
+    type: event.eventType,
+    source: event.source,
+    subject: event.subject,
+    time: event.time,
+    data: JSON.parse(event.toDataJson()),
+    correlationId: event.correlationId,
+    causationId: event.causationId,
+    deduplicationId: `${event.eventType}-${event.eventId}`,
+    messageGroup: event.messageGroup,
+    clientId,
+    contextData: contextData.length > 0 ? contextData : null,
+  };
 
-	await db.insert(events).values(newEvent);
+  await db.insert(events).values(newEvent);
 
-	// Write to event projection feed for stream-processor projection to events_read
-	await db.insert(eventProjectionFeed).values({
-		eventId: event.eventId,
-		payload: {
-			specVersion: event.specVersion,
-			type: event.eventType,
-			source: event.source,
-			subject: event.subject,
-			time: event.time.toISOString(),
-			data: event.toDataJson(),
-			correlationId: event.correlationId,
-			causationId: event.causationId,
-			deduplicationId: `${event.eventType}-${event.eventId}`,
-			messageGroup: event.messageGroup,
-			clientId,
-		},
-	});
+  // Write to event projection feed for stream-processor projection to events_read
+  await db.insert(eventProjectionFeed).values({
+    eventId: event.eventId,
+    payload: {
+      specVersion: event.specVersion,
+      type: event.eventType,
+      source: event.source,
+      subject: event.subject,
+      time: event.time.toISOString(),
+      data: event.toDataJson(),
+      correlationId: event.correlationId,
+      causationId: event.causationId,
+      deduplicationId: `${event.eventType}-${event.eventId}`,
+      messageGroup: event.messageGroup,
+      clientId,
+    },
+  });
 }
 
 /**
  * Create an audit log record in the database.
  */
-async function createAuditLogRecord(db: PostgresJsDatabase, event: DomainEvent, command: unknown): Promise<void> {
-	const entityType = DomainEventUtils.extractAggregateType(event.subject);
-	const entityId = DomainEventUtils.extractEntityId(event.subject);
+async function createAuditLogRecord(
+  db: PostgresJsDatabase,
+  event: DomainEvent,
+  command: unknown,
+): Promise<void> {
+  const entityType = DomainEventUtils.extractAggregateType(event.subject);
+  const entityId = DomainEventUtils.extractEntityId(event.subject);
 
-	// Get operation name from command
-	const operationName = getOperationName(command);
+  // Get operation name from command
+  const operationName = getOperationName(command);
 
-	const newAuditLog: NewAuditLog = {
-		id: generate('AUDIT_LOG'),
-		entityType,
-		entityId: entityId ?? 'unknown',
-		operation: operationName,
-		operationJson: command !== null && command !== undefined ? JSON.parse(JSON.stringify(command)) : null,
-		principalId: event.principalId,
-		performedAt: event.time,
-	};
+  const newAuditLog: NewAuditLog = {
+    id: generate('AUDIT_LOG'),
+    entityType,
+    entityId: entityId ?? 'unknown',
+    operation: operationName,
+    operationJson:
+      command !== null && command !== undefined ? JSON.parse(JSON.stringify(command)) : null,
+    principalId: event.principalId,
+    performedAt: event.time,
+  };
 
-	await db.insert(auditLogs).values(newAuditLog);
+  await db.insert(auditLogs).values(newAuditLog);
 }
 
 /**
  * Extract operation name from a command object.
  */
 function getOperationName(command: unknown): string {
-	if (command === null || command === undefined) {
-		return 'Unknown';
-	}
+  if (command === null || command === undefined) {
+    return 'Unknown';
+  }
 
-	// If it's a class instance, use the class name
-	const constructor = (command as object).constructor;
-	if (constructor && constructor.name && constructor.name !== 'Object') {
-		return constructor.name;
-	}
+  // If it's a class instance, use the class name
+  const constructor = (command as object).constructor;
+  if (constructor && constructor.name && constructor.name !== 'Object') {
+    return constructor.name;
+  }
 
-	// If it has an 'operation' or 'type' field, use that
-	if (typeof command === 'object' && command !== null) {
-		const cmd = command as Record<string, unknown>;
-		if (typeof cmd['operation'] === 'string') {
-			return cmd['operation'];
-		}
-		if (typeof cmd['type'] === 'string') {
-			return cmd['type'];
-		}
-		if (typeof cmd['_type'] === 'string') {
-			return cmd['_type'];
-		}
-	}
+  // If it has an 'operation' or 'type' field, use that
+  if (typeof command === 'object' && command !== null) {
+    const cmd = command as Record<string, unknown>;
+    if (typeof cmd['operation'] === 'string') {
+      return cmd['operation'];
+    }
+    if (typeof cmd['type'] === 'string') {
+      return cmd['type'];
+    }
+    if (typeof cmd['_type'] === 'string') {
+      return cmd['_type'];
+    }
+  }
 
-	return 'Unknown';
+  return 'Unknown';
 }
 
 /**
@@ -285,25 +303,29 @@ function getOperationName(command: unknown): string {
  * Returns success without persisting anything.
  */
 export function createNoOpUnitOfWork(): UnitOfWork {
-	return {
-		async commit<T extends DomainEvent>(_aggregate: Aggregate, event: T, _command: unknown): Promise<Result<T>> {
-			return Result.success(RESULT_SUCCESS_TOKEN, event);
-		},
+  return {
+    async commit<T extends DomainEvent>(
+      _aggregate: Aggregate,
+      event: T,
+      _command: unknown,
+    ): Promise<Result<T>> {
+      return Result.success(RESULT_SUCCESS_TOKEN, event);
+    },
 
-		async commitDelete<T extends DomainEvent>(
-			_aggregate: Aggregate,
-			event: T,
-			_command: unknown,
-		): Promise<Result<T>> {
-			return Result.success(RESULT_SUCCESS_TOKEN, event);
-		},
+    async commitDelete<T extends DomainEvent>(
+      _aggregate: Aggregate,
+      event: T,
+      _command: unknown,
+    ): Promise<Result<T>> {
+      return Result.success(RESULT_SUCCESS_TOKEN, event);
+    },
 
-		async commitAll<T extends DomainEvent>(
-			_aggregates: Aggregate[],
-			event: T,
-			_command: unknown,
-		): Promise<Result<T>> {
-			return Result.success(RESULT_SUCCESS_TOKEN, event);
-		},
-	};
+    async commitAll<T extends DomainEvent>(
+      _aggregates: Aggregate[],
+      event: T,
+      _command: unknown,
+    ): Promise<Result<T>> {
+      return Result.success(RESULT_SUCCESS_TOKEN, event);
+    },
+  };
 }

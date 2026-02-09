@@ -108,9 +108,8 @@ function onProviderChange() {
 
 function searchClients(event: { query: string }) {
   const query = event.query.toLowerCase();
-  filteredClients.value = clients.value.filter(c =>
-    c.name.toLowerCase().includes(query) ||
-    c.identifier.toLowerCase().includes(query)
+  filteredClients.value = clients.value.filter(
+    (c) => c.name.toLowerCase().includes(query) || c.identifier.toLowerCase().includes(query),
   );
 }
 
@@ -146,7 +145,7 @@ async function createMapping() {
 
     // Include allowed roles if role picker is shown and has selections
     if (showRolePicker.value && rolePickerModel.value[1].length > 0) {
-      requestData.allowedRoleIds = rolePickerModel.value[1].map(r => r.id);
+      requestData.allowedRoleIds = rolePickerModel.value[1].map((r) => r.id);
     }
 
     // Include syncRolesFromIdp for external IDPs with non-ANCHOR scope
@@ -187,7 +186,13 @@ async function createMapping() {
       </div>
     </header>
 
-    <Message v-if="error" severity="error" class="error-message" :closable="true" @close="error = null">
+    <Message
+      v-if="error"
+      severity="error"
+      class="error-message"
+      :closable="true"
+      @close="error = null"
+    >
       {{ error }}
     </Message>
 
@@ -271,16 +276,9 @@ async function createMapping() {
                 </div>
               </template>
             </AutoComplete>
-            <Button
-              v-if="selectedClient"
-              icon="pi pi-times"
-              text
-              @click="clearClient"
-            />
+            <Button v-if="selectedClient" icon="pi pi-times" text @click="clearClient" />
           </div>
-          <small class="field-help">
-            Users from this domain will be bound to this client
-          </small>
+          <small class="field-help"> Users from this domain will be bound to this client </small>
         </div>
 
         <div v-if="isSelectedProviderMultiTenant" class="field">
@@ -292,14 +290,16 @@ async function createMapping() {
             class="w-full"
           />
           <small class="field-help">
-            For Azure AD/Entra, enter the tenant GUID. If set, only users from this tenant can authenticate for this domain. Leave empty to allow any tenant.
+            For Azure AD/Entra, enter the tenant GUID. If set, only users from this tenant can
+            authenticate for this domain. Leave empty to allow any tenant.
           </small>
         </div>
 
         <div v-if="showRolePicker" class="field">
           <label>Allowed Roles</label>
-          <small class="field-help" style="margin-bottom: 8px; display: block;">
-            Restrict which roles users from this domain can be assigned. Move roles to the right to allow them. Leave empty to allow all roles.
+          <small class="field-help" style="margin-bottom: 8px; display: block">
+            Restrict which roles users from this domain can be assigned. Move roles to the right to
+            allow them. Leave empty to allow all roles.
           </small>
           <PickList
             v-model="rolePickerModel"
@@ -322,10 +322,7 @@ async function createMapping() {
         <div v-if="showRolePicker" class="field">
           <label for="syncRolesFromIdp">Sync Roles from IDP</label>
           <div class="toggle-row">
-            <ToggleSwitch
-              id="syncRolesFromIdp"
-              v-model="form.syncRolesFromIdp"
-            />
+            <ToggleSwitch id="syncRolesFromIdp" v-model="form.syncRolesFromIdp" />
             <span class="toggle-label">{{ form.syncRolesFromIdp ? 'Enabled' : 'Disabled' }}</span>
           </div>
           <small class="field-help">

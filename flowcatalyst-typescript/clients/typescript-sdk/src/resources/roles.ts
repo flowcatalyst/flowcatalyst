@@ -32,7 +32,7 @@ export class RolesResource {
       sdk.listRoles({
         client: httpClient,
         headers,
-      })
+      }),
     );
   }
 
@@ -45,7 +45,7 @@ export class RolesResource {
         client: httpClient,
         headers,
         path: { roleName },
-      })
+      }),
     );
   }
 
@@ -58,7 +58,7 @@ export class RolesResource {
         client: httpClient,
         headers,
         body: data,
-      })
+      }),
     );
   }
 
@@ -72,7 +72,7 @@ export class RolesResource {
         headers,
         path: { roleName },
         body: data,
-      })
+      }),
     );
   }
 
@@ -85,7 +85,7 @@ export class RolesResource {
         client: httpClient,
         headers,
         path: { roleName },
-      })
+      }),
     );
   }
 
@@ -98,7 +98,7 @@ export class RolesResource {
         client: httpClient,
         headers,
         path: { appCode },
-      })
+      }),
     );
   }
 
@@ -108,7 +108,7 @@ export class RolesResource {
   sync(
     appCode: string,
     roles: SyncRolesRequest['roles'],
-    removeUnlisted = false
+    removeUnlisted = false,
   ): ResultAsync<SyncResponse2, SdkError> {
     return this.client.request<SyncResponse2>((httpClient, headers) =>
       sdk.syncApplicationRoles({
@@ -117,7 +117,7 @@ export class RolesResource {
         path: { appCode },
         query: { removeUnlisted },
         body: { roles },
-      })
+      }),
     );
   }
 }

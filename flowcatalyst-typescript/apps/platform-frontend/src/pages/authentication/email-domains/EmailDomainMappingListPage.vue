@@ -27,10 +27,11 @@ const deleteLoading = ref(false);
 const filteredMappings = computed(() => {
   if (!searchQuery.value) return mappings.value;
   const query = searchQuery.value.toLowerCase();
-  return mappings.value.filter(mapping =>
-    mapping.emailDomain.toLowerCase().includes(query) ||
-    mapping.scopeType.toLowerCase().includes(query) ||
-    (mapping.identityProviderName || '').toLowerCase().includes(query)
+  return mappings.value.filter(
+    (mapping) =>
+      mapping.emailDomain.toLowerCase().includes(query) ||
+      mapping.scopeType.toLowerCase().includes(query) ||
+      (mapping.identityProviderName || '').toLowerCase().includes(query),
   );
 });
 
@@ -63,7 +64,7 @@ async function deleteMapping() {
 
   try {
     await emailDomainMappingsApi.delete(mappingToDelete.value.id);
-    mappings.value = mappings.value.filter(m => m.id !== mappingToDelete.value?.id);
+    mappings.value = mappings.value.filter((m) => m.id !== mappingToDelete.value?.id);
     showDeleteDialog.value = false;
     toast.add({
       severity: 'success',
@@ -86,10 +87,14 @@ async function deleteMapping() {
 
 function getScopeTypeSeverity(scopeType: string) {
   switch (scopeType) {
-    case 'ANCHOR': return 'danger';
-    case 'PARTNER': return 'warn';
-    case 'CLIENT': return 'info';
-    default: return 'secondary';
+    case 'ANCHOR':
+      return 'danger';
+    case 'PARTNER':
+      return 'warn';
+    case 'CLIENT':
+      return 'info';
+    default:
+      return 'secondary';
   }
 }
 
@@ -103,11 +108,13 @@ function formatDate(dateString: string) {
     <header class="page-header">
       <div>
         <h1 class="page-title">Email Domain Mappings</h1>
-        <p class="page-subtitle">
-          Map email domains to identity providers and define user scope.
-        </p>
+        <p class="page-subtitle">Map email domains to identity providers and define user scope.</p>
       </div>
-      <Button label="Add Domain Mapping" icon="pi pi-plus" @click="router.push('/authentication/email-domain-mappings/new')" />
+      <Button
+        label="Add Domain Mapping"
+        icon="pi pi-plus"
+        @click="router.push('/authentication/email-domain-mappings/new')"
+      />
     </header>
 
     <Message v-if="error" severity="error" class="error-message">{{ error }}</Message>
@@ -141,19 +148,24 @@ function formatDate(dateString: string) {
         <Column header="Identity Provider" sortable>
           <template #body="{ data }">
             <span class="provider-name">{{ data.identityProviderName || 'Unknown' }}</span>
+            <Tag
+              v-if="data.identityProviderType"
+              :value="data.identityProviderType"
+              :severity="data.identityProviderType === 'OIDC' ? 'info' : 'secondary'"
+              class="provider-type-tag"
+            />
           </template>
         </Column>
         <Column field="scopeType" header="Scope Type" sortable>
           <template #body="{ data }">
-            <Tag
-              :value="data.scopeType"
-              :severity="getScopeTypeSeverity(data.scopeType)"
-            />
+            <Tag :value="data.scopeType" :severity="getScopeTypeSeverity(data.scopeType)" />
           </template>
         </Column>
         <Column header="Primary Client">
           <template #body="{ data }">
-            <span v-if="data.primaryClientName" class="client-name">{{ data.primaryClientName }}</span>
+            <span v-if="data.primaryClientName" class="client-name">{{
+              data.primaryClientName
+            }}</span>
             <span v-else class="text-muted">-</span>
           </template>
         </Column>
@@ -196,7 +208,8 @@ function formatDate(dateString: string) {
       <div class="dialog-content">
         <p>
           Are you sure you want to delete the mapping for
-          <strong>{{ mappingToDelete?.emailDomain }}</strong>?
+          <strong>{{ mappingToDelete?.emailDomain }}</strong
+          >?
         </p>
 
         <Message severity="warn" :closable="false" class="warning-message">
@@ -205,12 +218,7 @@ function formatDate(dateString: string) {
       </div>
 
       <template #footer>
-        <Button
-          label="Cancel"
-          text
-          @click="showDeleteDialog = false"
-          :disabled="deleteLoading"
-        />
+        <Button label="Cancel" text @click="showDeleteDialog = false" :disabled="deleteLoading" />
         <Button
           label="Delete"
           icon="pi pi-trash"

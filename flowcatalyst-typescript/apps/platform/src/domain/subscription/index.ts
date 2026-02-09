@@ -8,21 +8,21 @@ export type { DispatchMode } from './dispatch-mode.js';
 export type { EventTypeBinding } from './event-type-binding.js';
 export type { ConfigEntry } from './config-entry.js';
 export {
-	type Subscription,
-	type NewSubscription,
-	createSubscription,
-	updateSubscription,
-	isPlatformWide,
-	isAllClients,
-	isSpecificClient,
+  type Subscription,
+  type NewSubscription,
+  createSubscription,
+  updateSubscription,
+  isPlatformWide,
+  isAllClients,
+  isSpecificClient,
 } from './subscription.js';
 export {
-	type SubscriptionCreatedData,
-	SubscriptionCreated,
-	type SubscriptionUpdatedData,
-	SubscriptionUpdated,
-	type SubscriptionDeletedData,
-	SubscriptionDeleted,
-	type SubscriptionsSyncedData,
-	SubscriptionsSynced,
+  type SubscriptionCreatedData,
+  SubscriptionCreated,
+  type SubscriptionUpdatedData,
+  SubscriptionUpdated,
+  type SubscriptionDeletedData,
+  SubscriptionDeleted,
+  type SubscriptionsSyncedData,
+  SubscriptionsSynced,
 } from './events.js';

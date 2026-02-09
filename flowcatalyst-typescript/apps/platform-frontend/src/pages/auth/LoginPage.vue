@@ -32,18 +32,22 @@ const rememberMe = ref(false);
 const emailSchema = toTypedSchema(
   z.object({
     email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
-  })
+  }),
 );
 
 // Password step schema
 const passwordSchema = toTypedSchema(
   z.object({
     password: z.string().min(1, 'Password is required'),
-  })
+  }),
 );
 
 // Email form
-const { handleSubmit: handleEmailSubmit, values: emailValues, meta: emailMeta } = useForm({
+const {
+  handleSubmit: handleEmailSubmit,
+  values: emailValues,
+  meta: emailMeta,
+} = useForm({
   validationSchema: emailSchema,
   initialValues: { email: '' },
 });
@@ -88,8 +92,15 @@ const onCheckEmail = handleEmailSubmit(async (values) => {
       let redirectUrl = result.loginUrl;
 
       if (currentParams.get('oauth') === 'true') {
-        const oauthFields = ['client_id', 'redirect_uri', 'scope', 'state',
-                            'code_challenge', 'code_challenge_method', 'nonce'];
+        const oauthFields = [
+          'client_id',
+          'redirect_uri',
+          'scope',
+          'state',
+          'code_challenge',
+          'code_challenge_method',
+          'nonce',
+        ];
         const loginUrl = new URL(result.loginUrl, window.location.origin);
 
         for (const field of oauthFields) {
@@ -155,8 +166,12 @@ async function onSubmitPassword() {
         <!-- Default logo -->
         <div v-else class="logo-container">
           <svg class="logo-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-              d="M13 10V3L4 14h7v7l9-11h-7z" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              d="M13 10V3L4 14h7v7l9-11h-7z"
+            />
           </svg>
         </div>
         <h1 class="brand-name">{{ themeStore.theme.brandName }}</h1>
@@ -166,7 +181,13 @@ async function onSubmitPassword() {
       <!-- Login card -->
       <div class="login-card">
         <h2 class="login-title">
-          {{ step === 'email' ? 'Sign in to your account' : step === 'password' ? 'Enter your password' : 'Redirecting...' }}
+          {{
+            step === 'email'
+              ? 'Sign in to your account'
+              : step === 'password'
+                ? 'Enter your password'
+                : 'Redirecting...'
+          }}
         </h2>
 
         <!-- Error message -->
@@ -194,7 +215,9 @@ async function onSubmitPassword() {
               class="w-full"
             />
             <small v-if="emailError" class="field-error">{{ emailError }}</small>
-            <small v-else class="field-hint">We'll check if your organization uses single sign-on</small>
+            <small v-else class="field-hint"
+              >We'll check if your organization uses single sign-on</small
+            >
           </div>
 
           <Button
@@ -216,9 +239,7 @@ async function onSubmitPassword() {
               </div>
               <span class="email-text">{{ currentEmail }}</span>
             </div>
-            <button type="button" class="change-email-btn" @click="onChangeEmail">
-              Change
-            </button>
+            <button type="button" class="change-email-btn" @click="onChangeEmail">Change</button>
           </div>
 
           <div class="form-field">
@@ -372,7 +393,9 @@ async function onSubmitPassword() {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .redirecting-state p {
@@ -515,7 +538,9 @@ async function onSubmitPassword() {
 
 :deep(.p-button:focus-visible) {
   outline-color: var(--login-accent, #0967d2);
-  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px color-mix(in srgb, var(--login-accent, #0967d2) 50%, transparent);
+  box-shadow:
+    0 0 0 2px #ffffff,
+    0 0 0 4px color-mix(in srgb, var(--login-accent, #0967d2) 50%, transparent);
 }
 
 :deep(.p-button:disabled) {

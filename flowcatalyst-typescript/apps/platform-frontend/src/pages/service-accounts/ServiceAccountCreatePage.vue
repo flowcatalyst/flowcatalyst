@@ -35,7 +35,7 @@ const isValid = computed(() => {
 });
 
 const clientOptions = computed(() => {
-  return clients.value.map(c => ({
+  return clients.value.map((c) => ({
     label: c.name,
     value: c.id,
   }));
@@ -72,7 +72,7 @@ async function createServiceAccount() {
       severity: 'error',
       summary: 'Error',
       detail: 'Code and name are required',
-      life: 3000
+      life: 3000,
     });
     return;
   }
@@ -91,7 +91,7 @@ async function createServiceAccount() {
       clientId: response.oauth.clientId,
       clientSecret: response.oauth.clientSecret,
       authToken: response.webhook.authToken,
-      signingSecret: response.webhook.signingSecret
+      signingSecret: response.webhook.signingSecret,
     };
     createdServiceAccountId.value = response.serviceAccount.id;
     showCredentialsDialog.value = true;
@@ -100,14 +100,14 @@ async function createServiceAccount() {
       severity: 'success',
       summary: 'Success',
       detail: 'Service account created successfully',
-      life: 3000
+      life: 3000,
     });
   } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'Error',
       detail: error?.message || 'Failed to create service account',
-      life: 5000
+      life: 5000,
     });
   } finally {
     saving.value = false;
@@ -120,7 +120,7 @@ function copyToClipboard(text: string, label: string) {
     severity: 'info',
     summary: 'Copied',
     detail: `${label} copied to clipboard`,
-    life: 2000
+    life: 2000,
   });
 }
 
@@ -175,12 +175,7 @@ function goBack() {
 
         <div class="form-group">
           <label for="code">Code <span class="required">*</span></label>
-          <InputText
-            id="code"
-            v-model="code"
-            placeholder="my-service-account"
-            class="w-full"
-          />
+          <InputText id="code" v-model="code" placeholder="my-service-account" class="w-full" />
           <small class="help-text">
             Unique identifier (lowercase, alphanumeric with dashes). Example: tms-service
           </small>
@@ -217,12 +212,7 @@ function goBack() {
       </div>
 
       <div class="form-actions">
-        <Button
-          label="Cancel"
-          text
-          severity="secondary"
-          @click="goBack"
-        />
+        <Button label="Cancel" text severity="secondary" @click="goBack" />
         <Button
           label="Create Service Account"
           icon="pi pi-check"
@@ -249,7 +239,9 @@ function goBack() {
 
         <div class="credentials-group">
           <h3 class="credentials-group-title">OAuth Credentials (API Authentication)</h3>
-          <p class="credentials-group-desc">Use these for client_credentials grant to obtain access tokens.</p>
+          <p class="credentials-group-desc">
+            Use these for client_credentials grant to obtain access tokens.
+          </p>
 
           <div class="credential-section">
             <label>Client ID</label>
@@ -282,7 +274,9 @@ function goBack() {
 
         <div class="credentials-group">
           <h3 class="credentials-group-title">Webhook Credentials</h3>
-          <p class="credentials-group-desc">Use these for outbound webhook authentication and signature verification.</p>
+          <p class="credentials-group-desc">
+            Use these for outbound webhook authentication and signature verification.
+          </p>
 
           <div class="credential-section">
             <label>Auth Token (Bearer)</label>
@@ -313,9 +307,7 @@ function goBack() {
                 v-tooltip.top="'Copy'"
               />
             </div>
-            <small class="help-text">
-              Used to verify webhook signatures (HMAC-SHA256)
-            </small>
+            <small class="help-text"> Used to verify webhook signatures (HMAC-SHA256) </small>
           </div>
         </div>
       </div>

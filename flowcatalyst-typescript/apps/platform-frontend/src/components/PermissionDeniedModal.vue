@@ -21,9 +21,11 @@ const visible = computed({
 const event = computed(() => permissionsStore.permissionDenied);
 
 const isSessionExpired = computed(() => {
-  return event.value?.message?.toLowerCase().includes('session') ||
-         event.value?.message?.toLowerCase().includes('expired') ||
-         event.value?.message?.toLowerCase().includes('authenticated');
+  return (
+    event.value?.message?.toLowerCase().includes('session') ||
+    event.value?.message?.toLowerCase().includes('expired') ||
+    event.value?.message?.toLowerCase().includes('authenticated')
+  );
 });
 
 const title = computed(() => {
@@ -85,11 +87,7 @@ async function handleLogout() {
     <template #footer>
       <div class="dialog-footer">
         <template v-if="isSessionExpired">
-          <Button
-            label="Log In Again"
-            icon="pi pi-sign-in"
-            @click="handleLogout"
-          />
+          <Button label="Log In Again" icon="pi pi-sign-in" @click="handleLogout" />
         </template>
         <template v-else>
           <Button
@@ -99,11 +97,7 @@ async function handleLogout() {
             outlined
             @click="goBack"
           />
-          <Button
-            label="Go to Dashboard"
-            icon="pi pi-home"
-            @click="goHome"
-          />
+          <Button label="Go to Dashboard" icon="pi pi-home" @click="goHome" />
         </template>
       </div>
     </template>

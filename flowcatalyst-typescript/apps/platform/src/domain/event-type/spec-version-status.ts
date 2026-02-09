@@ -9,7 +9,7 @@
 export type SpecVersionStatus = 'FINALISING' | 'CURRENT' | 'DEPRECATED';
 
 export const SpecVersionStatus = {
-	FINALISING: 'FINALISING' as const,
-	CURRENT: 'CURRENT' as const,
-	DEPRECATED: 'DEPRECATED' as const,
+  FINALISING: 'FINALISING' as const,
+  CURRENT: 'CURRENT' as const,
+  DEPRECATED: 'DEPRECATED' as const,
 } as const;

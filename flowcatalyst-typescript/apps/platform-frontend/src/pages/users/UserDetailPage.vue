@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import {ref, computed, onMounted} from 'vue';
-import {useRouter, useRoute} from 'vue-router';
-import {useToast} from 'primevue/usetoast';
+import { ref, computed, onMounted } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
+import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Tag from 'primevue/tag';
@@ -10,9 +10,18 @@ import Column from 'primevue/column';
 import AutoComplete from 'primevue/autocomplete';
 import Dialog from 'primevue/dialog';
 import ProgressSpinner from 'primevue/progressspinner';
-import {usersApi, type User, type ClientAccessGrant, type RoleAssignment, type RolesAssignedResponse, type ApplicationAccessGrant, type ApplicationAccessAssignedResponse, type AvailableApplication} from '@/api/users';
-import {clientsApi, type Client} from '@/api/clients';
-import {rolesApi, type Role} from '@/api/roles';
+import {
+  usersApi,
+  type User,
+  type ClientAccessGrant,
+  type RoleAssignment,
+  type RolesAssignedResponse,
+  type ApplicationAccessGrant,
+  type ApplicationAccessAssignedResponse,
+  type AvailableApplication,
+} from '@/api/users';
+import { clientsApi, type Client } from '@/api/clients';
+import { rolesApi, type Role } from '@/api/roles';
 
 const router = useRouter();
 const route = useRoute();
@@ -61,33 +70,33 @@ const userType = computed(() => {
   if (user.value.scope) {
     switch (user.value.scope) {
       case 'ANCHOR':
-        return {label: 'Anchor', severity: 'warn', icon: 'pi pi-star'};
+        return { label: 'Anchor', severity: 'warn', icon: 'pi pi-star' };
       case 'PARTNER':
-        return {label: 'Partner', severity: 'info', icon: null};
+        return { label: 'Partner', severity: 'info', icon: null };
       case 'CLIENT':
-        return {label: 'Client', severity: 'secondary', icon: null};
+        return { label: 'Client', severity: 'secondary', icon: null };
     }
   }
 
   // Fallback to derived logic for backwards compatibility
   if (user.value.isAnchorUser) {
-    return {label: 'Anchor', severity: 'warn', icon: 'pi pi-star'};
+    return { label: 'Anchor', severity: 'warn', icon: 'pi pi-star' };
   }
   const grantedCount = clientGrants.value.length;
   if (grantedCount > 0 || !user.value.clientId) {
-    return {label: 'Partner', severity: 'info', icon: null};
+    return { label: 'Partner', severity: 'info', icon: null };
   }
-  return {label: 'Client', severity: 'secondary', icon: null};
+  return { label: 'Client', severity: 'secondary', icon: null };
 });
 
 const homeClient = computed(() => {
   if (!user.value?.clientId) return null;
-  return clients.value.find(c => c.id === user.value?.clientId);
+  return clients.value.find((c) => c.id === user.value?.clientId);
 });
 
 const grantedClients = computed(() => {
-  return clientGrants.value.map(g => {
-    const client = clients.value.find(c => c.id === g.clientId);
+  return clientGrants.value.map((g) => {
+    const client = clients.value.find((c) => c.id === g.clientId);
     return {
       ...g,
       clientName: client?.name || g.clientId,
@@ -97,25 +106,21 @@ const grantedClients = computed(() => {
 });
 
 const availableClients = computed(() => {
-  const existingIds = new Set([
-    user.value?.clientId,
-    ...clientGrants.value.map(g => g.clientId),
-  ]);
-  return clients.value.filter(c => !existingIds.has(c.id));
+  const existingIds = new Set([user.value?.clientId, ...clientGrants.value.map((g) => g.clientId)]);
+  return clients.value.filter((c) => !existingIds.has(c.id));
 });
 
 // Roles filtered by search query for the picker
 const filteredAvailableRoles = computed(() => {
   const query = roleSearchQuery.value.toLowerCase();
-  return availableRoles.value.filter(r =>
-      r.name.toLowerCase().includes(query) ||
-      r.displayName?.toLowerCase().includes(query)
+  return availableRoles.value.filter(
+    (r) => r.name.toLowerCase().includes(query) || r.displayName?.toLowerCase().includes(query),
   );
 });
 
 // Check if there are unsaved changes in the role picker
 const hasRoleChanges = computed(() => {
-  const currentRoles = new Set(roleAssignments.value.map(r => r.roleName));
+  const currentRoles = new Set(roleAssignments.value.map((r) => r.roleName));
   if (currentRoles.size !== selectedRoleNames.value.size) return true;
   for (const role of currentRoles) {
     if (!selectedRoleNames.value.has(role)) return true;
@@ -126,15 +131,14 @@ const hasRoleChanges = computed(() => {
 // Filtered available apps for the picker
 const filteredAvailableApps = computed(() => {
   const query = appSearchQuery.value.toLowerCase();
-  return availableApplications.value.filter(a =>
-      a.name.toLowerCase().includes(query) ||
-      a.code.toLowerCase().includes(query)
+  return availableApplications.value.filter(
+    (a) => a.name.toLowerCase().includes(query) || a.code.toLowerCase().includes(query),
   );
 });
 
 // Check if there are unsaved changes in the app picker
 const hasAppChanges = computed(() => {
-  const currentApps = new Set(applicationAccessGrants.value.map(a => a.applicationId));
+  const currentApps = new Set(applicationAccessGrants.value.map((a) => a.applicationId));
   if (currentApps.size !== selectedAppIds.value.size) return true;
   for (const appId of currentApps) {
     if (!selectedAppIds.value.has(appId)) return true;
@@ -163,7 +167,7 @@ async function loadUser() {
       severity: 'error',
       summary: 'Error',
       detail: 'Failed to load user',
-      life: 5000
+      life: 5000,
     });
     console.error('Failed to fetch user:', error);
     router.push('/users');
@@ -240,28 +244,28 @@ async function saveUser() {
       severity: 'error',
       summary: 'Error',
       detail: 'Name is required',
-      life: 3000
+      life: 3000,
     });
     return;
   }
 
   saving.value = true;
   try {
-    await usersApi.update(userId, {name: editName.value});
+    await usersApi.update(userId, { name: editName.value });
     user.value!.name = editName.value;
     editMode.value = false;
     toast.add({
       severity: 'success',
       summary: 'Success',
       detail: 'User updated successfully',
-      life: 3000
+      life: 3000,
     });
   } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'Error',
       detail: error?.message || 'Failed to update user',
-      life: 5000
+      life: 5000,
     });
   } finally {
     saving.value = false;
@@ -280,7 +284,7 @@ async function toggleUserStatus() {
         severity: 'success',
         summary: 'Success',
         detail: 'User deactivated',
-        life: 3000
+        life: 3000,
       });
     } else {
       await usersApi.activate(userId);
@@ -289,7 +293,7 @@ async function toggleUserStatus() {
         severity: 'success',
         summary: 'Success',
         detail: 'User activated',
-        life: 3000
+        life: 3000,
       });
     }
   } catch (error: any) {
@@ -297,7 +301,7 @@ async function toggleUserStatus() {
       severity: 'error',
       summary: 'Error',
       detail: error?.message || 'Failed to update user status',
-      life: 5000
+      life: 5000,
     });
   } finally {
     saving.value = false;
@@ -306,9 +310,8 @@ async function toggleUserStatus() {
 
 function searchClients(event: any) {
   const query = event.query.toLowerCase();
-  filteredClients.value = availableClients.value.filter(c =>
-      c.name.toLowerCase().includes(query) ||
-      c.identifier?.toLowerCase().includes(query)
+  filteredClients.value = availableClients.value.filter(
+    (c) => c.name.toLowerCase().includes(query) || c.identifier?.toLowerCase().includes(query),
   );
 }
 
@@ -326,14 +329,14 @@ async function grantClientAccess() {
       severity: 'success',
       summary: 'Success',
       detail: 'Client access granted',
-      life: 3000
+      life: 3000,
     });
   } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'Error',
       detail: error?.message || 'Failed to grant client access',
-      life: 5000
+      life: 5000,
     });
   } finally {
     saving.value = false;
@@ -344,19 +347,19 @@ async function revokeClientAccess(clientId: string) {
   saving.value = true;
   try {
     await usersApi.revokeClientAccess(userId, clientId);
-    clientGrants.value = clientGrants.value.filter(g => g.clientId !== clientId);
+    clientGrants.value = clientGrants.value.filter((g) => g.clientId !== clientId);
     toast.add({
       severity: 'success',
       summary: 'Success',
       detail: 'Client access revoked',
-      life: 3000
+      life: 3000,
     });
   } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'Error',
       detail: error?.message || 'Failed to revoke client access',
-      life: 5000
+      life: 5000,
     });
   } finally {
     saving.value = false;
@@ -365,7 +368,7 @@ async function revokeClientAccess(clientId: string) {
 
 function openRolePicker() {
   // Initialize selected roles from current assignments
-  selectedRoleNames.value = new Set(roleAssignments.value.map(r => r.roleName));
+  selectedRoleNames.value = new Set(roleAssignments.value.map((r) => r.roleName));
   roleSearchQuery.value = '';
   showRolePickerDialog.value = true;
 }
@@ -420,14 +423,14 @@ async function saveRoles() {
       severity: 'success',
       summary: 'Success',
       detail,
-      life: 3000
+      life: 3000,
     });
   } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'Error',
       detail: error?.message || 'Failed to save roles',
-      life: 5000
+      life: 5000,
     });
   } finally {
     savingRoles.value = false;
@@ -436,10 +439,10 @@ async function saveRoles() {
 
 // Get role display info from available roles
 function getRoleDisplay(roleName: string) {
-  const role = availableRoles.value.find(r => r.name === roleName);
+  const role = availableRoles.value.find((r) => r.name === roleName);
   return {
     displayName: role?.displayName || roleName.split(':').pop() || roleName,
-    fullName: roleName
+    fullName: roleName,
   };
 }
 
@@ -451,7 +454,7 @@ async function openAppPicker() {
     await loadAvailableApplications();
   }
   // Initialize selected apps from current grants
-  selectedAppIds.value = new Set(applicationAccessGrants.value.map(a => a.applicationId));
+  selectedAppIds.value = new Set(applicationAccessGrants.value.map((a) => a.applicationId));
   appSearchQuery.value = '';
   showAppPickerDialog.value = true;
 }
@@ -479,7 +482,10 @@ async function saveApps() {
   savingApps.value = true;
   try {
     const applicationIds = Array.from(selectedAppIds.value);
-    const response: ApplicationAccessAssignedResponse = await usersApi.assignApplicationAccess(userId, applicationIds);
+    const response: ApplicationAccessAssignedResponse = await usersApi.assignApplicationAccess(
+      userId,
+      applicationIds,
+    );
 
     // Update application access grants from response
     applicationAccessGrants.value = response.applications;
@@ -501,14 +507,14 @@ async function saveApps() {
       severity: 'success',
       summary: 'Success',
       detail,
-      life: 3000
+      life: 3000,
     });
   } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'Error',
       detail: error?.message || 'Failed to save application access',
-      life: 5000
+      life: 5000,
     });
   } finally {
     savingApps.value = false;
@@ -517,10 +523,10 @@ async function saveApps() {
 
 // Get app display info from available applications
 function getAppDisplay(appId: string) {
-  const app = availableApplications.value.find(a => a.id === appId);
+  const app = availableApplications.value.find((a) => a.id === appId);
   return {
     name: app?.name || appId,
-    code: app?.code || ''
+    code: app?.code || '',
   };
 }
 
@@ -537,44 +543,44 @@ function goBack() {
 <template>
   <div class="page-container">
     <div v-if="loading" class="loading-container">
-      <ProgressSpinner strokeWidth="3"/>
+      <ProgressSpinner strokeWidth="3" />
     </div>
 
     <template v-else-if="user">
       <header class="page-header">
         <div class="header-left">
           <Button
-              icon="pi pi-arrow-left"
-              text
-              rounded
-              severity="secondary"
-              @click="goBack"
-              v-tooltip.right="'Back to users'"
+            icon="pi pi-arrow-left"
+            text
+            rounded
+            severity="secondary"
+            @click="goBack"
+            v-tooltip.right="'Back to users'"
           />
           <div>
             <h1 class="page-title">{{ user.name }}</h1>
             <p class="page-subtitle">{{ user.email }}</p>
           </div>
           <Tag
-              v-if="userType"
-              :value="userType.label"
-              :severity="userType.severity"
-              :icon="userType.icon"
-              class="type-tag"
+            v-if="userType"
+            :value="userType.label"
+            :severity="userType.severity"
+            :icon="userType.icon"
+            class="type-tag"
           />
           <Tag
-              :value="user.active ? 'Active' : 'Inactive'"
-              :severity="user.active ? 'success' : 'danger'"
+            :value="user.active ? 'Active' : 'Inactive'"
+            :severity="user.active ? 'success' : 'danger'"
           />
         </div>
         <div class="header-right">
           <Button
-              :label="user.active ? 'Deactivate' : 'Activate'"
-              :icon="user.active ? 'pi pi-ban' : 'pi pi-check'"
-              :severity="user.active ? 'danger' : 'success'"
-              outlined
-              :loading="saving"
-              @click="toggleUserStatus"
+            :label="user.active ? 'Deactivate' : 'Activate'"
+            :icon="user.active ? 'pi pi-ban' : 'pi pi-check'"
+            :severity="user.active ? 'danger' : 'success'"
+            outlined
+            :loading="saving"
+            @click="toggleUserStatus"
           />
         </div>
       </header>
@@ -583,27 +589,17 @@ function goBack() {
       <div class="fc-card">
         <div class="card-header">
           <h2 class="card-title">User Information</h2>
-          <Button
-              v-if="!editMode"
-              label="Edit"
-              icon="pi pi-pencil"
-              text
-              @click="startEdit"
-          />
+          <Button v-if="!editMode" label="Edit" icon="pi pi-pencil" text @click="startEdit" />
           <div v-else class="edit-actions">
-            <Button label="Cancel" text @click="cancelEdit"/>
-            <Button label="Save" icon="pi pi-check" :loading="saving" @click="saveUser"/>
+            <Button label="Cancel" text @click="cancelEdit" />
+            <Button label="Save" icon="pi pi-check" :loading="saving" @click="saveUser" />
           </div>
         </div>
 
         <div class="info-grid">
           <div class="info-item">
             <label>Name</label>
-            <InputText
-                v-if="editMode"
-                v-model="editName"
-                class="w-full"
-            />
+            <InputText v-if="editMode" v-model="editName" class="w-full" />
             <span v-else>{{ user.name }}</span>
           </div>
 
@@ -629,17 +625,19 @@ function goBack() {
         <div class="card-header">
           <h2 class="card-title">Client Access</h2>
           <Button
-              v-if="!isAnchorUser"
-              label="Add Client"
-              icon="pi pi-plus"
-              text
-              @click="showAddClientDialog = true"
+            v-if="!isAnchorUser"
+            label="Add Client"
+            icon="pi pi-plus"
+            text
+            @click="showAddClientDialog = true"
           />
         </div>
 
         <div v-if="isAnchorUser" class="anchor-notice">
           <i class="pi pi-star"></i>
-          <span>This user has an anchor domain email and automatically has access to all clients.</span>
+          <span
+            >This user has an anchor domain email and automatically has access to all clients.</span
+          >
         </div>
 
         <template v-else>
@@ -650,17 +648,17 @@ function goBack() {
                 <span class="client-name">{{ homeClient.name }}</span>
                 <span class="client-identifier">{{ homeClient.identifier }}</span>
               </div>
-              <Tag value="Home" severity="secondary"/>
+              <Tag value="Home" severity="secondary" />
             </div>
           </div>
 
           <div v-if="!homeClient && grantedClients.length === 0" class="no-clients-notice">
             <p>This user has no client access configured.</p>
             <Button
-                label="Grant Client Access"
-                icon="pi pi-plus"
-                text
-                @click="showAddClientDialog = true"
+              label="Grant Client Access"
+              icon="pi pi-plus"
+              text
+              @click="showAddClientDialog = true"
             />
           </div>
 
@@ -683,12 +681,12 @@ function goBack() {
               <Column header="" style="width: 80px">
                 <template #body="{ data }">
                   <Button
-                      icon="pi pi-trash"
-                      text
-                      rounded
-                      severity="danger"
-                      @click="revokeClientAccess(data.clientId)"
-                      v-tooltip.top="'Revoke access'"
+                    icon="pi pi-trash"
+                    text
+                    rounded
+                    severity="danger"
+                    @click="revokeClientAccess(data.clientId)"
+                    v-tooltip.top="'Revoke access'"
                   />
                 </template>
               </Column>
@@ -701,22 +699,12 @@ function goBack() {
       <div class="fc-card">
         <div class="card-header">
           <h2 class="card-title">Roles</h2>
-          <Button
-              label="Manage Roles"
-              icon="pi pi-pencil"
-              text
-              @click="openRolePicker"
-          />
+          <Button label="Manage Roles" icon="pi pi-pencil" text @click="openRolePicker" />
         </div>
 
         <div v-if="roleAssignments.length === 0" class="no-roles-notice">
           <p>No roles assigned to this user.</p>
-          <Button
-              label="Assign Roles"
-              icon="pi pi-plus"
-              text
-              @click="openRolePicker"
-          />
+          <Button label="Assign Roles" icon="pi pi-plus" text @click="openRolePicker" />
         </div>
 
         <DataTable v-else :value="roleAssignments" class="p-datatable-sm">
@@ -731,8 +719,8 @@ function goBack() {
           <Column field="assignmentSource" header="Source">
             <template #body="{ data }">
               <Tag
-                  :value="data.assignmentSource"
-                  :severity="data.assignmentSource === 'MANUAL' ? 'info' : 'secondary'"
+                :value="data.assignmentSource"
+                :severity="data.assignmentSource === 'MANUAL' ? 'info' : 'secondary'"
               />
             </template>
           </Column>
@@ -748,22 +736,12 @@ function goBack() {
       <div class="fc-card">
         <div class="card-header">
           <h2 class="card-title">Application Access</h2>
-          <Button
-              label="Manage Applications"
-              icon="pi pi-pencil"
-              text
-              @click="openAppPicker"
-          />
+          <Button label="Manage Applications" icon="pi pi-pencil" text @click="openAppPicker" />
         </div>
 
         <div v-if="applicationAccessGrants.length === 0" class="no-apps-notice">
           <p>No application access granted to this user.</p>
-          <Button
-              label="Grant Application Access"
-              icon="pi pi-plus"
-              text
-              @click="openAppPicker"
-          />
+          <Button label="Grant Application Access" icon="pi pi-plus" text @click="openAppPicker" />
         </div>
 
         <DataTable v-else :value="applicationAccessGrants" class="p-datatable-sm">
@@ -786,21 +764,21 @@ function goBack() {
 
     <!-- Add Client Dialog -->
     <Dialog
-        v-model:visible="showAddClientDialog"
-        header="Grant Client Access"
-        :style="{width: '450px'}"
-        :modal="true"
+      v-model:visible="showAddClientDialog"
+      header="Grant Client Access"
+      :style="{ width: '450px' }"
+      :modal="true"
     >
       <div class="dialog-content">
         <label>Search for a client</label>
         <AutoComplete
-            v-model="selectedClient"
-            :suggestions="filteredClients"
-            @complete="searchClients"
-            optionLabel="name"
-            placeholder="Type to search..."
-            class="w-full"
-            dropdown
+          v-model="selectedClient"
+          :suggestions="filteredClients"
+          @complete="searchClients"
+          optionLabel="name"
+          placeholder="Type to search..."
+          class="w-full"
+          dropdown
         >
           <template #option="slotProps">
             <div class="client-option">
@@ -812,24 +790,24 @@ function goBack() {
       </div>
 
       <template #footer>
-        <Button label="Cancel" text @click="showAddClientDialog = false"/>
+        <Button label="Cancel" text @click="showAddClientDialog = false" />
         <Button
-            label="Grant Access"
-            icon="pi pi-check"
-            :disabled="!selectedClient"
-            :loading="saving"
-            @click="grantClientAccess"
+          label="Grant Access"
+          icon="pi pi-check"
+          :disabled="!selectedClient"
+          :loading="saving"
+          @click="grantClientAccess"
         />
       </template>
     </Dialog>
 
     <!-- Role Picker Dialog (Dual-Pane) -->
     <Dialog
-        v-model:visible="showRolePickerDialog"
-        header="Manage Roles"
-        :style="{width: '700px'}"
-        :modal="true"
-        :closable="!savingRoles"
+      v-model:visible="showRolePickerDialog"
+      header="Manage Roles"
+      :style="{ width: '700px' }"
+      :modal="true"
+      :closable="!savingRoles"
     >
       <div class="role-picker">
         <!-- Left Pane: Available Roles -->
@@ -837,18 +815,18 @@ function goBack() {
           <div class="pane-header">
             <h4>Available Roles</h4>
             <InputText
-                v-model="roleSearchQuery"
-                placeholder="Filter roles..."
-                class="role-filter"
+              v-model="roleSearchQuery"
+              placeholder="Filter roles..."
+              class="role-filter"
             />
           </div>
           <div class="role-list">
             <div
-                v-for="role in filteredAvailableRoles"
-                :key="role.name"
-                class="role-item"
-                :class="{ selected: selectedRoleNames.has(role.name) }"
-                @click="toggleRole(role.name)"
+              v-for="role in filteredAvailableRoles"
+              :key="role.name"
+              class="role-item"
+              :class="{ selected: selectedRoleNames.has(role.name) }"
+              @click="toggleRole(role.name)"
             >
               <div class="role-item-content">
                 <span class="role-display-name">{{ role.displayName || role.name }}</span>
@@ -856,9 +834,7 @@ function goBack() {
               </div>
               <i v-if="selectedRoleNames.has(role.name)" class="pi pi-check check-icon"></i>
             </div>
-            <div v-if="filteredAvailableRoles.length === 0" class="no-results">
-              No roles found
-            </div>
+            <div v-if="filteredAvailableRoles.length === 0" class="no-results">No roles found</div>
           </div>
         </div>
 
@@ -869,50 +845,48 @@ function goBack() {
           </div>
           <div class="role-list">
             <div
-                v-for="roleName in selectedRoleNames"
-                :key="roleName"
-                class="role-item selected-item"
+              v-for="roleName in selectedRoleNames"
+              :key="roleName"
+              class="role-item selected-item"
             >
               <div class="role-item-content">
                 <span class="role-display-name">{{ getRoleDisplay(roleName).displayName }}</span>
                 <span class="role-name-code">{{ roleName }}</span>
               </div>
               <Button
-                  icon="pi pi-times"
-                  text
-                  rounded
-                  severity="danger"
-                  size="small"
-                  @click="removeSelectedRole(roleName)"
-                  v-tooltip.top="'Remove'"
+                icon="pi pi-times"
+                text
+                rounded
+                severity="danger"
+                size="small"
+                @click="removeSelectedRole(roleName)"
+                v-tooltip.top="'Remove'"
               />
             </div>
-            <div v-if="selectedRoleNames.size === 0" class="no-results">
-              No roles selected
-            </div>
+            <div v-if="selectedRoleNames.size === 0" class="no-results">No roles selected</div>
           </div>
         </div>
       </div>
 
       <template #footer>
-        <Button label="Cancel" text @click="cancelRolePicker" :disabled="savingRoles"/>
+        <Button label="Cancel" text @click="cancelRolePicker" :disabled="savingRoles" />
         <Button
-            label="Save Roles"
-            icon="pi pi-check"
-            :disabled="!hasRoleChanges"
-            :loading="savingRoles"
-            @click="saveRoles"
+          label="Save Roles"
+          icon="pi pi-check"
+          :disabled="!hasRoleChanges"
+          :loading="savingRoles"
+          @click="saveRoles"
         />
       </template>
     </Dialog>
 
     <!-- Application Picker Dialog (Dual-Pane) -->
     <Dialog
-        v-model:visible="showAppPickerDialog"
-        header="Manage Application Access"
-        :style="{width: '700px'}"
-        :modal="true"
-        :closable="!savingApps"
+      v-model:visible="showAppPickerDialog"
+      header="Manage Application Access"
+      :style="{ width: '700px' }"
+      :modal="true"
+      :closable="!savingApps"
     >
       <div class="app-picker">
         <!-- Left Pane: Available Applications -->
@@ -920,18 +894,18 @@ function goBack() {
           <div class="pane-header">
             <h4>Available Applications</h4>
             <InputText
-                v-model="appSearchQuery"
-                placeholder="Filter applications..."
-                class="app-filter"
+              v-model="appSearchQuery"
+              placeholder="Filter applications..."
+              class="app-filter"
             />
           </div>
           <div class="app-list">
             <div
-                v-for="app in filteredAvailableApps"
-                :key="app.id"
-                class="app-item"
-                :class="{ selected: selectedAppIds.has(app.id) }"
-                @click="toggleApp(app.id)"
+              v-for="app in filteredAvailableApps"
+              :key="app.id"
+              class="app-item"
+              :class="{ selected: selectedAppIds.has(app.id) }"
+              @click="toggleApp(app.id)"
             >
               <div class="app-item-content">
                 <span class="app-display-name">{{ app.name }}</span>
@@ -951,40 +925,34 @@ function goBack() {
             <h4>Selected Applications ({{ selectedAppIds.size }})</h4>
           </div>
           <div class="app-list">
-            <div
-                v-for="appId in selectedAppIds"
-                :key="appId"
-                class="app-item selected-item"
-            >
+            <div v-for="appId in selectedAppIds" :key="appId" class="app-item selected-item">
               <div class="app-item-content">
                 <span class="app-display-name">{{ getAppDisplay(appId).name }}</span>
                 <span class="app-name-code">{{ getAppDisplay(appId).code }}</span>
               </div>
               <Button
-                  icon="pi pi-times"
-                  text
-                  rounded
-                  severity="danger"
-                  size="small"
-                  @click="removeSelectedApp(appId)"
-                  v-tooltip.top="'Remove'"
+                icon="pi pi-times"
+                text
+                rounded
+                severity="danger"
+                size="small"
+                @click="removeSelectedApp(appId)"
+                v-tooltip.top="'Remove'"
               />
             </div>
-            <div v-if="selectedAppIds.size === 0" class="no-results">
-              No applications selected
-            </div>
+            <div v-if="selectedAppIds.size === 0" class="no-results">No applications selected</div>
           </div>
         </div>
       </div>
 
       <template #footer>
-        <Button label="Cancel" text @click="cancelAppPicker" :disabled="savingApps"/>
+        <Button label="Cancel" text @click="cancelAppPicker" :disabled="savingApps" />
         <Button
-            label="Save Application Access"
-            icon="pi pi-check"
-            :disabled="!hasAppChanges"
-            :loading="savingApps"
-            @click="saveApps"
+          label="Save Application Access"
+          icon="pi pi-check"
+          :disabled="!hasAppChanges"
+          :loading="savingApps"
+          @click="saveApps"
         />
       </template>
     </Dialog>

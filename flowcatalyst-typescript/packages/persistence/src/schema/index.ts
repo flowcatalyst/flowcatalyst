@@ -5,7 +5,14 @@
  */
 
 // Common schema utilities
-export { tsidColumn, rawTsidColumn, timestampColumn, baseEntityColumns, type BaseEntity, type NewEntity } from './common.js';
+export {
+  tsidColumn,
+  rawTsidColumn,
+  timestampColumn,
+  baseEntityColumns,
+  type BaseEntity,
+  type NewEntity,
+} from './common.js';
 
 // Events schema
 export { events, type Event, type NewEvent, type EventContextData } from './events.js';
@@ -18,35 +25,39 @@ export { auditLogs, type AuditLogRecord, type NewAuditLog } from './audit-logs.j
 
 // Dispatch jobs schema
 export {
-	dispatchJobs,
-	type DispatchJobRecord,
-	type NewDispatchJobRecord,
-	type DispatchKind,
-	type DispatchProtocol,
-	type DispatchStatus,
-	type DispatchMode,
-	type DispatchJobMetadata,
+  dispatchJobs,
+  type DispatchJobRecord,
+  type NewDispatchJobRecord,
+  type DispatchKind,
+  type DispatchProtocol,
+  type DispatchStatus,
+  type DispatchMode,
+  type DispatchJobMetadata,
 } from './dispatch-jobs.js';
 
 // Dispatch jobs read schema (CQRS projection)
-export { dispatchJobsRead, type DispatchJobReadRecord, type NewDispatchJobReadRecord } from './dispatch-jobs-read.js';
+export {
+  dispatchJobsRead,
+  type DispatchJobReadRecord,
+  type NewDispatchJobReadRecord,
+} from './dispatch-jobs-read.js';
 
 // Dispatch job attempts schema
 export {
-	dispatchJobAttempts,
-	type DispatchJobAttemptRecord,
-	type NewDispatchJobAttemptRecord,
-	type DispatchErrorType,
+  dispatchJobAttempts,
+  type DispatchJobAttemptRecord,
+  type NewDispatchJobAttemptRecord,
+  type DispatchErrorType,
 } from './dispatch-job-attempts.js';
 
 // Projection feed schemas (CQRS change capture)
 export {
-	eventProjectionFeed,
-	dispatchJobProjectionFeed,
-	type EventProjectionFeedRecord,
-	type NewEventProjectionFeedRecord,
-	type DispatchJobProjectionFeedRecord,
-	type NewDispatchJobProjectionFeedRecord,
-	type ProjectionFeedOperation,
-	type ProjectionFeedProcessedStatus,
+  eventProjectionFeed,
+  dispatchJobProjectionFeed,
+  type EventProjectionFeedRecord,
+  type NewEventProjectionFeedRecord,
+  type DispatchJobProjectionFeedRecord,
+  type NewDispatchJobProjectionFeedRecord,
+  type ProjectionFeedOperation,
+  type ProjectionFeedProcessedStatus,
 } from './outbox.js';

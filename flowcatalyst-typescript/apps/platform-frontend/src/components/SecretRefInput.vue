@@ -22,35 +22,35 @@ const secretProviderOptions: SecretProviderOption[] = [
     value: 'encrypt',
     prefix: 'encrypt:',
     placeholder: 'your-client-secret',
-    description: 'Encrypt and store locally (requires APP_KEY)'
+    description: 'Encrypt and store locally (requires APP_KEY)',
   },
   {
     label: 'AWS Secrets Manager',
     value: 'aws-sm',
     prefix: 'aws-sm://',
     placeholder: 'secret-name',
-    description: 'Reference a secret in AWS Secrets Manager'
+    description: 'Reference a secret in AWS Secrets Manager',
   },
   {
     label: 'AWS Parameter Store',
     value: 'aws-ps',
     prefix: 'aws-ps://',
     placeholder: '/path/to/parameter',
-    description: 'Reference a parameter in AWS SSM Parameter Store'
+    description: 'Reference a parameter in AWS SSM Parameter Store',
   },
   {
     label: 'GCP Secret Manager',
     value: 'gcp-sm',
     prefix: 'gcp-sm://',
     placeholder: 'secret-name',
-    description: 'Reference a secret in Google Cloud Secret Manager'
+    description: 'Reference a secret in Google Cloud Secret Manager',
   },
   {
     label: 'HashiCorp Vault',
     value: 'vault',
     prefix: 'vault://',
     placeholder: 'path/to/secret#key',
-    description: 'Reference a secret in HashiCorp Vault'
+    description: 'Reference a secret in HashiCorp Vault',
   },
 ];
 
@@ -92,14 +92,18 @@ function parseSecretRef(fullRef: string) {
 }
 
 // Initialize from modelValue
-watch(() => props.modelValue, (newVal) => {
-  parseSecretRef(newVal);
-}, { immediate: true });
+watch(
+  () => props.modelValue,
+  (newVal) => {
+    parseSecretRef(newVal);
+  },
+  { immediate: true },
+);
 
 // Build full reference when either part changes
 const fullSecretRef = computed(() => {
   if (!secretValue.value.trim()) return '';
-  const option = secretProviderOptions.find(o => o.value === selectedProvider.value);
+  const option = secretProviderOptions.find((o) => o.value === selectedProvider.value);
   return option ? option.prefix + secretValue.value.trim() : secretValue.value.trim();
 });
 
@@ -109,7 +113,7 @@ watch(fullSecretRef, (newVal) => {
 });
 
 const currentOption = computed(() =>
-  secretProviderOptions.find(o => o.value === selectedProvider.value)
+  secretProviderOptions.find((o) => o.value === selectedProvider.value),
 );
 
 const currentPlaceholder = computed(() => currentOption.value?.placeholder || '');

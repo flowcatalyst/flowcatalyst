@@ -307,15 +307,12 @@ FLOWCATALYST_POSTBOX_CONNECTION=mongodb
 Create the collection with indexes:
 
 ```javascript
-db.createCollection("postbox_messages");
+db.createCollection('postbox_messages');
 db.postbox_messages.createIndex(
-    { tenant_id: 1, partition_id: 1, status: 1, created_at: 1 },
-    { name: "idx_postbox_pending" }
+  { tenant_id: 1, partition_id: 1, status: 1, created_at: 1 },
+  { name: 'idx_postbox_pending' },
 );
-db.postbox_messages.createIndex(
-    { status: 1, created_at: 1 },
-    { name: "idx_postbox_status" }
-);
+db.postbox_messages.createIndex({ status: 1, created_at: 1 }, { name: 'idx_postbox_status' });
 ```
 
 ## Error Handling

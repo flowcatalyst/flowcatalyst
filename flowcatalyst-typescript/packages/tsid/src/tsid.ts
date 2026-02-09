@@ -24,9 +24,9 @@ const CROCKFORD_DECODE: Record<string, number> = {};
 
 // Build decode map (case-insensitive)
 for (let i = 0; i < CROCKFORD_ALPHABET.length; i++) {
-	const char = CROCKFORD_ALPHABET[i]!;
-	CROCKFORD_DECODE[char] = i;
-	CROCKFORD_DECODE[char.toLowerCase()] = i;
+  const char = CROCKFORD_ALPHABET[i]!;
+  CROCKFORD_DECODE[char] = i;
+  CROCKFORD_DECODE[char.toLowerCase()] = i;
 }
 // Handle common substitutions
 CROCKFORD_DECODE['i'] = 1;
@@ -51,141 +51,141 @@ let counter = 0n;
  * Generate a cryptographically random 22-bit value
  */
 function randomBits(): bigint {
-	const bytes = crypto.randomBytes(3);
-	const value = (BigInt(bytes[0]!) << 16n) | (BigInt(bytes[1]!) << 8n) | BigInt(bytes[2]!);
-	return value & RANDOM_MASK;
+  const bytes = crypto.randomBytes(3);
+  const value = (BigInt(bytes[0]!) << 16n) | (BigInt(bytes[1]!) << 8n) | BigInt(bytes[2]!);
+  return value & RANDOM_MASK;
 }
 
 /**
  * Generate a new TSID value as a BigInt
  */
 function generateTsidBigInt(): bigint {
-	const now = BigInt(Date.now());
-	const timestamp = now - TSID_EPOCH;
+  const now = BigInt(Date.now());
+  const timestamp = now - TSID_EPOCH;
 
-	if (timestamp === lastTimestamp) {
-		// Same millisecond: increment counter
-		counter = (counter + 1n) & RANDOM_MASK;
-		if (counter === 0n) {
-			// Counter overflow: wait for next millisecond
-			let nextTimestamp = BigInt(Date.now()) - TSID_EPOCH;
-			while (nextTimestamp === lastTimestamp) {
-				nextTimestamp = BigInt(Date.now()) - TSID_EPOCH;
-			}
-			lastTimestamp = nextTimestamp;
-			counter = randomBits();
-			return (lastTimestamp << RANDOM_BITS) | counter;
-		}
-	} else {
-		// New millisecond: reset counter with random value
-		lastTimestamp = timestamp;
-		counter = randomBits();
-	}
+  if (timestamp === lastTimestamp) {
+    // Same millisecond: increment counter
+    counter = (counter + 1n) & RANDOM_MASK;
+    if (counter === 0n) {
+      // Counter overflow: wait for next millisecond
+      let nextTimestamp = BigInt(Date.now()) - TSID_EPOCH;
+      while (nextTimestamp === lastTimestamp) {
+        nextTimestamp = BigInt(Date.now()) - TSID_EPOCH;
+      }
+      lastTimestamp = nextTimestamp;
+      counter = randomBits();
+      return (lastTimestamp << RANDOM_BITS) | counter;
+    }
+  } else {
+    // New millisecond: reset counter with random value
+    lastTimestamp = timestamp;
+    counter = randomBits();
+  }
 
-	return (timestamp << RANDOM_BITS) | counter;
+  return (timestamp << RANDOM_BITS) | counter;
 }
 
 /**
  * Encode a BigInt as a 13-character Crockford Base32 string
  */
 function encodeCrockford(value: bigint): string {
-	const chars: string[] = new Array(13);
+  const chars: string[] = new Array(13);
 
-	for (let i = 12; i >= 0; i--) {
-		chars[i] = CROCKFORD_ALPHABET[Number(value & 31n)]!;
-		value >>= 5n;
-	}
+  for (let i = 12; i >= 0; i--) {
+    chars[i] = CROCKFORD_ALPHABET[Number(value & 31n)]!;
+    value >>= 5n;
+  }
 
-	return chars.join('');
+  return chars.join('');
 }
 
 /**
  * Decode a 13-character Crockford Base32 string to BigInt
  */
 function decodeCrockford(str: string): bigint {
-	if (str.length !== 13) {
-		throw new Error(`Invalid TSID length: expected 13, got ${str.length}`);
-	}
+  if (str.length !== 13) {
+    throw new Error(`Invalid TSID length: expected 13, got ${str.length}`);
+  }
 
-	let value = 0n;
+  let value = 0n;
 
-	for (let i = 0; i < 13; i++) {
-		const char = str[i]!;
-		const digit = CROCKFORD_DECODE[char];
-		if (digit === undefined) {
-			throw new Error(`Invalid Crockford Base32 character: ${char}`);
-		}
-		value = (value << 5n) | BigInt(digit);
-	}
+  for (let i = 0; i < 13; i++) {
+    const char = str[i]!;
+    const digit = CROCKFORD_DECODE[char];
+    if (digit === undefined) {
+      throw new Error(`Invalid Crockford Base32 character: ${char}`);
+    }
+    value = (value << 5n) | BigInt(digit);
+  }
 
-	return value;
+  return value;
 }
 
 /**
  * TSID class for working with Time-Sorted IDs
  */
 export class Tsid {
-	private readonly value: bigint;
+  private readonly value: bigint;
 
-	private constructor(value: bigint) {
-		this.value = value;
-	}
+  private constructor(value: bigint) {
+    this.value = value;
+  }
 
-	/**
-	 * Create a new TSID
-	 */
-	static create(): Tsid {
-		return new Tsid(generateTsidBigInt());
-	}
+  /**
+   * Create a new TSID
+   */
+  static create(): Tsid {
+    return new Tsid(generateTsidBigInt());
+  }
 
-	/**
-	 * Parse a TSID from a Crockford Base32 string
-	 */
-	static from(str: string): Tsid {
-		return new Tsid(decodeCrockford(str));
-	}
+  /**
+   * Parse a TSID from a Crockford Base32 string
+   */
+  static from(str: string): Tsid {
+    return new Tsid(decodeCrockford(str));
+  }
 
-	/**
-	 * Create a TSID from a BigInt value
-	 */
-	static fromBigInt(value: bigint): Tsid {
-		return new Tsid(value);
-	}
+  /**
+   * Create a TSID from a BigInt value
+   */
+  static fromBigInt(value: bigint): Tsid {
+    return new Tsid(value);
+  }
 
-	/**
-	 * Get the TSID as a 13-character Crockford Base32 string
-	 */
-	toString(): string {
-		return encodeCrockford(this.value);
-	}
+  /**
+   * Get the TSID as a 13-character Crockford Base32 string
+   */
+  toString(): string {
+    return encodeCrockford(this.value);
+  }
 
-	/**
-	 * Get the TSID as a BigInt
-	 */
-	toBigInt(): bigint {
-		return this.value;
-	}
+  /**
+   * Get the TSID as a BigInt
+   */
+  toBigInt(): bigint {
+    return this.value;
+  }
 
-	/**
-	 * Get the timestamp component (milliseconds since TSID epoch)
-	 */
-	getTimestamp(): bigint {
-		return this.value >> RANDOM_BITS;
-	}
+  /**
+   * Get the timestamp component (milliseconds since TSID epoch)
+   */
+  getTimestamp(): bigint {
+    return this.value >> RANDOM_BITS;
+  }
 
-	/**
-	 * Get the creation time as a Date
-	 */
-	getDate(): Date {
-		return new Date(Number(this.getTimestamp() + TSID_EPOCH));
-	}
+  /**
+   * Get the creation time as a Date
+   */
+  getDate(): Date {
+    return new Date(Number(this.getTimestamp() + TSID_EPOCH));
+  }
 
-	/**
-	 * Get the random component
-	 */
-	getRandom(): bigint {
-		return this.value & RANDOM_MASK;
-	}
+  /**
+   * Get the random component
+   */
+  getRandom(): bigint {
+    return this.value & RANDOM_MASK;
+  }
 }
 
 /**
@@ -193,7 +193,7 @@ export class Tsid {
  * This is the primary function for generating IDs.
  */
 export function generate(): string {
-	return Tsid.create().toString();
+  return Tsid.create().toString();
 }
 
 /**
@@ -201,7 +201,7 @@ export function generate(): string {
  * Useful for database queries on legacy numeric fields.
  */
 export function toBigInt(tsidString: string): bigint {
-	return Tsid.from(tsidString).toBigInt();
+  return Tsid.from(tsidString).toBigInt();
 }
 
 /**
@@ -209,30 +209,30 @@ export function toBigInt(tsidString: string): bigint {
  * Useful for migrating existing numeric IDs to string format.
  */
 export function fromBigInt(value: bigint): string {
-	return Tsid.fromBigInt(value).toString();
+  return Tsid.fromBigInt(value).toString();
 }
 
 /**
  * Validate that a string is a valid TSID format
  */
 export function isValid(str: string): boolean {
-	if (str.length !== 13) {
-		return false;
-	}
+  if (str.length !== 13) {
+    return false;
+  }
 
-	const upper = str.toUpperCase();
-	for (const char of upper) {
-		if (!CROCKFORD_ALPHABET.includes(char)) {
-			return false;
-		}
-	}
+  const upper = str.toUpperCase();
+  for (const char of upper) {
+    if (!CROCKFORD_ALPHABET.includes(char)) {
+      return false;
+    }
+  }
 
-	return true;
+  return true;
 }
 
 /**
  * Extract the creation timestamp from a TSID string
  */
 export function getTimestamp(tsidString: string): Date {
-	return Tsid.from(tsidString).getDate();
+  return Tsid.from(tsidString).getDate();
 }

@@ -21,20 +21,16 @@ export const useAuthStore = defineStore('auth', () => {
   // Computed
   const isAuthenticated = computed(() => user.value !== null);
 
-  const displayName = computed(() =>
-    user.value?.name || user.value?.email || 'Unknown'
-  );
+  const displayName = computed(() => user.value?.name || user.value?.email || 'Unknown');
 
   const isPlatformAdmin = computed(() => {
     const roles = user.value?.roles || [];
-    return roles.some(r => r.startsWith('platform:'));
+    return roles.some((r) => r.startsWith('platform:'));
   });
 
   const isMultiClient = computed(() => accessibleClients.value.length > 1);
 
-  const currentClientId = computed(() =>
-    selectedClientId.value || user.value?.clientId || null
-  );
+  const currentClientId = computed(() => selectedClientId.value || user.value?.clientId || null);
 
   const userInitials = computed(() => {
     const name = displayName.value;

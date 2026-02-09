@@ -15,21 +15,21 @@ bun add @flowcatalyst/sdk
 ## Usage
 
 ```typescript
-import { FlowCatalystClient } from '@flowcatalyst/sdk'
+import { FlowCatalystClient } from '@flowcatalyst/sdk';
 
 // Initialize the client
 const client = new FlowCatalystClient({
   baseUrl: 'http://localhost:8080',
   apiKey: 'your-api-key', // optional
   timeout: 30000, // optional, defaults to 30s
-})
+});
 
 // Get all event types
-const { data: eventTypes, error } = await client.getEventTypes()
+const { data: eventTypes, error } = await client.getEventTypes();
 if (error) {
-  console.error('Error:', error)
+  console.error('Error:', error);
 } else {
-  console.log('Event types:', eventTypes)
+  console.log('Event types:', eventTypes);
 }
 
 // Create a new event type
@@ -43,17 +43,17 @@ const { data: newEventType, error: createError } = await client.createEventType(
       email: { type: 'string' },
     },
   },
-})
+});
 
 // Create a subscription
 const { data: subscription } = await client.createSubscription({
   eventTypeId: 'event-type-id',
   endpoint: 'https://myapp.com/webhooks',
   status: 'active',
-})
+});
 
 // Get dispatch jobs
-const { data: jobs } = await client.getDispatchJobs()
+const { data: jobs } = await client.getDispatchJobs();
 ```
 
 ## API Reference
@@ -67,6 +67,7 @@ new FlowCatalystClient(config: FlowCatalystConfig)
 ```
 
 **Config Options:**
+
 - `baseUrl` (required): Base URL of the FlowCatalyst platform
 - `apiKey` (optional): API key for authentication
 - `timeout` (optional): Request timeout in milliseconds (default: 30000)
@@ -93,7 +94,7 @@ new FlowCatalystClient(config: FlowCatalystConfig)
 This SDK is written in TypeScript and provides full type definitions. All API responses are properly typed.
 
 ```typescript
-import type { EventType, Subscription, DispatchJob } from '@flowcatalyst/sdk'
+import type { EventType, Subscription, DispatchJob } from '@flowcatalyst/sdk';
 ```
 
 ## Error Handling
@@ -101,14 +102,14 @@ import type { EventType, Subscription, DispatchJob } from '@flowcatalyst/sdk'
 All API methods return a response object with either `data` or `error`:
 
 ```typescript
-const { data, error } = await client.getEventTypes()
+const { data, error } = await client.getEventTypes();
 
 if (error) {
   // Handle error
-  console.error('API Error:', error)
+  console.error('API Error:', error);
 } else {
   // Use data
-  console.log('Event types:', data)
+  console.log('Event types:', data);
 }
 ```
 

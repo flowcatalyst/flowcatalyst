@@ -42,7 +42,7 @@ export class SubscriptionsResource {
         client: httpClient,
         headers,
         query: filters,
-      })
+      }),
     );
   }
 
@@ -55,7 +55,7 @@ export class SubscriptionsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -68,7 +68,7 @@ export class SubscriptionsResource {
         client: httpClient,
         headers,
         body: data,
-      })
+      }),
     );
   }
 
@@ -82,7 +82,7 @@ export class SubscriptionsResource {
         headers,
         path: { id },
         body: data,
-      })
+      }),
     );
   }
 
@@ -95,7 +95,7 @@ export class SubscriptionsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -108,7 +108,7 @@ export class SubscriptionsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -121,7 +121,7 @@ export class SubscriptionsResource {
         client: httpClient,
         headers,
         path: { id },
-      })
+      }),
     );
   }
 
@@ -130,7 +130,7 @@ export class SubscriptionsResource {
    */
   listForApplication(
     appCode: string,
-    source?: string
+    source?: string,
   ): ResultAsync<SubscriptionListResponse, SdkError> {
     return this.client.request<SubscriptionListResponse>((httpClient, headers) =>
       sdk.listApplicationSubscriptions({
@@ -138,7 +138,7 @@ export class SubscriptionsResource {
         headers,
         path: { appCode },
         query: { source },
-      })
+      }),
     );
   }
 
@@ -148,7 +148,7 @@ export class SubscriptionsResource {
   sync(
     appCode: string,
     subscriptions: SyncSubscriptionsRequest['subscriptions'],
-    removeUnlisted = false
+    removeUnlisted = false,
   ): ResultAsync<SyncResponse3, SdkError> {
     return this.client.request<SyncResponse3>((httpClient, headers) =>
       sdk.syncApplicationSubscriptions({
@@ -157,7 +157,7 @@ export class SubscriptionsResource {
         path: { appCode },
         query: { removeUnlisted },
         body: { subscriptions },
-      })
+      }),
     );
   }
 }

@@ -68,12 +68,22 @@ async function loadFilterOptions() {
     const response = await getApiBffDispatchJobsFilterOptions({
       query: {
         clientIds: selectedClients.value.length > 0 ? selectedClients.value.join(',') : undefined,
-        applications: selectedApplications.value.length > 0 ? selectedApplications.value.join(',') : undefined,
-        subdomains: selectedSubdomains.value.length > 0 ? selectedSubdomains.value.join(',') : undefined,
-        aggregates: selectedAggregates.value.length > 0 ? selectedAggregates.value.join(',') : undefined
-      }
+        applications:
+          selectedApplications.value.length > 0 ? selectedApplications.value.join(',') : undefined,
+        subdomains:
+          selectedSubdomains.value.length > 0 ? selectedSubdomains.value.join(',') : undefined,
+        aggregates:
+          selectedAggregates.value.length > 0 ? selectedAggregates.value.join(',') : undefined,
+      },
     });
-    const data = response.data as { clients?: FilterOption[]; applications?: FilterOption[]; subdomains?: FilterOption[]; aggregates?: FilterOption[]; codes?: FilterOption[]; statuses?: FilterOption[] };
+    const data = response.data as {
+      clients?: FilterOption[];
+      applications?: FilterOption[];
+      subdomains?: FilterOption[];
+      aggregates?: FilterOption[];
+      codes?: FilterOption[];
+      statuses?: FilterOption[];
+    };
     if (data) {
       clientOptions.value = (data.clients || []) as FilterOption[];
       applicationOptions.value = (data.applications || []) as FilterOption[];
@@ -96,12 +106,15 @@ async function loadDispatchJobs() {
         size: pageSize.value,
         clientIds: selectedClients.value.length > 0 ? selectedClients.value.join(',') : undefined,
         statuses: selectedStatuses.value.length > 0 ? selectedStatuses.value.join(',') : undefined,
-        applications: selectedApplications.value.length > 0 ? selectedApplications.value.join(',') : undefined,
-        subdomains: selectedSubdomains.value.length > 0 ? selectedSubdomains.value.join(',') : undefined,
-        aggregates: selectedAggregates.value.length > 0 ? selectedAggregates.value.join(',') : undefined,
+        applications:
+          selectedApplications.value.length > 0 ? selectedApplications.value.join(',') : undefined,
+        subdomains:
+          selectedSubdomains.value.length > 0 ? selectedSubdomains.value.join(',') : undefined,
+        aggregates:
+          selectedAggregates.value.length > 0 ? selectedAggregates.value.join(',') : undefined,
         codes: selectedCodes.value.length > 0 ? selectedCodes.value.join(',') : undefined,
-        source: searchQuery.value || undefined
-      }
+        source: searchQuery.value || undefined,
+      },
     });
     const data = response.data as { items?: DispatchJob[]; totalItems?: number };
     if (data) {
@@ -121,7 +134,9 @@ async function onPage(event: { page: number; rows: number }) {
   await loadDispatchJobs();
 }
 
-async function onFilterChange(clearDownstream: 'applications' | 'subdomains' | 'aggregates' | 'codes' | 'none' = 'none') {
+async function onFilterChange(
+  clearDownstream: 'applications' | 'subdomains' | 'aggregates' | 'codes' | 'none' = 'none',
+) {
   if (isUpdating.value) return;
   isUpdating.value = true;
   try {
@@ -160,24 +175,39 @@ async function onSearchChange() {
   await loadDispatchJobs();
 }
 
-function getSeverity(status: string): "success" | "info" | "warn" | "danger" | "secondary" | "contrast" | undefined {
+function getSeverity(
+  status: string,
+): 'success' | 'info' | 'warn' | 'danger' | 'secondary' | 'contrast' | undefined {
   switch (status) {
-    case 'COMPLETED': return 'success';
-    case 'PENDING': return 'info';
-    case 'QUEUED': return 'info';
-    case 'IN_PROGRESS': return 'warn';
-    case 'ERROR': return 'danger';
-    case 'CANCELLED': return 'secondary';
-    default: return 'secondary';
+    case 'COMPLETED':
+      return 'success';
+    case 'PENDING':
+      return 'info';
+    case 'QUEUED':
+      return 'info';
+    case 'IN_PROGRESS':
+      return 'warn';
+    case 'ERROR':
+      return 'danger';
+    case 'CANCELLED':
+      return 'secondary';
+    default:
+      return 'secondary';
   }
 }
 
-function getModeSeverity(mode: string): "success" | "info" | "warn" | "danger" | "secondary" | "contrast" | undefined {
+function getModeSeverity(
+  mode: string,
+): 'success' | 'info' | 'warn' | 'danger' | 'secondary' | 'contrast' | undefined {
   switch (mode) {
-    case 'IMMEDIATE': return 'success';
-    case 'NEXT_ON_ERROR': return 'warn';
-    case 'BLOCK_ON_ERROR': return 'danger';
-    default: return 'secondary';
+    case 'IMMEDIATE':
+      return 'success';
+    case 'NEXT_ON_ERROR':
+      return 'warn';
+    case 'BLOCK_ON_ERROR':
+      return 'danger';
+    default:
+      return 'secondary';
   }
 }
 
@@ -190,14 +220,19 @@ function formatAttempts(job: DispatchJob): string {
   return `${job.attemptCount || 0}/${job.maxRetries || 3}`;
 }
 
-function formatCode(code: string | undefined): { app?: string; subdomain?: string; aggregate?: string; event?: string } {
+function formatCode(code: string | undefined): {
+  app?: string;
+  subdomain?: string;
+  aggregate?: string;
+  event?: string;
+} {
   if (!code) return {};
   const parts = code.split(':');
   return {
     app: parts[0],
     subdomain: parts[1],
     aggregate: parts[2],
-    event: parts[3]
+    event: parts[3],
   };
 }
 </script>
@@ -337,7 +372,7 @@ function formatCode(code: string | undefined): { app?: string; subdomain?: strin
         </Column>
         <Column field="targetUrl" header="Target URL">
           <template #body="{ data }">
-            <span class="text-sm truncate" style="max-width: 200px; display: inline-block;">
+            <span class="text-sm truncate" style="max-width: 200px; display: inline-block">
               {{ data.targetUrl }}
             </span>
           </template>

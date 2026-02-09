@@ -50,7 +50,7 @@ import type { Result, DomainEvent, ExecutionContext } from '@flowcatalyst/domain
 import type { Command } from './command.js';
 
 export interface UseCase<TCommand extends Command, TEvent extends DomainEvent> {
-	execute(command: TCommand, context: ExecutionContext): Promise<Result<TEvent>>;
+  execute(command: TCommand, context: ExecutionContext): Promise<Result<TEvent>>;
 }
 
 /**
@@ -58,7 +58,7 @@ export interface UseCase<TCommand extends Command, TEvent extends DomainEvent> {
  * Prefer the async version for database operations.
  */
 export interface SyncUseCase<TCommand extends Command, TEvent extends DomainEvent> {
-	execute(command: TCommand, context: ExecutionContext): Result<TEvent>;
+  execute(command: TCommand, context: ExecutionContext): Result<TEvent>;
 }
 
 export type UseCaseCommand<T> = T extends UseCase<infer TCommand, DomainEvent> ? TCommand : never;
@@ -79,6 +79,8 @@ export type UseCaseEvent<T> = T extends UseCase<Command, infer TEvent> ? TEvent 
  *     });
  * ```
  */
-export type UseCaseFactory<TCommand extends Command, TEvent extends DomainEvent, TDeps = unknown> = (
-	deps: TDeps,
-) => UseCase<TCommand, TEvent>;
+export type UseCaseFactory<
+  TCommand extends Command,
+  TEvent extends DomainEvent,
+  TDeps = unknown,
+> = (deps: TDeps) => UseCase<TCommand, TEvent>;

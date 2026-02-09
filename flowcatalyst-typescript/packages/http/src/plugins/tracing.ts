@@ -40,59 +40,59 @@ const DEFAULT_CAUSATION_ID_HEADER = 'x-causation-id';
  * ```
  */
 const tracingPluginAsync: FastifyPluginAsync<TracingPluginOptions> = async (fastify, opts) => {
-	const {
-		correlationIdHeader = DEFAULT_CORRELATION_ID_HEADER,
-		requestIdHeader = DEFAULT_REQUEST_ID_HEADER,
-		causationIdHeader = DEFAULT_CAUSATION_ID_HEADER,
-		propagateToResponse = true,
-	} = opts;
+  const {
+    correlationIdHeader = DEFAULT_CORRELATION_ID_HEADER,
+    requestIdHeader = DEFAULT_REQUEST_ID_HEADER,
+    causationIdHeader = DEFAULT_CAUSATION_ID_HEADER,
+    propagateToResponse = true,
+  } = opts;
 
-	// Decorate request with tracing data (using getter/setter pattern)
-	fastify.decorateRequest('tracing', {
-		getter() {
-			return (this as unknown as { _tracing: TracingData })._tracing;
-		},
-		setter(value: TracingData) {
-			(this as unknown as { _tracing: TracingData })._tracing = value;
-		},
-	});
+  // Decorate request with tracing data (using getter/setter pattern)
+  fastify.decorateRequest('tracing', {
+    getter() {
+      return (this as unknown as { _tracing: TracingData })._tracing;
+    },
+    setter(value: TracingData) {
+      (this as unknown as { _tracing: TracingData })._tracing = value;
+    },
+  });
 
-	// Add tracing data to each request
-	fastify.addHook('onRequest', async (request, reply) => {
-		// Extract correlation ID from headers (case-insensitive), or generate one
-		let correlationId =
-			(request.headers[correlationIdHeader] as string | undefined) ??
-			(request.headers[requestIdHeader] as string | undefined);
+  // Add tracing data to each request
+  fastify.addHook('onRequest', async (request, reply) => {
+    // Extract correlation ID from headers (case-insensitive), or generate one
+    let correlationId =
+      (request.headers[correlationIdHeader] as string | undefined) ??
+      (request.headers[requestIdHeader] as string | undefined);
 
-		if (!correlationId) {
-			correlationId = `trace-${generateRaw()}`;
-		}
+    if (!correlationId) {
+      correlationId = `trace-${generateRaw()}`;
+    }
 
-		// Extract causation ID from headers (may be null)
-		const causationId = (request.headers[causationIdHeader] as string | undefined) ?? null;
+    // Extract causation ID from headers (may be null)
+    const causationId = (request.headers[causationIdHeader] as string | undefined) ?? null;
 
-		// Generate unique execution ID for this request
-		const executionId = `exec-${generateRaw()}`;
+    // Generate unique execution ID for this request
+    const executionId = `exec-${generateRaw()}`;
 
-		// Store tracing data in request
-		const tracingData: TracingData = {
-			correlationId,
-			causationId,
-			executionId,
-			startTime: Date.now(),
-		};
-		request.tracing = tracingData;
+    // Store tracing data in request
+    const tracingData: TracingData = {
+      correlationId,
+      causationId,
+      executionId,
+      startTime: Date.now(),
+    };
+    request.tracing = tracingData;
 
-		// Add correlation ID to response headers
-		if (propagateToResponse) {
-			reply.header(correlationIdHeader, correlationId);
-		}
-	});
+    // Add correlation ID to response headers
+    if (propagateToResponse) {
+      reply.header(correlationIdHeader, correlationId);
+    }
+  });
 };
 
 export const tracingPlugin = fp(tracingPluginAsync, {
-	name: '@flowcatalyst/tracing',
-	fastify: '5.x',
+  name: '@flowcatalyst/tracing',
+  fastify: '5.x',
 });
 
 /**
@@ -103,11 +103,11 @@ export const tracingPlugin = fp(tracingPluginAsync, {
  * @throws Error if tracing plugin has not been applied
  */
 export function requireTracing(request: { tracing?: TracingData }): TracingData {
-	const tracing = request.tracing;
-	if (!tracing) {
-		throw new Error('Tracing context not available. Ensure tracingPlugin is registered.');
-	}
-	return tracing;
+  const tracing = request.tracing;
+  if (!tracing) {
+    throw new Error('Tracing context not available. Ensure tracingPlugin is registered.');
+  }
+  return tracing;
 }
 
 /**
@@ -118,12 +118,12 @@ export function requireTracing(request: { tracing?: TracingData }): TracingData 
  * @returns Headers object for outgoing request
  */
 export function getTracingHeaders(tracing: TracingData): Record<string, string> {
-	const headers: Record<string, string> = {
-		[DEFAULT_CORRELATION_ID_HEADER]: tracing.correlationId,
-	};
+  const headers: Record<string, string> = {
+    [DEFAULT_CORRELATION_ID_HEADER]: tracing.correlationId,
+  };
 
-	// For outgoing requests, the current execution becomes the causation
-	headers[DEFAULT_CAUSATION_ID_HEADER] = tracing.executionId;
+  // For outgoing requests, the current execution becomes the causation
+  headers[DEFAULT_CAUSATION_ID_HEADER] = tracing.executionId;
 
-	return headers;
+  return headers;
 }

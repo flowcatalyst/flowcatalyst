@@ -21,35 +21,35 @@ import type postgres from 'postgres';
 import type { Logger } from '@flowcatalyst/logging';
 
 export interface EventProjectionConfig {
-	readonly enabled: boolean;
-	readonly batchSize: number;
+  readonly enabled: boolean;
+  readonly batchSize: number;
 }
 
 export interface EventProjectionService {
-	start(): void;
-	stop(): void;
-	isRunning(): boolean;
+  start(): void;
+  stop(): void;
+  isRunning(): boolean;
 }
 
 export function createEventProjectionService(
-	sql: postgres.Sql,
-	config: EventProjectionConfig,
-	logger: Logger,
+  sql: postgres.Sql,
+  config: EventProjectionConfig,
+  logger: Logger,
 ): EventProjectionService {
-	let running = false;
+  let running = false;
 
-	/**
-	 * Single-statement batch projection using writable CTE.
-	 *
-	 * 1. `batch` CTE: selects unprocessed feed entries (LIMIT batchSize)
-	 * 2. `projected` CTE: UPSERTs into events_read from batch payloads
-	 * 3. Main UPDATE: marks batch entries as processed
-	 *
-	 * All three operations execute atomically in one round-trip.
-	 * Data never leaves PostgreSQL - JSONB extraction happens in-engine.
-	 */
-	async function pollAndProject(): Promise<number> {
-		const result = await sql`
+  /**
+   * Single-statement batch projection using writable CTE.
+   *
+   * 1. `batch` CTE: selects unprocessed feed entries (LIMIT batchSize)
+   * 2. `projected` CTE: UPSERTs into events_read from batch payloads
+   * 3. Main UPDATE: marks batch entries as processed
+   *
+   * All three operations execute atomically in one round-trip.
+   * Data never leaves PostgreSQL - JSONB extraction happens in-engine.
+   */
+  async function pollAndProject(): Promise<number> {
+    const result = await sql`
 			WITH batch AS (
 				SELECT id, event_id, payload
 				FROM event_projection_feed
@@ -88,56 +88,56 @@ export function createEventProjectionService(
 			WHERE id IN (SELECT id FROM batch)
 		`;
 
-		const count = result.count;
-		if (count > 0) {
-			logger.debug({ count }, 'Projected events');
-		}
-		return count;
-	}
+    const count = result.count;
+    if (count > 0) {
+      logger.debug({ count }, 'Projected events');
+    }
+    return count;
+  }
 
-	async function pollLoop(): Promise<void> {
-		while (running) {
-			try {
-				const processed = await pollAndProject();
+  async function pollLoop(): Promise<void> {
+    while (running) {
+      try {
+        const processed = await pollAndProject();
 
-				if (processed === 0) {
-					await sleep(1000); // No work, sleep 1 second
-				} else if (processed < config.batchSize) {
-					await sleep(100); // Partial batch, sleep 100ms
-				}
-				// Full batch: no sleep, immediately poll again
-			} catch (err) {
-				if (!running) break;
-				logger.error({ err }, 'Error in event projection poll loop');
-				await sleep(5000); // Back off on error
-			}
-		}
-	}
+        if (processed === 0) {
+          await sleep(1000); // No work, sleep 1 second
+        } else if (processed < config.batchSize) {
+          await sleep(100); // Partial batch, sleep 100ms
+        }
+        // Full batch: no sleep, immediately poll again
+      } catch (err) {
+        if (!running) break;
+        logger.error({ err }, 'Error in event projection poll loop');
+        await sleep(5000); // Back off on error
+      }
+    }
+  }
 
-	function start(): void {
-		if (running) {
-			logger.warn('Event projection service already running');
-			return;
-		}
+  function start(): void {
+    if (running) {
+      logger.warn('Event projection service already running');
+      return;
+    }
 
-		running = true;
-		pollLoop().catch((err) => {
-			logger.error({ err }, 'Event projection poll loop exited unexpectedly');
-			running = false;
-		});
-		logger.info({ batchSize: config.batchSize }, 'Event projection service started');
-	}
+    running = true;
+    pollLoop().catch((err) => {
+      logger.error({ err }, 'Event projection poll loop exited unexpectedly');
+      running = false;
+    });
+    logger.info({ batchSize: config.batchSize }, 'Event projection service started');
+  }
 
-	function stop(): void {
-		if (!running) return;
-		logger.info('Stopping event projection service...');
-		running = false;
-		logger.info('Event projection service stopped');
-	}
+  function stop(): void {
+    if (!running) return;
+    logger.info('Stopping event projection service...');
+    running = false;
+    logger.info('Event projection service stopped');
+  }
 
-	return { start, stop, isRunning: () => running };
+  return { start, stop, isRunning: () => running };
 }
 
 function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

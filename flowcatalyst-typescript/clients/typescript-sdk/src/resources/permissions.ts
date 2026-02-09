@@ -24,7 +24,7 @@ export class PermissionsResource {
       sdk.listPermissions({
         client: httpClient,
         headers,
-      })
+      }),
     );
   }
 
@@ -37,7 +37,7 @@ export class PermissionsResource {
         client: httpClient,
         headers,
         path: { permission },
-      })
+      }),
     );
   }
 }

@@ -14,37 +14,37 @@ import { SubscriptionDeleted } from '../../../domain/index.js';
 import type { DeleteSubscriptionCommand } from './command.js';
 
 export interface DeleteSubscriptionUseCaseDeps {
-	readonly subscriptionRepository: SubscriptionRepository;
-	readonly unitOfWork: UnitOfWork;
+  readonly subscriptionRepository: SubscriptionRepository;
+  readonly unitOfWork: UnitOfWork;
 }
 
 export function createDeleteSubscriptionUseCase(
-	deps: DeleteSubscriptionUseCaseDeps,
+  deps: DeleteSubscriptionUseCaseDeps,
 ): UseCase<DeleteSubscriptionCommand, SubscriptionDeleted> {
-	const { subscriptionRepository, unitOfWork } = deps;
+  const { subscriptionRepository, unitOfWork } = deps;
 
-	return {
-		async execute(
-			command: DeleteSubscriptionCommand,
-			context: ExecutionContext,
-		): Promise<Result<SubscriptionDeleted>> {
-			const subscription = await subscriptionRepository.findById(command.subscriptionId);
-			if (!subscription) {
-				return Result.failure(
-					UseCaseError.notFound('SUBSCRIPTION_NOT_FOUND', 'Subscription not found', {
-						subscriptionId: command.subscriptionId,
-					}),
-				);
-			}
+  return {
+    async execute(
+      command: DeleteSubscriptionCommand,
+      context: ExecutionContext,
+    ): Promise<Result<SubscriptionDeleted>> {
+      const subscription = await subscriptionRepository.findById(command.subscriptionId);
+      if (!subscription) {
+        return Result.failure(
+          UseCaseError.notFound('SUBSCRIPTION_NOT_FOUND', 'Subscription not found', {
+            subscriptionId: command.subscriptionId,
+          }),
+        );
+      }
 
-			const event = new SubscriptionDeleted(context, {
-				subscriptionId: subscription.id,
-				code: subscription.code,
-				applicationCode: subscription.applicationCode,
-				clientId: subscription.clientId,
-			});
+      const event = new SubscriptionDeleted(context, {
+        subscriptionId: subscription.id,
+        code: subscription.code,
+        applicationCode: subscription.applicationCode,
+        clientId: subscription.clientId,
+      });
 
-			return unitOfWork.commitDelete(subscription, event, command);
-		},
-	};
+      return unitOfWork.commitDelete(subscription, event, command);
+    },
+  };
 }

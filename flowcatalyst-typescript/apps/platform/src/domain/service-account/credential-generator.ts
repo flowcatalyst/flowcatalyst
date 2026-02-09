@@ -17,12 +17,12 @@ const ALPHANUMERIC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz012345
  * Generate a random alphanumeric string of the given length.
  */
 function randomAlphanumeric(length: number): string {
-	const bytes = randomBytes(length);
-	let result = '';
-	for (let i = 0; i < length; i++) {
-		result += ALPHANUMERIC[bytes[i]! % ALPHANUMERIC.length];
-	}
-	return result;
+  const bytes = randomBytes(length);
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += ALPHANUMERIC[bytes[i]! % ALPHANUMERIC.length];
+  }
+  return result;
 }
 
 /**
@@ -30,7 +30,7 @@ function randomAlphanumeric(length: number): string {
  * Format: "fc_" + 24 random alphanumeric characters.
  */
 export function generateAuthToken(): string {
-	return AUTH_TOKEN_PREFIX + randomAlphanumeric(AUTH_TOKEN_LENGTH);
+  return AUTH_TOKEN_PREFIX + randomAlphanumeric(AUTH_TOKEN_LENGTH);
 }
 
 /**
@@ -38,7 +38,7 @@ export function generateAuthToken(): string {
  * Format: 32 random bytes, hex-encoded (64 characters).
  */
 export function generateSigningSecret(): string {
-	return randomBytes(SIGNING_SECRET_BYTES).toString('hex');
+  return randomBytes(SIGNING_SECRET_BYTES).toString('hex');
 }
 
 /**
@@ -46,5 +46,5 @@ export function generateSigningSecret(): string {
  * Format: 48 random alphanumeric characters.
  */
 export function generateClientSecret(): string {
-	return randomAlphanumeric(CLIENT_SECRET_LENGTH);
+  return randomAlphanumeric(CLIENT_SECRET_LENGTH);
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import {ref, computed, onMounted, watch} from 'vue';
-import {useRouter} from 'vue-router';
-import {useToast} from 'primevue/usetoast';
+import { ref, computed, onMounted, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import { useToast } from 'primevue/usetoast';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
@@ -9,8 +9,8 @@ import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
 import Tag from 'primevue/tag';
 import ProgressSpinner from 'primevue/progressspinner';
-import {usersApi, type User} from '@/api/users';
-import {clientsApi, type Client} from '@/api/clients';
+import { usersApi, type User } from '@/api/users';
+import { clientsApi, type Client } from '@/api/clients';
 
 const router = useRouter();
 const toast = useToast();
@@ -25,12 +25,12 @@ const selectedClientId = ref<string | null>(null);
 const selectedStatus = ref<string | null>(null);
 
 const statusOptions = [
-  {label: 'Active', value: 'active'},
-  {label: 'Inactive', value: 'inactive'},
+  { label: 'Active', value: 'active' },
+  { label: 'Inactive', value: 'inactive' },
 ];
 
 const clientOptions = computed(() => {
-  return clients.value.map(c => ({
+  return clients.value.map((c) => ({
     label: c.name,
     value: c.id,
   }));
@@ -46,9 +46,8 @@ const filteredUsers = computed(() => {
   // Client-side search filter (name/email)
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase();
-    result = result.filter(u =>
-        u.name?.toLowerCase().includes(query) ||
-        u.email?.toLowerCase().includes(query)
+    result = result.filter(
+      (u) => u.name?.toLowerCase().includes(query) || u.email?.toLowerCase().includes(query),
     );
   }
 
@@ -70,8 +69,12 @@ async function loadUsers() {
     const response = await usersApi.list({
       type: 'USER',
       clientId: selectedClientId.value || undefined,
-      active: selectedStatus.value === 'active' ? true :
-          selectedStatus.value === 'inactive' ? false : undefined,
+      active:
+        selectedStatus.value === 'active'
+          ? true
+          : selectedStatus.value === 'inactive'
+            ? false
+            : undefined,
     });
     users.value = response.principals;
   } catch (error) {
@@ -79,7 +82,7 @@ async function loadUsers() {
       severity: 'error',
       summary: 'Error',
       detail: 'Failed to load users',
-      life: 5000
+      life: 5000,
     });
     console.error('Failed to fetch users:', error);
   } finally {
@@ -116,7 +119,7 @@ function editUser(user: User) {
 
 function getClientName(clientId: string | null): string {
   if (!clientId) return 'No Client';
-  const client = clients.value.find(c => c.id === clientId);
+  const client = clients.value.find((c) => c.id === clientId);
   return client?.name || clientId;
 }
 
@@ -126,7 +129,7 @@ function getUserType(user: User): { label: string; severity: string; tooltip: st
     return {
       label: 'Anchor',
       severity: 'warn',
-      tooltip: 'Has access to all clients via anchor domain'
+      tooltip: 'Has access to all clients via anchor domain',
     };
   }
 
@@ -138,8 +141,8 @@ function getUserType(user: User): { label: string; severity: string; tooltip: st
       label: 'Partner',
       severity: 'info',
       tooltip: user.clientId
-          ? `Home: ${getClientName(user.clientId)}, +${grantedCount} granted`
-          : `Access to ${grantedCount} client(s)`
+        ? `Home: ${getClientName(user.clientId)}, +${grantedCount} granted`
+        : `Access to ${grantedCount} client(s)`,
     };
   }
 
@@ -147,7 +150,7 @@ function getUserType(user: User): { label: string; severity: string; tooltip: st
   return {
     label: 'Client',
     severity: 'secondary',
-    tooltip: `Home client: ${getClientName(user.clientId)}`
+    tooltip: `Home client: ${getClientName(user.clientId)}`,
   };
 }
 
@@ -164,7 +167,7 @@ function formatDate(dateStr: string | undefined | null) {
         <h1 class="page-title">Users</h1>
         <p class="page-subtitle">Manage platform users and their access</p>
       </div>
-      <Button label="Add User" icon="pi pi-user-plus" @click="addUser"/>
+      <Button label="Add User" icon="pi pi-user-plus" @click="addUser" />
     </header>
 
     <!-- Filters -->
@@ -173,11 +176,11 @@ function formatDate(dateStr: string | undefined | null) {
         <div class="filter-group">
           <label>Search</label>
           <span class="p-input-icon-left">
-            <i class="pi pi-search"/>
+            <i class="pi pi-search" />
             <InputText
-                v-model="searchQuery"
-                placeholder="Search by name or email..."
-                class="filter-input"
+              v-model="searchQuery"
+              placeholder="Search by name or email..."
+              class="filter-input"
             />
           </span>
         </div>
@@ -185,37 +188,37 @@ function formatDate(dateStr: string | undefined | null) {
         <div class="filter-group">
           <label>Client</label>
           <Select
-              v-model="selectedClientId"
-              :options="clientOptions"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="All Clients"
-              :showClear="true"
-              class="filter-input"
+            v-model="selectedClientId"
+            :options="clientOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="All Clients"
+            :showClear="true"
+            class="filter-input"
           />
         </div>
 
         <div class="filter-group">
           <label>Status</label>
           <Select
-              v-model="selectedStatus"
-              :options="statusOptions"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="All Statuses"
-              :showClear="true"
-              class="filter-input"
+            v-model="selectedStatus"
+            :options="statusOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="All Statuses"
+            :showClear="true"
+            class="filter-input"
           />
         </div>
 
         <div class="filter-actions">
           <Button
-              v-if="hasActiveFilters"
-              label="Clear Filters"
-              icon="pi pi-filter-slash"
-              text
-              severity="secondary"
-              @click="clearFilters"
+            v-if="hasActiveFilters"
+            label="Clear Filters"
+            icon="pi pi-filter-slash"
+            text
+            severity="secondary"
+            @click="clearFilters"
           />
         </div>
       </div>
@@ -224,19 +227,19 @@ function formatDate(dateStr: string | undefined | null) {
     <!-- Data Table -->
     <div class="fc-card table-card">
       <div v-if="loading" class="loading-container">
-        <ProgressSpinner strokeWidth="3"/>
+        <ProgressSpinner strokeWidth="3" />
       </div>
 
       <DataTable
-          v-else
-          :value="filteredUsers"
-          :paginator="true"
-          :rows="20"
-          :rowsPerPageOptions="[10, 20, 50]"
-          :showCurrentPageReport="true"
-          currentPageReportTemplate="Showing {first} to {last} of {totalRecords} users"
-          stripedRows
-          class="p-datatable-sm"
+        v-else
+        :value="filteredUsers"
+        :paginator="true"
+        :rows="20"
+        :rowsPerPageOptions="[10, 20, 50]"
+        :showCurrentPageReport="true"
+        currentPageReportTemplate="Showing {first} to {last} of {totalRecords} users"
+        stripedRows
+        class="p-datatable-sm"
       >
         <Column field="name" header="Name" sortable style="width: 20%">
           <template #body="{ data }">
@@ -253,10 +256,10 @@ function formatDate(dateStr: string | undefined | null) {
         <Column header="Type" style="width: 12%">
           <template #body="{ data }">
             <Tag
-                :value="getUserType(data).label"
-                :severity="getUserType(data).severity"
-                :icon="data.isAnchorUser ? 'pi pi-star' : undefined"
-                v-tooltip.top="getUserType(data).tooltip"
+              :value="getUserType(data).label"
+              :severity="getUserType(data).severity"
+              :icon="data.isAnchorUser ? 'pi pi-star' : undefined"
+              v-tooltip.top="getUserType(data).tooltip"
             />
           </template>
         </Column>
@@ -268,20 +271,14 @@ function formatDate(dateStr: string | undefined | null) {
               <template v-else-if="data.clientId">
                 <!-- User has a home client -->
                 <span class="client-name-text">{{ getClientName(data.clientId) }}</span>
-                <span
-                    v-if="data.grantedClientIds?.length > 0"
-                    class="additional-clients"
-                >
+                <span v-if="data.grantedClientIds?.length > 0" class="additional-clients">
                   +{{ data.grantedClientIds.length }} more
                 </span>
               </template>
               <template v-else-if="data.grantedClientIds?.length > 0">
                 <!-- No home client but has granted access -->
                 <span class="client-name-text">{{ getClientName(data.grantedClientIds[0]) }}</span>
-                <span
-                    v-if="data.grantedClientIds.length > 1"
-                    class="additional-clients"
-                >
+                <span v-if="data.grantedClientIds.length > 1" class="additional-clients">
                   +{{ data.grantedClientIds.length - 1 }} more
                 </span>
               </template>
@@ -296,8 +293,8 @@ function formatDate(dateStr: string | undefined | null) {
         <Column field="active" header="Status" style="width: 10%">
           <template #body="{ data }">
             <Tag
-                :value="data.active ? 'Active' : 'Inactive'"
-                :severity="data.active ? 'success' : 'danger'"
+              :value="data.active ? 'Active' : 'Inactive'"
+              :severity="data.active ? 'success' : 'danger'"
             />
           </template>
         </Column>
@@ -306,11 +303,11 @@ function formatDate(dateStr: string | undefined | null) {
           <template #body="{ data }">
             <div class="roles-container">
               <Tag
-                  v-for="role in (data.roles || []).slice(0, 2)"
-                  :key="role"
-                  :value="role.split(':').pop()"
-                  severity="secondary"
-                  class="role-tag"
+                v-for="role in (data.roles || []).slice(0, 2)"
+                :key="role"
+                :value="role.split(':').pop()"
+                severity="secondary"
+                class="role-tag"
               />
               <span v-if="(data.roles || []).length > 2" class="more-roles">
                 +{{ data.roles.length - 2 }} more
@@ -329,20 +326,20 @@ function formatDate(dateStr: string | undefined | null) {
           <template #body="{ data }">
             <div class="action-buttons">
               <Button
-                  icon="pi pi-eye"
-                  text
-                  rounded
-                  severity="secondary"
-                  @click="viewUser(data)"
-                  v-tooltip.top="'View'"
+                icon="pi pi-eye"
+                text
+                rounded
+                severity="secondary"
+                @click="viewUser(data)"
+                v-tooltip.top="'View'"
               />
               <Button
-                  icon="pi pi-pencil"
-                  text
-                  rounded
-                  severity="secondary"
-                  @click="editUser(data)"
-                  v-tooltip.top="'Edit'"
+                icon="pi pi-pencil"
+                text
+                rounded
+                severity="secondary"
+                @click="editUser(data)"
+                v-tooltip.top="'Edit'"
               />
             </div>
           </template>
@@ -352,12 +349,7 @@ function formatDate(dateStr: string | undefined | null) {
           <div class="empty-message">
             <i class="pi pi-users"></i>
             <span>No users found</span>
-            <Button
-                v-if="hasActiveFilters"
-                label="Clear filters"
-                link
-                @click="clearFilters"
-            />
+            <Button v-if="hasActiveFilters" label="Clear filters" link @click="clearFilters" />
           </div>
         </template>
       </DataTable>

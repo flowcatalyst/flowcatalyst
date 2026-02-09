@@ -36,8 +36,8 @@ const accentColorPicker = ref('0967d2');
 const backgroundColorPicker = ref('0a1929');
 
 // Preview background
-const previewBackground = computed(() =>
-  theme.value.backgroundGradient || theme.value.backgroundColor
+const previewBackground = computed(
+  () => theme.value.backgroundGradient || theme.value.backgroundColor,
 );
 
 onMounted(async () => {
@@ -83,8 +83,7 @@ function onBackgroundColorChange(color: string) {
 
 function updateGradient() {
   // Auto-generate gradient from primary and background colors
-  theme.value.backgroundGradient =
-    `linear-gradient(135deg, ${theme.value.primaryColor} 0%, ${theme.value.backgroundColor} 100%)`;
+  theme.value.backgroundGradient = `linear-gradient(135deg, ${theme.value.primaryColor} 0%, ${theme.value.backgroundColor} 100%)`;
 }
 
 async function saveTheme() {
@@ -137,9 +136,7 @@ function resetToDefaults() {
     <header class="page-header">
       <div>
         <h1 class="page-title">Theme Settings</h1>
-        <p class="page-subtitle">
-          Customize the appearance of the platform with your branding.
-        </p>
+        <p class="page-subtitle">Customize the appearance of the platform with your branding.</p>
       </div>
     </header>
 
@@ -176,19 +173,39 @@ function resetToDefaults() {
 
         <div class="field">
           <label for="logoUrl">Logo URL</label>
-          <InputText id="logoUrl" v-model="theme.logoUrl" class="w-full" placeholder="https://example.com/logo.png" />
+          <InputText
+            id="logoUrl"
+            v-model="theme.logoUrl"
+            class="w-full"
+            placeholder="https://example.com/logo.png"
+          />
           <small class="field-help">URL to an image file (PNG, SVG, etc.)</small>
         </div>
 
         <div class="field">
           <label for="logoSvg">Logo SVG (inline)</label>
-          <Textarea id="logoSvg" v-model="theme.logoSvg" class="w-full" rows="4" placeholder="<svg>...</svg>" />
-          <small class="field-help">Paste inline SVG markup. Takes precedence over Logo URL if both are set.</small>
+          <Textarea
+            id="logoSvg"
+            v-model="theme.logoSvg"
+            class="w-full"
+            rows="4"
+            placeholder="<svg>...</svg>"
+          />
+          <small class="field-help"
+            >Paste inline SVG markup. Takes precedence over Logo URL if both are set.</small
+          >
         </div>
 
         <div class="field">
           <label for="logoHeight">Logo Height (px)</label>
-          <InputText id="logoHeight" v-model.number="theme.logoHeight" type="number" class="w-small" min="20" max="120" />
+          <InputText
+            id="logoHeight"
+            v-model.number="theme.logoHeight"
+            type="number"
+            class="w-small"
+            min="20"
+            max="120"
+          />
           <small class="field-help">Height of the logo in pixels (default: 40, max: 120)</small>
         </div>
 
@@ -216,7 +233,10 @@ function resetToDefaults() {
           <div class="field color-field">
             <label>Background Color</label>
             <div class="color-input">
-              <ColorPicker v-model="backgroundColorPicker" @update:modelValue="onBackgroundColorChange" />
+              <ColorPicker
+                v-model="backgroundColorPicker"
+                @update:modelValue="onBackgroundColorChange"
+              />
               <InputText v-model="theme.backgroundColor" class="color-text" />
             </div>
             <small class="field-help">Page background color</small>
@@ -233,7 +253,13 @@ function resetToDefaults() {
 
         <div class="field">
           <label for="customCss">Custom CSS</label>
-          <Textarea id="customCss" v-model="theme.customCss" class="w-full" rows="4" placeholder=".login-card { ... }" />
+          <Textarea
+            id="customCss"
+            v-model="theme.customCss"
+            class="w-full"
+            rows="4"
+            placeholder=".login-card { ... }"
+          />
           <small class="field-help">Additional CSS rules to inject on the login page</small>
         </div>
 
@@ -249,11 +275,21 @@ function resetToDefaults() {
         <div class="preview-container" :style="{ background: previewBackground }">
           <div class="preview-content">
             <!-- Logo preview -->
-            <img v-if="theme.logoUrl && !theme.logoSvg" :src="theme.logoUrl" class="preview-logo-img" alt="Logo" />
+            <img
+              v-if="theme.logoUrl && !theme.logoSvg"
+              :src="theme.logoUrl"
+              class="preview-logo-img"
+              alt="Logo"
+            />
             <div v-else-if="theme.logoSvg" class="preview-logo-svg" v-html="theme.logoSvg" />
             <div v-else class="preview-logo-default">
               <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.5"
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                />
               </svg>
             </div>
 

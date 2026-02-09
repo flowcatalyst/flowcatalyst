@@ -183,10 +183,8 @@ export class CreateDispatchJobDto {
       subject: this.subject,
       correlationId: this.correlationId,
       eventId: this.eventId,
-      metadata:
-        Object.keys(this.metadata).length > 0 ? this.metadata : null,
-      headers:
-        Object.keys(this.headers).length > 0 ? this.headers : null,
+      metadata: Object.keys(this.metadata).length > 0 ? this.metadata : null,
+      headers: Object.keys(this.headers).length > 0 ? this.headers : null,
       dataOnly: this.dataOnly,
       messageGroup: this.messageGroup,
       sequence: this.sequence,
@@ -227,9 +225,7 @@ export class CreateDispatchJobDto {
   }
 }
 
-function filterNulls(
-  obj: Record<string, unknown>,
-): Record<string, unknown> {
+function filterNulls(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     if (value !== null && value !== undefined) {

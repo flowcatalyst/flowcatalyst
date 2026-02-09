@@ -25,7 +25,7 @@ export interface ServiceAccountCredentials {
   oauthClient: {
     id: string;
     clientId: string;
-    clientSecret: string;  // Only available at creation time
+    clientSecret: string; // Only available at creation time
   };
 }
 
@@ -47,7 +47,7 @@ export interface CreateApplicationRequest {
   website?: string;
   logo?: string;
   logoMimeType?: string;
-  type?: ApplicationType;  // Defaults to APPLICATION
+  type?: ApplicationType; // Defaults to APPLICATION
 }
 
 export interface UpdateApplicationRequest {

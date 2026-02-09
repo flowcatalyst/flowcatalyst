@@ -38,7 +38,7 @@ const isVersionValid = computed(() => VERSION_PATTERN.test(version.value));
 
 const isVersionDuplicate = computed(() => {
   if (!eventType.value) return false;
-  return eventType.value.specVersions.some(sv => sv.version === version.value);
+  return eventType.value.specVersions.some((sv) => sv.version === version.value);
 });
 
 const isFormValid = computed(() => {
@@ -101,14 +101,14 @@ function suggestNextVersion() {
     return;
   }
 
-  const versions = eventType.value.specVersions.map(sv => {
+  const versions = eventType.value.specVersions.map((sv) => {
     const [major, minor] = sv.version.split('.').map(Number);
     return { major, minor };
   });
 
-  const highestMajor = Math.max(...versions.map(v => v.major));
+  const highestMajor = Math.max(...versions.map((v) => v.major));
   const highestMinor = Math.max(
-    ...versions.filter(v => v.major === highestMajor).map(v => v.minor)
+    ...versions.filter((v) => v.major === highestMajor).map((v) => v.minor),
   );
 
   version.value = `${highestMajor}.${highestMinor + 1}`;
@@ -222,8 +222,8 @@ async function onSubmit() {
           </section>
 
           <Message severity="info" class="info-message">
-            New schemas are created in <strong>FINALISING</strong> status.
-            Finalise when ready for production use.
+            New schemas are created in <strong>FINALISING</strong> status. Finalise when ready for
+            production use.
           </Message>
 
           <Message v-if="errorMessage" severity="error">

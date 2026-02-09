@@ -1,14 +1,10 @@
 import { ref, computed, watch } from 'vue';
-import {
-  eventTypesApi,
-  type EventType,
-  type EventTypeFilters,
-} from '@/api/event-types';
+import { eventTypesApi, type EventType, type EventTypeFilters } from '@/api/event-types';
 
 export function useEventTypes() {
   const eventTypes = ref<EventType[]>([]);
-  const initialLoading = ref(true);  // For first load - shows spinner
-  const loading = ref(false);         // For subsequent loads - uses DataTable loading
+  const initialLoading = ref(true); // For first load - shows spinner
+  const loading = ref(false); // For subsequent loads - uses DataTable loading
   const error = ref<string | null>(null);
 
   // Filter state
@@ -67,9 +63,7 @@ export function useEventTypes() {
     subdomainOptions.value = response.options;
 
     // Filter out invalid selections
-    selectedSubdomains.value = selectedSubdomains.value.filter(s =>
-      response.options.includes(s)
-    );
+    selectedSubdomains.value = selectedSubdomains.value.filter((s) => response.options.includes(s));
   }
 
   async function loadAggregates() {
@@ -79,9 +73,7 @@ export function useEventTypes() {
     aggregateOptions.value = response.options;
 
     // Filter out invalid selections
-    selectedAggregates.value = selectedAggregates.value.filter(a =>
-      response.options.includes(a)
-    );
+    selectedAggregates.value = selectedAggregates.value.filter((a) => response.options.includes(a));
   }
 
   function clearFilters() {

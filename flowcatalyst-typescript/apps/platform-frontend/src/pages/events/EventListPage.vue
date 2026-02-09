@@ -7,7 +7,11 @@ import InputText from 'primevue/inputtext';
 import Tag from 'primevue/tag';
 import Dialog from 'primevue/dialog';
 import MultiSelect from 'primevue/multiselect';
-import { getApiBffEvents, getApiBffEventsById, getApiBffEventsFilterOptions } from '@/api/generated';
+import {
+  getApiBffEvents,
+  getApiBffEventsById,
+  getApiBffEventsFilterOptions,
+} from '@/api/generated';
 
 interface EventRead {
   id: string;
@@ -71,7 +75,9 @@ onMounted(async () => {
 });
 
 // Unified filter change handler to prevent loops
-async function onFilterChange(clearDownstream: 'applications' | 'subdomains' | 'aggregates' | 'types' | 'none' = 'none') {
+async function onFilterChange(
+  clearDownstream: 'applications' | 'subdomains' | 'aggregates' | 'types' | 'none' = 'none',
+) {
   if (isUpdating.value) return;
 
   isUpdating.value = true;
@@ -100,19 +106,30 @@ async function onFilterChange(clearDownstream: 'applications' | 'subdomains' | '
   }
 }
 
-
 async function loadFilterOptions() {
   loadingOptions.value = true;
   try {
     const response = await getApiBffEventsFilterOptions({
       query: {
         clientIds: selectedClients.value.length ? selectedClients.value.join(',') : undefined,
-        applications: selectedApplications.value.length ? selectedApplications.value.join(',') : undefined,
-        subdomains: selectedSubdomains.value.length ? selectedSubdomains.value.join(',') : undefined,
-        aggregates: selectedAggregates.value.length ? selectedAggregates.value.join(',') : undefined
-      }
+        applications: selectedApplications.value.length
+          ? selectedApplications.value.join(',')
+          : undefined,
+        subdomains: selectedSubdomains.value.length
+          ? selectedSubdomains.value.join(',')
+          : undefined,
+        aggregates: selectedAggregates.value.length
+          ? selectedAggregates.value.join(',')
+          : undefined,
+      },
     });
-    const data = response.data as { clients?: FilterOption[]; applications?: FilterOption[]; subdomains?: FilterOption[]; aggregates?: FilterOption[]; types?: FilterOption[] };
+    const data = response.data as {
+      clients?: FilterOption[];
+      applications?: FilterOption[];
+      subdomains?: FilterOption[];
+      aggregates?: FilterOption[];
+      types?: FilterOption[];
+    };
     if (data) {
       clientOptions.value = (data.clients || []) as FilterOption[];
       applicationOptions.value = (data.applications || []) as FilterOption[];
@@ -135,12 +152,18 @@ async function loadEvents() {
         page: currentPage.value,
         size: pageSize.value,
         clientIds: selectedClients.value.length ? selectedClients.value.join(',') : undefined,
-        applications: selectedApplications.value.length ? selectedApplications.value.join(',') : undefined,
-        subdomains: selectedSubdomains.value.length ? selectedSubdomains.value.join(',') : undefined,
-        aggregates: selectedAggregates.value.length ? selectedAggregates.value.join(',') : undefined,
+        applications: selectedApplications.value.length
+          ? selectedApplications.value.join(',')
+          : undefined,
+        subdomains: selectedSubdomains.value.length
+          ? selectedSubdomains.value.join(',')
+          : undefined,
+        aggregates: selectedAggregates.value.length
+          ? selectedAggregates.value.join(',')
+          : undefined,
         types: selectedTypes.value.length ? selectedTypes.value.join(',') : undefined,
-        source: searchQuery.value || undefined
-      }
+        source: searchQuery.value || undefined,
+      },
     });
     const data = response.data as { items?: EventRead[]; totalItems?: number };
     if (data) {
@@ -211,12 +234,14 @@ function truncateId(id: string | undefined): string {
 }
 
 function hasActiveFilters(): boolean {
-  return selectedClients.value.length > 0 ||
+  return (
+    selectedClients.value.length > 0 ||
     selectedApplications.value.length > 0 ||
     selectedSubdomains.value.length > 0 ||
     selectedAggregates.value.length > 0 ||
     selectedTypes.value.length > 0 ||
-    searchQuery.value.length > 0;
+    searchQuery.value.length > 0
+  );
 }
 </script>
 
@@ -327,13 +352,7 @@ function hasActiveFilters(): boolean {
             v-tooltip="'Clear all filters'"
             :disabled="!hasActiveFilters()"
           />
-          <Button
-            icon="pi pi-refresh"
-            text
-            rounded
-            @click="loadEvents"
-            v-tooltip="'Refresh'"
-          />
+          <Button icon="pi pi-refresh" text rounded @click="loadEvents" v-tooltip="'Refresh'" />
         </div>
       </div>
 
@@ -368,7 +387,9 @@ function hasActiveFilters(): boolean {
         </Column>
         <Column field="clientId" header="Client" style="width: 10rem">
           <template #body="{ data }">
-            <span v-if="data.clientId" class="font-mono text-sm">{{ truncateId(data.clientId) }}</span>
+            <span v-if="data.clientId" class="font-mono text-sm">{{
+              truncateId(data.clientId)
+            }}</span>
             <span v-else class="text-muted">-</span>
           </template>
         </Column>

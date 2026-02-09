@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import {ref, computed, onMounted} from 'vue';
-import {useRoute, useRouter} from 'vue-router';
-import {useToast} from 'primevue/usetoast';
+import { ref, computed, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Textarea from 'primevue/textarea';
 import Checkbox from 'primevue/checkbox';
 import Tag from 'primevue/tag';
 import ProgressSpinner from 'primevue/progressspinner';
-import {rolesApi, type Role} from '@/api/roles';
-import {permissionsApi, type Permission} from '@/api/permissions';
+import { rolesApi, type Role } from '@/api/roles';
+import { permissionsApi, type Permission } from '@/api/permissions';
 
 const route = useRoute();
 const router = useRouter();
@@ -33,14 +33,14 @@ const hasChanges = computed(() => {
   if (!role.value) return false;
 
   const permissionsChanged =
-      selectedPermissions.value.size !== role.value.permissions.length ||
-      !role.value.permissions.every(p => selectedPermissions.value.has(p));
+    selectedPermissions.value.size !== role.value.permissions.length ||
+    !role.value.permissions.every((p) => selectedPermissions.value.has(p));
 
   return (
-      displayName.value !== (role.value.displayName || '') ||
-      description.value !== (role.value.description || '') ||
-      clientManaged.value !== role.value.clientManaged ||
-      permissionsChanged
+    displayName.value !== (role.value.displayName || '') ||
+    description.value !== (role.value.description || '') ||
+    clientManaged.value !== role.value.clientManaged ||
+    permissionsChanged
   );
 });
 
@@ -77,7 +77,7 @@ async function loadRole() {
         severity: 'warn',
         summary: 'Not Editable',
         detail: 'Only admin-created roles can be edited',
-        life: 5000
+        life: 5000,
       });
       router.push(`/authorization/roles/${encodeURIComponent(roleName.value)}`);
     }
@@ -95,7 +95,7 @@ async function loadPermissions() {
       severity: 'error',
       summary: 'Error',
       detail: 'Failed to load permissions',
-      life: 5000
+      life: 5000,
     });
   } finally {
     loading.value = false;
@@ -130,12 +130,12 @@ function deselectAllInApplication(application: string) {
 
 function isApplicationFullySelected(application: string): boolean {
   const perms = permissionsByApplication.value.get(application) || [];
-  return perms.every(p => selectedPermissions.value.has(p.permission));
+  return perms.every((p) => selectedPermissions.value.has(p.permission));
 }
 
 function isApplicationPartiallySelected(application: string): boolean {
   const perms = permissionsByApplication.value.get(application) || [];
-  const selected = perms.filter(p => selectedPermissions.value.has(p.permission));
+  const selected = perms.filter((p) => selectedPermissions.value.has(p.permission));
   return selected.length > 0 && selected.length < perms.length;
 }
 
@@ -148,14 +148,14 @@ async function saveRole() {
       displayName: displayName.value || undefined,
       description: description.value || undefined,
       permissions: Array.from(selectedPermissions.value),
-      clientManaged: clientManaged.value
+      clientManaged: clientManaged.value,
     });
 
     toast.add({
       severity: 'success',
       summary: 'Saved',
       detail: 'Role updated successfully',
-      life: 3000
+      life: 3000,
     });
 
     router.push(`/authorization/roles/${encodeURIComponent(roleName.value)}`);
@@ -164,7 +164,7 @@ async function saveRole() {
       severity: 'error',
       summary: 'Error',
       detail: e instanceof Error ? e.message : 'Failed to save role',
-      life: 5000
+      life: 5000,
     });
   } finally {
     saving.value = false;
@@ -196,12 +196,12 @@ function getActionSeverity(action: string) {
     <header class="page-header">
       <div class="header-left">
         <Button
-            icon="pi pi-arrow-left"
-            text
-            rounded
-            severity="secondary"
-            @click="cancel"
-            v-tooltip.right="'Back to role'"
+          icon="pi pi-arrow-left"
+          text
+          rounded
+          severity="secondary"
+          @click="cancel"
+          v-tooltip.right="'Back to role'"
         />
         <div>
           <h1 class="page-title">Edit Role</h1>
@@ -209,30 +209,25 @@ function getActionSeverity(action: string) {
         </div>
       </div>
       <div class="header-right">
+        <Button label="Cancel" severity="secondary" text @click="cancel" />
         <Button
-            label="Cancel"
-            severity="secondary"
-            text
-            @click="cancel"
-        />
-        <Button
-            label="Save Changes"
-            icon="pi pi-check"
-            :loading="saving"
-            :disabled="!hasChanges"
-            @click="saveRole"
+          label="Save Changes"
+          icon="pi pi-check"
+          :loading="saving"
+          :disabled="!hasChanges"
+          @click="saveRole"
         />
       </div>
     </header>
 
     <div v-if="loading" class="loading-container">
-      <ProgressSpinner strokeWidth="3"/>
+      <ProgressSpinner strokeWidth="3" />
     </div>
 
     <div v-else-if="error" class="error-container">
       <i class="pi pi-exclamation-triangle"></i>
       <span>{{ error }}</span>
-      <Button label="Go Back" @click="cancel"/>
+      <Button label="Go Back" @click="cancel" />
     </div>
 
     <template v-else-if="role">
@@ -244,30 +239,26 @@ function getActionSeverity(action: string) {
           <div class="form-field">
             <label for="displayName">Display Name</label>
             <InputText
-                id="displayName"
-                v-model="displayName"
-                placeholder="e.g., Tenant Administrator"
-                class="w-full"
+              id="displayName"
+              v-model="displayName"
+              placeholder="e.g., Tenant Administrator"
+              class="w-full"
             />
           </div>
 
           <div class="form-field">
             <label for="description">Description</label>
             <Textarea
-                id="description"
-                v-model="description"
-                placeholder="Describe what this role grants access to..."
-                rows="3"
-                class="w-full"
+              id="description"
+              v-model="description"
+              placeholder="Describe what this role grants access to..."
+              rows="3"
+              class="w-full"
             />
           </div>
 
           <div class="form-field checkbox-field">
-            <Checkbox
-                id="clientManaged"
-                v-model="clientManaged"
-                :binary="true"
-            />
+            <Checkbox id="clientManaged" v-model="clientManaged" :binary="true" />
             <label for="clientManaged">
               Client Managed
               <span class="field-hint">Sync this role to client-managed identity providers</span>
@@ -289,23 +280,26 @@ function getActionSeverity(action: string) {
         </div>
 
         <div v-else class="permissions-sections">
-          <div
-              v-for="application in applications"
-              :key="application"
-              class="application-section"
-          >
+          <div v-for="application in applications" :key="application" class="application-section">
             <div class="application-header">
               <div class="application-title">
                 <Checkbox
-                    :modelValue="isApplicationFullySelected(application)"
-                    :indeterminate="isApplicationPartiallySelected(application)"
-                    :binary="true"
-                    @update:modelValue="(val: boolean) => val ? selectAllInApplication(application) : deselectAllInApplication(application)"
+                  :modelValue="isApplicationFullySelected(application)"
+                  :indeterminate="isApplicationPartiallySelected(application)"
+                  :binary="true"
+                  @update:modelValue="
+                    (val: boolean) =>
+                      val
+                        ? selectAllInApplication(application)
+                        : deselectAllInApplication(application)
+                  "
                 />
-                <Tag :value="application" severity="secondary"/>
+                <Tag :value="application" severity="secondary" />
                 <span class="application-count">
                   {{
-                    permissionsByApplication.get(application)?.filter(p => selectedPermissions.has(p.permission)).length || 0
+                    permissionsByApplication
+                      .get(application)
+                      ?.filter((p) => selectedPermissions.has(p.permission)).length || 0
                   }}
                   / {{ permissionsByApplication.get(application)?.length || 0 }}
                 </span>
@@ -314,24 +308,28 @@ function getActionSeverity(action: string) {
 
             <div class="permissions-grid">
               <div
-                  v-for="perm in permissionsByApplication.get(application)"
-                  :key="perm.permission"
-                  class="permission-item"
-                  :class="{ selected: selectedPermissions.has(perm.permission) }"
-                  @click="togglePermission(perm.permission)"
+                v-for="perm in permissionsByApplication.get(application)"
+                :key="perm.permission"
+                class="permission-item"
+                :class="{ selected: selectedPermissions.has(perm.permission) }"
+                @click="togglePermission(perm.permission)"
               >
                 <Checkbox
-                    :modelValue="selectedPermissions.has(perm.permission)"
-                    :binary="true"
-                    @click.stop
-                    @update:modelValue="togglePermission(perm.permission)"
+                  :modelValue="selectedPermissions.has(perm.permission)"
+                  :binary="true"
+                  @click.stop
+                  @update:modelValue="togglePermission(perm.permission)"
                 />
                 <div class="permission-info">
                   <div class="permission-name">
                     <span class="context">{{ perm.context }}</span>
                     <span class="separator">:</span>
                     <span class="aggregate">{{ perm.aggregate }}</span>
-                    <Tag :value="perm.action" :severity="getActionSeverity(perm.action)" class="action-tag"/>
+                    <Tag
+                      :value="perm.action"
+                      :severity="getActionSeverity(perm.action)"
+                      class="action-tag"
+                    />
                   </div>
                   <div v-if="perm.description" class="permission-description">
                     {{ perm.description }}

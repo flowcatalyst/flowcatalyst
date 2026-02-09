@@ -33,13 +33,9 @@ export const useLoginThemeStore = defineStore('loginTheme', () => {
   const error = ref<string | null>(null);
 
   // Computed
-  const hasCustomLogo = computed(() =>
-    Boolean(theme.value.logoUrl || theme.value.logoSvg)
-  );
+  const hasCustomLogo = computed(() => Boolean(theme.value.logoUrl || theme.value.logoSvg));
 
-  const background = computed(() =>
-    theme.value.backgroundGradient || theme.value.backgroundColor
-  );
+  const background = computed(() => theme.value.backgroundGradient || theme.value.backgroundColor);
 
   // Actions
   async function loadTheme(clientId?: string): Promise<void> {

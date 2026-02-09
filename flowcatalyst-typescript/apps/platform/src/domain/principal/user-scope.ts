@@ -11,23 +11,23 @@
  * 2. Explicitly set on the principal for override cases
  */
 export const UserScope = {
-	/**
-	 * Anchor/platform users - have access to all clients.
-	 * Typically users from the anchor domain (e.g., flowcatalyst.local).
-	 */
-	ANCHOR: 'ANCHOR',
+  /**
+   * Anchor/platform users - have access to all clients.
+   * Typically users from the anchor domain (e.g., flowcatalyst.local).
+   */
+  ANCHOR: 'ANCHOR',
 
-	/**
-	 * Partner users - have access to multiple explicitly assigned clients.
-	 * Their accessible clients are stored in client access grants.
-	 */
-	PARTNER: 'PARTNER',
+  /**
+   * Partner users - have access to multiple explicitly assigned clients.
+   * Their accessible clients are stored in client access grants.
+   */
+  PARTNER: 'PARTNER',
 
-	/**
-	 * Client users - bound to a single client (their home client).
-	 * Their clientId determines their access scope.
-	 */
-	CLIENT: 'CLIENT',
+  /**
+   * Client users - bound to a single client (their home client).
+   * Their clientId determines their access scope.
+   */
+  CLIENT: 'CLIENT',
 } as const;
 
 export type UserScope = (typeof UserScope)[keyof typeof UserScope];

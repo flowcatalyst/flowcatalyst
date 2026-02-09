@@ -12,6 +12,6 @@
 export type OAuthClientType = 'PUBLIC' | 'CONFIDENTIAL';
 
 export const OAuthClientType = {
-	PUBLIC: 'PUBLIC' as const,
-	CONFIDENTIAL: 'CONFIDENTIAL' as const,
+  PUBLIC: 'PUBLIC' as const,
+  CONFIDENTIAL: 'CONFIDENTIAL' as const,
 } as const;

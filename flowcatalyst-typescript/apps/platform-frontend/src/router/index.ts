@@ -125,33 +125,39 @@ const router = createRouter({
         {
           path: 'authentication/identity-providers',
           name: 'identity-providers',
-          component: () => import('@/pages/authentication/identity-providers/IdentityProviderListPage.vue'),
+          component: () =>
+            import('@/pages/authentication/identity-providers/IdentityProviderListPage.vue'),
         },
         {
           path: 'authentication/identity-providers/new',
           name: 'identity-provider-create',
-          component: () => import('@/pages/authentication/identity-providers/IdentityProviderCreatePage.vue'),
+          component: () =>
+            import('@/pages/authentication/identity-providers/IdentityProviderCreatePage.vue'),
         },
         {
           path: 'authentication/identity-providers/:id',
           name: 'identity-provider-detail',
-          component: () => import('@/pages/authentication/identity-providers/IdentityProviderDetailPage.vue'),
+          component: () =>
+            import('@/pages/authentication/identity-providers/IdentityProviderDetailPage.vue'),
         },
         // Authentication - Email Domain Mappings
         {
           path: 'authentication/email-domain-mappings',
           name: 'email-domain-mappings',
-          component: () => import('@/pages/authentication/email-domains/EmailDomainMappingListPage.vue'),
+          component: () =>
+            import('@/pages/authentication/email-domains/EmailDomainMappingListPage.vue'),
         },
         {
           path: 'authentication/email-domain-mappings/new',
           name: 'email-domain-mapping-create',
-          component: () => import('@/pages/authentication/email-domains/EmailDomainMappingCreatePage.vue'),
+          component: () =>
+            import('@/pages/authentication/email-domains/EmailDomainMappingCreatePage.vue'),
         },
         {
           path: 'authentication/email-domain-mappings/:id',
           name: 'email-domain-mapping-detail',
-          component: () => import('@/pages/authentication/email-domains/EmailDomainMappingDetailPage.vue'),
+          component: () =>
+            import('@/pages/authentication/email-domains/EmailDomainMappingDetailPage.vue'),
         },
         // Authentication - OAuth Clients
         {

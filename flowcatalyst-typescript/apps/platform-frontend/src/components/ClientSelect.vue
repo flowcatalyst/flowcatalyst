@@ -38,13 +38,16 @@ onMounted(async () => {
 });
 
 // Watch for external modelValue changes
-watch(() => props.modelValue, async (newValue) => {
-  if (newValue && (!selectedClient.value || selectedClient.value.id !== newValue)) {
-    await loadClientById(newValue);
-  } else if (!newValue) {
-    selectedClient.value = null;
-  }
-});
+watch(
+  () => props.modelValue,
+  async (newValue) => {
+    if (newValue && (!selectedClient.value || selectedClient.value.id !== newValue)) {
+      await loadClientById(newValue);
+    } else if (!newValue) {
+      selectedClient.value = null;
+    }
+  },
+);
 
 async function loadClientById(id: string) {
   try {

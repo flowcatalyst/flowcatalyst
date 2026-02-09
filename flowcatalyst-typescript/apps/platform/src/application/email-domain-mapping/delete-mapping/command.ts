@@ -5,5 +5,5 @@
 import type { Command } from '@flowcatalyst/application';
 
 export interface DeleteEmailDomainMappingCommand extends Command {
-	readonly emailDomainMappingId: string;
+  readonly emailDomainMappingId: string;
 }

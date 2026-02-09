@@ -12,30 +12,30 @@ import type { TrafficError } from './errors.js';
  * Matches Java NoOpTrafficStrategy behavior.
  */
 export class NoOpTrafficStrategy implements TrafficManagementStrategy {
-	private readonly logger: Logger;
-	private registered = false;
+  private readonly logger: Logger;
+  private registered = false;
 
-	constructor(logger: Logger) {
-		this.logger = logger.child({ component: 'NoOpTrafficStrategy' });
-	}
+  constructor(logger: Logger) {
+    this.logger = logger.child({ component: 'NoOpTrafficStrategy' });
+  }
 
-	getName(): string {
-		return 'NONE';
-	}
+  getName(): string {
+    return 'NONE';
+  }
 
-	registerAsActive(): ResultAsync<void, TrafficError> {
-		this.logger.debug('No-op register as active');
-		this.registered = true;
-		return okAsync(undefined);
-	}
+  registerAsActive(): ResultAsync<void, TrafficError> {
+    this.logger.debug('No-op register as active');
+    this.registered = true;
+    return okAsync(undefined);
+  }
 
-	deregisterFromActive(): ResultAsync<void, TrafficError> {
-		this.logger.debug('No-op deregister from active');
-		this.registered = false;
-		return okAsync(undefined);
-	}
+  deregisterFromActive(): ResultAsync<void, TrafficError> {
+    this.logger.debug('No-op deregister from active');
+    this.registered = false;
+    return okAsync(undefined);
+  }
 
-	isRegistered(): boolean {
-		return this.registered;
-	}
+  isRegistered(): boolean {
+    return this.registered;
+  }
 }

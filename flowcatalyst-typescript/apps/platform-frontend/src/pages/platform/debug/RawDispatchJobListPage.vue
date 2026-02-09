@@ -63,8 +63,8 @@ async function loadDispatchJobs() {
     const response = await getApiBffDebugDispatchJobs({
       query: {
         page: currentPage.value,
-        size: pageSize.value
-      }
+        size: pageSize.value,
+      },
     });
     if (response.data) {
       dispatchJobs.value = (response.data.items || []) as RawDispatchJob[];
@@ -98,15 +98,24 @@ async function viewJobDetail(job: RawDispatchJob) {
   }
 }
 
-function getSeverity(status: string): "success" | "info" | "warn" | "danger" | "secondary" | "contrast" | undefined {
+function getSeverity(
+  status: string,
+): 'success' | 'info' | 'warn' | 'danger' | 'secondary' | 'contrast' | undefined {
   switch (status) {
-    case 'COMPLETED': return 'success';
-    case 'PENDING': return 'info';
-    case 'QUEUED': return 'info';
-    case 'IN_PROGRESS': return 'warn';
-    case 'ERROR': return 'danger';
-    case 'CANCELLED': return 'secondary';
-    default: return 'secondary';
+    case 'COMPLETED':
+      return 'success';
+    case 'PENDING':
+      return 'info';
+    case 'QUEUED':
+      return 'info';
+    case 'IN_PROGRESS':
+      return 'warn';
+    case 'ERROR':
+      return 'danger';
+    case 'CANCELLED':
+      return 'secondary';
+    default:
+      return 'secondary';
   }
 }
 
@@ -135,20 +144,15 @@ function formatAttempts(job: RawDispatchJob): string {
     </header>
 
     <Message severity="warn" :closable="false" class="mb-4">
-      This is a debug view of the raw <code>dispatch_jobs</code> collection. This collection is write-optimized
-      with minimal indexes. For regular queries, use the <strong>Dispatch Jobs</strong> page which queries the
-      read-optimized <code>dispatch_jobs_read</code> projection.
+      This is a debug view of the raw <code>dispatch_jobs</code> collection. This collection is
+      write-optimized with minimal indexes. For regular queries, use the
+      <strong>Dispatch Jobs</strong> page which queries the read-optimized
+      <code>dispatch_jobs_read</code> projection.
     </Message>
 
     <div class="fc-card">
       <div class="toolbar">
-        <Button
-          icon="pi pi-refresh"
-          text
-          rounded
-          @click="loadDispatchJobs"
-          v-tooltip="'Refresh'"
-        />
+        <Button icon="pi pi-refresh" text rounded @click="loadDispatchJobs" v-tooltip="'Refresh'" />
         <span class="text-muted ml-2">
           Showing raw dispatch jobs (no filtering - queries would be slow on this collection)
         </span>
@@ -270,7 +274,10 @@ function formatAttempts(job: RawDispatchJob): string {
         </div>
         <div class="detail-row">
           <label>Attempts</label>
-          <span>{{ formatAttempts(selectedJob) }} ({{ selectedJob.attemptHistoryCount }} in history)</span>
+          <span
+            >{{ formatAttempts(selectedJob) }} ({{ selectedJob.attemptHistoryCount }} in
+            history)</span
+          >
         </div>
         <div class="detail-row">
           <label>Last Error</label>

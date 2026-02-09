@@ -3,4 +3,7 @@
  */
 
 export type { DeleteServiceAccountCommand } from './command.js';
-export { createDeleteServiceAccountUseCase, type DeleteServiceAccountUseCaseDeps } from './use-case.js';
+export {
+  createDeleteServiceAccountUseCase,
+  type DeleteServiceAccountUseCaseDeps,
+} from './use-case.js';

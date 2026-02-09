@@ -5,7 +5,7 @@
  */
 
 export interface EventTypeBinding {
-	readonly eventTypeId: string | null;
-	readonly eventTypeCode: string;
-	readonly specVersion: string | null;
+  readonly eventTypeId: string | null;
+  readonly eventTypeCode: string;
+  readonly specVersion: string | null;
 }

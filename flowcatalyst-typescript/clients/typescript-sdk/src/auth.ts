@@ -50,9 +50,8 @@ export class OidcTokenManager {
 
     // Prevent concurrent token fetches
     if (this.refreshPromise) {
-      return ResultAsync.fromPromise(
-        this.refreshPromise,
-        (e) => authError.tokenFetchFailed('Token fetch failed', e as Error)
+      return ResultAsync.fromPromise(this.refreshPromise, (e) =>
+        authError.tokenFetchFailed('Token fetch failed', e as Error),
       );
     }
 
@@ -87,12 +86,13 @@ export class OidcTokenManager {
    */
   private fetchNewToken(): ResultAsync<string, AuthenticationError> {
     if (!this.hasCredentials()) {
-      return ResultAsync.fromSafePromise(
-        Promise.reject(authError.missingCredentials())
-      ).mapErr(() => authError.missingCredentials());
+      return ResultAsync.fromSafePromise(Promise.reject(authError.missingCredentials())).mapErr(
+        () => authError.missingCredentials(),
+      );
     }
 
-    const tokenUrl = this.config.tokenUrl ?? `${this.config.baseUrl.replace(/\/$/, '')}/oauth/token`;
+    const tokenUrl =
+      this.config.tokenUrl ?? `${this.config.baseUrl.replace(/\/$/, '')}/oauth/token`;
 
     const fetchPromise = fetch(tokenUrl, {
       method: 'POST',
@@ -116,7 +116,8 @@ export class OidcTokenManager {
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        const errorMsg = (body as Record<string, unknown>).error_description?.toString() ??
+        const errorMsg =
+          (body as Record<string, unknown>).error_description?.toString() ??
           (body as Record<string, unknown>).error?.toString() ??
           'Token fetch failed';
         throw authError.tokenFetchFailed(errorMsg);
@@ -143,7 +144,7 @@ export class OidcTokenManager {
       }
       return authError.tokenFetchFailed(
         e instanceof Error ? e.message : 'Unknown error',
-        e instanceof Error ? e : undefined
+        e instanceof Error ? e : undefined,
       );
     });
   }

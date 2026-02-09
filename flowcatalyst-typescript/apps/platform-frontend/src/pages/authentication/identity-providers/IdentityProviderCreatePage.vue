@@ -32,7 +32,11 @@ const form = ref({
 const newAllowedDomain = ref('');
 
 const typeOptions = [
-  { label: 'Internal (Local)', value: 'INTERNAL', description: 'Internal authentication (username/password)' },
+  {
+    label: 'Internal (Local)',
+    value: 'INTERNAL',
+    description: 'Internal authentication (username/password)',
+  },
   { label: 'OIDC (External)', value: 'OIDC', description: 'External OpenID Connect provider' },
 ];
 
@@ -70,7 +74,7 @@ function addAllowedDomain() {
 }
 
 function removeAllowedDomain(domain: string) {
-  form.value.allowedEmailDomains = form.value.allowedEmailDomains.filter(d => d !== domain);
+  form.value.allowedEmailDomains = form.value.allowedEmailDomains.filter((d) => d !== domain);
 }
 
 async function createProvider() {
@@ -84,7 +88,8 @@ async function createProvider() {
       code: form.value.code.trim(),
       name: form.value.name.trim(),
       type: form.value.type,
-      allowedEmailDomains: form.value.allowedEmailDomains.length > 0 ? form.value.allowedEmailDomains : undefined,
+      allowedEmailDomains:
+        form.value.allowedEmailDomains.length > 0 ? form.value.allowedEmailDomains : undefined,
     };
 
     if (form.value.type === 'OIDC') {
@@ -122,13 +127,17 @@ async function createProvider() {
           @click="router.push('/authentication/identity-providers')"
         />
         <h1 class="page-title">Create Identity Provider</h1>
-        <p class="page-subtitle">
-          Configure a new identity provider for federated authentication.
-        </p>
+        <p class="page-subtitle">Configure a new identity provider for federated authentication.</p>
       </div>
     </header>
 
-    <Message v-if="error" severity="error" class="error-message" :closable="true" @close="error = null">
+    <Message
+      v-if="error"
+      severity="error"
+      class="error-message"
+      :closable="true"
+      @close="error = null"
+    >
       {{ error }}
     </Message>
 
@@ -146,7 +155,9 @@ async function createProvider() {
           <small v-if="form.code && !isCodeValid" class="p-error">
             Lowercase letters, numbers, and hyphens only. Must start with a letter.
           </small>
-          <small v-else class="field-help">A unique identifier for this provider (cannot be changed later)</small>
+          <small v-else class="field-help"
+            >A unique identifier for this provider (cannot be changed later)</small
+          >
         </div>
 
         <div class="field">
@@ -181,11 +192,7 @@ async function createProvider() {
 
         <template v-if="form.type === 'OIDC'">
           <div class="field checkbox-field">
-            <Checkbox
-              id="multiTenant"
-              v-model="form.oidcMultiTenant"
-              :binary="true"
-            />
+            <Checkbox id="multiTenant" v-model="form.oidcMultiTenant" :binary="true" />
             <label for="multiTenant" class="checkbox-label">Multi-Tenant Mode</label>
           </div>
           <small class="field-help">
@@ -197,13 +204,18 @@ async function createProvider() {
             <InputText
               id="issuerUrl"
               v-model="form.oidcIssuerUrl"
-              :placeholder="form.oidcMultiTenant ? 'https://login.microsoftonline.com/organizations/v2.0' : 'https://login.example.com'"
+              :placeholder="
+                form.oidcMultiTenant
+                  ? 'https://login.microsoftonline.com/organizations/v2.0'
+                  : 'https://login.example.com'
+              "
               class="w-full"
             />
             <small class="field-help">
-              {{ form.oidcMultiTenant
-                ? 'Base URL for authorization/token endpoints (e.g., .../organizations/v2.0 or .../common/v2.0)'
-                : 'The OpenID Connect issuer URL'
+              {{
+                form.oidcMultiTenant
+                  ? 'Base URL for authorization/token endpoints (e.g., .../organizations/v2.0 or .../common/v2.0)'
+                  : 'The OpenID Connect issuer URL'
               }}
             </small>
           </div>
@@ -217,7 +229,8 @@ async function createProvider() {
               class="w-full"
             />
             <small class="field-help">
-              Pattern for validating token issuer. Use {tenantId} as placeholder. Leave empty to auto-derive from Issuer URL.
+              Pattern for validating token issuer. Use {tenantId} as placeholder. Leave empty to
+              auto-derive from Issuer URL.
             </small>
           </div>
 

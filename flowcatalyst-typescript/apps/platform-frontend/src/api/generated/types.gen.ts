@@ -763,7 +763,7 @@ export type ClientResponse = {
   status?: string;
 };
 
-export type ClientStatus = "ACTIVE" | "INACTIVE" | "SUSPENDED";
+export type ClientStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
 
 /**
  * Response for client status changes
@@ -783,16 +783,16 @@ export type ClientStatusResponse = {
   message?: string;
 };
 
-export type ClientType = "PUBLIC" | "CONFIDENTIAL";
+export type ClientType = 'PUBLIC' | 'CONFIDENTIAL';
 
 export type ConfigEntry = {
   key?: string;
   value?: string;
 };
 
-export type ConfigScope = "GLOBAL" | "CLIENT";
+export type ConfigScope = 'GLOBAL' | 'CLIENT';
 
-export type ConfigValueType = "PLAIN" | "SECRET";
+export type ConfigValueType = 'PLAIN' | 'SECRET';
 
 /**
  * Conflict error response (409)
@@ -1243,11 +1243,7 @@ export type DispatchAttemptResponse = {
   createdAt?: Instant;
 };
 
-export type DispatchAttemptStatus =
-  | "SUCCESS"
-  | "FAILURE"
-  | "TIMEOUT"
-  | "CIRCUIT_OPEN";
+export type DispatchAttemptStatus = 'SUCCESS' | 'FAILURE' | 'TIMEOUT' | 'CIRCUIT_OPEN';
 
 export type DispatchJobReadResponse = {
   id?: string;
@@ -1326,9 +1322,9 @@ export type DispatchJobResponse = {
   updatedAt?: Instant;
 };
 
-export type DispatchKind = "EVENT" | "TASK";
+export type DispatchKind = 'EVENT' | 'TASK';
 
-export type DispatchMode = "IMMEDIATE" | "NEXT_ON_ERROR" | "BLOCK_ON_ERROR";
+export type DispatchMode = 'IMMEDIATE' | 'NEXT_ON_ERROR' | 'BLOCK_ON_ERROR';
 
 export type DispatchPoolDto = {
   id?: string;
@@ -1349,23 +1345,23 @@ export type DispatchPoolListResponse = {
   total?: number;
 };
 
-export type DispatchPoolStatus = "ACTIVE" | "SUSPENDED" | "ARCHIVED";
+export type DispatchPoolStatus = 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
 
 export type DispatchProtocol =
-  | "HTTP_WEBHOOK"
-  | "GRPC"
-  | "AWS_SQS"
-  | "AWS_SNS"
-  | "KAFKA"
-  | "RABBITMQ";
+  | 'HTTP_WEBHOOK'
+  | 'GRPC'
+  | 'AWS_SQS'
+  | 'AWS_SNS'
+  | 'KAFKA'
+  | 'RABBITMQ';
 
 export type DispatchStatus =
-  | "PENDING"
-  | "QUEUED"
-  | "IN_PROGRESS"
-  | "COMPLETED"
-  | "ERROR"
-  | "CANCELLED";
+  | 'PENDING'
+  | 'QUEUED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'ERROR'
+  | 'CANCELLED';
 
 export type DomainCheckRequest = {
   email?: string;
@@ -1508,7 +1504,7 @@ export type ErrorResponse4 = {
   error?: string;
 };
 
-export type ErrorType = "TRANSIENT" | "NOT_TRANSIENT" | "UNKNOWN";
+export type ErrorType = 'TRANSIENT' | 'NOT_TRANSIENT' | 'UNKNOWN';
 
 export type EventReadResponse = {
   id?: string;
@@ -1596,7 +1592,7 @@ export type EventTypeResponse = {
   updatedAt?: string;
 };
 
-export type EventTypeStatus = "CURRENT" | "ARCHIVE";
+export type EventTypeStatus = 'CURRENT' | 'ARCHIVE';
 
 export type FeaturesConfig = {
   messagingEnabled?: boolean;
@@ -1697,7 +1693,7 @@ export type IdentityProviderListResponse = {
   total?: number;
 };
 
-export type IdpType = "INTERNAL" | "OIDC";
+export type IdpType = 'INTERNAL' | 'OIDC';
 
 export type Instant = string;
 
@@ -2133,7 +2129,7 @@ export type PrincipalListResponse1 = {
   total?: number;
 };
 
-export type PrincipalType = "USER" | "SERVICE";
+export type PrincipalType = 'USER' | 'SERVICE';
 
 export type ProcessRequest = {
   messageId?: string;
@@ -2357,7 +2353,7 @@ export type RotateSecretResponse = {
   clientSecret?: string;
 };
 
-export type SchemaType = "JSON_SCHEMA" | "PROTO" | "XSD";
+export type SchemaType = 'JSON_SCHEMA' | 'PROTO' | 'XSD';
 
 export type ServiceAccountDto = {
   id?: string;
@@ -2539,9 +2535,9 @@ export type SubscriptionListResponse1 = {
   total?: number;
 };
 
-export type SubscriptionSource = "CODE" | "API" | "UI";
+export type SubscriptionSource = 'CODE' | 'API' | 'UI';
 
-export type SubscriptionStatus = "ACTIVE" | "PAUSED";
+export type SubscriptionStatus = 'ACTIVE' | 'PAUSED';
 
 export type SwitchClientRequest = {
   clientId?: string;
@@ -2834,7 +2830,7 @@ export type UpdateSubscriptionRequest = {
   dataOnly?: boolean;
 };
 
-export type UserScope = "ANCHOR" | "PARTNER" | "CLIENT";
+export type UserScope = 'ANCHOR' | 'PARTNER' | 'CLIENT';
 
 /**
  * Validation error response (400)
@@ -2854,21 +2850,9 @@ export type ValidationErrorResponse = {
   errors?: Array<FieldError>;
 };
 
-export type ValueType =
-  | "ARRAY"
-  | "OBJECT"
-  | "STRING"
-  | "NUMBER"
-  | "TRUE"
-  | "FALSE"
-  | "NULL";
+export type ValueType = 'ARRAY' | 'OBJECT' | 'STRING' | 'NUMBER' | 'TRUE' | 'FALSE' | 'NULL';
 
-export type WebhookAuthType =
-  | "NONE"
-  | "BEARER_TOKEN"
-  | "BASIC_AUTH"
-  | "API_KEY"
-  | "HMAC_SIGNATURE";
+export type WebhookAuthType = 'NONE' | 'BEARER_TOKEN' | 'BASIC_AUTH' | 'API_KEY' | 'HMAC_SIGNATURE';
 
 export type WebhookCredentials = {
   authToken?: string;
@@ -2879,7 +2863,7 @@ export type GetWellKnownJwksJsonData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/.well-known/jwks.json";
+  url: '/.well-known/jwks.json';
 };
 
 export type GetWellKnownJwksJsonResponses = {
@@ -2898,7 +2882,7 @@ export type GetWellKnownOpenidConfigurationData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/.well-known/openid-configuration";
+  url: '/.well-known/openid-configuration';
 };
 
 export type GetWellKnownOpenidConfigurationResponses = {
@@ -2920,7 +2904,7 @@ export type ListApplicationsData = {
     activeOnly?: boolean;
     type?: string;
   };
-  url: "/api/admin/applications";
+  url: '/api/admin/applications';
 };
 
 export type ListApplicationsErrors = {
@@ -2938,8 +2922,7 @@ export type ListApplicationsErrors = {
   403: ForbiddenResponse;
 };
 
-export type ListApplicationsError =
-  ListApplicationsErrors[keyof ListApplicationsErrors];
+export type ListApplicationsError = ListApplicationsErrors[keyof ListApplicationsErrors];
 
 export type ListApplicationsResponses = {
   /**
@@ -2948,14 +2931,13 @@ export type ListApplicationsResponses = {
   200: ApplicationListResponse;
 };
 
-export type ListApplicationsResponse =
-  ListApplicationsResponses[keyof ListApplicationsResponses];
+export type ListApplicationsResponse = ListApplicationsResponses[keyof ListApplicationsResponses];
 
 export type CreateApplicationData = {
   body: CreateApplicationRequest;
   path?: never;
   query?: never;
-  url: "/api/admin/applications";
+  url: '/api/admin/applications';
 };
 
 export type CreateApplicationErrors = {
@@ -2977,8 +2959,7 @@ export type CreateApplicationErrors = {
   409: ConflictResponse;
 };
 
-export type CreateApplicationError =
-  CreateApplicationErrors[keyof CreateApplicationErrors];
+export type CreateApplicationError = CreateApplicationErrors[keyof CreateApplicationErrors];
 
 export type CreateApplicationResponses = {
   /**
@@ -2996,7 +2977,7 @@ export type GetApplicationByCodeData = {
     code: string;
   };
   query?: never;
-  url: "/api/admin/applications/by-code/{code}";
+  url: '/api/admin/applications/by-code/{code}';
 };
 
 export type GetApplicationByCodeErrors = {
@@ -3033,7 +3014,7 @@ export type DeleteApplicationData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/applications/{id}";
+  url: '/api/admin/applications/{id}';
 };
 
 export type DeleteApplicationErrors = {
@@ -3055,8 +3036,7 @@ export type DeleteApplicationErrors = {
   404: NotFoundResponse;
 };
 
-export type DeleteApplicationError =
-  DeleteApplicationErrors[keyof DeleteApplicationErrors];
+export type DeleteApplicationError = DeleteApplicationErrors[keyof DeleteApplicationErrors];
 
 export type DeleteApplicationResponses = {
   /**
@@ -3074,7 +3054,7 @@ export type GetApplicationData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/applications/{id}";
+  url: '/api/admin/applications/{id}';
 };
 
 export type GetApplicationErrors = {
@@ -3092,8 +3072,7 @@ export type GetApplicationErrors = {
   404: NotFoundResponse;
 };
 
-export type GetApplicationError =
-  GetApplicationErrors[keyof GetApplicationErrors];
+export type GetApplicationError = GetApplicationErrors[keyof GetApplicationErrors];
 
 export type GetApplicationResponses = {
   /**
@@ -3102,8 +3081,7 @@ export type GetApplicationResponses = {
   200: ApplicationResponse;
 };
 
-export type GetApplicationResponse =
-  GetApplicationResponses[keyof GetApplicationResponses];
+export type GetApplicationResponse = GetApplicationResponses[keyof GetApplicationResponses];
 
 export type UpdateApplicationData = {
   body: UpdateApplicationRequest;
@@ -3111,7 +3089,7 @@ export type UpdateApplicationData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/applications/{id}";
+  url: '/api/admin/applications/{id}';
 };
 
 export type UpdateApplicationErrors = {
@@ -3133,8 +3111,7 @@ export type UpdateApplicationErrors = {
   404: NotFoundResponse;
 };
 
-export type UpdateApplicationError =
-  UpdateApplicationErrors[keyof UpdateApplicationErrors];
+export type UpdateApplicationError = UpdateApplicationErrors[keyof UpdateApplicationErrors];
 
 export type UpdateApplicationResponses = {
   /**
@@ -3152,7 +3129,7 @@ export type ActivateApplicationData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/applications/{id}/activate";
+  url: '/api/admin/applications/{id}/activate';
 };
 
 export type ActivateApplicationErrors = {
@@ -3174,8 +3151,7 @@ export type ActivateApplicationErrors = {
   404: NotFoundResponse;
 };
 
-export type ActivateApplicationError =
-  ActivateApplicationErrors[keyof ActivateApplicationErrors];
+export type ActivateApplicationError = ActivateApplicationErrors[keyof ActivateApplicationErrors];
 
 export type ActivateApplicationResponses = {
   /**
@@ -3193,7 +3169,7 @@ export type GetApplicationClientConfigsData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/applications/{id}/clients";
+  url: '/api/admin/applications/{id}/clients';
 };
 
 export type GetApplicationClientConfigsErrors = {
@@ -3231,7 +3207,7 @@ export type ConfigureApplicationForClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/applications/{id}/clients/{clientId}";
+  url: '/api/admin/applications/{id}/clients/{clientId}';
 };
 
 export type ConfigureApplicationForClientErrors = {
@@ -3273,7 +3249,7 @@ export type DisableApplicationForClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/applications/{id}/clients/{clientId}/disable";
+  url: '/api/admin/applications/{id}/clients/{clientId}/disable';
 };
 
 export type DisableApplicationForClientErrors = {
@@ -3315,7 +3291,7 @@ export type EnableApplicationForClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/applications/{id}/clients/{clientId}/enable";
+  url: '/api/admin/applications/{id}/clients/{clientId}/enable';
 };
 
 export type EnableApplicationForClientErrors = {
@@ -3356,7 +3332,7 @@ export type DeactivateApplicationData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/applications/{id}/deactivate";
+  url: '/api/admin/applications/{id}/deactivate';
 };
 
 export type DeactivateApplicationErrors = {
@@ -3397,7 +3373,7 @@ export type ProvisionApplicationServiceAccountData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/applications/{id}/provision-service-account";
+  url: '/api/admin/applications/{id}/provision-service-account';
 };
 
 export type ProvisionApplicationServiceAccountErrors = {
@@ -3438,7 +3414,7 @@ export type GetApplicationRolesData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/applications/{id}/roles";
+  url: '/api/admin/applications/{id}/roles';
 };
 
 export type GetApplicationRolesErrors = {
@@ -3456,8 +3432,7 @@ export type GetApplicationRolesErrors = {
   404: NotFoundResponse;
 };
 
-export type GetApplicationRolesError =
-  GetApplicationRolesErrors[keyof GetApplicationRolesErrors];
+export type GetApplicationRolesError = GetApplicationRolesErrors[keyof GetApplicationRolesErrors];
 
 export type GetApplicationRolesResponses = {
   /**
@@ -3498,7 +3473,7 @@ export type ListAuditLogsData = {
      */
     principalId?: string;
   };
-  url: "/api/admin/audit-logs";
+  url: '/api/admin/audit-logs';
 };
 
 export type ListAuditLogsErrors = {
@@ -3521,14 +3496,13 @@ export type ListAuditLogsResponses = {
   200: AuditLogListResponse;
 };
 
-export type ListAuditLogsResponse =
-  ListAuditLogsResponses[keyof ListAuditLogsResponses];
+export type ListAuditLogsResponse = ListAuditLogsResponses[keyof ListAuditLogsResponses];
 
 export type GetAuditLogEntityTypesData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/api/admin/audit-logs/entity-types";
+  url: '/api/admin/audit-logs/entity-types';
 };
 
 export type GetAuditLogEntityTypesErrors = {
@@ -3562,7 +3536,7 @@ export type GetEntityAuditLogsData = {
     entityType: string;
   };
   query?: never;
-  url: "/api/admin/audit-logs/entity/{entityType}/{entityId}";
+  url: '/api/admin/audit-logs/entity/{entityType}/{entityId}';
 };
 
 export type GetEntityAuditLogsErrors = {
@@ -3576,8 +3550,7 @@ export type GetEntityAuditLogsErrors = {
   403: ForbiddenResponse;
 };
 
-export type GetEntityAuditLogsError =
-  GetEntityAuditLogsErrors[keyof GetEntityAuditLogsErrors];
+export type GetEntityAuditLogsError = GetEntityAuditLogsErrors[keyof GetEntityAuditLogsErrors];
 
 export type GetEntityAuditLogsResponses = {
   /**
@@ -3593,7 +3566,7 @@ export type GetAuditLogOperationsData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/api/admin/audit-logs/operations";
+  url: '/api/admin/audit-logs/operations';
 };
 
 export type GetAuditLogOperationsErrors = {
@@ -3626,7 +3599,7 @@ export type GetAuditLogData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/audit-logs/{id}";
+  url: '/api/admin/audit-logs/{id}';
 };
 
 export type GetAuditLogErrors = {
@@ -3653,8 +3626,7 @@ export type GetAuditLogResponses = {
   200: AuditLogDetailDto;
 };
 
-export type GetAuditLogResponse =
-  GetAuditLogResponses[keyof GetAuditLogResponses];
+export type GetAuditLogResponse = GetAuditLogResponses[keyof GetAuditLogResponses];
 
 export type ListClientsData = {
   body?: never;
@@ -3665,7 +3637,7 @@ export type ListClientsData = {
      */
     status?: ClientStatus;
   };
-  url: "/api/admin/clients";
+  url: '/api/admin/clients';
 };
 
 export type ListClientsErrors = {
@@ -3688,14 +3660,13 @@ export type ListClientsResponses = {
   200: ClientListResponse;
 };
 
-export type ListClientsResponse =
-  ListClientsResponses[keyof ListClientsResponses];
+export type ListClientsResponse = ListClientsResponses[keyof ListClientsResponses];
 
 export type CreateClientData = {
   body: CreateClientRequest;
   path?: never;
   query?: never;
-  url: "/api/admin/clients";
+  url: '/api/admin/clients';
 };
 
 export type CreateClientErrors = {
@@ -3722,8 +3693,7 @@ export type CreateClientResponses = {
   201: ClientDto;
 };
 
-export type CreateClientResponse2 =
-  CreateClientResponses[keyof CreateClientResponses];
+export type CreateClientResponse2 = CreateClientResponses[keyof CreateClientResponses];
 
 export type GetClientByIdentifierData = {
   body?: never;
@@ -3731,7 +3701,7 @@ export type GetClientByIdentifierData = {
     identifier: string;
   };
   query?: never;
-  url: "/api/admin/clients/by-identifier/{identifier}";
+  url: '/api/admin/clients/by-identifier/{identifier}';
 };
 
 export type GetClientByIdentifierErrors = {
@@ -3779,7 +3749,7 @@ export type SearchClientsData = {
      */
     status?: ClientStatus;
   };
-  url: "/api/admin/clients/search";
+  url: '/api/admin/clients/search';
 };
 
 export type SearchClientsErrors = {
@@ -3802,8 +3772,7 @@ export type SearchClientsResponses = {
   200: ClientListResponse;
 };
 
-export type SearchClientsResponse =
-  SearchClientsResponses[keyof SearchClientsResponses];
+export type SearchClientsResponse = SearchClientsResponses[keyof SearchClientsResponses];
 
 export type GetClientData = {
   body?: never;
@@ -3811,7 +3780,7 @@ export type GetClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/clients/{id}";
+  url: '/api/admin/clients/{id}';
 };
 
 export type GetClientErrors = {
@@ -3850,7 +3819,7 @@ export type UpdateClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/clients/{id}";
+  url: '/api/admin/clients/{id}';
 };
 
 export type UpdateClientErrors = {
@@ -3881,8 +3850,7 @@ export type UpdateClientResponses = {
   200: ClientDto;
 };
 
-export type UpdateClientResponse =
-  UpdateClientResponses[keyof UpdateClientResponses];
+export type UpdateClientResponse = UpdateClientResponses[keyof UpdateClientResponses];
 
 export type ActivateClientData = {
   body?: never;
@@ -3890,7 +3858,7 @@ export type ActivateClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/clients/{id}/activate";
+  url: '/api/admin/clients/{id}/activate';
 };
 
 export type ActivateClientErrors = {
@@ -3912,8 +3880,7 @@ export type ActivateClientErrors = {
   404: NotFoundResponse;
 };
 
-export type ActivateClientError =
-  ActivateClientErrors[keyof ActivateClientErrors];
+export type ActivateClientError = ActivateClientErrors[keyof ActivateClientErrors];
 
 export type ActivateClientResponses = {
   /**
@@ -3922,8 +3889,7 @@ export type ActivateClientResponses = {
   200: ClientStatusResponse;
 };
 
-export type ActivateClientResponse =
-  ActivateClientResponses[keyof ActivateClientResponses];
+export type ActivateClientResponse = ActivateClientResponses[keyof ActivateClientResponses];
 
 export type GetClientApplicationsData = {
   body?: never;
@@ -3931,7 +3897,7 @@ export type GetClientApplicationsData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/clients/{id}/applications";
+  url: '/api/admin/clients/{id}/applications';
 };
 
 export type GetClientApplicationsErrors = {
@@ -3972,7 +3938,7 @@ export type UpdateClientApplicationsData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/clients/{id}/applications";
+  url: '/api/admin/clients/{id}/applications';
 };
 
 export type UpdateClientApplicationsErrors = {
@@ -4014,7 +3980,7 @@ export type DisableClientApplicationData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/clients/{id}/applications/{applicationId}/disable";
+  url: '/api/admin/clients/{id}/applications/{applicationId}/disable';
 };
 
 export type DisableClientApplicationErrors = {
@@ -4056,7 +4022,7 @@ export type EnableClientApplicationData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/clients/{id}/applications/{applicationId}/enable";
+  url: '/api/admin/clients/{id}/applications/{applicationId}/enable';
 };
 
 export type EnableClientApplicationErrors = {
@@ -4097,7 +4063,7 @@ export type DeactivateClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/clients/{id}/deactivate";
+  url: '/api/admin/clients/{id}/deactivate';
 };
 
 export type DeactivateClientErrors = {
@@ -4119,8 +4085,7 @@ export type DeactivateClientErrors = {
   404: NotFoundResponse;
 };
 
-export type DeactivateClientError =
-  DeactivateClientErrors[keyof DeactivateClientErrors];
+export type DeactivateClientError = DeactivateClientErrors[keyof DeactivateClientErrors];
 
 export type DeactivateClientResponses = {
   /**
@@ -4129,8 +4094,7 @@ export type DeactivateClientResponses = {
   200: ClientStatusResponse;
 };
 
-export type DeactivateClientResponse =
-  DeactivateClientResponses[keyof DeactivateClientResponses];
+export type DeactivateClientResponse = DeactivateClientResponses[keyof DeactivateClientResponses];
 
 export type AddClientAuditNoteData = {
   body: AddNoteRequest;
@@ -4138,7 +4102,7 @@ export type AddClientAuditNoteData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/clients/{id}/notes";
+  url: '/api/admin/clients/{id}/notes';
 };
 
 export type AddClientAuditNoteErrors = {
@@ -4160,8 +4124,7 @@ export type AddClientAuditNoteErrors = {
   404: NotFoundResponse;
 };
 
-export type AddClientAuditNoteError =
-  AddClientAuditNoteErrors[keyof AddClientAuditNoteErrors];
+export type AddClientAuditNoteError = AddClientAuditNoteErrors[keyof AddClientAuditNoteErrors];
 
 export type AddClientAuditNoteResponses = {
   /**
@@ -4179,7 +4142,7 @@ export type SuspendClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/clients/{id}/suspend";
+  url: '/api/admin/clients/{id}/suspend';
 };
 
 export type SuspendClientErrors = {
@@ -4210,8 +4173,7 @@ export type SuspendClientResponses = {
   200: ClientStatusResponse;
 };
 
-export type SuspendClientResponse =
-  SuspendClientResponses[keyof SuspendClientResponses];
+export type SuspendClientResponse = SuspendClientResponses[keyof SuspendClientResponses];
 
 export type GetApiAdminConfigAccessByAppCodeData = {
   body?: never;
@@ -4219,7 +4181,7 @@ export type GetApiAdminConfigAccessByAppCodeData = {
     appCode: string;
   };
   query?: never;
-  url: "/api/admin/config-access/{appCode}";
+  url: '/api/admin/config-access/{appCode}';
 };
 
 export type GetApiAdminConfigAccessByAppCodeErrors = {
@@ -4242,7 +4204,7 @@ export type PostApiAdminConfigAccessByAppCodeData = {
     appCode: string;
   };
   query?: never;
-  url: "/api/admin/config-access/{appCode}";
+  url: '/api/admin/config-access/{appCode}';
 };
 
 export type PostApiAdminConfigAccessByAppCodeErrors = {
@@ -4274,7 +4236,7 @@ export type DeleteApiAdminConfigAccessByAppCodeByRoleCodeData = {
     roleCode: string;
   };
   query?: never;
-  url: "/api/admin/config-access/{appCode}/{roleCode}";
+  url: '/api/admin/config-access/{appCode}/{roleCode}';
 };
 
 export type DeleteApiAdminConfigAccessByAppCodeByRoleCodeErrors = {
@@ -4305,7 +4267,7 @@ export type PutApiAdminConfigAccessByAppCodeByRoleCodeData = {
     roleCode: string;
   };
   query?: never;
-  url: "/api/admin/config-access/{appCode}/{roleCode}";
+  url: '/api/admin/config-access/{appCode}/{roleCode}';
 };
 
 export type PutApiAdminConfigAccessByAppCodeByRoleCodeErrors = {
@@ -4339,7 +4301,7 @@ export type GetApiAdminConfigByAppCodeData = {
     clientId?: string;
     scope?: ConfigScope & unknown;
   };
-  url: "/api/admin/config/{appCode}";
+  url: '/api/admin/config/{appCode}';
 };
 
 export type GetApiAdminConfigByAppCodeErrors = {
@@ -4366,7 +4328,7 @@ export type GetApiAdminConfigByAppCodeBySectionData = {
     clientId?: string;
     scope?: ConfigScope & unknown;
   };
-  url: "/api/admin/config/{appCode}/{section}";
+  url: '/api/admin/config/{appCode}/{section}';
 };
 
 export type GetApiAdminConfigByAppCodeBySectionErrors = {
@@ -4394,7 +4356,7 @@ export type DeleteApiAdminConfigByAppCodeBySectionByPropertyData = {
     clientId?: string;
     scope?: ConfigScope & unknown;
   };
-  url: "/api/admin/config/{appCode}/{section}/{property}";
+  url: '/api/admin/config/{appCode}/{section}/{property}';
 };
 
 export type DeleteApiAdminConfigByAppCodeBySectionByPropertyErrors = {
@@ -4429,7 +4391,7 @@ export type GetApiAdminConfigByAppCodeBySectionByPropertyData = {
     clientId?: string;
     scope?: ConfigScope & unknown;
   };
-  url: "/api/admin/config/{appCode}/{section}/{property}";
+  url: '/api/admin/config/{appCode}/{section}/{property}';
 };
 
 export type GetApiAdminConfigByAppCodeBySectionByPropertyErrors = {
@@ -4461,7 +4423,7 @@ export type PutApiAdminConfigByAppCodeBySectionByPropertyData = {
     clientId?: string;
     scope?: ConfigScope & unknown;
   };
-  url: "/api/admin/config/{appCode}/{section}/{property}";
+  url: '/api/admin/config/{appCode}/{section}/{property}';
 };
 
 export type PutApiAdminConfigByAppCodeBySectionByPropertyErrors = {
@@ -4503,7 +4465,7 @@ export type GetApiAdminDispatchPoolsData = {
      */
     status?: DispatchPoolStatus;
   };
-  url: "/api/admin/dispatch-pools";
+  url: '/api/admin/dispatch-pools';
 };
 
 export type GetApiAdminDispatchPoolsErrors = {
@@ -4531,7 +4493,7 @@ export type PostApiAdminDispatchPoolsData = {
   body: CreateDispatchPoolRequest;
   path?: never;
   query?: never;
-  url: "/api/admin/dispatch-pools";
+  url: '/api/admin/dispatch-pools';
 };
 
 export type PostApiAdminDispatchPoolsErrors = {
@@ -4565,7 +4527,7 @@ export type DeleteApiAdminDispatchPoolsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/dispatch-pools/{id}";
+  url: '/api/admin/dispatch-pools/{id}';
 };
 
 export type DeleteApiAdminDispatchPoolsByIdErrors = {
@@ -4600,7 +4562,7 @@ export type GetApiAdminDispatchPoolsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/dispatch-pools/{id}";
+  url: '/api/admin/dispatch-pools/{id}';
 };
 
 export type GetApiAdminDispatchPoolsByIdErrors = {
@@ -4634,7 +4596,7 @@ export type PutApiAdminDispatchPoolsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/dispatch-pools/{id}";
+  url: '/api/admin/dispatch-pools/{id}';
 };
 
 export type PutApiAdminDispatchPoolsByIdErrors = {
@@ -4672,7 +4634,7 @@ export type PostApiAdminDispatchPoolsByIdActivateData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/dispatch-pools/{id}/activate";
+  url: '/api/admin/dispatch-pools/{id}/activate';
 };
 
 export type PostApiAdminDispatchPoolsByIdActivateErrors = {
@@ -4703,7 +4665,7 @@ export type PostApiAdminDispatchPoolsByIdSuspendData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/dispatch-pools/{id}/suspend";
+  url: '/api/admin/dispatch-pools/{id}/suspend';
 };
 
 export type PostApiAdminDispatchPoolsByIdSuspendErrors = {
@@ -4735,7 +4697,7 @@ export type ListEmailDomainMappingsData = {
     identityProviderId?: string;
     scopeType?: string;
   };
-  url: "/api/admin/email-domain-mappings";
+  url: '/api/admin/email-domain-mappings';
 };
 
 export type ListEmailDomainMappingsErrors = {
@@ -4759,7 +4721,7 @@ export type CreateEmailDomainMappingData = {
   body: CreateEmailDomainMappingRequest;
   path?: never;
   query?: never;
-  url: "/api/admin/email-domain-mappings";
+  url: '/api/admin/email-domain-mappings';
 };
 
 export type CreateEmailDomainMappingErrors = {
@@ -4793,7 +4755,7 @@ export type GetEmailDomainMappingByDomainData = {
     domain: string;
   };
   query?: never;
-  url: "/api/admin/email-domain-mappings/by-domain/{domain}";
+  url: '/api/admin/email-domain-mappings/by-domain/{domain}';
 };
 
 export type GetEmailDomainMappingByDomainErrors = {
@@ -4819,7 +4781,7 @@ export type DeleteEmailDomainMappingData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/email-domain-mappings/{id}";
+  url: '/api/admin/email-domain-mappings/{id}';
 };
 
 export type DeleteEmailDomainMappingErrors = {
@@ -4845,7 +4807,7 @@ export type GetEmailDomainMappingData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/email-domain-mappings/{id}";
+  url: '/api/admin/email-domain-mappings/{id}';
 };
 
 export type GetEmailDomainMappingErrors = {
@@ -4871,7 +4833,7 @@ export type UpdateEmailDomainMappingData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/email-domain-mappings/{id}";
+  url: '/api/admin/email-domain-mappings/{id}';
 };
 
 export type UpdateEmailDomainMappingErrors = {
@@ -4901,7 +4863,7 @@ export type ListIdentityProvidersData = {
   query?: {
     type?: string;
   };
-  url: "/api/admin/identity-providers";
+  url: '/api/admin/identity-providers';
 };
 
 export type ListIdentityProvidersErrors = {
@@ -4925,7 +4887,7 @@ export type CreateIdentityProviderData = {
   body: CreateIdentityProviderRequest;
   path?: never;
   query?: never;
-  url: "/api/admin/identity-providers";
+  url: '/api/admin/identity-providers';
 };
 
 export type CreateIdentityProviderErrors = {
@@ -4955,7 +4917,7 @@ export type GetIdentityProviderByCodeData = {
     code: string;
   };
   query?: never;
-  url: "/api/admin/identity-providers/by-code/{code}";
+  url: '/api/admin/identity-providers/by-code/{code}';
 };
 
 export type GetIdentityProviderByCodeErrors = {
@@ -4981,7 +4943,7 @@ export type DeleteIdentityProviderData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/identity-providers/{id}";
+  url: '/api/admin/identity-providers/{id}';
 };
 
 export type DeleteIdentityProviderErrors = {
@@ -5011,7 +4973,7 @@ export type GetIdentityProviderData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/identity-providers/{id}";
+  url: '/api/admin/identity-providers/{id}';
 };
 
 export type GetIdentityProviderErrors = {
@@ -5037,7 +4999,7 @@ export type UpdateIdentityProviderData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/identity-providers/{id}";
+  url: '/api/admin/identity-providers/{id}';
 };
 
 export type UpdateIdentityProviderErrors = {
@@ -5074,7 +5036,7 @@ export type ListOAuthClientsData = {
      */
     applicationId?: string;
   };
-  url: "/api/admin/oauth-clients";
+  url: '/api/admin/oauth-clients';
 };
 
 export type ListOAuthClientsErrors = {
@@ -5091,14 +5053,13 @@ export type ListOAuthClientsResponses = {
   200: ClientListResponse2;
 };
 
-export type ListOAuthClientsResponse =
-  ListOAuthClientsResponses[keyof ListOAuthClientsResponses];
+export type ListOAuthClientsResponse = ListOAuthClientsResponses[keyof ListOAuthClientsResponses];
 
 export type CreateOAuthClientData = {
   body: CreateClientRequest2;
   path?: never;
   query?: never;
-  url: "/api/admin/oauth-clients";
+  url: '/api/admin/oauth-clients';
 };
 
 export type CreateOAuthClientErrors = {
@@ -5124,7 +5085,7 @@ export type GetOAuthClientByClientIdData = {
     clientId: string;
   };
   query?: never;
-  url: "/api/admin/oauth-clients/by-client-id/{clientId}";
+  url: '/api/admin/oauth-clients/by-client-id/{clientId}';
 };
 
 export type GetOAuthClientByClientIdErrors = {
@@ -5147,7 +5108,7 @@ export type DeleteOAuthClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/oauth-clients/{id}";
+  url: '/api/admin/oauth-clients/{id}';
 };
 
 export type DeleteOAuthClientErrors = {
@@ -5173,7 +5134,7 @@ export type GetOAuthClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/oauth-clients/{id}";
+  url: '/api/admin/oauth-clients/{id}';
 };
 
 export type GetOAuthClientErrors = {
@@ -5190,8 +5151,7 @@ export type GetOAuthClientResponses = {
   200: ClientDto2;
 };
 
-export type GetOAuthClientResponse =
-  GetOAuthClientResponses[keyof GetOAuthClientResponses];
+export type GetOAuthClientResponse = GetOAuthClientResponses[keyof GetOAuthClientResponses];
 
 export type UpdateOAuthClientData = {
   body: UpdateClientRequest2;
@@ -5199,7 +5159,7 @@ export type UpdateOAuthClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/oauth-clients/{id}";
+  url: '/api/admin/oauth-clients/{id}';
 };
 
 export type UpdateOAuthClientErrors = {
@@ -5226,7 +5186,7 @@ export type ActivateOAuthClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/oauth-clients/{id}/activate";
+  url: '/api/admin/oauth-clients/{id}/activate';
 };
 
 export type ActivateOAuthClientErrors = {
@@ -5249,7 +5209,7 @@ export type DeactivateOAuthClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/oauth-clients/{id}/deactivate";
+  url: '/api/admin/oauth-clients/{id}/deactivate';
 };
 
 export type DeactivateOAuthClientErrors = {
@@ -5272,7 +5232,7 @@ export type RotateOAuthClientSecretData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/oauth-clients/{id}/rotate-secret";
+  url: '/api/admin/oauth-clients/{id}/rotate-secret';
 };
 
 export type RotateOAuthClientSecretErrors = {
@@ -5300,7 +5260,7 @@ export type ListCorsOriginsData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/api/admin/platform/cors";
+  url: '/api/admin/platform/cors';
 };
 
 export type ListCorsOriginsErrors = {
@@ -5314,8 +5274,7 @@ export type ListCorsOriginsErrors = {
   403: ForbiddenResponse;
 };
 
-export type ListCorsOriginsError =
-  ListCorsOriginsErrors[keyof ListCorsOriginsErrors];
+export type ListCorsOriginsError = ListCorsOriginsErrors[keyof ListCorsOriginsErrors];
 
 export type ListCorsOriginsResponses = {
   /**
@@ -5324,14 +5283,13 @@ export type ListCorsOriginsResponses = {
   200: CorsOriginListResponse;
 };
 
-export type ListCorsOriginsResponse =
-  ListCorsOriginsResponses[keyof ListCorsOriginsResponses];
+export type ListCorsOriginsResponse = ListCorsOriginsResponses[keyof ListCorsOriginsResponses];
 
 export type AddCorsOriginData = {
   body: CreateCorsOriginRequest;
   path?: never;
   query?: never;
-  url: "/api/admin/platform/cors";
+  url: '/api/admin/platform/cors';
 };
 
 export type AddCorsOriginErrors = {
@@ -5362,14 +5320,13 @@ export type AddCorsOriginResponses = {
   201: CorsOriginDto;
 };
 
-export type AddCorsOriginResponse =
-  AddCorsOriginResponses[keyof AddCorsOriginResponses];
+export type AddCorsOriginResponse = AddCorsOriginResponses[keyof AddCorsOriginResponses];
 
 export type GetAllowedCorsOriginsData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/api/admin/platform/cors/allowed";
+  url: '/api/admin/platform/cors/allowed';
 };
 
 export type GetAllowedCorsOriginsErrors = {
@@ -5402,7 +5359,7 @@ export type DeleteCorsOriginData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/platform/cors/{id}";
+  url: '/api/admin/platform/cors/{id}';
 };
 
 export type DeleteCorsOriginErrors = {
@@ -5424,8 +5381,7 @@ export type DeleteCorsOriginErrors = {
   404: NotFoundResponse;
 };
 
-export type DeleteCorsOriginError =
-  DeleteCorsOriginErrors[keyof DeleteCorsOriginErrors];
+export type DeleteCorsOriginError = DeleteCorsOriginErrors[keyof DeleteCorsOriginErrors];
 
 export type DeleteCorsOriginResponses = {
   /**
@@ -5434,8 +5390,7 @@ export type DeleteCorsOriginResponses = {
   200: CorsOriginDeletedResponse;
 };
 
-export type DeleteCorsOriginResponse =
-  DeleteCorsOriginResponses[keyof DeleteCorsOriginResponses];
+export type DeleteCorsOriginResponse = DeleteCorsOriginResponses[keyof DeleteCorsOriginResponses];
 
 export type GetCorsOriginData = {
   body?: never;
@@ -5443,7 +5398,7 @@ export type GetCorsOriginData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/platform/cors/{id}";
+  url: '/api/admin/platform/cors/{id}';
 };
 
 export type GetCorsOriginErrors = {
@@ -5470,8 +5425,7 @@ export type GetCorsOriginResponses = {
   200: CorsOriginDto;
 };
 
-export type GetCorsOriginResponse =
-  GetCorsOriginResponses[keyof GetCorsOriginResponses];
+export type GetCorsOriginResponse = GetCorsOriginResponses[keyof GetCorsOriginResponses];
 
 export type ListPrincipalsData = {
   body?: never;
@@ -5494,7 +5448,7 @@ export type ListPrincipalsData = {
      */
     type?: PrincipalType;
   };
-  url: "/api/admin/principals";
+  url: '/api/admin/principals';
 };
 
 export type ListPrincipalsErrors = {
@@ -5511,8 +5465,7 @@ export type ListPrincipalsResponses = {
   200: PrincipalListResponse1;
 };
 
-export type ListPrincipalsResponse =
-  ListPrincipalsResponses[keyof ListPrincipalsResponses];
+export type ListPrincipalsResponse = ListPrincipalsResponses[keyof ListPrincipalsResponses];
 
 export type CheckEmailDomainData = {
   body?: never;
@@ -5523,7 +5476,7 @@ export type CheckEmailDomainData = {
      */
     email?: string;
   };
-  url: "/api/admin/principals/check-email-domain";
+  url: '/api/admin/principals/check-email-domain';
 };
 
 export type CheckEmailDomainErrors = {
@@ -5540,14 +5493,13 @@ export type CheckEmailDomainResponses = {
   200: EmailDomainCheckResponse;
 };
 
-export type CheckEmailDomainResponse =
-  CheckEmailDomainResponses[keyof CheckEmailDomainResponses];
+export type CheckEmailDomainResponse = CheckEmailDomainResponses[keyof CheckEmailDomainResponses];
 
 export type CreateUserData = {
   body: CreateUserRequest1;
   path?: never;
   query?: never;
-  url: "/api/admin/principals/users";
+  url: '/api/admin/principals/users';
 };
 
 export type CreateUserErrors = {
@@ -5572,7 +5524,7 @@ export type GetPrincipalData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/principals/{id}";
+  url: '/api/admin/principals/{id}';
 };
 
 export type GetPrincipalErrors = {
@@ -5589,8 +5541,7 @@ export type GetPrincipalResponses = {
   200: PrincipalDetailDto;
 };
 
-export type GetPrincipalResponse =
-  GetPrincipalResponses[keyof GetPrincipalResponses];
+export type GetPrincipalResponse = GetPrincipalResponses[keyof GetPrincipalResponses];
 
 export type UpdatePrincipalData = {
   body: UpdatePrincipalRequest1;
@@ -5598,7 +5549,7 @@ export type UpdatePrincipalData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/principals/{id}";
+  url: '/api/admin/principals/{id}';
 };
 
 export type UpdatePrincipalErrors = {
@@ -5625,7 +5576,7 @@ export type ActivatePrincipalData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/principals/{id}/activate";
+  url: '/api/admin/principals/{id}/activate';
 };
 
 export type ActivatePrincipalErrors = {
@@ -5648,7 +5599,7 @@ export type GetPrincipalApplicationAccessData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/principals/{id}/application-access";
+  url: '/api/admin/principals/{id}/application-access';
 };
 
 export type GetPrincipalApplicationAccessErrors = {
@@ -5671,7 +5622,7 @@ export type AssignPrincipalApplicationAccessData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/principals/{id}/application-access";
+  url: '/api/admin/principals/{id}/application-access';
 };
 
 export type AssignPrincipalApplicationAccessErrors = {
@@ -5698,7 +5649,7 @@ export type GetPrincipalAvailableApplicationsData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/principals/{id}/available-applications";
+  url: '/api/admin/principals/{id}/available-applications';
 };
 
 export type GetPrincipalAvailableApplicationsErrors = {
@@ -5721,7 +5672,7 @@ export type GetPrincipalClientAccessData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/principals/{id}/client-access";
+  url: '/api/admin/principals/{id}/client-access';
 };
 
 export type GetPrincipalClientAccessErrors = {
@@ -5744,7 +5695,7 @@ export type GrantPrincipalClientAccessData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/principals/{id}/client-access";
+  url: '/api/admin/principals/{id}/client-access';
 };
 
 export type GrantPrincipalClientAccessErrors = {
@@ -5772,7 +5723,7 @@ export type RevokePrincipalClientAccessData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/principals/{id}/client-access/{clientId}";
+  url: '/api/admin/principals/{id}/client-access/{clientId}';
 };
 
 export type RevokePrincipalClientAccessErrors = {
@@ -5798,7 +5749,7 @@ export type DeactivatePrincipalData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/principals/{id}/deactivate";
+  url: '/api/admin/principals/{id}/deactivate';
 };
 
 export type DeactivatePrincipalErrors = {
@@ -5821,7 +5772,7 @@ export type ResetPrincipalPasswordData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/principals/{id}/reset-password";
+  url: '/api/admin/principals/{id}/reset-password';
 };
 
 export type ResetPrincipalPasswordErrors = {
@@ -5848,7 +5799,7 @@ export type GetPrincipalRolesData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/principals/{id}/roles";
+  url: '/api/admin/principals/{id}/roles';
 };
 
 export type GetPrincipalRolesErrors = {
@@ -5871,7 +5822,7 @@ export type AssignPrincipalRoleData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/principals/{id}/roles";
+  url: '/api/admin/principals/{id}/roles';
 };
 
 export type AssignPrincipalRoleErrors = {
@@ -5898,7 +5849,7 @@ export type AssignPrincipalRolesData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/principals/{id}/roles";
+  url: '/api/admin/principals/{id}/roles';
 };
 
 export type AssignPrincipalRolesErrors = {
@@ -5926,7 +5877,7 @@ export type RemovePrincipalRoleData = {
     roleName: string;
   };
   query?: never;
-  url: "/api/admin/principals/{id}/roles/{roleName}";
+  url: '/api/admin/principals/{id}/roles/{roleName}';
 };
 
 export type RemovePrincipalRoleErrors = {
@@ -5953,7 +5904,7 @@ export type ListRolesData = {
     application?: string;
     source?: string;
   };
-  url: "/api/admin/roles";
+  url: '/api/admin/roles';
 };
 
 export type ListRolesErrors = {
@@ -5986,7 +5937,7 @@ export type CreateRoleData = {
   body: CreateRoleRequest1;
   path?: never;
   query?: never;
-  url: "/api/admin/roles";
+  url: '/api/admin/roles';
 };
 
 export type CreateRoleErrors = {
@@ -6027,7 +5978,7 @@ export type ListPermissionsData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/api/admin/roles/permissions";
+  url: '/api/admin/roles/permissions';
 };
 
 export type ListPermissionsErrors = {
@@ -6041,8 +5992,7 @@ export type ListPermissionsErrors = {
   403: ForbiddenResponse;
 };
 
-export type ListPermissionsError =
-  ListPermissionsErrors[keyof ListPermissionsErrors];
+export type ListPermissionsError = ListPermissionsErrors[keyof ListPermissionsErrors];
 
 export type ListPermissionsResponses = {
   /**
@@ -6051,8 +6001,7 @@ export type ListPermissionsResponses = {
   200: PermissionListResponse;
 };
 
-export type ListPermissionsResponse =
-  ListPermissionsResponses[keyof ListPermissionsResponses];
+export type ListPermissionsResponse = ListPermissionsResponses[keyof ListPermissionsResponses];
 
 export type GetPermissionData = {
   body?: never;
@@ -6060,7 +6009,7 @@ export type GetPermissionData = {
     permission: string;
   };
   query?: never;
-  url: "/api/admin/roles/permissions/{permission}";
+  url: '/api/admin/roles/permissions/{permission}';
 };
 
 export type GetPermissionErrors = {
@@ -6087,8 +6036,7 @@ export type GetPermissionResponses = {
   200: PermissionDto;
 };
 
-export type GetPermissionResponse =
-  GetPermissionResponses[keyof GetPermissionResponses];
+export type GetPermissionResponse = GetPermissionResponses[keyof GetPermissionResponses];
 
 export type DeleteRoleData = {
   body?: never;
@@ -6096,7 +6044,7 @@ export type DeleteRoleData = {
     roleName: string;
   };
   query?: never;
-  url: "/api/admin/roles/{roleName}";
+  url: '/api/admin/roles/{roleName}';
 };
 
 export type DeleteRoleErrors = {
@@ -6135,7 +6083,7 @@ export type GetRoleData = {
     roleName: string;
   };
   query?: never;
-  url: "/api/admin/roles/{roleName}";
+  url: '/api/admin/roles/{roleName}';
 };
 
 export type GetRoleErrors = {
@@ -6170,7 +6118,7 @@ export type UpdateRoleData = {
     roleName: string;
   };
   query?: never;
-  url: "/api/admin/roles/{roleName}";
+  url: '/api/admin/roles/{roleName}';
 };
 
 export type UpdateRoleErrors = {
@@ -6220,7 +6168,7 @@ export type GetApiAdminServiceAccountsData = {
      */
     clientId?: string;
   };
-  url: "/api/admin/service-accounts";
+  url: '/api/admin/service-accounts';
 };
 
 export type GetApiAdminServiceAccountsErrors = {
@@ -6244,7 +6192,7 @@ export type PostApiAdminServiceAccountsData = {
   body: CreateServiceAccountRequest;
   path?: never;
   query?: never;
-  url: "/api/admin/service-accounts";
+  url: '/api/admin/service-accounts';
 };
 
 export type PostApiAdminServiceAccountsErrors = {
@@ -6270,7 +6218,7 @@ export type GetApiAdminServiceAccountsCodeByCodeData = {
     code: string;
   };
   query?: never;
-  url: "/api/admin/service-accounts/code/{code}";
+  url: '/api/admin/service-accounts/code/{code}';
 };
 
 export type GetApiAdminServiceAccountsCodeByCodeResponses = {
@@ -6286,7 +6234,7 @@ export type DeleteApiAdminServiceAccountsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/service-accounts/{id}";
+  url: '/api/admin/service-accounts/{id}';
 };
 
 export type DeleteApiAdminServiceAccountsByIdResponses = {
@@ -6302,7 +6250,7 @@ export type GetApiAdminServiceAccountsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/service-accounts/{id}";
+  url: '/api/admin/service-accounts/{id}';
 };
 
 export type GetApiAdminServiceAccountsByIdErrors = {
@@ -6328,7 +6276,7 @@ export type PutApiAdminServiceAccountsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/service-accounts/{id}";
+  url: '/api/admin/service-accounts/{id}';
 };
 
 export type PutApiAdminServiceAccountsByIdErrors = {
@@ -6351,7 +6299,7 @@ export type PutApiAdminServiceAccountsByIdAuthTokenData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/service-accounts/{id}/auth-token";
+  url: '/api/admin/service-accounts/{id}/auth-token';
 };
 
 export type PutApiAdminServiceAccountsByIdAuthTokenErrors = {
@@ -6374,7 +6322,7 @@ export type PostApiAdminServiceAccountsByIdRegenerateSecretData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/service-accounts/{id}/regenerate-secret";
+  url: '/api/admin/service-accounts/{id}/regenerate-secret';
 };
 
 export type PostApiAdminServiceAccountsByIdRegenerateSecretResponses = {
@@ -6390,7 +6338,7 @@ export type PostApiAdminServiceAccountsByIdRegenerateTokenData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/service-accounts/{id}/regenerate-token";
+  url: '/api/admin/service-accounts/{id}/regenerate-token';
 };
 
 export type PostApiAdminServiceAccountsByIdRegenerateTokenResponses = {
@@ -6406,7 +6354,7 @@ export type GetApiAdminServiceAccountsByIdRolesData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/service-accounts/{id}/roles";
+  url: '/api/admin/service-accounts/{id}/roles';
 };
 
 export type GetApiAdminServiceAccountsByIdRolesResponses = {
@@ -6422,7 +6370,7 @@ export type PutApiAdminServiceAccountsByIdRolesData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/service-accounts/{id}/roles";
+  url: '/api/admin/service-accounts/{id}/roles';
 };
 
 export type PutApiAdminServiceAccountsByIdRolesErrors = {
@@ -6464,7 +6412,7 @@ export type GetApiAdminSubscriptionsData = {
      */
     status?: SubscriptionStatus;
   };
-  url: "/api/admin/subscriptions";
+  url: '/api/admin/subscriptions';
 };
 
 export type GetApiAdminSubscriptionsErrors = {
@@ -6492,7 +6440,7 @@ export type PostApiAdminSubscriptionsData = {
   body: CreateSubscriptionRequest;
   path?: never;
   query?: never;
-  url: "/api/admin/subscriptions";
+  url: '/api/admin/subscriptions';
 };
 
 export type PostApiAdminSubscriptionsErrors = {
@@ -6526,7 +6474,7 @@ export type DeleteApiAdminSubscriptionsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/subscriptions/{id}";
+  url: '/api/admin/subscriptions/{id}';
 };
 
 export type DeleteApiAdminSubscriptionsByIdErrors = {
@@ -6557,7 +6505,7 @@ export type GetApiAdminSubscriptionsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/subscriptions/{id}";
+  url: '/api/admin/subscriptions/{id}';
 };
 
 export type GetApiAdminSubscriptionsByIdErrors = {
@@ -6591,7 +6539,7 @@ export type PutApiAdminSubscriptionsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/subscriptions/{id}";
+  url: '/api/admin/subscriptions/{id}';
 };
 
 export type PutApiAdminSubscriptionsByIdErrors = {
@@ -6629,7 +6577,7 @@ export type PostApiAdminSubscriptionsByIdPauseData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/subscriptions/{id}/pause";
+  url: '/api/admin/subscriptions/{id}/pause';
 };
 
 export type PostApiAdminSubscriptionsByIdPauseErrors = {
@@ -6660,7 +6608,7 @@ export type PostApiAdminSubscriptionsByIdResumeData = {
     id: string;
   };
   query?: never;
-  url: "/api/admin/subscriptions/{id}/resume";
+  url: '/api/admin/subscriptions/{id}/resume';
 };
 
 export type PostApiAdminSubscriptionsByIdResumeErrors = {
@@ -6691,7 +6639,7 @@ export type ListAppsData = {
   query?: {
     activeOnly?: boolean;
   };
-  url: "/api/applications";
+  url: '/api/applications';
 };
 
 export type ListAppsResponses = {
@@ -6707,7 +6655,7 @@ export type CreateAppData = {
   body: CreateApplicationRequest1;
   path?: never;
   query?: never;
-  url: "/api/applications";
+  url: '/api/applications';
 };
 
 export type CreateAppErrors = {
@@ -6736,7 +6684,7 @@ export type GetAppByCodeData = {
     code: string;
   };
   query?: never;
-  url: "/api/applications/code/{code}";
+  url: '/api/applications/code/{code}';
 };
 
 export type GetAppByCodeErrors = {
@@ -6753,8 +6701,7 @@ export type GetAppByCodeResponses = {
   200: ApplicationResponse1;
 };
 
-export type GetAppByCodeResponse =
-  GetAppByCodeResponses[keyof GetAppByCodeResponses];
+export type GetAppByCodeResponse = GetAppByCodeResponses[keyof GetAppByCodeResponses];
 
 export type ListApplicationDispatchPoolsData = {
   body?: never;
@@ -6764,7 +6711,7 @@ export type ListApplicationDispatchPoolsData = {
   query?: {
     status?: string;
   };
-  url: "/api/applications/{appCode}/dispatch-pools";
+  url: '/api/applications/{appCode}/dispatch-pools';
 };
 
 export type ListApplicationDispatchPoolsErrors = {
@@ -6792,7 +6739,7 @@ export type SyncApplicationDispatchPoolsData = {
   query?: {
     removeUnlisted?: boolean;
   };
-  url: "/api/applications/{appCode}/dispatch-pools/sync";
+  url: '/api/applications/{appCode}/dispatch-pools/sync';
 };
 
 export type SyncApplicationDispatchPoolsErrors = {
@@ -6824,7 +6771,7 @@ export type ListApplicationEventTypesData = {
   query?: {
     source?: string;
   };
-  url: "/api/applications/{appCode}/event-types";
+  url: '/api/applications/{appCode}/event-types';
 };
 
 export type ListApplicationEventTypesErrors = {
@@ -6852,7 +6799,7 @@ export type SyncApplicationEventTypesData = {
   query?: {
     removeUnlisted?: boolean;
   };
-  url: "/api/applications/{appCode}/event-types/sync";
+  url: '/api/applications/{appCode}/event-types/sync';
 };
 
 export type SyncApplicationEventTypesErrors = {
@@ -6884,7 +6831,7 @@ export type ListApplicationRolesData = {
   query?: {
     source?: string;
   };
-  url: "/api/applications/{appCode}/roles";
+  url: '/api/applications/{appCode}/roles';
 };
 
 export type ListApplicationRolesErrors = {
@@ -6910,7 +6857,7 @@ export type CreateApplicationRoleData = {
     appCode: string;
   };
   query?: never;
-  url: "/api/applications/{appCode}/roles";
+  url: '/api/applications/{appCode}/roles';
 };
 
 export type CreateApplicationRoleErrors = {
@@ -6946,7 +6893,7 @@ export type SyncApplicationRolesData = {
   query?: {
     removeUnlisted?: boolean;
   };
-  url: "/api/applications/{appCode}/roles/sync";
+  url: '/api/applications/{appCode}/roles/sync';
 };
 
 export type SyncApplicationRolesErrors = {
@@ -6977,7 +6924,7 @@ export type DeleteApplicationRoleData = {
     roleName: string;
   };
   query?: never;
-  url: "/api/applications/{appCode}/roles/{roleName}";
+  url: '/api/applications/{appCode}/roles/{roleName}';
 };
 
 export type DeleteApplicationRoleErrors = {
@@ -7009,7 +6956,7 @@ export type ListApplicationSubscriptionsData = {
   query?: {
     source?: string;
   };
-  url: "/api/applications/{appCode}/subscriptions";
+  url: '/api/applications/{appCode}/subscriptions';
 };
 
 export type ListApplicationSubscriptionsErrors = {
@@ -7037,7 +6984,7 @@ export type SyncApplicationSubscriptionsData = {
   query?: {
     removeUnlisted?: boolean;
   };
-  url: "/api/applications/{appCode}/subscriptions/sync";
+  url: '/api/applications/{appCode}/subscriptions/sync';
 };
 
 export type SyncApplicationSubscriptionsErrors = {
@@ -7067,7 +7014,7 @@ export type DeleteAppData = {
     id: string;
   };
   query?: never;
-  url: "/api/applications/{id}";
+  url: '/api/applications/{id}';
 };
 
 export type DeleteAppErrors = {
@@ -7096,7 +7043,7 @@ export type GetAppData = {
     id: string;
   };
   query?: never;
-  url: "/api/applications/{id}";
+  url: '/api/applications/{id}';
 };
 
 export type GetAppErrors = {
@@ -7125,7 +7072,7 @@ export type UpdateAppData = {
     id: string;
   };
   query?: never;
-  url: "/api/applications/{id}";
+  url: '/api/applications/{id}';
 };
 
 export type UpdateAppErrors = {
@@ -7154,7 +7101,7 @@ export type ActivateAppData = {
     id: string;
   };
   query?: never;
-  url: "/api/applications/{id}/activate";
+  url: '/api/applications/{id}/activate';
 };
 
 export type ActivateAppErrors = {
@@ -7175,8 +7122,7 @@ export type ActivateAppResponses = {
   200: ApplicationResponse1;
 };
 
-export type ActivateAppResponse =
-  ActivateAppResponses[keyof ActivateAppResponses];
+export type ActivateAppResponse = ActivateAppResponses[keyof ActivateAppResponses];
 
 export type DeactivateAppData = {
   body?: never;
@@ -7184,7 +7130,7 @@ export type DeactivateAppData = {
     id: string;
   };
   query?: never;
-  url: "/api/applications/{id}/deactivate";
+  url: '/api/applications/{id}/deactivate';
 };
 
 export type DeactivateAppErrors = {
@@ -7205,8 +7151,7 @@ export type DeactivateAppResponses = {
   200: ApplicationResponse1;
 };
 
-export type DeactivateAppResponse =
-  DeactivateAppResponses[keyof DeactivateAppResponses];
+export type DeactivateAppResponse = DeactivateAppResponses[keyof DeactivateAppResponses];
 
 export type GetApiBffDebugDispatchJobsData = {
   body?: never;
@@ -7215,7 +7160,7 @@ export type GetApiBffDebugDispatchJobsData = {
     page?: number;
     size?: number;
   };
-  url: "/api/bff/debug/dispatch-jobs";
+  url: '/api/bff/debug/dispatch-jobs';
 };
 
 export type GetApiBffDebugDispatchJobsResponses = {
@@ -7234,7 +7179,7 @@ export type GetApiBffDebugDispatchJobsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/bff/debug/dispatch-jobs/{id}";
+  url: '/api/bff/debug/dispatch-jobs/{id}';
 };
 
 export type GetApiBffDebugDispatchJobsByIdErrors = {
@@ -7258,7 +7203,7 @@ export type GetApiBffDebugEventsData = {
     page?: number;
     size?: number;
   };
-  url: "/api/bff/debug/events";
+  url: '/api/bff/debug/events';
 };
 
 export type GetApiBffDebugEventsResponses = {
@@ -7277,7 +7222,7 @@ export type GetApiBffDebugEventsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/bff/debug/events/{id}";
+  url: '/api/bff/debug/events/{id}';
 };
 
 export type GetApiBffDebugEventsByIdErrors = {
@@ -7314,7 +7259,7 @@ export type GetApiBffDispatchJobsData = {
     subdomains?: string;
     subscriptionId?: string;
   };
-  url: "/api/bff/dispatch-jobs";
+  url: '/api/bff/dispatch-jobs';
 };
 
 export type GetApiBffDispatchJobsResponses = {
@@ -7336,7 +7281,7 @@ export type GetApiBffDispatchJobsFilterOptionsData = {
     clientIds?: string;
     subdomains?: string;
   };
-  url: "/api/bff/dispatch-jobs/filter-options";
+  url: '/api/bff/dispatch-jobs/filter-options';
 };
 
 export type GetApiBffDispatchJobsFilterOptionsResponses = {
@@ -7355,7 +7300,7 @@ export type GetApiBffDispatchJobsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/bff/dispatch-jobs/{id}";
+  url: '/api/bff/dispatch-jobs/{id}';
 };
 
 export type GetApiBffDispatchJobsByIdErrors = {
@@ -7390,7 +7335,7 @@ export type GetApiBffEventsData = {
     timeBefore?: Instant;
     types?: string;
   };
-  url: "/api/bff/events";
+  url: '/api/bff/events';
 };
 
 export type GetApiBffEventsResponses = {
@@ -7400,8 +7345,7 @@ export type GetApiBffEventsResponses = {
   200: PagedEventResponse;
 };
 
-export type GetApiBffEventsResponse =
-  GetApiBffEventsResponses[keyof GetApiBffEventsResponses];
+export type GetApiBffEventsResponse = GetApiBffEventsResponses[keyof GetApiBffEventsResponses];
 
 export type GetApiBffEventsFilterOptionsData = {
   body?: never;
@@ -7412,7 +7356,7 @@ export type GetApiBffEventsFilterOptionsData = {
     clientIds?: string;
     subdomains?: string;
   };
-  url: "/api/bff/events/filter-options";
+  url: '/api/bff/events/filter-options';
 };
 
 export type GetApiBffEventsFilterOptionsResponses = {
@@ -7431,7 +7375,7 @@ export type GetApiBffEventsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/bff/events/{id}";
+  url: '/api/bff/events/{id}';
 };
 
 export type GetApiBffEventsByIdErrors = {
@@ -7452,7 +7396,7 @@ export type GetApiClientsData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/api/clients";
+  url: '/api/clients';
 };
 
 export type GetApiClientsErrors = {
@@ -7469,8 +7413,7 @@ export type GetApiClientsResponses = {
   200: ClientListResponse3;
 };
 
-export type GetApiClientsResponse =
-  GetApiClientsResponses[keyof GetApiClientsResponses];
+export type GetApiClientsResponse = GetApiClientsResponses[keyof GetApiClientsResponses];
 
 export type GetApiClientsByIdData = {
   body?: never;
@@ -7478,7 +7421,7 @@ export type GetApiClientsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/clients/{id}";
+  url: '/api/clients/{id}';
 };
 
 export type GetApiClientsByIdErrors = {
@@ -7516,7 +7459,7 @@ export type GetApiClientsByIdApplicationsData = {
     id: string;
   };
   query?: never;
-  url: "/api/clients/{id}/applications";
+  url: '/api/clients/{id}/applications';
 };
 
 export type GetApiClientsByIdApplicationsErrors = {
@@ -7552,7 +7495,7 @@ export type GetApiConfigPlatformData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/api/config/platform";
+  url: '/api/config/platform';
 };
 
 export type GetApiConfigPlatformResponses = {
@@ -7582,7 +7525,7 @@ export type GetApiDispatchJobsData = {
     status?: DispatchStatus;
     subscriptionId?: string;
   };
-  url: "/api/dispatch/jobs";
+  url: '/api/dispatch/jobs';
 };
 
 export type GetApiDispatchJobsResponses = {
@@ -7599,7 +7542,7 @@ export type PostApiDispatchJobsData = {
   body: CreateDispatchJobRequest;
   path?: never;
   query?: never;
-  url: "/api/dispatch/jobs";
+  url: '/api/dispatch/jobs';
 };
 
 export type PostApiDispatchJobsErrors = {
@@ -7613,8 +7556,7 @@ export type PostApiDispatchJobsErrors = {
   500: ErrorResponse4;
 };
 
-export type PostApiDispatchJobsError =
-  PostApiDispatchJobsErrors[keyof PostApiDispatchJobsErrors];
+export type PostApiDispatchJobsError = PostApiDispatchJobsErrors[keyof PostApiDispatchJobsErrors];
 
 export type PostApiDispatchJobsResponses = {
   /**
@@ -7630,7 +7572,7 @@ export type PostApiDispatchJobsBatchData = {
   body: Array<CreateDispatchJobRequest>;
   path?: never;
   query?: never;
-  url: "/api/dispatch/jobs/batch";
+  url: '/api/dispatch/jobs/batch';
 };
 
 export type PostApiDispatchJobsBatchErrors = {
@@ -7663,7 +7605,7 @@ export type GetApiDispatchJobsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/dispatch/jobs/{id}";
+  url: '/api/dispatch/jobs/{id}';
 };
 
 export type GetApiDispatchJobsByIdErrors = {
@@ -7692,7 +7634,7 @@ export type GetApiDispatchJobsByIdAttemptsData = {
     id: string;
   };
   query?: never;
-  url: "/api/dispatch/jobs/{id}/attempts";
+  url: '/api/dispatch/jobs/{id}/attempts';
 };
 
 export type GetApiDispatchJobsByIdAttemptsErrors = {
@@ -7719,7 +7661,7 @@ export type PostApiDispatchProcessData = {
   body: ProcessRequest;
   path?: never;
   query?: never;
-  url: "/api/dispatch/process";
+  url: '/api/dispatch/process';
 };
 
 export type PostApiDispatchProcessErrors = {
@@ -7759,7 +7701,7 @@ export type GetApiEventTypesData = {
     status?: EventTypeStatus;
     subdomain?: Array<string>;
   };
-  url: "/api/event-types";
+  url: '/api/event-types';
 };
 
 export type GetApiEventTypesResponses = {
@@ -7769,14 +7711,13 @@ export type GetApiEventTypesResponses = {
   200: EventTypeListResponse;
 };
 
-export type GetApiEventTypesResponse =
-  GetApiEventTypesResponses[keyof GetApiEventTypesResponses];
+export type GetApiEventTypesResponse = GetApiEventTypesResponses[keyof GetApiEventTypesResponses];
 
 export type PostApiEventTypesData = {
   body: CreateEventTypeRequest;
   path?: never;
   query?: never;
-  url: "/api/event-types";
+  url: '/api/event-types';
 };
 
 export type PostApiEventTypesErrors = {
@@ -7807,7 +7748,7 @@ export type GetApiEventTypesFiltersAggregatesData = {
     application?: Array<string>;
     subdomain?: Array<string>;
   };
-  url: "/api/event-types/filters/aggregates";
+  url: '/api/event-types/filters/aggregates';
 };
 
 export type GetApiEventTypesFiltersAggregatesResponses = {
@@ -7824,7 +7765,7 @@ export type GetApiEventTypesFiltersApplicationsData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/api/event-types/filters/applications";
+  url: '/api/event-types/filters/applications';
 };
 
 export type GetApiEventTypesFiltersApplicationsResponses = {
@@ -7843,7 +7784,7 @@ export type GetApiEventTypesFiltersSubdomainsData = {
   query?: {
     application?: Array<string>;
   };
-  url: "/api/event-types/filters/subdomains";
+  url: '/api/event-types/filters/subdomains';
 };
 
 export type GetApiEventTypesFiltersSubdomainsResponses = {
@@ -7862,7 +7803,7 @@ export type DeleteApiEventTypesByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/event-types/{id}";
+  url: '/api/event-types/{id}';
 };
 
 export type DeleteApiEventTypesByIdErrors = {
@@ -7892,7 +7833,7 @@ export type GetApiEventTypesByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/event-types/{id}";
+  url: '/api/event-types/{id}';
 };
 
 export type GetApiEventTypesByIdErrors = {
@@ -7918,7 +7859,7 @@ export type PatchApiEventTypesByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/event-types/{id}";
+  url: '/api/event-types/{id}';
 };
 
 export type PatchApiEventTypesByIdErrors = {
@@ -7948,7 +7889,7 @@ export type PostApiEventTypesByIdArchiveData = {
     id: string;
   };
   query?: never;
-  url: "/api/event-types/{id}/archive";
+  url: '/api/event-types/{id}/archive';
 };
 
 export type PostApiEventTypesByIdArchiveErrors = {
@@ -7978,7 +7919,7 @@ export type PostApiEventTypesByIdSchemasData = {
     id: string;
   };
   query?: never;
-  url: "/api/event-types/{id}/schemas";
+  url: '/api/event-types/{id}/schemas';
 };
 
 export type PostApiEventTypesByIdSchemasErrors = {
@@ -8013,7 +7954,7 @@ export type PostApiEventTypesByIdSchemasByVersionDeprecateData = {
     version: string;
   };
   query?: never;
-  url: "/api/event-types/{id}/schemas/{version}/deprecate";
+  url: '/api/event-types/{id}/schemas/{version}/deprecate';
 };
 
 export type PostApiEventTypesByIdSchemasByVersionDeprecateErrors = {
@@ -8044,7 +7985,7 @@ export type PostApiEventTypesByIdSchemasByVersionFinaliseData = {
     version: string;
   };
   query?: never;
-  url: "/api/event-types/{id}/schemas/{version}/finalise";
+  url: '/api/event-types/{id}/schemas/{version}/finalise';
 };
 
 export type PostApiEventTypesByIdSchemasByVersionFinaliseErrors = {
@@ -8072,7 +8013,7 @@ export type PostApiEventsData = {
   body: CreateEventRequest;
   path?: never;
   query?: never;
-  url: "/api/events";
+  url: '/api/events';
 };
 
 export type PostApiEventsErrors = {
@@ -8093,14 +8034,13 @@ export type PostApiEventsResponses = {
   201: CreateEventResponse;
 };
 
-export type PostApiEventsResponse =
-  PostApiEventsResponses[keyof PostApiEventsResponses];
+export type PostApiEventsResponse = PostApiEventsResponses[keyof PostApiEventsResponses];
 
 export type PostApiEventsBatchData = {
   body: Array<CreateEventRequest>;
   path?: never;
   query?: never;
-  url: "/api/events/batch";
+  url: '/api/events/batch';
 };
 
 export type PostApiEventsBatchErrors = {
@@ -8126,7 +8066,7 @@ export type GetApiEventsByIdData = {
     id: string;
   };
   query?: never;
-  url: "/api/events/{id}";
+  url: '/api/events/{id}';
 };
 
 export type GetApiEventsByIdErrors = {
@@ -8147,7 +8087,7 @@ export type GetApiHealthData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/api/health";
+  url: '/api/health';
 };
 
 export type GetApiHealthResponses = {
@@ -8157,14 +8097,13 @@ export type GetApiHealthResponses = {
   200: HealthResponse;
 };
 
-export type GetApiHealthResponse =
-  GetApiHealthResponses[keyof GetApiHealthResponses];
+export type GetApiHealthResponse = GetApiHealthResponses[keyof GetApiHealthResponses];
 
 export type GetMyClientsData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/api/me/clients";
+  url: '/api/me/clients';
 };
 
 export type GetMyClientsErrors = {
@@ -8183,8 +8122,7 @@ export type GetMyClientsResponses = {
   200: MyClientsResponse;
 };
 
-export type GetMyClientsResponse =
-  GetMyClientsResponses[keyof GetMyClientsResponses];
+export type GetMyClientsResponse = GetMyClientsResponses[keyof GetMyClientsResponses];
 
 export type GetMyClientData = {
   body?: never;
@@ -8192,7 +8130,7 @@ export type GetMyClientData = {
     clientId: string;
   };
   query?: never;
-  url: "/api/me/clients/{clientId}";
+  url: '/api/me/clients/{clientId}';
 };
 
 export type GetMyClientErrors = {
@@ -8219,8 +8157,7 @@ export type GetMyClientResponses = {
   200: MyClientDto;
 };
 
-export type GetMyClientResponse =
-  GetMyClientResponses[keyof GetMyClientResponses];
+export type GetMyClientResponse = GetMyClientResponses[keyof GetMyClientResponses];
 
 export type GetMyClientApplicationsData = {
   body?: never;
@@ -8228,7 +8165,7 @@ export type GetMyClientApplicationsData = {
     clientId: string;
   };
   query?: never;
-  url: "/api/me/clients/{clientId}/applications";
+  url: '/api/me/clients/{clientId}/applications';
 };
 
 export type GetMyClientApplicationsErrors = {
@@ -8265,7 +8202,7 @@ export type GetApiPublicLoginThemeData = {
   query?: {
     clientId?: string;
   };
-  url: "/api/public/login-theme";
+  url: '/api/public/login-theme';
 };
 
 export type GetApiPublicLoginThemeResponses = {
@@ -8278,18 +8215,18 @@ export type GetApiPublicLoginThemeResponses = {
 export type PostApiSampleWebhookData = {
   body: string;
   headers?: {
-    "X-FlowCatalyst-Causation-ID"?: string;
-    "X-FlowCatalyst-Code"?: string;
-    "X-FlowCatalyst-Correlation-ID"?: string;
-    "X-FlowCatalyst-ID"?: string;
-    "X-FlowCatalyst-Kind"?: string;
-    "X-FlowCatalyst-Signature"?: string;
-    "X-FlowCatalyst-Subject"?: string;
-    "X-FlowCatalyst-Timestamp"?: string;
+    'X-FlowCatalyst-Causation-ID'?: string;
+    'X-FlowCatalyst-Code'?: string;
+    'X-FlowCatalyst-Correlation-ID'?: string;
+    'X-FlowCatalyst-ID'?: string;
+    'X-FlowCatalyst-Kind'?: string;
+    'X-FlowCatalyst-Signature'?: string;
+    'X-FlowCatalyst-Subject'?: string;
+    'X-FlowCatalyst-Timestamp'?: string;
   };
   path?: never;
   query?: never;
-  url: "/api/sample/webhook";
+  url: '/api/sample/webhook';
 };
 
 export type PostApiSampleWebhookResponses = {
@@ -8302,11 +8239,11 @@ export type PostApiSampleWebhookResponses = {
 export type PostApiSampleWebhookFailPermanentData = {
   body: string;
   headers?: {
-    "X-FlowCatalyst-ID"?: string;
+    'X-FlowCatalyst-ID'?: string;
   };
   path?: never;
   query?: never;
-  url: "/api/sample/webhook/fail-permanent";
+  url: '/api/sample/webhook/fail-permanent';
 };
 
 export type PostApiSampleWebhookFailPermanentResponses = {
@@ -8319,11 +8256,11 @@ export type PostApiSampleWebhookFailPermanentResponses = {
 export type PostApiSampleWebhookFailTransientData = {
   body: string;
   headers?: {
-    "X-FlowCatalyst-ID"?: string;
+    'X-FlowCatalyst-ID'?: string;
   };
   path?: never;
   query?: never;
-  url: "/api/sample/webhook/fail-transient";
+  url: '/api/sample/webhook/fail-transient';
 };
 
 export type PostApiSampleWebhookFailTransientResponses = {
@@ -8336,11 +8273,11 @@ export type PostApiSampleWebhookFailTransientResponses = {
 export type PostApiSampleWebhookSlowData = {
   body: string;
   headers?: {
-    "X-FlowCatalyst-ID"?: string;
+    'X-FlowCatalyst-ID'?: string;
   };
   path?: never;
   query?: never;
-  url: "/api/sample/webhook/slow";
+  url: '/api/sample/webhook/slow';
 };
 
 export type PostApiSampleWebhookSlowResponses = {
@@ -8359,7 +8296,7 @@ export type SdkListClientsData = {
      */
     status?: ClientStatus;
   };
-  url: "/api/sdk/clients";
+  url: '/api/sdk/clients';
 };
 
 export type SdkListClientsErrors = {
@@ -8380,14 +8317,13 @@ export type SdkListClientsResponses = {
   200: ClientListResponse1;
 };
 
-export type SdkListClientsResponse =
-  SdkListClientsResponses[keyof SdkListClientsResponses];
+export type SdkListClientsResponse = SdkListClientsResponses[keyof SdkListClientsResponses];
 
 export type SdkCreateClientData = {
   body: CreateClientRequest1;
   path?: never;
   query?: never;
-  url: "/api/sdk/clients";
+  url: '/api/sdk/clients';
 };
 
 export type SdkCreateClientErrors = {
@@ -8412,8 +8348,7 @@ export type SdkCreateClientResponses = {
   201: ClientDto1;
 };
 
-export type SdkCreateClientResponse =
-  SdkCreateClientResponses[keyof SdkCreateClientResponses];
+export type SdkCreateClientResponse = SdkCreateClientResponses[keyof SdkCreateClientResponses];
 
 export type SdkGetClientData = {
   body?: never;
@@ -8421,7 +8356,7 @@ export type SdkGetClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/sdk/clients/{id}";
+  url: '/api/sdk/clients/{id}';
 };
 
 export type SdkGetClientErrors = {
@@ -8446,8 +8381,7 @@ export type SdkGetClientResponses = {
   200: ClientDto1;
 };
 
-export type SdkGetClientResponse =
-  SdkGetClientResponses[keyof SdkGetClientResponses];
+export type SdkGetClientResponse = SdkGetClientResponses[keyof SdkGetClientResponses];
 
 export type SdkUpdateClientData = {
   body: UpdateClientRequest1;
@@ -8455,7 +8389,7 @@ export type SdkUpdateClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/sdk/clients/{id}";
+  url: '/api/sdk/clients/{id}';
 };
 
 export type SdkUpdateClientErrors = {
@@ -8484,8 +8418,7 @@ export type SdkUpdateClientResponses = {
   200: ClientDto1;
 };
 
-export type SdkUpdateClientResponse =
-  SdkUpdateClientResponses[keyof SdkUpdateClientResponses];
+export type SdkUpdateClientResponse = SdkUpdateClientResponses[keyof SdkUpdateClientResponses];
 
 export type SdkActivateClientData = {
   body?: never;
@@ -8493,7 +8426,7 @@ export type SdkActivateClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/sdk/clients/{id}/activate";
+  url: '/api/sdk/clients/{id}/activate';
 };
 
 export type SdkActivateClientErrors = {
@@ -8527,7 +8460,7 @@ export type SdkDeactivateClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/sdk/clients/{id}/deactivate";
+  url: '/api/sdk/clients/{id}/deactivate';
 };
 
 export type SdkDeactivateClientErrors = {
@@ -8565,7 +8498,7 @@ export type SdkSuspendClientData = {
     id: string;
   };
   query?: never;
-  url: "/api/sdk/clients/{id}/suspend";
+  url: '/api/sdk/clients/{id}/suspend';
 };
 
 export type SdkSuspendClientErrors = {
@@ -8594,8 +8527,7 @@ export type SdkSuspendClientResponses = {
   200: StatusResponse;
 };
 
-export type SdkSuspendClientResponse =
-  SdkSuspendClientResponses[keyof SdkSuspendClientResponses];
+export type SdkSuspendClientResponse = SdkSuspendClientResponses[keyof SdkSuspendClientResponses];
 
 export type SdkListPrincipalsData = {
   body?: never;
@@ -8618,7 +8550,7 @@ export type SdkListPrincipalsData = {
      */
     type?: PrincipalType;
   };
-  url: "/api/sdk/principals";
+  url: '/api/sdk/principals';
 };
 
 export type SdkListPrincipalsErrors = {
@@ -8646,7 +8578,7 @@ export type SdkCreateServicePrincipalData = {
   body: CreateServicePrincipalRequest;
   path?: never;
   query?: never;
-  url: "/api/sdk/principals/service";
+  url: '/api/sdk/principals/service';
 };
 
 export type SdkCreateServicePrincipalErrors = {
@@ -8678,7 +8610,7 @@ export type SdkCreateUserPrincipalData = {
   body: CreateUserRequest;
   path?: never;
   query?: never;
-  url: "/api/sdk/principals/user";
+  url: '/api/sdk/principals/user';
 };
 
 export type SdkCreateUserPrincipalErrors = {
@@ -8712,7 +8644,7 @@ export type SdkGetPrincipalData = {
     id: string;
   };
   query?: never;
-  url: "/api/sdk/principals/{id}";
+  url: '/api/sdk/principals/{id}';
 };
 
 export type SdkGetPrincipalErrors = {
@@ -8737,8 +8669,7 @@ export type SdkGetPrincipalResponses = {
   200: PrincipalDto;
 };
 
-export type SdkGetPrincipalResponse =
-  SdkGetPrincipalResponses[keyof SdkGetPrincipalResponses];
+export type SdkGetPrincipalResponse = SdkGetPrincipalResponses[keyof SdkGetPrincipalResponses];
 
 export type SdkUpdatePrincipalData = {
   body: UpdatePrincipalRequest;
@@ -8746,7 +8677,7 @@ export type SdkUpdatePrincipalData = {
     id: string;
   };
   query?: never;
-  url: "/api/sdk/principals/{id}";
+  url: '/api/sdk/principals/{id}';
 };
 
 export type SdkUpdatePrincipalErrors = {
@@ -8784,7 +8715,7 @@ export type SdkActivatePrincipalData = {
     id: string;
   };
   query?: never;
-  url: "/api/sdk/principals/{id}/activate";
+  url: '/api/sdk/principals/{id}/activate';
 };
 
 export type SdkActivatePrincipalErrors = {
@@ -8818,7 +8749,7 @@ export type SdkGetPrincipalClientsData = {
     id: string;
   };
   query?: never;
-  url: "/api/sdk/principals/{id}/clients";
+  url: '/api/sdk/principals/{id}/clients';
 };
 
 export type SdkGetPrincipalClientsErrors = {
@@ -8853,7 +8784,7 @@ export type SdkRevokeClientAccessData = {
     id: string;
   };
   query?: never;
-  url: "/api/sdk/principals/{id}/clients/{clientId}";
+  url: '/api/sdk/principals/{id}/clients/{clientId}';
 };
 
 export type SdkRevokeClientAccessErrors = {
@@ -8888,7 +8819,7 @@ export type SdkGrantClientAccessData = {
     id: string;
   };
   query?: never;
-  url: "/api/sdk/principals/{id}/clients/{clientId}";
+  url: '/api/sdk/principals/{id}/clients/{clientId}';
 };
 
 export type SdkGrantClientAccessErrors = {
@@ -8926,7 +8857,7 @@ export type SdkDeactivatePrincipalData = {
     id: string;
   };
   query?: never;
-  url: "/api/sdk/principals/{id}/deactivate";
+  url: '/api/sdk/principals/{id}/deactivate';
 };
 
 export type SdkDeactivatePrincipalErrors = {
@@ -8960,7 +8891,7 @@ export type SdkGetPrincipalRolesData = {
     id: string;
   };
   query?: never;
-  url: "/api/sdk/principals/{id}/roles";
+  url: '/api/sdk/principals/{id}/roles';
 };
 
 export type SdkGetPrincipalRolesErrors = {
@@ -8994,7 +8925,7 @@ export type SdkAssignPrincipalRolesData = {
     id: string;
   };
   query?: never;
-  url: "/api/sdk/principals/{id}/roles";
+  url: '/api/sdk/principals/{id}/roles';
 };
 
 export type SdkAssignPrincipalRolesErrors = {
@@ -9033,7 +8964,7 @@ export type SdkRemovePrincipalRoleData = {
     roleName: string;
   };
   query?: never;
-  url: "/api/sdk/principals/{id}/roles/{roleName}";
+  url: '/api/sdk/principals/{id}/roles/{roleName}';
 };
 
 export type SdkRemovePrincipalRoleErrors = {
@@ -9068,7 +8999,7 @@ export type SdkAddPrincipalRoleData = {
     roleName: string;
   };
   query?: never;
-  url: "/api/sdk/principals/{id}/roles/{roleName}";
+  url: '/api/sdk/principals/{id}/roles/{roleName}';
 };
 
 export type SdkAddPrincipalRoleErrors = {
@@ -9113,7 +9044,7 @@ export type SdkListRolesData = {
      */
     source?: string;
   };
-  url: "/api/sdk/roles";
+  url: '/api/sdk/roles';
 };
 
 export type SdkListRolesErrors = {
@@ -9134,14 +9065,13 @@ export type SdkListRolesResponses = {
   200: RoleListResponse1;
 };
 
-export type SdkListRolesResponse =
-  SdkListRolesResponses[keyof SdkListRolesResponses];
+export type SdkListRolesResponse = SdkListRolesResponses[keyof SdkListRolesResponses];
 
 export type SdkCreateRoleData = {
   body: CreateRoleRequest;
   path?: never;
   query?: never;
-  url: "/api/sdk/roles";
+  url: '/api/sdk/roles';
 };
 
 export type SdkCreateRoleErrors = {
@@ -9174,8 +9104,7 @@ export type SdkCreateRoleResponses = {
   201: RoleDto;
 };
 
-export type SdkCreateRoleResponse =
-  SdkCreateRoleResponses[keyof SdkCreateRoleResponses];
+export type SdkCreateRoleResponse = SdkCreateRoleResponses[keyof SdkCreateRoleResponses];
 
 export type SdkDeleteRoleData = {
   body?: never;
@@ -9183,7 +9112,7 @@ export type SdkDeleteRoleData = {
     roleName: string;
   };
   query?: never;
-  url: "/api/sdk/roles/{roleName}";
+  url: '/api/sdk/roles/{roleName}';
 };
 
 export type SdkDeleteRoleErrors = {
@@ -9212,8 +9141,7 @@ export type SdkDeleteRoleResponses = {
   204: void;
 };
 
-export type SdkDeleteRoleResponse =
-  SdkDeleteRoleResponses[keyof SdkDeleteRoleResponses];
+export type SdkDeleteRoleResponse = SdkDeleteRoleResponses[keyof SdkDeleteRoleResponses];
 
 export type SdkGetRoleData = {
   body?: never;
@@ -9221,7 +9149,7 @@ export type SdkGetRoleData = {
     roleName: string;
   };
   query?: never;
-  url: "/api/sdk/roles/{roleName}";
+  url: '/api/sdk/roles/{roleName}';
 };
 
 export type SdkGetRoleErrors = {
@@ -9254,7 +9182,7 @@ export type SdkUpdateRoleData = {
     roleName: string;
   };
   query?: never;
-  url: "/api/sdk/roles/{roleName}";
+  url: '/api/sdk/roles/{roleName}';
 };
 
 export type SdkUpdateRoleErrors = {
@@ -9283,14 +9211,13 @@ export type SdkUpdateRoleResponses = {
   200: RoleDto;
 };
 
-export type SdkUpdateRoleResponse =
-  SdkUpdateRoleResponses[keyof SdkUpdateRoleResponses];
+export type SdkUpdateRoleResponse = SdkUpdateRoleResponses[keyof SdkUpdateRoleResponses];
 
 export type GetApiStatsData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/api/stats";
+  url: '/api/stats';
 };
 
 export type GetApiStatsResponses = {
@@ -9300,14 +9227,13 @@ export type GetApiStatsResponses = {
   200: PlatformStats;
 };
 
-export type GetApiStatsResponse =
-  GetApiStatsResponses[keyof GetApiStatsResponses];
+export type GetApiStatsResponse = GetApiStatsResponses[keyof GetApiStatsResponses];
 
 export type PostAuthCheckDomainData = {
   body: DomainCheckRequest;
   path?: never;
   query?: never;
-  url: "/auth/check-domain";
+  url: '/auth/check-domain';
 };
 
 export type PostAuthCheckDomainErrors = {
@@ -9331,7 +9257,7 @@ export type GetAuthClientAccessibleData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/auth/client/accessible";
+  url: '/auth/client/accessible';
 };
 
 export type GetAuthClientAccessibleErrors = {
@@ -9355,7 +9281,7 @@ export type GetAuthClientCurrentData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/auth/client/current";
+  url: '/auth/client/current';
 };
 
 export type GetAuthClientCurrentErrors = {
@@ -9376,7 +9302,7 @@ export type PostAuthClientSwitchData = {
   body: SwitchClientRequest;
   path?: never;
   query?: never;
-  url: "/auth/client/switch";
+  url: '/auth/client/switch';
 };
 
 export type PostAuthClientSwitchErrors = {
@@ -9408,7 +9334,7 @@ export type PostAuthLoginData = {
   body: LoginRequest;
   path?: never;
   query?: never;
-  url: "/auth/login";
+  url: '/auth/login';
 };
 
 export type PostAuthLoginErrors = {
@@ -9429,14 +9355,13 @@ export type PostAuthLoginResponses = {
   200: LoginResponse;
 };
 
-export type PostAuthLoginResponse =
-  PostAuthLoginResponses[keyof PostAuthLoginResponses];
+export type PostAuthLoginResponse = PostAuthLoginResponses[keyof PostAuthLoginResponses];
 
 export type PostAuthLogoutData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/auth/logout";
+  url: '/auth/logout';
 };
 
 export type PostAuthLogoutResponses = {
@@ -9450,7 +9375,7 @@ export type GetAuthMeData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/auth/me";
+  url: '/auth/me';
 };
 
 export type GetAuthMeErrors = {
@@ -9478,7 +9403,7 @@ export type GetAuthOidcCallbackData = {
     error_description?: string;
     state?: string;
   };
-  url: "/auth/oidc/callback";
+  url: '/auth/oidc/callback';
 };
 
 export type GetAuthOidcCallbackResponses = {
@@ -9508,7 +9433,7 @@ export type GetAuthOidcLoginData = {
      */
     return_url?: string;
   };
-  url: "/auth/oidc/login";
+  url: '/auth/oidc/login';
 };
 
 export type GetAuthOidcLoginResponses = {
@@ -9527,7 +9452,7 @@ export type GetBffEventTypesData = {
     status?: EventTypeStatus;
     subdomain?: Array<string>;
   };
-  url: "/bff/event-types";
+  url: '/bff/event-types';
 };
 
 export type GetBffEventTypesResponses = {
@@ -9541,7 +9466,7 @@ export type PostBffEventTypesData = {
   body: CreateEventTypeRequest1;
   path?: never;
   query?: never;
-  url: "/bff/event-types";
+  url: '/bff/event-types';
 };
 
 export type PostBffEventTypesErrors = {
@@ -9565,7 +9490,7 @@ export type GetBffEventTypesFiltersAggregatesData = {
     application?: Array<string>;
     subdomain?: Array<string>;
   };
-  url: "/bff/event-types/filters/aggregates";
+  url: '/bff/event-types/filters/aggregates';
 };
 
 export type GetBffEventTypesFiltersAggregatesResponses = {
@@ -9579,7 +9504,7 @@ export type GetBffEventTypesFiltersApplicationsData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/bff/event-types/filters/applications";
+  url: '/bff/event-types/filters/applications';
 };
 
 export type GetBffEventTypesFiltersApplicationsResponses = {
@@ -9595,7 +9520,7 @@ export type GetBffEventTypesFiltersSubdomainsData = {
   query?: {
     application?: Array<string>;
   };
-  url: "/bff/event-types/filters/subdomains";
+  url: '/bff/event-types/filters/subdomains';
 };
 
 export type GetBffEventTypesFiltersSubdomainsResponses = {
@@ -9611,7 +9536,7 @@ export type DeleteBffEventTypesByIdData = {
     id: string;
   };
   query?: never;
-  url: "/bff/event-types/{id}";
+  url: '/bff/event-types/{id}';
 };
 
 export type DeleteBffEventTypesByIdResponses = {
@@ -9627,7 +9552,7 @@ export type GetBffEventTypesByIdData = {
     id: string;
   };
   query?: never;
-  url: "/bff/event-types/{id}";
+  url: '/bff/event-types/{id}';
 };
 
 export type GetBffEventTypesByIdResponses = {
@@ -9643,7 +9568,7 @@ export type PatchBffEventTypesByIdData = {
     id: string;
   };
   query?: never;
-  url: "/bff/event-types/{id}";
+  url: '/bff/event-types/{id}';
 };
 
 export type PatchBffEventTypesByIdResponses = {
@@ -9659,7 +9584,7 @@ export type PostBffEventTypesByIdArchiveData = {
     id: string;
   };
   query?: never;
-  url: "/bff/event-types/{id}/archive";
+  url: '/bff/event-types/{id}/archive';
 };
 
 export type PostBffEventTypesByIdArchiveResponses = {
@@ -9675,7 +9600,7 @@ export type PostBffEventTypesByIdSchemasData = {
     id: string;
   };
   query?: never;
-  url: "/bff/event-types/{id}/schemas";
+  url: '/bff/event-types/{id}/schemas';
 };
 
 export type PostBffEventTypesByIdSchemasErrors = {
@@ -9699,7 +9624,7 @@ export type PostBffEventTypesByIdSchemasByVersionDeprecateData = {
     version: string;
   };
   query?: never;
-  url: "/bff/event-types/{id}/schemas/{version}/deprecate";
+  url: '/bff/event-types/{id}/schemas/{version}/deprecate';
 };
 
 export type PostBffEventTypesByIdSchemasByVersionDeprecateResponses = {
@@ -9716,7 +9641,7 @@ export type PostBffEventTypesByIdSchemasByVersionFinaliseData = {
     version: string;
   };
   query?: never;
-  url: "/bff/event-types/{id}/schemas/{version}/finalise";
+  url: '/bff/event-types/{id}/schemas/{version}/finalise';
 };
 
 export type PostBffEventTypesByIdSchemasByVersionFinaliseResponses = {
@@ -9733,7 +9658,7 @@ export type GetBffRolesData = {
     application?: string;
     source?: string;
   };
-  url: "/bff/roles";
+  url: '/bff/roles';
 };
 
 export type GetBffRolesResponses = {
@@ -9747,7 +9672,7 @@ export type PostBffRolesData = {
   body: CreateRoleRequest3;
   path?: never;
   query?: never;
-  url: "/bff/roles";
+  url: '/bff/roles';
 };
 
 export type PostBffRolesErrors = {
@@ -9768,7 +9693,7 @@ export type GetBffRolesFiltersApplicationsData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/bff/roles/filters/applications";
+  url: '/bff/roles/filters/applications';
 };
 
 export type GetBffRolesFiltersApplicationsResponses = {
@@ -9782,7 +9707,7 @@ export type GetBffRolesPermissionsData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/bff/roles/permissions";
+  url: '/bff/roles/permissions';
 };
 
 export type GetBffRolesPermissionsResponses = {
@@ -9798,7 +9723,7 @@ export type GetBffRolesPermissionsByPermissionData = {
     permission: string;
   };
   query?: never;
-  url: "/bff/roles/permissions/{permission}";
+  url: '/bff/roles/permissions/{permission}';
 };
 
 export type GetBffRolesPermissionsByPermissionResponses = {
@@ -9814,7 +9739,7 @@ export type DeleteBffRolesByRoleNameData = {
     roleName: string;
   };
   query?: never;
-  url: "/bff/roles/{roleName}";
+  url: '/bff/roles/{roleName}';
 };
 
 export type DeleteBffRolesByRoleNameResponses = {
@@ -9830,7 +9755,7 @@ export type GetBffRolesByRoleNameData = {
     roleName: string;
   };
   query?: never;
-  url: "/bff/roles/{roleName}";
+  url: '/bff/roles/{roleName}';
 };
 
 export type GetBffRolesByRoleNameResponses = {
@@ -9846,7 +9771,7 @@ export type PutBffRolesByRoleNameData = {
     roleName: string;
   };
   query?: never;
-  url: "/bff/roles/{roleName}";
+  url: '/bff/roles/{roleName}';
 };
 
 export type PutBffRolesByRoleNameErrors = {
@@ -9900,7 +9825,7 @@ export type GetOauthAuthorizeData = {
      */
     state?: string;
   };
-  url: "/oauth/authorize";
+  url: '/oauth/authorize';
 };
 
 export type GetOauthAuthorizeResponses = {
@@ -9925,7 +9850,7 @@ export type PostOauthTokenData = {
   };
   path?: never;
   query?: never;
-  url: "/oauth/token";
+  url: '/oauth/token';
 };
 
 export type PostOauthTokenErrors = {
@@ -9943,5 +9868,5 @@ export type PostOauthTokenResponses = {
 };
 
 export type ClientOptions = {
-  baseUrl: "http://localhost:8080" | "http://0.0.0.0:8080" | (string & {});
+  baseUrl: 'http://localhost:8080' | 'http://0.0.0.0:8080' | (string & {});
 };

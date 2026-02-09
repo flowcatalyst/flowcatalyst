@@ -45,8 +45,8 @@ async function loadEvents() {
     const response = await getApiBffDebugEvents({
       query: {
         page: currentPage.value,
-        size: pageSize.value
-      }
+        size: pageSize.value,
+      },
     });
     if (response.data) {
       events.value = (response.data.items || []) as RawEvent[];
@@ -110,20 +110,15 @@ function truncateId(id: string): string {
     </header>
 
     <Message severity="warn" :closable="false" class="mb-4">
-      This is a debug view of the raw <code>events</code> collection. This collection is write-optimized
-      with minimal indexes. For regular queries, use the <strong>Events</strong> page which queries the
-      read-optimized <code>events_read</code> projection.
+      This is a debug view of the raw <code>events</code> collection. This collection is
+      write-optimized with minimal indexes. For regular queries, use the
+      <strong>Events</strong> page which queries the read-optimized
+      <code>events_read</code> projection.
     </Message>
 
     <div class="fc-card">
       <div class="toolbar">
-        <Button
-          icon="pi pi-refresh"
-          text
-          rounded
-          @click="loadEvents"
-          v-tooltip="'Refresh'"
-        />
+        <Button icon="pi pi-refresh" text rounded @click="loadEvents" v-tooltip="'Refresh'" />
         <span class="text-muted ml-2">
           Showing raw events (no filtering - queries would be slow on this collection)
         </span>

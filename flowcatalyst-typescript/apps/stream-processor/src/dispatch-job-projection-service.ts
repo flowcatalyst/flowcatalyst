@@ -21,40 +21,40 @@ import type postgres from 'postgres';
 import type { Logger } from '@flowcatalyst/logging';
 
 export interface DispatchJobProjectionConfig {
-	readonly enabled: boolean;
-	readonly batchSize: number;
+  readonly enabled: boolean;
+  readonly batchSize: number;
 }
 
 export interface DispatchJobProjectionService {
-	start(): void;
-	stop(): void;
-	isRunning(): boolean;
+  start(): void;
+  stop(): void;
+  isRunning(): boolean;
 }
 
 export function createDispatchJobProjectionService(
-	sql: postgres.Sql,
-	config: DispatchJobProjectionConfig,
-	logger: Logger,
+  sql: postgres.Sql,
+  config: DispatchJobProjectionConfig,
+  logger: Logger,
 ): DispatchJobProjectionService {
-	let running = false;
+  let running = false;
 
-	/**
-	 * Single-statement batch projection using writable CTE.
-	 *
-	 * 1. `batch` CTE: selects unprocessed feed entries (LIMIT batchSize)
-	 * 2. `projected_inserts` CTE: UPSERTs new dispatch jobs from INSERT entries
-	 * 3. `projected_updates` CTE: patches existing dispatch jobs from UPDATE entries
-	 * 4. Main UPDATE: marks batch entries as processed
-	 *
-	 * All four operations execute atomically in one round-trip.
-	 * Data never leaves PostgreSQL - JSONB extraction happens in-engine.
-	 *
-	 * For UPDATEs with duplicate dispatch_job_ids in the same batch,
-	 * DISTINCT ON (dispatch_job_id ... ORDER BY id DESC) takes the latest
-	 * entry per job. COALESCE ensures only non-null patch fields are applied.
-	 */
-	async function pollAndProject(): Promise<number> {
-		const result = await sql`
+  /**
+   * Single-statement batch projection using writable CTE.
+   *
+   * 1. `batch` CTE: selects unprocessed feed entries (LIMIT batchSize)
+   * 2. `projected_inserts` CTE: UPSERTs new dispatch jobs from INSERT entries
+   * 3. `projected_updates` CTE: patches existing dispatch jobs from UPDATE entries
+   * 4. Main UPDATE: marks batch entries as processed
+   *
+   * All four operations execute atomically in one round-trip.
+   * Data never leaves PostgreSQL - JSONB extraction happens in-engine.
+   *
+   * For UPDATEs with duplicate dispatch_job_ids in the same batch,
+   * DISTINCT ON (dispatch_job_id ... ORDER BY id DESC) takes the latest
+   * entry per job. COALESCE ensures only non-null patch fields are applied.
+   */
+  async function pollAndProject(): Promise<number> {
+    const result = await sql`
 			WITH batch AS (
 				SELECT id, dispatch_job_id, operation, payload
 				FROM dispatch_job_projection_feed
@@ -151,56 +151,56 @@ export function createDispatchJobProjectionService(
 			WHERE id IN (SELECT id FROM batch)
 		`;
 
-		const count = result.count;
-		if (count > 0) {
-			logger.debug({ count }, 'Projected dispatch job changes');
-		}
-		return count;
-	}
+    const count = result.count;
+    if (count > 0) {
+      logger.debug({ count }, 'Projected dispatch job changes');
+    }
+    return count;
+  }
 
-	async function pollLoop(): Promise<void> {
-		while (running) {
-			try {
-				const processed = await pollAndProject();
+  async function pollLoop(): Promise<void> {
+    while (running) {
+      try {
+        const processed = await pollAndProject();
 
-				if (processed === 0) {
-					await sleep(1000); // No work, sleep 1 second
-				} else if (processed < config.batchSize) {
-					await sleep(100); // Partial batch, sleep 100ms
-				}
-				// Full batch: no sleep, immediately poll again
-			} catch (err) {
-				if (!running) break;
-				logger.error({ err }, 'Error in dispatch job projection poll loop');
-				await sleep(5000); // Back off on error
-			}
-		}
-	}
+        if (processed === 0) {
+          await sleep(1000); // No work, sleep 1 second
+        } else if (processed < config.batchSize) {
+          await sleep(100); // Partial batch, sleep 100ms
+        }
+        // Full batch: no sleep, immediately poll again
+      } catch (err) {
+        if (!running) break;
+        logger.error({ err }, 'Error in dispatch job projection poll loop');
+        await sleep(5000); // Back off on error
+      }
+    }
+  }
 
-	function start(): void {
-		if (running) {
-			logger.warn('Dispatch job projection service already running');
-			return;
-		}
+  function start(): void {
+    if (running) {
+      logger.warn('Dispatch job projection service already running');
+      return;
+    }
 
-		running = true;
-		pollLoop().catch((err) => {
-			logger.error({ err }, 'Dispatch job projection poll loop exited unexpectedly');
-			running = false;
-		});
-		logger.info({ batchSize: config.batchSize }, 'Dispatch job projection service started');
-	}
+    running = true;
+    pollLoop().catch((err) => {
+      logger.error({ err }, 'Dispatch job projection poll loop exited unexpectedly');
+      running = false;
+    });
+    logger.info({ batchSize: config.batchSize }, 'Dispatch job projection service started');
+  }
 
-	function stop(): void {
-		if (!running) return;
-		logger.info('Stopping dispatch job projection service...');
-		running = false;
-		logger.info('Dispatch job projection service stopped');
-	}
+  function stop(): void {
+    if (!running) return;
+    logger.info('Stopping dispatch job projection service...');
+    running = false;
+    logger.info('Dispatch job projection service stopped');
+  }
 
-	return { start, stop, isRunning: () => running };
+  return { start, stop, isRunning: () => running };
 }
 
 function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

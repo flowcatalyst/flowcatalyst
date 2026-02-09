@@ -1,35 +1,35 @@
 {
-	"name": "@flowcatalyst/flowcatalyst",
-	"version": "0.0.1",
-	"description": "FlowCatalyst - Unified app with Platform, Message Router, and Stream Processor",
-	"type": "module",
-	"scripts": {
-		"dev": "tsx watch src/index.ts",
-		"build": "tsup && [ -d drizzle ] && cp -r drizzle ./dist/drizzle || true",
-		"build:full": "pnpm --filter @flowcatalyst/platform-frontend build && pnpm run build && cp -r ../platform-frontend/dist ./dist/frontend",
-		"build:sea": "pnpm --filter @flowcatalyst/platform-frontend build && tsup && node scripts/pack-migrations.js && node scripts/pack-frontend.js && node --experimental-sea-config sea-config.json && node scripts/build-sea.js",
-		"start": "node dist/index.js",
-		"typecheck": "tsc --noEmit",
-		"db:generate": "drizzle-kit generate",
-		"db:migrate": "drizzle-kit migrate",
-		"db:push": "drizzle-kit push",
-		"db:studio": "drizzle-kit studio"
-	},
-	"dependencies": {
-		"@flowcatalyst/config": "workspace:*",
-		"@flowcatalyst/logging": "workspace:*",
-		"@flowcatalyst/message-router": "workspace:*",
-		"@flowcatalyst/persistence": "workspace:*",
-		"@flowcatalyst/platform": "workspace:*",
-		"@flowcatalyst/stream-processor": "workspace:*",
-		"dotenv": "^16.4.7"
-	},
-	"devDependencies": {
-		"@types/node": "^22.10.6",
-		"drizzle-kit": "1.0.0-beta.15-859cf75",
-		"postject": "^1.0.0-alpha.6",
-		"tsup": "^8.5.1",
-		"tsx": "^4.19.2",
-		"typescript": "^5.7.3"
-	}
+  "name": "@flowcatalyst/flowcatalyst",
+  "version": "0.0.1",
+  "description": "FlowCatalyst - Unified app with Platform, Message Router, and Stream Processor",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup && [ -d drizzle ] && cp -r drizzle ./dist/drizzle || true",
+    "build:full": "pnpm --filter @flowcatalyst/platform-frontend build && pnpm run build && cp -r ../platform-frontend/dist ./dist/frontend",
+    "build:sea": "pnpm --filter @flowcatalyst/platform-frontend build && tsup && node scripts/pack-migrations.js && node scripts/pack-frontend.js && node --experimental-sea-config sea-config.json && node scripts/build-sea.js",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@flowcatalyst/config": "workspace:*",
+    "@flowcatalyst/logging": "workspace:*",
+    "@flowcatalyst/message-router": "workspace:*",
+    "@flowcatalyst/persistence": "workspace:*",
+    "@flowcatalyst/platform": "workspace:*",
+    "@flowcatalyst/stream-processor": "workspace:*",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.6",
+    "drizzle-kit": "1.0.0-beta.15-859cf75",
+    "postject": "^1.0.0-alpha.6",
+    "tsup": "^8.5.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
 }
