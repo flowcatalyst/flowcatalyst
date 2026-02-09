@@ -26,6 +26,9 @@ import {
   createAggregateHandler,
   createDrizzleUnitOfWork,
 } from '@flowcatalyst/persistence';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import * as platformSchema from './infrastructure/persistence/schema/drizzle-schema.js';
+import { platformRelations } from './infrastructure/persistence/schema/relations.js';
 import { getPasswordService, createEncryptionServiceFromEnv } from '@flowcatalyst/platform-crypto';
 
 import { getEnv, isDevelopment } from './env.js';
@@ -199,6 +202,8 @@ export async function startPlatform(config?: PlatformConfig): Promise<FastifyIns
   const database = createDatabase({ url: DATABASE_URL });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = database.db as any;
+  // Schema-aware db instance for repositories that use relational queries (db.query.*)
+  const schemaDb = drizzle({ client: database.client, schema: platformSchema, relations: platformRelations });
   const transactionManager = createTransactionManager(db);
 
   // Create repositories
@@ -211,15 +216,15 @@ export async function startPlatform(config?: PlatformConfig): Promise<FastifyIns
   const permissionRepository = createPermissionRepository(db);
   const clientAccessGrantRepository = createClientAccessGrantRepository(db);
   const clientAuthConfigRepository = createClientAuthConfigRepository(db);
-  const oauthClientRepository = createOAuthClientRepository(db);
+  const oauthClientRepository = createOAuthClientRepository(schemaDb);
   const auditLogRepository = createAuditLogRepository(db);
-  const eventTypeRepository = createEventTypeRepository(db);
+  const eventTypeRepository = createEventTypeRepository(schemaDb);
   const dispatchPoolRepository = createDispatchPoolRepository(db);
-  const subscriptionRepository = createSubscriptionRepository(db);
+  const subscriptionRepository = createSubscriptionRepository(schemaDb);
   const eventReadRepository = createEventReadRepository(db);
   const dispatchJobReadRepository = createDispatchJobReadRepository(db);
-  const identityProviderRepository = createIdentityProviderRepository(db);
-  const emailDomainMappingRepository = createEmailDomainMappingRepository(db);
+  const identityProviderRepository = createIdentityProviderRepository(schemaDb);
+  const emailDomainMappingRepository = createEmailDomainMappingRepository(schemaDb);
   const idpRoleMappingRepository = createIdpRoleMappingRepository(db);
   const oidcLoginStateRepository = createOidcLoginStateRepository(db);
   const corsAllowedOriginRepository = createCorsAllowedOriginRepository(db);
@@ -1017,6 +1022,7 @@ export async function startPlatform(config?: PlatformConfig): Promise<FastifyIns
       platformConfigService,
       platformConfigAccessRepository,
       // Service Account management
+      encryptionService,
       createServiceAccountUseCase,
       updateServiceAccountUseCase,
       deleteServiceAccountUseCase,
@@ -1045,6 +1051,9 @@ export async function startPlatform(config?: PlatformConfig): Promise<FastifyIns
       createRoleUseCase,
       updateRoleUseCase,
       deleteRoleUseCase,
+      // Events & Dispatch Jobs BFF
+      eventReadRepository,
+      dispatchJobReadRepository,
     };
 
     await registerBffRoutes(fastify, bffDeps);

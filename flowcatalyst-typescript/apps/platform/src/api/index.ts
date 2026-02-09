@@ -45,6 +45,8 @@ import { registerConfigRoutes, type ConfigRoutesDeps } from './admin/config.js';
 import { registerConfigAccessRoutes, type ConfigAccessRoutesDeps } from './admin/config-access.js';
 import { registerEventTypesBffRoutes, type EventTypesBffDeps } from './bff/event-types.js';
 import { registerRolesBffRoutes, type RolesBffDeps } from './bff/roles.js';
+import { registerEventsRoutes as registerEventsBffRoutes, type EventsRoutesDeps as EventsBffDeps } from './admin/events.js';
+import { registerDispatchJobsRoutes as registerDispatchJobsBffRoutes, type DispatchJobsRoutesDeps as DispatchJobsBffDeps } from './admin/dispatch-jobs.js';
 import { registerDebugEventsBffRoutes, type DebugEventsBffDeps } from './bff/debug-events.js';
 import {
   registerDebugDispatchJobsBffRoutes,
@@ -117,7 +119,7 @@ export async function registerAdminRoutes(
 /**
  * Dependencies for BFF routes.
  */
-export interface BffRoutesDeps extends EventTypesBffDeps, RolesBffDeps {}
+export interface BffRoutesDeps extends EventTypesBffDeps, RolesBffDeps, EventsBffDeps, DispatchJobsBffDeps {}
 
 /**
  * Register all BFF routes (frontend-facing).
@@ -126,13 +128,16 @@ export async function registerBffRoutes(
   fastify: FastifyInstance,
   deps: BffRoutesDeps,
 ): Promise<void> {
-  await fastify.register(
-    async (bffRouter) => {
-      await registerEventTypesBffRoutes(bffRouter, deps);
-      await registerRolesBffRoutes(bffRouter, deps);
-    },
-    { prefix: '/bff' },
-  );
+  const registerRoutes = async (router: FastifyInstance) => {
+    await registerEventTypesBffRoutes(router, deps);
+    await registerRolesBffRoutes(router, deps);
+    await registerEventsBffRoutes(router, deps);
+    await registerDispatchJobsBffRoutes(router, deps);
+  };
+
+  // Register at both /bff and /api/bff for frontend compatibility
+  await fastify.register(registerRoutes, { prefix: '/bff' });
+  await fastify.register(registerRoutes, { prefix: '/api/bff' });
 }
 
 /**
@@ -147,13 +152,13 @@ export async function registerDebugBffRoutes(
   fastify: FastifyInstance,
   deps: DebugBffRoutesDeps,
 ): Promise<void> {
-  await fastify.register(
-    async (debugRouter) => {
-      await registerDebugEventsBffRoutes(debugRouter, deps);
-      await registerDebugDispatchJobsBffRoutes(debugRouter, deps);
-    },
-    { prefix: '/api/bff/debug' },
-  );
+  const registerRoutes = async (router: FastifyInstance) => {
+    await registerDebugEventsBffRoutes(router, deps);
+    await registerDebugDispatchJobsBffRoutes(router, deps);
+  };
+
+  await fastify.register(registerRoutes, { prefix: '/bff/debug' });
+  await fastify.register(registerRoutes, { prefix: '/api/bff/debug' });
 }
 
 /**

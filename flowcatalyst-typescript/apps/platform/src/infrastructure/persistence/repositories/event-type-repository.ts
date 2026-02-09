@@ -2,6 +2,10 @@
  * EventType Repository
  *
  * Data access for EventType entities with spec version sub-queries.
+ *
+ * Read paths use Drizzle relational queries (db.query) for efficient loading.
+ * Complex queries (findWithFilters, findPaged) use query builder with batch loading.
+ * Write paths use standard insert/update.
  */
 
 import { eq, sql, and, like, inArray } from 'drizzle-orm';
@@ -13,8 +17,10 @@ import type {
 } from '@flowcatalyst/persistence';
 import { createPagedResult } from '@flowcatalyst/persistence';
 
+import type * as platformSchema from '../schema/drizzle-schema.js';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyDb = PostgresJsDatabase<any>;
+type PlatformDb = PostgresJsDatabase<typeof platformSchema, any>;
 
 import {
   eventTypes,
@@ -72,55 +78,80 @@ export interface EventTypeRepository extends PaginatedRepository<EventType> {
 /**
  * Create an EventType repository.
  */
-export function createEventTypeRepository(defaultDb: AnyDb): EventTypeRepository {
-  const db = (tx?: TransactionContext): AnyDb => (tx?.db as AnyDb) ?? defaultDb;
+export function createEventTypeRepository(defaultDb: PlatformDb): EventTypeRepository {
+  const db = (tx?: TransactionContext): PlatformDb => (tx?.db as PlatformDb) ?? defaultDb;
+
+  /** Relational query includes for loading spec versions. */
+  const withChildren = {
+    specVersions: true,
+  } as const;
 
   /**
-   * Load spec versions for an event type.
+   * Batch-load spec versions for multiple event types.
    */
-  async function loadSpecVersions(
-    eventTypeId: string,
+  async function batchLoadSpecVersions(
+    eventTypeIds: string[],
     txCtx?: TransactionContext,
-  ): Promise<SpecVersion[]> {
+  ): Promise<Map<string, SpecVersion[]>> {
+    if (eventTypeIds.length === 0) return new Map();
+
     const records = await db(txCtx)
       .select()
       .from(eventTypeSpecVersions)
-      .where(eq(eventTypeSpecVersions.eventTypeId, eventTypeId))
+      .where(inArray(eventTypeSpecVersions.eventTypeId, eventTypeIds))
       .orderBy(eventTypeSpecVersions.version);
 
-    return records.map(recordToSpecVersion);
+    const map = new Map<string, SpecVersion[]>();
+    for (const r of records) {
+      const list = map.get(r.eventTypeId) ?? [];
+      list.push(recordToSpecVersion(r));
+      map.set(r.eventTypeId, list);
+    }
+    return map;
   }
 
   /**
-   * Convert a record to a full EventType with spec versions.
+   * Batch-hydrate event type records with their spec versions.
    */
-  async function hydrate(record: EventTypeRecord, txCtx?: TransactionContext): Promise<EventType> {
-    const specVersions = await loadSpecVersions(record.id, txCtx);
-    return recordToEventType(record, specVersions);
+  async function batchHydrate(
+    records: EventTypeRecord[],
+    txCtx?: TransactionContext,
+  ): Promise<EventType[]> {
+    if (records.length === 0) return [];
+
+    const ids = records.map((r) => r.id);
+    const specVersionsMap = await batchLoadSpecVersions(ids, txCtx);
+
+    return records.map((r) =>
+      recordToEventType(r, specVersionsMap.get(r.id) ?? []),
+    );
   }
 
   return {
     async findById(id: string, tx?: TransactionContext): Promise<EventType | undefined> {
-      const [record] = await db(tx).select().from(eventTypes).where(eq(eventTypes.id, id)).limit(1);
-
-      if (!record) return undefined;
-      return hydrate(record, tx);
+      const result = await db(tx).query.eventTypes.findFirst({
+        where: { RAW: eq(eventTypes.id, id) },
+        with: withChildren,
+      });
+      if (!result) return undefined;
+      return resultToEventType(result as EventTypeRelationalResult);
     },
 
     async findByCode(code: string, tx?: TransactionContext): Promise<EventType | undefined> {
-      const [record] = await db(tx)
-        .select()
-        .from(eventTypes)
-        .where(eq(eventTypes.code, code))
-        .limit(1);
-
-      if (!record) return undefined;
-      return hydrate(record, tx);
+      const result = await db(tx).query.eventTypes.findFirst({
+        where: { RAW: eq(eventTypes.code, code) },
+        with: withChildren,
+      });
+      if (!result) return undefined;
+      return resultToEventType(result as EventTypeRelationalResult);
     },
 
     async findAll(tx?: TransactionContext): Promise<EventType[]> {
-      const records = await db(tx).select().from(eventTypes).orderBy(eventTypes.code);
-      return Promise.all(records.map((r) => hydrate(r, tx)));
+      const results = await db(tx).query.eventTypes.findMany({
+        orderBy: { code: 'asc' },
+        with: withChildren,
+      });
+      return (results as EventTypeRelationalResult[]).map(resultToEventType);
     },
 
     async findPaged(
@@ -140,7 +171,7 @@ export function createEventTypeRepository(defaultDb: AnyDb): EventTypeRepository
         .offset(page * pageSize)
         .orderBy(eventTypes.code);
 
-      const items = await Promise.all(records.map((r) => hydrate(r, tx)));
+      const items = await batchHydrate(records, tx);
       return createPagedResult(items, page, pageSize, totalItems);
     },
 
@@ -168,12 +199,12 @@ export function createEventTypeRepository(defaultDb: AnyDb): EventTypeRepository
     },
 
     async findByCodePrefix(prefix: string, tx?: TransactionContext): Promise<EventType[]> {
-      const records = await db(tx)
-        .select()
-        .from(eventTypes)
-        .where(like(eventTypes.code, `${prefix}%`))
-        .orderBy(eventTypes.code);
-      return Promise.all(records.map((r) => hydrate(r, tx)));
+      const results = await db(tx).query.eventTypes.findMany({
+        where: { RAW: like(eventTypes.code, `${prefix}%`) },
+        orderBy: { code: 'asc' },
+        with: withChildren,
+      });
+      return (results as EventTypeRelationalResult[]).map(resultToEventType);
     },
 
     async findWithFilters(
@@ -204,7 +235,7 @@ export function createEventTypeRepository(defaultDb: AnyDb): EventTypeRepository
         .from(eventTypes)
         .where(conditions.length === 1 ? conditions[0]! : and(...conditions))
         .orderBy(eventTypes.code);
-      return Promise.all(records.map((r) => hydrate(r, tx)));
+      return batchHydrate(records, tx);
     },
 
     async findDistinctApplications(tx?: TransactionContext): Promise<string[]> {
@@ -395,13 +426,60 @@ export function createEventTypeRepository(defaultDb: AnyDb): EventTypeRepository
       eventTypeId: string,
       tx?: TransactionContext,
     ): Promise<SpecVersion[]> {
-      return loadSpecVersions(eventTypeId, tx);
+      const records = await db(tx)
+        .select()
+        .from(eventTypeSpecVersions)
+        .where(eq(eventTypeSpecVersions.eventTypeId, eventTypeId))
+        .orderBy(eventTypeSpecVersions.version);
+
+      return records.map(recordToSpecVersion);
     },
   };
 }
 
 /**
+ * Shape returned by Drizzle relational query with spec versions.
+ */
+interface EventTypeRelationalResult {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  status: string;
+  source: string;
+  clientScoped: boolean;
+  application: string;
+  subdomain: string;
+  aggregate: string;
+  createdAt: Date;
+  updatedAt: Date;
+  specVersions: EventTypeSpecVersionRecord[];
+}
+
+/**
+ * Convert a relational query result to an EventType domain entity.
+ */
+function resultToEventType(result: EventTypeRelationalResult): EventType {
+  return {
+    id: result.id,
+    code: result.code,
+    name: result.name,
+    description: result.description,
+    specVersions: result.specVersions.map(recordToSpecVersion),
+    status: result.status as EventTypeStatus,
+    source: result.source as EventTypeSource,
+    clientScoped: result.clientScoped,
+    application: result.application,
+    subdomain: result.subdomain,
+    aggregate: result.aggregate,
+    createdAt: result.createdAt,
+    updatedAt: result.updatedAt,
+  };
+}
+
+/**
  * Convert a database record to an EventType domain entity.
+ * Used by batch-loading paths (findWithFilters, findPaged).
  */
 function recordToEventType(record: EventTypeRecord, specVersions: SpecVersion[]): EventType {
   return {

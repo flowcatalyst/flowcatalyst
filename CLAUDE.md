@@ -204,6 +204,10 @@ This allows for:
 - Always write forward-only migrations (no rollback scripts)
 - Prefer data migration over dropping and recreating tables
 
+## TypeScript ORM - Drizzle ORM v1
+
+**IMPORTANT**: The TypeScript platform uses **Drizzle ORM v1** (`1.0.0-beta`), NOT v0.x. The v1 API has breaking changes from v0.x. Always follow the Drizzle v1 API when writing queries, defining schemas, or using relational queries. Key differences include changes to the `relations` API and query builder. Refer to the Drizzle v1 documentation, not legacy v0.x examples.
+
 ## TypeScript Error Handling - neverthrow
 
 **IMPORTANT**: Use `neverthrow` for typed error handling in TypeScript code. Do not use try/catch with untyped exceptions for business logic.

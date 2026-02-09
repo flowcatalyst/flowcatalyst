@@ -165,6 +165,12 @@ export const usersApi = {
     });
   },
 
+  delete(id: string): Promise<void> {
+    return apiFetch(`/admin/principals/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
   checkEmailDomain(email: string): Promise<EmailDomainCheckResponse> {
     return apiFetch(`/admin/principals/check-email-domain?email=${encodeURIComponent(email)}`);
   },

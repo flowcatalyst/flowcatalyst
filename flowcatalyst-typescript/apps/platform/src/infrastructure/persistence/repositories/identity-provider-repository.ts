@@ -1,19 +1,20 @@
 /**
  * Identity Provider Repository
+ *
+ * Read paths use Drizzle relational queries (db.query) for efficient loading.
+ * Write paths use standard insert/update with collection sync.
  */
 
 import { eq, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type { TransactionContext } from '@flowcatalyst/persistence';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyDb = PostgresJsDatabase<any>;
+import type * as platformSchema from '../schema/drizzle-schema.js';
 
-import {
-  identityProviders,
-  identityProviderAllowedDomains,
-  type IdentityProviderRecord,
-} from '../schema/index.js';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type PlatformDb = PostgresJsDatabase<typeof platformSchema, any>;
+
+import { identityProviders, identityProviderAllowedDomains } from '../schema/index.js';
 import type { IdentityProvider, NewIdentityProvider } from '../../../domain/index.js';
 
 export interface IdentityProviderRepository {
@@ -29,58 +30,31 @@ export interface IdentityProviderRepository {
   delete(entity: IdentityProvider, tx?: TransactionContext): Promise<boolean>;
 }
 
-export function createIdentityProviderRepository(defaultDb: AnyDb): IdentityProviderRepository {
-  const db = (tx?: TransactionContext): AnyDb => (tx?.db as AnyDb) ?? defaultDb;
+export function createIdentityProviderRepository(defaultDb: PlatformDb): IdentityProviderRepository {
+  const db = (tx?: TransactionContext): PlatformDb => (tx?.db as PlatformDb) ?? defaultDb;
 
-  async function loadAllowedDomains(
-    identityProviderId: string,
-    database: AnyDb,
-  ): Promise<string[]> {
-    const rows = await database
-      .select({ emailDomain: identityProviderAllowedDomains.emailDomain })
-      .from(identityProviderAllowedDomains)
-      .where(eq(identityProviderAllowedDomains.identityProviderId, identityProviderId));
-    return rows.map((r) => r.emailDomain);
-  }
+  /** Relational query includes for loading allowed domains. */
+  const withChildren = {
+    allowedDomains: true,
+  } as const;
 
   async function saveAllowedDomains(
     identityProviderId: string,
     domains: readonly string[],
-    database: AnyDb,
+    txCtx?: TransactionContext,
   ): Promise<void> {
-    await database
+    await db(txCtx)
       .delete(identityProviderAllowedDomains)
       .where(eq(identityProviderAllowedDomains.identityProviderId, identityProviderId));
 
     if (domains.length > 0) {
-      await database.insert(identityProviderAllowedDomains).values(
+      await db(txCtx).insert(identityProviderAllowedDomains).values(
         domains.map((emailDomain) => ({
           identityProviderId,
           emailDomain,
         })),
       );
     }
-  }
-
-  async function hydrate(
-    record: IdentityProviderRecord,
-    database: AnyDb,
-  ): Promise<IdentityProvider> {
-    const allowedEmailDomains = await loadAllowedDomains(record.id, database);
-    return {
-      id: record.id,
-      code: record.code,
-      name: record.name,
-      type: record.type as IdentityProvider['type'],
-      oidcIssuerUrl: record.oidcIssuerUrl,
-      oidcClientId: record.oidcClientId,
-      oidcClientSecretRef: record.oidcClientSecretRef,
-      oidcMultiTenant: record.oidcMultiTenant,
-      oidcIssuerPattern: record.oidcIssuerPattern,
-      allowedEmailDomains,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-    };
   }
 
   return {
@@ -100,37 +74,29 @@ export function createIdentityProviderRepository(defaultDb: AnyDb): IdentityProv
     },
 
     async findById(id: string, tx?: TransactionContext): Promise<IdentityProvider | undefined> {
-      const database = db(tx);
-      const [record] = await database
-        .select()
-        .from(identityProviders)
-        .where(eq(identityProviders.id, id))
-        .limit(1);
-
-      if (!record) return undefined;
-      return hydrate(record, database);
+      const result = await db(tx).query.identityProviders.findFirst({
+        where: { RAW: eq(identityProviders.id, id) },
+        with: withChildren,
+      });
+      if (!result) return undefined;
+      return resultToIdentityProvider(result as IdentityProviderRelationalResult);
     },
 
     async findByCode(code: string, tx?: TransactionContext): Promise<IdentityProvider | undefined> {
-      const database = db(tx);
-      const [record] = await database
-        .select()
-        .from(identityProviders)
-        .where(eq(identityProviders.code, code))
-        .limit(1);
-
-      if (!record) return undefined;
-      return hydrate(record, database);
+      const result = await db(tx).query.identityProviders.findFirst({
+        where: { RAW: eq(identityProviders.code, code) },
+        with: withChildren,
+      });
+      if (!result) return undefined;
+      return resultToIdentityProvider(result as IdentityProviderRelationalResult);
     },
 
     async findAll(tx?: TransactionContext): Promise<IdentityProvider[]> {
-      const database = db(tx);
-      const records = await database
-        .select()
-        .from(identityProviders)
-        .orderBy(identityProviders.name);
-
-      return Promise.all(records.map((r) => hydrate(r, database)));
+      const results = await db(tx).query.identityProviders.findMany({
+        orderBy: { name: 'asc' },
+        with: withChildren,
+      });
+      return (results as IdentityProviderRelationalResult[]).map(resultToIdentityProvider);
     },
 
     async exists(id: string, tx?: TransactionContext): Promise<boolean> {
@@ -150,9 +116,8 @@ export function createIdentityProviderRepository(defaultDb: AnyDb): IdentityProv
     },
 
     async insert(entity: NewIdentityProvider, tx?: TransactionContext): Promise<void> {
-      const database = db(tx);
       const now = new Date();
-      await database.insert(identityProviders).values({
+      await db(tx).insert(identityProviders).values({
         id: entity.id,
         code: entity.code,
         name: entity.name,
@@ -166,12 +131,11 @@ export function createIdentityProviderRepository(defaultDb: AnyDb): IdentityProv
         updatedAt: now,
       });
 
-      await saveAllowedDomains(entity.id, entity.allowedEmailDomains, database);
+      await saveAllowedDomains(entity.id, entity.allowedEmailDomains, tx);
     },
 
     async update(entity: IdentityProvider, tx?: TransactionContext): Promise<void> {
-      const database = db(tx);
-      await database
+      await db(tx)
         .update(identityProviders)
         .set({
           name: entity.name,
@@ -185,21 +149,58 @@ export function createIdentityProviderRepository(defaultDb: AnyDb): IdentityProv
         })
         .where(eq(identityProviders.id, entity.id));
 
-      await saveAllowedDomains(entity.id, entity.allowedEmailDomains, database);
+      await saveAllowedDomains(entity.id, entity.allowedEmailDomains, tx);
     },
 
     async deleteById(id: string, tx?: TransactionContext): Promise<boolean> {
-      const database = db(tx);
-      await database
+      await db(tx)
         .delete(identityProviderAllowedDomains)
         .where(eq(identityProviderAllowedDomains.identityProviderId, id));
 
-      const result = await database.delete(identityProviders).where(eq(identityProviders.id, id));
+      const result = await db(tx).delete(identityProviders).where(eq(identityProviders.id, id));
       return (result?.length ?? 0) > 0;
     },
 
     async delete(entity: IdentityProvider, tx?: TransactionContext): Promise<boolean> {
       return this.deleteById(entity.id, tx);
     },
+  };
+}
+
+/**
+ * Shape returned by Drizzle relational query with allowed domains.
+ */
+interface IdentityProviderRelationalResult {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  oidcIssuerUrl: string | null;
+  oidcClientId: string | null;
+  oidcClientSecretRef: string | null;
+  oidcMultiTenant: boolean;
+  oidcIssuerPattern: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  allowedDomains: { identityProviderId: string; emailDomain: string }[];
+}
+
+/**
+ * Convert a relational query result to an IdentityProvider domain entity.
+ */
+function resultToIdentityProvider(result: IdentityProviderRelationalResult): IdentityProvider {
+  return {
+    id: result.id,
+    code: result.code,
+    name: result.name,
+    type: result.type as IdentityProvider['type'],
+    oidcIssuerUrl: result.oidcIssuerUrl,
+    oidcClientId: result.oidcClientId,
+    oidcClientSecretRef: result.oidcClientSecretRef,
+    oidcMultiTenant: result.oidcMultiTenant,
+    oidcIssuerPattern: result.oidcIssuerPattern,
+    allowedEmailDomains: result.allowedDomains.map((d) => d.emailDomain),
+    createdAt: result.createdAt,
+    updatedAt: result.updatedAt,
   };
 }

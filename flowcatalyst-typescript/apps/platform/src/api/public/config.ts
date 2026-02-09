@@ -142,7 +142,8 @@ export async function registerPublicConfigRoutes(
 
       return jsonSuccess(reply, {
         features: {
-          messagingEnabled: messagingEnabled === 'true',
+          // Default to true when no config value is stored
+          messagingEnabled: messagingEnabled !== 'false',
         },
       });
     },

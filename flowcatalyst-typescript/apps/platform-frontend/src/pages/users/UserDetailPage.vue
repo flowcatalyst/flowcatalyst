@@ -9,6 +9,7 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import AutoComplete from 'primevue/autocomplete';
 import Dialog from 'primevue/dialog';
+import Message from 'primevue/message';
 import ProgressSpinner from 'primevue/progressspinner';
 import {
   usersApi,
@@ -60,6 +61,10 @@ const showAppPickerDialog = ref(false);
 const appSearchQuery = ref('');
 const selectedAppIds = ref<Set<string>>(new Set());
 const savingApps = ref(false);
+
+// Delete user
+const showDeleteDialog = ref(false);
+const deleteLoading = ref(false);
 
 const isAnchorUser = computed(() => user.value?.isAnchorUser ?? false);
 
@@ -305,6 +310,30 @@ async function toggleUserStatus() {
     });
   } finally {
     saving.value = false;
+  }
+}
+
+async function deleteUser() {
+  deleteLoading.value = true;
+  try {
+    await usersApi.delete(userId);
+    showDeleteDialog.value = false;
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: `User "${user.value?.name}" deleted`,
+      life: 3000,
+    });
+    router.push('/users');
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error?.message || 'Failed to delete user',
+      life: 5000,
+    });
+  } finally {
+    deleteLoading.value = false;
   }
 }
 
@@ -581,6 +610,13 @@ function goBack() {
             outlined
             :loading="saving"
             @click="toggleUserStatus"
+          />
+          <Button
+            label="Delete"
+            icon="pi pi-trash"
+            severity="danger"
+            outlined
+            @click="showDeleteDialog = true"
           />
         </div>
       </header>
@@ -953,6 +989,35 @@ function goBack() {
           :disabled="!hasAppChanges"
           :loading="savingApps"
           @click="saveApps"
+        />
+      </template>
+    </Dialog>
+
+    <!-- Delete User Confirmation Dialog -->
+    <Dialog
+      v-model:visible="showDeleteDialog"
+      header="Delete User"
+      modal
+      :style="{ width: '450px' }"
+    >
+      <div class="dialog-content">
+        <p>
+          Are you sure you want to delete <strong>{{ user?.name }}</strong
+          >?
+        </p>
+        <Message severity="warn" :closable="false">
+          This action cannot be undone. The user will be permanently removed.
+        </Message>
+      </div>
+
+      <template #footer>
+        <Button label="Cancel" text @click="showDeleteDialog = false" :disabled="deleteLoading" />
+        <Button
+          label="Delete"
+          icon="pi pi-trash"
+          severity="danger"
+          @click="deleteUser"
+          :loading="deleteLoading"
         />
       </template>
     </Dialog>

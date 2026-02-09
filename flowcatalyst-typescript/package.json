@@ -11,7 +11,7 @@
     "build:sea": "pnpm --filter @flowcatalyst/flowcatalyst build:sea",
     "build:router": "pnpm --filter @flowcatalyst/message-router build",
     "build:stream": "pnpm --filter @flowcatalyst/stream-processor build",
-    "dev": "pnpm --filter @flowcatalyst/flowcatalyst dev",
+    "dev": "pnpm -r --parallel --filter './packages/*' --filter @flowcatalyst/platform --filter @flowcatalyst/flowcatalyst dev",
     "dev:frontend": "pnpm --filter @flowcatalyst/platform-frontend dev",
     "dev:router": "pnpm --filter @flowcatalyst/message-router dev",
     "test": "pnpm -r test",

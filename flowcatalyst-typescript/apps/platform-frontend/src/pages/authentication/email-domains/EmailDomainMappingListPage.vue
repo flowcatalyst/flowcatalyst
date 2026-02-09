@@ -271,6 +271,10 @@ function formatDate(dateString: string) {
   color: #1e293b;
 }
 
+.provider-type-tag {
+  margin-left: 8px;
+}
+
 .client-name {
   color: #1e293b;
 }

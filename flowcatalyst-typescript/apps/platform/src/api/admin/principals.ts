@@ -47,7 +47,7 @@ import type { PrincipalRepository } from '../../infrastructure/persistence/repos
 import type { ClientAccessGrantRepository } from '../../infrastructure/persistence/repositories/client-access-grant-repository.js';
 import type { AnchorDomainRepository } from '../../infrastructure/persistence/repositories/anchor-domain-repository.js';
 import type { ClientAuthConfigRepository } from '../../infrastructure/persistence/repositories/client-auth-config-repository.js';
-import type { ApplicationClientConfigRepository } from '../../infrastructure/persistence/repositories/application-client-config-repository.js';
+import type { ApplicationClientConfigRepository } from '../../infrastructure/persistence/index.js';
 import type { EmailDomainMappingRepository } from '../../infrastructure/persistence/repositories/email-domain-mapping-repository.js';
 import type { IdentityProviderRepository } from '../../infrastructure/persistence/repositories/identity-provider-repository.js';
 import { requirePermission } from '../../authorization/index.js';
@@ -60,7 +60,7 @@ import {
 
 const CreateUserSchema = Type.Object({
   email: Type.String({ format: 'email' }),
-  password: Type.Union([Type.String({ minLength: 8 }), Type.Null()]),
+  password: Type.Optional(Type.Union([Type.String({ minLength: 8 }), Type.Null()])),
   name: Type.String({ minLength: 1 }),
   clientId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
@@ -385,7 +385,7 @@ export async function registerPrincipalsRoutes(
 
       const command: CreateUserCommand = {
         email: body.email,
-        password: body.password,
+        password: body.password ?? null,
         name: body.name,
         clientId: body.clientId ?? null,
       };

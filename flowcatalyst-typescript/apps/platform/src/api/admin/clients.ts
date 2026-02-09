@@ -39,6 +39,7 @@ import type {
 import type {
   ClientRepository,
   ApplicationClientConfigRepository,
+  ApplicationRepository,
 } from '../../infrastructure/persistence/index.js';
 import {
   requirePermission,
@@ -123,6 +124,7 @@ type ClientResponse = Static<typeof ClientResponseSchema>;
  */
 export interface ClientsRoutesDeps {
   readonly clientRepository: ClientRepository;
+  readonly applicationRepository: ApplicationRepository;
   readonly applicationClientConfigRepository: ApplicationClientConfigRepository;
   readonly createClientUseCase: UseCase<CreateClientCommand, ClientCreated>;
   readonly updateClientUseCase: UseCase<UpdateClientCommand, ClientUpdated>;
@@ -148,6 +150,7 @@ export async function registerClientsRoutes(
 ): Promise<void> {
   const {
     clientRepository,
+    applicationRepository,
     applicationClientConfigRepository,
     createClientUseCase,
     updateClientUseCase,
@@ -211,7 +214,7 @@ export async function registerClientsRoutes(
       const query = request.query as Static<typeof ListClientsQuery>;
       const page = parseInt(query.page ?? '0', 10);
       const pageSize = Math.min(parseInt(query.pageSize ?? '20', 10), 100);
-      const accessibleClientIds = getAccessibleClientIds();
+      const accessibleClientIds = getAccessibleClientIds(request.audit?.principal);
 
       if (query.status) {
         // Filter by status
@@ -257,7 +260,7 @@ export async function registerClientsRoutes(
       const query = request.query as Static<typeof SearchClientsQuery>;
       const q = query.q ?? '';
       const limit = Math.min(parseInt(query.limit ?? '20', 10), 100);
-      const accessibleClientIds = getAccessibleClientIds();
+      const accessibleClientIds = getAccessibleClientIds(request.audit?.principal);
 
       if (!q) {
         return jsonSuccess(reply, { clients: [], total: 0, page: 0, pageSize: limit });
@@ -291,7 +294,7 @@ export async function registerClientsRoutes(
       const { id } = request.params as Static<typeof IdParam>;
       const client = await clientRepository.findById(id);
 
-      if (!client || !canAccessResourceByClient(client.id)) {
+      if (!client || !canAccessResourceByClient(client.id, request.audit?.principal)) {
         return notFound(reply, `Client not found: ${id}`);
       }
 
@@ -316,7 +319,7 @@ export async function registerClientsRoutes(
       const { identifier } = request.params as Static<typeof IdentifierParam>;
       const client = await clientRepository.findByIdentifier(identifier);
 
-      if (!client || !canAccessResourceByClient(client.id)) {
+      if (!client || !canAccessResourceByClient(client.id, request.audit?.principal)) {
         return notFound(reply, `Client not found with identifier: ${identifier}`);
       }
 
@@ -534,13 +537,20 @@ export async function registerClientsRoutes(
         params: IdParam,
         response: {
           200: Type.Object({
-            clientId: Type.String(),
             applications: Type.Array(
               Type.Object({
-                applicationId: Type.String(),
-                enabled: Type.Boolean(),
+                id: Type.String(),
+                code: Type.String(),
+                name: Type.String(),
+                description: Type.Union([Type.String(), Type.Null()]),
+                iconUrl: Type.Union([Type.String(), Type.Null()]),
+                website: Type.Union([Type.String(), Type.Null()]),
+                logoMimeType: Type.Union([Type.String(), Type.Null()]),
+                active: Type.Boolean(),
+                enabledForClient: Type.Boolean(),
               }),
             ),
+            total: Type.Integer(),
           }),
           404: ErrorResponseSchema,
         },
@@ -550,19 +560,89 @@ export async function registerClientsRoutes(
       const { id } = request.params as Static<typeof IdParam>;
       const client = await clientRepository.findById(id);
 
-      if (!client || !canAccessResourceByClient(client.id)) {
+      if (!client || !canAccessResourceByClient(client.id, request.audit?.principal)) {
         return notFound(reply, `Client not found: ${id}`);
       }
 
-      const configs = await applicationClientConfigRepository.findByClient(id);
+      const [allApps, configs] = await Promise.all([
+        applicationRepository.findAll(),
+        applicationClientConfigRepository.findByClient(id),
+      ]);
+
+      // Build set of enabled application IDs
+      const enabledSet = new Set(configs.filter((c) => c.enabled).map((c) => c.applicationId));
+
+      const applications = allApps.map((app) => ({
+        id: app.id,
+        code: app.code,
+        name: app.name,
+        description: app.description ?? null,
+        iconUrl: app.iconUrl ?? null,
+        website: app.website ?? null,
+        logoMimeType: app.logoMimeType ?? null,
+        active: app.active,
+        enabledForClient: enabledSet.has(app.id),
+      }));
 
       return jsonSuccess(reply, {
-        clientId: id,
-        applications: configs.map((c) => ({
-          applicationId: c.applicationId,
-          enabled: c.enabled,
-        })),
+        applications,
+        total: applications.length,
       });
+    },
+  );
+
+  // PUT /api/admin/clients/:id/applications - Bulk update enabled applications
+  fastify.put(
+    '/clients/:id/applications',
+    {
+      preHandler: requirePermission(CLIENT_PERMISSIONS.UPDATE),
+      schema: {
+        params: IdParam,
+        body: Type.Object({
+          enabledApplicationIds: Type.Array(Type.String()),
+        }),
+        response: {
+          200: Type.Object({ message: Type.String() }),
+          404: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as Static<typeof IdParam>;
+      const { enabledApplicationIds } = request.body as { enabledApplicationIds: string[] };
+      const ctx = request.executionContext;
+
+      const client = await clientRepository.findById(id);
+      if (!client || !canAccessResourceByClient(client.id, request.audit?.principal)) {
+        return notFound(reply, `Client not found: ${id}`);
+      }
+
+      // Get current configs
+      const currentConfigs = await applicationClientConfigRepository.findByClient(id);
+      const currentlyEnabled = new Set(currentConfigs.filter((c) => c.enabled).map((c) => c.applicationId));
+      const desiredEnabled = new Set(enabledApplicationIds);
+
+      // Enable apps that should be enabled but aren't
+      for (const appId of enabledApplicationIds) {
+        if (!currentlyEnabled.has(appId)) {
+          await enableApplicationForClientUseCase.execute(
+            { applicationId: appId, clientId: id },
+            ctx,
+          );
+        }
+      }
+
+      // Disable apps that are currently enabled but shouldn't be
+      for (const appId of currentlyEnabled) {
+        if (!desiredEnabled.has(appId)) {
+          await disableApplicationForClientUseCase.execute(
+            { applicationId: appId, clientId: id },
+            ctx,
+          );
+        }
+      }
+
+      return jsonSuccess(reply, { message: 'Applications updated' });
     },
   );
 

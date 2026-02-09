@@ -250,8 +250,8 @@ async function createAuditLogRecord(
   const entityType = DomainEventUtils.extractAggregateType(event.subject);
   const entityId = DomainEventUtils.extractEntityId(event.subject);
 
-  // Get operation name from command
-  const operationName = getOperationName(command);
+  // Get operation name from command, or fall back to event class name
+  const operationName = getOperationName(command, event);
 
   const newAuditLog: NewAuditLog = {
     id: generate('AUDIT_LOG'),
@@ -268,30 +268,36 @@ async function createAuditLogRecord(
 }
 
 /**
- * Extract operation name from a command object.
+ * Extract operation name from a command object, falling back to the event class name.
+ *
+ * Priority:
+ * 1. Command class name (if command is a class instance)
+ * 2. Command 'operation', 'type', or '_type' field
+ * 3. Event class name (e.g., "EventTypeCreated", "UserUpdated")
+ * 4. "Unknown"
  */
-function getOperationName(command: unknown): string {
-  if (command === null || command === undefined) {
-    return 'Unknown';
+function getOperationName(command: unknown, event?: DomainEvent): string {
+  if (command !== null && command !== undefined) {
+    // If it's a class instance, use the class name
+    const constructor = (command as object).constructor;
+    if (constructor && constructor.name && constructor.name !== 'Object') {
+      return constructor.name;
+    }
+
+    // If it has an 'operation' or 'type' field, use that
+    if (typeof command === 'object') {
+      const cmd = command as Record<string, unknown>;
+      if (typeof cmd['operation'] === 'string') return cmd['operation'];
+      if (typeof cmd['type'] === 'string') return cmd['type'];
+      if (typeof cmd['_type'] === 'string') return cmd['_type'];
+    }
   }
 
-  // If it's a class instance, use the class name
-  const constructor = (command as object).constructor;
-  if (constructor && constructor.name && constructor.name !== 'Object') {
-    return constructor.name;
-  }
-
-  // If it has an 'operation' or 'type' field, use that
-  if (typeof command === 'object' && command !== null) {
-    const cmd = command as Record<string, unknown>;
-    if (typeof cmd['operation'] === 'string') {
-      return cmd['operation'];
-    }
-    if (typeof cmd['type'] === 'string') {
-      return cmd['type'];
-    }
-    if (typeof cmd['_type'] === 'string') {
-      return cmd['_type'];
+  // Fall back to the event's class name (e.g., EventTypeCreated, UserUpdated)
+  if (event) {
+    const eventConstructor = (event as object).constructor;
+    if (eventConstructor && eventConstructor.name && eventConstructor.name !== 'Object') {
+      return eventConstructor.name;
     }
   }
 

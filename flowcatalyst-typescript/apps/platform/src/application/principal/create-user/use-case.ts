@@ -94,21 +94,27 @@ export function createCreateUserUseCase(
       // Extract domain from email
       const emailDomain = extractEmailDomain(command.email);
 
-      // Check if anchor domain user
-      const isAnchorUser = await anchorDomainRepository.existsByDomain(emailDomain);
-
-      // Determine scope based on anchor domain
-      const scope: UserScope = isAnchorUser ? UserScope.ANCHOR : UserScope.CLIENT;
-
-      // Determine IDP type based on email domain mapping
+      // Determine scope and IDP type from email domain mapping
+      let scope: UserScope = UserScope.CLIENT;
       let idpType: IdpType = IdpType.INTERNAL;
       const mapping = await emailDomainMappingRepository.findByEmailDomain(emailDomain);
       if (mapping) {
+        // Use the scope configured on the email domain mapping
+        scope = mapping.scopeType as UserScope;
+
         const idp = await identityProviderRepository.findById(mapping.identityProviderId);
         if (idp && idp.type === 'OIDC') {
           idpType = IdpType.OIDC;
         }
+      } else {
+        // Fall back to legacy anchor domain check
+        const isAnchorDomain = await anchorDomainRepository.existsByDomain(emailDomain);
+        if (isAnchorDomain) {
+          scope = UserScope.ANCHOR;
+        }
       }
+
+      const isAnchorUser = scope === UserScope.ANCHOR;
 
       // Validate and hash password for INTERNAL auth, or reject for OIDC
       let passwordHash: string | null = null;

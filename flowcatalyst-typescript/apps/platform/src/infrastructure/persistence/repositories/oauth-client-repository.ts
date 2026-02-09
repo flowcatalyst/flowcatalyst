@@ -4,14 +4,19 @@
  * Data access for OAuthClient entities.
  * Array fields (redirectUris, allowedOrigins, grantTypes, applicationIds)
  * are stored in separate collection tables.
+ *
+ * Read paths use Drizzle relational queries (db.query) for efficient loading.
+ * Write paths use standard insert/update with collection sync.
  */
 
 import { eq, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type { TransactionContext } from '@flowcatalyst/persistence';
 
+import type * as platformSchema from '../schema/drizzle-schema.js';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyDb = PostgresJsDatabase<any>;
+type PlatformDb = PostgresJsDatabase<typeof platformSchema, any>;
 
 import {
   oauthClients,
@@ -19,7 +24,6 @@ import {
   oauthClientAllowedOrigins,
   oauthClientGrantTypes,
   oauthClientApplicationIds,
-  type OAuthClientRecord,
 } from '../schema/index.js';
 import {
   type OAuthClient,
@@ -59,111 +63,16 @@ export interface OAuthClientRepository {
 /**
  * Create an OAuthClient repository.
  */
-export function createOAuthClientRepository(defaultDb: AnyDb): OAuthClientRepository {
-  const db = (tx?: TransactionContext): AnyDb => (tx?.db as AnyDb) ?? defaultDb;
+export function createOAuthClientRepository(defaultDb: PlatformDb): OAuthClientRepository {
+  const db = (tx?: TransactionContext): PlatformDb => (tx?.db as PlatformDb) ?? defaultDb;
 
-  /**
-   * Fetch all collection data for an OAuth client.
-   */
-  async function fetchCollections(
-    oauthClientId: string,
-    tx?: TransactionContext,
-  ): Promise<OAuthClientCollections> {
-    const [redirectUriRecords, allowedOriginRecords, grantTypeRecords, applicationIdRecords] =
-      await Promise.all([
-        db(tx)
-          .select()
-          .from(oauthClientRedirectUris)
-          .where(eq(oauthClientRedirectUris.oauthClientId, oauthClientId)),
-        db(tx)
-          .select()
-          .from(oauthClientAllowedOrigins)
-          .where(eq(oauthClientAllowedOrigins.oauthClientId, oauthClientId)),
-        db(tx)
-          .select()
-          .from(oauthClientGrantTypes)
-          .where(eq(oauthClientGrantTypes.oauthClientId, oauthClientId)),
-        db(tx)
-          .select()
-          .from(oauthClientApplicationIds)
-          .where(eq(oauthClientApplicationIds.oauthClientId, oauthClientId)),
-      ]);
-
-    return {
-      redirectUris: redirectUriRecords.map((r) => r.redirectUri),
-      allowedOrigins: allowedOriginRecords.map((r) => r.allowedOrigin),
-      grantTypes: grantTypeRecords.map((r) => r.grantType),
-      applicationIds: applicationIdRecords.map((r) => r.applicationId),
-    };
-  }
-
-  /**
-   * Fetch collection data for multiple OAuth clients in batch.
-   */
-  async function fetchCollectionsForClients(
-    clientIds: string[],
-    tx?: TransactionContext,
-  ): Promise<Map<string, OAuthClientCollections>> {
-    if (clientIds.length === 0) return new Map();
-
-    const [redirectUriRecords, allowedOriginRecords, grantTypeRecords, applicationIdRecords] =
-      await Promise.all([
-        db(tx)
-          .select()
-          .from(oauthClientRedirectUris)
-          .where(sql`${oauthClientRedirectUris.oauthClientId} = ANY(${clientIds})`),
-        db(tx)
-          .select()
-          .from(oauthClientAllowedOrigins)
-          .where(sql`${oauthClientAllowedOrigins.oauthClientId} = ANY(${clientIds})`),
-        db(tx)
-          .select()
-          .from(oauthClientGrantTypes)
-          .where(sql`${oauthClientGrantTypes.oauthClientId} = ANY(${clientIds})`),
-        db(tx)
-          .select()
-          .from(oauthClientApplicationIds)
-          .where(sql`${oauthClientApplicationIds.oauthClientId} = ANY(${clientIds})`),
-      ]);
-
-    const collectionsMap = new Map<string, OAuthClientCollections>();
-
-    // Initialize empty collections for all client IDs
-    for (const id of clientIds) {
-      collectionsMap.set(id, {
-        redirectUris: [],
-        allowedOrigins: [],
-        grantTypes: [],
-        applicationIds: [],
-      });
-    }
-
-    // Populate redirect URIs
-    for (const record of redirectUriRecords) {
-      const collections = collectionsMap.get(record.oauthClientId);
-      if (collections) collections.redirectUris.push(record.redirectUri);
-    }
-
-    // Populate allowed origins
-    for (const record of allowedOriginRecords) {
-      const collections = collectionsMap.get(record.oauthClientId);
-      if (collections) collections.allowedOrigins.push(record.allowedOrigin);
-    }
-
-    // Populate grant types
-    for (const record of grantTypeRecords) {
-      const collections = collectionsMap.get(record.oauthClientId);
-      if (collections) collections.grantTypes.push(record.grantType);
-    }
-
-    // Populate application IDs
-    for (const record of applicationIdRecords) {
-      const collections = collectionsMap.get(record.oauthClientId);
-      if (collections) collections.applicationIds.push(record.applicationId);
-    }
-
-    return collectionsMap;
-  }
+  /** Relational query includes for loading all child collections. */
+  const withCollections = {
+    redirectUris: true,
+    allowedOrigins: true,
+    grantTypes: true,
+    applicationIds: true,
+  } as const;
 
   /**
    * Sync all collection tables for an OAuth client.
@@ -233,58 +142,39 @@ export function createOAuthClientRepository(defaultDb: AnyDb): OAuthClientReposi
 
   return {
     async findById(id: string, tx?: TransactionContext): Promise<OAuthClient | undefined> {
-      const [record] = await db(tx)
-        .select()
-        .from(oauthClients)
-        .where(eq(oauthClients.id, id))
-        .limit(1);
-
-      if (!record) return undefined;
-
-      const collections = await fetchCollections(id, tx);
-      return recordToOAuthClient(record, collections);
+      const result = await db(tx).query.oauthClients.findFirst({
+        where: { RAW: eq(oauthClients.id, id) },
+        with: withCollections,
+      });
+      if (!result) return undefined;
+      return resultToOAuthClient(result as OAuthClientRelationalResult);
     },
 
     async findByClientId(
       clientId: string,
       tx?: TransactionContext,
     ): Promise<OAuthClient | undefined> {
-      const [record] = await db(tx)
-        .select()
-        .from(oauthClients)
-        .where(eq(oauthClients.clientId, clientId))
-        .limit(1);
-
-      if (!record) return undefined;
-
-      const collections = await fetchCollections(record.id, tx);
-      return recordToOAuthClient(record, collections);
+      const result = await db(tx).query.oauthClients.findFirst({
+        where: { RAW: eq(oauthClients.clientId, clientId) },
+        with: withCollections,
+      });
+      if (!result) return undefined;
+      return resultToOAuthClient(result as OAuthClientRelationalResult);
     },
 
     async findAll(tx?: TransactionContext): Promise<OAuthClient[]> {
-      const records = await db(tx).select().from(oauthClients);
-
-      const collectionsMap = await fetchCollectionsForClients(
-        records.map((r) => r.id),
-        tx,
-      );
-
-      return records.map((r) =>
-        recordToOAuthClient(r, collectionsMap.get(r.id) ?? emptyCollections()),
-      );
+      const results = await db(tx).query.oauthClients.findMany({
+        with: withCollections,
+      });
+      return (results as OAuthClientRelationalResult[]).map(resultToOAuthClient);
     },
 
     async findActive(tx?: TransactionContext): Promise<OAuthClient[]> {
-      const records = await db(tx).select().from(oauthClients).where(eq(oauthClients.active, true));
-
-      const collectionsMap = await fetchCollectionsForClients(
-        records.map((r) => r.id),
-        tx,
-      );
-
-      return records.map((r) =>
-        recordToOAuthClient(r, collectionsMap.get(r.id) ?? emptyCollections()),
-      );
+      const results = await db(tx).query.oauthClients.findMany({
+        where: { RAW: eq(oauthClients.active, true) },
+        with: withCollections,
+      });
+      return (results as OAuthClientRelationalResult[]).map(resultToOAuthClient);
     },
 
     async count(tx?: TransactionContext): Promise<number> {
@@ -401,39 +291,45 @@ export function createOAuthClientRepository(defaultDb: AnyDb): OAuthClientReposi
 }
 
 /**
- * Create empty collections object.
+ * Shape returned by Drizzle relational query with collections.
  */
-function emptyCollections(): OAuthClientCollections {
-  return {
-    redirectUris: [],
-    allowedOrigins: [],
-    grantTypes: [],
-    applicationIds: [],
-  };
+interface OAuthClientRelationalResult {
+  id: string;
+  clientId: string;
+  clientName: string;
+  clientType: string;
+  clientSecretRef: string | null;
+  defaultScopes: string | null;
+  pkceRequired: boolean;
+  serviceAccountPrincipalId: string | null;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  redirectUris: { oauthClientId: string; redirectUri: string }[];
+  allowedOrigins: { oauthClientId: string; allowedOrigin: string }[];
+  grantTypes: { oauthClientId: string; grantType: string }[];
+  applicationIds: { oauthClientId: string; applicationId: string }[];
 }
 
 /**
- * Convert a database record to an OAuthClient.
+ * Convert a relational query result to an OAuthClient domain entity.
  */
-function recordToOAuthClient(
-  record: OAuthClientRecord,
-  collections: OAuthClientCollections,
-): OAuthClient {
+function resultToOAuthClient(result: OAuthClientRelationalResult): OAuthClient {
   return {
-    id: record.id,
-    clientId: record.clientId,
-    clientName: record.clientName,
-    clientType: record.clientType as OAuthClientType,
-    clientSecretRef: record.clientSecretRef,
-    redirectUris: collections.redirectUris,
-    allowedOrigins: collections.allowedOrigins,
-    grantTypes: collections.grantTypes as OAuthGrantType[],
-    defaultScopes: record.defaultScopes,
-    pkceRequired: record.pkceRequired,
-    applicationIds: collections.applicationIds,
-    serviceAccountPrincipalId: record.serviceAccountPrincipalId,
-    active: record.active,
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
+    id: result.id,
+    clientId: result.clientId,
+    clientName: result.clientName,
+    clientType: result.clientType as OAuthClientType,
+    clientSecretRef: result.clientSecretRef,
+    redirectUris: result.redirectUris.map((r) => r.redirectUri),
+    allowedOrigins: result.allowedOrigins.map((r) => r.allowedOrigin),
+    grantTypes: result.grantTypes.map((r) => r.grantType) as OAuthGrantType[],
+    defaultScopes: result.defaultScopes,
+    pkceRequired: result.pkceRequired,
+    applicationIds: result.applicationIds.map((r) => r.applicationId),
+    serviceAccountPrincipalId: result.serviceAccountPrincipalId,
+    active: result.active,
+    createdAt: result.createdAt,
+    updatedAt: result.updatedAt,
   };
 }

@@ -16,6 +16,7 @@ import {
 } from '@flowcatalyst/http';
 import { Result } from '@flowcatalyst/application';
 import type { UseCase } from '@flowcatalyst/application';
+import type { EncryptionService } from '@flowcatalyst/platform-crypto';
 
 import type {
   CreateServiceAccountCommand,
@@ -33,8 +34,13 @@ import type {
   SigningSecretRegenerated,
   RolesAssigned,
   WebhookAuthType,
+  Principal,
 } from '../../domain/index.js';
-import type { PrincipalRepository } from '../../infrastructure/persistence/index.js';
+import { updatePrincipal } from '../../domain/index.js';
+import type {
+  PrincipalRepository,
+  OAuthClientRepository,
+} from '../../infrastructure/persistence/index.js';
 import { requirePermission } from '../../authorization/index.js';
 import { SERVICE_ACCOUNT_PERMISSIONS } from '../../authorization/permissions/platform-admin.js';
 
@@ -45,7 +51,7 @@ const CreateServiceAccountSchema = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 200 }),
   description: Type.Optional(Type.Union([Type.String({ maxLength: 500 }), Type.Null()])),
   applicationId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  clientId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  clientIds: Type.Optional(Type.Array(Type.String())),
   webhookAuthType: Type.Optional(
     Type.Union([
       Type.Literal('NONE'),
@@ -60,13 +66,25 @@ const CreateServiceAccountSchema = Type.Object({
 const UpdateServiceAccountSchema = Type.Object({
   name: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   description: Type.Optional(Type.Union([Type.String({ maxLength: 500 }), Type.Null()])),
+  clientIds: Type.Optional(Type.Array(Type.String())),
 });
 
 const AssignRolesSchema = Type.Object({
   roles: Type.Array(Type.String({ minLength: 1 })),
 });
 
+const UpdateAuthTokenSchema = Type.Object({
+  authToken: Type.String({ minLength: 1 }),
+});
+
 const IdParam = Type.Object({ id: Type.String() });
+const CodeParam = Type.Object({ code: Type.String() });
+
+const ListServiceAccountsQuery = Type.Object({
+  clientId: Type.Optional(Type.String()),
+  applicationId: Type.Optional(Type.String()),
+  active: Type.Optional(Type.String()),
+});
 
 // ─── Response Schemas ───────────────────────────────────────────────────────
 
@@ -75,25 +93,60 @@ const ServiceAccountResponseSchema = Type.Object({
   code: Type.String(),
   name: Type.String(),
   description: Type.Union([Type.String(), Type.Null()]),
+  clientIds: Type.Array(Type.String()),
   applicationId: Type.Union([Type.String(), Type.Null()]),
-  clientId: Type.Union([Type.String(), Type.Null()]),
   active: Type.Boolean(),
-  webhookAuthType: Type.String(),
-  signingAlgorithm: Type.String(),
-  credentialsCreatedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
-  credentialsRegeneratedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
-  lastUsedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+  authType: Type.Union([Type.String(), Type.Null()]),
   roles: Type.Array(Type.String()),
+  lastUsedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
   createdAt: Type.String({ format: 'date-time' }),
   updatedAt: Type.String({ format: 'date-time' }),
 });
 
 const ServiceAccountListResponseSchema = Type.Object({
   serviceAccounts: Type.Array(ServiceAccountResponseSchema),
+  total: Type.Integer(),
 });
 
-const MessageResponseSchema = Type.Object({
-  message: Type.String(),
+const OAuthCredentialsSchema = Type.Object({
+  clientId: Type.String(),
+  clientSecret: Type.String(),
+});
+
+const WebhookCredentialsSchema = Type.Object({
+  authToken: Type.String(),
+  signingSecret: Type.String(),
+});
+
+const CreateServiceAccountResponseSchema = Type.Object({
+  serviceAccount: ServiceAccountResponseSchema,
+  principalId: Type.String(),
+  oauth: OAuthCredentialsSchema,
+  webhook: WebhookCredentialsSchema,
+});
+
+const RegenerateTokenResponseSchema = Type.Object({
+  authToken: Type.String(),
+});
+
+const RegenerateSecretResponseSchema = Type.Object({
+  signingSecret: Type.String(),
+});
+
+const RoleAssignmentSchema = Type.Object({
+  roleName: Type.String(),
+  assignmentSource: Type.String(),
+  assignedAt: Type.String({ format: 'date-time' }),
+});
+
+const RolesResponseSchema = Type.Object({
+  roles: Type.Array(RoleAssignmentSchema),
+});
+
+const RolesAssignedResponseSchema = Type.Object({
+  roles: Type.Array(RoleAssignmentSchema),
+  addedRoles: Type.Array(Type.String()),
+  removedRoles: Type.Array(Type.String()),
 });
 
 type ServiceAccountResponse = Static<typeof ServiceAccountResponseSchema>;
@@ -103,6 +156,8 @@ type ServiceAccountResponse = Static<typeof ServiceAccountResponseSchema>;
  */
 export interface ServiceAccountsRoutesDeps {
   readonly principalRepository: PrincipalRepository;
+  readonly oauthClientRepository: OAuthClientRepository;
+  readonly encryptionService: EncryptionService;
   readonly createServiceAccountUseCase: UseCase<CreateServiceAccountCommand, ServiceAccountCreated>;
   readonly updateServiceAccountUseCase: UseCase<UpdateServiceAccountCommand, ServiceAccountUpdated>;
   readonly deleteServiceAccountUseCase: UseCase<DeleteServiceAccountCommand, ServiceAccountDeleted>;
@@ -126,6 +181,8 @@ export async function registerServiceAccountsRoutes(
 ): Promise<void> {
   const {
     principalRepository,
+    oauthClientRepository,
+    encryptionService,
     createServiceAccountUseCase,
     updateServiceAccountUseCase,
     deleteServiceAccountUseCase,
@@ -133,6 +190,15 @@ export async function registerServiceAccountsRoutes(
     regenerateSigningSecretUseCase,
     assignServiceAccountRolesUseCase,
   } = deps;
+
+  /**
+   * Decrypt an encrypted reference, returning empty string on failure.
+   */
+  function decryptRef(ref: string | null): string {
+    if (!ref) return '';
+    const result = encryptionService.decrypt(ref);
+    return result.isOk() ? result.value : '';
+  }
 
   // POST /api/admin/service-accounts - Create service account
   fastify.post(
@@ -142,7 +208,7 @@ export async function registerServiceAccountsRoutes(
       schema: {
         body: CreateServiceAccountSchema,
         response: {
-          201: ServiceAccountResponseSchema,
+          201: CreateServiceAccountResponseSchema,
           400: ErrorResponseSchema,
           409: ErrorResponseSchema,
         },
@@ -157,16 +223,34 @@ export async function registerServiceAccountsRoutes(
         name: body.name,
         description: body.description ?? null,
         applicationId: body.applicationId ?? null,
-        clientId: body.clientId ?? null,
+        clientId: body.clientIds?.[0] ?? null,
         webhookAuthType: body.webhookAuthType as WebhookAuthType | undefined,
       };
 
       const result = await createServiceAccountUseCase.execute(command, ctx);
 
       if (Result.isSuccess(result)) {
-        const principal = await principalRepository.findById(result.value.getData().principalId);
-        if (principal && principal.serviceAccount) {
-          return jsonCreated(reply, toServiceAccountResponse(principal));
+        const eventData = result.value.getData();
+
+        // Fetch created entities to extract credentials
+        const [principal, oauthClient] = await Promise.all([
+          principalRepository.findById(eventData.principalId),
+          oauthClientRepository.findById(eventData.oauthClientId),
+        ]);
+
+        if (principal?.serviceAccount && oauthClient) {
+          return jsonCreated(reply, {
+            serviceAccount: toServiceAccountResponse(principal),
+            principalId: principal.id,
+            oauth: {
+              clientId: oauthClient.clientId,
+              clientSecret: decryptRef(oauthClient.clientSecretRef),
+            },
+            webhook: {
+              authToken: decryptRef(principal.serviceAccount.whAuthTokenRef),
+              signingSecret: decryptRef(principal.serviceAccount.whSigningSecretRef),
+            },
+          });
         }
       }
 
@@ -180,23 +264,38 @@ export async function registerServiceAccountsRoutes(
     {
       preHandler: requirePermission(SERVICE_ACCOUNT_PERMISSIONS.READ),
       schema: {
+        querystring: ListServiceAccountsQuery,
         response: {
           200: ServiceAccountListResponseSchema,
         },
       },
     },
-    async (_request, reply) => {
-      const principals = await principalRepository.findByType('SERVICE');
+    async (request, reply) => {
+      const query = request.query as Static<typeof ListServiceAccountsQuery>;
+      let principals = await principalRepository.findByType('SERVICE');
+
+      // Apply filters
+      principals = principals.filter((p) => {
+        if (!p.serviceAccount) return false;
+        if (query.clientId && p.clientId !== query.clientId) return false;
+        if (query.applicationId && p.applicationId !== query.applicationId) return false;
+        if (query.active !== undefined) {
+          const isActive = query.active === 'true';
+          if (p.active !== isActive) return false;
+        }
+        return true;
+      });
+
+      const serviceAccounts = principals.map(toServiceAccountResponse);
 
       return jsonSuccess(reply, {
-        serviceAccounts: principals
-          .filter((p) => p.serviceAccount !== null)
-          .map(toServiceAccountResponse),
+        serviceAccounts,
+        total: serviceAccounts.length,
       });
     },
   );
 
-  // GET /api/admin/service-accounts/:id - Get service account
+  // GET /api/admin/service-accounts/:id - Get service account by ID
   fastify.get(
     '/service-accounts/:id',
     {
@@ -221,8 +320,33 @@ export async function registerServiceAccountsRoutes(
     },
   );
 
-  // PATCH /api/admin/service-accounts/:id - Update service account
-  fastify.patch(
+  // GET /api/admin/service-accounts/code/:code - Get service account by code
+  fastify.get(
+    '/service-accounts/code/:code',
+    {
+      preHandler: requirePermission(SERVICE_ACCOUNT_PERMISSIONS.READ),
+      schema: {
+        params: CodeParam,
+        response: {
+          200: ServiceAccountResponseSchema,
+          404: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { code } = request.params as Static<typeof CodeParam>;
+      const principal = await principalRepository.findByServiceAccountCode(code);
+
+      if (!principal || !principal.serviceAccount) {
+        return notFound(reply, `Service account not found: ${code}`);
+      }
+
+      return jsonSuccess(reply, toServiceAccountResponse(principal));
+    },
+  );
+
+  // PUT /api/admin/service-accounts/:id - Update service account
+  fastify.put(
     '/service-accounts/:id',
     {
       preHandler: requirePermission(SERVICE_ACCOUNT_PERMISSIONS.UPDATE),
@@ -291,7 +415,89 @@ export async function registerServiceAccountsRoutes(
     },
   );
 
-  // POST /api/admin/service-accounts/:id/regenerate-auth-token
+  // PUT /api/admin/service-accounts/:id/auth-token - Update auth token with custom value
+  fastify.put(
+    '/service-accounts/:id/auth-token',
+    {
+      preHandler: requirePermission(SERVICE_ACCOUNT_PERMISSIONS.MANAGE),
+      schema: {
+        params: IdParam,
+        body: UpdateAuthTokenSchema,
+        response: {
+          200: ServiceAccountResponseSchema,
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as Static<typeof IdParam>;
+      const body = request.body as Static<typeof UpdateAuthTokenSchema>;
+
+      const principal = await principalRepository.findById(id);
+      if (!principal || principal.type !== 'SERVICE' || !principal.serviceAccount) {
+        return notFound(reply, `Service account not found: ${id}`);
+      }
+
+      // Encrypt the provided auth token
+      const encryptResult = encryptionService.encrypt(body.authToken);
+      if (encryptResult.isErr()) {
+        return reply.status(400).send({ code: 'ENCRYPTION_FAILED', message: 'Failed to encrypt auth token' });
+      }
+
+      // Update principal with new auth token ref
+      const updatedPrincipal = updatePrincipal(principal, {
+        serviceAccount: {
+          ...principal.serviceAccount,
+          whAuthTokenRef: encryptResult.value,
+          whCredentialsRegeneratedAt: new Date(),
+        },
+      });
+
+      await principalRepository.persist(updatedPrincipal);
+
+      const refreshed = await principalRepository.findById(id);
+      if (refreshed?.serviceAccount) {
+        return jsonSuccess(reply, toServiceAccountResponse(refreshed));
+      }
+
+      return jsonSuccess(reply, toServiceAccountResponse(updatedPrincipal as Principal));
+    },
+  );
+
+  // POST /api/admin/service-accounts/:id/regenerate-token
+  fastify.post(
+    '/service-accounts/:id/regenerate-token',
+    {
+      preHandler: requirePermission(SERVICE_ACCOUNT_PERMISSIONS.MANAGE),
+      schema: {
+        params: IdParam,
+        response: {
+          200: RegenerateTokenResponseSchema,
+          404: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as Static<typeof IdParam>;
+      const ctx = request.executionContext;
+
+      const command: RegenerateAuthTokenCommand = { serviceAccountId: id };
+      const result = await regenerateAuthTokenUseCase.execute(command, ctx);
+
+      if (Result.isSuccess(result)) {
+        const principal = await principalRepository.findById(id);
+        if (principal?.serviceAccount?.whAuthTokenRef) {
+          const authToken = decryptRef(principal.serviceAccount.whAuthTokenRef);
+          return jsonSuccess(reply, { authToken });
+        }
+      }
+
+      return sendResult(reply, result);
+    },
+  );
+
+  // POST /api/admin/service-accounts/:id/regenerate-auth-token (legacy URL)
   fastify.post(
     '/service-accounts/:id/regenerate-auth-token',
     {
@@ -299,7 +505,7 @@ export async function registerServiceAccountsRoutes(
       schema: {
         params: IdParam,
         response: {
-          200: MessageResponseSchema,
+          200: RegenerateTokenResponseSchema,
           404: ErrorResponseSchema,
         },
       },
@@ -308,21 +514,54 @@ export async function registerServiceAccountsRoutes(
       const { id } = request.params as Static<typeof IdParam>;
       const ctx = request.executionContext;
 
-      const command: RegenerateAuthTokenCommand = {
-        serviceAccountId: id,
-      };
-
+      const command: RegenerateAuthTokenCommand = { serviceAccountId: id };
       const result = await regenerateAuthTokenUseCase.execute(command, ctx);
 
       if (Result.isSuccess(result)) {
-        return jsonSuccess(reply, { message: 'Auth token regenerated' });
+        const principal = await principalRepository.findById(id);
+        if (principal?.serviceAccount?.whAuthTokenRef) {
+          const authToken = decryptRef(principal.serviceAccount.whAuthTokenRef);
+          return jsonSuccess(reply, { authToken });
+        }
       }
 
       return sendResult(reply, result);
     },
   );
 
-  // POST /api/admin/service-accounts/:id/regenerate-signing-secret
+  // POST /api/admin/service-accounts/:id/regenerate-secret
+  fastify.post(
+    '/service-accounts/:id/regenerate-secret',
+    {
+      preHandler: requirePermission(SERVICE_ACCOUNT_PERMISSIONS.MANAGE),
+      schema: {
+        params: IdParam,
+        response: {
+          200: RegenerateSecretResponseSchema,
+          404: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as Static<typeof IdParam>;
+      const ctx = request.executionContext;
+
+      const command: RegenerateSigningSecretCommand = { serviceAccountId: id };
+      const result = await regenerateSigningSecretUseCase.execute(command, ctx);
+
+      if (Result.isSuccess(result)) {
+        const principal = await principalRepository.findById(id);
+        if (principal?.serviceAccount?.whSigningSecretRef) {
+          const signingSecret = decryptRef(principal.serviceAccount.whSigningSecretRef);
+          return jsonSuccess(reply, { signingSecret });
+        }
+      }
+
+      return sendResult(reply, result);
+    },
+  );
+
+  // POST /api/admin/service-accounts/:id/regenerate-signing-secret (legacy URL)
   fastify.post(
     '/service-accounts/:id/regenerate-signing-secret',
     {
@@ -330,7 +569,7 @@ export async function registerServiceAccountsRoutes(
       schema: {
         params: IdParam,
         response: {
-          200: MessageResponseSchema,
+          200: RegenerateSecretResponseSchema,
           404: ErrorResponseSchema,
         },
       },
@@ -339,17 +578,49 @@ export async function registerServiceAccountsRoutes(
       const { id } = request.params as Static<typeof IdParam>;
       const ctx = request.executionContext;
 
-      const command: RegenerateSigningSecretCommand = {
-        serviceAccountId: id,
-      };
-
+      const command: RegenerateSigningSecretCommand = { serviceAccountId: id };
       const result = await regenerateSigningSecretUseCase.execute(command, ctx);
 
       if (Result.isSuccess(result)) {
-        return jsonSuccess(reply, { message: 'Signing secret regenerated' });
+        const principal = await principalRepository.findById(id);
+        if (principal?.serviceAccount?.whSigningSecretRef) {
+          const signingSecret = decryptRef(principal.serviceAccount.whSigningSecretRef);
+          return jsonSuccess(reply, { signingSecret });
+        }
       }
 
       return sendResult(reply, result);
+    },
+  );
+
+  // GET /api/admin/service-accounts/:id/roles - Get assigned roles
+  fastify.get(
+    '/service-accounts/:id/roles',
+    {
+      preHandler: requirePermission(SERVICE_ACCOUNT_PERMISSIONS.READ),
+      schema: {
+        params: IdParam,
+        response: {
+          200: RolesResponseSchema,
+          404: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as Static<typeof IdParam>;
+      const principal = await principalRepository.findById(id);
+
+      if (!principal || principal.type !== 'SERVICE' || !principal.serviceAccount) {
+        return notFound(reply, `Service account not found: ${id}`);
+      }
+
+      return jsonSuccess(reply, {
+        roles: principal.roles.map((r) => ({
+          roleName: r.roleName,
+          assignmentSource: r.assignmentSource,
+          assignedAt: r.assignedAt.toISOString(),
+        })),
+      });
     },
   );
 
@@ -362,7 +633,7 @@ export async function registerServiceAccountsRoutes(
         params: IdParam,
         body: AssignRolesSchema,
         response: {
-          200: ServiceAccountResponseSchema,
+          200: RolesAssignedResponseSchema,
           400: ErrorResponseSchema,
           404: ErrorResponseSchema,
         },
@@ -372,6 +643,10 @@ export async function registerServiceAccountsRoutes(
       const { id } = request.params as Static<typeof IdParam>;
       const body = request.body as Static<typeof AssignRolesSchema>;
       const ctx = request.executionContext;
+
+      // Get previous roles before assignment
+      const existingPrincipal = await principalRepository.findById(id);
+      const previousRoleNames = existingPrincipal?.roles.map((r) => r.roleName) ?? [];
 
       const command: AssignServiceAccountRolesCommand = {
         serviceAccountId: id,
@@ -383,7 +658,21 @@ export async function registerServiceAccountsRoutes(
       if (Result.isSuccess(result)) {
         const principal = await principalRepository.findById(id);
         if (principal && principal.serviceAccount) {
-          return jsonSuccess(reply, toServiceAccountResponse(principal));
+          const currentRoleNames = new Set(body.roles);
+          const previousRoleSet = new Set(previousRoleNames);
+
+          const addedRoles = body.roles.filter((r) => !previousRoleSet.has(r));
+          const removedRoles = previousRoleNames.filter((r) => !currentRoleNames.has(r));
+
+          return jsonSuccess(reply, {
+            roles: principal.roles.map((r) => ({
+              roleName: r.roleName,
+              assignmentSource: r.assignmentSource,
+              assignedAt: r.assignedAt.toISOString(),
+            })),
+            addedRoles,
+            removedRoles,
+          });
         }
       }
 
@@ -394,8 +683,6 @@ export async function registerServiceAccountsRoutes(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-import type { Principal } from '../../domain/index.js';
-
 function toServiceAccountResponse(principal: Principal): ServiceAccountResponse {
   const sa = principal.serviceAccount!;
   return {
@@ -403,15 +690,12 @@ function toServiceAccountResponse(principal: Principal): ServiceAccountResponse 
     code: sa.code,
     name: principal.name,
     description: sa.description,
+    clientIds: principal.clientId ? [principal.clientId] : [],
     applicationId: principal.applicationId,
-    clientId: principal.clientId,
     active: principal.active,
-    webhookAuthType: sa.whAuthType,
-    signingAlgorithm: sa.whSigningAlgorithm,
-    credentialsCreatedAt: sa.whCredentialsCreatedAt?.toISOString() ?? null,
-    credentialsRegeneratedAt: sa.whCredentialsRegeneratedAt?.toISOString() ?? null,
-    lastUsedAt: sa.lastUsedAt?.toISOString() ?? null,
+    authType: sa.whAuthType,
     roles: principal.roles.map((r) => r.roleName),
+    lastUsedAt: sa.lastUsedAt?.toISOString() ?? null,
     createdAt: principal.createdAt.toISOString(),
     updatedAt: principal.updatedAt.toISOString(),
   };

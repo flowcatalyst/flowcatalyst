@@ -10,6 +10,7 @@
 
 import type { FastifyPluginAsync, preHandlerHookHandler } from 'fastify';
 import fp from 'fastify-plugin';
+import { AuditContext } from '@flowcatalyst/domain-core';
 import type { AuditPluginOptions, AuditData } from '../types.js';
 
 // Declare the cookies property from @fastify/cookie
@@ -108,6 +109,12 @@ const auditPluginAsync: FastifyPluginAsync<AuditPluginOptions> = async (fastify,
       principal,
     };
     request.audit = auditData;
+
+    // Populate AuditContext AsyncLocalStorage so that authorization
+    // helpers (getAccessibleClientIds, canAccessResourceByClient) work
+    if (principal) {
+      AuditContext.enterWith(principal);
+    }
   });
 };
 

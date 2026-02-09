@@ -2,14 +2,21 @@
  * Subscription Repository
  *
  * Data access for Subscription entities with event type binding and config sub-queries.
+ *
+ * Read paths use Drizzle relational queries (db.query) for efficient loading.
+ * Complex queries (findActiveByEventTypeCode, findWithFilters) use query builder
+ * with batch loading of children.
+ * Write paths use standard insert/update with collection sync.
  */
 
 import { eq, sql, and, or, isNull, inArray } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type { Repository, TransactionContext } from '@flowcatalyst/persistence';
 
+import type * as platformSchema from '../schema/drizzle-schema.js';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyDb = PostgresJsDatabase<any>;
+type PlatformDb = PostgresJsDatabase<typeof platformSchema, any>;
 
 import {
   subscriptions,
@@ -70,44 +77,87 @@ export interface SubscriptionRepository extends Repository<Subscription> {
 /**
  * Create a Subscription repository.
  */
-export function createSubscriptionRepository(defaultDb: AnyDb): SubscriptionRepository {
-  const db = (tx?: TransactionContext): AnyDb => (tx?.db as AnyDb) ?? defaultDb;
+export function createSubscriptionRepository(defaultDb: PlatformDb): SubscriptionRepository {
+  const db = (tx?: TransactionContext): PlatformDb => (tx?.db as PlatformDb) ?? defaultDb;
+
+  /** Relational query includes for loading all child collections. */
+  const withChildren = {
+    eventTypes: true,
+    customConfigs: true,
+  } as const;
 
   /**
-   * Load event type bindings for a subscription.
+   * Load event type bindings for multiple subscriptions (batch).
    */
   async function loadEventTypes(
-    subscriptionId: string,
+    subscriptionIds: string[],
     txCtx?: TransactionContext,
-  ): Promise<EventTypeBinding[]> {
+  ): Promise<Map<string, EventTypeBinding[]>> {
+    if (subscriptionIds.length === 0) return new Map();
+
     const records = await db(txCtx)
       .select()
       .from(subscriptionEventTypes)
-      .where(eq(subscriptionEventTypes.subscriptionId, subscriptionId));
+      .where(inArray(subscriptionEventTypes.subscriptionId, subscriptionIds));
 
-    return records.map((r) => ({
-      eventTypeId: r.eventTypeId,
-      eventTypeCode: r.eventTypeCode,
-      specVersion: r.specVersion,
-    }));
+    const map = new Map<string, EventTypeBinding[]>();
+    for (const r of records) {
+      const list = map.get(r.subscriptionId) ?? [];
+      list.push({
+        eventTypeId: r.eventTypeId,
+        eventTypeCode: r.eventTypeCode,
+        specVersion: r.specVersion,
+      });
+      map.set(r.subscriptionId, list);
+    }
+    return map;
   }
 
   /**
-   * Load custom config entries for a subscription.
+   * Load custom config entries for multiple subscriptions (batch).
    */
   async function loadCustomConfig(
-    subscriptionId: string,
+    subscriptionIds: string[],
     txCtx?: TransactionContext,
-  ): Promise<ConfigEntry[]> {
+  ): Promise<Map<string, ConfigEntry[]>> {
+    if (subscriptionIds.length === 0) return new Map();
+
     const records = await db(txCtx)
       .select()
       .from(subscriptionCustomConfigs)
-      .where(eq(subscriptionCustomConfigs.subscriptionId, subscriptionId));
+      .where(inArray(subscriptionCustomConfigs.subscriptionId, subscriptionIds));
 
-    return records.map((r) => ({
-      key: r.configKey,
-      value: r.configValue,
-    }));
+    const map = new Map<string, ConfigEntry[]>();
+    for (const r of records) {
+      const list = map.get(r.subscriptionId) ?? [];
+      list.push({
+        key: r.configKey,
+        value: r.configValue,
+      });
+      map.set(r.subscriptionId, list);
+    }
+    return map;
+  }
+
+  /**
+   * Batch-hydrate subscription records with their children.
+   * Used by complex query-builder paths (findActiveByEventTypeCode, findWithFilters).
+   */
+  async function batchHydrate(
+    records: SubscriptionRecord[],
+    txCtx?: TransactionContext,
+  ): Promise<Subscription[]> {
+    if (records.length === 0) return [];
+
+    const ids = records.map((r) => r.id);
+    const [eventTypesMap, customConfigMap] = await Promise.all([
+      loadEventTypes(ids, txCtx),
+      loadCustomConfig(ids, txCtx),
+    ]);
+
+    return records.map((r) =>
+      recordToSubscription(r, eventTypesMap.get(r.id) ?? [], customConfigMap.get(r.id) ?? []),
+    );
   }
 
   /**
@@ -153,30 +203,14 @@ export function createSubscriptionRepository(defaultDb: AnyDb): SubscriptionRepo
     }
   }
 
-  /**
-   * Hydrate a subscription record with its relations.
-   */
-  async function hydrate(
-    record: SubscriptionRecord,
-    txCtx?: TransactionContext,
-  ): Promise<Subscription> {
-    const [eventTypes, customConfig] = await Promise.all([
-      loadEventTypes(record.id, txCtx),
-      loadCustomConfig(record.id, txCtx),
-    ]);
-    return recordToSubscription(record, eventTypes, customConfig);
-  }
-
   return {
     async findById(id: string, tx?: TransactionContext): Promise<Subscription | undefined> {
-      const [record] = await db(tx)
-        .select()
-        .from(subscriptions)
-        .where(eq(subscriptions.id, id))
-        .limit(1);
-
-      if (!record) return undefined;
-      return hydrate(record, tx);
+      const result = await db(tx).query.subscriptions.findFirst({
+        where: { RAW: eq(subscriptions.id, id) },
+        with: withChildren,
+      });
+      if (!result) return undefined;
+      return resultToSubscription(result as SubscriptionRelationalResult);
     },
 
     async findByCodeAndClient(
@@ -189,10 +223,12 @@ export function createSubscriptionRepository(defaultDb: AnyDb): SubscriptionRepo
           ? and(eq(subscriptions.code, code), isNull(subscriptions.clientId))
           : and(eq(subscriptions.code, code), eq(subscriptions.clientId, clientId));
 
-      const [record] = await db(tx).select().from(subscriptions).where(condition).limit(1);
-
-      if (!record) return undefined;
-      return hydrate(record, tx);
+      const result = await db(tx).query.subscriptions.findFirst({
+        where: { RAW: condition },
+        with: withChildren,
+      });
+      if (!result) return undefined;
+      return resultToSubscription(result as SubscriptionRelationalResult);
     },
 
     async existsByCodeAndClient(
@@ -213,35 +249,38 @@ export function createSubscriptionRepository(defaultDb: AnyDb): SubscriptionRepo
     },
 
     async findAll(tx?: TransactionContext): Promise<Subscription[]> {
-      const records = await db(tx).select().from(subscriptions).orderBy(subscriptions.code);
-      return Promise.all(records.map((r) => hydrate(r, tx)));
+      const results = await db(tx).query.subscriptions.findMany({
+        orderBy: { code: 'asc' },
+        with: withChildren,
+      });
+      return (results as SubscriptionRelationalResult[]).map(resultToSubscription);
     },
 
     async findByClientId(clientId: string, tx?: TransactionContext): Promise<Subscription[]> {
-      const records = await db(tx)
-        .select()
-        .from(subscriptions)
-        .where(eq(subscriptions.clientId, clientId))
-        .orderBy(subscriptions.code);
-      return Promise.all(records.map((r) => hydrate(r, tx)));
+      const results = await db(tx).query.subscriptions.findMany({
+        where: { RAW: eq(subscriptions.clientId, clientId) },
+        orderBy: { code: 'asc' },
+        with: withChildren,
+      });
+      return (results as SubscriptionRelationalResult[]).map(resultToSubscription);
     },
 
     async findAnchorLevel(tx?: TransactionContext): Promise<Subscription[]> {
-      const records = await db(tx)
-        .select()
-        .from(subscriptions)
-        .where(isNull(subscriptions.clientId))
-        .orderBy(subscriptions.code);
-      return Promise.all(records.map((r) => hydrate(r, tx)));
+      const results = await db(tx).query.subscriptions.findMany({
+        where: { RAW: isNull(subscriptions.clientId) },
+        orderBy: { code: 'asc' },
+        with: withChildren,
+      });
+      return (results as SubscriptionRelationalResult[]).map(resultToSubscription);
     },
 
     async findActive(tx?: TransactionContext): Promise<Subscription[]> {
-      const records = await db(tx)
-        .select()
-        .from(subscriptions)
-        .where(eq(subscriptions.status, 'ACTIVE'))
-        .orderBy(subscriptions.code);
-      return Promise.all(records.map((r) => hydrate(r, tx)));
+      const results = await db(tx).query.subscriptions.findMany({
+        where: { RAW: eq(subscriptions.status, 'ACTIVE') },
+        orderBy: { code: 'asc' },
+        with: withChildren,
+      });
+      return (results as SubscriptionRelationalResult[]).map(resultToSubscription);
     },
 
     async findActiveByEventTypeCode(
@@ -276,19 +315,19 @@ export function createSubscriptionRepository(defaultDb: AnyDb): SubscriptionRepo
           ),
         );
 
-      return Promise.all(records.map((r) => hydrate(r, tx)));
+      return batchHydrate(records, tx);
     },
 
     async findByDispatchPoolId(
       dispatchPoolId: string,
       tx?: TransactionContext,
     ): Promise<Subscription[]> {
-      const records = await db(tx)
-        .select()
-        .from(subscriptions)
-        .where(eq(subscriptions.dispatchPoolId, dispatchPoolId))
-        .orderBy(subscriptions.code);
-      return Promise.all(records.map((r) => hydrate(r, tx)));
+      const results = await db(tx).query.subscriptions.findMany({
+        where: { RAW: eq(subscriptions.dispatchPoolId, dispatchPoolId) },
+        orderBy: { code: 'asc' },
+        with: withChildren,
+      });
+      return (results as SubscriptionRelationalResult[]).map(resultToSubscription);
     },
 
     async existsByDispatchPoolId(
@@ -352,7 +391,7 @@ export function createSubscriptionRepository(defaultDb: AnyDb): SubscriptionRepo
         .from(subscriptions)
         .where(conditions.length === 1 ? conditions[0]! : and(...conditions))
         .orderBy(subscriptions.code);
-      return Promise.all(records.map((r) => hydrate(r, tx)));
+      return batchHydrate(records, tx);
     },
 
     async count(tx?: TransactionContext): Promise<number> {
@@ -470,7 +509,91 @@ export function createSubscriptionRepository(defaultDb: AnyDb): SubscriptionRepo
 }
 
 /**
+ * Shape returned by Drizzle relational query with children.
+ */
+interface SubscriptionRelationalResult {
+  id: string;
+  code: string;
+  applicationCode: string | null;
+  name: string;
+  description: string | null;
+  clientId: string | null;
+  clientIdentifier: string | null;
+  clientScoped: boolean;
+  target: string;
+  queue: string | null;
+  source: string;
+  status: string;
+  maxAgeSeconds: number;
+  dispatchPoolId: string | null;
+  dispatchPoolCode: string | null;
+  delaySeconds: number;
+  sequence: number;
+  mode: string;
+  timeoutSeconds: number;
+  maxRetries: number;
+  serviceAccountId: string | null;
+  dataOnly: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  eventTypes: {
+    subscriptionId: string;
+    eventTypeId: string | null;
+    eventTypeCode: string;
+    specVersion: string | null;
+  }[];
+  customConfigs: {
+    subscriptionId: string;
+    configKey: string;
+    configValue: string;
+  }[];
+}
+
+/**
+ * Convert a relational query result to a Subscription domain entity.
+ * Used by simple read methods that leverage db.query with { with: withChildren }.
+ */
+function resultToSubscription(result: SubscriptionRelationalResult): Subscription {
+  return {
+    id: result.id,
+    code: result.code,
+    applicationCode: result.applicationCode,
+    name: result.name,
+    description: result.description,
+    clientId: result.clientId,
+    clientIdentifier: result.clientIdentifier,
+    clientScoped: result.clientScoped,
+    eventTypes: result.eventTypes.map((et) => ({
+      eventTypeId: et.eventTypeId,
+      eventTypeCode: et.eventTypeCode,
+      specVersion: et.specVersion,
+    })),
+    target: result.target,
+    queue: result.queue,
+    customConfig: result.customConfigs.map((c) => ({
+      key: c.configKey,
+      value: c.configValue,
+    })),
+    source: result.source as SubscriptionSource,
+    status: result.status as SubscriptionStatus,
+    maxAgeSeconds: result.maxAgeSeconds,
+    dispatchPoolId: result.dispatchPoolId,
+    dispatchPoolCode: result.dispatchPoolCode,
+    delaySeconds: result.delaySeconds,
+    sequence: result.sequence,
+    mode: result.mode as DispatchMode,
+    timeoutSeconds: result.timeoutSeconds,
+    maxRetries: result.maxRetries,
+    serviceAccountId: result.serviceAccountId,
+    dataOnly: result.dataOnly,
+    createdAt: result.createdAt,
+    updatedAt: result.updatedAt,
+  };
+}
+
+/**
  * Convert a database record to a Subscription domain entity.
+ * Used by batch-loading paths (findActiveByEventTypeCode, findWithFilters).
  */
 function recordToSubscription(
   record: SubscriptionRecord,

@@ -78,6 +78,8 @@ export function createRequestLogger(baseLogger: Logger, tracing: TracingData): L
  * Create Fastify logger options.
  *
  * Fastify uses Pino internally, so this creates compatible logger options.
+ * In development mode (NODE_ENV !== 'production'), uses pino-pretty for
+ * human-readable log output.
  *
  * @param config - Logging configuration
  * @returns Pino logger options for Fastify
@@ -98,6 +100,8 @@ export function createRequestLogger(baseLogger: Logger, tracing: TracingData): L
 export function createFastifyLoggerOptions(config: LoggingConfig = {}): LoggerOptions | boolean {
   const { level = 'info', serviceName, baseContext = {}, pinoOptions = {} } = config;
 
+  const isDev = process.env['NODE_ENV'] !== 'production';
+
   return {
     level,
     ...pinoOptions,
@@ -106,6 +110,18 @@ export function createFastifyLoggerOptions(config: LoggingConfig = {}): LoggerOp
       ...baseContext,
       ...pinoOptions.base,
     },
+    ...(isDev
+      ? {
+          transport: {
+            target: 'pino-pretty',
+            options: {
+              colorize: true,
+              translateTime: 'HH:MM:ss',
+              ignore: 'pid,hostname',
+            },
+          },
+        }
+      : {}),
   };
 }
 

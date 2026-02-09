@@ -256,6 +256,20 @@ export const AuditContext = {
   },
 
   /**
+   * Set the principal for the current async context.
+   *
+   * Use this in HTTP middleware/hooks to populate the audit context
+   * for the duration of the request. Uses AsyncLocalStorage.enterWith()
+   * which sets the store for the current async context and all subsequent
+   * async operations within it.
+   *
+   * @param principal - The principal to set (or null to clear)
+   */
+  enterWith(principal: PrincipalInfo | null): void {
+    storage.enterWith({ principal });
+  },
+
+  /**
    * Create a principal info object.
    *
    * @param id - Principal ID

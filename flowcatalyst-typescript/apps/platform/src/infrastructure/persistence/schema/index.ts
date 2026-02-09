@@ -21,6 +21,13 @@ export {
   type NewAuditLog,
 } from '@flowcatalyst/persistence';
 
+// Re-export dispatch jobs write table from persistence package
+export {
+  dispatchJobs,
+  type DispatchJobRecord,
+  type NewDispatchJobRecord,
+} from '@flowcatalyst/persistence';
+
 // Re-export read model tables from persistence package
 export {
   eventsRead,

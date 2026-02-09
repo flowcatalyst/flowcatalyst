@@ -83,6 +83,7 @@ const ListApplicationsQuery = Type.Object({
   page: Type.Optional(Type.String()),
   pageSize: Type.Optional(Type.String()),
   type: Type.Optional(Type.String()),
+  activeOnly: Type.Optional(Type.String()),
 });
 
 type CreateApplicationBody = Static<typeof CreateApplicationSchema>;
@@ -240,10 +241,30 @@ export async function registerApplicationsRoutes(
       const result = await createApplicationUseCase.execute(command, ctx);
 
       if (Result.isSuccess(result)) {
-        const application = await applicationRepository.findById(
-          result.value.getData().applicationId,
-        );
+        const applicationId = result.value.getData().applicationId;
+        let application = await applicationRepository.findById(applicationId);
+
         if (application) {
+          // Auto-provision service account (Java parity)
+          const saCommand: CreateServiceAccountCommand = {
+            code: `${body.code}-service`,
+            name: `${body.name} Service Account`,
+            description: `Auto-provisioned service account for ${body.name}`,
+            applicationId,
+            clientId: null,
+          };
+
+          const saResult = await createServiceAccountUseCase.execute(saCommand, ctx);
+
+          if (Result.isSuccess(saResult)) {
+            const principalId = saResult.value.getData().principalId;
+            // Link service account to the application
+            application = await applicationRepository.update({
+              ...application,
+              serviceAccountId: principalId,
+            });
+          }
+
           return jsonCreated(reply, toApplicationResponse(application));
         }
       }
@@ -271,9 +292,18 @@ export async function registerApplicationsRoutes(
 
       const pagedResult = await applicationRepository.findPaged(page, pageSize);
 
+      // Apply in-memory filters for activeOnly and type
+      let filtered = pagedResult.items;
+      if (query.activeOnly === 'true') {
+        filtered = filtered.filter((a) => a.active);
+      }
+      if (query.type) {
+        filtered = filtered.filter((a) => a.type === query.type);
+      }
+
       return jsonSuccess(reply, {
-        applications: pagedResult.items.map(toApplicationResponse),
-        total: pagedResult.totalItems,
+        applications: filtered.map(toApplicationResponse),
+        total: filtered.length,
         page: pagedResult.page,
         pageSize: pagedResult.pageSize,
       });
@@ -668,7 +698,15 @@ export async function registerApplicationsRoutes(
       const result = await createServiceAccountUseCase.execute(command, ctx);
 
       if (Result.isSuccess(result)) {
-        const principal = await principalRepository.findById(result.value.getData().principalId);
+        const principalId = result.value.getData().principalId;
+        const principal = await principalRepository.findById(principalId);
+
+        // Link service account back to the application
+        await applicationRepository.update({
+          ...application,
+          serviceAccountId: principalId,
+        });
+
         if (principal) {
           return jsonCreated(reply, {
             id: principal.id,

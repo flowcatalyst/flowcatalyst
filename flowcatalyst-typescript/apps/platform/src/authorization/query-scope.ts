@@ -86,14 +86,21 @@ export function getClientQueryScopeForPrincipal(
  * Use for single-resource reads after fetching.
  *
  * @param clientId - The client ID of the resource (null for unscoped resources)
+ * @param principal - Optional principal (falls back to AuditContext)
  */
-export function canAccessResourceByClient(clientId: string | null): boolean {
+export function canAccessResourceByClient(
+  clientId: string | null,
+  principal?: PrincipalInfo | null,
+): boolean {
   if (!clientId) {
     // Unscoped resource, allow
     return true;
   }
 
-  const scope = getClientQueryScope();
+  const p = principal ?? AuditContext.getPrincipal();
+  if (!p) return false;
+
+  const scope = getClientQueryScopeForPrincipal(p);
 
   switch (scope.type) {
     case 'unrestricted':
@@ -109,10 +116,14 @@ export function canAccessResourceByClient(clientId: string | null): boolean {
  * Get accessible client IDs for the current principal, or null if unrestricted.
  * Convenience function for injecting into repository queries.
  *
+ * @param principal - Optional principal (falls back to AuditContext)
  * @returns Array of accessible client IDs, or null for unrestricted access
  */
-export function getAccessibleClientIds(): string[] | null {
-  const scope = getClientQueryScope();
+export function getAccessibleClientIds(principal?: PrincipalInfo | null): string[] | null {
+  const p = principal ?? AuditContext.getPrincipal();
+  if (!p) return [];
+
+  const scope = getClientQueryScopeForPrincipal(p);
 
   switch (scope.type) {
     case 'unrestricted':

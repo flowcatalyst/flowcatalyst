@@ -26,13 +26,13 @@ const ListAuditLogsQuery = Type.Object({
   entityId: Type.Optional(Type.String()),
   principalId: Type.Optional(Type.String()),
   operation: Type.Optional(Type.String()),
-  limit: Type.Optional(Type.String()),
-  offset: Type.Optional(Type.String()),
+  page: Type.Optional(Type.String()),
+  pageSize: Type.Optional(Type.String()),
 });
 
 const EntityLogsQuery = Type.Object({
-  limit: Type.Optional(Type.String()),
-  offset: Type.Optional(Type.String()),
+  page: Type.Optional(Type.String()),
+  pageSize: Type.Optional(Type.String()),
 });
 
 // ─── Response Schemas ───────────────────────────────────────────────────────
@@ -49,10 +49,10 @@ const AuditLogResponseSchema = Type.Object({
 });
 
 const AuditLogListResponseSchema = Type.Object({
-  logs: Type.Array(AuditLogResponseSchema),
+  auditLogs: Type.Array(AuditLogResponseSchema),
   total: Type.Integer(),
-  limit: Type.Integer(),
-  offset: Type.Integer(),
+  page: Type.Integer(),
+  pageSize: Type.Integer(),
 });
 
 const EntityTypesResponseSchema = Type.Object({
@@ -148,11 +148,13 @@ export async function registerAuditLogsRoutes(
     async (request, reply) => {
       const query = request.query as Static<typeof ListAuditLogsQuery>;
 
-      const limit = Math.min(
-        Math.max(parseInt(query.limit ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 1),
+      const page = Math.max(parseInt(query.page ?? '0', 10) || 0, 0);
+      const pageSize = Math.min(
+        Math.max(parseInt(query.pageSize ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 1),
         MAX_LIMIT,
       );
-      const offset = Math.max(parseInt(query.offset ?? '0', 10) || 0, 0);
+      const limit = pageSize;
+      const offset = page * pageSize;
 
       const result = await auditLogRepository.findPaged(
         {
@@ -167,10 +169,10 @@ export async function registerAuditLogsRoutes(
       const logsWithPrincipals = await resolvePrincipalNames(result.logs, principalRepository);
 
       return jsonSuccess(reply, {
-        logs: logsWithPrincipals.map(toResponse),
+        auditLogs: logsWithPrincipals.map(toResponse),
         total: result.total,
-        limit: result.limit,
-        offset: result.offset,
+        page,
+        pageSize,
       });
     },
   );
@@ -219,21 +221,23 @@ export async function registerAuditLogsRoutes(
       const { entityType, entityId } = request.params as Static<typeof EntityParam>;
       const query = request.query as Static<typeof EntityLogsQuery>;
 
-      const limit = Math.min(
-        Math.max(parseInt(query.limit ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 1),
+      const page = Math.max(parseInt(query.page ?? '0', 10) || 0, 0);
+      const pageSize = Math.min(
+        Math.max(parseInt(query.pageSize ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 1),
         MAX_LIMIT,
       );
-      const offset = Math.max(parseInt(query.offset ?? '0', 10) || 0, 0);
+      const limit = pageSize;
+      const offset = page * pageSize;
 
       const result = await auditLogRepository.findByEntity(entityType, entityId, { limit, offset });
 
       const logsWithPrincipals = await resolvePrincipalNames(result.logs, principalRepository);
 
       return jsonSuccess(reply, {
-        logs: logsWithPrincipals.map(toResponse),
+        auditLogs: logsWithPrincipals.map(toResponse),
         total: result.total,
-        limit: result.limit,
-        offset: result.offset,
+        page,
+        pageSize,
       });
     },
   );

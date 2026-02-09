@@ -29,10 +29,11 @@ import type {
   OAuthClientSecretRegenerated,
   OAuthClientDeleted,
   OAuthClient,
-  OAuthClientType,
-  OAuthGrantType,
 } from '../../domain/index.js';
-import type { OAuthClientRepository } from '../../infrastructure/persistence/index.js';
+import type {
+  OAuthClientRepository,
+  ApplicationRepository,
+} from '../../infrastructure/persistence/index.js';
 import { requirePermission } from '../../authorization/index.js';
 import { OAUTH_CLIENT_PERMISSIONS } from '../../authorization/permissions/platform-auth.js';
 
@@ -88,6 +89,11 @@ type RegenerateSecretBody = Static<typeof RegenerateSecretSchema>;
 
 // ─── Response Schemas ───────────────────────────────────────────────────────
 
+const ApplicationRefSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+});
+
 const OAuthClientResponseSchema = Type.Object({
   id: Type.String(),
   clientId: Type.String(),
@@ -97,9 +103,10 @@ const OAuthClientResponseSchema = Type.Object({
   redirectUris: Type.Array(Type.String()),
   allowedOrigins: Type.Array(Type.String()),
   grantTypes: Type.Array(Type.String()),
-  defaultScopes: Type.Union([Type.String(), Type.Null()]),
+  defaultScopes: Type.Array(Type.String()),
   pkceRequired: Type.Boolean(),
   applicationIds: Type.Array(Type.String()),
+  applications: Type.Array(ApplicationRefSchema),
   serviceAccountPrincipalId: Type.Union([Type.String(), Type.Null()]),
   active: Type.Boolean(),
   createdAt: Type.String({ format: 'date-time' }),
@@ -118,6 +125,7 @@ type OAuthClientResponse = Static<typeof OAuthClientResponseSchema>;
  */
 export interface OAuthClientsRoutesDeps {
   readonly oauthClientRepository: OAuthClientRepository;
+  readonly applicationRepository: ApplicationRepository;
   readonly createOAuthClientUseCase: UseCase<CreateOAuthClientCommand, OAuthClientCreated>;
   readonly updateOAuthClientUseCase: UseCase<UpdateOAuthClientCommand, OAuthClientUpdated>;
   readonly regenerateOAuthClientSecretUseCase: UseCase<
@@ -129,8 +137,12 @@ export interface OAuthClientsRoutesDeps {
 
 /**
  * Convert OAuthClient to response.
+ * @param appMap - Map of application ID -> name for resolving references
  */
-function toResponse(client: OAuthClient): OAuthClientResponse {
+function toResponse(
+  client: OAuthClient,
+  appMap: Map<string, string>,
+): OAuthClientResponse {
   return {
     id: client.id,
     clientId: client.clientId,
@@ -140,9 +152,15 @@ function toResponse(client: OAuthClient): OAuthClientResponse {
     redirectUris: [...client.redirectUris],
     allowedOrigins: [...client.allowedOrigins],
     grantTypes: [...client.grantTypes],
-    defaultScopes: client.defaultScopes,
+    defaultScopes: client.defaultScopes ? client.defaultScopes.split(/[,\s]+/).filter(Boolean) : [],
     pkceRequired: client.pkceRequired,
     applicationIds: [...client.applicationIds],
+    applications: client.applicationIds
+      .map((id) => {
+        const name = appMap.get(id);
+        return name ? { id, name } : null;
+      })
+      .filter((a): a is { id: string; name: string } => a !== null),
     serviceAccountPrincipalId: client.serviceAccountPrincipalId,
     active: client.active,
     createdAt: client.createdAt.toISOString(),
@@ -159,11 +177,20 @@ export async function registerOAuthClientsRoutes(
 ): Promise<void> {
   const {
     oauthClientRepository,
+    applicationRepository,
     createOAuthClientUseCase,
     updateOAuthClientUseCase,
     regenerateOAuthClientSecretUseCase,
     deleteOAuthClientUseCase,
   } = deps;
+
+  /**
+   * Build a Map of application ID -> name for resolving references.
+   */
+  async function buildAppMap(): Promise<Map<string, string>> {
+    const apps = await applicationRepository.findAll();
+    return new Map(apps.map((a) => [a.id, a.name]));
+  }
 
   // GET /api/admin/oauth-clients - List all OAuth clients
   fastify.get(
@@ -180,15 +207,15 @@ export async function registerOAuthClientsRoutes(
     async (request, reply) => {
       const query = request.query as Static<typeof ListOAuthClientsQuery>;
 
-      let clients: OAuthClient[];
-      if (query.active === 'true') {
-        clients = await oauthClientRepository.findActive();
-      } else {
-        clients = await oauthClientRepository.findAll();
-      }
+      const [clients, appMap] = await Promise.all([
+        query.active === 'true'
+          ? oauthClientRepository.findActive()
+          : oauthClientRepository.findAll(),
+        buildAppMap(),
+      ]);
 
       return jsonSuccess(reply, {
-        clients: clients.map(toResponse),
+        clients: clients.map((c) => toResponse(c, appMap)),
         total: clients.length,
       });
     },
@@ -215,7 +242,8 @@ export async function registerOAuthClientsRoutes(
         return notFound(reply, `OAuth client not found: ${id}`);
       }
 
-      return jsonSuccess(reply, toResponse(client));
+      const appMap = await buildAppMap();
+      return jsonSuccess(reply, toResponse(client, appMap));
     },
   );
 
@@ -240,7 +268,8 @@ export async function registerOAuthClientsRoutes(
         return notFound(reply, `OAuth client not found: ${clientId}`);
       }
 
-      return jsonSuccess(reply, toResponse(client));
+      const appMap = await buildAppMap();
+      return jsonSuccess(reply, toResponse(client, appMap));
     },
   );
 
@@ -280,7 +309,8 @@ export async function registerOAuthClientsRoutes(
       if (Result.isSuccess(result)) {
         const client = await oauthClientRepository.findById(result.value.getData().oauthClientId);
         if (client) {
-          return jsonCreated(reply, toResponse(client));
+          const appMap = await buildAppMap();
+          return jsonCreated(reply, toResponse(client, appMap));
         }
       }
 
@@ -326,7 +356,8 @@ export async function registerOAuthClientsRoutes(
       if (Result.isSuccess(result)) {
         const client = await oauthClientRepository.findById(id);
         if (client) {
-          return jsonSuccess(reply, toResponse(client));
+          const appMap = await buildAppMap();
+          return jsonSuccess(reply, toResponse(client, appMap));
         }
       }
 
@@ -364,7 +395,99 @@ export async function registerOAuthClientsRoutes(
       if (Result.isSuccess(result)) {
         const client = await oauthClientRepository.findById(id);
         if (client) {
-          return jsonSuccess(reply, toResponse(client));
+          const appMap = await buildAppMap();
+          return jsonSuccess(reply, toResponse(client, appMap));
+        }
+      }
+
+      return sendResult(reply, result);
+    },
+  );
+
+  // POST /api/admin/oauth-clients/:id/activate - Activate OAuth client
+  fastify.post(
+    '/oauth-clients/:id/activate',
+    {
+      preHandler: requirePermission(OAUTH_CLIENT_PERMISSIONS.UPDATE),
+      schema: {
+        params: IdParam,
+        response: {
+          200: Type.Object({ message: Type.String() }),
+          404: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as Static<typeof IdParam>;
+      const client = await oauthClientRepository.findById(id);
+
+      if (!client) {
+        return notFound(reply, `OAuth client not found: ${id}`);
+      }
+
+      await oauthClientRepository.update({ ...client, active: true });
+      return jsonSuccess(reply, { message: 'OAuth client activated' });
+    },
+  );
+
+  // POST /api/admin/oauth-clients/:id/deactivate - Deactivate OAuth client
+  fastify.post(
+    '/oauth-clients/:id/deactivate',
+    {
+      preHandler: requirePermission(OAUTH_CLIENT_PERMISSIONS.UPDATE),
+      schema: {
+        params: IdParam,
+        response: {
+          200: Type.Object({ message: Type.String() }),
+          404: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as Static<typeof IdParam>;
+      const client = await oauthClientRepository.findById(id);
+
+      if (!client) {
+        return notFound(reply, `OAuth client not found: ${id}`);
+      }
+
+      await oauthClientRepository.update({ ...client, active: false });
+      return jsonSuccess(reply, { message: 'OAuth client deactivated' });
+    },
+  );
+
+  // POST /api/admin/oauth-clients/:id/rotate-secret - Alias for regenerate-secret
+  fastify.post(
+    '/oauth-clients/:id/rotate-secret',
+    {
+      preHandler: requirePermission(OAUTH_CLIENT_PERMISSIONS.REGENERATE_SECRET),
+      schema: {
+        params: IdParam,
+        body: RegenerateSecretSchema,
+        response: {
+          200: OAuthClientResponseSchema,
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as Static<typeof IdParam>;
+      const body = request.body as RegenerateSecretBody;
+      const ctx = request.executionContext;
+
+      const command: RegenerateOAuthClientSecretCommand = {
+        oauthClientId: id,
+        newSecretRef: body.newSecretRef,
+      };
+
+      const result = await regenerateOAuthClientSecretUseCase.execute(command, ctx);
+
+      if (Result.isSuccess(result)) {
+        const client = await oauthClientRepository.findById(id);
+        if (client) {
+          const appMap = await buildAppMap();
+          return jsonSuccess(reply, toResponse(client, appMap));
         }
       }
 

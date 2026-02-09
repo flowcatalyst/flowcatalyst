@@ -28,7 +28,7 @@ import type {
   EmailDomainMappingDeleted,
   EmailDomainMapping,
 } from '../../domain/index.js';
-import type { EmailDomainMappingRepository } from '../../infrastructure/persistence/index.js';
+import type { EmailDomainMappingRepository, ClientRepository } from '../../infrastructure/persistence/index.js';
 import type { IdentityProviderRepository } from '../../infrastructure/persistence/repositories/identity-provider-repository.js';
 import { requirePermission } from '../../authorization/index.js';
 import { EMAIL_DOMAIN_MAPPING_PERMISSIONS } from '../../authorization/permissions/platform-admin.js';
@@ -77,6 +77,7 @@ const EmailDomainMappingResponseSchema = Type.Object({
   identityProviderType: Type.Union([Type.String(), Type.Null()]),
   scopeType: Type.String(),
   primaryClientId: Type.Union([Type.String(), Type.Null()]),
+  primaryClientName: Type.Union([Type.String(), Type.Null()]),
   additionalClientIds: Type.Array(Type.String()),
   grantedClientIds: Type.Array(Type.String()),
   requiredOidcTenantId: Type.Union([Type.String(), Type.Null()]),
@@ -98,6 +99,7 @@ type EmailDomainMappingResponse = Static<typeof EmailDomainMappingResponseSchema
 export interface EmailDomainMappingsRoutesDeps {
   readonly emailDomainMappingRepository: EmailDomainMappingRepository;
   readonly identityProviderRepository: IdentityProviderRepository;
+  readonly clientRepository: ClientRepository;
   readonly createEmailDomainMappingUseCase: UseCase<
     CreateEmailDomainMappingCommand,
     EmailDomainMappingCreated
@@ -121,6 +123,7 @@ export async function registerEmailDomainMappingsRoutes(
   const {
     emailDomainMappingRepository,
     identityProviderRepository,
+    clientRepository,
     createEmailDomainMappingUseCase,
     updateEmailDomainMappingUseCase,
     deleteEmailDomainMappingUseCase,
@@ -150,9 +153,23 @@ export async function registerEmailDomainMappingsRoutes(
         }
       }
 
+      // Batch-load primary client names
+      const clientIds = [...new Set(mappings.map((m) => m.primaryClientId).filter(Boolean))] as string[];
+      const clientNameMap = new Map<string, string>();
+      for (const clientId of clientIds) {
+        const client = await clientRepository.findById(clientId);
+        if (client) {
+          clientNameMap.set(clientId, client.name);
+        }
+      }
+
       return jsonSuccess(reply, {
         mappings: mappings.map((m) =>
-          toEmailDomainMappingResponse(m, idpMap.get(m.identityProviderId)),
+          toEmailDomainMappingResponse(
+            m,
+            idpMap.get(m.identityProviderId),
+            m.primaryClientId ? clientNameMap.get(m.primaryClientId) : null,
+          ),
         ),
         total: mappings.length,
       });
@@ -179,9 +196,16 @@ export async function registerEmailDomainMappingsRoutes(
         return notFound(reply, 'Email domain mapping not found');
       }
       const idp = await identityProviderRepository.findById(mapping.identityProviderId);
+      const primaryClient = mapping.primaryClientId
+        ? await clientRepository.findById(mapping.primaryClientId)
+        : null;
       return jsonSuccess(
         reply,
-        toEmailDomainMappingResponse(mapping, idp ? { name: idp.name, type: idp.type } : undefined),
+        toEmailDomainMappingResponse(
+          mapping,
+          idp ? { name: idp.name, type: idp.type } : undefined,
+          primaryClient?.name,
+        ),
       );
     },
   );
@@ -206,9 +230,16 @@ export async function registerEmailDomainMappingsRoutes(
         return notFound(reply, 'No mapping found for this email domain');
       }
       const idp = await identityProviderRepository.findById(mapping.identityProviderId);
+      const primaryClient = mapping.primaryClientId
+        ? await clientRepository.findById(mapping.primaryClientId)
+        : null;
       return jsonSuccess(
         reply,
-        toEmailDomainMappingResponse(mapping, idp ? { name: idp.name, type: idp.type } : undefined),
+        toEmailDomainMappingResponse(
+          mapping,
+          idp ? { name: idp.name, type: idp.type } : undefined,
+          primaryClient?.name,
+        ),
       );
     },
   );
@@ -251,11 +282,15 @@ export async function registerEmailDomainMappingsRoutes(
         );
         if (mapping) {
           const idp = await identityProviderRepository.findById(mapping.identityProviderId);
+          const primaryClient = mapping.primaryClientId
+            ? await clientRepository.findById(mapping.primaryClientId)
+            : null;
           return jsonCreated(
             reply,
             toEmailDomainMappingResponse(
               mapping,
               idp ? { name: idp.name, type: idp.type } : undefined,
+              primaryClient?.name,
             ),
           );
         }
@@ -310,11 +345,15 @@ export async function registerEmailDomainMappingsRoutes(
         const mapping = await emailDomainMappingRepository.findById(id);
         if (mapping) {
           const idp = await identityProviderRepository.findById(mapping.identityProviderId);
+          const primaryClient = mapping.primaryClientId
+            ? await clientRepository.findById(mapping.primaryClientId)
+            : null;
           return jsonSuccess(
             reply,
             toEmailDomainMappingResponse(
               mapping,
               idp ? { name: idp.name, type: idp.type } : undefined,
+              primaryClient?.name,
             ),
           );
         }
@@ -358,6 +397,7 @@ export async function registerEmailDomainMappingsRoutes(
 function toEmailDomainMappingResponse(
   mapping: EmailDomainMapping,
   idp?: { name: string; type: string },
+  clientName?: string | null,
 ): EmailDomainMappingResponse {
   return {
     id: mapping.id,
@@ -367,6 +407,7 @@ function toEmailDomainMappingResponse(
     identityProviderType: idp?.type ?? null,
     scopeType: mapping.scopeType,
     primaryClientId: mapping.primaryClientId,
+    primaryClientName: clientName ?? null,
     additionalClientIds: [...mapping.additionalClientIds],
     grantedClientIds: [...mapping.grantedClientIds],
     requiredOidcTenantId: mapping.requiredOidcTenantId,
