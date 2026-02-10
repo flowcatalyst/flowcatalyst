@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.Builder;
-import tech.flowcatalyst.platform.common.DomainEvent;
+
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
@@ -29,7 +29,7 @@ public record IdentityProviderDeleted(
     String identityProviderId,
     String code,
     String name
-) implements DomainEvent {
+) implements IdentityProviderEvent {
 
     private static final String EVENT_TYPE = "platform:iam:identity-provider:deleted";
     private static final String SPEC_VERSION = "1.0";

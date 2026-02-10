@@ -8,6 +8,7 @@ import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.util.Map;
@@ -16,7 +17,7 @@ import java.util.Map;
  * Use case for deleting an EventType.
  */
 @ApplicationScoped
-public class DeleteEventTypeUseCase {
+public class DeleteEventTypeUseCase implements UseCase<DeleteEventTypeCommand, EventTypeDeleted> {
 
     @Inject
     EventTypeRepository repo;
@@ -24,7 +25,13 @@ public class DeleteEventTypeUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<EventTypeDeleted> execute(
+    @Override
+    public boolean authorizeResource(DeleteEventTypeCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<EventTypeDeleted> doExecute(
             DeleteEventTypeCommand command,
             ExecutionContext context
     ) {

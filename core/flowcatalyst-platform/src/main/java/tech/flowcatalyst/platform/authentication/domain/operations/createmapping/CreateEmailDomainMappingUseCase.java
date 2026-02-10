@@ -13,6 +13,7 @@ import tech.flowcatalyst.platform.client.ClientRepository;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
@@ -25,7 +26,7 @@ import java.util.Map;
  * Use case for creating an Email Domain Mapping.
  */
 @ApplicationScoped
-public class CreateEmailDomainMappingUseCase {
+public class CreateEmailDomainMappingUseCase implements UseCase<CreateEmailDomainMappingCommand, EmailDomainMappingCreated> {
 
     @Inject
     EmailDomainMappingRepository mappingRepo;
@@ -39,7 +40,13 @@ public class CreateEmailDomainMappingUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<EmailDomainMappingCreated> execute(CreateEmailDomainMappingCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(CreateEmailDomainMappingCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<EmailDomainMappingCreated> doExecute(CreateEmailDomainMappingCommand command, ExecutionContext context) {
         // Validate email domain
         if (command.emailDomain() == null || command.emailDomain().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(

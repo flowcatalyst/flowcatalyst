@@ -9,6 +9,7 @@ import tech.flowcatalyst.dispatchpool.events.DispatchPoolUpdated;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.time.Instant;
@@ -19,7 +20,7 @@ import java.util.Optional;
  * Use case for updating an existing dispatch pool.
  */
 @ApplicationScoped
-public class UpdateDispatchPoolUseCase {
+public class UpdateDispatchPoolUseCase implements UseCase<UpdateDispatchPoolCommand, DispatchPoolUpdated> {
 
     @Inject
     DispatchPoolRepository poolRepo;
@@ -27,7 +28,13 @@ public class UpdateDispatchPoolUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<DispatchPoolUpdated> execute(UpdateDispatchPoolCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(UpdateDispatchPoolCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<DispatchPoolUpdated> doExecute(UpdateDispatchPoolCommand command, ExecutionContext context) {
         // Validate pool ID
         if (command.poolId() == null || command.poolId().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(

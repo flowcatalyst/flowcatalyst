@@ -10,6 +10,7 @@ import tech.flowcatalyst.platform.authentication.oauth.OAuthClientRepository;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
 import tech.flowcatalyst.serviceaccount.repository.ServiceAccountRepository;
@@ -21,7 +22,7 @@ import java.util.Map;
  * Also cleans up the associated service account and OAuth client if they exist.
  */
 @ApplicationScoped
-public class DeleteApplicationUseCase {
+public class DeleteApplicationUseCase implements UseCase<DeleteApplicationCommand, ApplicationDeleted> {
 
     @Inject
     ApplicationRepository repo;
@@ -41,7 +42,13 @@ public class DeleteApplicationUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<ApplicationDeleted> execute(
+    @Override
+    public boolean authorizeResource(DeleteApplicationCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<ApplicationDeleted> doExecute(
             DeleteApplicationCommand command,
             ExecutionContext context
     ) {

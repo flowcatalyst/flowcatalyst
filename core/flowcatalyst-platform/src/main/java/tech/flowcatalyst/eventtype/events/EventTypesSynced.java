@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.Builder;
-import tech.flowcatalyst.platform.common.DomainEvent;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
@@ -32,7 +31,7 @@ public record EventTypesSynced(
     int eventTypesUpdated,
     int eventTypesDeleted,
     List<String> syncedEventTypeCodes
-) implements DomainEvent {
+) implements EventTypeEvent {
 
     private static final String EVENT_TYPE = "platform:messaging:event-type:synced";
     private static final String SPEC_VERSION = "1.0";

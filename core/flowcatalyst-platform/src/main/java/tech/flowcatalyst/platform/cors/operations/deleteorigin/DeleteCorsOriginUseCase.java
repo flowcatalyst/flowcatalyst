@@ -6,6 +6,7 @@ import tech.flowcatalyst.platform.authentication.oauth.OAuthClientRepository;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.cors.CorsAllowedOrigin;
 import tech.flowcatalyst.platform.cors.CorsAllowedOriginRepository;
@@ -18,7 +19,7 @@ import java.util.Map;
  * Use case for deleting a CORS allowed origin.
  */
 @ApplicationScoped
-public class DeleteCorsOriginUseCase {
+public class DeleteCorsOriginUseCase implements UseCase<DeleteCorsOriginCommand, CorsOriginDeleted> {
 
     @Inject
     CorsAllowedOriginRepository repository;
@@ -29,7 +30,13 @@ public class DeleteCorsOriginUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<CorsOriginDeleted> execute(DeleteCorsOriginCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(DeleteCorsOriginCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<CorsOriginDeleted> doExecute(DeleteCorsOriginCommand command, ExecutionContext context) {
         // Validate ID is provided
         if (command.originId() == null || command.originId().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(

@@ -234,6 +234,10 @@ public class PanacheTransactionalUnitOfWork implements UnitOfWork {
     /**
      * Creates an event in the events table and event_projection_feed for CQRS projection.
      *
+     * <p>Uses a single writable CTE to insert into both tables atomically in one
+     * database round-trip. The Event entity is still built in Java because it's
+     * needed for dispatch job building and as the serialized projection feed payload.</p>
+     *
      * @param domainEvent The domain event from the use case
      * @return The Event entity created (for dispatch job building)
      */
@@ -247,31 +251,7 @@ public class PanacheTransactionalUnitOfWork implements UnitOfWork {
         Instant now = Instant.now();
         String deduplicationId = domainEvent.eventType() + "-" + domainEvent.eventId();
 
-        // Insert into events table
-        String eventSql = """
-            INSERT INTO events (id, spec_version, type, source, subject, time, data,
-                correlation_id, causation_id, deduplication_id, message_group, context_data, created_at)
-            VALUES (:id, :specVersion, :type, :source, :subject, :time, CAST(:data AS jsonb),
-                :correlationId, :causationId, :deduplicationId, :messageGroup, CAST(:contextData AS jsonb), :createdAt)
-            """;
-
-        em.createNativeQuery(eventSql)
-            .setParameter("id", domainEvent.eventId())
-            .setParameter("specVersion", domainEvent.specVersion())
-            .setParameter("type", domainEvent.eventType())
-            .setParameter("source", domainEvent.source())
-            .setParameter("subject", domainEvent.subject())
-            .setParameter("time", domainEvent.time())
-            .setParameter("data", domainEvent.toDataJson())
-            .setParameter("correlationId", domainEvent.correlationId())
-            .setParameter("causationId", domainEvent.causationId())
-            .setParameter("deduplicationId", deduplicationId)
-            .setParameter("messageGroup", domainEvent.messageGroup())
-            .setParameter("contextData", contextDataJson)
-            .setParameter("createdAt", now)
-            .executeUpdate();
-
-        // Build Event entity for return and outbox
+        // Build Event entity (needed for dispatch job building and projection feed payload)
         Event event = new Event();
         event.id = domainEvent.eventId();
         event.specVersion = domainEvent.specVersion();
@@ -286,16 +266,35 @@ public class PanacheTransactionalUnitOfWork implements UnitOfWork {
         event.messageGroup = domainEvent.messageGroup();
         event.contextData = contextData;
 
-        // Insert into event_projection_feed for CQRS projection
-        String outboxSql = """
+        String payloadJson = objectMapper.writeValueAsString(event);
+
+        // Single CTE: insert into events + event_projection_feed atomically
+        String sql = """
+            WITH event_insert AS (
+                INSERT INTO events (id, spec_version, type, source, subject, time, data,
+                    correlation_id, causation_id, deduplication_id, message_group, context_data, created_at)
+                VALUES (:id, :specVersion, :type, :source, :subject, :time, CAST(:data AS jsonb),
+                    :correlationId, :causationId, :deduplicationId, :messageGroup, CAST(:contextData AS jsonb), :createdAt)
+            )
             INSERT INTO event_projection_feed (event_id, payload, created_at, processed)
-            VALUES (:eventId, CAST(:payload AS jsonb), :createdAt, 0)
+            VALUES (:id, CAST(:payload AS jsonb), :createdAt, 0)
             """;
 
-        em.createNativeQuery(outboxSql)
-            .setParameter("eventId", event.id)
-            .setParameter("payload", objectMapper.writeValueAsString(event))
+        em.createNativeQuery(sql)
+            .setParameter("id", domainEvent.eventId())
+            .setParameter("specVersion", domainEvent.specVersion())
+            .setParameter("type", domainEvent.eventType())
+            .setParameter("source", domainEvent.source())
+            .setParameter("subject", domainEvent.subject())
+            .setParameter("time", domainEvent.time())
+            .setParameter("data", domainEvent.toDataJson())
+            .setParameter("correlationId", domainEvent.correlationId())
+            .setParameter("causationId", domainEvent.causationId())
+            .setParameter("deduplicationId", deduplicationId)
+            .setParameter("messageGroup", domainEvent.messageGroup())
+            .setParameter("contextData", contextDataJson)
             .setParameter("createdAt", now)
+            .setParameter("payload", payloadJson)
             .executeUpdate();
 
         return event;

@@ -5,6 +5,7 @@ import jakarta.inject.Inject;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
@@ -18,7 +19,7 @@ import java.util.Map;
  * Use case for activating a user.
  */
 @ApplicationScoped
-public class ActivateUserUseCase {
+public class ActivateUserUseCase implements UseCase<ActivateUserCommand, UserActivated> {
 
     @Inject
     PrincipalRepository principalRepo;
@@ -26,7 +27,13 @@ public class ActivateUserUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<UserActivated> execute(ActivateUserCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(ActivateUserCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<UserActivated> doExecute(ActivateUserCommand command, ExecutionContext context) {
         // Find the user
         Principal principal = principalRepo.findById(command.userId());
 

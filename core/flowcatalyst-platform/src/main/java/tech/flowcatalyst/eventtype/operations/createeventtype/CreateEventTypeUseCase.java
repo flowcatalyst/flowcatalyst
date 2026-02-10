@@ -11,6 +11,7 @@ import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
@@ -33,7 +34,7 @@ import java.util.regex.Pattern;
  * </ol>
  */
 @ApplicationScoped
-public class CreateEventTypeUseCase {
+public class CreateEventTypeUseCase implements UseCase<CreateEventTypeCommand, EventTypeCreated> {
 
     /**
      * Segment format: lowercase alphanumeric with hyphens, starting with letter
@@ -51,6 +52,11 @@ public class CreateEventTypeUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
+    @Override
+    public boolean authorizeResource(CreateEventTypeCommand command, ExecutionContext context) {
+        return true;
+    }
+
     /**
      * Execute the create event type use case.
      *
@@ -58,7 +64,8 @@ public class CreateEventTypeUseCase {
      * @param context The execution context with tracing and principal info
      * @return Success with EventTypeCreated event, or Failure with error
      */
-    public Result<EventTypeCreated> execute(
+    @Override
+    public Result<EventTypeCreated> doExecute(
             CreateEventTypeCommand command,
             ExecutionContext context
     ) {

@@ -12,6 +12,7 @@ import tech.flowcatalyst.platform.application.ApplicationRepository;
 import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.shared.EntityType;
@@ -33,7 +34,7 @@ import java.util.*;
  * the serviceAccountId will be null (unauthenticated webhooks).
  */
 @ApplicationScoped
-public class SyncSubscriptionsUseCase {
+public class SyncSubscriptionsUseCase implements UseCase<SyncSubscriptionsCommand, SubscriptionsSynced> {
 
     @Inject
     SubscriptionRepository subscriptionRepo;
@@ -50,7 +51,13 @@ public class SyncSubscriptionsUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<SubscriptionsSynced> execute(SyncSubscriptionsCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(SyncSubscriptionsCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<SubscriptionsSynced> doExecute(SyncSubscriptionsCommand command, ExecutionContext context) {
         if (command.applicationCode() == null || command.applicationCode().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(
                 "APPLICATION_CODE_REQUIRED",

@@ -5,6 +5,7 @@ import jakarta.inject.Inject;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
@@ -20,7 +21,7 @@ import java.util.stream.Collectors;
  * This is a declarative assignment - the provided list replaces all existing roles.
  */
 @ApplicationScoped
-public class AssignRolesUseCase {
+public class AssignRolesUseCase implements UseCase<AssignRolesCommand, RolesAssigned> {
 
     private static final String ASSIGNMENT_SOURCE = "admin";
 
@@ -33,7 +34,13 @@ public class AssignRolesUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<RolesAssigned> execute(AssignRolesCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(AssignRolesCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<RolesAssigned> doExecute(AssignRolesCommand command, ExecutionContext context) {
         // Find service account
         ServiceAccount sa = repository.findByIdOptional(command.serviceAccountId()).orElse(null);
         if (sa == null) {

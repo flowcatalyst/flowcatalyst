@@ -5,6 +5,7 @@ import jakarta.inject.Inject;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.cors.CorsAllowedOrigin;
 import tech.flowcatalyst.platform.cors.CorsAllowedOriginRepository;
@@ -18,7 +19,7 @@ import java.util.Map;
  * Use case for adding a new CORS allowed origin.
  */
 @ApplicationScoped
-public class AddCorsOriginUseCase {
+public class AddCorsOriginUseCase implements UseCase<AddCorsOriginCommand, CorsOriginAdded> {
 
     @Inject
     CorsAllowedOriginRepository repository;
@@ -26,7 +27,13 @@ public class AddCorsOriginUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<CorsOriginAdded> execute(AddCorsOriginCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(AddCorsOriginCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<CorsOriginAdded> doExecute(AddCorsOriginCommand command, ExecutionContext context) {
         // Validate origin is provided
         if (command.origin() == null || command.origin().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(

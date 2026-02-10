@@ -13,6 +13,7 @@ import tech.flowcatalyst.platform.client.ClientRepository;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.util.ArrayList;
@@ -23,7 +24,7 @@ import java.util.Map;
  * Use case for updating an Email Domain Mapping.
  */
 @ApplicationScoped
-public class UpdateEmailDomainMappingUseCase {
+public class UpdateEmailDomainMappingUseCase implements UseCase<UpdateEmailDomainMappingCommand, EmailDomainMappingUpdated> {
 
     @Inject
     EmailDomainMappingRepository mappingRepo;
@@ -37,7 +38,13 @@ public class UpdateEmailDomainMappingUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<EmailDomainMappingUpdated> execute(UpdateEmailDomainMappingCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(UpdateEmailDomainMappingCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<EmailDomainMappingUpdated> doExecute(UpdateEmailDomainMappingCommand command, ExecutionContext context) {
         // Validate ID
         if (command.emailDomainMappingId() == null || command.emailDomainMappingId().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(

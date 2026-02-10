@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.Builder;
-import tech.flowcatalyst.platform.common.DomainEvent;
+
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
@@ -29,7 +29,7 @@ public record EmailDomainMappingDeleted(
     String emailDomainMappingId,
     String emailDomain,
     String identityProviderId
-) implements DomainEvent {
+) implements EmailDomainMappingEvent {
 
     private static final String EVENT_TYPE = "platform:iam:email-domain-mapping:deleted";
     private static final String SPEC_VERSION = "1.0";

@@ -5,6 +5,7 @@ import jakarta.inject.Inject;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
@@ -18,7 +19,7 @@ import java.util.Map;
  * Use case for updating a user.
  */
 @ApplicationScoped
-public class UpdateUserUseCase {
+public class UpdateUserUseCase implements UseCase<UpdateUserCommand, UserUpdated> {
 
     @Inject
     PrincipalRepository principalRepo;
@@ -26,7 +27,13 @@ public class UpdateUserUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<UserUpdated> execute(UpdateUserCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(UpdateUserCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<UserUpdated> doExecute(UpdateUserCommand command, ExecutionContext context) {
         // Find the user
         Principal principal = principalRepo.findById(command.userId());
 

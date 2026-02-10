@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.Builder;
 import tech.flowcatalyst.eventtype.SchemaType;
-import tech.flowcatalyst.platform.common.DomainEvent;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
@@ -38,7 +37,7 @@ public record SchemaAdded(
     String mimeType,
     String schema,
     SchemaType schemaType
-) implements DomainEvent {
+) implements EventTypeEvent {
 
     private static final String EVENT_TYPE = "platform:control-plane:eventtype:schema-added";
     private static final String SPEC_VERSION = "1.0";

@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.Builder;
-import tech.flowcatalyst.platform.common.DomainEvent;
+
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
@@ -40,7 +40,7 @@ public record ServiceAccountProvisioned(
     String serviceAccountName,
     String oauthClientId,
     String oauthClientClientId  // The client_id used for OAuth (not the entity ID)
-) implements DomainEvent {
+) implements ApplicationEvent {
 
     private static final String EVENT_TYPE = "platform:control-plane:application:service-account-provisioned";
     private static final String SPEC_VERSION = "1.0";

@@ -8,6 +8,7 @@ import tech.flowcatalyst.platform.application.events.ApplicationUpdated;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.util.Map;
@@ -16,7 +17,7 @@ import java.util.Map;
  * Use case for updating an Application.
  */
 @ApplicationScoped
-public class UpdateApplicationUseCase {
+public class UpdateApplicationUseCase implements UseCase<UpdateApplicationCommand, ApplicationUpdated> {
 
     @Inject
     ApplicationRepository repo;
@@ -24,7 +25,13 @@ public class UpdateApplicationUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<ApplicationUpdated> execute(
+    @Override
+    public boolean authorizeResource(UpdateApplicationCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<ApplicationUpdated> doExecute(
             UpdateApplicationCommand command,
             ExecutionContext context
     ) {

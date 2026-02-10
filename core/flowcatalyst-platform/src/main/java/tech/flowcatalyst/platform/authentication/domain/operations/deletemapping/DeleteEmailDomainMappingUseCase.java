@@ -8,6 +8,7 @@ import tech.flowcatalyst.platform.authentication.domain.events.EmailDomainMappin
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.util.Map;
@@ -16,7 +17,7 @@ import java.util.Map;
  * Use case for deleting an Email Domain Mapping.
  */
 @ApplicationScoped
-public class DeleteEmailDomainMappingUseCase {
+public class DeleteEmailDomainMappingUseCase implements UseCase<DeleteEmailDomainMappingCommand, EmailDomainMappingDeleted> {
 
     @Inject
     EmailDomainMappingRepository mappingRepo;
@@ -24,7 +25,13 @@ public class DeleteEmailDomainMappingUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<EmailDomainMappingDeleted> execute(DeleteEmailDomainMappingCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(DeleteEmailDomainMappingCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<EmailDomainMappingDeleted> doExecute(DeleteEmailDomainMappingCommand command, ExecutionContext context) {
         // Validate ID
         if (command.emailDomainMappingId() == null || command.emailDomainMappingId().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(

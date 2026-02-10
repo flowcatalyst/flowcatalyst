@@ -14,6 +14,7 @@ import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
@@ -26,7 +27,7 @@ import java.util.*;
  * Note: This use case handles multiple entities and uses a custom commit strategy.
  */
 @ApplicationScoped
-public class SyncRolesUseCase {
+public class SyncRolesUseCase implements UseCase<SyncRolesCommand, RolesSynced> {
 
     @Inject
     AuthRoleRepository roleRepo;
@@ -40,8 +41,14 @@ public class SyncRolesUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
+    @Override
+    public boolean authorizeResource(SyncRolesCommand command, ExecutionContext context) {
+        return true;
+    }
+
     @Transactional
-    public Result<RolesSynced> execute(SyncRolesCommand command, ExecutionContext context) {
+    @Override
+    public Result<RolesSynced> doExecute(SyncRolesCommand command, ExecutionContext context) {
         // Authorization check: can principal manage this application?
         AuthorizationContext authz = context.authz();
         if (authz != null && !authz.canAccessApplication(command.applicationId())) {

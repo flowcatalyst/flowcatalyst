@@ -9,6 +9,7 @@ import tech.flowcatalyst.platform.client.ClientAccessService;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
@@ -36,7 +37,7 @@ import java.util.Set;
  * </ul>
  */
 @ApplicationScoped
-public class AssignApplicationAccessUseCase {
+public class AssignApplicationAccessUseCase implements UseCase<AssignApplicationAccessCommand, ApplicationAccessAssigned> {
 
     @Inject
     PrincipalRepository principalRepo;
@@ -53,7 +54,13 @@ public class AssignApplicationAccessUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<ApplicationAccessAssigned> execute(AssignApplicationAccessCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(AssignApplicationAccessCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<ApplicationAccessAssigned> doExecute(AssignApplicationAccessCommand command, ExecutionContext context) {
         // Find the user
         var principal = principalRepo.findById(command.userId());
 

@@ -9,6 +9,7 @@ import tech.flowcatalyst.platform.authentication.idp.events.IdentityProviderCrea
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.security.secrets.SecretService;
 import tech.flowcatalyst.platform.shared.EntityType;
@@ -22,7 +23,7 @@ import java.util.Map;
  * Use case for creating an Identity Provider.
  */
 @ApplicationScoped
-public class CreateIdentityProviderUseCase {
+public class CreateIdentityProviderUseCase implements UseCase<CreateIdentityProviderCommand, IdentityProviderCreated> {
 
     @Inject
     IdentityProviderRepository idpRepo;
@@ -33,7 +34,13 @@ public class CreateIdentityProviderUseCase {
     @Inject
     SecretService secretService;
 
-    public Result<IdentityProviderCreated> execute(CreateIdentityProviderCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(CreateIdentityProviderCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<IdentityProviderCreated> doExecute(CreateIdentityProviderCommand command, ExecutionContext context) {
         // Validate code
         if (command.code() == null || command.code().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(

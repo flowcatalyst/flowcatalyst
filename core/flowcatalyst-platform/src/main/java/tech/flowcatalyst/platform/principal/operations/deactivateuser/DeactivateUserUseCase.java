@@ -5,6 +5,7 @@ import jakarta.inject.Inject;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
@@ -18,7 +19,7 @@ import java.util.Map;
  * Use case for deactivating a user.
  */
 @ApplicationScoped
-public class DeactivateUserUseCase {
+public class DeactivateUserUseCase implements UseCase<DeactivateUserCommand, UserDeactivated> {
 
     @Inject
     PrincipalRepository principalRepo;
@@ -26,7 +27,13 @@ public class DeactivateUserUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<UserDeactivated> execute(DeactivateUserCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(DeactivateUserCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<UserDeactivated> doExecute(DeactivateUserCommand command, ExecutionContext context) {
         // Find the user
         Principal principal = principalRepo.findById(command.userId());
 

@@ -9,6 +9,7 @@ import tech.flowcatalyst.eventtype.EventTypeRepository;
 import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.dispatch.DispatchMode;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
@@ -26,7 +27,7 @@ import java.util.Optional;
  * Use case for updating an existing subscription.
  */
 @ApplicationScoped
-public class UpdateSubscriptionUseCase {
+public class UpdateSubscriptionUseCase implements UseCase<UpdateSubscriptionCommand, SubscriptionUpdated> {
 
     @Inject
     SubscriptionRepository subscriptionRepo;
@@ -43,7 +44,13 @@ public class UpdateSubscriptionUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<SubscriptionUpdated> execute(UpdateSubscriptionCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(UpdateSubscriptionCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<SubscriptionUpdated> doExecute(UpdateSubscriptionCommand command, ExecutionContext context) {
         // Validate subscription ID
         if (command.subscriptionId() == null || command.subscriptionId().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(

@@ -10,6 +10,7 @@ import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.util.Map;
@@ -18,7 +19,7 @@ import java.util.Map;
  * Use case for deleting a Role.
  */
 @ApplicationScoped
-public class DeleteRoleUseCase {
+public class DeleteRoleUseCase implements UseCase<DeleteRoleCommand, RoleDeleted> {
 
     @Inject
     AuthRoleRepository roleRepo;
@@ -29,7 +30,13 @@ public class DeleteRoleUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<RoleDeleted> execute(DeleteRoleCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(DeleteRoleCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<RoleDeleted> doExecute(DeleteRoleCommand command, ExecutionContext context) {
         // Authorization check: can principal manage roles with this prefix?
         AuthorizationContext authz = context.authz();
         if (authz != null && !authz.canAccessResourceWithPrefix(command.roleName())) {

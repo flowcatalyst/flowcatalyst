@@ -7,6 +7,7 @@ import tech.flowcatalyst.eventtype.events.SchemaAdded;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.util.Map;
@@ -16,7 +17,7 @@ import java.util.regex.Pattern;
  * Use case for adding a new schema version to an EventType.
  */
 @ApplicationScoped
-public class AddSchemaUseCase {
+public class AddSchemaUseCase implements UseCase<AddSchemaCommand, SchemaAdded> {
 
     private static final Pattern VERSION_PATTERN = Pattern.compile("^\\d+\\.\\d+$");
 
@@ -26,7 +27,13 @@ public class AddSchemaUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<SchemaAdded> execute(
+    @Override
+    public boolean authorizeResource(AddSchemaCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<SchemaAdded> doExecute(
             AddSchemaCommand command,
             ExecutionContext context
     ) {

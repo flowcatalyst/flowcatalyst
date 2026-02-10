@@ -8,6 +8,7 @@ import tech.flowcatalyst.platform.application.events.ApplicationDeactivated;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.util.Map;
@@ -16,7 +17,7 @@ import java.util.Map;
  * Use case for deactivating an Application.
  */
 @ApplicationScoped
-public class DeactivateApplicationUseCase {
+public class DeactivateApplicationUseCase implements UseCase<DeactivateApplicationCommand, ApplicationDeactivated> {
 
     @Inject
     ApplicationRepository repo;
@@ -24,7 +25,13 @@ public class DeactivateApplicationUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<ApplicationDeactivated> execute(
+    @Override
+    public boolean authorizeResource(DeactivateApplicationCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<ApplicationDeactivated> doExecute(
             DeactivateApplicationCommand command,
             ExecutionContext context
     ) {

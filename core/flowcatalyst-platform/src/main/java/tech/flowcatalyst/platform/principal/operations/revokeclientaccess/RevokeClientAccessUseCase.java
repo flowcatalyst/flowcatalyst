@@ -7,6 +7,7 @@ import tech.flowcatalyst.platform.client.ClientAccessGrantRepository;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
@@ -20,7 +21,7 @@ import java.util.Optional;
  * Use case for revoking a user's access to a client.
  */
 @ApplicationScoped
-public class RevokeClientAccessUseCase {
+public class RevokeClientAccessUseCase implements UseCase<RevokeClientAccessCommand, ClientAccessRevoked> {
 
     @Inject
     PrincipalRepository principalRepo;
@@ -31,7 +32,13 @@ public class RevokeClientAccessUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<ClientAccessRevoked> execute(RevokeClientAccessCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(RevokeClientAccessCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<ClientAccessRevoked> doExecute(RevokeClientAccessCommand command, ExecutionContext context) {
         // Validate user exists
         Principal principal = principalRepo.findById(command.userId());
 

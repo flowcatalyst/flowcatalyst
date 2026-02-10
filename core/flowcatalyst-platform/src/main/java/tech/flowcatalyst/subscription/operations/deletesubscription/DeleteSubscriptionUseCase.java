@@ -5,6 +5,7 @@ import jakarta.inject.Inject;
 import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.serviceaccount.entity.ServiceAccount;
@@ -22,7 +23,7 @@ import java.util.Optional;
  * Note: This is a hard delete, not a soft delete.
  */
 @ApplicationScoped
-public class DeleteSubscriptionUseCase {
+public class DeleteSubscriptionUseCase implements UseCase<DeleteSubscriptionCommand, SubscriptionDeleted> {
 
     @Inject
     SubscriptionRepository subscriptionRepo;
@@ -33,7 +34,13 @@ public class DeleteSubscriptionUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<SubscriptionDeleted> execute(DeleteSubscriptionCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(DeleteSubscriptionCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<SubscriptionDeleted> doExecute(DeleteSubscriptionCommand command, ExecutionContext context) {
         // Validate subscription ID
         if (command.subscriptionId() == null || command.subscriptionId().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(

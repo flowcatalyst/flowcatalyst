@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.Builder;
-import tech.flowcatalyst.platform.common.DomainEvent;
+
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
@@ -37,7 +37,7 @@ public record ApplicationUpdated(
     String iconUrl,
     String website,
     String logoMimeType
-) implements DomainEvent {
+) implements ApplicationEvent {
 
     private static final String EVENT_TYPE = "platform:control-plane:application:updated";
     private static final String SPEC_VERSION = "1.0";

@@ -10,6 +10,7 @@ import tech.flowcatalyst.platform.client.ClientRepository;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.util.Map;
@@ -19,7 +20,7 @@ import java.util.Optional;
  * Use case for creating a new dispatch pool.
  */
 @ApplicationScoped
-public class CreateDispatchPoolUseCase {
+public class CreateDispatchPoolUseCase implements UseCase<CreateDispatchPoolCommand, DispatchPoolCreated> {
 
     @Inject
     DispatchPoolRepository poolRepo;
@@ -30,7 +31,13 @@ public class CreateDispatchPoolUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<DispatchPoolCreated> execute(CreateDispatchPoolCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(CreateDispatchPoolCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<DispatchPoolCreated> doExecute(CreateDispatchPoolCommand command, ExecutionContext context) {
         // Validate code
         if (command.code() == null || command.code().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(

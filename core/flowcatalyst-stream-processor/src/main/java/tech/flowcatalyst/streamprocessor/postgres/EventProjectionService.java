@@ -8,23 +8,23 @@ import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-import java.sql.*;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Projects events from the events table to events_read using pure JDBC.
+ * Projects events from the events table to events_read using a single writable CTE.
  *
- * <p>Polls for unprojected events (projected=false) ordered by time,
- * batch inserts to events_read, and marks them as projected.</p>
+ * <p>Uses one atomic SQL statement per poll cycle that selects unprojected events,
+ * inserts into events_read, and marks the source rows as projected. Zero
+ * application-layer data transfer &mdash; type hierarchy parsing (application,
+ * subdomain, aggregate) happens in-engine via {@code split_part()}.</p>
  *
  * <h2>Algorithm</h2>
  * <ol>
- *   <li>Poll: SELECT from events WHERE projected=false ORDER BY time LIMIT batchSize</li>
- *   <li>If results > 0: batch UPSERT to events_read, UPDATE events SET projected=true</li>
+ *   <li>Single CTE: batch SELECT &rarr; INSERT events_read &rarr; UPDATE events</li>
  *   <li>Sleep: 0ms if batchSize results, 100ms if partial, 1000ms if zero</li>
  * </ol>
  */
@@ -32,6 +32,47 @@ import java.util.logging.Logger;
 public class EventProjectionService {
 
     private static final Logger LOG = Logger.getLogger(EventProjectionService.class.getName());
+
+    /**
+     * Single writable CTE that projects a batch of events in one round-trip.
+     *
+     * <ol>
+     *   <li>{@code batch} &mdash; selects unprojected events (LIMIT batchSize)</li>
+     *   <li>{@code projected} &mdash; UPSERTs into events_read, parsing the type
+     *       hierarchy with {@code split_part()}</li>
+     *   <li>Main UPDATE &mdash; marks batch rows as projected</li>
+     * </ol>
+     */
+    private static final String PROJECT_CTE = """
+        WITH batch AS (
+            SELECT id, spec_version, type, source, subject, time, data,
+                   correlation_id, causation_id, deduplication_id, message_group, client_id
+            FROM events
+            WHERE projected = false
+            ORDER BY time
+            LIMIT ?
+        ),
+        projected AS (
+            INSERT INTO events_read (
+                id, spec_version, type, source, subject, time, data,
+                correlation_id, causation_id, deduplication_id, message_group,
+                client_id, application, subdomain, aggregate, projected_at
+            )
+            SELECT
+                b.id, b.spec_version, b.type, b.source, b.subject, b.time, b.data,
+                b.correlation_id, b.causation_id, b.deduplication_id, b.message_group,
+                b.client_id,
+                split_part(b.type, ':', 1),
+                NULLIF(split_part(b.type, ':', 2), ''),
+                NULLIF(split_part(b.type, ':', 3), ''),
+                NOW()
+            FROM batch b
+            ON CONFLICT (id) DO NOTHING
+        )
+        UPDATE events
+        SET projected = true
+        WHERE id IN (SELECT id FROM batch)
+        """;
 
     @Inject
     AgroalDataSource dataSource;
@@ -124,183 +165,25 @@ public class EventProjectionService {
     }
 
     /**
-     * Poll for unprojected events and project them.
+     * Execute the projection CTE.
      *
-     * @return number of events processed
+     * <p>The writable CTE atomically selects unprojected events, inserts them
+     * into events_read (with type hierarchy parsing), and marks them as
+     * projected &mdash; all in a single database round-trip.</p>
+     *
+     * @return number of events projected (rows updated by the main UPDATE)
      */
     private int pollAndProject() throws SQLException {
-        List<EventRow> events = pollEvents();
-
-        if (events.isEmpty()) {
-            return 0;
-        }
-
-        try (Connection conn = dataSource.getConnection()) {
-            conn.setAutoCommit(false);
-
-            try {
-                // Batch UPSERT to events_read
-                upsertEventsRead(conn, events);
-
-                // Mark as projected
-                markProjected(conn, events);
-
-                conn.commit();
-
-                LOG.fine("Projected " + events.size() + " events");
-                return events.size();
-
-            } catch (Exception e) {
-                conn.rollback();
-                throw e;
-            }
-        }
-    }
-
-    /**
-     * Poll for unprojected events.
-     */
-    private List<EventRow> pollEvents() throws SQLException {
-        String sql = """
-            SELECT id, spec_version, type, source, subject, time, data,
-                   correlation_id, causation_id, deduplication_id, message_group,
-                   context_data, client_id
-            FROM events
-            WHERE projected = false
-            ORDER BY time
-            LIMIT ?
-            """;
-
-        List<EventRow> events = new ArrayList<>(batchSize);
-
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+             PreparedStatement ps = conn.prepareStatement(PROJECT_CTE)) {
 
             ps.setInt(1, batchSize);
+            int updated = ps.executeUpdate();
 
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    events.add(mapEventRow(rs));
-                }
+            if (updated > 0) {
+                LOG.fine("Projected " + updated + " events");
             }
-        }
-
-        return events;
-    }
-
-    /**
-     * Batch UPSERT events to events_read.
-     * Note: id IS the event id (1:1 projection, no separate event_id column).
-     * Note: context_data is normalized to event_read_context_data table (V12 migration).
-     */
-    private void upsertEventsRead(Connection conn, List<EventRow> events) throws SQLException {
-        // Build multi-row INSERT with ON CONFLICT DO NOTHING
-        StringBuilder sql = new StringBuilder("""
-            INSERT INTO events_read (
-                id, spec_version, type, source, subject, time, data,
-                correlation_id, causation_id, deduplication_id, message_group,
-                client_id, application, subdomain, aggregate, projected_at
-            ) VALUES
-            """);
-
-        // Add value placeholders for each row (15 columns + NOW())
-        for (int i = 0; i < events.size(); i++) {
-            if (i > 0) sql.append(",");
-            sql.append("\n(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-        }
-
-        sql.append("\nON CONFLICT (id) DO NOTHING");
-
-        try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-            int paramIndex = 1;
-
-            for (EventRow event : events) {
-                // Parse type into application/subdomain/aggregate
-                String[] typeSegments = event.type != null ? event.type.split(":", 4) : new String[0];
-                String application = typeSegments.length > 0 ? typeSegments[0] : null;
-                String subdomain = typeSegments.length > 1 ? typeSegments[1] : null;
-                String aggregate = typeSegments.length > 2 ? typeSegments[2] : null;
-
-                ps.setString(paramIndex++, event.id);           // id IS the event id
-                ps.setString(paramIndex++, event.specVersion);
-                ps.setString(paramIndex++, event.type);
-                ps.setString(paramIndex++, event.source);
-                ps.setString(paramIndex++, event.subject);
-                ps.setTimestamp(paramIndex++, event.time != null ? Timestamp.from(event.time) : null);
-                ps.setString(paramIndex++, event.data);
-                ps.setString(paramIndex++, event.correlationId);
-                ps.setString(paramIndex++, event.causationId);
-                ps.setString(paramIndex++, event.deduplicationId);
-                ps.setString(paramIndex++, event.messageGroup);
-                ps.setString(paramIndex++, event.clientId);
-                ps.setString(paramIndex++, application);
-                ps.setString(paramIndex++, subdomain);
-                ps.setString(paramIndex++, aggregate);
-            }
-
-            ps.executeUpdate();
+            return updated;
         }
     }
-
-    /**
-     * Mark events as projected.
-     */
-    private void markProjected(Connection conn, List<EventRow> events) throws SQLException {
-        // Build UPDATE with IN clause
-        StringBuilder sql = new StringBuilder("UPDATE events SET projected = true WHERE id IN (");
-
-        for (int i = 0; i < events.size(); i++) {
-            if (i > 0) sql.append(",");
-            sql.append("?");
-        }
-        sql.append(")");
-
-        try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-            int paramIndex = 1;
-            for (EventRow event : events) {
-                ps.setString(paramIndex++, event.id);
-            }
-            ps.executeUpdate();
-        }
-    }
-
-    /**
-     * Map a ResultSet row to EventRow.
-     */
-    private EventRow mapEventRow(ResultSet rs) throws SQLException {
-        return new EventRow(
-            rs.getString("id"),
-            rs.getString("spec_version"),
-            rs.getString("type"),
-            rs.getString("source"),
-            rs.getString("subject"),
-            rs.getTimestamp("time") != null ? rs.getTimestamp("time").toInstant() : null,
-            rs.getString("data"),
-            rs.getString("correlation_id"),
-            rs.getString("causation_id"),
-            rs.getString("deduplication_id"),
-            rs.getString("message_group"),
-            rs.getString("context_data"),
-            rs.getString("client_id")
-        );
-    }
-
-    /**
-     * Internal record for event data.
-     */
-    private record EventRow(
-        String id,
-        String specVersion,
-        String type,
-        String source,
-        String subject,
-        Instant time,
-        String data,
-        String correlationId,
-        String causationId,
-        String deduplicationId,
-        String messageGroup,
-        String contextData,
-        String clientId
-    ) {}
 }

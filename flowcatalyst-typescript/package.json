@@ -4,40 +4,29 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm -r build",
-    "build:platform": "pnpm --filter @flowcatalyst/platform build",
-    "build:frontend": "pnpm --filter @flowcatalyst/platform-frontend build",
+    "build": "pnpm --filter @flowcatalyst/flowcatalyst build",
     "build:full": "pnpm --filter @flowcatalyst/flowcatalyst build:full",
     "build:sea": "pnpm --filter @flowcatalyst/flowcatalyst build:sea",
-    "build:router": "pnpm --filter @flowcatalyst/message-router build",
-    "build:stream": "pnpm --filter @flowcatalyst/stream-processor build",
-    "dev": "pnpm -r --parallel --filter './packages/*' --filter @flowcatalyst/platform --filter @flowcatalyst/flowcatalyst dev",
+    "build:frontend": "pnpm --filter @flowcatalyst/platform-frontend build",
+    "dev": "pnpm --filter @flowcatalyst/flowcatalyst dev",
     "dev:frontend": "pnpm --filter @flowcatalyst/platform-frontend dev",
-    "dev:router": "pnpm --filter @flowcatalyst/message-router dev",
-    "test": "pnpm -r test",
-    "test:watch": "pnpm -r --parallel test:watch",
+    "test": "pnpm --filter @flowcatalyst/flowcatalyst test",
+    "typecheck": "pnpm --filter @flowcatalyst/flowcatalyst typecheck",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
-    "typecheck": "pnpm -r typecheck",
-    "typecheck:platform": "pnpm --filter @flowcatalyst/platform typecheck",
-    "typecheck:flowcatalyst": "pnpm --filter @flowcatalyst/flowcatalyst typecheck",
-    "clean": "pnpm -r clean && rm -rf node_modules",
+    "clean": "rm -rf apps/flowcatalyst/dist apps/platform-frontend/dist node_modules",
     "db:generate": "pnpm --filter @flowcatalyst/flowcatalyst db:generate",
     "db:migrate": "pnpm --filter @flowcatalyst/flowcatalyst db:migrate",
     "db:push": "pnpm --filter @flowcatalyst/flowcatalyst db:push",
     "db:studio": "pnpm --filter @flowcatalyst/flowcatalyst db:studio"
   },
-  "dependencies": {
-    "neverthrow": "^8.2.0"
-  },
   "devDependencies": {
     "@types/node": "^22.10.7",
     "oxfmt": "^0.28.0",
     "oxlint": "^1.43.0",
-    "typescript": "^5.7.3",
-    "vitest": "^4.0.18"
+    "typescript": "^5.7.3"
   },
   "engines": {
     "node": ">=24.0.0"

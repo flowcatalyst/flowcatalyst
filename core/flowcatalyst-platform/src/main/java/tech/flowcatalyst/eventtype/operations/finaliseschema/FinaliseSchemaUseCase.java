@@ -7,6 +7,7 @@ import tech.flowcatalyst.eventtype.events.SchemaFinalised;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.util.ArrayList;
@@ -17,7 +18,7 @@ import java.util.Map;
  * Use case for finalising a schema version.
  */
 @ApplicationScoped
-public class FinaliseSchemaUseCase {
+public class FinaliseSchemaUseCase implements UseCase<FinaliseSchemaCommand, SchemaFinalised> {
 
     @Inject
     EventTypeRepository repo;
@@ -25,7 +26,13 @@ public class FinaliseSchemaUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<SchemaFinalised> execute(
+    @Override
+    public boolean authorizeResource(FinaliseSchemaCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<SchemaFinalised> doExecute(
             FinaliseSchemaCommand command,
             ExecutionContext context
     ) {

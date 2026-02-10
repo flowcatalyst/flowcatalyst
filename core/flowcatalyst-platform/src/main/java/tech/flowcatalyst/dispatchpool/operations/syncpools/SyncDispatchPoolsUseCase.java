@@ -10,6 +10,7 @@ import tech.flowcatalyst.dispatchpool.events.DispatchPoolsSynced;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.time.Instant;
@@ -23,7 +24,7 @@ import java.util.regex.Pattern;
  * updates existing ones, and optionally removes unlisted pools.
  */
 @ApplicationScoped
-public class SyncDispatchPoolsUseCase {
+public class SyncDispatchPoolsUseCase implements UseCase<SyncDispatchPoolsCommand, DispatchPoolsSynced> {
 
     private static final Pattern CODE_PATTERN = Pattern.compile("^[a-z][a-z0-9_-]*$");
 
@@ -33,8 +34,14 @@ public class SyncDispatchPoolsUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
+    @Override
+    public boolean authorizeResource(SyncDispatchPoolsCommand command, ExecutionContext context) {
+        return true;
+    }
+
     @Transactional
-    public Result<DispatchPoolsSynced> execute(SyncDispatchPoolsCommand command, ExecutionContext context) {
+    @Override
+    public Result<DispatchPoolsSynced> doExecute(SyncDispatchPoolsCommand command, ExecutionContext context) {
         // Validate command
         if (command.pools() == null || command.pools().isEmpty()) {
             return Result.failure(new UseCaseError.ValidationError(

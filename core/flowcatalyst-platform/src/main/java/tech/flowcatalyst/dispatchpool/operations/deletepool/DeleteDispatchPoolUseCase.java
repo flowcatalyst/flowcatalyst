@@ -9,6 +9,7 @@ import tech.flowcatalyst.dispatchpool.events.DispatchPoolDeleted;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.time.Instant;
@@ -19,7 +20,7 @@ import java.util.Optional;
  * Use case for deleting (archiving) an existing dispatch pool.
  */
 @ApplicationScoped
-public class DeleteDispatchPoolUseCase {
+public class DeleteDispatchPoolUseCase implements UseCase<DeleteDispatchPoolCommand, DispatchPoolDeleted> {
 
     @Inject
     DispatchPoolRepository poolRepo;
@@ -27,7 +28,13 @@ public class DeleteDispatchPoolUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<DispatchPoolDeleted> execute(DeleteDispatchPoolCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(DeleteDispatchPoolCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<DispatchPoolDeleted> doExecute(DeleteDispatchPoolCommand command, ExecutionContext context) {
         // Validate pool ID
         if (command.poolId() == null || command.poolId().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(

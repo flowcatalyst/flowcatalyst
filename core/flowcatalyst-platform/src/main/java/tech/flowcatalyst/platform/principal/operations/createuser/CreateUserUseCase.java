@@ -10,6 +10,7 @@ import tech.flowcatalyst.platform.authentication.idp.IdentityProviderType;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.principal.PasswordService;
 import tech.flowcatalyst.platform.principal.Principal;
@@ -27,7 +28,7 @@ import java.util.Optional;
  * Use case for creating a new user.
  */
 @ApplicationScoped
-public class CreateUserUseCase {
+public class CreateUserUseCase implements UseCase<CreateUserCommand, UserCreated> {
 
     @Inject
     PrincipalRepository principalRepo;
@@ -44,7 +45,13 @@ public class CreateUserUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<UserCreated> execute(CreateUserCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(CreateUserCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<UserCreated> doExecute(CreateUserCommand command, ExecutionContext context) {
         // Validate email
         if (command.email() == null || command.email().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(

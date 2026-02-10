@@ -7,5 +7,26 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   target: 'node22',
-  external: ['node:sea'],
+  external: [
+    'node:sea',
+    '@aws-sdk/client-secrets-manager',
+    '@aws-sdk/client-ssm',
+  ],
+  esbuildOptions(options) {
+    options.alias = {
+      '@flowcatalyst/tsid': './src/tsid/index.ts',
+      '@flowcatalyst/logging': './src/logging/index.ts',
+      '@flowcatalyst/domain-core': './src/domain-core/index.ts',
+      '@flowcatalyst/config': './src/config/index.ts',
+      '@flowcatalyst/shared-types': './src/shared-types/index.ts',
+      '@flowcatalyst/application': './src/framework/index.ts',
+      '@flowcatalyst/http': './src/http/index.ts',
+      '@flowcatalyst/persistence': './src/persistence/index.ts',
+      '@flowcatalyst/platform-crypto': './src/crypto/index.ts',
+      '@flowcatalyst/queue-core': './src/queue-core/index.ts',
+      '@flowcatalyst/platform': './src/platform/index.ts',
+      '@flowcatalyst/message-router': './src/message-router/index.ts',
+      '@flowcatalyst/stream-processor': './src/stream-processor/index.ts',
+    };
+  },
 });

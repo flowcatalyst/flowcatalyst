@@ -7,6 +7,7 @@ import tech.flowcatalyst.eventtype.events.SchemaDeprecated;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.util.ArrayList;
@@ -17,7 +18,7 @@ import java.util.Map;
  * Use case for deprecating a schema version.
  */
 @ApplicationScoped
-public class DeprecateSchemaUseCase {
+public class DeprecateSchemaUseCase implements UseCase<DeprecateSchemaCommand, SchemaDeprecated> {
 
     @Inject
     EventTypeRepository repo;
@@ -25,7 +26,13 @@ public class DeprecateSchemaUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<SchemaDeprecated> execute(
+    @Override
+    public boolean authorizeResource(DeprecateSchemaCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<SchemaDeprecated> doExecute(
             DeprecateSchemaCommand command,
             ExecutionContext context
     ) {

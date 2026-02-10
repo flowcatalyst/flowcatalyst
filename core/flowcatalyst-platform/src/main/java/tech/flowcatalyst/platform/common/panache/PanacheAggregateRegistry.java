@@ -130,7 +130,7 @@ public class PanacheAggregateRegistry {
             em.createNativeQuery("DELETE FROM principal_roles WHERE principal_id = :id")
                 .setParameter("id", id)
                 .executeUpdate();
-            em.createNativeQuery("DELETE FROM principal_managed_applications WHERE principal_id = :id")
+            em.createNativeQuery("DELETE FROM principal_application_access WHERE principal_id = :id")
                 .setParameter("id", id)
                 .executeUpdate();
         }

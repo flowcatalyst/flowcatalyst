@@ -8,6 +8,7 @@ import tech.flowcatalyst.platform.application.events.ApplicationCreated;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
@@ -19,7 +20,7 @@ import java.util.regex.Pattern;
  * Use case for creating an Application.
  */
 @ApplicationScoped
-public class CreateApplicationUseCase {
+public class CreateApplicationUseCase implements UseCase<CreateApplicationCommand, ApplicationCreated> {
 
     private static final Pattern CODE_PATTERN = Pattern.compile("^[a-z][a-z0-9_-]*$");
 
@@ -29,7 +30,13 @@ public class CreateApplicationUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<ApplicationCreated> execute(
+    @Override
+    public boolean authorizeResource(CreateApplicationCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<ApplicationCreated> doExecute(
             CreateApplicationCommand command,
             ExecutionContext context
     ) {

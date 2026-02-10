@@ -1,4 +1,4 @@
 packages:
-  - 'packages/*'
-  - 'apps/*'
+  - 'apps/flowcatalyst'
+  - 'apps/platform-frontend'
   - 'clients/*'

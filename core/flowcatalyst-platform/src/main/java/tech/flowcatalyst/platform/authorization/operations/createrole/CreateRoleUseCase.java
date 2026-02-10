@@ -13,6 +13,7 @@ import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
@@ -25,7 +26,7 @@ import java.util.Set;
  * Use case for creating a Role.
  */
 @ApplicationScoped
-public class CreateRoleUseCase {
+public class CreateRoleUseCase implements UseCase<CreateRoleCommand, RoleCreated> {
 
     @Inject
     AuthRoleRepository roleRepo;
@@ -39,7 +40,13 @@ public class CreateRoleUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<RoleCreated> execute(CreateRoleCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(CreateRoleCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<RoleCreated> doExecute(CreateRoleCommand command, ExecutionContext context) {
         // Authorization check: can principal manage this application?
         AuthorizationContext authz = context.authz();
         if (authz != null && !authz.canAccessApplication(command.applicationId())) {

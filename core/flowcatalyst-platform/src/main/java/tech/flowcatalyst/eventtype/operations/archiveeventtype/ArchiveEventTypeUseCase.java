@@ -7,6 +7,7 @@ import tech.flowcatalyst.eventtype.events.EventTypeArchived;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.util.Map;
@@ -15,7 +16,7 @@ import java.util.Map;
  * Use case for archiving an EventType.
  */
 @ApplicationScoped
-public class ArchiveEventTypeUseCase {
+public class ArchiveEventTypeUseCase implements UseCase<ArchiveEventTypeCommand, EventTypeArchived> {
 
     @Inject
     EventTypeRepository repo;
@@ -23,7 +24,13 @@ public class ArchiveEventTypeUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<EventTypeArchived> execute(
+    @Override
+    public boolean authorizeResource(ArchiveEventTypeCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<EventTypeArchived> doExecute(
             ArchiveEventTypeCommand command,
             ExecutionContext context
     ) {

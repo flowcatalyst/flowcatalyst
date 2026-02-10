@@ -9,6 +9,7 @@ import tech.flowcatalyst.platform.authentication.idp.events.IdentityProviderUpda
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.security.secrets.SecretService;
 
@@ -19,7 +20,7 @@ import java.util.Map;
  * Use case for updating an Identity Provider.
  */
 @ApplicationScoped
-public class UpdateIdentityProviderUseCase {
+public class UpdateIdentityProviderUseCase implements UseCase<UpdateIdentityProviderCommand, IdentityProviderUpdated> {
 
     @Inject
     IdentityProviderRepository idpRepo;
@@ -30,7 +31,13 @@ public class UpdateIdentityProviderUseCase {
     @Inject
     SecretService secretService;
 
-    public Result<IdentityProviderUpdated> execute(UpdateIdentityProviderCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(UpdateIdentityProviderCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<IdentityProviderUpdated> doExecute(UpdateIdentityProviderCommand command, ExecutionContext context) {
         // Validate ID
         if (command.identityProviderId() == null || command.identityProviderId().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(

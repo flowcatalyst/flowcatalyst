@@ -9,6 +9,7 @@ import tech.flowcatalyst.platform.authentication.idp.events.IdentityProviderDele
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.util.Map;
@@ -17,7 +18,7 @@ import java.util.Map;
  * Use case for deleting an Identity Provider.
  */
 @ApplicationScoped
-public class DeleteIdentityProviderUseCase {
+public class DeleteIdentityProviderUseCase implements UseCase<DeleteIdentityProviderCommand, IdentityProviderDeleted> {
 
     @Inject
     IdentityProviderRepository idpRepo;
@@ -28,7 +29,13 @@ public class DeleteIdentityProviderUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<IdentityProviderDeleted> execute(DeleteIdentityProviderCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(DeleteIdentityProviderCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<IdentityProviderDeleted> doExecute(DeleteIdentityProviderCommand command, ExecutionContext context) {
         // Validate ID
         if (command.identityProviderId() == null || command.identityProviderId().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(

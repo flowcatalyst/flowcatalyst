@@ -6,6 +6,7 @@ import tech.flowcatalyst.platform.client.ClientAccessGrantRepository;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.platform.principal.Principal;
 import tech.flowcatalyst.platform.principal.PrincipalRepository;
@@ -18,7 +19,7 @@ import java.util.Map;
  * Use case for deleting a user.
  */
 @ApplicationScoped
-public class DeleteUserUseCase {
+public class DeleteUserUseCase implements UseCase<DeleteUserCommand, UserDeleted> {
 
     @Inject
     PrincipalRepository principalRepo;
@@ -29,7 +30,13 @@ public class DeleteUserUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<UserDeleted> execute(DeleteUserCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(DeleteUserCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<UserDeleted> doExecute(DeleteUserCommand command, ExecutionContext context) {
         // Find the user
         Principal principal = principalRepo.findById(command.userId());
 

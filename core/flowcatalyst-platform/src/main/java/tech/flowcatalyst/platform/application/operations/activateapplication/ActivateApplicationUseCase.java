@@ -8,6 +8,7 @@ import tech.flowcatalyst.platform.application.events.ApplicationActivated;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.util.Map;
@@ -16,7 +17,7 @@ import java.util.Map;
  * Use case for activating an Application.
  */
 @ApplicationScoped
-public class ActivateApplicationUseCase {
+public class ActivateApplicationUseCase implements UseCase<ActivateApplicationCommand, ApplicationActivated> {
 
     @Inject
     ApplicationRepository repo;
@@ -24,7 +25,13 @@ public class ActivateApplicationUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<ApplicationActivated> execute(
+    @Override
+    public boolean authorizeResource(ActivateApplicationCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<ApplicationActivated> doExecute(
             ActivateApplicationCommand command,
             ExecutionContext context
     ) {

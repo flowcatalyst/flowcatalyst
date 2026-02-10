@@ -11,6 +11,7 @@ import tech.flowcatalyst.platform.client.ClientRepository;
 import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.serviceaccount.entity.ServiceAccount;
@@ -29,7 +30,7 @@ import java.util.Optional;
  * Use case for creating a new subscription.
  */
 @ApplicationScoped
-public class CreateSubscriptionUseCase {
+public class CreateSubscriptionUseCase implements UseCase<CreateSubscriptionCommand, SubscriptionCreated> {
 
     @Inject
     SubscriptionRepository subscriptionRepo;
@@ -49,7 +50,13 @@ public class CreateSubscriptionUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<SubscriptionCreated> execute(CreateSubscriptionCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(CreateSubscriptionCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<SubscriptionCreated> doExecute(CreateSubscriptionCommand command, ExecutionContext context) {
         // Validate code
         if (command.code() == null || command.code().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(

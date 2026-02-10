@@ -9,6 +9,7 @@ import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.util.Map;
@@ -17,7 +18,7 @@ import java.util.Map;
  * Use case for updating an EventType's metadata.
  */
 @ApplicationScoped
-public class UpdateEventTypeUseCase {
+public class UpdateEventTypeUseCase implements UseCase<UpdateEventTypeCommand, EventTypeUpdated> {
 
     private static final int MAX_NAME_LENGTH = 100;
     private static final int MAX_DESCRIPTION_LENGTH = 255;
@@ -28,7 +29,13 @@ public class UpdateEventTypeUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<EventTypeUpdated> execute(
+    @Override
+    public boolean authorizeResource(UpdateEventTypeCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<EventTypeUpdated> doExecute(
             UpdateEventTypeCommand command,
             ExecutionContext context
     ) {

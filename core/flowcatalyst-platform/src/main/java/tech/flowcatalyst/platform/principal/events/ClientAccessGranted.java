@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.Builder;
-import tech.flowcatalyst.platform.common.DomainEvent;
+
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
@@ -30,7 +30,7 @@ public record ClientAccessGranted(
     String clientId,
     String grantId,
     Instant expiresAt
-) implements DomainEvent {
+) implements PrincipalEvent {
 
     private static final String EVENT_TYPE = "platform:iam:user:client-access-granted";
     private static final String SPEC_VERSION = "1.0";

@@ -11,6 +11,7 @@ import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 
 import java.time.Instant;
@@ -26,7 +27,7 @@ import java.util.*;
  * be synced for modules/prefixes that are not registered applications.
  */
 @ApplicationScoped
-public class SyncEventTypesUseCase {
+public class SyncEventTypesUseCase implements UseCase<SyncEventTypesCommand, EventTypesSynced> {
 
     @Inject
     EventTypeRepository eventTypeRepo;
@@ -34,8 +35,14 @@ public class SyncEventTypesUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
+    @Override
+    public boolean authorizeResource(SyncEventTypesCommand command, ExecutionContext context) {
+        return true;
+    }
+
     @Transactional
-    public Result<EventTypesSynced> execute(SyncEventTypesCommand command, ExecutionContext context) {
+    @Override
+    public Result<EventTypesSynced> doExecute(SyncEventTypesCommand command, ExecutionContext context) {
         if (command.applicationCode() == null || command.applicationCode().isBlank()) {
             return Result.failure(new UseCaseError.ValidationError(
                 "APPLICATION_CODE_REQUIRED",

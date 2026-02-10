@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.Builder;
 import tech.flowcatalyst.dispatchpool.DispatchPoolStatus;
-import tech.flowcatalyst.platform.common.DomainEvent;
+
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
@@ -41,7 +41,7 @@ public record DispatchPoolCreated(
     String clientId,
     String clientIdentifier,
     DispatchPoolStatus status
-) implements DomainEvent {
+) implements DispatchPoolEvent {
 
     private static final String EVENT_TYPE = "platform:control-plane:dispatch-pool:created";
     private static final String SPEC_VERSION = "1.0";

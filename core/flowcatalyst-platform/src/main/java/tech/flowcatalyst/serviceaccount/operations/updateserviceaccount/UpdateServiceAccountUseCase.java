@@ -5,6 +5,7 @@ import jakarta.inject.Inject;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
+import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
 import tech.flowcatalyst.serviceaccount.entity.ServiceAccount;
 import tech.flowcatalyst.serviceaccount.repository.ServiceAccountRepository;
@@ -17,7 +18,7 @@ import java.util.Map;
  * Use case for updating a service account's metadata.
  */
 @ApplicationScoped
-public class UpdateServiceAccountUseCase {
+public class UpdateServiceAccountUseCase implements UseCase<UpdateServiceAccountCommand, ServiceAccountUpdated> {
 
     @Inject
     ServiceAccountRepository repository;
@@ -25,7 +26,13 @@ public class UpdateServiceAccountUseCase {
     @Inject
     UnitOfWork unitOfWork;
 
-    public Result<ServiceAccountUpdated> execute(UpdateServiceAccountCommand command, ExecutionContext context) {
+    @Override
+    public boolean authorizeResource(UpdateServiceAccountCommand command, ExecutionContext context) {
+        return true;
+    }
+
+    @Override
+    public Result<ServiceAccountUpdated> doExecute(UpdateServiceAccountCommand command, ExecutionContext context) {
         // Find service account
         ServiceAccount sa = repository.findByIdOptional(command.serviceAccountId()).orElse(null);
         if (sa == null) {
