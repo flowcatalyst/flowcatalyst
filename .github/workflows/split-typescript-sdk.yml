@@ -1,9 +1,9 @@
-name: Split Laravel SDK
+name: Split TypeScript SDK
 
 on:
   push:
     tags:
-      - 'laravel-sdk/v*'
+      - 'typescript-sdk/v*'
   workflow_dispatch:
     inputs:
       tag:
@@ -32,12 +32,12 @@ jobs:
 
       - name: Split and Push
         env:
-          TARGET_REPO: https://x-access-token:${{ secrets.LARAVEL_SDK_TOKEN }}@github.com/flowcatalyst/laravel-sdk.git
+          TARGET_REPO: https://x-access-token:${{ secrets.TYPESCRIPT_SDK_TOKEN }}@github.com/flowcatalyst/typescript-sdk.git
         run: |
-          # Extract version from tag (laravel-sdk/v1.0.0 -> v1.0.0)
+          # Extract version from tag (typescript-sdk/v1.0.0 -> v1.0.0)
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             TAG="${{ github.ref_name }}"
-            VERSION="${TAG#laravel-sdk/}"
+            VERSION="${TAG#typescript-sdk/}"
           elif [[ -n "${{ github.event.inputs.tag }}" ]]; then
             VERSION="${{ github.event.inputs.tag }}"
           else
@@ -45,7 +45,7 @@ jobs:
           fi
 
           # Split the subtree
-          SHA=$(splitsh-lite --prefix=clients/laravel/flowcatalyst-sdk)
+          SHA=$(splitsh-lite --prefix=clients/typescript/flowcatalyst-sdk)
           echo "Split SHA: $SHA"
 
           # Add remote
@@ -61,4 +61,4 @@ jobs:
             echo "Tagged and pushed: $VERSION"
           fi
 
-          echo "Successfully pushed to flowcatalyst/laravel-sdk"
+          echo "Successfully pushed to flowcatalyst/typescript-sdk"
