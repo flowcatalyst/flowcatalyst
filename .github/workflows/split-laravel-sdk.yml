@@ -18,6 +18,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Install splitsh-lite
         run: |
@@ -34,13 +35,6 @@ jobs:
         env:
           TARGET_REPO: https://x-access-token:${{ secrets.LARAVEL_SDK_TOKEN }}@github.com/flowcatalyst/laravel-sdk.git
         run: |
-          # Debug: check if token is present
-          if [[ -z "$TARGET_REPO" || "$TARGET_REPO" == *"x-access-token:@"* ]]; then
-            echo "::error::LARAVEL_SDK_TOKEN secret is empty or missing"
-            exit 1
-          fi
-          echo "Token is present (length: ${#TARGET_REPO})"
-
           # Extract version from tag (laravel-sdk/v1.0.0 -> v1.0.0)
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             TAG="${{ github.ref_name }}"
