@@ -9,14 +9,11 @@ import tech.flowcatalyst.platform.security.secrets.SecretResolutionException;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
-import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
-import java.security.spec.KeySpec;
 import java.util.Base64;
 
 /**
@@ -31,12 +28,10 @@ import java.util.Base64;
  *
  * The ciphertext format: IV (12 bytes) + encrypted data + auth tag (16 bytes)
  *
- * Configuration (in order of precedence):
- * 1. FLOWCATALYST_APP_KEY env var or flowcatalyst.app-key property
- *    - Base64-encoded 256-bit (32 byte) key
- *    - Generate with: openssl rand -base64 32
- * 2. flowcatalyst.secrets.encryption.key (legacy, same format)
- * 3. flowcatalyst.secrets.encryption.passphrase + salt (derives key from passphrase)
+ * Configuration:
+ * FLOWCATALYST_APP_KEY env var or flowcatalyst.app-key property
+ * - Base64-encoded 256-bit (32 byte) key
+ * - Generate with: openssl rand -base64 32
  */
 @ApplicationScoped
 public class EncryptedSecretProvider implements SecretProvider {
@@ -50,42 +45,17 @@ public class EncryptedSecretProvider implements SecretProvider {
     private static final int GCM_TAG_LENGTH = 128; // bits
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
-    // Primary: APP_KEY (like Laravel)
     @ConfigProperty(name = "flowcatalyst.app-key")
     java.util.Optional<String> appKey;
-
-    // Legacy: explicit encryption key
-    @ConfigProperty(name = "flowcatalyst.secrets.encryption.key")
-    java.util.Optional<String> encryptionKey;
-
-    // Legacy: passphrase-based key derivation
-    @ConfigProperty(name = "flowcatalyst.secrets.encryption.passphrase")
-    java.util.Optional<String> passphrase;
-
-    @ConfigProperty(name = "flowcatalyst.secrets.encryption.salt", defaultValue = "flowcatalyst-default-salt")
-    String salt;
 
     private SecretKey secretKey;
 
     @PostConstruct
     void init() {
-        // 1. Try APP_KEY first (recommended)
         if (appKey.isPresent() && !appKey.get().isBlank()) {
-            secretKey = parseKey(appKey.get(), "flowcatalyst.app-key");
+            secretKey = parseKey(appKey.get());
             LOG.info("Encrypted secret provider initialized with APP_KEY");
-        }
-        // 2. Try legacy encryption key
-        else if (encryptionKey.isPresent() && !encryptionKey.get().isBlank()) {
-            secretKey = parseKey(encryptionKey.get(), "flowcatalyst.secrets.encryption.key");
-            LOG.info("Encrypted secret provider initialized with encryption key");
-        }
-        // 3. Try passphrase derivation
-        else if (passphrase.isPresent() && !passphrase.get().isBlank()) {
-            secretKey = deriveKey(passphrase.get(), salt);
-            LOG.info("Encrypted secret provider initialized with derived key from passphrase");
-        }
-        // 4. No key configured
-        else {
+        } else {
             LOG.warn("No APP_KEY configured. Local secret encryption unavailable. " +
                 "Set FLOWCATALYST_APP_KEY env var or flowcatalyst.app-key property. " +
                 "Generate with: openssl rand -base64 32");
@@ -93,18 +63,18 @@ public class EncryptedSecretProvider implements SecretProvider {
         }
     }
 
-    private SecretKey parseKey(String base64Key, String configName) {
+    private SecretKey parseKey(String base64Key) {
         try {
             byte[] keyBytes = Base64.getDecoder().decode(base64Key);
             if (keyBytes.length != 32) {
                 throw new IllegalStateException(
-                    configName + " must be 256 bits (32 bytes) Base64-encoded. Got: " + keyBytes.length + " bytes. " +
+                    "FLOWCATALYST_APP_KEY must be 256 bits (32 bytes) Base64-encoded. Got: " + keyBytes.length + " bytes. " +
                     "Generate with: openssl rand -base64 32");
             }
             return new SecretKeySpec(keyBytes, "AES");
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(
-                configName + " must be valid Base64. Generate with: openssl rand -base64 32", e);
+                "FLOWCATALYST_APP_KEY must be valid Base64. Generate with: openssl rand -base64 32", e);
         }
     }
 
@@ -255,18 +225,4 @@ public class EncryptedSecretProvider implements SecretProvider {
         return secretKey != null;
     }
 
-    private SecretKey deriveKey(String passphrase, String salt) {
-        try {
-            SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
-            KeySpec spec = new PBEKeySpec(
-                passphrase.toCharArray(),
-                salt.getBytes(StandardCharsets.UTF_8),
-                65536,  // iterations
-                256     // key length in bits
-            );
-            return new SecretKeySpec(factory.generateSecret(spec).getEncoded(), "AES");
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to derive encryption key", e);
-        }
-    }
 }

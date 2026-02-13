@@ -18,7 +18,7 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import org.jboss.logging.Logger;
 import tech.flowcatalyst.dispatch.DispatchMode;
 import tech.flowcatalyst.platform.audit.AuditContext;
-import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
+
 import tech.flowcatalyst.platform.authorization.AuthorizationService;
 import tech.flowcatalyst.platform.authorization.platform.PlatformMessagingPermissions;
 import tech.flowcatalyst.platform.common.ExecutionContext;
@@ -47,7 +47,6 @@ import java.util.List;
 @Tag(name = "BFF - Subscription Admin", description = "Administrative operations for subscription management")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@EmbeddedModeOnly
 public class SubscriptionResource {
 
     private static final Logger LOG = Logger.getLogger(SubscriptionResource.class);

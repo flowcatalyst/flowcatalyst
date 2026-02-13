@@ -10,7 +10,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import tech.flowcatalyst.platform.audit.AuditContext;
-import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
+
 import tech.flowcatalyst.platform.authentication.domain.EmailDomainMapping;
 import tech.flowcatalyst.platform.authentication.domain.EmailDomainMappingOperations;
 import tech.flowcatalyst.platform.authentication.domain.ScopeType;
@@ -42,7 +42,6 @@ import java.util.Map;
 @Tag(name = "BFF - Email Domain Mapping Admin", description = "Manage email domain to IDP mappings")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@EmbeddedModeOnly
 @jakarta.transaction.Transactional
 public class EmailDomainMappingAdminResource {
 

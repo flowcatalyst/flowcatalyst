@@ -22,7 +22,7 @@ import tech.flowcatalyst.dispatchpool.operations.createpool.CreateDispatchPoolCo
 import tech.flowcatalyst.dispatchpool.operations.deletepool.DeleteDispatchPoolCommand;
 import tech.flowcatalyst.dispatchpool.operations.updatepool.UpdateDispatchPoolCommand;
 import tech.flowcatalyst.platform.audit.AuditContext;
-import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
+
 import tech.flowcatalyst.platform.authorization.AuthorizationService;
 import tech.flowcatalyst.platform.authorization.platform.PlatformMessagingPermissions;
 import tech.flowcatalyst.platform.common.ExecutionContext;
@@ -45,7 +45,6 @@ import java.util.List;
 @Tag(name = "BFF - Dispatch Pool Admin", description = "Administrative operations for dispatch pool management")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@EmbeddedModeOnly
 public class DispatchPoolResource {
 
     private static final Logger LOG = Logger.getLogger(DispatchPoolResource.class);

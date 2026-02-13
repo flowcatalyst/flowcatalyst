@@ -38,7 +38,6 @@ import java.util.stream.Collectors;
 @Tag(name = "Client Selection", description = "Client context management")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@EmbeddedModeOnly
 public class ClientSelectionResource {
 
     private static final Logger LOG = Logger.getLogger(ClientSelectionResource.class);

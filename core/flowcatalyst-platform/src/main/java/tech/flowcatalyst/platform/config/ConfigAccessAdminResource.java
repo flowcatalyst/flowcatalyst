@@ -9,7 +9,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import tech.flowcatalyst.platform.audit.AuditContext;
-import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
+
 import tech.flowcatalyst.platform.authorization.RoleService;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
@@ -28,7 +28,6 @@ import java.util.Set;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Platform Config Access", description = "Manage role-based access to platform configurations")
-@EmbeddedModeOnly
 public class ConfigAccessAdminResource {
 
     @Inject

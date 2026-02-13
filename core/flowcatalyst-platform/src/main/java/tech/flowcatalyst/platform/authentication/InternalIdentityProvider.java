@@ -8,7 +8,6 @@ import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.security.identity.request.TokenAuthenticationRequest;
 import io.quarkus.security.runtime.QuarkusPrincipal;
 import io.quarkus.security.runtime.QuarkusSecurityIdentity;
-import io.smallrye.jwt.auth.principal.DefaultJWTParser;
 import io.smallrye.jwt.auth.principal.ParseException;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.Priority;
@@ -51,12 +50,13 @@ public class InternalIdentityProvider implements IdentityProvider<TokenAuthentic
     public Uni<SecurityIdentity> authenticate(TokenAuthenticationRequest request, AuthenticationRequestContext context) {
         return context.runBlocking(() -> {
             try {
-                String token = request.getToken().getToken();
+                var token = request.getToken().getToken();
 
-                // Use DefaultJWTParser with our public key directly
-                // This avoids the need for mp.jwt.verify.publickey.location configuration
-                DefaultJWTParser parser = new DefaultJWTParser();
-                JsonWebToken jwt = parser.verify(token, jwtKeyService.getPublicKey());
+                // Resolve verification key based on token's kid header (supports key rotation)
+                var kid = JwtKeyService.extractKidFromHeader(token);
+                var verificationKey = jwtKeyService.getVerificationKey(kid);
+                var parser = new io.smallrye.jwt.auth.principal.DefaultJWTParser();
+                var jwt = parser.verify(token, verificationKey);
 
                 // Validate issuer
                 if (!jwtKeyService.getIssuer().equals(jwt.getIssuer())) {

@@ -13,7 +13,7 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import tech.flowcatalyst.platform.audit.AuditContext;
 import tech.flowcatalyst.platform.audit.AuditLog;
 import tech.flowcatalyst.platform.audit.AuditLogRepository;
-import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
+
 import tech.flowcatalyst.platform.authorization.AuthorizationService;
 import tech.flowcatalyst.platform.authorization.platform.PlatformAdminPermissions;
 import tech.flowcatalyst.platform.common.api.ApiResponses;
@@ -33,7 +33,6 @@ import java.util.List;
 @Tag(name = "BFF - Audit Log Admin", description = "Audit log viewing endpoints")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@EmbeddedModeOnly
 @jakarta.transaction.Transactional
 public class AuditLogAdminResource {
 

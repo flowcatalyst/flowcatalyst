@@ -22,7 +22,6 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 @Path("/.well-known")
 @Tag(name = "Discovery", description = "OAuth2/OIDC discovery endpoints")
 @Produces(MediaType.APPLICATION_JSON)
-@EmbeddedModeOnly
 public class WellKnownResource {
 
     @Inject

@@ -9,10 +9,16 @@
 
 FROM eclipse-temurin:25-jre-alpine
 
+# RDS CA bundle for SSL database connections (cached independently of app code)
+RUN wget -q -O /certs/global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+
+# Create non-root user (185 is standard Quarkus user)
+RUN adduser -u 185 -D appuser
+
 # Set working directory
 WORKDIR /deployments
 
-# Copy the entrypoint script first (as root)
+# Copy the entrypoint script first
 COPY src/main/docker/entrypoint.sh /deployments/entrypoint.sh
 
 # Copy the built application from build/quarkus-app
@@ -20,9 +26,6 @@ COPY build/quarkus-app/lib/ /deployments/lib/
 COPY build/quarkus-app/*.jar /deployments/
 COPY build/quarkus-app/app/ /deployments/app/
 COPY build/quarkus-app/quarkus/ /deployments/quarkus/
-
-# Create non-root user (185 is standard Quarkus user)
-RUN adduser -u 185 -D appuser
 
 # Make entrypoint executable and set ownership
 RUN chmod +x /deployments/entrypoint.sh && chown -R 185:185 /deployments

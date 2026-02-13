@@ -13,27 +13,13 @@ import java.util.Optional;
  *
  * Example configuration:
  * <pre>
- * # Embedded mode (full IdP)
- * flowcatalyst.auth.mode=embedded
  * flowcatalyst.auth.jwt.issuer=https://auth.example.com
  * flowcatalyst.auth.jwt.private-key-path=/keys/private.pem
- *
- * # Remote mode (validation only)
- * flowcatalyst.auth.mode=remote
- * flowcatalyst.auth.remote.jwks-url=https://auth.example.com/.well-known/jwks.json
  * </pre>
  */
 @StaticInitSafe
 @ConfigMapping(prefix = "flowcatalyst.auth")
 public interface AuthConfig {
-
-    /**
-     * Auth deployment mode.
-     * - EMBEDDED: Full IdP with token issuance and management endpoints
-     * - REMOTE: Token validation only, delegates to external IdP
-     */
-    @WithDefault("embedded")
-    AuthMode mode();
 
     /**
      * JWT configuration for token issuance and validation.
@@ -49,11 +35,6 @@ public interface AuthConfig {
      * PKCE configuration for OAuth2 flows.
      */
     PkceConfig pkce();
-
-    /**
-     * Remote IdP configuration (used when mode=remote).
-     */
-    RemoteConfig remote();
 
     /**
      * Rate limiting configuration for authentication endpoints.
@@ -93,6 +74,27 @@ public interface AuthConfig {
          */
         @WithName("public-key-path")
         Optional<String> publicKeyPath();
+
+        /**
+         * Base64-encoded PEM content of the RSA private key for signing tokens.
+         * Takes priority over private-key-path when set.
+         */
+        @WithName("private-key")
+        Optional<String> privateKey();
+
+        /**
+         * Base64-encoded PEM content of the RSA public key for validating tokens.
+         * Takes priority over public-key-path when set.
+         */
+        @WithName("public-key")
+        Optional<String> publicKey();
+
+        /**
+         * Base64-encoded PEM content of the previous RSA public key.
+         * Set during key rotation to accept tokens signed with the old key.
+         */
+        @WithName("previous-public-key")
+        Optional<String> previousPublicKey();
 
         /**
          * Access token expiry duration.
@@ -164,51 +166,6 @@ public interface AuthConfig {
          */
         @WithDefault("true")
         boolean required();
-    }
-
-    /**
-     * Remote IdP configuration for token validation.
-     * Used when mode=remote.
-     */
-    interface RemoteConfig {
-        /**
-         * Expected issuer (iss claim) of tokens from the remote IdP.
-         */
-        Optional<String> issuer();
-
-        /**
-         * URL to fetch JWKS (JSON Web Key Set) from the remote IdP.
-         * Example: https://auth.example.com/.well-known/jwks.json
-         */
-        @WithName("jwks-url")
-        Optional<String> jwksUrl();
-
-        /**
-         * How long to cache the remote JWKS.
-         * Default: 1 hour
-         */
-        @WithName("jwks-cache-duration")
-        @WithDefault("PT1H")
-        Duration jwksCacheDuration();
-
-        /**
-         * URL to redirect users to for login (in remote mode).
-         */
-        @WithName("login-url")
-        Optional<String> loginUrl();
-
-        /**
-         * URL to redirect users to for logout (in remote mode).
-         */
-        @WithName("logout-url")
-        Optional<String> logoutUrl();
-
-        /**
-         * Base URL of the remote platform service.
-         * Used for redirecting to /platform in remote mode.
-         */
-        @WithName("platform-url")
-        Optional<String> platformUrl();
     }
 
     /**

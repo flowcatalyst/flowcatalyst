@@ -48,7 +48,6 @@ import java.util.stream.Collectors;
  */
 @Path("/oauth")
 @Tag(name = "OAuth2 Authorization", description = "OAuth2 authorization code flow endpoints")
-@EmbeddedModeOnly
 public class AuthorizationResource {
 
     private static final Logger LOG = Logger.getLogger(AuthorizationResource.class);

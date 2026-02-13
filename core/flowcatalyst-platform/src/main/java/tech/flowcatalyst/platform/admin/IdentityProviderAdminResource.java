@@ -10,7 +10,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import tech.flowcatalyst.platform.audit.AuditContext;
-import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
+
 import tech.flowcatalyst.platform.authentication.idp.IdentityProvider;
 import tech.flowcatalyst.platform.authentication.idp.IdentityProviderOperations;
 import tech.flowcatalyst.platform.authentication.idp.IdentityProviderType;
@@ -41,7 +41,6 @@ import java.util.Map;
 @Tag(name = "BFF - Identity Provider Admin", description = "Manage identity provider configurations")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@EmbeddedModeOnly
 @jakarta.transaction.Transactional
 public class IdentityProviderAdminResource {
 

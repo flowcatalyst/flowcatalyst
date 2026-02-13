@@ -9,7 +9,7 @@ import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import org.jboss.logging.Logger;
 import tech.flowcatalyst.platform.authentication.AuthConfig;
-import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
+
 import tech.flowcatalyst.platform.authentication.JwtKeyService;
 import tech.flowcatalyst.platform.authentication.OidcSyncService;
 import tech.flowcatalyst.platform.authentication.domain.EmailDomainMapping;
@@ -51,7 +51,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @Path("/auth/oidc")
 @Tag(name = "OIDC Federation", description = "External identity provider login endpoints")
 @Produces(MediaType.APPLICATION_JSON)
-@EmbeddedModeOnly
 public class OidcLoginResource {
 
     private static final Logger LOG = Logger.getLogger(OidcLoginResource.class);

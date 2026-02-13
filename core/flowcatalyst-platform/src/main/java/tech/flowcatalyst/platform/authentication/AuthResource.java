@@ -31,7 +31,6 @@ import java.util.Set;
 @Tag(name = "Authentication", description = "User authentication endpoints")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@EmbeddedModeOnly
 public class AuthResource {
 
     private static final Logger LOG = Logger.getLogger(AuthResource.class);

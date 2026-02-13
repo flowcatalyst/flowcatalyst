@@ -22,7 +22,9 @@ import java.security.spec.X509EncodedKeySpec;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -30,9 +32,13 @@ import java.util.UUID;
 /**
  * Service for managing JWT signing keys and generating tokens.
  *
- * Supports two modes:
- * 1. Auto-generated keys (development) - generates RSA key pair on startup
- * 2. File-based keys (production) - loads keys from configured paths
+ * Supports three key loading modes (in priority order):
+ * 1. Env var content (production/containers) - base64-encoded PEM via env vars
+ * 2. File-based keys (production/VMs) - loads keys from configured paths
+ * 3. Auto-generated keys (development) - generates RSA key pair on startup
+ *
+ * Supports zero-downtime key rotation by accepting tokens signed with a previous
+ * public key during the rotation window.
  *
  * Provides JWKS (JSON Web Key Set) for token verification by other services.
  */
@@ -52,6 +58,15 @@ public class JwtKeyService {
     @ConfigProperty(name = "flowcatalyst.auth.jwt.public-key-path")
     Optional<String> publicKeyPath;
 
+    @ConfigProperty(name = "flowcatalyst.auth.jwt.private-key")
+    Optional<String> privateKeyContent;
+
+    @ConfigProperty(name = "flowcatalyst.auth.jwt.public-key")
+    Optional<String> publicKeyContent;
+
+    @ConfigProperty(name = "flowcatalyst.auth.jwt.previous-public-key")
+    Optional<String> previousPublicKeyContent;
+
     @ConfigProperty(name = "flowcatalyst.auth.jwt.access-token-expiry", defaultValue = "PT1H")
     Duration accessTokenExpiry;
 
@@ -64,19 +79,42 @@ public class JwtKeyService {
     private RSAPrivateKey privateKey;
     private RSAPublicKey publicKey;
     private String keyId;
+    private RSAPublicKey previousPublicKey;
+    private String previousKeyId;
+    /** kid -> public key map for verification (current + optional previous) */
+    private Map<String, RSAPublicKey> verificationKeys;
 
     @PostConstruct
     void init() {
         try {
-            if (privateKeyPath.isPresent() && publicKeyPath.isPresent()) {
+            // Priority: env var content > file paths > dev auto-generation
+            if (privateKeyContent.filter(s -> !s.isBlank()).isPresent()
+                    && publicKeyContent.filter(s -> !s.isBlank()).isPresent()) {
+                loadKeysFromEnvVars();
+            } else if (privateKeyPath.filter(s -> !s.isBlank()).isPresent()
+                    && publicKeyPath.filter(s -> !s.isBlank()).isPresent()) {
                 loadKeysFromFiles();
             } else {
                 // In dev mode, try to load persisted keys or generate new ones
                 loadOrGenerateDevKeys();
             }
+
             // Generate a stable key ID based on public key
             this.keyId = generateKeyId(publicKey);
-            LOG.infof("JWT key service initialized with key ID: %s", keyId);
+
+            // Build verification key map (kid -> publicKey)
+            this.verificationKeys = new LinkedHashMap<>();
+            this.verificationKeys.put(keyId, publicKey);
+
+            // Load previous public key for rotation support
+            if (previousPublicKeyContent.filter(s -> !s.isBlank()).isPresent()) {
+                loadPreviousPublicKey();
+                this.previousKeyId = generateKeyId(previousPublicKey);
+                this.verificationKeys.put(previousKeyId, previousPublicKey);
+                LOG.infof("JWT key rotation active: current kid=%s, previous kid=%s", keyId, previousKeyId);
+            } else {
+                LOG.infof("JWT key service initialized with key ID: %s", keyId);
+            }
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize JWT keys", e);
         }
@@ -99,7 +137,35 @@ public class JwtKeyService {
             generateKeyPair();
             persistDevKeys(keyDir, privateKeyFile, publicKeyFile);
         }
-        LOG.warn("Using dev JWT keys. Configure flowcatalyst.auth.jwt.private-key-path and flowcatalyst.auth.jwt.public-key-path for production.");
+        LOG.warn("Using dev JWT keys. Configure JWT key env vars or file paths for production.");
+    }
+
+    /**
+     * Load signing keys from base64-encoded PEM content in environment variables.
+     */
+    private void loadKeysFromEnvVars() throws Exception {
+        LOG.info("Loading JWT keys from environment variables");
+
+        var privateKeyPem = new String(Base64.getDecoder().decode(privateKeyContent.get().trim()));
+        var publicKeyPem = new String(Base64.getDecoder().decode(publicKeyContent.get().trim()));
+
+        byte[] privateKeyBytes = parsePemKey(privateKeyPem, "PRIVATE KEY");
+        byte[] publicKeyBytes = parsePemKey(publicKeyPem, "PUBLIC KEY");
+
+        var keyFactory = KeyFactory.getInstance("RSA");
+        this.privateKey = (RSAPrivateKey) keyFactory.generatePrivate(new PKCS8EncodedKeySpec(privateKeyBytes));
+        this.publicKey = (RSAPublicKey) keyFactory.generatePublic(new X509EncodedKeySpec(publicKeyBytes));
+    }
+
+    /**
+     * Load the previous public key for rotation support.
+     */
+    private void loadPreviousPublicKey() throws Exception {
+        var publicKeyPem = new String(Base64.getDecoder().decode(previousPublicKeyContent.get().trim()));
+        byte[] publicKeyBytes = parsePemKey(publicKeyPem, "PUBLIC KEY");
+
+        var keyFactory = KeyFactory.getInstance("RSA");
+        this.previousPublicKey = (RSAPublicKey) keyFactory.generatePublic(new X509EncodedKeySpec(publicKeyBytes));
     }
 
     private void loadKeysFromPaths(Path privateKeyFile, Path publicKeyFile) throws Exception {
@@ -322,10 +388,14 @@ public class JwtKeyService {
 
     /**
      * Get the JWKS (JSON Web Key Set) for token verification.
+     * Includes the previous key during rotation for zero-downtime support.
      */
     public JsonObject getJwks() {
-        JsonArrayBuilder keysArray = Json.createArrayBuilder();
-        keysArray.add(getJwk());
+        var keysArray = Json.createArrayBuilder();
+        keysArray.add(buildJwk(publicKey, keyId));
+        if (previousPublicKey != null) {
+            keysArray.add(buildJwk(previousPublicKey, previousKeyId));
+        }
         return Json.createObjectBuilder()
                 .add("keys", keysArray)
                 .build();
@@ -335,8 +405,12 @@ public class JwtKeyService {
      * Get the JWK (JSON Web Key) for the current public key.
      */
     public JsonObject getJwk() {
-        byte[] nBytes = publicKey.getModulus().toByteArray();
-        byte[] eBytes = publicKey.getPublicExponent().toByteArray();
+        return buildJwk(publicKey, keyId);
+    }
+
+    private JsonObject buildJwk(RSAPublicKey key, String kid) {
+        byte[] nBytes = key.getModulus().toByteArray();
+        byte[] eBytes = key.getPublicExponent().toByteArray();
 
         // Remove leading zero byte if present (BigInteger sign bit)
         if (nBytes[0] == 0) {
@@ -349,7 +423,7 @@ public class JwtKeyService {
                 .add("kty", "RSA")
                 .add("alg", ALGORITHM)
                 .add("use", "sig")
-                .add("kid", keyId)
+                .add("kid", kid)
                 .add("n", Base64.getUrlEncoder().withoutPadding().encodeToString(nBytes))
                 .add("e", Base64.getUrlEncoder().withoutPadding().encodeToString(eBytes))
                 .build();
@@ -397,6 +471,61 @@ public class JwtKeyService {
                         .add("name")
                         .add("clients"))
                 .build();
+    }
+
+    /**
+     * Extract the kid (Key ID) from a JWT header without verifying the token.
+     * Returns null if the token is malformed or has no kid.
+     */
+    public static String extractKidFromHeader(String token) {
+        if (token == null) {
+            return null;
+        }
+        try {
+            var dotIndex = token.indexOf('.');
+            if (dotIndex < 0) {
+                return null;
+            }
+            var headerJson = new String(Base64.getUrlDecoder().decode(token.substring(0, dotIndex)));
+            // Simple JSON parsing for kid field - avoids pulling in a JSON parser dependency
+            var kidIndex = headerJson.indexOf("\"kid\"");
+            if (kidIndex < 0) {
+                return null;
+            }
+            // Find the value after "kid":
+            var colonIndex = headerJson.indexOf(':', kidIndex);
+            var quoteStart = headerJson.indexOf('"', colonIndex + 1);
+            var quoteEnd = headerJson.indexOf('"', quoteStart + 1);
+            if (quoteStart < 0 || quoteEnd < 0) {
+                return null;
+            }
+            return headerJson.substring(quoteStart + 1, quoteEnd);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Resolve the verification key for a token based on its kid header.
+     * Falls back to the current public key if kid is missing or unrecognized.
+     */
+    RSAPublicKey resolveVerificationKey(String token) {
+        var kid = extractKidFromHeader(token);
+        if (kid != null && verificationKeys.containsKey(kid)) {
+            return verificationKeys.get(kid);
+        }
+        return publicKey;
+    }
+
+    /**
+     * Get the verification key for a specific kid.
+     * Falls back to the current public key if kid is null or unrecognized.
+     */
+    public RSAPublicKey getVerificationKey(String kid) {
+        if (kid != null && verificationKeys.containsKey(kid)) {
+            return verificationKeys.get(kid);
+        }
+        return publicKey;
     }
 
     public String getIssuer() {
@@ -449,8 +578,8 @@ public class JwtKeyService {
      */
     public String validateAndGetPrincipalId(String token) {
         try {
-            io.smallrye.jwt.auth.principal.JWTParser parser = new io.smallrye.jwt.auth.principal.DefaultJWTParser();
-            org.eclipse.microprofile.jwt.JsonWebToken jwt = parser.verify(token, publicKey);
+            var parser = new io.smallrye.jwt.auth.principal.DefaultJWTParser();
+            var jwt = parser.verify(token, resolveVerificationKey(token));
 
             // Verify issuer
             if (!issuer.equals(jwt.getIssuer())) {
@@ -480,8 +609,8 @@ public class JwtKeyService {
             return null;
         }
         try {
-            io.smallrye.jwt.auth.principal.JWTParser parser = new io.smallrye.jwt.auth.principal.DefaultJWTParser();
-            org.eclipse.microprofile.jwt.JsonWebToken jwt = parser.verify(token, publicKey);
+            var parser = new io.smallrye.jwt.auth.principal.DefaultJWTParser();
+            var jwt = parser.verify(token, resolveVerificationKey(token));
 
             Object clientClaim = jwt.getClaim("client_id");
             if (clientClaim == null) {
@@ -510,8 +639,8 @@ public class JwtKeyService {
             return Set.of();
         }
         try {
-            io.smallrye.jwt.auth.principal.JWTParser parser = new io.smallrye.jwt.auth.principal.DefaultJWTParser();
-            org.eclipse.microprofile.jwt.JsonWebToken jwt = parser.verify(token, publicKey);
+            var parser = new io.smallrye.jwt.auth.principal.DefaultJWTParser();
+            var jwt = parser.verify(token, resolveVerificationKey(token));
 
             Object permissionsClaim = jwt.getClaim("permissions");
             if (permissionsClaim == null) {
@@ -540,8 +669,8 @@ public class JwtKeyService {
             return Set.of();
         }
         try {
-            io.smallrye.jwt.auth.principal.JWTParser parser = new io.smallrye.jwt.auth.principal.DefaultJWTParser();
-            org.eclipse.microprofile.jwt.JsonWebToken jwt = parser.verify(token, publicKey);
+            var parser = new io.smallrye.jwt.auth.principal.DefaultJWTParser();
+            var jwt = parser.verify(token, resolveVerificationKey(token));
 
             Object applicationsClaim = jwt.getClaim("applications");
             if (applicationsClaim == null) {
@@ -570,8 +699,8 @@ public class JwtKeyService {
             return List.of();
         }
         try {
-            io.smallrye.jwt.auth.principal.JWTParser parser = new io.smallrye.jwt.auth.principal.DefaultJWTParser();
-            org.eclipse.microprofile.jwt.JsonWebToken jwt = parser.verify(token, publicKey);
+            var parser = new io.smallrye.jwt.auth.principal.DefaultJWTParser();
+            var jwt = parser.verify(token, resolveVerificationKey(token));
 
             Object clientsClaim = jwt.getClaim("clients");
             if (clientsClaim == null) {

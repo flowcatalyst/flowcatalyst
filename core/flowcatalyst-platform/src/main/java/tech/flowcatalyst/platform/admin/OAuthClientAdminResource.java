@@ -18,7 +18,7 @@ import org.jboss.logging.Logger;
 import tech.flowcatalyst.platform.application.Application;
 import tech.flowcatalyst.platform.application.ApplicationRepository;
 import tech.flowcatalyst.platform.audit.AuditContext;
-import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
+
 import tech.flowcatalyst.platform.authentication.oauth.OAuthClient;
 import tech.flowcatalyst.platform.authentication.oauth.OAuthClient.ClientType;
 import tech.flowcatalyst.platform.authentication.oauth.OAuthClientRepository;
@@ -54,7 +54,6 @@ import java.util.stream.Collectors;
 @Tag(name = "BFF - OAuth Client Admin", description = "Administrative operations for OAuth2 client management")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@EmbeddedModeOnly
 @jakarta.transaction.Transactional
 public class OAuthClientAdminResource {
 

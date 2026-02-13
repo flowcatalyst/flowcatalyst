@@ -28,7 +28,7 @@ import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.api.ApiResponses;
 import tech.flowcatalyst.platform.common.api.ClientResponses;
 import tech.flowcatalyst.platform.common.api.ClientResponses.*;
-import tech.flowcatalyst.platform.authentication.EmbeddedModeOnly;
+
 import tech.flowcatalyst.platform.client.Client;
 import tech.flowcatalyst.platform.client.ClientService;
 import tech.flowcatalyst.platform.client.ClientStatus;
@@ -55,7 +55,6 @@ import java.util.stream.Collectors;
 @Tag(name = "BFF - Client Admin", description = "Administrative operations for client management")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@EmbeddedModeOnly
 @jakarta.transaction.Transactional
 public class ClientAdminResource {
 
