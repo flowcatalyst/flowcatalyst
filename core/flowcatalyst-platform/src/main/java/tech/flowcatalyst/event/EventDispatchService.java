@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -71,8 +72,8 @@ public class EventDispatchService {
     @ConfigProperty(name = "flowcatalyst.features.messaging-enabled", defaultValue = "true")
     boolean messagingEnabled;
 
-    @ConfigProperty(name = "flowcatalyst.dispatch.queue-url", defaultValue = "")
-    String queueUrl;
+    @ConfigProperty(name = "flowcatalyst.dispatch.queue-url")
+    Optional<String> queueUrl;
 
     @ConfigProperty(name = "flowcatalyst.dispatch.processing-endpoint", defaultValue = "http://localhost:8080/api/dispatch/process")
     String processingEndpoint;
@@ -356,7 +357,7 @@ public class EventDispatchService {
             }
 
             SendMessageBatchRequest request = SendMessageBatchRequest.builder()
-                .queueUrl(queueUrl)
+                .queueUrl(queueUrl.orElse(""))
                 .entries(entries)
                 .build();
 

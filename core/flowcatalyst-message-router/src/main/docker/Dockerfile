@@ -16,7 +16,7 @@
 FROM eclipse-temurin:25-jre-alpine
 
 # RDS CA bundle for SSL database connections (cached independently of app code)
-RUN wget -q -O /certs/global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+RUN mkdir -p /certs && wget -q -O /certs/global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 
 # Create non-root user (185 is standard Quarkus user)
 RUN adduser -u 185 -D appuser

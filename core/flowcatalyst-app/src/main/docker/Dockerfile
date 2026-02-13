@@ -7,13 +7,16 @@
 #
 ####
 
-FROM eclipse-temurin:25-jre-alpine
+FROM eclipse-temurin:25-jre-noble
 
-# RDS CA bundle for SSL database connections (cached independently of app code)
-RUN wget -q -O /certs/global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+# Install curl (needed for health checks) and download RDS CA bundle
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /certs \
+    && curl -sf -o /certs/global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 
 # Create non-root user (185 is standard Quarkus user)
-RUN adduser -u 185 -D appuser
+RUN adduser --uid 185 --disabled-password --gecos "" appuser
 
 # Set working directory
 WORKDIR /deployments
@@ -36,9 +39,9 @@ USER 185
 # Expose port
 EXPOSE 8080
 
-# Health check using wget (already available in Alpine)
+# Health check
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=30s \
-  CMD wget -q -O- http://localhost:8080/health/ready || exit 1
+  CMD curl -sf http://localhost:8080/health/ready || exit 1
 
 # Start via entrypoint script (configures virtual thread parallelism)
 ENTRYPOINT [ "/deployments/entrypoint.sh" ]
