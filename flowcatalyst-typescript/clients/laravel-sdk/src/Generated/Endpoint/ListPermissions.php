@@ -25,6 +25,7 @@ class ListPermissions extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoin
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\ListPermissionsUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\ListPermissionsForbiddenException
      *
      * @return null|\FlowCatalyst\Generated\Model\PermissionListResponse
      */
@@ -35,8 +36,11 @@ class ListPermissions extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoin
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\PermissionListResponse', 'json');
         }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\ListPermissionsUnauthorizedException($response);
+        if (is_null($contentType) === false && (401 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\ListPermissionsUnauthorizedException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\UnauthorizedResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\ListPermissionsForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ForbiddenResponse', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array

@@ -9,20 +9,25 @@ import type { SdkError } from '../errors';
 import type { FlowCatalystClient } from '../client';
 import * as sdk from '../generated/sdk.gen';
 import type {
-  EventTypeResponse,
-  EventTypeListResponse,
-  CreateEventTypeRequest,
-  UpdateEventTypeRequest,
-  SchemaType,
-  SyncEventTypesRequest,
-  SyncResponse1,
-  EventTypeListResponse1,
-  FilterOptionsResponse,
-  EventTypeStatus,
+  GetApiAdminEventTypesResponse,
+  GetApiAdminEventTypesByIdResponse,
+  PostApiAdminEventTypesData,
+  PatchApiAdminEventTypesByIdData,
+  PostApiAdminEventTypesByIdSchemasData,
+  PostApiAdminEventTypesSyncData,
+  PostApiAdminEventTypesSyncResponse,
+  GetApiAdminEventTypesFiltersApplicationsResponse,
 } from '../generated/types.gen';
 
+export type EventTypeListResponse = GetApiAdminEventTypesResponse;
+export type EventTypeResponse = GetApiAdminEventTypesByIdResponse;
+export type CreateEventTypeRequest = PostApiAdminEventTypesData['body'];
+export type UpdateEventTypeRequest = PatchApiAdminEventTypesByIdData['body'];
+export type SyncEventTypesResponse = PostApiAdminEventTypesSyncResponse;
+export type FilterOptionsResponse = GetApiAdminEventTypesFiltersApplicationsResponse;
+
 export interface EventTypeFilters {
-  status?: EventTypeStatus;
+  status?: string;
   application?: string[];
   subdomain?: string[];
   aggregate?: string[];
@@ -39,7 +44,7 @@ export class EventTypesResource {
    */
   list(filters?: EventTypeFilters): ResultAsync<EventTypeListResponse, SdkError> {
     return this.client.request<EventTypeListResponse>((httpClient, headers) =>
-      sdk.getApiEventTypes({
+      sdk.getApiAdminEventTypes({
         client: httpClient,
         headers,
         query: filters,
@@ -52,7 +57,7 @@ export class EventTypesResource {
    */
   get(id: string): ResultAsync<EventTypeResponse, SdkError> {
     return this.client.request<EventTypeResponse>((httpClient, headers) =>
-      sdk.getApiEventTypesById({
+      sdk.getApiAdminEventTypesById({
         client: httpClient,
         headers,
         path: { id },
@@ -65,7 +70,7 @@ export class EventTypesResource {
    */
   create(data: CreateEventTypeRequest): ResultAsync<EventTypeResponse, SdkError> {
     return this.client.request<EventTypeResponse>((httpClient, headers) =>
-      sdk.postApiEventTypes({
+      sdk.postApiAdminEventTypes({
         client: httpClient,
         headers,
         body: data,
@@ -78,7 +83,7 @@ export class EventTypesResource {
    */
   update(id: string, data: UpdateEventTypeRequest): ResultAsync<EventTypeResponse, SdkError> {
     return this.client.request<EventTypeResponse>((httpClient, headers) =>
-      sdk.patchApiEventTypesById({
+      sdk.patchApiAdminEventTypesById({
         client: httpClient,
         headers,
         path: { id },
@@ -92,15 +97,10 @@ export class EventTypesResource {
    */
   addSchema(
     id: string,
-    schema: {
-      version?: string;
-      mimeType?: string;
-      schema?: string;
-      schemaType?: SchemaType;
-    },
+    schema: PostApiAdminEventTypesByIdSchemasData['body'],
   ): ResultAsync<EventTypeResponse, SdkError> {
     return this.client.request<EventTypeResponse>((httpClient, headers) =>
-      sdk.postApiEventTypesByIdSchemas({
+      sdk.postApiAdminEventTypesByIdSchemas({
         client: httpClient,
         headers,
         path: { id },
@@ -114,7 +114,7 @@ export class EventTypesResource {
    */
   finaliseSchema(id: string, version: string): ResultAsync<EventTypeResponse, SdkError> {
     return this.client.request<EventTypeResponse>((httpClient, headers) =>
-      sdk.postApiEventTypesByIdSchemasByVersionFinalise({
+      sdk.postApiAdminEventTypesByIdSchemasByVersionFinalise({
         client: httpClient,
         headers,
         path: { id, version },
@@ -127,7 +127,7 @@ export class EventTypesResource {
    */
   deprecateSchema(id: string, version: string): ResultAsync<EventTypeResponse, SdkError> {
     return this.client.request<EventTypeResponse>((httpClient, headers) =>
-      sdk.postApiEventTypesByIdSchemasByVersionDeprecate({
+      sdk.postApiAdminEventTypesByIdSchemasByVersionDeprecate({
         client: httpClient,
         headers,
         path: { id, version },
@@ -140,7 +140,7 @@ export class EventTypesResource {
    */
   archive(id: string): ResultAsync<EventTypeResponse, SdkError> {
     return this.client.request<EventTypeResponse>((httpClient, headers) =>
-      sdk.postApiEventTypesByIdArchive({
+      sdk.postApiAdminEventTypesByIdArchive({
         client: httpClient,
         headers,
         path: { id },
@@ -153,7 +153,7 @@ export class EventTypesResource {
    */
   delete(id: string): ResultAsync<unknown, SdkError> {
     return this.client.request<unknown>((httpClient, headers) =>
-      sdk.deleteApiEventTypesById({
+      sdk.deleteApiAdminEventTypesById({
         client: httpClient,
         headers,
         path: { id },
@@ -166,7 +166,7 @@ export class EventTypesResource {
    */
   filterApplications(): ResultAsync<FilterOptionsResponse, SdkError> {
     return this.client.request<FilterOptionsResponse>((httpClient, headers) =>
-      sdk.getApiEventTypesFiltersApplications({
+      sdk.getApiAdminEventTypesFiltersApplications({
         client: httpClient,
         headers,
       }),
@@ -178,7 +178,7 @@ export class EventTypesResource {
    */
   filterSubdomains(application?: string[]): ResultAsync<FilterOptionsResponse, SdkError> {
     return this.client.request<FilterOptionsResponse>((httpClient, headers) =>
-      sdk.getApiEventTypesFiltersSubdomains({
+      sdk.getApiAdminEventTypesFiltersSubdomains({
         client: httpClient,
         headers,
         query: { application },
@@ -194,7 +194,7 @@ export class EventTypesResource {
     subdomain?: string[],
   ): ResultAsync<FilterOptionsResponse, SdkError> {
     return this.client.request<FilterOptionsResponse>((httpClient, headers) =>
-      sdk.getApiEventTypesFiltersAggregates({
+      sdk.getApiAdminEventTypesFiltersAggregates({
         client: httpClient,
         headers,
         query: { application, subdomain },
@@ -203,37 +203,18 @@ export class EventTypesResource {
   }
 
   /**
-   * List event types for an application (by code prefix).
-   */
-  listForApplication(
-    appCode: string,
-    source?: string,
-  ): ResultAsync<EventTypeListResponse1, SdkError> {
-    return this.client.request<EventTypeListResponse1>((httpClient, headers) =>
-      sdk.listApplicationEventTypes({
-        client: httpClient,
-        headers,
-        path: { appCode },
-        query: { source },
-      }),
-    );
-  }
-
-  /**
    * Sync event types for an application.
    */
   sync(
-    appCode: string,
-    eventTypes: SyncEventTypesRequest['eventTypes'],
+    applicationCode: string,
+    eventTypes: PostApiAdminEventTypesSyncData['body']['eventTypes'],
     removeUnlisted = false,
-  ): ResultAsync<SyncResponse1, SdkError> {
-    return this.client.request<SyncResponse1>((httpClient, headers) =>
-      sdk.syncApplicationEventTypes({
+  ): ResultAsync<SyncEventTypesResponse, SdkError> {
+    return this.client.request<SyncEventTypesResponse>((httpClient, headers) =>
+      sdk.postApiAdminEventTypesSync({
         client: httpClient,
         headers,
-        path: { appCode },
-        query: { removeUnlisted },
-        body: { eventTypes },
+        body: { applicationCode, eventTypes, removeUnlisted },
       }),
     );
   }

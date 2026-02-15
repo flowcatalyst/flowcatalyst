@@ -13,7 +13,7 @@ class ClientListResponse extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
-     * Client list
+     * List of clients
      *
      * @var list<ClientDto>|null
      */
@@ -25,7 +25,7 @@ class ClientListResponse extends \ArrayObject
      */
     protected $total;
     /**
-     * Client list
+     * List of clients
      *
      * @return list<ClientDto>|null
      */
@@ -34,7 +34,7 @@ class ClientListResponse extends \ArrayObject
         return $this->clients;
     }
     /**
-     * Client list
+     * List of clients
      *
      * @param list<ClientDto>|null $clients
      *

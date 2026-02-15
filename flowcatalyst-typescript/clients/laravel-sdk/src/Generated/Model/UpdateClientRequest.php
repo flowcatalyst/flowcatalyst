@@ -13,13 +13,13 @@ class UpdateClientRequest extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
-     * Client name
+     * Client display name
      *
      * @var string|null
      */
     protected $name;
     /**
-     * Client name
+     * Client display name
      *
      * @return string|null
      */
@@ -28,7 +28,7 @@ class UpdateClientRequest extends \ArrayObject
         return $this->name;
     }
     /**
-     * Client name
+     * Client display name
      *
      * @param string|null $name
      *

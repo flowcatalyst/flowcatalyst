@@ -38,6 +38,8 @@ class CreateRole extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint imp
      * @throws \FlowCatalyst\Generated\Exception\CreateRoleBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\CreateRoleNotFoundException
      * @throws \FlowCatalyst\Generated\Exception\CreateRoleConflictException
+     * @throws \FlowCatalyst\Generated\Exception\CreateRoleUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\CreateRoleForbiddenException
      *
      * @return null|\FlowCatalyst\Generated\Model\RoleDto1
      */
@@ -48,14 +50,20 @@ class CreateRole extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint imp
         if (is_null($contentType) === false && (201 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\RoleDto1', 'json');
         }
-        if (400 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\CreateRoleBadRequestException($response);
+        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\CreateRoleBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorResponse', 'json'), $response);
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\CreateRoleNotFoundException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\CreateRoleNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\NotFoundResponse', 'json'), $response);
         }
-        if (409 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\CreateRoleConflictException($response);
+        if (is_null($contentType) === false && (409 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\CreateRoleConflictException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ConflictResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (401 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\CreateRoleUnauthorizedException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\UnauthorizedResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\CreateRoleForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ForbiddenResponse', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array

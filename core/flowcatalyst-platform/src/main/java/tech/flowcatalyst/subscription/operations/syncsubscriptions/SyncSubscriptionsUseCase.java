@@ -9,7 +9,6 @@ import tech.flowcatalyst.eventtype.EventType;
 import tech.flowcatalyst.eventtype.EventTypeRepository;
 import tech.flowcatalyst.platform.application.Application;
 import tech.flowcatalyst.platform.application.ApplicationRepository;
-import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UseCase;
@@ -53,7 +52,10 @@ public class SyncSubscriptionsUseCase implements UseCase<SyncSubscriptionsComman
 
     @Override
     public boolean authorizeResource(SyncSubscriptionsCommand command, ExecutionContext context) {
-        return true;
+        var authz = context.authz();
+        if (authz == null) return true;
+        if (command.applicationCode() == null || command.applicationCode().isBlank()) return true;
+        return authz.canAccessApplicationByCode(command.applicationCode());
     }
 
     @Override
@@ -71,16 +73,6 @@ public class SyncSubscriptionsUseCase implements UseCase<SyncSubscriptionsComman
         // Look up application (optional - subscriptions can exist for modules without registered apps)
         Application app = appRepo.findByCode(command.applicationCode()).orElse(null);
         String serviceAccountId = app != null ? app.serviceAccountId : null;
-
-        // Authorization check: can principal manage resources with this prefix?
-        AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canAccessResourceWithPrefix(codePrefix)) {
-            return Result.failure(new UseCaseError.AuthorizationError(
-                "NOT_AUTHORIZED",
-                "Not authorized to sync subscriptions for this application",
-                Map.of("applicationCode", command.applicationCode())
-            ));
-        }
 
         Set<String> syncedCodes = new HashSet<>();
         int created = 0;

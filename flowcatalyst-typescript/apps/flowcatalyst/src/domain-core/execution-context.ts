@@ -15,6 +15,7 @@
 import { generateRaw } from '@flowcatalyst/tsid';
 import { TracingContext } from './tracing-context.js';
 import type { DomainEvent } from './domain-event.js';
+import type { AuthorizationContext } from './authorization-context.js';
 
 /**
  * Execution context data.
@@ -30,6 +31,8 @@ export interface ExecutionContext {
   readonly principalId: string;
   /** When the execution was initiated */
   readonly initiatedAt: Date;
+  /** Authorization context (null for system/internal calls) */
+  readonly authz: AuthorizationContext | null;
 }
 
 /**
@@ -67,6 +70,7 @@ export const ExecutionContext = {
       causationId: null, // no causation for fresh requests
       principalId,
       initiatedAt: new Date(),
+      authz: null,
     };
   },
 
@@ -91,6 +95,7 @@ export const ExecutionContext = {
       causationId: tracingContext.causationId,
       principalId,
       initiatedAt: new Date(),
+      authz: null,
     };
   },
 
@@ -111,6 +116,7 @@ export const ExecutionContext = {
       causationId: null,
       principalId,
       initiatedAt: new Date(),
+      authz: null,
     };
   },
 
@@ -132,6 +138,7 @@ export const ExecutionContext = {
       causationId: parent.eventId,
       principalId,
       initiatedAt: new Date(),
+      authz: null,
     };
   },
 
@@ -152,6 +159,25 @@ export const ExecutionContext = {
       causationId: causingEventId,
       principalId: context.principalId,
       initiatedAt: new Date(),
+      authz: context.authz,
+    };
+  },
+
+  /**
+   * Create a new execution context with an authorization context attached.
+   *
+   * @param context - The parent execution context
+   * @param authz - The authorization context
+   * @returns A new context with the same tracing info but with authz attached
+   */
+  withAuthz(context: ExecutionContext, authz: AuthorizationContext): ExecutionContext {
+    return {
+      executionId: context.executionId,
+      correlationId: context.correlationId,
+      causationId: context.causationId,
+      principalId: context.principalId,
+      initiatedAt: context.initiatedAt,
+      authz,
     };
   },
 };

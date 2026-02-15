@@ -9,7 +9,6 @@ import tech.flowcatalyst.platform.authorization.AuthRoleRepository;
 import tech.flowcatalyst.platform.authorization.PermissionInput;
 import tech.flowcatalyst.platform.authorization.PermissionRegistry;
 import tech.flowcatalyst.platform.authorization.events.RoleCreated;
-import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
@@ -42,21 +41,14 @@ public class CreateRoleUseCase implements UseCase<CreateRoleCommand, RoleCreated
 
     @Override
     public boolean authorizeResource(CreateRoleCommand command, ExecutionContext context) {
-        return true;
+        var authz = context.authz();
+        if (authz == null) return true;
+        if (command.applicationId() == null) return true;
+        return authz.canAccessApplication(command.applicationId());
     }
 
     @Override
     public Result<RoleCreated> doExecute(CreateRoleCommand command, ExecutionContext context) {
-        // Authorization check: can principal manage this application?
-        AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canAccessApplication(command.applicationId())) {
-            return Result.failure(new UseCaseError.AuthorizationError(
-                "NOT_AUTHORIZED",
-                "Not authorized to create roles for this application",
-                Map.of("applicationId", command.applicationId())
-            ));
-        }
-
         // Validate application exists
         Application app = appRepo.findByIdOptional(command.applicationId()).orElse(null);
         if (app == null) {

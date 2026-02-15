@@ -34,6 +34,9 @@ class ApplicationResponse1Normalizer implements DenormalizerInterface, Normalize
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
         $object = new \FlowCatalyst\Generated\Model\ApplicationResponse1();
+        if (\array_key_exists('active', $data) && \is_int($data['active'])) {
+            $data['active'] = (bool) $data['active'];
+        }
         if (null === $data || false === \is_array($data)) {
             return $object;
         }
@@ -44,13 +47,6 @@ class ApplicationResponse1Normalizer implements DenormalizerInterface, Normalize
         elseif (\array_key_exists('id', $data) && $data['id'] === null) {
             $object->setId(null);
         }
-        if (\array_key_exists('name', $data) && $data['name'] !== null) {
-            $object->setName($data['name']);
-            unset($data['name']);
-        }
-        elseif (\array_key_exists('name', $data) && $data['name'] === null) {
-            $object->setName(null);
-        }
         if (\array_key_exists('code', $data) && $data['code'] !== null) {
             $object->setCode($data['code']);
             unset($data['code']);
@@ -58,19 +54,54 @@ class ApplicationResponse1Normalizer implements DenormalizerInterface, Normalize
         elseif (\array_key_exists('code', $data) && $data['code'] === null) {
             $object->setCode(null);
         }
-        if (\array_key_exists('website', $data) && $data['website'] !== null) {
-            $object->setWebsite($data['website']);
-            unset($data['website']);
+        if (\array_key_exists('name', $data) && $data['name'] !== null) {
+            $object->setName($data['name']);
+            unset($data['name']);
         }
-        elseif (\array_key_exists('website', $data) && $data['website'] === null) {
-            $object->setWebsite(null);
+        elseif (\array_key_exists('name', $data) && $data['name'] === null) {
+            $object->setName(null);
         }
-        if (\array_key_exists('logo', $data) && $data['logo'] !== null) {
-            $object->setLogo($data['logo']);
-            unset($data['logo']);
+        if (\array_key_exists('description', $data) && $data['description'] !== null) {
+            $object->setDescription($data['description']);
+            unset($data['description']);
         }
-        elseif (\array_key_exists('logo', $data) && $data['logo'] === null) {
-            $object->setLogo(null);
+        elseif (\array_key_exists('description', $data) && $data['description'] === null) {
+            $object->setDescription(null);
+        }
+        if (\array_key_exists('defaultBaseUrl', $data) && $data['defaultBaseUrl'] !== null) {
+            $object->setDefaultBaseUrl($data['defaultBaseUrl']);
+            unset($data['defaultBaseUrl']);
+        }
+        elseif (\array_key_exists('defaultBaseUrl', $data) && $data['defaultBaseUrl'] === null) {
+            $object->setDefaultBaseUrl(null);
+        }
+        if (\array_key_exists('iconUrl', $data) && $data['iconUrl'] !== null) {
+            $object->setIconUrl($data['iconUrl']);
+            unset($data['iconUrl']);
+        }
+        elseif (\array_key_exists('iconUrl', $data) && $data['iconUrl'] === null) {
+            $object->setIconUrl(null);
+        }
+        if (\array_key_exists('active', $data) && $data['active'] !== null) {
+            $object->setActive($data['active']);
+            unset($data['active']);
+        }
+        elseif (\array_key_exists('active', $data) && $data['active'] === null) {
+            $object->setActive(null);
+        }
+        if (\array_key_exists('createdAt', $data) && $data['createdAt'] !== null) {
+            $object->setCreatedAt($data['createdAt']);
+            unset($data['createdAt']);
+        }
+        elseif (\array_key_exists('createdAt', $data) && $data['createdAt'] === null) {
+            $object->setCreatedAt(null);
+        }
+        if (\array_key_exists('updatedAt', $data) && $data['updatedAt'] !== null) {
+            $object->setUpdatedAt($data['updatedAt']);
+            unset($data['updatedAt']);
+        }
+        elseif (\array_key_exists('updatedAt', $data) && $data['updatedAt'] === null) {
+            $object->setUpdatedAt(null);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -85,17 +116,29 @@ class ApplicationResponse1Normalizer implements DenormalizerInterface, Normalize
         if ($data->isInitialized('id') && null !== $data->getId()) {
             $dataArray['id'] = $data->getId();
         }
-        if ($data->isInitialized('name') && null !== $data->getName()) {
-            $dataArray['name'] = $data->getName();
-        }
         if ($data->isInitialized('code') && null !== $data->getCode()) {
             $dataArray['code'] = $data->getCode();
         }
-        if ($data->isInitialized('website') && null !== $data->getWebsite()) {
-            $dataArray['website'] = $data->getWebsite();
+        if ($data->isInitialized('name') && null !== $data->getName()) {
+            $dataArray['name'] = $data->getName();
         }
-        if ($data->isInitialized('logo') && null !== $data->getLogo()) {
-            $dataArray['logo'] = $data->getLogo();
+        if ($data->isInitialized('description') && null !== $data->getDescription()) {
+            $dataArray['description'] = $data->getDescription();
+        }
+        if ($data->isInitialized('defaultBaseUrl') && null !== $data->getDefaultBaseUrl()) {
+            $dataArray['defaultBaseUrl'] = $data->getDefaultBaseUrl();
+        }
+        if ($data->isInitialized('iconUrl') && null !== $data->getIconUrl()) {
+            $dataArray['iconUrl'] = $data->getIconUrl();
+        }
+        if ($data->isInitialized('active') && null !== $data->getActive()) {
+            $dataArray['active'] = $data->getActive();
+        }
+        if ($data->isInitialized('createdAt') && null !== $data->getCreatedAt()) {
+            $dataArray['createdAt'] = $data->getCreatedAt();
+        }
+        if ($data->isInitialized('updatedAt') && null !== $data->getUpdatedAt()) {
+            $dataArray['updatedAt'] = $data->getUpdatedAt();
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {

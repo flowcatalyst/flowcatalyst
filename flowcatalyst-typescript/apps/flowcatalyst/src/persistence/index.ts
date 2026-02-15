@@ -84,6 +84,8 @@ export {
   createDrizzleUnitOfWork,
   createNoOpUnitOfWork,
   type DrizzleUnitOfWorkConfig,
+  type DispatchJobNotification,
+  type PostCommitDispatcher,
 } from './unit-of-work.js';
 
 // Schema definitions

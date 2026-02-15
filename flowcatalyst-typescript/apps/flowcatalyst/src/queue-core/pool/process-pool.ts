@@ -139,7 +139,7 @@ export class ProcessPool {
         { messageId: message.messageId, batchGroupKey },
         'Skipping message due to batch+group failure',
       );
-      await callback.nack(); // Default visibility
+      await callback.nack(10); // 10s fast-fail visibility, matching Java
       this.decrementBatchGroupCount(batchGroupKey);
       this.queuedMessages--;
       return;
@@ -212,7 +212,7 @@ export class ProcessPool {
             this.stats5min.failed++;
             this.stats30min.failed++;
             this.failedBatchGroups.add(batchGroupKey);
-            await callback.nack(30); // 30s visibility for errors
+            await callback.nack(result.delaySeconds ?? 30);
             this.decrementBatchGroupCount(batchGroupKey);
             break;
         }

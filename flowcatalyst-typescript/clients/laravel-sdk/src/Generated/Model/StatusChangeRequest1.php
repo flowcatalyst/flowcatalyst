@@ -13,10 +13,14 @@ class StatusChangeRequest1 extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
+     * Reason for status change
+     *
      * @var string|null
      */
     protected $reason;
     /**
+     * Reason for status change
+     *
      * @return string|null
      */
     public function getReason(): ?string
@@ -24,6 +28,8 @@ class StatusChangeRequest1 extends \ArrayObject
         return $this->reason;
     }
     /**
+     * Reason for status change
+     *
      * @param string|null $reason
      *
      * @return self

@@ -5,15 +5,24 @@ namespace FlowCatalyst\Generated\Exception;
 class CreateApplicationBadRequestException extends BadRequestException
 {
     /**
+     * @var \FlowCatalyst\Generated\Model\ErrorResponse
+     */
+    private $errorResponse;
+    /**
      * @var \Psr\Http\Message\ResponseInterface
      */
     private $response;
-    public function __construct(\Psr\Http\Message\ResponseInterface $response = null)
+    public function __construct(\FlowCatalyst\Generated\Model\ErrorResponse $errorResponse, \Psr\Http\Message\ResponseInterface $response)
     {
-        parent::__construct('Bad Request');
+        parent::__construct('Invalid request');
+        $this->errorResponse = $errorResponse;
         $this->response = $response;
     }
-    public function getResponse(): ?\Psr\Http\Message\ResponseInterface
+    public function getErrorResponse(): \FlowCatalyst\Generated\Model\ErrorResponse
+    {
+        return $this->errorResponse;
+    }
+    public function getResponse(): \Psr\Http\Message\ResponseInterface
     {
         return $this->response;
     }

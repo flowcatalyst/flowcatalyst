@@ -38,14 +38,14 @@ class GetApiClientsByIdApplication extends \FlowCatalyst\Generated\Runtime\Clien
      * @throws \FlowCatalyst\Generated\Exception\GetApiClientsByIdApplicationForbiddenException
      * @throws \FlowCatalyst\Generated\Exception\GetApiClientsByIdApplicationNotFoundException
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApplicationListResponse1
+     * @return null|\FlowCatalyst\Generated\Model\ApplicationListResponse2
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApplicationListResponse1', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApplicationListResponse2', 'json');
         }
         if (400 === $status) {
             throw new \FlowCatalyst\Generated\Exception\GetApiClientsByIdApplicationBadRequestException($response);

@@ -4,6 +4,9 @@
  * Builds dispatch jobs for events within the UoW transaction.
  * When a domain event is persisted, this service finds matching active subscriptions
  * and creates dispatch jobs + outbox entries in the same transaction.
+ *
+ * Returns DispatchJobNotification[] so the UnitOfWork can push
+ * MessagePointers to a queue after the transaction commits.
  */
 
 import type { DomainEvent } from '@flowcatalyst/domain-core';
@@ -15,6 +18,16 @@ import type { SubscriptionRepository } from '../persistence/repositories/subscri
 import type { Subscription } from '../../domain/index.js';
 
 /**
+ * Info about a dispatch job created inside the transaction,
+ * used to build MessagePointers for queue dispatch after commit.
+ */
+export interface DispatchJobNotification {
+  id: string;
+  dispatchPoolId: string | null;
+  messageGroup: string;
+}
+
+/**
  * Event dispatch service interface for use in UnitOfWork.
  */
 export interface EventDispatchService {
@@ -22,7 +35,7 @@ export interface EventDispatchService {
     event: DomainEvent,
     clientId: string | null,
     db: PostgresJsDatabase,
-  ): Promise<void>;
+  ): Promise<DispatchJobNotification[]>;
 }
 
 /**
@@ -43,16 +56,17 @@ export function createEventDispatchService(deps: EventDispatchServiceDeps): Even
       event: DomainEvent,
       clientId: string | null,
       db: PostgresJsDatabase,
-    ): Promise<void> {
+    ): Promise<DispatchJobNotification[]> {
       // Find active subscriptions matching this event type code and client scope
       const matchingSubs = await subscriptionRepository.findActiveByEventTypeCode(
         event.eventType,
         clientId,
       );
 
-      if (matchingSubs.length === 0) return;
+      if (matchingSubs.length === 0) return [];
 
       const now = new Date();
+      const notifications: DispatchJobNotification[] = [];
 
       for (const sub of matchingSubs) {
         const jobId = generateRaw();
@@ -95,7 +109,15 @@ export function createEventDispatchService(deps: EventDispatchServiceDeps): Even
           operation: 'INSERT',
           payload: jobRecord,
         });
+
+        notifications.push({
+          id: jobId,
+          dispatchPoolId: sub.dispatchPoolId,
+          messageGroup,
+        });
       }
+
+      return notifications;
     },
   };
 }

@@ -14,7 +14,7 @@ export function parseMessagePointer(messageId: string, raw: unknown): MessagePoi
     } catch {
       return {
         messageId,
-        poolCode: 'POOL-MEDIUM',
+        poolCode: 'DEFAULT',
         messageGroupId: messageId,
         payload: raw,
       };
@@ -25,10 +25,11 @@ export function parseMessagePointer(messageId: string, raw: unknown): MessagePoi
 
   return {
     messageId,
-    poolCode: (parsed['poolCode'] as string) || 'POOL-MEDIUM',
+    poolCode: (parsed['poolCode'] as string) || 'DEFAULT',
     messageGroupId: (parsed['messageGroupId'] as string) || messageId,
-    callbackUrl: parsed['callbackUrl'] as string | undefined,
+    callbackUrl: (parsed['mediationTarget'] as string) || (parsed['callbackUrl'] as string) || undefined,
     authToken: parsed['authToken'] as string | undefined,
     payload: parsed['payload'] ?? parsed,
+    highPriority: parsed['highPriority'] === true,
   };
 }

@@ -19,19 +19,35 @@ class ApplicationResponse1 extends \ArrayObject
     /**
      * @var string|null
      */
-    protected $name;
-    /**
-     * @var string|null
-     */
     protected $code;
     /**
      * @var string|null
      */
-    protected $website;
+    protected $name;
     /**
      * @var string|null
      */
-    protected $logo;
+    protected $description;
+    /**
+     * @var string|null
+     */
+    protected $defaultBaseUrl;
+    /**
+     * @var string|null
+     */
+    protected $iconUrl;
+    /**
+     * @var bool|null
+     */
+    protected $active;
+    /**
+     * @var string|null
+     */
+    protected $createdAt;
+    /**
+     * @var string|null
+     */
+    protected $updatedAt;
     /**
      * @return string|null
      */
@@ -48,24 +64,6 @@ class ApplicationResponse1 extends \ArrayObject
     {
         $this->initialized['id'] = true;
         $this->id = $id;
-        return $this;
-    }
-    /**
-     * @return string|null
-     */
-    public function getName(): ?string
-    {
-        return $this->name;
-    }
-    /**
-     * @param string|null $name
-     *
-     * @return self
-     */
-    public function setName(?string $name): self
-    {
-        $this->initialized['name'] = true;
-        $this->name = $name;
         return $this;
     }
     /**
@@ -89,37 +87,127 @@ class ApplicationResponse1 extends \ArrayObject
     /**
      * @return string|null
      */
-    public function getWebsite(): ?string
+    public function getName(): ?string
     {
-        return $this->website;
+        return $this->name;
     }
     /**
-     * @param string|null $website
+     * @param string|null $name
      *
      * @return self
      */
-    public function setWebsite(?string $website): self
+    public function setName(?string $name): self
     {
-        $this->initialized['website'] = true;
-        $this->website = $website;
+        $this->initialized['name'] = true;
+        $this->name = $name;
         return $this;
     }
     /**
      * @return string|null
      */
-    public function getLogo(): ?string
+    public function getDescription(): ?string
     {
-        return $this->logo;
+        return $this->description;
     }
     /**
-     * @param string|null $logo
+     * @param string|null $description
      *
      * @return self
      */
-    public function setLogo(?string $logo): self
+    public function setDescription(?string $description): self
     {
-        $this->initialized['logo'] = true;
-        $this->logo = $logo;
+        $this->initialized['description'] = true;
+        $this->description = $description;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getDefaultBaseUrl(): ?string
+    {
+        return $this->defaultBaseUrl;
+    }
+    /**
+     * @param string|null $defaultBaseUrl
+     *
+     * @return self
+     */
+    public function setDefaultBaseUrl(?string $defaultBaseUrl): self
+    {
+        $this->initialized['defaultBaseUrl'] = true;
+        $this->defaultBaseUrl = $defaultBaseUrl;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getIconUrl(): ?string
+    {
+        return $this->iconUrl;
+    }
+    /**
+     * @param string|null $iconUrl
+     *
+     * @return self
+     */
+    public function setIconUrl(?string $iconUrl): self
+    {
+        $this->initialized['iconUrl'] = true;
+        $this->iconUrl = $iconUrl;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getActive(): ?bool
+    {
+        return $this->active;
+    }
+    /**
+     * @param bool|null $active
+     *
+     * @return self
+     */
+    public function setActive(?bool $active): self
+    {
+        $this->initialized['active'] = true;
+        $this->active = $active;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getCreatedAt(): ?string
+    {
+        return $this->createdAt;
+    }
+    /**
+     * @param string|null $createdAt
+     *
+     * @return self
+     */
+    public function setCreatedAt(?string $createdAt): self
+    {
+        $this->initialized['createdAt'] = true;
+        $this->createdAt = $createdAt;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getUpdatedAt(): ?string
+    {
+        return $this->updatedAt;
+    }
+    /**
+     * @param string|null $updatedAt
+     *
+     * @return self
+     */
+    public function setUpdatedAt(?string $updatedAt): self
+    {
+        $this->initialized['updatedAt'] = true;
+        $this->updatedAt = $updatedAt;
         return $this;
     }
 }

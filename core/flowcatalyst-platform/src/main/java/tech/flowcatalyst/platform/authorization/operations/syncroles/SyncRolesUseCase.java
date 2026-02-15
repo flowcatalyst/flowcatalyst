@@ -10,7 +10,6 @@ import tech.flowcatalyst.platform.authorization.AuthRoleRepository;
 import tech.flowcatalyst.platform.authorization.PermissionInput;
 import tech.flowcatalyst.platform.authorization.PermissionRegistry;
 import tech.flowcatalyst.platform.authorization.events.RolesSynced;
-import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
@@ -43,22 +42,15 @@ public class SyncRolesUseCase implements UseCase<SyncRolesCommand, RolesSynced> 
 
     @Override
     public boolean authorizeResource(SyncRolesCommand command, ExecutionContext context) {
-        return true;
+        var authz = context.authz();
+        if (authz == null) return true;
+        if (command.applicationId() == null) return true;
+        return authz.canAccessApplication(command.applicationId());
     }
 
     @Transactional
     @Override
     public Result<RolesSynced> doExecute(SyncRolesCommand command, ExecutionContext context) {
-        // Authorization check: can principal manage this application?
-        AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canAccessApplication(command.applicationId())) {
-            return Result.failure(new UseCaseError.AuthorizationError(
-                "NOT_AUTHORIZED",
-                "Not authorized to sync roles for this application",
-                Map.of("applicationId", command.applicationId())
-            ));
-        }
-
         Application app = appRepo.findByIdOptional(command.applicationId()).orElse(null);
         if (app == null) {
             return Result.failure(new UseCaseError.NotFoundError(

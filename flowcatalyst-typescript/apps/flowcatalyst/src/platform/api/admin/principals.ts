@@ -43,6 +43,7 @@ import type {
   ClientAccessRevoked,
   Principal,
 } from '../../domain/index.js';
+import type { ApplicationRepository } from '../../infrastructure/persistence/repositories/application-repository.js';
 import type { PrincipalRepository } from '../../infrastructure/persistence/repositories/principal-repository.js';
 import type { ClientAccessGrantRepository } from '../../infrastructure/persistence/repositories/client-access-grant-repository.js';
 import type { AnchorDomainRepository } from '../../infrastructure/persistence/repositories/anchor-domain-repository.js';
@@ -60,7 +61,7 @@ import {
 
 const CreateUserSchema = Type.Object({
   email: Type.String({ format: 'email' }),
-  password: Type.Optional(Type.Union([Type.String({ minLength: 8 }), Type.Null()])),
+  password: Type.Optional(Type.Union([Type.String({ minLength: 12 }), Type.Null()])),
   name: Type.String({ minLength: 1 }),
   clientId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
@@ -82,7 +83,7 @@ const GrantClientAccessSchema = Type.Object({
 });
 
 const ResetPasswordSchema = Type.Object({
-  newPassword: Type.String({ minLength: 8 }),
+  newPassword: Type.String({ minLength: 12 }),
 });
 
 const AssignApplicationAccessSchema = Type.Object({
@@ -191,20 +192,19 @@ const EmailDomainCheckResponseSchema = Type.Object({
   warning: Type.Union([Type.String(), Type.Null()]),
 });
 
+const ApplicationAccessItemSchema = Type.Object({
+  applicationId: Type.String(),
+  applicationCode: Type.Union([Type.String(), Type.Null()]),
+  applicationName: Type.Union([Type.String(), Type.Null()]),
+  grantedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+});
+
 const ApplicationAccessResponseSchema = Type.Object({
-  applications: Type.Array(
-    Type.Object({
-      applicationId: Type.String(),
-    }),
-  ),
+  applications: Type.Array(ApplicationAccessItemSchema),
 });
 
 const ApplicationAccessAssignedResponseSchema = Type.Object({
-  applications: Type.Array(
-    Type.Object({
-      applicationId: Type.String(),
-    }),
-  ),
+  applications: Type.Array(ApplicationAccessItemSchema),
   added: Type.Array(Type.String()),
   removed: Type.Array(Type.String()),
 });
@@ -237,6 +237,7 @@ function toPrincipalDto(principal: Principal, grantedClientIds: string[]): Princ
  */
 export interface PrincipalsRoutesDeps {
   readonly principalRepository: PrincipalRepository;
+  readonly applicationRepository: ApplicationRepository;
   readonly clientAccessGrantRepository: ClientAccessGrantRepository;
   readonly anchorDomainRepository: AnchorDomainRepository;
   readonly clientAuthConfigRepository: ClientAuthConfigRepository;
@@ -267,6 +268,7 @@ export async function registerPrincipalsRoutes(
 ): Promise<void> {
   const {
     principalRepository,
+    applicationRepository,
     clientAccessGrantRepository,
     anchorDomainRepository,
     clientAuthConfigRepository,
@@ -998,8 +1000,21 @@ export async function registerPrincipalsRoutes(
         return notFound(reply, `Principal not found: ${id}`);
       }
 
+      const accessRecords = await principalRepository.loadApplicationAccessWithGrantedAt(id);
+      const appIds = accessRecords.map((r) => r.applicationId);
+      const apps = appIds.length > 0 ? await applicationRepository.findByIds(appIds) : [];
+      const appsById = new Map(apps.map((a) => [a.id, a]));
+
       return jsonSuccess(reply, {
-        applications: principal.accessibleApplicationIds.map((appId) => ({ applicationId: appId })),
+        applications: accessRecords.map((r) => {
+          const app = appsById.get(r.applicationId);
+          return {
+            applicationId: r.applicationId,
+            applicationCode: app?.code ?? null,
+            applicationName: app?.name ?? null,
+            grantedAt: r.grantedAt.toISOString(),
+          };
+        }),
       });
     },
   );
@@ -1043,8 +1058,21 @@ export async function registerPrincipalsRoutes(
         const added = body.applicationIds.filter((id) => !previousAppIds.has(id));
         const removed = [...previousAppIds].filter((id) => !newAppIds.has(id));
 
+        const accessRecords = await principalRepository.loadApplicationAccessWithGrantedAt(id);
+        const appIds = accessRecords.map((r) => r.applicationId);
+        const apps = appIds.length > 0 ? await applicationRepository.findByIds(appIds) : [];
+        const appsById = new Map(apps.map((a) => [a.id, a]));
+
         return jsonSuccess(reply, {
-          applications: body.applicationIds.map((appId) => ({ applicationId: appId })),
+          applications: accessRecords.map((r) => {
+            const app = appsById.get(r.applicationId);
+            return {
+              applicationId: r.applicationId,
+              applicationCode: app?.code ?? null,
+              applicationName: app?.name ?? null,
+              grantedAt: r.grantedAt.toISOString(),
+            };
+          }),
           added,
           removed,
         });
@@ -1086,16 +1114,28 @@ export async function registerPrincipalsRoutes(
         }
       }
 
-      const appIds = new Set<string>();
+      const appIdSet = new Set<string>();
       for (const cid of clientIds) {
         const configs = await applicationClientConfigRepository.findByClient(cid);
         for (const config of configs) {
-          appIds.add(config.applicationId);
+          appIdSet.add(config.applicationId);
         }
       }
 
+      const appIds = [...appIdSet];
+      const apps = appIds.length > 0 ? await applicationRepository.findByIds(appIds) : [];
+      const appsById = new Map(apps.map((a) => [a.id, a]));
+
       return jsonSuccess(reply, {
-        applications: [...appIds].map((appId) => ({ applicationId: appId })),
+        applications: appIds.map((appId) => {
+          const app = appsById.get(appId);
+          return {
+            applicationId: appId,
+            applicationCode: app?.code ?? null,
+            applicationName: app?.name ?? null,
+            grantedAt: null,
+          };
+        }),
       });
     },
   );

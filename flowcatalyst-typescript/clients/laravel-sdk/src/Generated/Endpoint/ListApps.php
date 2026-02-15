@@ -44,14 +44,14 @@ class ListApps extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint imple
      * {@inheritdoc}
      *
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApplicationListResponse
+     * @return null|\FlowCatalyst\Generated\Model\ApplicationListResponse1
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApplicationListResponse', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApplicationListResponse1', 'json');
         }
     }
     public function getAuthenticationScopes(): array

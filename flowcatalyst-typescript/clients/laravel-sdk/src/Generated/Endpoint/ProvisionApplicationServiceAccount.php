@@ -33,15 +33,31 @@ class ProvisionApplicationServiceAccount extends \FlowCatalyst\Generated\Runtime
     /**
      * {@inheritdoc}
      *
+     * @throws \FlowCatalyst\Generated\Exception\ProvisionApplicationServiceAccountBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\ProvisionApplicationServiceAccountNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\ProvisionApplicationServiceAccountUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\ProvisionApplicationServiceAccountForbiddenException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\ProvisionServiceAccountResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ProvisionServiceAccountResponse', 'json');
+        }
+        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\ProvisionApplicationServiceAccountBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\ProvisionApplicationServiceAccountNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\NotFoundResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (401 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\ProvisionApplicationServiceAccountUnauthorizedException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\UnauthorizedResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\ProvisionApplicationServiceAccountForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ForbiddenResponse', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array

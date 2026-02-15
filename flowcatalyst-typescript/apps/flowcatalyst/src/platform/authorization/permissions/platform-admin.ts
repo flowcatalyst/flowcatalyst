@@ -305,6 +305,27 @@ export const AUDIT_LOG_PERMISSIONS = {
 } as const;
 
 /**
+ * Batch ingestion permissions (outbox processor / SDK batch endpoints).
+ */
+export const BATCH_PERMISSIONS = {
+  EVENTS_WRITE: makePermission(SUBDOMAIN, CONTEXT, 'batch', 'events-write', 'Batch write events'),
+  DISPATCH_JOBS_WRITE: makePermission(
+    SUBDOMAIN,
+    CONTEXT,
+    'batch',
+    'dispatch-jobs-write',
+    'Batch write dispatch jobs',
+  ),
+  AUDIT_LOGS_WRITE: makePermission(
+    SUBDOMAIN,
+    CONTEXT,
+    'batch',
+    'audit-logs-write',
+    'Batch write audit logs',
+  ),
+} as const;
+
+/**
  * All admin permissions.
  */
 export const ADMIN_PERMISSIONS: readonly PermissionDefinition[] = [
@@ -321,4 +342,5 @@ export const ADMIN_PERMISSIONS: readonly PermissionDefinition[] = [
   ...Object.values(SERVICE_ACCOUNT_PERMISSIONS),
   ...Object.values(CORS_ORIGIN_PERMISSIONS),
   ...Object.values(AUDIT_LOG_PERMISSIONS),
+  ...Object.values(BATCH_PERMISSIONS),
 ];

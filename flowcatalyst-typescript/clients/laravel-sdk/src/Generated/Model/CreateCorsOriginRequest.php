@@ -13,14 +13,20 @@ class CreateCorsOriginRequest extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
+     * Origin URL
+     *
      * @var string|null
      */
     protected $origin;
     /**
+     * Description of why this origin is allowed
+     *
      * @var string|null
      */
     protected $description;
     /**
+     * Origin URL
+     *
      * @return string|null
      */
     public function getOrigin(): ?string
@@ -28,6 +34,8 @@ class CreateCorsOriginRequest extends \ArrayObject
         return $this->origin;
     }
     /**
+     * Origin URL
+     *
      * @param string|null $origin
      *
      * @return self
@@ -39,6 +47,8 @@ class CreateCorsOriginRequest extends \ArrayObject
         return $this;
     }
     /**
+     * Description of why this origin is allowed
+     *
      * @return string|null
      */
     public function getDescription(): ?string
@@ -46,6 +56,8 @@ class CreateCorsOriginRequest extends \ArrayObject
         return $this->description;
     }
     /**
+     * Description of why this origin is allowed
+     *
      * @param string|null $description
      *
      * @return self

@@ -37,6 +37,11 @@ const envSchema = z.object({
     .optional()
     .transform((v) => (v ? v.split(',') : undefined)), // Comma-separated cookie signing keys
 
+  // JWT RS256 keys — base64-encoded PEM content (containers/cloud, highest priority)
+  FLOWCATALYST_JWT_PRIVATE_KEY: z.string().optional(),
+  FLOWCATALYST_JWT_PUBLIC_KEY: z.string().optional(),
+  FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY: z.string().optional(),
+
   // JWT RS256 key paths (production)
   JWT_PRIVATE_KEY_PATH: z.string().optional(),
   JWT_PUBLIC_KEY_PATH: z.string().optional(),
@@ -58,6 +63,24 @@ const envSchema = z.object({
   FLOWCATALYST_BOOTSTRAP_ADMIN_EMAIL: z.string().optional(),
   FLOWCATALYST_BOOTSTRAP_ADMIN_PASSWORD: z.string().optional(),
   FLOWCATALYST_BOOTSTRAP_ADMIN_NAME: z.string().default('Bootstrap Admin'),
+
+  // Dispatch queue (post-commit push of MessagePointers)
+  DISPATCH_QUEUE_TYPE: z
+    .enum(['SQS', 'NATS', 'ACTIVEMQ', 'EMBEDDED', 'NONE'])
+    .default('NONE'),
+  DISPATCH_QUEUE_URL: z.string().optional(), // SQS queue URL
+  DISPATCH_QUEUE_REGION: z.string().default('eu-west-1'),
+  SQS_ENDPOINT: z.string().optional(), // For LocalStack
+
+  // Dispatch Scheduler (polls PENDING dispatch jobs → queue)
+  // Auto-enabled when messaging is enabled (platform config: messagingEnabled)
+  DISPATCH_SCHEDULER_POLL_INTERVAL_MS: z.coerce.number().default(5000),
+  DISPATCH_SCHEDULER_BATCH_SIZE: z.coerce.number().default(20),
+  DISPATCH_SCHEDULER_MAX_CONCURRENT_GROUPS: z.coerce.number().default(10),
+  DISPATCH_SCHEDULER_PROCESSING_ENDPOINT: z.string().default('http://localhost:8080/api/dispatch/process'),
+  DISPATCH_SCHEDULER_DEFAULT_POOL_CODE: z.string().default('DISPATCH-POOL'),
+  DISPATCH_SCHEDULER_STALE_THRESHOLD_MINUTES: z.coerce.number().default(15),
+  DISPATCH_SCHEDULER_STALE_POLL_INTERVAL_MS: z.coerce.number().default(60000),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -1,8 +1,9 @@
 /**
  * OpenAPI Spec Extraction Script
  *
- * Starts the Fastify server in a minimal mode, extracts the generated
- * OpenAPI specification from @fastify/swagger, and writes it to disk.
+ * Builds a minimal Fastify instance with only the swagger plugin and route
+ * registrations — no database, no OIDC, no bootstrap. Dependencies are
+ * satisfied by a recursive Proxy stub since route handlers are never invoked.
  *
  * Usage: tsx scripts/extract-openapi.ts
  */
@@ -10,63 +11,112 @@
 import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import Fastify from 'fastify';
+import swagger from '@fastify/swagger';
+import {
+  registerAdminRoutes,
+  registerBffRoutes,
+  registerSdkRoutes,
+  registerMeApiRoutes,
+  registerPublicApiRoutes,
+  registerPlatformConfigApiRoutes,
+  registerDebugBffRoutes,
+} from '../src/platform/api/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outputDir = resolve(__dirname, '../openapi');
 
+/**
+ * Recursive Proxy that satisfies any dependency shape.
+ * Property access returns another stub; function calls return another stub.
+ * Route handlers capture these refs but never call them during registration.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createStub(): any {
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  return new Proxy(function () {}, {
+    get: (_target, prop) => {
+      // Prevent the runtime from treating this as a thenable/Promise
+      if (prop === 'then') return undefined;
+      return createStub();
+    },
+    apply: () => createStub(),
+  });
+}
+
 async function main() {
-  // Set env defaults for extraction (no real DB needed if we just need schema)
-  process.env['NODE_ENV'] = 'production';
-  process.env['LOG_LEVEL'] = 'error';
+  console.log('Extracting OpenAPI spec (no database required)...');
 
-  // Dynamic import to pick up env overrides
-  const { startPlatform } = await import('../src/platform/index.js');
+  const fastify = Fastify({ logger: false });
 
-  console.log('Starting platform to extract OpenAPI spec...');
+  // Register swagger with the same config as startPlatform
+  await fastify.register(swagger, {
+    openapi: {
+      openapi: '3.1.0',
+      info: {
+        title: 'FlowCatalyst Platform API',
+        version: '1.0.0',
+        description: 'IAM, Eventing, and Administration API for the FlowCatalyst platform.',
+      },
+      servers: [{ url: '/' }],
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+          },
+          cookieAuth: {
+            type: 'apiKey',
+            in: 'cookie',
+            name: 'fc_session',
+          },
+        },
+      },
+      security: [{ bearerAuth: [] }],
+    },
+  });
 
-  let fastify;
-  try {
-    fastify = await startPlatform({
-      port: 0, // Random available port
-      host: '127.0.0.1',
-      logLevel: 'error',
-    });
+  // Register all API route groups with stub dependencies.
+  // The schemas are declared statically during registration — handlers
+  // (which reference deps) are never invoked.
+  const stub = createStub();
 
-    // Wait for swagger to be ready
-    await fastify.ready();
+  await registerAdminRoutes(fastify, stub);
+  await registerBffRoutes(fastify, stub);
+  await registerSdkRoutes(fastify, stub);
+  await registerMeApiRoutes(fastify, stub);
+  await registerPublicApiRoutes(fastify, stub);
+  await registerPlatformConfigApiRoutes(fastify, stub);
+  await registerDebugBffRoutes(fastify, stub);
 
-    // Get the OpenAPI spec
-    const spec = fastify.swagger();
+  await fastify.ready();
 
-    if (!spec || !spec.openapi) {
-      console.error('Failed to extract OpenAPI spec - swagger() returned empty');
-      process.exit(1);
-    }
+  const spec = fastify.swagger();
 
-    // Ensure output directory exists
-    await mkdir(outputDir, { recursive: true });
-
-    // Write JSON
-    const jsonPath = resolve(outputDir, 'openapi.json');
-    await writeFile(jsonPath, JSON.stringify(spec, null, 2), 'utf-8');
-    console.log(`Written: ${jsonPath}`);
-
-    // Write YAML (simple JSON-to-YAML conversion)
-    const yamlPath = resolve(outputDir, 'openapi.yaml');
-    const yaml = jsonToYaml(spec);
-    await writeFile(yamlPath, yaml, 'utf-8');
-    console.log(`Written: ${yamlPath}`);
-
-    const routeCount = Object.keys(spec.paths ?? {}).length;
-    console.log(`\nOpenAPI spec extracted successfully (${routeCount} paths)`);
-  } catch (err) {
-    console.error('Failed to extract OpenAPI spec:', err);
+  if (!spec || !spec.openapi) {
+    console.error('Failed to extract OpenAPI spec - swagger() returned empty');
     process.exit(1);
-  } finally {
-    if (fastify) {
-      await fastify.close();
-    }
   }
+
+  // Ensure output directory exists
+  await mkdir(outputDir, { recursive: true });
+
+  // Write JSON
+  const jsonPath = resolve(outputDir, 'openapi.json');
+  await writeFile(jsonPath, JSON.stringify(spec, null, 2), 'utf-8');
+  console.log(`Written: ${jsonPath}`);
+
+  // Write YAML (simple JSON-to-YAML conversion)
+  const yamlPath = resolve(outputDir, 'openapi.yaml');
+  const yaml = jsonToYaml(spec);
+  await writeFile(yamlPath, yaml, 'utf-8');
+  console.log(`Written: ${yamlPath}`);
+
+  const routeCount = Object.keys(spec.paths ?? {}).length;
+  console.log(`\nOpenAPI spec extracted successfully (${routeCount} paths)`);
+
+  await fastify.close();
 }
 
 /**
@@ -131,6 +181,9 @@ function jsonToYaml(obj: unknown, indent = 0): string {
 
         if (typeof value === 'object' && !Array.isArray(value)) {
           const inner = jsonToYaml(value, indent + 1);
+          if (inner === '{}') {
+            return `${prefix}${yamlKey}: {}`;
+          }
           return `${prefix}${yamlKey}:\n${inner}`;
         }
 

@@ -232,6 +232,7 @@ const FRONTEND_DIR = process.env['FRONTEND_DIR'];
 const PLATFORM_ENABLED = process.env['PLATFORM_ENABLED'] !== 'false';
 const MESSAGE_ROUTER_ENABLED = process.env['MESSAGE_ROUTER_ENABLED'] === 'true';
 const STREAM_PROCESSOR_ENABLED = process.env['STREAM_PROCESSOR_ENABLED'] !== 'false';
+const OUTBOX_PROCESSOR_ENABLED = process.env['OUTBOX_PROCESSOR_ENABLED'] === 'true';
 const AUTO_MIGRATE =
   process.env['AUTO_MIGRATE'] !== undefined ? process.env['AUTO_MIGRATE'] === 'true' : isDev;
 
@@ -276,6 +277,7 @@ async function main() {
     PLATFORM_ENABLED && 'Platform',
     STREAM_PROCESSOR_ENABLED && 'Stream Processor',
     MESSAGE_ROUTER_ENABLED && 'Message Router',
+    OUTBOX_PROCESSOR_ENABLED && 'Outbox Processor',
   ].filter(Boolean);
 
   logger.info(
@@ -295,6 +297,7 @@ async function main() {
     PLATFORM_ENABLED && `    Platform (IAM/OIDC):    http://localhost:${PLATFORM_PORT}`,
     STREAM_PROCESSOR_ENABLED && `    Stream Processor:       running (same DB)`,
     MESSAGE_ROUTER_ENABLED && `    Message Router:         http://localhost:${ROUTER_PORT}`,
+    OUTBOX_PROCESSOR_ENABLED && `    Outbox Processor:       running (external DB)`,
   ].filter(Boolean);
 
   console.log(`\n${lines.join('\n')}\n`);
@@ -309,6 +312,8 @@ async function main() {
   }
 
   // 1. Start Platform
+  let platformResult: Awaited<ReturnType<typeof import('@flowcatalyst/platform').startPlatform>> | null = null;
+
   if (PLATFORM_ENABLED) {
     logger.info({ port: PLATFORM_PORT }, 'Starting Platform...');
     const { startPlatform } = await import('@flowcatalyst/platform');
@@ -316,7 +321,7 @@ async function main() {
     if (frontendDir) {
       logger.info({ frontendDir }, 'Frontend assets detected');
     }
-    const platformInstance = await startPlatform({
+    platformResult = await startPlatform({
       port: PLATFORM_PORT,
       host: HOST,
       databaseUrl: DATABASE_URL,
@@ -325,7 +330,7 @@ async function main() {
     });
     stopFns.push(async () => {
       logger.info('Stopping Platform...');
-      await platformInstance.close();
+      await platformResult!.server.close();
     });
   }
 
@@ -359,6 +364,42 @@ async function main() {
       routerServices.queueHealthMonitor.stop();
       await routerServices.notifications.stop();
       await routerServices.queueManager.stop();
+    });
+
+    // Wire embedded post-commit dispatch: Platform → embedded queue → Message Router
+    if (platformResult && routerServices.queueManager.hasEmbeddedQueue()) {
+      const { createEmbeddedPublisher } = await import(
+        './queue-core/publisher/embedded-publisher.js'
+      );
+      const { createPostCommitDispatcherFromPublisher } = await import(
+        '@flowcatalyst/platform'
+      );
+      const publisher = createEmbeddedPublisher((msg) => {
+        const queueMsg: Parameters<typeof routerServices.queueManager.publishToEmbeddedQueue>[0] = {
+          messageId: msg.messageId,
+          messageGroupId: msg.messageGroupId,
+          payload: msg.payload,
+        };
+        if (msg.messageDeduplicationId !== undefined) {
+          queueMsg.messageDeduplicationId = msg.messageDeduplicationId;
+        }
+        return routerServices.queueManager.publishToEmbeddedQueue(queueMsg);
+      });
+      platformResult.setPostCommitDispatcher(
+        createPostCommitDispatcherFromPublisher(publisher),
+      );
+      logger.info('Embedded post-commit dispatch wired (Platform → Message Router)');
+    }
+  }
+
+  // 4. Start Outbox Processor
+  if (OUTBOX_PROCESSOR_ENABLED) {
+    logger.info('Starting Outbox Processor...');
+    const { startOutboxProcessor } = await import('./outbox-processor/index.js');
+    const outboxHandle = await startOutboxProcessor();
+    stopFns.push(async () => {
+      logger.info('Stopping Outbox Processor...');
+      await outboxHandle.stop();
     });
   }
 

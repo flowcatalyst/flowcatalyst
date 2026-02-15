@@ -13,14 +13,20 @@ class AddNoteRequest extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
+     * Note category
+     *
      * @var string|null
      */
     protected $category;
     /**
+     * Note text
+     *
      * @var string|null
      */
     protected $text;
     /**
+     * Note category
+     *
      * @return string|null
      */
     public function getCategory(): ?string
@@ -28,6 +34,8 @@ class AddNoteRequest extends \ArrayObject
         return $this->category;
     }
     /**
+     * Note category
+     *
      * @param string|null $category
      *
      * @return self
@@ -39,6 +47,8 @@ class AddNoteRequest extends \ArrayObject
         return $this;
     }
     /**
+     * Note text
+     *
      * @return string|null
      */
     public function getText(): ?string
@@ -46,6 +56,8 @@ class AddNoteRequest extends \ArrayObject
         return $this->text;
     }
     /**
+     * Note text
+     *
      * @param string|null $text
      *
      * @return self

@@ -17,6 +17,8 @@ export type MessagePointer = {
   callbackUrl?: string | undefined;
   /** Timestamp when message was created */
   createdAt?: string | undefined;
+  /** Whether this is a high priority message (processed before regular messages in same group) */
+  highPriority?: boolean | undefined;
 };
 
 /**

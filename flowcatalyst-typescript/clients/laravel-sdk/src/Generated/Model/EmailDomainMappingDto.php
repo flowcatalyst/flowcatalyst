@@ -49,6 +49,18 @@ class EmailDomainMappingDto extends \ArrayObject
      */
     protected $grantedClientIds;
     /**
+     * @var string|null
+     */
+    protected $requiredOidcTenantId;
+    /**
+     * @var list<string>|null
+     */
+    protected $allowedRoleIds;
+    /**
+     * @var bool|null
+     */
+    protected $syncRolesFromIdp;
+    /**
      * @var list<string>|null
      */
     protected $allAccessibleClientIds;
@@ -220,6 +232,60 @@ class EmailDomainMappingDto extends \ArrayObject
     {
         $this->initialized['grantedClientIds'] = true;
         $this->grantedClientIds = $grantedClientIds;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getRequiredOidcTenantId(): ?string
+    {
+        return $this->requiredOidcTenantId;
+    }
+    /**
+     * @param string|null $requiredOidcTenantId
+     *
+     * @return self
+     */
+    public function setRequiredOidcTenantId(?string $requiredOidcTenantId): self
+    {
+        $this->initialized['requiredOidcTenantId'] = true;
+        $this->requiredOidcTenantId = $requiredOidcTenantId;
+        return $this;
+    }
+    /**
+     * @return list<string>|null
+     */
+    public function getAllowedRoleIds(): ?array
+    {
+        return $this->allowedRoleIds;
+    }
+    /**
+     * @param list<string>|null $allowedRoleIds
+     *
+     * @return self
+     */
+    public function setAllowedRoleIds(?array $allowedRoleIds): self
+    {
+        $this->initialized['allowedRoleIds'] = true;
+        $this->allowedRoleIds = $allowedRoleIds;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getSyncRolesFromIdp(): ?bool
+    {
+        return $this->syncRolesFromIdp;
+    }
+    /**
+     * @param bool|null $syncRolesFromIdp
+     *
+     * @return self
+     */
+    public function setSyncRolesFromIdp(?bool $syncRolesFromIdp): self
+    {
+        $this->initialized['syncRolesFromIdp'] = true;
+        $this->syncRolesFromIdp = $syncRolesFromIdp;
         return $this;
     }
     /**

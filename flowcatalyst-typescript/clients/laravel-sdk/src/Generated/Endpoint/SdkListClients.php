@@ -45,14 +45,14 @@ class SdkListClients extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint
      * @throws \FlowCatalyst\Generated\Exception\SdkListClientsUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\SdkListClientsForbiddenException
      *
-     * @return null|\FlowCatalyst\Generated\Model\ClientListResponse
+     * @return null|\FlowCatalyst\Generated\Model\ClientListResponse1
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ClientListResponse', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ClientListResponse1', 'json');
         }
         if (401 === $status) {
             throw new \FlowCatalyst\Generated\Exception\SdkListClientsUnauthorizedException($response);

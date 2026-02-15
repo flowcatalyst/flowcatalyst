@@ -13,22 +13,32 @@ class ClientDto1 extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
+     * Client ID
+     *
      * @var string|null
      */
     protected $id;
     /**
+     * Client name
+     *
      * @var string|null
      */
     protected $name;
     /**
+     * Client identifier/slug
+     *
      * @var string|null
      */
     protected $identifier;
     /**
+     * Client status (ACTIVE, SUSPENDED, INACTIVE)
+     *
      * @var string|null
      */
     protected $status;
     /**
+     * Reason for current status
+     *
      * @var string|null
      */
     protected $statusReason;
@@ -45,6 +55,8 @@ class ClientDto1 extends \ArrayObject
      */
     protected $updatedAt;
     /**
+     * Client ID
+     *
      * @return string|null
      */
     public function getId(): ?string
@@ -52,6 +64,8 @@ class ClientDto1 extends \ArrayObject
         return $this->id;
     }
     /**
+     * Client ID
+     *
      * @param string|null $id
      *
      * @return self
@@ -63,6 +77,8 @@ class ClientDto1 extends \ArrayObject
         return $this;
     }
     /**
+     * Client name
+     *
      * @return string|null
      */
     public function getName(): ?string
@@ -70,6 +86,8 @@ class ClientDto1 extends \ArrayObject
         return $this->name;
     }
     /**
+     * Client name
+     *
      * @param string|null $name
      *
      * @return self
@@ -81,6 +99,8 @@ class ClientDto1 extends \ArrayObject
         return $this;
     }
     /**
+     * Client identifier/slug
+     *
      * @return string|null
      */
     public function getIdentifier(): ?string
@@ -88,6 +108,8 @@ class ClientDto1 extends \ArrayObject
         return $this->identifier;
     }
     /**
+     * Client identifier/slug
+     *
      * @param string|null $identifier
      *
      * @return self
@@ -99,6 +121,8 @@ class ClientDto1 extends \ArrayObject
         return $this;
     }
     /**
+     * Client status (ACTIVE, SUSPENDED, INACTIVE)
+     *
      * @return string|null
      */
     public function getStatus(): ?string
@@ -106,6 +130,8 @@ class ClientDto1 extends \ArrayObject
         return $this->status;
     }
     /**
+     * Client status (ACTIVE, SUSPENDED, INACTIVE)
+     *
      * @param string|null $status
      *
      * @return self
@@ -117,6 +143,8 @@ class ClientDto1 extends \ArrayObject
         return $this;
     }
     /**
+     * Reason for current status
+     *
      * @return string|null
      */
     public function getStatusReason(): ?string
@@ -124,6 +152,8 @@ class ClientDto1 extends \ArrayObject
         return $this->statusReason;
     }
     /**
+     * Reason for current status
+     *
      * @param string|null $statusReason
      *
      * @return self

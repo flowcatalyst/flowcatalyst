@@ -1,6 +1,9 @@
 // Consumer interfaces
 export * from './consumer/queue-consumer.js';
 
+// Publisher interfaces
+export * from './publisher/queue-publisher.js';
+
 // Process pool
 export * from './pool/dynamic-semaphore.js';
 export * from './pool/process-pool.js';

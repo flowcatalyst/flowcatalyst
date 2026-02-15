@@ -73,6 +73,7 @@ export {
 export {
   type UseCase,
   type SyncUseCase,
+  SecuredUseCase,
   type UseCaseCommand,
   type UseCaseEvent,
   type UseCaseFactory,
@@ -109,6 +110,7 @@ export {
   type Failure,
   UseCaseError,
   ExecutionContext,
+  AuthorizationContext,
   type DomainEvent,
   type UnitOfWork,
 } from '@flowcatalyst/domain-core';

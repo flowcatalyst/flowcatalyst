@@ -7,7 +7,6 @@ import tech.flowcatalyst.eventtype.EventTypeRepository;
 import tech.flowcatalyst.eventtype.EventTypeSource;
 import tech.flowcatalyst.eventtype.EventTypeStatus;
 import tech.flowcatalyst.eventtype.events.EventTypeCreated;
-import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
@@ -54,7 +53,10 @@ public class CreateEventTypeUseCase implements UseCase<CreateEventTypeCommand, E
 
     @Override
     public boolean authorizeResource(CreateEventTypeCommand command, ExecutionContext context) {
-        return true;
+        var authz = context.authz();
+        if (authz == null) return true;
+        if (command.application() == null || command.application().isBlank()) return true;
+        return authz.canAccessApplicationByCode(command.application());
     }
 
     /**
@@ -77,16 +79,6 @@ public class CreateEventTypeUseCase implements UseCase<CreateEventTypeCommand, E
 
         // Build the full code from segments
         String code = command.buildCode();
-
-        // Authorization check: can principal manage event types with this prefix?
-        AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canAccessResourceWithPrefix(code)) {
-            return Result.failure(new UseCaseError.AuthorizationError(
-                "NOT_AUTHORIZED",
-                "Not authorized to create event types for this application",
-                Map.of("application", command.application())
-            ));
-        }
 
         // Validation: name required
         if (command.name() == null || command.name().isBlank()) {

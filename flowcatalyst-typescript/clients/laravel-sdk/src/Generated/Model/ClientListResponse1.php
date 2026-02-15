@@ -13,14 +13,20 @@ class ClientListResponse1 extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
+     * Client list
+     *
      * @var list<ClientDto1>|null
      */
     protected $clients;
     /**
+     * Total count
+     *
      * @var int|null
      */
     protected $total;
     /**
+     * Client list
+     *
      * @return list<ClientDto1>|null
      */
     public function getClients(): ?array
@@ -28,6 +34,8 @@ class ClientListResponse1 extends \ArrayObject
         return $this->clients;
     }
     /**
+     * Client list
+     *
      * @param list<ClientDto1>|null $clients
      *
      * @return self
@@ -39,6 +47,8 @@ class ClientListResponse1 extends \ArrayObject
         return $this;
     }
     /**
+     * Total count
+     *
      * @return int|null
      */
     public function getTotal(): ?int
@@ -46,6 +56,8 @@ class ClientListResponse1 extends \ArrayObject
         return $this->total;
     }
     /**
+     * Total count
+     *
      * @param int|null $total
      *
      * @return self

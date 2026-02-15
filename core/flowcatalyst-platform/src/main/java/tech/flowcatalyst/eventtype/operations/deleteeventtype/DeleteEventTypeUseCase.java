@@ -4,7 +4,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import tech.flowcatalyst.eventtype.*;
 import tech.flowcatalyst.eventtype.events.EventTypeDeleted;
-import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
@@ -27,7 +26,11 @@ public class DeleteEventTypeUseCase implements UseCase<DeleteEventTypeCommand, E
 
     @Override
     public boolean authorizeResource(DeleteEventTypeCommand command, ExecutionContext context) {
-        return true;
+        var authz = context.authz();
+        if (authz == null) return true;
+        return repo.findByIdOptional(command.eventTypeId())
+            .map(et -> authz.canAccessResourceWithPrefix(et.code()))
+            .orElse(true);
     }
 
     @Override
@@ -44,16 +47,6 @@ public class DeleteEventTypeUseCase implements UseCase<DeleteEventTypeCommand, E
                 "EVENT_TYPE_NOT_FOUND",
                 "Event type not found",
                 Map.of("eventTypeId", command.eventTypeId())
-            ));
-        }
-
-        // Authorization check: can principal manage event types with this prefix?
-        AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canAccessResourceWithPrefix(eventType.code())) {
-            return Result.failure(new UseCaseError.AuthorizationError(
-                "NOT_AUTHORIZED",
-                "Not authorized to delete this event type",
-                Map.of("eventTypeId", command.eventTypeId(), "code", eventType.code())
             ));
         }
 

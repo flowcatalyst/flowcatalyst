@@ -13,14 +13,20 @@ class ClientApplicationsResponse extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
+     * List of applications with their enabled status
+     *
      * @var list<ClientApplicationDto>|null
      */
     protected $applications;
     /**
+     * Total count
+     *
      * @var int|null
      */
     protected $total;
     /**
+     * List of applications with their enabled status
+     *
      * @return list<ClientApplicationDto>|null
      */
     public function getApplications(): ?array
@@ -28,6 +34,8 @@ class ClientApplicationsResponse extends \ArrayObject
         return $this->applications;
     }
     /**
+     * List of applications with their enabled status
+     *
      * @param list<ClientApplicationDto>|null $applications
      *
      * @return self
@@ -39,6 +47,8 @@ class ClientApplicationsResponse extends \ArrayObject
         return $this;
     }
     /**
+     * Total count
+     *
      * @return int|null
      */
     public function getTotal(): ?int
@@ -46,6 +56,8 @@ class ClientApplicationsResponse extends \ArrayObject
         return $this->total;
     }
     /**
+     * Total count
+     *
      * @param int|null $total
      *
      * @return self

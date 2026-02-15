@@ -25,7 +25,11 @@ import {
   createAggregateRegistry,
   createAggregateHandler,
   createDrizzleUnitOfWork,
+  type DrizzleUnitOfWorkConfig,
+  type PostCommitDispatcher,
+  type DispatchJobNotification,
 } from '@flowcatalyst/persistence';
+import type { QueuePublisher } from '@flowcatalyst/queue-core';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import * as platformSchema from './infrastructure/persistence/schema/drizzle-schema.js';
 import { platformRelations } from './infrastructure/persistence/schema/relations.js';
@@ -49,6 +53,8 @@ import {
   type BffRoutesDeps,
   registerSdkRoutes,
   type SdkRoutesDeps,
+  registerBatchRoutes,
+  type BatchRoutesDeps,
   registerMeApiRoutes,
   type MeRoutesDeps,
   registerPublicApiRoutes,
@@ -171,12 +177,52 @@ export interface PlatformConfig {
 }
 
 /**
+ * Result of starting the platform service.
+ */
+export interface PlatformResult {
+  /** The running Fastify instance */
+  server: FastifyInstance;
+  /**
+   * Set (or replace) the post-commit dispatcher at runtime.
+   * Call this after the message router starts in embedded mode
+   * to wire the embedded publisher.
+   */
+  setPostCommitDispatcher(dispatcher: PostCommitDispatcher): void;
+}
+
+/**
+ * Build a PostCommitDispatcher from a QueuePublisher.
+ * Converts DispatchJobNotification[] → PublishMessage[] and publishes.
+ * Exported so that src/index.ts can create one for the embedded publisher.
+ */
+export function createPostCommitDispatcherFromPublisher(publisher: QueuePublisher): PostCommitDispatcher {
+  return {
+    async dispatch(jobs: DispatchJobNotification[]): Promise<void> {
+      if (jobs.length === 0) return;
+
+      const messages = jobs.map((job) => ({
+        messageId: job.id,
+        messageGroupId: job.messageGroup,
+        messageDeduplicationId: job.id,
+        body: JSON.stringify({
+          id: job.id,
+          poolCode: job.dispatchPoolId ?? 'DEFAULT',
+          messageGroupId: job.messageGroup,
+        }),
+      }));
+
+      await publisher.publishBatch(messages);
+    },
+  };
+}
+
+/**
  * Start the FlowCatalyst Platform service.
  *
  * @param config - Optional overrides for port, host, database, log level
- * @returns The Fastify instance (ready and listening)
+ * @returns PlatformResult with server instance and post-commit dispatcher setter
  */
-export async function startPlatform(config?: PlatformConfig): Promise<FastifyInstance> {
+export async function startPlatform(config?: PlatformConfig): Promise<PlatformResult> {
   // Load environment
   const env = getEnv();
 
@@ -290,8 +336,60 @@ export async function startPlatform(config?: PlatformConfig): Promise<FastifyIns
     subscriptionRepository,
   });
 
-  // Create unit of work
-  const unitOfWork = createDrizzleUnitOfWork({
+  // Create queue publisher for post-commit dispatch (if configured)
+  let postCommitDispatch: PostCommitDispatcher | undefined;
+
+  if (env.DISPATCH_QUEUE_TYPE === 'SQS' && env.DISPATCH_QUEUE_URL) {
+    const { createSqsPublisher } = await import('../queue-core/publisher/sqs-publisher.js');
+    const publisher = createSqsPublisher({
+      queueUrl: env.DISPATCH_QUEUE_URL,
+      region: env.DISPATCH_QUEUE_REGION,
+      endpoint: env.SQS_ENDPOINT,
+    });
+    postCommitDispatch = createPostCommitDispatcherFromPublisher(publisher);
+    fastify.log.info({ queueUrl: env.DISPATCH_QUEUE_URL }, 'SQS post-commit dispatch configured');
+  }
+  // NATS, ActiveMQ, and EMBEDDED are wired externally via setPostCommitDispatcher()
+
+  // Start Dispatch Scheduler when messaging is enabled (platform config flag)
+  let dispatchSchedulerHandle: { stop(): void } | null = null;
+
+  const messagingEnabledValue = await platformConfigService.getValue(
+    'platform',
+    'features',
+    'messagingEnabled',
+    'GLOBAL',
+    null,
+  );
+  const messagingEnabled = messagingEnabledValue !== 'false';
+
+  if (messagingEnabled && env.DISPATCH_QUEUE_TYPE === 'SQS' && env.DISPATCH_QUEUE_URL) {
+    const { createSqsPublisher: createSchedulerPublisher } = await import('../queue-core/publisher/sqs-publisher.js');
+    const schedulerPublisher = createSchedulerPublisher({
+      queueUrl: env.DISPATCH_QUEUE_URL,
+      region: env.DISPATCH_QUEUE_REGION,
+      endpoint: env.SQS_ENDPOINT,
+    });
+    const { startDispatchScheduler } = await import('./dispatch-scheduler/index.js');
+    dispatchSchedulerHandle = startDispatchScheduler({
+      db,
+      publisher: schedulerPublisher,
+      logger: fastify.log,
+      config: {
+        pollIntervalMs: env.DISPATCH_SCHEDULER_POLL_INTERVAL_MS,
+        batchSize: env.DISPATCH_SCHEDULER_BATCH_SIZE,
+        maxConcurrentGroups: env.DISPATCH_SCHEDULER_MAX_CONCURRENT_GROUPS,
+        processingEndpoint: env.DISPATCH_SCHEDULER_PROCESSING_ENDPOINT,
+        defaultDispatchPoolCode: env.DISPATCH_SCHEDULER_DEFAULT_POOL_CODE,
+        staleQueuedThresholdMinutes: env.DISPATCH_SCHEDULER_STALE_THRESHOLD_MINUTES,
+        staleQueuedPollIntervalMs: env.DISPATCH_SCHEDULER_STALE_POLL_INTERVAL_MS,
+      },
+    });
+    fastify.log.info('Dispatch Scheduler started (messagingEnabled=true, SQS publisher)');
+  }
+
+  // Create unit of work (postCommitDispatch is mutable — can be set later for EMBEDDED mode)
+  const uowConfig: DrizzleUnitOfWorkConfig = {
     transactionManager,
     aggregateRegistry,
     extractClientId: (aggregate) => {
@@ -301,7 +399,10 @@ export async function startPlatform(config?: PlatformConfig): Promise<FastifyIns
       return null;
     },
     eventDispatchService,
-  });
+    postCommitDispatch,
+  };
+
+  const unitOfWork = createDrizzleUnitOfWork(uowConfig);
 
   // Create password service
   const passwordService = getPasswordService();
@@ -328,6 +429,9 @@ export async function startPlatform(config?: PlatformConfig): Promise<FastifyIns
   // Initialize JWT key service (RS256 key pair)
   const jwtKeyService = await createJwtKeyService({
     issuer: env.JWT_ISSUER,
+    privateKey: env.FLOWCATALYST_JWT_PRIVATE_KEY,
+    publicKey: env.FLOWCATALYST_JWT_PUBLIC_KEY,
+    previousPublicKey: env.FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY,
     keyDir: env.JWT_KEY_DIR,
     privateKeyPath: env.JWT_PRIVATE_KEY_PATH,
     publicKeyPath: env.JWT_PUBLIC_KEY_PATH,
@@ -1087,6 +1191,14 @@ export async function startPlatform(config?: PlatformConfig): Promise<FastifyIns
 
     await registerSdkRoutes(fastify, sdkDeps);
 
+    // Batch ingestion routes (outbox processor / SDK batch endpoints)
+    const batchDeps: BatchRoutesDeps = {
+      db,
+      getPostCommitDispatcher: () => uowConfig.postCommitDispatch,
+    };
+
+    await registerBatchRoutes(fastify, batchDeps);
+
     // User-facing /api/me routes
     const meDeps: MeRoutesDeps = {
       clientRepository,
@@ -1150,7 +1262,19 @@ export async function startPlatform(config?: PlatformConfig): Promise<FastifyIns
     console.log(`  Health check:     http://localhost:${PORT}/health\n`);
   }
 
-  return fastify;
+  // Register dispatch scheduler shutdown hook
+  if (dispatchSchedulerHandle) {
+    fastify.addHook('onClose', async () => {
+      dispatchSchedulerHandle?.stop();
+    });
+  }
+
+  return {
+    server: fastify,
+    setPostCommitDispatcher(dispatcher: PostCommitDispatcher) {
+      uowConfig.postCommitDispatch = dispatcher;
+    },
+  };
 } // end startPlatform
 
 // Key utilities (for CLI commands like rotate-keys)

@@ -9,13 +9,20 @@ import type { SdkError } from '../errors';
 import type { FlowCatalystClient } from '../client';
 import * as sdk from '../generated/sdk.gen';
 import type {
-  ClientDto,
-  ClientListResponse,
-  ClientApplicationsResponse,
-  UpdateClientApplicationsRequest,
-  CreateClientRequest,
-  UpdateClientRequest,
+  GetApiAdminClientsResponse,
+  GetApiAdminClientsByIdResponse,
+  GetApiAdminClientsByIdApplicationsResponse,
+  PutApiAdminClientsByIdApplicationsData,
+  PostApiAdminClientsData,
+  PutApiAdminClientsByIdData,
 } from '../generated/types.gen';
+
+export type ClientListResponse = GetApiAdminClientsResponse;
+export type ClientDto = GetApiAdminClientsByIdResponse;
+export type ClientApplicationsResponse = GetApiAdminClientsByIdApplicationsResponse;
+export type CreateClientRequest = PostApiAdminClientsData['body'];
+export type UpdateClientRequest = PutApiAdminClientsByIdData['body'];
+export type UpdateClientApplicationsRequest = PutApiAdminClientsByIdApplicationsData['body'];
 
 /**
  * Response for status change operations (enable/disable).
@@ -35,7 +42,7 @@ export class ClientsResource {
    */
   list(): ResultAsync<ClientListResponse, SdkError> {
     return this.client.request<ClientListResponse>((httpClient, headers) =>
-      sdk.listClients({
+      sdk.getApiAdminClients({
         client: httpClient,
         headers,
       }),
@@ -47,7 +54,7 @@ export class ClientsResource {
    */
   get(id: string): ResultAsync<ClientDto, SdkError> {
     return this.client.request<ClientDto>((httpClient, headers) =>
-      sdk.getClient({
+      sdk.getApiAdminClientsById({
         client: httpClient,
         headers,
         path: { id },
@@ -60,7 +67,7 @@ export class ClientsResource {
    */
   getByIdentifier(identifier: string): ResultAsync<ClientDto, SdkError> {
     return this.client.request<ClientDto>((httpClient, headers) =>
-      sdk.getClientByIdentifier({
+      sdk.getApiAdminClientsByIdentifierByIdentifier({
         client: httpClient,
         headers,
         path: { identifier },
@@ -73,7 +80,7 @@ export class ClientsResource {
    */
   create(data: CreateClientRequest): ResultAsync<ClientDto, SdkError> {
     return this.client.request<ClientDto>((httpClient, headers) =>
-      sdk.createClient({
+      sdk.postApiAdminClients({
         client: httpClient,
         headers,
         body: data,
@@ -86,7 +93,7 @@ export class ClientsResource {
    */
   update(id: string, data: UpdateClientRequest): ResultAsync<ClientDto, SdkError> {
     return this.client.request<ClientDto>((httpClient, headers) =>
-      sdk.updateClient({
+      sdk.putApiAdminClientsById({
         client: httpClient,
         headers,
         path: { id },
@@ -100,10 +107,11 @@ export class ClientsResource {
    */
   activate(id: string): ResultAsync<ClientDto, SdkError> {
     return this.client.request<ClientDto>((httpClient, headers) =>
-      sdk.activateClient({
+      sdk.postApiAdminClientsByIdActivate({
         client: httpClient,
         headers,
         path: { id },
+        body: {},
       }),
     );
   }
@@ -113,7 +121,7 @@ export class ClientsResource {
    */
   deactivate(id: string, reason: string): ResultAsync<ClientDto, SdkError> {
     return this.client.request<ClientDto>((httpClient, headers) =>
-      sdk.deactivateClient({
+      sdk.postApiAdminClientsByIdDeactivate({
         client: httpClient,
         headers,
         path: { id },
@@ -127,7 +135,7 @@ export class ClientsResource {
    */
   suspend(id: string, reason: string): ResultAsync<ClientDto, SdkError> {
     return this.client.request<ClientDto>((httpClient, headers) =>
-      sdk.suspendClient({
+      sdk.postApiAdminClientsByIdSuspend({
         client: httpClient,
         headers,
         path: { id },
@@ -141,7 +149,7 @@ export class ClientsResource {
    */
   getApplications(id: string): ResultAsync<ClientApplicationsResponse, SdkError> {
     return this.client.request<ClientApplicationsResponse>((httpClient, headers) =>
-      sdk.getClientApplications({
+      sdk.getApiAdminClientsByIdApplications({
         client: httpClient,
         headers,
         path: { id },
@@ -157,7 +165,7 @@ export class ClientsResource {
     data: UpdateClientApplicationsRequest,
   ): ResultAsync<ClientApplicationsResponse, SdkError> {
     return this.client.request<ClientApplicationsResponse>((httpClient, headers) =>
-      sdk.updateClientApplications({
+      sdk.putApiAdminClientsByIdApplications({
         client: httpClient,
         headers,
         path: { id },
@@ -174,10 +182,10 @@ export class ClientsResource {
     applicationId: string,
   ): ResultAsync<StatusResponse, SdkError> {
     return this.client.request<StatusResponse>((httpClient, headers) =>
-      sdk.enableClientApplication({
+      sdk.postApiAdminClientsByIdApplicationsByAppIdEnable({
         client: httpClient,
         headers,
-        path: { id: clientId, applicationId },
+        path: { id: clientId, appId: applicationId },
       }),
     );
   }
@@ -190,10 +198,10 @@ export class ClientsResource {
     applicationId: string,
   ): ResultAsync<StatusResponse, SdkError> {
     return this.client.request<StatusResponse>((httpClient, headers) =>
-      sdk.disableClientApplication({
+      sdk.postApiAdminClientsByIdApplicationsByAppIdDisable({
         client: httpClient,
         headers,
-        path: { id: clientId, applicationId },
+        path: { id: clientId, appId: applicationId },
       }),
     );
   }

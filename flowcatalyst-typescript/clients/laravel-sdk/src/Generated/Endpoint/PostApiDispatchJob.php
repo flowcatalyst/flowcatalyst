@@ -48,10 +48,10 @@ class PostApiDispatchJob extends \FlowCatalyst\Generated\Runtime\Client\BaseEndp
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\DispatchJobResponse', 'json');
         }
         if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiDispatchJobBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorResponse3', 'json'), $response);
+            throw new \FlowCatalyst\Generated\Exception\PostApiDispatchJobBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorResponse4', 'json'), $response);
         }
         if (is_null($contentType) === false && (500 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiDispatchJobInternalServerErrorException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorResponse3', 'json'), $response);
+            throw new \FlowCatalyst\Generated\Exception\PostApiDispatchJobInternalServerErrorException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorResponse4', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array

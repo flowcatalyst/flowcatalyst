@@ -7,7 +7,6 @@ import tech.flowcatalyst.eventtype.EventType;
 import tech.flowcatalyst.eventtype.EventTypeRepository;
 import tech.flowcatalyst.eventtype.EventTypeSource;
 import tech.flowcatalyst.eventtype.events.EventTypesSynced;
-import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
@@ -37,7 +36,10 @@ public class SyncEventTypesUseCase implements UseCase<SyncEventTypesCommand, Eve
 
     @Override
     public boolean authorizeResource(SyncEventTypesCommand command, ExecutionContext context) {
-        return true;
+        var authz = context.authz();
+        if (authz == null) return true;
+        if (command.applicationCode() == null || command.applicationCode().isBlank()) return true;
+        return authz.canAccessApplicationByCode(command.applicationCode());
     }
 
     @Transactional
@@ -52,18 +54,6 @@ public class SyncEventTypesUseCase implements UseCase<SyncEventTypesCommand, Eve
         }
 
         String codePrefix = command.applicationCode() + ":";
-
-        // Authorization check: can principal manage resources with this prefix?
-        // Note: Application entity is optional - event types can exist for modules
-        // that are not registered applications
-        AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canAccessResourceWithPrefix(codePrefix)) {
-            return Result.failure(new UseCaseError.AuthorizationError(
-                "NOT_AUTHORIZED",
-                "Not authorized to sync event types for this application",
-                Map.of("applicationCode", command.applicationCode())
-            ));
-        }
 
         Set<String> syncedCodes = new HashSet<>();
         int created = 0;

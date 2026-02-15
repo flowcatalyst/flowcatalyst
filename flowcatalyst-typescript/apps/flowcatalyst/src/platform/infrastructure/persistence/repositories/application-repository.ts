@@ -4,7 +4,7 @@
  * Data access for Application entities.
  */
 
-import { eq, sql, and } from 'drizzle-orm';
+import { eq, sql, and, inArray } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import {
   type PaginatedRepository,
@@ -37,6 +37,7 @@ import {
  */
 export interface ApplicationRepository extends PaginatedRepository<Application> {
   findByCode(code: string, tx?: TransactionContext): Promise<Application | undefined>;
+  findByIds(ids: string[], tx?: TransactionContext): Promise<Application[]>;
   existsByCode(code: string, tx?: TransactionContext): Promise<boolean>;
 }
 
@@ -106,6 +107,15 @@ export function createApplicationRepository(defaultDb: AnyDb): ApplicationReposi
       if (!record) return undefined;
 
       return recordToApplication(record);
+    },
+
+    async findByIds(ids: string[], tx?: TransactionContext): Promise<Application[]> {
+      if (ids.length === 0) return [];
+      const records = await db(tx)
+        .select()
+        .from(applications)
+        .where(inArray(applications.id, ids));
+      return records.map(recordToApplication);
     },
 
     async findAll(tx?: TransactionContext): Promise<Application[]> {

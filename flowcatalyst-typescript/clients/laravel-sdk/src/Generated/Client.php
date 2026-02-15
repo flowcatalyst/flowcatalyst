@@ -28,8 +28,11 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "type"?: string,
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\ListApplicationsBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\ListApplicationsUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\ListApplicationsForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationListResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function listApplications(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
     {
@@ -39,8 +42,11 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param null|\FlowCatalyst\Generated\Model\CreateApplicationRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\CreateApplicationBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\CreateApplicationConflictException
+     * @throws \FlowCatalyst\Generated\Exception\CreateApplicationUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\CreateApplicationForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function createApplication(?\FlowCatalyst\Generated\Model\CreateApplicationRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
@@ -49,8 +55,11 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     /**
      * @param string $code
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\GetApplicationByCodeNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\GetApplicationByCodeUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetApplicationByCodeForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function getApplicationByCode(string $code, string $fetch = self::FETCH_OBJECT)
     {
@@ -60,8 +69,12 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * Permanently deletes an application. The application must be deactivated first.
      * @param string $id
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\DeleteApplicationBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\DeleteApplicationNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\DeleteApplicationUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\DeleteApplicationForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationStatusResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function deleteApplication(string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -70,8 +83,11 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     /**
      * @param string $id
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\GetApplicationNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\GetApplicationUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetApplicationForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function getApplication(string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -82,8 +98,11 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param null|\FlowCatalyst\Generated\Model\UpdateApplicationRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\UpdateApplicationBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\UpdateApplicationNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\UpdateApplicationUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\UpdateApplicationForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function updateApplication(string $id, ?\FlowCatalyst\Generated\Model\UpdateApplicationRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
@@ -92,8 +111,12 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     /**
      * @param string $id
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\ActivateApplicationBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\ActivateApplicationNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\ActivateApplicationUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\ActivateApplicationForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationStatusResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function activateApplication(string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -102,8 +125,11 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     /**
      * @param string $id
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\GetApplicationClientConfigsNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\GetApplicationClientConfigsUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetApplicationClientConfigsForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientConfigListResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function getApplicationClientConfigs(string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -115,8 +141,11 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param null|\FlowCatalyst\Generated\Model\ClientConfigRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\ConfigureApplicationForClientBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\ConfigureApplicationForClientNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\ConfigureApplicationForClientUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\ConfigureApplicationForClientForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientConfigResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function configureApplicationForClient(string $clientId, string $id, ?\FlowCatalyst\Generated\Model\ClientConfigRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
@@ -126,8 +155,12 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $clientId
      * @param string $id
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\DisableApplicationForClientBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\DisableApplicationForClientNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\DisableApplicationForClientUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\DisableApplicationForClientForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientApplicationStatusResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function disableApplicationForClient(string $clientId, string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -137,8 +170,12 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $clientId
      * @param string $id
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\EnableApplicationForClientBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\EnableApplicationForClientNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\EnableApplicationForClientUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\EnableApplicationForClientForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientApplicationStatusResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function enableApplicationForClient(string $clientId, string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -147,8 +184,12 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     /**
      * @param string $id
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\DeactivateApplicationBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\DeactivateApplicationNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\DeactivateApplicationUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\DeactivateApplicationForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationStatusResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function deactivateApplication(string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -158,8 +199,12 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * Creates a service account and OAuth client for an application that doesn't have one. The client secret is only returned once and cannot be retrieved later.
      * @param string $id
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\ProvisionApplicationServiceAccountBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\ProvisionApplicationServiceAccountNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\ProvisionApplicationServiceAccountUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\ProvisionApplicationServiceAccountForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ProvisionServiceAccountResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function provisionApplicationServiceAccount(string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -168,8 +213,11 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     /**
      * @param string $id
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\GetApplicationRolesNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\GetApplicationRolesUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetApplicationRolesForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationRolesResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function getApplicationRoles(string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -187,6 +235,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\ListAuditLogsUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\ListAuditLogsForbiddenException
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\AuditLogListResponse : \Psr\Http\Message\ResponseInterface)
      */
@@ -197,8 +246,9 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     /**
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\GetAuditLogEntityTypesUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetAuditLogEntityTypesForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\EntityTypesResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function getAuditLogEntityTypes(string $fetch = self::FETCH_OBJECT)
     {
@@ -210,8 +260,9 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $entityType
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\GetEntityAuditLogsUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetEntityAuditLogsForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\EntityAuditLogsResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function getEntityAuditLogs(string $entityId, string $entityType, string $fetch = self::FETCH_OBJECT)
     {
@@ -220,8 +271,9 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     /**
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\GetAuditLogOperationsUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetAuditLogOperationsForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\OperationsResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function getAuditLogOperations(string $fetch = self::FETCH_OBJECT)
     {
@@ -232,8 +284,9 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\GetAuditLogNotFoundException
      * @throws \FlowCatalyst\Generated\Exception\GetAuditLogUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetAuditLogForbiddenException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\AuditLogDto : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\AuditLogDetailDto : \Psr\Http\Message\ResponseInterface)
      */
     public function getAuditLog(string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -248,22 +301,22 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\ListClientsUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\ListClientsForbiddenException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientListResponse1 : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientListResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function listClients(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListClients($queryParameters), $fetch);
     }
     /**
-     * @param null|\FlowCatalyst\Generated\Model\CreateClientRequest1 $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\CreateClientRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\CreateClientBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\CreateClientUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\CreateClientForbiddenException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientDto1 : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientDto : \Psr\Http\Message\ResponseInterface)
      */
-    public function createClient(?\FlowCatalyst\Generated\Model\CreateClientRequest1 $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    public function createClient(?\FlowCatalyst\Generated\Model\CreateClientRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\CreateClient($requestBody), $fetch);
     }
@@ -274,7 +327,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\GetClientByIdentifierUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\GetClientByIdentifierForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientDto : \Psr\Http\Message\ResponseInterface)
      */
     public function getClientByIdentifier(string $identifier, string $fetch = self::FETCH_OBJECT)
     {
@@ -291,7 +344,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\SearchClientsUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\SearchClientsForbiddenException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientListResponse1 : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientListResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function searchClients(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
     {
@@ -305,7 +358,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\GetClientUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\GetClientForbiddenException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientDto1 : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientDto : \Psr\Http\Message\ResponseInterface)
      */
     public function getClient(string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -313,16 +366,16 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\UpdateClientRequest1 $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\UpdateClientRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\UpdateClientBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\UpdateClientNotFoundException
      * @throws \FlowCatalyst\Generated\Exception\UpdateClientUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\UpdateClientForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientDto : \Psr\Http\Message\ResponseInterface)
      */
-    public function updateClient(string $id, ?\FlowCatalyst\Generated\Model\UpdateClientRequest1 $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    public function updateClient(string $id, ?\FlowCatalyst\Generated\Model\UpdateClientRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\UpdateClient($id, $requestBody), $fetch);
     }
@@ -334,7 +387,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\ActivateClientUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\ActivateClientForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientStatusResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function activateClient(string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -365,7 +418,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\UpdateClientApplicationsUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\UpdateClientApplicationsForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationsUpdatedResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function updateClientApplications(string $id, ?\FlowCatalyst\Generated\Model\UpdateClientApplicationsRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
@@ -380,7 +433,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\DisableClientApplicationUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\DisableClientApplicationForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientApplicationStatusResponse1 : \Psr\Http\Message\ResponseInterface)
      */
     public function disableClientApplication(string $applicationId, string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -395,7 +448,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\EnableClientApplicationUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\EnableClientApplicationForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientApplicationStatusResponse1 : \Psr\Http\Message\ResponseInterface)
      */
     public function enableClientApplication(string $applicationId, string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -403,16 +456,16 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\StatusChangeRequest1 $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\StatusChangeRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\DeactivateClientBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\DeactivateClientNotFoundException
      * @throws \FlowCatalyst\Generated\Exception\DeactivateClientUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\DeactivateClientForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientStatusResponse : \Psr\Http\Message\ResponseInterface)
      */
-    public function deactivateClient(string $id, ?\FlowCatalyst\Generated\Model\StatusChangeRequest1 $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    public function deactivateClient(string $id, ?\FlowCatalyst\Generated\Model\StatusChangeRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeactivateClient($id, $requestBody), $fetch);
     }
@@ -425,7 +478,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\AddClientAuditNoteUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\AddClientAuditNoteForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\NoteAddedResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function addClientAuditNote(string $id, ?\FlowCatalyst\Generated\Model\AddNoteRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
@@ -433,16 +486,16 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\StatusChangeRequest1 $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\StatusChangeRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\SuspendClientBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\SuspendClientNotFoundException
      * @throws \FlowCatalyst\Generated\Exception\SuspendClientUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\SuspendClientForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientStatusResponse : \Psr\Http\Message\ResponseInterface)
      */
-    public function suspendClient(string $id, ?\FlowCatalyst\Generated\Model\StatusChangeRequest1 $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    public function suspendClient(string $id, ?\FlowCatalyst\Generated\Model\StatusChangeRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SuspendClient($id, $requestBody), $fetch);
     }
@@ -942,52 +995,66 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\ListCorsOriginsUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\ListCorsOriginsForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\CorsOriginListResponse : \Psr\Http\Message\ResponseInterface)
      */
-    public function getApiAdminPlatformCor(string $fetch = self::FETCH_OBJECT)
+    public function listCorsOrigins(string $fetch = self::FETCH_OBJECT)
     {
-        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApiAdminPlatformCor(), $fetch);
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListCorsOrigins(), $fetch);
     }
     /**
      * @param null|\FlowCatalyst\Generated\Model\CreateCorsOriginRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
-     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminPlatformCorBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\AddCorsOriginBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\AddCorsOriginConflictException
+     * @throws \FlowCatalyst\Generated\Exception\AddCorsOriginUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\AddCorsOriginForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\CorsOriginDto : \Psr\Http\Message\ResponseInterface)
      */
-    public function postApiAdminPlatformCor(?\FlowCatalyst\Generated\Model\CreateCorsOriginRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    public function addCorsOrigin(?\FlowCatalyst\Generated\Model\CreateCorsOriginRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
-        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiAdminPlatformCor($requestBody), $fetch);
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\AddCorsOrigin($requestBody), $fetch);
     }
     /**
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\GetAllowedCorsOriginsUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetAllowedCorsOriginsForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\AllowedOriginsResponse : \Psr\Http\Message\ResponseInterface)
      */
-    public function getApiAdminPlatformCorsAllowed(string $fetch = self::FETCH_OBJECT)
+    public function getAllowedCorsOrigins(string $fetch = self::FETCH_OBJECT)
     {
-        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApiAdminPlatformCorsAllowed(), $fetch);
-    }
-    /**
-     * @param string $id
-     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
-     *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
-     */
-    public function deleteApiAdminPlatformCorById(string $id, string $fetch = self::FETCH_OBJECT)
-    {
-        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeleteApiAdminPlatformCorById($id), $fetch);
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetAllowedCorsOrigins(), $fetch);
     }
     /**
      * @param string $id
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\DeleteCorsOriginBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\DeleteCorsOriginNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\DeleteCorsOriginUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\DeleteCorsOriginForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\CorsOriginDeletedResponse : \Psr\Http\Message\ResponseInterface)
      */
-    public function getApiAdminPlatformCorById(string $id, string $fetch = self::FETCH_OBJECT)
+    public function deleteCorsOrigin(string $id, string $fetch = self::FETCH_OBJECT)
     {
-        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApiAdminPlatformCorById($id), $fetch);
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeleteCorsOrigin($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\GetCorsOriginNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\GetCorsOriginUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetCorsOriginForbiddenException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\CorsOriginDto : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getCorsOrigin(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetCorsOrigin($id), $fetch);
     }
     /**
      * List users and service accounts with optional filters
@@ -1220,7 +1287,9 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "source"?: string,
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\ListRolesBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\ListRolesUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\ListRolesForbiddenException
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\RoleListResponse2 : \Psr\Http\Message\ResponseInterface)
      */
@@ -1235,6 +1304,8 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\CreateRoleBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\CreateRoleNotFoundException
      * @throws \FlowCatalyst\Generated\Exception\CreateRoleConflictException
+     * @throws \FlowCatalyst\Generated\Exception\CreateRoleUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\CreateRoleForbiddenException
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\RoleDto1 : \Psr\Http\Message\ResponseInterface)
      */
@@ -1245,6 +1316,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     /**
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\ListPermissionsUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\ListPermissionsForbiddenException
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PermissionListResponse : \Psr\Http\Message\ResponseInterface)
      */
@@ -1256,8 +1328,10 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $permission
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\GetPermissionNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\GetPermissionUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetPermissionForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PermissionDto : \Psr\Http\Message\ResponseInterface)
      */
     public function getPermission(string $permission, string $fetch = self::FETCH_OBJECT)
     {
@@ -1269,8 +1343,10 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\DeleteRoleBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\DeleteRoleNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\DeleteRoleUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\DeleteRoleForbiddenException
      *
-     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\DeleteResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function deleteRole(string $roleName, string $fetch = self::FETCH_OBJECT)
     {
@@ -1280,6 +1356,8 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $roleName
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\GetRoleNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\GetRoleUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetRoleForbiddenException
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\RoleDto1 : \Psr\Http\Message\ResponseInterface)
      */
@@ -1292,8 +1370,10 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $roleName
      * @param null|\FlowCatalyst\Generated\Model\UpdateRoleRequest1 $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
-     * @throws \FlowCatalyst\Generated\Exception\UpdateRoleNotFoundException
      * @throws \FlowCatalyst\Generated\Exception\UpdateRoleBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\UpdateRoleNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\UpdateRoleUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\UpdateRoleForbiddenException
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\RoleDto1 : \Psr\Http\Message\ResponseInterface)
      */
@@ -1538,7 +1618,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationListResponse : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationListResponse1 : \Psr\Http\Message\ResponseInterface)
      */
     public function listApps(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
     {
@@ -1550,7 +1630,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\CreateAppBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\CreateAppConflictException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse1 : \Psr\Http\Message\ResponseInterface)
      */
     public function createApp(?\FlowCatalyst\Generated\Model\CreateApplicationRequest1 $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
@@ -1561,7 +1641,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\GetAppByCodeNotFoundException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse1 : \Psr\Http\Message\ResponseInterface)
      */
     public function getAppByCode(string $code, string $fetch = self::FETCH_OBJECT)
     {
@@ -1742,7 +1822,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\GetAppBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\GetAppNotFoundException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse1 : \Psr\Http\Message\ResponseInterface)
      */
     public function getApp(string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -1755,7 +1835,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\UpdateAppBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\UpdateAppNotFoundException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse1 : \Psr\Http\Message\ResponseInterface)
      */
     public function updateApp(string $id, ?\FlowCatalyst\Generated\Model\UpdateApplicationRequest1 $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
@@ -1767,7 +1847,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\ActivateAppBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\ActivateAppNotFoundException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse1 : \Psr\Http\Message\ResponseInterface)
      */
     public function activateApp(string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -1779,11 +1859,23 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\DeactivateAppBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\DeactivateAppNotFoundException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationResponse1 : \Psr\Http\Message\ResponseInterface)
      */
     public function deactivateApp(string $id, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeactivateApp($id), $fetch);
+    }
+    /**
+     * Creates multiple audit log entries in a single operation. Maximum batch size is 100.
+     * @param null|\FlowCatalyst\Generated\Model\CreateAuditLogRequest[] $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\PostApiAuditLogsBatchBadRequestException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\BatchAuditLogResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postApiAuditLogsBatch(?array $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiAuditLogsBatch($requestBody), $fetch);
     }
     /**
      * List raw dispatch jobs from the transactional collection (debug/admin only)
@@ -1979,7 +2071,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\GetApiClientsByIdApplicationForbiddenException
      * @throws \FlowCatalyst\Generated\Exception\GetApiClientsByIdApplicationNotFoundException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationListResponse1 : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationListResponse2 : \Psr\Http\Message\ResponseInterface)
      */
     public function getApiClientsByIdApplication(string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -2277,6 +2369,44 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApiHealth(), $fetch);
     }
     /**
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\GetMyClientsUnauthorizedException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\MyClientsResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getMyClients(string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetMyClients(), $fetch);
+    }
+    /**
+     * Returns client details if the user has access to it
+     * @param string $clientId
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\GetMyClientUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetMyClientForbiddenException
+     * @throws \FlowCatalyst\Generated\Exception\GetMyClientNotFoundException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\MyClientDto : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getMyClient(string $clientId, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetMyClient($clientId), $fetch);
+    }
+    /**
+     * Returns applications enabled for a client the user has access to
+     * @param string $clientId
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\GetMyClientApplicationsUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetMyClientApplicationsForbiddenException
+     * @throws \FlowCatalyst\Generated\Exception\GetMyClientApplicationsNotFoundException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\MyApplicationsResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getMyClientApplications(string $clientId, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetMyClientApplications($clientId), $fetch);
+    }
+    /**
      * Returns theme configuration for the login page. No authentication required.
      * @param array{
      *    "clientId"?: string,
@@ -2356,22 +2486,22 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\SdkListClientsUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\SdkListClientsForbiddenException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientListResponse : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientListResponse1 : \Psr\Http\Message\ResponseInterface)
      */
     public function sdkListClients(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SdkListClients($queryParameters), $fetch);
     }
     /**
-     * @param null|\FlowCatalyst\Generated\Model\CreateClientRequest $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\CreateClientRequest1 $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\SdkCreateClientBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\SdkCreateClientUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\SdkCreateClientForbiddenException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientDto : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientDto1 : \Psr\Http\Message\ResponseInterface)
      */
-    public function sdkCreateClient(?\FlowCatalyst\Generated\Model\CreateClientRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    public function sdkCreateClient(?\FlowCatalyst\Generated\Model\CreateClientRequest1 $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SdkCreateClient($requestBody), $fetch);
     }
@@ -2382,7 +2512,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\SdkGetClientUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\SdkGetClientForbiddenException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientDto : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientDto1 : \Psr\Http\Message\ResponseInterface)
      */
     public function sdkGetClient(string $id, string $fetch = self::FETCH_OBJECT)
     {
@@ -2390,16 +2520,16 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\UpdateClientRequest $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\UpdateClientRequest1 $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\SdkUpdateClientNotFoundException
      * @throws \FlowCatalyst\Generated\Exception\SdkUpdateClientUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\SdkUpdateClientForbiddenException
      * @throws \FlowCatalyst\Generated\Exception\SdkUpdateClientBadRequestException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientDto : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ClientDto1 : \Psr\Http\Message\ResponseInterface)
      */
-    public function sdkUpdateClient(string $id, ?\FlowCatalyst\Generated\Model\UpdateClientRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    public function sdkUpdateClient(string $id, ?\FlowCatalyst\Generated\Model\UpdateClientRequest1 $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SdkUpdateClient($id, $requestBody), $fetch);
     }
@@ -2418,7 +2548,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\StatusChangeRequest $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\StatusChangeRequest1 $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\SdkDeactivateClientNotFoundException
      * @throws \FlowCatalyst\Generated\Exception\SdkDeactivateClientUnauthorizedException
@@ -2427,13 +2557,13 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StatusResponse : \Psr\Http\Message\ResponseInterface)
      */
-    public function sdkDeactivateClient(string $id, ?\FlowCatalyst\Generated\Model\StatusChangeRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    public function sdkDeactivateClient(string $id, ?\FlowCatalyst\Generated\Model\StatusChangeRequest1 $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SdkDeactivateClient($id, $requestBody), $fetch);
     }
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\StatusChangeRequest $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\StatusChangeRequest1 $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\SdkSuspendClientNotFoundException
      * @throws \FlowCatalyst\Generated\Exception\SdkSuspendClientUnauthorizedException
@@ -2442,7 +2572,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StatusResponse : \Psr\Http\Message\ResponseInterface)
      */
-    public function sdkSuspendClient(string $id, ?\FlowCatalyst\Generated\Model\StatusChangeRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    public function sdkSuspendClient(string $id, ?\FlowCatalyst\Generated\Model\StatusChangeRequest1 $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SdkSuspendClient($id, $requestBody), $fetch);
     }

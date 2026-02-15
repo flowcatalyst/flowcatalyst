@@ -391,7 +391,7 @@ export class EmbeddedQueueConsumer implements QueueConsumer {
       queueIdentifier: this.config.queueName,
       consumerQueueIdentifier: this.config.queueName,
       instanceId: this.instanceId,
-      isHealthy: this.running && timeSinceLastPoll < healthTimeoutMs,
+      isHealthy: this.running && (this.lastPollTimeMs === 0 || timeSinceLastPoll < healthTimeoutMs),
       lastPollTimeMs: this.lastPollTimeMs,
       lastPollTime: new Date(this.lastPollTimeMs).toISOString(),
       timeSinceLastPollMs: timeSinceLastPoll,

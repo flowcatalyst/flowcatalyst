@@ -2,13 +2,11 @@ package tech.flowcatalyst.subscription.operations.deletesubscription;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
-import tech.flowcatalyst.serviceaccount.entity.ServiceAccount;
 import tech.flowcatalyst.serviceaccount.repository.ServiceAccountRepository;
 import tech.flowcatalyst.subscription.Subscription;
 import tech.flowcatalyst.subscription.SubscriptionRepository;
@@ -36,7 +34,16 @@ public class DeleteSubscriptionUseCase implements UseCase<DeleteSubscriptionComm
 
     @Override
     public boolean authorizeResource(DeleteSubscriptionCommand command, ExecutionContext context) {
-        return true;
+        var authz = context.authz();
+        if (authz == null) return true;
+        if (command.subscriptionId() == null || command.subscriptionId().isBlank()) return true;
+        var subscription = subscriptionRepo.findByIdOptional(command.subscriptionId()).orElse(null);
+        if (subscription == null) return true;
+        if (subscription.serviceAccountId() == null) return true;
+        var serviceAccount = serviceAccountRepo.findByIdOptional(subscription.serviceAccountId()).orElse(null);
+        if (serviceAccount == null) return true;
+        if (serviceAccount.applicationId == null) return true;
+        return authz.canAccessApplication(serviceAccount.applicationId);
     }
 
     @Override
@@ -61,22 +68,6 @@ public class DeleteSubscriptionUseCase implements UseCase<DeleteSubscriptionComm
         }
 
         Subscription existing = existingOpt.get();
-
-        // Authorization check: if subscription's service account is linked to an application, can principal manage it?
-        AuthorizationContext authz = context.authz();
-        if (authz != null && existing.serviceAccountId() != null) {
-            Optional<ServiceAccount> serviceAccountOpt = serviceAccountRepo.findByIdOptional(existing.serviceAccountId());
-            if (serviceAccountOpt.isPresent()) {
-                ServiceAccount serviceAccount = serviceAccountOpt.get();
-                if (serviceAccount.applicationId != null && !authz.canAccessApplication(serviceAccount.applicationId)) {
-                    return Result.failure(new UseCaseError.AuthorizationError(
-                        "NOT_AUTHORIZED",
-                        "Not authorized to delete this subscription",
-                        Map.of("subscriptionId", command.subscriptionId(), "applicationId", serviceAccount.applicationId)
-                    ));
-                }
-            }
-        }
 
         // Create domain event
         SubscriptionDeleted event = SubscriptionDeleted.fromContext(context)

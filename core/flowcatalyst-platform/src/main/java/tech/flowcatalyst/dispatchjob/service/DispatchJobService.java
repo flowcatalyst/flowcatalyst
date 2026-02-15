@@ -1,11 +1,10 @@
 package tech.flowcatalyst.dispatchjob.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
-import software.amazon.awssdk.services.sqs.SqsClient;
-import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 import tech.flowcatalyst.dispatchjob.dto.CreateDispatchJobRequest;
 import tech.flowcatalyst.dispatchjob.dto.DispatchJobFilter;
 import tech.flowcatalyst.dispatchjob.entity.DispatchAttempt;
@@ -16,13 +15,21 @@ import tech.flowcatalyst.dispatchjob.model.DispatchStatus;
 import tech.flowcatalyst.dispatchjob.model.ErrorType;
 import tech.flowcatalyst.dispatchjob.model.MediationType;
 import tech.flowcatalyst.dispatchjob.model.MessagePointer;
+import tech.flowcatalyst.dispatchjob.queue.DispatchQueue;
+import tech.flowcatalyst.dispatchjob.queue.DispatchQueueConfig;
 import tech.flowcatalyst.dispatchjob.repository.DispatchJobRepository;
 import tech.flowcatalyst.dispatchjob.security.DispatchAuthService;
+import tech.flowcatalyst.queue.QueueMessage;
+import tech.flowcatalyst.queue.QueuePublishResult;
+import tech.flowcatalyst.queue.QueuePublisher;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Service for managing and processing dispatch jobs.
@@ -31,9 +38,7 @@ import java.util.Optional;
 public class DispatchJobService {
 
     private static final Logger LOG = Logger.getLogger(DispatchJobService.class);
-    private static final String DISPATCH_POOL_CODE = "DISPATCH-POOL";
     private static final MediationType MEDIATION_TYPE = MediationType.HTTP;
-    private static final String PROCESSING_ENDPOINT = "http://localhost:8080/api/dispatch/process";
 
     @Inject
     DispatchJobRepository dispatchJobRepository;
@@ -48,7 +53,11 @@ public class DispatchJobService {
     DispatchAuthService dispatchAuthService;
 
     @Inject
-    SqsClient sqsClient;
+    @DispatchQueue
+    QueuePublisher queuePublisher;
+
+    @Inject
+    DispatchQueueConfig dispatchQueueConfig;
 
     @Inject
     ObjectMapper objectMapper;
@@ -62,8 +71,8 @@ public class DispatchJobService {
 
         LOG.infof("Created dispatch job [%s] kind=[%s] code=[%s] from source [%s]", job.id, job.kind, job.code, job.source);
 
-        // Send to SQS queue
-        boolean queued = sendToQueue(job, request.queueUrl());
+        // Publish to queue
+        boolean queued = publishSingle(job);
 
         // If queue send fails, update status to PENDING for safety net polling
         if (!queued) {
@@ -76,44 +85,111 @@ public class DispatchJobService {
     }
 
     /**
-     * Send a dispatch job to the queue.
+     * Create multiple dispatch jobs and publish them in a single batch.
      *
-     * @param job The dispatch job to queue
-     * @param queueUrl The SQS queue URL
-     * @return true if successfully queued, false otherwise
+     * @param requests The dispatch job requests
+     * @return List of created dispatch jobs
      */
-    private boolean sendToQueue(DispatchJob job, String queueUrl) {
+    public List<DispatchJob> createDispatchJobs(List<CreateDispatchJobRequest> requests) {
+        // Validate all service accounts first
+        for (var request : requests) {
+            credentialsService.validateServiceAccount(request.serviceAccountId());
+        }
+
+        // Create all jobs
+        List<DispatchJob> jobs = new ArrayList<>(requests.size());
+        for (var request : requests) {
+            var job = dispatchJobRepository.create(request);
+            LOG.infof("Created dispatch job [%s] kind=[%s] code=[%s] from source [%s]", job.id, job.kind, job.code, job.source);
+            jobs.add(job);
+        }
+
+        // Batch publish to queue
+        Set<String> failedJobIds = publishBatch(jobs);
+
+        // Update failed jobs to PENDING
+        if (!failedJobIds.isEmpty()) {
+            LOG.warnf("Queue send failed for %d dispatch jobs, updating to PENDING status", failedJobIds.size());
+            for (var job : jobs) {
+                if (failedJobIds.contains(job.id)) {
+                    dispatchJobRepository.updateStatus(job.id, DispatchStatus.PENDING, null, null, null);
+                    job.status = DispatchStatus.PENDING;
+                }
+            }
+        }
+
+        return jobs;
+    }
+
+    /**
+     * Publish a single dispatch job to the queue.
+     *
+     * @return true if successfully queued
+     */
+    private boolean publishSingle(DispatchJob job) {
         try {
-            // Generate HMAC auth token for this dispatch job
-            String authToken = dispatchAuthService.generateAuthToken(job.id);
+            var message = toQueueMessage(job);
+            QueuePublishResult result = queuePublisher.publish(message);
 
-            // Create MessagePointer for the dispatch job
-            MessagePointer messagePointer = new MessagePointer(
-                job.id,
-                DISPATCH_POOL_CODE,
-                authToken,
-                MEDIATION_TYPE,
-                PROCESSING_ENDPOINT,
-                null,  // No message group ordering needed for dispatch jobs (each job is independent)
-                null   // batchId is populated by message router during routing
-            );
-
-            String messageBody = objectMapper.writeValueAsString(messagePointer);
-
-            SendMessageRequest sendRequest = SendMessageRequest.builder()
-                .queueUrl(queueUrl)
-                .messageBody(messageBody)
-                .messageGroupId("dispatch-" + job.code) // Group by code
-                .messageDeduplicationId(job.id)
-                .build();
-
-            sqsClient.sendMessage(sendRequest);
-            LOG.infof("Sent dispatch job [%s] to queue [%s]", job.id, queueUrl);
-            return true;
+            if (result.allPublished()) {
+                LOG.infof("Sent dispatch job [%s] to queue", job.id);
+                return true;
+            } else {
+                LOG.warnf("Failed to publish dispatch job [%s]: %s",
+                    job.id, result.errorMessage().orElse("Unknown error"));
+                return false;
+            }
 
         } catch (Exception e) {
             LOG.errorf(e, "Failed to send dispatch job [%s] to queue", job.id);
             return false;
+        }
+    }
+
+    /**
+     * Publish multiple dispatch jobs to the queue in batch.
+     *
+     * @return Set of job IDs that failed to queue
+     */
+    private Set<String> publishBatch(List<DispatchJob> jobs) {
+        try {
+            List<QueueMessage> messages = jobs.stream()
+                .map(this::toQueueMessage)
+                .toList();
+
+            QueuePublishResult result = queuePublisher.publishBatch(messages);
+
+            return new HashSet<>(result.failedMessageIds());
+
+        } catch (Exception e) {
+            LOG.errorf(e, "Failed to publish batch of %d dispatch jobs to queue", jobs.size());
+            var failedIds = new HashSet<String>();
+            jobs.forEach(j -> failedIds.add(j.id));
+            return failedIds;
+        }
+    }
+
+    /**
+     * Convert a dispatch job to a QueueMessage with a serialized MessagePointer body.
+     */
+    private QueueMessage toQueueMessage(DispatchJob job) {
+        try {
+            var authToken = dispatchAuthService.generateAuthToken(job.id);
+            var pointer = new MessagePointer(
+                job.id,
+                job.dispatchPoolId != null ? job.dispatchPoolId : dispatchQueueConfig.defaultPoolCode(),
+                authToken,
+                MEDIATION_TYPE,
+                dispatchQueueConfig.processingEndpoint(),
+                job.messageGroup,
+                null
+            );
+
+            var messageBody = objectMapper.writeValueAsString(pointer);
+            return new QueueMessage(job.id, "dispatch-" + job.code, job.id, messageBody);
+
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize MessagePointer for job " + job.id, e);
         }
     }
 

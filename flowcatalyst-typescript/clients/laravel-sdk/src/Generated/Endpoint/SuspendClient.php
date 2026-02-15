@@ -7,9 +7,9 @@ class SuspendClient extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint 
     protected $id;
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\StatusChangeRequest1 $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\StatusChangeRequest $requestBody
      */
-    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\StatusChangeRequest1 $requestBody = null)
+    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\StatusChangeRequest $requestBody = null)
     {
         $this->id = $id;
         $this->body = $requestBody;
@@ -25,7 +25,7 @@ class SuspendClient extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint 
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
-        if ($this->body instanceof \FlowCatalyst\Generated\Model\StatusChangeRequest1) {
+        if ($this->body instanceof \FlowCatalyst\Generated\Model\StatusChangeRequest) {
             return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
         }
         return [[], null];
@@ -42,26 +42,26 @@ class SuspendClient extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint 
      * @throws \FlowCatalyst\Generated\Exception\SuspendClientUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\SuspendClientForbiddenException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\ClientStatusResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ClientStatusResponse', 'json');
         }
-        if (400 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\SuspendClientBadRequestException($response);
+        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\SuspendClientBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorResponse', 'json'), $response);
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\SuspendClientNotFoundException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\SuspendClientNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\NotFoundResponse', 'json'), $response);
         }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\SuspendClientUnauthorizedException($response);
+        if (is_null($contentType) === false && (401 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\SuspendClientUnauthorizedException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\UnauthorizedResponse', 'json'), $response);
         }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\SuspendClientForbiddenException($response);
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\SuspendClientForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ForbiddenResponse', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array

@@ -13,22 +13,32 @@ class AuditLogListResponse extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
+     * Audit log entries
+     *
      * @var list<AuditLogDto>|null
      */
     protected $auditLogs;
     /**
+     * Total count of matching entries
+     *
      * @var int|null
      */
     protected $total;
     /**
+     * Current page (0-based)
+     *
      * @var int|null
      */
     protected $page;
     /**
+     * Page size
+     *
      * @var int|null
      */
     protected $pageSize;
     /**
+     * Audit log entries
+     *
      * @return list<AuditLogDto>|null
      */
     public function getAuditLogs(): ?array
@@ -36,6 +46,8 @@ class AuditLogListResponse extends \ArrayObject
         return $this->auditLogs;
     }
     /**
+     * Audit log entries
+     *
      * @param list<AuditLogDto>|null $auditLogs
      *
      * @return self
@@ -47,6 +59,8 @@ class AuditLogListResponse extends \ArrayObject
         return $this;
     }
     /**
+     * Total count of matching entries
+     *
      * @return int|null
      */
     public function getTotal(): ?int
@@ -54,6 +68,8 @@ class AuditLogListResponse extends \ArrayObject
         return $this->total;
     }
     /**
+     * Total count of matching entries
+     *
      * @param int|null $total
      *
      * @return self
@@ -65,6 +81,8 @@ class AuditLogListResponse extends \ArrayObject
         return $this;
     }
     /**
+     * Current page (0-based)
+     *
      * @return int|null
      */
     public function getPage(): ?int
@@ -72,6 +90,8 @@ class AuditLogListResponse extends \ArrayObject
         return $this->page;
     }
     /**
+     * Current page (0-based)
+     *
      * @param int|null $page
      *
      * @return self
@@ -83,6 +103,8 @@ class AuditLogListResponse extends \ArrayObject
         return $this;
     }
     /**
+     * Page size
+     *
      * @return int|null
      */
     public function getPageSize(): ?int
@@ -90,6 +112,8 @@ class AuditLogListResponse extends \ArrayObject
         return $this->pageSize;
     }
     /**
+     * Page size
+     *
      * @param int|null $pageSize
      *
      * @return self

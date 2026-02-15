@@ -30,6 +30,10 @@ class AddClientAuditNote extends \FlowCatalyst\Generated\Runtime\Client\BaseEndp
         }
         return [[], null];
     }
+    public function getExtraHeaders(): array
+    {
+        return ['Accept' => ['application/json']];
+    }
     /**
      * {@inheritdoc}
      *
@@ -38,26 +42,26 @@ class AddClientAuditNote extends \FlowCatalyst\Generated\Runtime\Client\BaseEndp
      * @throws \FlowCatalyst\Generated\Exception\AddClientAuditNoteUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\AddClientAuditNoteForbiddenException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\NoteAddedResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (201 === $status) {
-            return null;
+        if (is_null($contentType) === false && (201 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\NoteAddedResponse', 'json');
         }
-        if (400 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\AddClientAuditNoteBadRequestException($response);
+        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\AddClientAuditNoteBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorResponse', 'json'), $response);
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\AddClientAuditNoteNotFoundException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\AddClientAuditNoteNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\NotFoundResponse', 'json'), $response);
         }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\AddClientAuditNoteUnauthorizedException($response);
+        if (is_null($contentType) === false && (401 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\AddClientAuditNoteUnauthorizedException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\UnauthorizedResponse', 'json'), $response);
         }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\AddClientAuditNoteForbiddenException($response);
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\AddClientAuditNoteForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ForbiddenResponse', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array

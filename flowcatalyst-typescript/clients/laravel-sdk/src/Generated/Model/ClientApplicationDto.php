@@ -13,46 +13,68 @@ class ClientApplicationDto extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
+     * Application ID
+     *
      * @var string|null
      */
     protected $id;
     /**
+     * Application code
+     *
      * @var string|null
      */
     protected $code;
     /**
+     * Application name
+     *
      * @var string|null
      */
     protected $name;
     /**
+     * Application description
+     *
      * @var string|null
      */
     protected $description;
     /**
+     * Icon URL
+     *
      * @var string|null
      */
     protected $iconUrl;
     /**
+     * Default website URL
+     *
      * @var string|null
      */
     protected $website;
     /**
+     * Effective website URL (override or default)
+     *
      * @var string|null
      */
     protected $effectiveWebsite;
     /**
+     * Logo MIME type
+     *
      * @var string|null
      */
     protected $logoMimeType;
     /**
+     * Whether application is globally active
+     *
      * @var bool|null
      */
     protected $active;
     /**
+     * Whether application is enabled for this client
+     *
      * @var bool|null
      */
     protected $enabledForClient;
     /**
+     * Application ID
+     *
      * @return string|null
      */
     public function getId(): ?string
@@ -60,6 +82,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this->id;
     }
     /**
+     * Application ID
+     *
      * @param string|null $id
      *
      * @return self
@@ -71,6 +95,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this;
     }
     /**
+     * Application code
+     *
      * @return string|null
      */
     public function getCode(): ?string
@@ -78,6 +104,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this->code;
     }
     /**
+     * Application code
+     *
      * @param string|null $code
      *
      * @return self
@@ -89,6 +117,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this;
     }
     /**
+     * Application name
+     *
      * @return string|null
      */
     public function getName(): ?string
@@ -96,6 +126,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this->name;
     }
     /**
+     * Application name
+     *
      * @param string|null $name
      *
      * @return self
@@ -107,6 +139,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this;
     }
     /**
+     * Application description
+     *
      * @return string|null
      */
     public function getDescription(): ?string
@@ -114,6 +148,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this->description;
     }
     /**
+     * Application description
+     *
      * @param string|null $description
      *
      * @return self
@@ -125,6 +161,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this;
     }
     /**
+     * Icon URL
+     *
      * @return string|null
      */
     public function getIconUrl(): ?string
@@ -132,6 +170,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this->iconUrl;
     }
     /**
+     * Icon URL
+     *
      * @param string|null $iconUrl
      *
      * @return self
@@ -143,6 +183,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this;
     }
     /**
+     * Default website URL
+     *
      * @return string|null
      */
     public function getWebsite(): ?string
@@ -150,6 +192,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this->website;
     }
     /**
+     * Default website URL
+     *
      * @param string|null $website
      *
      * @return self
@@ -161,6 +205,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this;
     }
     /**
+     * Effective website URL (override or default)
+     *
      * @return string|null
      */
     public function getEffectiveWebsite(): ?string
@@ -168,6 +214,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this->effectiveWebsite;
     }
     /**
+     * Effective website URL (override or default)
+     *
      * @param string|null $effectiveWebsite
      *
      * @return self
@@ -179,6 +227,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this;
     }
     /**
+     * Logo MIME type
+     *
      * @return string|null
      */
     public function getLogoMimeType(): ?string
@@ -186,6 +236,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this->logoMimeType;
     }
     /**
+     * Logo MIME type
+     *
      * @param string|null $logoMimeType
      *
      * @return self
@@ -197,6 +249,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this;
     }
     /**
+     * Whether application is globally active
+     *
      * @return bool|null
      */
     public function getActive(): ?bool
@@ -204,6 +258,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this->active;
     }
     /**
+     * Whether application is globally active
+     *
      * @param bool|null $active
      *
      * @return self
@@ -215,6 +271,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this;
     }
     /**
+     * Whether application is enabled for this client
+     *
      * @return bool|null
      */
     public function getEnabledForClient(): ?bool
@@ -222,6 +280,8 @@ class ClientApplicationDto extends \ArrayObject
         return $this->enabledForClient;
     }
     /**
+     * Whether application is enabled for this client
+     *
      * @param bool|null $enabledForClient
      *
      * @return self

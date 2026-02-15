@@ -25,18 +25,22 @@ class GetAuditLogOperations extends \FlowCatalyst\Generated\Runtime\Client\BaseE
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\GetAuditLogOperationsUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetAuditLogOperationsForbiddenException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\OperationsResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\OperationsResponse', 'json');
         }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetAuditLogOperationsUnauthorizedException($response);
+        if (is_null($contentType) === false && (401 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\GetAuditLogOperationsUnauthorizedException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\UnauthorizedResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\GetAuditLogOperationsForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ForbiddenResponse', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array

@@ -5,22 +5,22 @@ namespace FlowCatalyst\Generated\Exception;
 class GetApiDispatchJobsByIdAttemptNotFoundException extends NotFoundException
 {
     /**
-     * @var \FlowCatalyst\Generated\Model\ErrorResponse3
+     * @var \FlowCatalyst\Generated\Model\ErrorResponse4
      */
-    private $errorResponse3;
+    private $errorResponse4;
     /**
      * @var \Psr\Http\Message\ResponseInterface
      */
     private $response;
-    public function __construct(\FlowCatalyst\Generated\Model\ErrorResponse3 $errorResponse3, \Psr\Http\Message\ResponseInterface $response)
+    public function __construct(\FlowCatalyst\Generated\Model\ErrorResponse4 $errorResponse4, \Psr\Http\Message\ResponseInterface $response)
     {
         parent::__construct('Dispatch job not found');
-        $this->errorResponse3 = $errorResponse3;
+        $this->errorResponse4 = $errorResponse4;
         $this->response = $response;
     }
-    public function getErrorResponse3(): \FlowCatalyst\Generated\Model\ErrorResponse3
+    public function getErrorResponse4(): \FlowCatalyst\Generated\Model\ErrorResponse4
     {
-        return $this->errorResponse3;
+        return $this->errorResponse4;
     }
     public function getResponse(): \Psr\Http\Message\ResponseInterface
     {

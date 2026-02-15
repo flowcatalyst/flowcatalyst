@@ -13,10 +13,14 @@ class UpdateClientApplicationsRequest extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
+     * List of application IDs to enable for this client
+     *
      * @var list<string>|null
      */
     protected $enabledApplicationIds;
     /**
+     * List of application IDs to enable for this client
+     *
      * @return list<string>|null
      */
     public function getEnabledApplicationIds(): ?array
@@ -24,6 +28,8 @@ class UpdateClientApplicationsRequest extends \ArrayObject
         return $this->enabledApplicationIds;
     }
     /**
+     * List of application IDs to enable for this client
+     *
      * @param list<string>|null $enabledApplicationIds
      *
      * @return self

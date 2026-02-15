@@ -34,6 +34,9 @@ class UpdateEmailDomainMappingRequestNormalizer implements DenormalizerInterface
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
         $object = new \FlowCatalyst\Generated\Model\UpdateEmailDomainMappingRequest();
+        if (\array_key_exists('syncRolesFromIdp', $data) && \is_int($data['syncRolesFromIdp'])) {
+            $data['syncRolesFromIdp'] = (bool) $data['syncRolesFromIdp'];
+        }
         if (null === $data || false === \is_array($data)) {
             return $object;
         }
@@ -80,9 +83,34 @@ class UpdateEmailDomainMappingRequestNormalizer implements DenormalizerInterface
         elseif (\array_key_exists('grantedClientIds', $data) && $data['grantedClientIds'] === null) {
             $object->setGrantedClientIds(null);
         }
-        foreach ($data as $key => $value_2) {
+        if (\array_key_exists('requiredOidcTenantId', $data) && $data['requiredOidcTenantId'] !== null) {
+            $object->setRequiredOidcTenantId($data['requiredOidcTenantId']);
+            unset($data['requiredOidcTenantId']);
+        }
+        elseif (\array_key_exists('requiredOidcTenantId', $data) && $data['requiredOidcTenantId'] === null) {
+            $object->setRequiredOidcTenantId(null);
+        }
+        if (\array_key_exists('allowedRoleIds', $data) && $data['allowedRoleIds'] !== null) {
+            $values_2 = [];
+            foreach ($data['allowedRoleIds'] as $value_2) {
+                $values_2[] = $value_2;
+            }
+            $object->setAllowedRoleIds($values_2);
+            unset($data['allowedRoleIds']);
+        }
+        elseif (\array_key_exists('allowedRoleIds', $data) && $data['allowedRoleIds'] === null) {
+            $object->setAllowedRoleIds(null);
+        }
+        if (\array_key_exists('syncRolesFromIdp', $data) && $data['syncRolesFromIdp'] !== null) {
+            $object->setSyncRolesFromIdp($data['syncRolesFromIdp']);
+            unset($data['syncRolesFromIdp']);
+        }
+        elseif (\array_key_exists('syncRolesFromIdp', $data) && $data['syncRolesFromIdp'] === null) {
+            $object->setSyncRolesFromIdp(null);
+        }
+        foreach ($data as $key => $value_3) {
             if (preg_match('/.*/', (string) $key)) {
-                $object[$key] = $value_2;
+                $object[$key] = $value_3;
             }
         }
         return $object;
@@ -113,9 +141,22 @@ class UpdateEmailDomainMappingRequestNormalizer implements DenormalizerInterface
             }
             $dataArray['grantedClientIds'] = $values_1;
         }
-        foreach ($data as $key => $value_2) {
+        if ($data->isInitialized('requiredOidcTenantId') && null !== $data->getRequiredOidcTenantId()) {
+            $dataArray['requiredOidcTenantId'] = $data->getRequiredOidcTenantId();
+        }
+        if ($data->isInitialized('allowedRoleIds') && null !== $data->getAllowedRoleIds()) {
+            $values_2 = [];
+            foreach ($data->getAllowedRoleIds() as $value_2) {
+                $values_2[] = $value_2;
+            }
+            $dataArray['allowedRoleIds'] = $values_2;
+        }
+        if ($data->isInitialized('syncRolesFromIdp') && null !== $data->getSyncRolesFromIdp()) {
+            $dataArray['syncRolesFromIdp'] = $data->getSyncRolesFromIdp();
+        }
+        foreach ($data as $key => $value_3) {
             if (preg_match('/.*/', (string) $key)) {
-                $dataArray[$key] = $value_2;
+                $dataArray[$key] = $value_3;
             }
         }
         return $dataArray;

@@ -88,3 +88,4 @@ data/flowcatalyst-queue.db
 Makefile
 /clients/laravel/flowcatalyst-sdk/src/Generated
 /clients/laravel/flowcatalyst-sdk/vendor
+/flowcatalyst-typescript/clients/laravel-sdk/vendor

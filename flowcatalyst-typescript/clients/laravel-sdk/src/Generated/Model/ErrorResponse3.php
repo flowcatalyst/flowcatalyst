@@ -13,25 +13,59 @@ class ErrorResponse3 extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
+     * Error code
+     *
      * @var string|null
      */
-    protected $error;
+    protected $code;
     /**
+     * Error message
+     *
+     * @var string|null
+     */
+    protected $message;
+    /**
+     * Error code
+     *
      * @return string|null
      */
-    public function getError(): ?string
+    public function getCode(): ?string
     {
-        return $this->error;
+        return $this->code;
     }
     /**
-     * @param string|null $error
+     * Error code
+     *
+     * @param string|null $code
      *
      * @return self
      */
-    public function setError(?string $error): self
+    public function setCode(?string $code): self
     {
-        $this->initialized['error'] = true;
-        $this->error = $error;
+        $this->initialized['code'] = true;
+        $this->code = $code;
+        return $this;
+    }
+    /**
+     * Error message
+     *
+     * @return string|null
+     */
+    public function getMessage(): ?string
+    {
+        return $this->message;
+    }
+    /**
+     * Error message
+     *
+     * @param string|null $message
+     *
+     * @return self
+     */
+    public function setMessage(?string $message): self
+    {
+        $this->initialized['message'] = true;
+        $this->message = $message;
         return $this;
     }
 }

@@ -24,6 +24,25 @@ import type { TransactionContext, TransactionManager } from './transaction.js';
 import { events, type NewEvent, type EventContextData } from './schema/events.js';
 import { auditLogs, type NewAuditLog } from './schema/audit-logs.js';
 import { eventProjectionFeed } from './schema/outbox.js';
+import { getLogger } from '@flowcatalyst/logging';
+
+/**
+ * Notification about a dispatch job created inside the transaction.
+ * Matches DispatchJobNotification from event-dispatch-service.
+ */
+export interface DispatchJobNotification {
+  id: string;
+  dispatchPoolId: string | null;
+  messageGroup: string;
+}
+
+/**
+ * Post-commit dispatcher — called after the transaction commits
+ * to push dispatch job notifications onto a queue.
+ */
+export interface PostCommitDispatcher {
+  dispatch(jobs: DispatchJobNotification[]): Promise<void>;
+}
 
 /**
  * Configuration for the Drizzle Unit of Work.
@@ -41,8 +60,10 @@ export interface DrizzleUnitOfWorkConfig {
       event: DomainEvent,
       clientId: string | null,
       db: PostgresJsDatabase,
-    ): Promise<void>;
+    ): Promise<DispatchJobNotification[]>;
   };
+  /** Optional: Dispatcher called after transaction commits to push jobs onto a queue */
+  postCommitDispatch?: PostCommitDispatcher | undefined;
 }
 
 /**
@@ -66,14 +87,28 @@ export interface DrizzleUnitOfWorkConfig {
 export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOfWork {
   const { transactionManager, aggregateRegistry, extractClientId, eventDispatchService } = config;
 
+  async function dispatchAfterCommit(jobs: DispatchJobNotification[]): Promise<void> {
+    if (jobs.length === 0 || !config.postCommitDispatch) return;
+    try {
+      await config.postCommitDispatch.dispatch(jobs);
+    } catch (error) {
+      // Log warning but never fail the use case — jobs are safely in DB
+      getLogger().warn(
+        { err: error, jobCount: jobs.length },
+        'Post-commit queue dispatch failed (jobs are persisted in DB)',
+      );
+    }
+  }
+
   return {
     async commit<T extends DomainEvent>(
       aggregate: Aggregate,
       event: T,
       command: unknown,
     ): Promise<Result<T>> {
+      let collectedJobs: DispatchJobNotification[] = [];
       try {
-        return await transactionManager.inTransaction(async (tx) => {
+        const result = await transactionManager.inTransaction(async (tx) => {
           // 1. Persist the aggregate
           await aggregateRegistry.persist(aggregate as never, tx);
 
@@ -83,7 +118,7 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
 
           // 3. Build dispatch jobs for matching subscriptions
           if (eventDispatchService) {
-            await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
+            collectedJobs = await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
           }
 
           // 4. Create the audit log
@@ -92,6 +127,11 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
           // 5. Return success (only UnitOfWork can do this)
           return Result.success(RESULT_SUCCESS_TOKEN, event);
         });
+
+        // Transaction committed — push jobs onto queue
+        await dispatchAfterCommit(collectedJobs);
+
+        return result;
       } catch (error) {
         return Result.failure(
           UseCaseError.businessRule(
@@ -108,8 +148,9 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
       event: T,
       command: unknown,
     ): Promise<Result<T>> {
+      let collectedJobs: DispatchJobNotification[] = [];
       try {
-        return await transactionManager.inTransaction(async (tx) => {
+        const result = await transactionManager.inTransaction(async (tx) => {
           // 1. Delete the aggregate
           await aggregateRegistry.delete(aggregate as never, tx);
 
@@ -119,7 +160,7 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
 
           // 3. Build dispatch jobs for matching subscriptions
           if (eventDispatchService) {
-            await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
+            collectedJobs = await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
           }
 
           // 4. Create the audit log
@@ -128,6 +169,11 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
           // 5. Return success
           return Result.success(RESULT_SUCCESS_TOKEN, event);
         });
+
+        // Transaction committed — push jobs onto queue
+        await dispatchAfterCommit(collectedJobs);
+
+        return result;
       } catch (error) {
         return Result.failure(
           UseCaseError.businessRule(
@@ -144,8 +190,9 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
       event: T,
       command: unknown,
     ): Promise<Result<T>> {
+      let collectedJobs: DispatchJobNotification[] = [];
       try {
-        return await transactionManager.inTransaction(async (tx) => {
+        const result = await transactionManager.inTransaction(async (tx) => {
           // 1. Persist all aggregates
           for (const aggregate of aggregates) {
             await aggregateRegistry.persist(aggregate as never, tx);
@@ -159,7 +206,7 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
 
           // 3. Build dispatch jobs for matching subscriptions
           if (eventDispatchService) {
-            await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
+            collectedJobs = await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
           }
 
           // 4. Create the audit log
@@ -168,6 +215,11 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
           // 5. Return success
           return Result.success(RESULT_SUCCESS_TOKEN, event);
         });
+
+        // Transaction committed — push jobs onto queue
+        await dispatchAfterCommit(collectedJobs);
+
+        return result;
       } catch (error) {
         return Result.failure(
           UseCaseError.businessRule(

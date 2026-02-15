@@ -54,7 +54,9 @@ class StatusChangeRequest1Normalizer implements DenormalizerInterface, Normalize
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        $dataArray['reason'] = $data->getReason();
+        if ($data->isInitialized('reason') && null !== $data->getReason()) {
+            $dataArray['reason'] = $data->getReason();
+        }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;

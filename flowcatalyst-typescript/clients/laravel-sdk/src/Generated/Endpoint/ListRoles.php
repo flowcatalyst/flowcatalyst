@@ -45,7 +45,9 @@ class ListRoles extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint impl
     /**
      * {@inheritdoc}
      *
+     * @throws \FlowCatalyst\Generated\Exception\ListRolesBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\ListRolesUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\ListRolesForbiddenException
      *
      * @return null|\FlowCatalyst\Generated\Model\RoleListResponse2
      */
@@ -56,8 +58,14 @@ class ListRoles extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint impl
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\RoleListResponse2', 'json');
         }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\ListRolesUnauthorizedException($response);
+        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\ListRolesBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (401 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\ListRolesUnauthorizedException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\UnauthorizedResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\ListRolesForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ForbiddenResponse', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array

@@ -13,10 +13,14 @@ class UpdateClientRequest1 extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
+     * Client name
+     *
      * @var string|null
      */
     protected $name;
     /**
+     * Client name
+     *
      * @return string|null
      */
     public function getName(): ?string
@@ -24,6 +28,8 @@ class UpdateClientRequest1 extends \ArrayObject
         return $this->name;
     }
     /**
+     * Client name
+     *
      * @param string|null $name
      *
      * @return self

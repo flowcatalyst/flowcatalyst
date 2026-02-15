@@ -34,21 +34,25 @@ class GetAuditLog extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint im
      *
      * @throws \FlowCatalyst\Generated\Exception\GetAuditLogNotFoundException
      * @throws \FlowCatalyst\Generated\Exception\GetAuditLogUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetAuditLogForbiddenException
      *
-     * @return null|\FlowCatalyst\Generated\Model\AuditLogDto
+     * @return null|\FlowCatalyst\Generated\Model\AuditLogDetailDto
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\AuditLogDto', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\AuditLogDetailDto', 'json');
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetAuditLogNotFoundException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\GetAuditLogNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\NotFoundResponse', 'json'), $response);
         }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetAuditLogUnauthorizedException($response);
+        if (is_null($contentType) === false && (401 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\GetAuditLogUnauthorizedException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\UnauthorizedResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\GetAuditLogForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ForbiddenResponse', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array

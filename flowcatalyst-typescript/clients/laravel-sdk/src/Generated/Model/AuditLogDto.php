@@ -13,26 +13,38 @@ class AuditLogDto extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
+     * Audit log ID
+     *
      * @var string|null
      */
     protected $id;
     /**
+     * Entity type (e.g., 'Client', 'Application')
+     *
      * @var string|null
      */
     protected $entityType;
     /**
+     * Entity ID
+     *
      * @var string|null
      */
     protected $entityId;
     /**
+     * Operation performed
+     *
      * @var string|null
      */
     protected $operation;
     /**
+     * Principal ID who performed the operation
+     *
      * @var string|null
      */
     protected $principalId;
     /**
+     * Principal name (resolved)
+     *
      * @var string|null
      */
     protected $principalName;
@@ -41,6 +53,8 @@ class AuditLogDto extends \ArrayObject
      */
     protected $performedAt;
     /**
+     * Audit log ID
+     *
      * @return string|null
      */
     public function getId(): ?string
@@ -48,6 +62,8 @@ class AuditLogDto extends \ArrayObject
         return $this->id;
     }
     /**
+     * Audit log ID
+     *
      * @param string|null $id
      *
      * @return self
@@ -59,6 +75,8 @@ class AuditLogDto extends \ArrayObject
         return $this;
     }
     /**
+     * Entity type (e.g., 'Client', 'Application')
+     *
      * @return string|null
      */
     public function getEntityType(): ?string
@@ -66,6 +84,8 @@ class AuditLogDto extends \ArrayObject
         return $this->entityType;
     }
     /**
+     * Entity type (e.g., 'Client', 'Application')
+     *
      * @param string|null $entityType
      *
      * @return self
@@ -77,6 +97,8 @@ class AuditLogDto extends \ArrayObject
         return $this;
     }
     /**
+     * Entity ID
+     *
      * @return string|null
      */
     public function getEntityId(): ?string
@@ -84,6 +106,8 @@ class AuditLogDto extends \ArrayObject
         return $this->entityId;
     }
     /**
+     * Entity ID
+     *
      * @param string|null $entityId
      *
      * @return self
@@ -95,6 +119,8 @@ class AuditLogDto extends \ArrayObject
         return $this;
     }
     /**
+     * Operation performed
+     *
      * @return string|null
      */
     public function getOperation(): ?string
@@ -102,6 +128,8 @@ class AuditLogDto extends \ArrayObject
         return $this->operation;
     }
     /**
+     * Operation performed
+     *
      * @param string|null $operation
      *
      * @return self
@@ -113,6 +141,8 @@ class AuditLogDto extends \ArrayObject
         return $this;
     }
     /**
+     * Principal ID who performed the operation
+     *
      * @return string|null
      */
     public function getPrincipalId(): ?string
@@ -120,6 +150,8 @@ class AuditLogDto extends \ArrayObject
         return $this->principalId;
     }
     /**
+     * Principal ID who performed the operation
+     *
      * @param string|null $principalId
      *
      * @return self
@@ -131,6 +163,8 @@ class AuditLogDto extends \ArrayObject
         return $this;
     }
     /**
+     * Principal name (resolved)
+     *
      * @return string|null
      */
     public function getPrincipalName(): ?string
@@ -138,6 +172,8 @@ class AuditLogDto extends \ArrayObject
         return $this->principalName;
     }
     /**
+     * Principal name (resolved)
+     *
      * @param string|null $principalName
      *
      * @return self

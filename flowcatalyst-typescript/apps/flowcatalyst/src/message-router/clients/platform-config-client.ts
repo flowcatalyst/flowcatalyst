@@ -326,20 +326,24 @@ export class ConfigSyncService {
     if (a.queues.length !== b.queues.length) return false;
     if (a.processingPools.length !== b.processingPools.length) return false;
 
-    // Deep compare queues
-    for (let i = 0; i < a.queues.length; i++) {
-      const qa = a.queues[i];
-      const qb = b.queues[i];
+    // Deep compare queues (order-insensitive)
+    const sortedQueuesA = [...a.queues].sort((x, y) => (x.queueUri ?? '').localeCompare(y.queueUri ?? ''));
+    const sortedQueuesB = [...b.queues].sort((x, y) => (x.queueUri ?? '').localeCompare(y.queueUri ?? ''));
+    for (let i = 0; i < sortedQueuesA.length; i++) {
+      const qa = sortedQueuesA[i];
+      const qb = sortedQueuesB[i];
       if (!qa || !qb) return false;
       if (qa.queueUri !== qb.queueUri) return false;
       if (qa.queueName !== qb.queueName) return false;
       if (qa.connections !== qb.connections) return false;
     }
 
-    // Deep compare pools
-    for (let i = 0; i < a.processingPools.length; i++) {
-      const pa = a.processingPools[i];
-      const pb = b.processingPools[i];
+    // Deep compare pools (order-insensitive)
+    const sortedPoolsA = [...a.processingPools].sort((x, y) => x.code.localeCompare(y.code));
+    const sortedPoolsB = [...b.processingPools].sort((x, y) => x.code.localeCompare(y.code));
+    for (let i = 0; i < sortedPoolsA.length; i++) {
+      const pa = sortedPoolsA[i];
+      const pb = sortedPoolsB[i];
       if (!pa || !pb) return false;
       if (pa.code !== pb.code) return false;
       if (pa.concurrency !== pb.concurrency) return false;

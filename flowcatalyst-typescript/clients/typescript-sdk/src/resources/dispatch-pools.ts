@@ -9,19 +9,23 @@ import type { SdkError } from '../errors';
 import type { FlowCatalystClient } from '../client';
 import * as sdk from '../generated/sdk.gen';
 import type {
-  DispatchPoolDto,
-  DispatchPoolListResponse,
-  CreateDispatchPoolRequest,
-  UpdateDispatchPoolRequest,
-  SyncPoolsRequest,
-  SyncResponse,
-  PoolListResponse,
-  DispatchPoolStatus,
+  GetApiAdminDispatchPoolsResponse,
+  GetApiAdminDispatchPoolsByIdResponse,
+  PostApiAdminDispatchPoolsData,
+  PutApiAdminDispatchPoolsByIdData,
+  PostApiAdminDispatchPoolsSyncData,
+  PostApiAdminDispatchPoolsSyncResponse,
 } from '../generated/types.gen';
+
+export type DispatchPoolListResponse = GetApiAdminDispatchPoolsResponse;
+export type DispatchPoolDto = GetApiAdminDispatchPoolsByIdResponse;
+export type CreateDispatchPoolRequest = PostApiAdminDispatchPoolsData['body'];
+export type UpdateDispatchPoolRequest = PutApiAdminDispatchPoolsByIdData['body'];
+export type SyncDispatchPoolsResponse = PostApiAdminDispatchPoolsSyncResponse;
 
 export interface DispatchPoolFilters {
   clientId?: string;
-  status?: DispatchPoolStatus;
+  status?: string;
 }
 
 /**
@@ -123,33 +127,18 @@ export class DispatchPoolsResource {
   }
 
   /**
-   * List dispatch pools for an application.
-   */
-  listForApplication(appCode: string): ResultAsync<PoolListResponse, SdkError> {
-    return this.client.request<PoolListResponse>((httpClient, headers) =>
-      sdk.listApplicationDispatchPools({
-        client: httpClient,
-        headers,
-        path: { appCode },
-      }),
-    );
-  }
-
-  /**
    * Sync dispatch pools for an application.
    */
   sync(
-    appCode: string,
-    pools: SyncPoolsRequest['pools'],
+    applicationCode: string,
+    pools: PostApiAdminDispatchPoolsSyncData['body']['pools'],
     removeUnlisted = false,
-  ): ResultAsync<SyncResponse, SdkError> {
-    return this.client.request<SyncResponse>((httpClient, headers) =>
-      sdk.syncApplicationDispatchPools({
+  ): ResultAsync<SyncDispatchPoolsResponse, SdkError> {
+    return this.client.request<SyncDispatchPoolsResponse>((httpClient, headers) =>
+      sdk.postApiAdminDispatchPoolsSync({
         client: httpClient,
         headers,
-        path: { appCode },
-        query: { removeUnlisted },
-        body: { pools },
+        body: { applicationCode, pools, removeUnlisted },
       }),
     );
   }

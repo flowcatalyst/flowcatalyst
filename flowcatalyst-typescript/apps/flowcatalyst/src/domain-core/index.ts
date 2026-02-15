@@ -48,6 +48,7 @@ export {
   type NotFoundError,
   type BusinessRuleViolation,
   type ConcurrencyError,
+  type AuthorizationError,
 } from './errors.js';
 
 // Result type
@@ -70,6 +71,12 @@ export {
   ExecutionContext,
   type ExecutionContext as ExecutionContextType,
 } from './execution-context.js';
+
+// Authorization context
+export {
+  AuthorizationContext,
+  type AuthorizationContext as AuthorizationContextType,
+} from './authorization-context.js';
 
 // Audit context
 export {

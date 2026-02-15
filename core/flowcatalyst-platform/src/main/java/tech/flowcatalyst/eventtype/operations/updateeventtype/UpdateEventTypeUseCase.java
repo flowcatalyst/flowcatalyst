@@ -5,7 +5,6 @@ import jakarta.inject.Inject;
 import tech.flowcatalyst.eventtype.EventType;
 import tech.flowcatalyst.eventtype.EventTypeRepository;
 import tech.flowcatalyst.eventtype.events.EventTypeUpdated;
-import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
@@ -31,7 +30,11 @@ public class UpdateEventTypeUseCase implements UseCase<UpdateEventTypeCommand, E
 
     @Override
     public boolean authorizeResource(UpdateEventTypeCommand command, ExecutionContext context) {
-        return true;
+        var authz = context.authz();
+        if (authz == null) return true;
+        return repo.findByIdOptional(command.eventTypeId())
+            .map(et -> authz.canAccessResourceWithPrefix(et.code()))
+            .orElse(true);
     }
 
     @Override
@@ -48,16 +51,6 @@ public class UpdateEventTypeUseCase implements UseCase<UpdateEventTypeCommand, E
                 "EVENT_TYPE_NOT_FOUND",
                 "Event type not found",
                 Map.of("eventTypeId", command.eventTypeId())
-            ));
-        }
-
-        // Authorization check: can principal manage event types with this prefix?
-        AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canAccessResourceWithPrefix(eventType.code())) {
-            return Result.failure(new UseCaseError.AuthorizationError(
-                "NOT_AUTHORIZED",
-                "Not authorized to update this event type",
-                Map.of("eventTypeId", command.eventTypeId(), "code", eventType.code())
             ));
         }
 

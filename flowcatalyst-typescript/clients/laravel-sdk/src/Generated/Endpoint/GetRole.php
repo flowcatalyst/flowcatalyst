@@ -33,6 +33,8 @@ class GetRole extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implem
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\GetRoleNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\GetRoleUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\GetRoleForbiddenException
      *
      * @return null|\FlowCatalyst\Generated\Model\RoleDto1
      */
@@ -43,8 +45,14 @@ class GetRole extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implem
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\RoleDto1', 'json');
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetRoleNotFoundException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\GetRoleNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\NotFoundResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (401 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\GetRoleUnauthorizedException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\UnauthorizedResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\GetRoleForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ForbiddenResponse', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array

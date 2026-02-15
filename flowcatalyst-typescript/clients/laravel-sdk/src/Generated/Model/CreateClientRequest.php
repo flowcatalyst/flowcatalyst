@@ -13,19 +13,19 @@ class CreateClientRequest extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
-     * Client name
+     * Client display name
      *
      * @var string|null
      */
     protected $name;
     /**
-     * Unique identifier/slug
+     * Unique client identifier/slug
      *
      * @var string|null
      */
     protected $identifier;
     /**
-     * Client name
+     * Client display name
      *
      * @return string|null
      */
@@ -34,7 +34,7 @@ class CreateClientRequest extends \ArrayObject
         return $this->name;
     }
     /**
-     * Client name
+     * Client display name
      *
      * @param string|null $name
      *
@@ -47,7 +47,7 @@ class CreateClientRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Unique identifier/slug
+     * Unique client identifier/slug
      *
      * @return string|null
      */
@@ -56,7 +56,7 @@ class CreateClientRequest extends \ArrayObject
         return $this->identifier;
     }
     /**
-     * Unique identifier/slug
+     * Unique client identifier/slug
      *
      * @param string|null $identifier
      *

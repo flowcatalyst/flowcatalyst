@@ -7,9 +7,9 @@ class SdkSuspendClient extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
     protected $id;
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\StatusChangeRequest $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\StatusChangeRequest1 $requestBody
      */
-    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\StatusChangeRequest $requestBody = null)
+    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\StatusChangeRequest1 $requestBody = null)
     {
         $this->id = $id;
         $this->body = $requestBody;
@@ -25,7 +25,7 @@ class SdkSuspendClient extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
-        if ($this->body instanceof \FlowCatalyst\Generated\Model\StatusChangeRequest) {
+        if ($this->body instanceof \FlowCatalyst\Generated\Model\StatusChangeRequest1) {
             return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
         }
         return [[], null];

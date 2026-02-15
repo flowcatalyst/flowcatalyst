@@ -51,9 +51,20 @@ class ErrorResponseNormalizer implements DenormalizerInterface, NormalizerInterf
         elseif (\array_key_exists('message', $data) && $data['message'] === null) {
             $object->setMessage(null);
         }
-        foreach ($data as $key => $value) {
-            if (preg_match('/.*/', (string) $key)) {
-                $object[$key] = $value;
+        if (\array_key_exists('details', $data) && $data['details'] !== null) {
+            $values = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+            foreach ($data['details'] as $key => $value) {
+                $values[$key] = $value;
+            }
+            $object->setDetails($values);
+            unset($data['details']);
+        }
+        elseif (\array_key_exists('details', $data) && $data['details'] === null) {
+            $object->setDetails(null);
+        }
+        foreach ($data as $key_1 => $value_1) {
+            if (preg_match('/.*/', (string) $key_1)) {
+                $object[$key_1] = $value_1;
             }
         }
         return $object;
@@ -67,9 +78,16 @@ class ErrorResponseNormalizer implements DenormalizerInterface, NormalizerInterf
         if ($data->isInitialized('message') && null !== $data->getMessage()) {
             $dataArray['message'] = $data->getMessage();
         }
-        foreach ($data as $key => $value) {
-            if (preg_match('/.*/', (string) $key)) {
-                $dataArray[$key] = $value;
+        if ($data->isInitialized('details') && null !== $data->getDetails()) {
+            $values = [];
+            foreach ($data->getDetails() as $key => $value) {
+                $values[$key] = $value;
+            }
+            $dataArray['details'] = $values;
+        }
+        foreach ($data as $key_1 => $value_1) {
+            if (preg_match('/.*/', (string) $key_1)) {
+                $dataArray[$key_1] = $value_1;
             }
         }
         return $dataArray;

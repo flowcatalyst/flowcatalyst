@@ -69,8 +69,9 @@ dependencies {
 
 
     // ==========================================================================
-    // Messaging (SQS for dispatch jobs) - use Quarkus extension
+    // Messaging (Queue abstraction for dispatch jobs)
     // ==========================================================================
+    implementation(project(":core:flowcatalyst-queue-client"))
     implementation("io.quarkiverse.amazonservices:quarkus-amazon-sqs")
     implementation("io.quarkiverse.amazonservices:quarkus-amazon-crt") // Native image support
     implementation("com.github.jnr:jnr-unixsocket:0.38.22") // Required by aws-crt for native builds

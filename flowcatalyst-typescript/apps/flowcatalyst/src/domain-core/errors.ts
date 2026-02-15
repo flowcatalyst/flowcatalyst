@@ -54,13 +54,22 @@ export interface ConcurrencyError extends UseCaseErrorBase {
 }
 
 /**
+ * Resource-level authorization failure.
+ * Maps to HTTP 403 Forbidden.
+ */
+export interface AuthorizationError extends UseCaseErrorBase {
+  readonly type: 'authorization';
+}
+
+/**
  * Union type for all use case errors.
  */
 export type UseCaseError =
   | ValidationError
   | NotFoundError
   | BusinessRuleViolation
-  | ConcurrencyError;
+  | ConcurrencyError
+  | AuthorizationError;
 
 /**
  * Factory functions for creating errors.
@@ -127,12 +136,30 @@ export const UseCaseError = {
   },
 
   /**
+   * Create an authorization error.
+   *
+   * @example
+   * ```typescript
+   * UseCaseError.authorization('RESOURCE_ACCESS_DENIED', 'Not authorized to access this resource')
+   * ```
+   */
+  authorization(
+    code: string,
+    message: string,
+    details: Record<string, unknown> = {},
+  ): AuthorizationError {
+    return { type: 'authorization', code, message, details };
+  },
+
+  /**
    * Get the HTTP status code for an error.
    */
   httpStatus(error: UseCaseError): number {
     switch (error.type) {
       case 'validation':
         return 400;
+      case 'authorization':
+        return 403;
       case 'not_found':
         return 404;
       case 'business_rule':

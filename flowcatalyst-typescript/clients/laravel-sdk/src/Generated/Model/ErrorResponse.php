@@ -13,19 +13,25 @@ class ErrorResponse extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
-     * Error code
+     * Error code for programmatic handling
      *
      * @var string|null
      */
     protected $code;
     /**
-     * Error message
+     * Human-readable error message
      *
      * @var string|null
      */
     protected $message;
     /**
-     * Error code
+     * Additional error details
+     *
+     * @var array<string, mixed>|null
+     */
+    protected $details;
+    /**
+     * Error code for programmatic handling
      *
      * @return string|null
      */
@@ -34,7 +40,7 @@ class ErrorResponse extends \ArrayObject
         return $this->code;
     }
     /**
-     * Error code
+     * Error code for programmatic handling
      *
      * @param string|null $code
      *
@@ -47,7 +53,7 @@ class ErrorResponse extends \ArrayObject
         return $this;
     }
     /**
-     * Error message
+     * Human-readable error message
      *
      * @return string|null
      */
@@ -56,7 +62,7 @@ class ErrorResponse extends \ArrayObject
         return $this->message;
     }
     /**
-     * Error message
+     * Human-readable error message
      *
      * @param string|null $message
      *
@@ -66,6 +72,28 @@ class ErrorResponse extends \ArrayObject
     {
         $this->initialized['message'] = true;
         $this->message = $message;
+        return $this;
+    }
+    /**
+     * Additional error details
+     *
+     * @return array<string, mixed>|null
+     */
+    public function getDetails(): ?iterable
+    {
+        return $this->details;
+    }
+    /**
+     * Additional error details
+     *
+     * @param array<string, mixed>|null $details
+     *
+     * @return self
+     */
+    public function setDetails(?iterable $details): self
+    {
+        $this->initialized['details'] = true;
+        $this->details = $details;
         return $this;
     }
 }

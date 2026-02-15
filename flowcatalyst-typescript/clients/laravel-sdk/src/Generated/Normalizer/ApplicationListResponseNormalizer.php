@@ -37,16 +37,23 @@ class ApplicationListResponseNormalizer implements DenormalizerInterface, Normal
         if (null === $data || false === \is_array($data)) {
             return $object;
         }
-        if (\array_key_exists('items', $data) && $data['items'] !== null) {
+        if (\array_key_exists('applications', $data) && $data['applications'] !== null) {
             $values = [];
-            foreach ($data['items'] as $value) {
-                $values[] = $this->denormalizer->denormalize($value, \FlowCatalyst\Generated\Model\ApplicationResponse::class, 'json', $context);
+            foreach ($data['applications'] as $value) {
+                $values[] = $this->denormalizer->denormalize($value, \FlowCatalyst\Generated\Model\ApplicationListItem::class, 'json', $context);
             }
-            $object->setItems($values);
-            unset($data['items']);
+            $object->setApplications($values);
+            unset($data['applications']);
         }
-        elseif (\array_key_exists('items', $data) && $data['items'] === null) {
-            $object->setItems(null);
+        elseif (\array_key_exists('applications', $data) && $data['applications'] === null) {
+            $object->setApplications(null);
+        }
+        if (\array_key_exists('total', $data) && $data['total'] !== null) {
+            $object->setTotal($data['total']);
+            unset($data['total']);
+        }
+        elseif (\array_key_exists('total', $data) && $data['total'] === null) {
+            $object->setTotal(null);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -58,12 +65,15 @@ class ApplicationListResponseNormalizer implements DenormalizerInterface, Normal
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        if ($data->isInitialized('items') && null !== $data->getItems()) {
+        if ($data->isInitialized('applications') && null !== $data->getApplications()) {
             $values = [];
-            foreach ($data->getItems() as $value) {
+            foreach ($data->getApplications() as $value) {
                 $values[] = $this->normalizer->normalize($value, 'json', $context);
             }
-            $dataArray['items'] = $values;
+            $dataArray['applications'] = $values;
+        }
+        if ($data->isInitialized('total') && null !== $data->getTotal()) {
+            $dataArray['total'] = $data->getTotal();
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {

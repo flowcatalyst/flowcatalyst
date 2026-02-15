@@ -69,6 +69,11 @@ export interface PrincipalRepository extends PaginatedRepository<Principal> {
     applicationIds: string[],
     tx?: TransactionContext,
   ): Promise<void>;
+  /** Load application access records with grantedAt timestamps. */
+  loadApplicationAccessWithGrantedAt(
+    principalId: string,
+    tx?: TransactionContext,
+  ): Promise<{ applicationId: string; grantedAt: Date }[]>;
   /** Find principals with optional filters and pagination. */
   findFilteredPaged(
     filters: PrincipalFilters,
@@ -638,6 +643,20 @@ export function createPrincipalRepository(defaultDb: AnyDb): PrincipalRepository
             })),
           );
       }
+    },
+
+    async loadApplicationAccessWithGrantedAt(
+      principalId: string,
+      tx?: TransactionContext,
+    ): Promise<{ applicationId: string; grantedAt: Date }[]> {
+      const records = await db(tx)
+        .select({
+          applicationId: principalApplicationAccess.applicationId,
+          grantedAt: principalApplicationAccess.grantedAt,
+        })
+        .from(principalApplicationAccess)
+        .where(eq(principalApplicationAccess.principalId, principalId));
+      return records;
     },
   };
 }

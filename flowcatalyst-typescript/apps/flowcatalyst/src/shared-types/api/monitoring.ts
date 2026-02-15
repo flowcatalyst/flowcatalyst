@@ -65,6 +65,7 @@ export const WarningCategory = {
   BROKER_HEALTH: 'BROKER_HEALTH',
   CONSUMER_RESTART: 'CONSUMER_RESTART',
   CONSUMER_RESTART_FAILED: 'CONSUMER_RESTART_FAILED',
+  ROUTING: 'ROUTING',
 } as const;
 
 export type WarningCategory = (typeof WarningCategory)[keyof typeof WarningCategory];

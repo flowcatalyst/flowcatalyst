@@ -25,14 +25,12 @@ class ClientDto extends \ArrayObject
      */
     protected $name;
     /**
-     * Client identifier/slug
+     * Unique client identifier/slug
      *
      * @var string|null
      */
     protected $identifier;
     /**
-     * Client status (ACTIVE, SUSPENDED, INACTIVE)
-     *
      * @var string|null
      */
     protected $status;
@@ -99,7 +97,7 @@ class ClientDto extends \ArrayObject
         return $this;
     }
     /**
-     * Client identifier/slug
+     * Unique client identifier/slug
      *
      * @return string|null
      */
@@ -108,7 +106,7 @@ class ClientDto extends \ArrayObject
         return $this->identifier;
     }
     /**
-     * Client identifier/slug
+     * Unique client identifier/slug
      *
      * @param string|null $identifier
      *
@@ -121,8 +119,6 @@ class ClientDto extends \ArrayObject
         return $this;
     }
     /**
-     * Client status (ACTIVE, SUSPENDED, INACTIVE)
-     *
      * @return string|null
      */
     public function getStatus(): ?string
@@ -130,8 +126,6 @@ class ClientDto extends \ArrayObject
         return $this->status;
     }
     /**
-     * Client status (ACTIVE, SUSPENDED, INACTIVE)
-     *
      * @param string|null $status
      *
      * @return self

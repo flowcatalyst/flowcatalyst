@@ -8,7 +8,6 @@ import tech.flowcatalyst.eventtype.EventType;
 import tech.flowcatalyst.eventtype.EventTypeRepository;
 import tech.flowcatalyst.platform.client.Client;
 import tech.flowcatalyst.platform.client.ClientRepository;
-import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UseCase;
@@ -52,7 +51,13 @@ public class CreateSubscriptionUseCase implements UseCase<CreateSubscriptionComm
 
     @Override
     public boolean authorizeResource(CreateSubscriptionCommand command, ExecutionContext context) {
-        return true;
+        var authz = context.authz();
+        if (authz == null) return true;
+        if (command.serviceAccountId() == null || command.serviceAccountId().isBlank()) return true;
+        var serviceAccount = serviceAccountRepo.findByIdOptional(command.serviceAccountId()).orElse(null);
+        if (serviceAccount == null) return true;
+        if (serviceAccount.applicationId == null) return true;
+        return authz.canAccessApplication(serviceAccount.applicationId);
     }
 
     @Override
@@ -190,19 +195,6 @@ public class CreateSubscriptionUseCase implements UseCase<CreateSubscriptionComm
                 Map.of("serviceAccountId", command.serviceAccountId())
             ));
         }
-        ServiceAccount serviceAccount = serviceAccountOpt.get();
-
-        // Authorization check: if service account is linked to an application, can principal manage it?
-        AuthorizationContext authz = context.authz();
-        if (authz != null && serviceAccount.applicationId != null &&
-                !authz.canAccessApplication(serviceAccount.applicationId)) {
-            return Result.failure(new UseCaseError.AuthorizationError(
-                "NOT_AUTHORIZED",
-                "Not authorized to create subscriptions for this application",
-                Map.of("serviceAccountId", command.serviceAccountId(), "applicationId", serviceAccount.applicationId)
-            ));
-        }
-
         // Validate client (if provided)
         String clientIdentifier = null;
         if (command.clientId() != null && !command.clientId().isBlank()) {

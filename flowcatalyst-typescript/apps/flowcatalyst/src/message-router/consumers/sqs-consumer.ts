@@ -295,6 +295,7 @@ export class SqsConsumer implements QueueConsumer {
           authToken: parsed.authToken,
           callbackUrl: parsed.mediationTarget || parsed.callbackUrl,
           createdAt: parsed.createdAt,
+          highPriority: parsed.highPriority === true,
         };
       } catch (error) {
         this.logger.warn(

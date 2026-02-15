@@ -6,14 +6,12 @@ import tech.flowcatalyst.dispatchpool.DispatchPool;
 import tech.flowcatalyst.dispatchpool.DispatchPoolRepository;
 import tech.flowcatalyst.eventtype.EventType;
 import tech.flowcatalyst.eventtype.EventTypeRepository;
-import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UseCase;
 import tech.flowcatalyst.platform.common.UnitOfWork;
 import tech.flowcatalyst.dispatch.DispatchMode;
 import tech.flowcatalyst.platform.common.errors.UseCaseError;
-import tech.flowcatalyst.serviceaccount.entity.ServiceAccount;
 import tech.flowcatalyst.serviceaccount.repository.ServiceAccountRepository;
 import tech.flowcatalyst.subscription.*;
 import tech.flowcatalyst.subscription.events.SubscriptionUpdated;
@@ -46,7 +44,16 @@ public class UpdateSubscriptionUseCase implements UseCase<UpdateSubscriptionComm
 
     @Override
     public boolean authorizeResource(UpdateSubscriptionCommand command, ExecutionContext context) {
-        return true;
+        var authz = context.authz();
+        if (authz == null) return true;
+        if (command.subscriptionId() == null || command.subscriptionId().isBlank()) return true;
+        var subscription = subscriptionRepo.findByIdOptional(command.subscriptionId()).orElse(null);
+        if (subscription == null) return true;
+        if (subscription.serviceAccountId() == null) return true;
+        var serviceAccount = serviceAccountRepo.findByIdOptional(subscription.serviceAccountId()).orElse(null);
+        if (serviceAccount == null) return true;
+        if (serviceAccount.applicationId == null) return true;
+        return authz.canAccessApplication(serviceAccount.applicationId);
     }
 
     @Override
@@ -71,22 +78,6 @@ public class UpdateSubscriptionUseCase implements UseCase<UpdateSubscriptionComm
         }
 
         Subscription existing = existingOpt.get();
-
-        // Authorization check: if subscription's service account is linked to an application, can principal manage it?
-        AuthorizationContext authz = context.authz();
-        if (authz != null && existing.serviceAccountId() != null) {
-            Optional<ServiceAccount> serviceAccountOpt = serviceAccountRepo.findByIdOptional(existing.serviceAccountId());
-            if (serviceAccountOpt.isPresent()) {
-                ServiceAccount serviceAccount = serviceAccountOpt.get();
-                if (serviceAccount.applicationId != null && !authz.canAccessApplication(serviceAccount.applicationId)) {
-                    return Result.failure(new UseCaseError.AuthorizationError(
-                        "NOT_AUTHORIZED",
-                        "Not authorized to update this subscription",
-                        Map.of("subscriptionId", command.subscriptionId(), "applicationId", serviceAccount.applicationId)
-                    ));
-                }
-            }
-        }
 
         // Validate dispatch pool if changing
         String dispatchPoolId = existing.dispatchPoolId();

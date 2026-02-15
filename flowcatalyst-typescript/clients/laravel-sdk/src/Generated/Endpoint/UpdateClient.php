@@ -7,9 +7,9 @@ class UpdateClient extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint i
     protected $id;
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\UpdateClientRequest1 $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\UpdateClientRequest $requestBody
      */
-    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\UpdateClientRequest1 $requestBody = null)
+    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\UpdateClientRequest $requestBody = null)
     {
         $this->id = $id;
         $this->body = $requestBody;
@@ -25,7 +25,7 @@ class UpdateClient extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint i
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
-        if ($this->body instanceof \FlowCatalyst\Generated\Model\UpdateClientRequest1) {
+        if ($this->body instanceof \FlowCatalyst\Generated\Model\UpdateClientRequest) {
             return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
         }
         return [[], null];
@@ -42,26 +42,26 @@ class UpdateClient extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint i
      * @throws \FlowCatalyst\Generated\Exception\UpdateClientUnauthorizedException
      * @throws \FlowCatalyst\Generated\Exception\UpdateClientForbiddenException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\ClientDto
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ClientDto', 'json');
         }
-        if (400 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\UpdateClientBadRequestException($response);
+        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\UpdateClientBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorResponse', 'json'), $response);
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\UpdateClientNotFoundException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\UpdateClientNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\NotFoundResponse', 'json'), $response);
         }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\UpdateClientUnauthorizedException($response);
+        if (is_null($contentType) === false && (401 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\UpdateClientUnauthorizedException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\UnauthorizedResponse', 'json'), $response);
         }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\UpdateClientForbiddenException($response);
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\UpdateClientForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ForbiddenResponse', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array

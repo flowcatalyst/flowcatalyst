@@ -35,18 +35,30 @@ class CreateApplication extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpo
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\CreateApplicationBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\CreateApplicationConflictException
+     * @throws \FlowCatalyst\Generated\Exception\CreateApplicationUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\CreateApplicationForbiddenException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\ApplicationResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+        if (is_null($contentType) === false && (201 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApplicationResponse', 'json');
         }
-        if (400 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\CreateApplicationBadRequestException($response);
+        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\CreateApplicationBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (409 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\CreateApplicationConflictException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ConflictResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (401 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\CreateApplicationUnauthorizedException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\UnauthorizedResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\CreateApplicationForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ForbiddenResponse', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array

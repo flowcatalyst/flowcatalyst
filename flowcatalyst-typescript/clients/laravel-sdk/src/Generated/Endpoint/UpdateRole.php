@@ -38,8 +38,10 @@ class UpdateRole extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint imp
     /**
      * {@inheritdoc}
      *
-     * @throws \FlowCatalyst\Generated\Exception\UpdateRoleNotFoundException
      * @throws \FlowCatalyst\Generated\Exception\UpdateRoleBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\UpdateRoleNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\UpdateRoleUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\UpdateRoleForbiddenException
      *
      * @return null|\FlowCatalyst\Generated\Model\RoleDto1
      */
@@ -50,11 +52,17 @@ class UpdateRole extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint imp
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\RoleDto1', 'json');
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\UpdateRoleNotFoundException($response);
+        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\UpdateRoleBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorResponse', 'json'), $response);
         }
-        if (400 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\UpdateRoleBadRequestException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\UpdateRoleNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\NotFoundResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (401 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\UpdateRoleUnauthorizedException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\UnauthorizedResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\UpdateRoleForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ForbiddenResponse', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array

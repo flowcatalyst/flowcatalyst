@@ -6,31 +6,31 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
-import software.amazon.awssdk.services.sqs.SqsClient;
-import software.amazon.awssdk.services.sqs.model.SendMessageBatchRequest;
-import software.amazon.awssdk.services.sqs.model.SendMessageBatchRequestEntry;
-import software.amazon.awssdk.services.sqs.model.SendMessageBatchResponse;
 import tech.flowcatalyst.dispatch.DispatchMode;
 import tech.flowcatalyst.dispatchjob.entity.DispatchJob;
 import tech.flowcatalyst.dispatchjob.model.DispatchKind;
 import tech.flowcatalyst.dispatchjob.model.DispatchStatus;
 import tech.flowcatalyst.dispatchjob.model.MediationType;
 import tech.flowcatalyst.dispatchjob.model.MessagePointer;
+import tech.flowcatalyst.dispatchjob.queue.DispatchQueue;
+import tech.flowcatalyst.dispatchjob.queue.DispatchQueueConfig;
 import tech.flowcatalyst.dispatchjob.repository.DispatchJobRepository;
 import tech.flowcatalyst.dispatchjob.security.DispatchAuthService;
 import tech.flowcatalyst.platform.shared.EntityType;
 import tech.flowcatalyst.platform.shared.TsidGenerator;
+import tech.flowcatalyst.queue.QueueMessage;
+import tech.flowcatalyst.queue.QueuePublishResult;
+import tech.flowcatalyst.queue.QueuePublisher;
 import tech.flowcatalyst.subscription.SubscriptionCache;
 import tech.flowcatalyst.subscription.SubscriptionCache.CachedSubscription;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Service for creating dispatch jobs from events.
@@ -52,7 +52,6 @@ public class EventDispatchService {
 
     private static final Logger LOG = Logger.getLogger(EventDispatchService.class);
     private static final MediationType MEDIATION_TYPE = MediationType.HTTP;
-    private static final int SQS_BATCH_SIZE = 10;
 
     @Inject
     SubscriptionCache subscriptionCache;
@@ -64,19 +63,17 @@ public class EventDispatchService {
     DispatchAuthService dispatchAuthService;
 
     @Inject
-    SqsClient sqsClient;
+    @DispatchQueue
+    QueuePublisher queuePublisher;
+
+    @Inject
+    DispatchQueueConfig dispatchQueueConfig;
 
     @Inject
     ObjectMapper objectMapper;
 
     @ConfigProperty(name = "flowcatalyst.features.messaging-enabled", defaultValue = "true")
     boolean messagingEnabled;
-
-    @ConfigProperty(name = "flowcatalyst.dispatch.queue-url")
-    Optional<String> queueUrl;
-
-    @ConfigProperty(name = "flowcatalyst.dispatch.processing-endpoint", defaultValue = "http://localhost:8080/api/dispatch/process")
-    String processingEndpoint;
 
     /**
      * Create dispatch jobs for a single event and queue them.
@@ -184,8 +181,7 @@ public class EventDispatchService {
             return;
         }
 
-        // Batch send to queue
-        Set<String> failedJobIds = sendToQueueBatch(jobs);
+        Set<String> failedJobIds = publishBatch(jobs);
 
         // Handle failures: update failed jobs to PENDING
         if (!failedJobIds.isEmpty()) {
@@ -307,73 +303,50 @@ public class EventDispatchService {
     }
 
     /**
-     * Send dispatch jobs to the queue in batches.
+     * Publish dispatch jobs to the queue in batch.
      *
      * @param jobs The dispatch jobs to queue
      * @return Set of job IDs that failed to queue
      */
-    private Set<String> sendToQueueBatch(List<DispatchJob> jobs) {
-        Set<String> failedJobIds = new java.util.HashSet<>();
+    private Set<String> publishBatch(List<DispatchJob> jobs) {
+        try {
+            List<QueueMessage> messages = jobs.stream()
+                .map(this::toQueueMessage)
+                .toList();
 
-        // Process in batches of 10 (SQS limit)
-        for (int i = 0; i < jobs.size(); i += SQS_BATCH_SIZE) {
-            List<DispatchJob> batch = jobs.subList(i, Math.min(i + SQS_BATCH_SIZE, jobs.size()));
-            Set<String> batchFailures = sendBatchToQueue(batch);
-            failedJobIds.addAll(batchFailures);
+            QueuePublishResult result = queuePublisher.publishBatch(messages);
+
+            return new HashSet<>(result.failedMessageIds());
+
+        } catch (Exception e) {
+            LOG.errorf(e, "Failed to publish batch of %d dispatch jobs to queue", jobs.size());
+            var failedIds = new HashSet<String>();
+            jobs.forEach(j -> failedIds.add(j.id));
+            return failedIds;
         }
-
-        return failedJobIds;
     }
 
     /**
-     * Send a batch of jobs to the queue (max 10).
+     * Convert a dispatch job to a QueueMessage with a serialized MessagePointer body.
      */
-    private Set<String> sendBatchToQueue(List<DispatchJob> batch) {
+    private QueueMessage toQueueMessage(DispatchJob job) {
         try {
-            List<SendMessageBatchRequestEntry> entries = new ArrayList<>();
+            var authToken = dispatchAuthService.generateAuthToken(job.id);
+            var pointer = new MessagePointer(
+                job.id,
+                job.dispatchPoolId != null ? job.dispatchPoolId : dispatchQueueConfig.defaultPoolCode(),
+                authToken,
+                MEDIATION_TYPE,
+                dispatchQueueConfig.processingEndpoint(),
+                job.messageGroup,
+                null
+            );
 
-            for (DispatchJob job : batch) {
-                String authToken = dispatchAuthService.generateAuthToken(job.id);
-                MessagePointer pointer = new MessagePointer(
-                    job.id,
-                    job.dispatchPoolId,  // Use pool ID as pool code
-                    authToken,
-                    MEDIATION_TYPE,
-                    processingEndpoint,
-                    job.messageGroup,
-                    null
-                );
+            var messageBody = objectMapper.writeValueAsString(pointer);
+            return new QueueMessage(job.id, job.messageGroup, job.id, messageBody);
 
-                String messageBody = objectMapper.writeValueAsString(pointer);
-
-                SendMessageBatchRequestEntry entry = SendMessageBatchRequestEntry.builder()
-                    .id(job.id)
-                    .messageBody(messageBody)
-                    .messageGroupId(job.messageGroup)
-                    .messageDeduplicationId(job.id)
-                    .build();
-
-                entries.add(entry);
-            }
-
-            SendMessageBatchRequest request = SendMessageBatchRequest.builder()
-                .queueUrl(queueUrl.orElse(""))
-                .entries(entries)
-                .build();
-
-            SendMessageBatchResponse response = sqsClient.sendMessageBatch(request);
-
-            // Collect failed message IDs
-            return response.failed().stream()
-                .map(f -> f.id())
-                .collect(Collectors.toSet());
-
-        } catch (Exception e) {
-            LOG.errorf(e, "Failed to send batch of %d messages to queue", batch.size());
-            // On complete failure, return all job IDs as failed
-            return batch.stream()
-                .map(j -> j.id)
-                .collect(Collectors.toSet());
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize MessagePointer for job " + job.id, e);
         }
     }
 

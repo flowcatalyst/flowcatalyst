@@ -13,6 +13,9 @@ interface QueuedMessage {
 /**
  * Handler for a single message group - processes messages sequentially (FIFO)
  * Matches Java's per-message-group virtual thread pattern
+ *
+ * Supports two-tier priority: high-priority messages are dequeued before
+ * regular messages within the same group, matching Java ProcessPoolImpl.
  */
 export class MessageGroupHandler {
   private readonly messageGroupId: string;
@@ -20,7 +23,8 @@ export class MessageGroupHandler {
   private readonly onCleanup: () => void;
   private readonly logger: Logger;
 
-  private readonly queue: QueuedMessage[] = [];
+  private readonly highPriorityQueue: QueuedMessage[] = [];
+  private readonly regularQueue: QueuedMessage[] = [];
   private processing = false;
   private idleTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
@@ -41,22 +45,28 @@ export class MessageGroupHandler {
 
   /**
    * Enqueue a message for processing
+   * Routes to high-priority or regular queue based on message flag
    */
   enqueue(message: QueueMessage, callback: MessageCallback): void {
-    this.queue.push({ message, callback });
+    if (message.pointer.highPriority) {
+      this.highPriorityQueue.push({ message, callback });
+    } else {
+      this.regularQueue.push({ message, callback });
+    }
     this.clearIdleTimeout();
     this.processNext();
   }
 
   /**
-   * Process messages sequentially
+   * Process messages sequentially, high-priority first
    */
   private async processNext(): Promise<void> {
     if (this.processing) {
       return; // Already processing
     }
 
-    const item = this.queue.shift();
+    // Dequeue: high-priority first, then regular
+    const item = this.highPriorityQueue.shift() ?? this.regularQueue.shift();
     if (!item) {
       // Queue empty - start idle timeout
       this.startIdleTimeout();
@@ -84,7 +94,7 @@ export class MessageGroupHandler {
    */
   private startIdleTimeout(): void {
     this.idleTimeoutHandle = setTimeout(() => {
-      if (this.queue.length === 0 && !this.processing) {
+      if (this.highPriorityQueue.length === 0 && this.regularQueue.length === 0 && !this.processing) {
         this.logger.debug('Message group handler idle timeout - cleaning up');
         this.onCleanup();
       }
@@ -102,10 +112,10 @@ export class MessageGroupHandler {
   }
 
   /**
-   * Get queue size
+   * Get queue size (both queues combined)
    */
   getQueueSize(): number {
-    return this.queue.length;
+    return this.highPriorityQueue.length + this.regularQueue.length;
   }
 
   /**

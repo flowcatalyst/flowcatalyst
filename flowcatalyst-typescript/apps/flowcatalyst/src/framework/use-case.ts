@@ -46,7 +46,7 @@
  * ```
  */
 
-import type { Result, DomainEvent, ExecutionContext } from '@flowcatalyst/domain-core';
+import { Result, UseCaseError, type DomainEvent, type ExecutionContext } from '@flowcatalyst/domain-core';
 import type { Command } from './command.js';
 
 export interface UseCase<TCommand extends Command, TEvent extends DomainEvent> {
@@ -79,6 +79,78 @@ export type UseCaseEvent<T> = T extends UseCase<Command, infer TEvent> ? TEvent 
  *     });
  * ```
  */
+/**
+ * Base class for use cases with resource-level authorization.
+ *
+ * Provides a template method via execute() that enforces resource-level
+ * authorization before delegating to business logic.
+ *
+ * **Deny by default**: authorizeResource() returns false unless explicitly
+ * overridden. Every use case must make a conscious authorization decision.
+ * Use cases with no resource-level restriction must override and return true.
+ *
+ * The two-level authorization model:
+ * 1. Action-level (API layer): "Can this principal perform this action?"
+ * 2. Resource-level (use case layer): "Can this principal perform this
+ *    action on THIS specific resource?" — handled by authorizeResource()
+ *
+ * @example
+ * ```typescript
+ * // Use case WITH resource restriction
+ * class DeleteEventTypeUseCase extends SecuredUseCase<DeleteEventTypeCommand, EventTypeDeletedEvent> {
+ *     authorizeResource(command: DeleteEventTypeCommand, context: ExecutionContext): boolean {
+ *         const authz = context.authz;
+ *         if (!authz) return true; // system call
+ *         return AuthorizationContext.canAccessResourceWithPrefix(authz, command.code);
+ *     }
+ *
+ *     async doExecute(command: DeleteEventTypeCommand, context: ExecutionContext): Promise<Result<EventTypeDeletedEvent>> {
+ *         // Business logic here
+ *     }
+ * }
+ *
+ * // Use case WITHOUT resource restriction (must explicitly opt out)
+ * class ListApplicationsUseCase extends SecuredUseCase<ListApplicationsCommand, ApplicationsListedEvent> {
+ *     authorizeResource(): boolean {
+ *         return true; // No resource-level restriction — filtering done in query
+ *     }
+ *     // ...
+ * }
+ * ```
+ */
+export abstract class SecuredUseCase<TCommand extends Command, TEvent extends DomainEvent>
+  implements UseCase<TCommand, TEvent>
+{
+  async execute(command: TCommand, context: ExecutionContext): Promise<Result<TEvent>> {
+    if (!this.authorizeResource(command, context)) {
+      return Result.failure(
+        UseCaseError.authorization('RESOURCE_ACCESS_DENIED', 'Not authorized to access this resource'),
+      );
+    }
+    return this.doExecute(command, context);
+  }
+
+  /**
+   * Resource-level authorization guard.
+   *
+   * **Returns false by default** — denies access unless explicitly overridden.
+   * Subclasses MUST override this method to either:
+   * - Return true (no resource-level restriction needed)
+   * - Check context.authz and return true/false based on the principal's access
+   *
+   * When authz is null (system/internal call), return true to bypass auth.
+   * When entity not found, return true to let doExecute() handle 404 properly.
+   */
+  authorizeResource(_command: TCommand, _context: ExecutionContext): boolean {
+    return false;
+  }
+
+  /**
+   * Business logic implementation.
+   */
+  abstract doExecute(command: TCommand, context: ExecutionContext): Promise<Result<TEvent>>;
+}
+
 export type UseCaseFactory<
   TCommand extends Command,
   TEvent extends DomainEvent,

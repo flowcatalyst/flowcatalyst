@@ -22,6 +22,12 @@ import { computeKeyId, generateKeyPair, writeKeyPair, loadKeyDir } from './key-u
 
 export interface JwtKeyServiceConfig {
   issuer: string;
+  /** Base64-encoded PEM private key content (containers/cloud, highest priority) */
+  privateKey?: string | undefined;
+  /** Base64-encoded PEM public key content (containers/cloud, highest priority) */
+  publicKey?: string | undefined;
+  /** Base64-encoded PEM previous public key for zero-downtime key rotation */
+  previousPublicKey?: string | undefined;
   /** Directory containing key pairs: {kid}.private.pem + {kid}.public.pem */
   keyDir?: string | undefined;
   /** Path to RSA private key PEM file (legacy/production) */
@@ -76,6 +82,9 @@ export function extractApplicationCodes(roles: string[]): string[] {
 export async function createJwtKeyService(config: JwtKeyServiceConfig): Promise<JwtKeyService> {
   const {
     issuer,
+    privateKey,
+    publicKey,
+    previousPublicKey,
     keyDir,
     privateKeyPath,
     publicKeyPath,
@@ -94,15 +103,22 @@ export async function createJwtKeyService(config: JwtKeyServiceConfig): Promise<
   // Resolve the effective key directory
   const effectiveKeyDir = keyDir ?? devKeyDir;
 
-  if (keyDir) {
-    // Mode 1: Directory-based multi-key (rotation-capable)
+  if (privateKey && publicKey) {
+    // Mode 1: Base64-encoded PEM content from env vars (containers/cloud)
+    const result = await loadKeysFromEnvVars(privateKey, publicKey, previousPublicKey);
+    signingPrivateKey = result.signingPrivateKey;
+    signingKeyId = result.signingKeyId;
+    jwks = result.jwks;
+    signingJwks = result.signingJwks;
+  } else if (keyDir) {
+    // Mode 2: Directory-based multi-key (rotation-capable)
     const result = await loadOrBootstrapKeyDir(effectiveKeyDir);
     signingPrivateKey = result.signingPrivateKey;
     signingKeyId = result.signingKeyId;
     jwks = result.jwks;
     signingJwks = result.signingJwks;
   } else if (privateKeyPath && publicKeyPath) {
-    // Mode 2: Legacy single file-based keys (production)
+    // Mode 3: Legacy single file-based keys (production)
     const privatePem = await readFile(privateKeyPath, 'utf-8');
     const publicPem = await readFile(publicKeyPath, 'utf-8');
     signingPrivateKey = await jose.importPKCS8(privatePem, 'RS256');
@@ -122,7 +138,7 @@ export async function createJwtKeyService(config: JwtKeyServiceConfig): Promise<
     privateJwk.use = 'sig';
     signingJwks = { keys: [privateJwk] };
   } else {
-    // Mode 3: Auto-generate into devKeyDir (development)
+    // Mode 4: Auto-generate into devKeyDir (development)
     const result = await loadOrBootstrapKeyDir(effectiveKeyDir);
     signingPrivateKey = result.signingPrivateKey;
     signingKeyId = result.signingKeyId;
@@ -201,6 +217,63 @@ export async function createJwtKeyService(config: JwtKeyServiceConfig): Promise<
       return signingKeyId;
     },
   };
+}
+
+/**
+ * Decode a base64-encoded PEM string back to PEM text.
+ * Matches the Java JwtKeyService.loadKeysFromEnvVars() behavior:
+ * env vars contain base64(PEM content), so we decode to get the PEM.
+ */
+function decodeBase64Pem(base64: string): string {
+  return Buffer.from(base64, 'base64').toString('utf-8');
+}
+
+/**
+ * Load keys from base64-encoded PEM content (env vars).
+ * Supports an optional previous public key for zero-downtime key rotation.
+ */
+async function loadKeysFromEnvVars(
+  privateKeyBase64: string,
+  publicKeyBase64: string,
+  previousPublicKeyBase64?: string | undefined,
+) {
+  const privatePem = decodeBase64Pem(privateKeyBase64);
+  const publicPem = decodeBase64Pem(publicKeyBase64);
+
+  const signingPrivateKey = await jose.importPKCS8(privatePem, 'RS256');
+  const signingKeyId = computeKeyId(publicPem);
+
+  // Current public key
+  const currentPublicKey = await jose.importSPKI(publicPem, 'RS256');
+  const currentPublicJwk = await jose.exportJWK(currentPublicKey);
+  currentPublicJwk.kid = signingKeyId;
+  currentPublicJwk.alg = 'RS256';
+  currentPublicJwk.use = 'sig';
+
+  const publicJwkKeys: jose.JWK[] = [currentPublicJwk];
+
+  // Previous public key for rotation (tokens signed with old key remain valid)
+  if (previousPublicKeyBase64) {
+    const previousPem = decodeBase64Pem(previousPublicKeyBase64);
+    const previousPublicKey = await jose.importSPKI(previousPem, 'RS256');
+    const previousJwk = await jose.exportJWK(previousPublicKey);
+    previousJwk.kid = computeKeyId(previousPem);
+    previousJwk.alg = 'RS256';
+    previousJwk.use = 'sig';
+    publicJwkKeys.push(previousJwk);
+  }
+
+  const jwks: jose.JSONWebKeySet = { keys: publicJwkKeys };
+
+  // Signing JWKS (private key for oidc-provider)
+  const extractablePrivKey = await jose.importPKCS8(privatePem, 'RS256', { extractable: true });
+  const signingPrivateJwk = await jose.exportJWK(extractablePrivKey);
+  signingPrivateJwk.kid = signingKeyId;
+  signingPrivateJwk.alg = 'RS256';
+  signingPrivateJwk.use = 'sig';
+  const signingJwks: jose.JSONWebKeySet = { keys: [signingPrivateJwk] };
+
+  return { signingPrivateKey, signingKeyId, jwks, signingJwks };
 }
 
 /**

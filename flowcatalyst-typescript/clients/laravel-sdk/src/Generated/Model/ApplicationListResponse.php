@@ -13,25 +13,59 @@ class ApplicationListResponse extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
-     * @var list<ApplicationResponse>|null
+     * List of applications
+     *
+     * @var list<ApplicationListItem>|null
      */
-    protected $items;
+    protected $applications;
     /**
-     * @return list<ApplicationResponse>|null
+     * Total count
+     *
+     * @var int|null
      */
-    public function getItems(): ?array
+    protected $total;
+    /**
+     * List of applications
+     *
+     * @return list<ApplicationListItem>|null
+     */
+    public function getApplications(): ?array
     {
-        return $this->items;
+        return $this->applications;
     }
     /**
-     * @param list<ApplicationResponse>|null $items
+     * List of applications
+     *
+     * @param list<ApplicationListItem>|null $applications
      *
      * @return self
      */
-    public function setItems(?array $items): self
+    public function setApplications(?array $applications): self
     {
-        $this->initialized['items'] = true;
-        $this->items = $items;
+        $this->initialized['applications'] = true;
+        $this->applications = $applications;
+        return $this;
+    }
+    /**
+     * Total count
+     *
+     * @return int|null
+     */
+    public function getTotal(): ?int
+    {
+        return $this->total;
+    }
+    /**
+     * Total count
+     *
+     * @param int|null $total
+     *
+     * @return self
+     */
+    public function setTotal(?int $total): self
+    {
+        $this->initialized['total'] = true;
+        $this->total = $total;
         return $this;
     }
 }

@@ -55,6 +55,12 @@ import {
 import { registerSdkClientsRoutes, type SdkClientsDeps } from './sdk/clients.js';
 import { registerSdkRolesRoutes, type SdkRolesDeps } from './sdk/roles.js';
 import { registerSdkPrincipalsRoutes, type SdkPrincipalsDeps } from './sdk/principals.js';
+import { registerEventsBatchRoutes, type EventsBatchDeps } from './sdk/events-batch.js';
+import {
+  registerDispatchJobsBatchRoutes,
+  type DispatchJobsBatchDeps,
+} from './sdk/dispatch-jobs-batch.js';
+import { registerAuditLogsBatchRoutes, type AuditLogsBatchDeps } from './sdk/audit-logs-batch.js';
 import { registerMeRoutes, type MeRoutesDeps } from './me.js';
 import { registerPublicConfigRoutes, type PublicConfigRoutesDeps } from './public/config.js';
 
@@ -184,6 +190,28 @@ export async function registerSdkRoutes(
 }
 
 /**
+ * Dependencies for batch ingestion routes.
+ */
+export interface BatchRoutesDeps extends EventsBatchDeps, DispatchJobsBatchDeps, AuditLogsBatchDeps {}
+
+/**
+ * Register batch ingestion routes (outbox processor / SDK batch endpoints).
+ */
+export async function registerBatchRoutes(
+  fastify: FastifyInstance,
+  deps: BatchRoutesDeps,
+): Promise<void> {
+  await fastify.register(
+    async (batchRouter) => {
+      await registerEventsBatchRoutes(batchRouter, deps);
+      await registerDispatchJobsBatchRoutes(batchRouter, deps);
+      await registerAuditLogsBatchRoutes(batchRouter, deps);
+    },
+    { prefix: '/api' },
+  );
+}
+
+/**
  * Register user-facing /api/me routes.
  */
 export async function registerMeApiRoutes(
@@ -256,3 +284,6 @@ export { type DebugDispatchJobsBffDeps } from './bff/debug-dispatch-jobs.js';
 export { type SdkClientsDeps } from './sdk/clients.js';
 export { type SdkRolesDeps } from './sdk/roles.js';
 export { type SdkPrincipalsDeps } from './sdk/principals.js';
+export { type EventsBatchDeps } from './sdk/events-batch.js';
+export { type DispatchJobsBatchDeps } from './sdk/dispatch-jobs-batch.js';
+export { type AuditLogsBatchDeps } from './sdk/audit-logs-batch.js';

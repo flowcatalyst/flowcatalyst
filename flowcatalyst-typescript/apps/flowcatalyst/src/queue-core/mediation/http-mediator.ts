@@ -117,18 +117,19 @@ export class HttpMediator {
     for (let attempt = 0; attempt <= this.config.retries; attempt++) {
       try {
         if (attempt > 0) {
-          const delay = this.config.retryDelayMs * Math.pow(2, attempt - 1);
+          const delay = this.config.retryDelayMs * attempt;
           this.logger.debug({ attempt, delay, messageId: message.messageId }, 'Retrying request');
           await sleep(delay);
         }
 
         const result = await this.executeRequest(message, callbackUrl);
 
-        // Don't retry on success or client errors
+        // Don't retry on success, client errors, rate limits, or deferred
         if (
           result.outcome === 'SUCCESS' ||
           result.outcome === 'ERROR_CONFIG' ||
-          result.outcome === 'DEFERRED'
+          result.outcome === 'DEFERRED' ||
+          (result.outcome === 'ERROR_PROCESS' && result.statusCode === 429)
         ) {
           return result;
         }
@@ -176,7 +177,7 @@ export class HttpMediator {
         headers['Authorization'] = `Bearer ${message.pointer.authToken}`;
       }
 
-      const body = JSON.stringify(message.pointer.payload);
+      const body = JSON.stringify({ messageId: message.messageId });
 
       const response = await request(callbackUrl, {
         method: 'POST',
@@ -190,6 +191,25 @@ export class HttpMediator {
 
       if (statusCode >= 200 && statusCode < 300) {
         return this.handleSuccessResponse(response, statusCode, durationMs);
+      }
+
+      if (statusCode === 429) {
+        const retryAfterHeader = response.headers['retry-after'];
+        const retryAfterRaw = Array.isArray(retryAfterHeader) ? retryAfterHeader[0] : retryAfterHeader;
+        const retryAfter = parseInt(retryAfterRaw ?? '', 10);
+        const delaySeconds = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 30;
+        await this.readResponseBody(response); // drain body
+        this.logger.warn(
+          { statusCode, callbackUrl, delaySeconds },
+          'Rate limited by downstream',
+        );
+        return {
+          outcome: 'ERROR_PROCESS',
+          statusCode,
+          error: 'Rate limited by downstream',
+          durationMs,
+          delaySeconds,
+        };
       }
 
       if (statusCode >= 400 && statusCode < 500) {
@@ -268,6 +288,7 @@ export class HttpMediator {
             statusCode,
             error: body.message || 'Message deferred',
             durationMs,
+            ...(body.delaySeconds != null ? { delaySeconds: body.delaySeconds } : {}),
           };
         }
       }

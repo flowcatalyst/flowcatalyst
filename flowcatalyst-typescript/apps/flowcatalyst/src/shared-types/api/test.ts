@@ -15,6 +15,7 @@ export interface TestEndpointResponse {
 export interface MediationResponse {
   ack: boolean;
   message: string;
+  delaySeconds?: number;
 }
 
 /**

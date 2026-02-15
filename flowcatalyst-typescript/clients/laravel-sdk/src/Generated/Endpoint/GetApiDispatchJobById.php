@@ -45,7 +45,7 @@ class GetApiDispatchJobById extends \FlowCatalyst\Generated\Runtime\Client\BaseE
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\DispatchJobResponse', 'json');
         }
         if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiDispatchJobByIdNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorResponse3', 'json'), $response);
+            throw new \FlowCatalyst\Generated\Exception\GetApiDispatchJobByIdNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorResponse4', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array

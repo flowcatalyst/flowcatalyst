@@ -302,6 +302,9 @@ export class QueueManagerService {
   private async monitorAndRestartUnhealthyConsumers(): Promise<void> {
     if (!this.running) return;
 
+    // Auto-cleanup warnings older than 8 hours (matching Java)
+    this.warnings.clearOlderThan(8);
+
     this.logger.info({ consumerCount: this.consumers.size }, 'Health check running');
 
     for (const [queueId, consumer] of this.consumers) {
@@ -817,18 +820,20 @@ export class QueueManagerService {
         queueStat.totalMessages30min++;
       }
 
-      // Route to process pool
-      const pool = this.processPools.get(message.pointer.poolCode);
+      // Route to process pool (with DEFAULT-POOL fallback)
+      let pool = this.processPools.get(message.pointer.poolCode);
       if (!pool) {
         this.logger.warn(
           { poolCode: message.pointer.poolCode, messageId: message.messageId },
-          'No pool found for message - NACKing',
+          'No pool found, routing to DEFAULT-POOL',
         );
-        if (callback) {
-          await callback.nack();
-        }
-        this.cleanupMessage(pipelineKey, message.messageId);
-        continue;
+        this.warnings.add(
+          'ROUTING',
+          'WARNING',
+          `No pool found for code [${message.pointer.poolCode}], using default pool`,
+          'QueueManager',
+        );
+        pool = this.getOrCreateDefaultPool();
       }
 
       // Create callback wrapper that cleans up tracking on completion
@@ -842,6 +847,9 @@ export class QueueManagerService {
             queueStat.totalConsumed++;
             queueStat.totalConsumed5min++;
             queueStat.totalConsumed30min++;
+            queueStat.successRate = queueStat.totalMessages > 0 ? queueStat.totalConsumed / queueStat.totalMessages : 1.0;
+            queueStat.successRate5min = queueStat.totalMessages5min > 0 ? queueStat.totalConsumed5min / queueStat.totalMessages5min : 1.0;
+            queueStat.successRate30min = queueStat.totalMessages30min > 0 ? queueStat.totalConsumed30min / queueStat.totalMessages30min : 1.0;
           }
         },
         nack: async (visibilityTimeoutSeconds?: number) => {
@@ -853,6 +861,9 @@ export class QueueManagerService {
             queueStat.totalFailed++;
             queueStat.totalFailed5min++;
             queueStat.totalFailed30min++;
+            queueStat.successRate = queueStat.totalMessages > 0 ? queueStat.totalConsumed / queueStat.totalMessages : 1.0;
+            queueStat.successRate5min = queueStat.totalMessages5min > 0 ? queueStat.totalConsumed5min / queueStat.totalMessages5min : 1.0;
+            queueStat.successRate30min = queueStat.totalMessages30min > 0 ? queueStat.totalConsumed30min / queueStat.totalMessages30min : 1.0;
           }
         },
       };
@@ -870,6 +881,24 @@ export class QueueManagerService {
         this.cleanupMessage(pipelineKey, message.messageId);
       }
     }
+  }
+
+  /**
+   * Get or create the default fallback pool
+   */
+  private getOrCreateDefaultPool(): ProcessPool {
+    const defaultCode = 'DEFAULT-POOL';
+    let pool = this.processPools.get(defaultCode);
+    if (!pool) {
+      this.logger.info({ poolCode: defaultCode, concurrency: 20 }, 'Creating DEFAULT-POOL');
+      pool = new ProcessPool(
+        { code: defaultCode, concurrency: 20, rateLimitPerMinute: null },
+        this.httpMediator,
+        this.logger,
+      );
+      this.processPools.set(defaultCode, pool);
+    }
+    return pool;
   }
 
   /**

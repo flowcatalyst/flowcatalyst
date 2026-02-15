@@ -120,11 +120,9 @@ public class DispatchJobResource {
         LOG.infof("Creating batch of %d dispatch jobs, principal=%s", requests.size(), principalId);
 
         try {
-            List<DispatchJobResponse> results = requests.stream()
-                .map(request -> {
-                    DispatchJob job = dispatchJobService.createDispatchJob(request);
-                    return DispatchJobResponse.from(job);
-                })
+            List<DispatchJob> jobs = dispatchJobService.createDispatchJobs(requests);
+            List<DispatchJobResponse> results = jobs.stream()
+                .map(DispatchJobResponse::from)
                 .toList();
 
             return Response.status(201).entity(new BatchDispatchJobResponse(results, results.size())).build();

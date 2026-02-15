@@ -7,7 +7,6 @@ import tech.flowcatalyst.platform.authorization.AuthRoleRepository;
 import tech.flowcatalyst.platform.authorization.PermissionInput;
 import tech.flowcatalyst.platform.authorization.PermissionRegistry;
 import tech.flowcatalyst.platform.authorization.events.RoleUpdated;
-import tech.flowcatalyst.platform.common.AuthorizationContext;
 import tech.flowcatalyst.platform.common.ExecutionContext;
 import tech.flowcatalyst.platform.common.Result;
 import tech.flowcatalyst.platform.common.UnitOfWork;
@@ -35,21 +34,14 @@ public class UpdateRoleUseCase implements UseCase<UpdateRoleCommand, RoleUpdated
 
     @Override
     public boolean authorizeResource(UpdateRoleCommand command, ExecutionContext context) {
-        return true;
+        var authz = context.authz();
+        if (authz == null) return true;
+        if (command.roleName() == null || command.roleName().isBlank()) return true;
+        return authz.canAccessResourceWithPrefix(command.roleName());
     }
 
     @Override
     public Result<RoleUpdated> doExecute(UpdateRoleCommand command, ExecutionContext context) {
-        // Authorization check: can principal manage roles with this prefix?
-        AuthorizationContext authz = context.authz();
-        if (authz != null && !authz.canAccessResourceWithPrefix(command.roleName())) {
-            return Result.failure(new UseCaseError.AuthorizationError(
-                "NOT_AUTHORIZED",
-                "Not authorized to update this role",
-                Map.of("roleName", command.roleName())
-            ));
-        }
-
         AuthRole role = roleRepo.findByName(command.roleName()).orElse(null);
 
         if (role == null) {

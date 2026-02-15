@@ -54,6 +54,7 @@ class ListAuditLogs extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint 
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\ListAuditLogsUnauthorizedException
+     * @throws \FlowCatalyst\Generated\Exception\ListAuditLogsForbiddenException
      *
      * @return null|\FlowCatalyst\Generated\Model\AuditLogListResponse
      */
@@ -64,8 +65,11 @@ class ListAuditLogs extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint 
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\AuditLogListResponse', 'json');
         }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\ListAuditLogsUnauthorizedException($response);
+        if (is_null($contentType) === false && (401 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\ListAuditLogsUnauthorizedException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\UnauthorizedResponse', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\ListAuditLogsForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ForbiddenResponse', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array

@@ -14,6 +14,7 @@ import type { ErrorResponse } from './types.js';
  */
 const ERROR_STATUS_MAP: Record<string, number> = {
   validation: 400,
+  authorization: 403,
   not_found: 404,
   business_rule: 409,
   concurrency: 409,

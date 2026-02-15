@@ -26,15 +26,29 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\AddSchemaRequest1::class => \FlowCatalyst\Generated\Normalizer\AddSchemaRequest1Normalizer::class,
         
+        \FlowCatalyst\Generated\Model\AllowedOriginsResponse::class => \FlowCatalyst\Generated\Normalizer\AllowedOriginsResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApplicationListItem::class => \FlowCatalyst\Generated\Normalizer\ApplicationListItemNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\ApplicationListResponse::class => \FlowCatalyst\Generated\Normalizer\ApplicationListResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\ApplicationListResponse1::class => \FlowCatalyst\Generated\Normalizer\ApplicationListResponse1Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApplicationListResponse2::class => \FlowCatalyst\Generated\Normalizer\ApplicationListResponse2Normalizer::class,
         
         \FlowCatalyst\Generated\Model\ApplicationRef::class => \FlowCatalyst\Generated\Normalizer\ApplicationRefNormalizer::class,
         
         \FlowCatalyst\Generated\Model\ApplicationResponse::class => \FlowCatalyst\Generated\Normalizer\ApplicationResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\ApplicationResponse1::class => \FlowCatalyst\Generated\Normalizer\ApplicationResponse1Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApplicationResponse2::class => \FlowCatalyst\Generated\Normalizer\ApplicationResponse2Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApplicationRolesResponse::class => \FlowCatalyst\Generated\Normalizer\ApplicationRolesResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApplicationStatusResponse::class => \FlowCatalyst\Generated\Normalizer\ApplicationStatusResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApplicationsUpdatedResponse::class => \FlowCatalyst\Generated\Normalizer\ApplicationsUpdatedResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\AssignApplicationAccessRequest::class => \FlowCatalyst\Generated\Normalizer\AssignApplicationAccessRequestNormalizer::class,
         
@@ -46,9 +60,13 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\AssignRolesRequest2::class => \FlowCatalyst\Generated\Normalizer\AssignRolesRequest2Normalizer::class,
         
+        \FlowCatalyst\Generated\Model\AuditLogDetailDto::class => \FlowCatalyst\Generated\Normalizer\AuditLogDetailDtoNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\AuditLogDto::class => \FlowCatalyst\Generated\Normalizer\AuditLogDtoNormalizer::class,
         
         \FlowCatalyst\Generated\Model\AuditLogListResponse::class => \FlowCatalyst\Generated\Normalizer\AuditLogListResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\BatchAuditLogResponse::class => \FlowCatalyst\Generated\Normalizer\BatchAuditLogResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\BatchDispatchJobResponse::class => \FlowCatalyst\Generated\Normalizer\BatchDispatchJobResponseNormalizer::class,
         
@@ -60,9 +78,17 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\ClientApplicationDto::class => \FlowCatalyst\Generated\Normalizer\ClientApplicationDtoNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\ClientApplicationStatusResponse::class => \FlowCatalyst\Generated\Normalizer\ClientApplicationStatusResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ClientApplicationStatusResponse1::class => \FlowCatalyst\Generated\Normalizer\ClientApplicationStatusResponse1Normalizer::class,
+        
         \FlowCatalyst\Generated\Model\ClientApplicationsResponse::class => \FlowCatalyst\Generated\Normalizer\ClientApplicationsResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\ClientConfigListResponse::class => \FlowCatalyst\Generated\Normalizer\ClientConfigListResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\ClientConfigRequest::class => \FlowCatalyst\Generated\Normalizer\ClientConfigRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ClientConfigResponse::class => \FlowCatalyst\Generated\Normalizer\ClientConfigResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\ClientDto::class => \FlowCatalyst\Generated\Normalizer\ClientDtoNormalizer::class,
         
@@ -82,7 +108,11 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\ClientResponse::class => \FlowCatalyst\Generated\Normalizer\ClientResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\ClientStatusResponse::class => \FlowCatalyst\Generated\Normalizer\ClientStatusResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\ConfigEntry::class => \FlowCatalyst\Generated\Normalizer\ConfigEntryNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ConflictResponse::class => \FlowCatalyst\Generated\Normalizer\ConflictResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\ContextData::class => \FlowCatalyst\Generated\Normalizer\ContextDataNormalizer::class,
         
@@ -92,9 +122,17 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\ContextDataResponse2::class => \FlowCatalyst\Generated\Normalizer\ContextDataResponse2Normalizer::class,
         
+        \FlowCatalyst\Generated\Model\CorsOriginDeletedResponse::class => \FlowCatalyst\Generated\Normalizer\CorsOriginDeletedResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\CorsOriginDto::class => \FlowCatalyst\Generated\Normalizer\CorsOriginDtoNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\CorsOriginListResponse::class => \FlowCatalyst\Generated\Normalizer\CorsOriginListResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\CreateApplicationRequest::class => \FlowCatalyst\Generated\Normalizer\CreateApplicationRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\CreateApplicationRequest1::class => \FlowCatalyst\Generated\Normalizer\CreateApplicationRequest1Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\CreateAuditLogRequest::class => \FlowCatalyst\Generated\Normalizer\CreateAuditLogRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\CreateClientRequest::class => \FlowCatalyst\Generated\Normalizer\CreateClientRequestNormalizer::class,
         
@@ -142,6 +180,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\CreateUserRequest1::class => \FlowCatalyst\Generated\Normalizer\CreateUserRequest1Normalizer::class,
         
+        \FlowCatalyst\Generated\Model\DeleteResponse::class => \FlowCatalyst\Generated\Normalizer\DeleteResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\DispatchAttemptResponse::class => \FlowCatalyst\Generated\Normalizer\DispatchAttemptResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\DispatchJobReadResponse::class => \FlowCatalyst\Generated\Normalizer\DispatchJobReadResponseNormalizer::class,
@@ -162,6 +202,10 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\EmailDomainMappingListResponse::class => \FlowCatalyst\Generated\Normalizer\EmailDomainMappingListResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\EntityAuditLogsResponse::class => \FlowCatalyst\Generated\Normalizer\EntityAuditLogsResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\EntityTypesResponse::class => \FlowCatalyst\Generated\Normalizer\EntityTypesResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\ErrorResponse::class => \FlowCatalyst\Generated\Normalizer\ErrorResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\ErrorResponse1::class => \FlowCatalyst\Generated\Normalizer\ErrorResponse1Normalizer::class,
@@ -169,6 +213,10 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\ErrorResponse2::class => \FlowCatalyst\Generated\Normalizer\ErrorResponse2Normalizer::class,
         
         \FlowCatalyst\Generated\Model\ErrorResponse3::class => \FlowCatalyst\Generated\Normalizer\ErrorResponse3Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ErrorResponse4::class => \FlowCatalyst\Generated\Normalizer\ErrorResponse4Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ErrorResponse5::class => \FlowCatalyst\Generated\Normalizer\ErrorResponse5Normalizer::class,
         
         \FlowCatalyst\Generated\Model\EventReadResponse::class => \FlowCatalyst\Generated\Normalizer\EventReadResponseNormalizer::class,
         
@@ -190,6 +238,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\FeaturesConfig::class => \FlowCatalyst\Generated\Normalizer\FeaturesConfigNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\FieldError::class => \FlowCatalyst\Generated\Normalizer\FieldErrorNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\FilterOption::class => \FlowCatalyst\Generated\Normalizer\FilterOptionNormalizer::class,
         
         \FlowCatalyst\Generated\Model\FilterOption1::class => \FlowCatalyst\Generated\Normalizer\FilterOption1Normalizer::class,
@@ -199,6 +249,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\FilterOptionsResponse1::class => \FlowCatalyst\Generated\Normalizer\FilterOptionsResponse1Normalizer::class,
         
         \FlowCatalyst\Generated\Model\FilterOptionsResponse2::class => \FlowCatalyst\Generated\Normalizer\FilterOptionsResponse2Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ForbiddenResponse::class => \FlowCatalyst\Generated\Normalizer\ForbiddenResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\GrantAccessRequest::class => \FlowCatalyst\Generated\Normalizer\GrantAccessRequestNormalizer::class,
         
@@ -216,7 +268,25 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\LoginResponse::class => \FlowCatalyst\Generated\Normalizer\LoginResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\MessageResponse::class => \FlowCatalyst\Generated\Normalizer\MessageResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\MyApplicationDto::class => \FlowCatalyst\Generated\Normalizer\MyApplicationDtoNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\MyApplicationsResponse::class => \FlowCatalyst\Generated\Normalizer\MyApplicationsResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\MyClientDto::class => \FlowCatalyst\Generated\Normalizer\MyClientDtoNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\MyClientsResponse::class => \FlowCatalyst\Generated\Normalizer\MyClientsResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\NotFoundResponse::class => \FlowCatalyst\Generated\Normalizer\NotFoundResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\NoteAddedResponse::class => \FlowCatalyst\Generated\Normalizer\NoteAddedResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\OAuthClientInfo::class => \FlowCatalyst\Generated\Normalizer\OAuthClientInfoNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\OAuthCredentials::class => \FlowCatalyst\Generated\Normalizer\OAuthCredentialsNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\OperationsResponse::class => \FlowCatalyst\Generated\Normalizer\OperationsResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\PagedDispatchJobReadResponse::class => \FlowCatalyst\Generated\Normalizer\PagedDispatchJobReadResponseNormalizer::class,
         
@@ -262,6 +332,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\ProcessResponse::class => \FlowCatalyst\Generated\Normalizer\ProcessResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\ProvisionServiceAccountResponse::class => \FlowCatalyst\Generated\Normalizer\ProvisionServiceAccountResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\RawDispatchJobResponse::class => \FlowCatalyst\Generated\Normalizer\RawDispatchJobResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\RawEventResponse::class => \FlowCatalyst\Generated\Normalizer\RawEventResponseNormalizer::class,
@@ -290,6 +362,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\ServiceAccountDto::class => \FlowCatalyst\Generated\Normalizer\ServiceAccountDtoNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\ServiceAccountInfo::class => \FlowCatalyst\Generated\Normalizer\ServiceAccountInfoNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\ServiceAccountListResponse::class => \FlowCatalyst\Generated\Normalizer\ServiceAccountListResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\SessionUserResponse::class => \FlowCatalyst\Generated\Normalizer\SessionUserResponseNormalizer::class,
@@ -301,6 +375,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\StatusChangeRequest::class => \FlowCatalyst\Generated\Normalizer\StatusChangeRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\StatusChangeRequest1::class => \FlowCatalyst\Generated\Normalizer\StatusChangeRequest1Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\StatusChangeResponse::class => \FlowCatalyst\Generated\Normalizer\StatusChangeResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\StatusResponse::class => \FlowCatalyst\Generated\Normalizer\StatusResponseNormalizer::class,
         
@@ -342,6 +418,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\SyncSubscriptionsRequest::class => \FlowCatalyst\Generated\Normalizer\SyncSubscriptionsRequestNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\UnauthorizedResponse::class => \FlowCatalyst\Generated\Normalizer\UnauthorizedResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\UpdateAccessRequest::class => \FlowCatalyst\Generated\Normalizer\UpdateAccessRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\UpdateApplicationRequest::class => \FlowCatalyst\Generated\Normalizer\UpdateApplicationRequestNormalizer::class,
@@ -381,6 +459,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\UpdateServiceAccountRequest::class => \FlowCatalyst\Generated\Normalizer\UpdateServiceAccountRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\UpdateSubscriptionRequest::class => \FlowCatalyst\Generated\Normalizer\UpdateSubscriptionRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ValidationErrorResponse::class => \FlowCatalyst\Generated\Normalizer\ValidationErrorResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\WebhookCredentials::class => \FlowCatalyst\Generated\Normalizer\WebhookCredentialsNormalizer::class,
         
@@ -428,25 +508,38 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\AddNoteRequest::class => false,
             \FlowCatalyst\Generated\Model\AddSchemaRequest::class => false,
             \FlowCatalyst\Generated\Model\AddSchemaRequest1::class => false,
+            \FlowCatalyst\Generated\Model\AllowedOriginsResponse::class => false,
+            \FlowCatalyst\Generated\Model\ApplicationListItem::class => false,
             \FlowCatalyst\Generated\Model\ApplicationListResponse::class => false,
             \FlowCatalyst\Generated\Model\ApplicationListResponse1::class => false,
+            \FlowCatalyst\Generated\Model\ApplicationListResponse2::class => false,
             \FlowCatalyst\Generated\Model\ApplicationRef::class => false,
             \FlowCatalyst\Generated\Model\ApplicationResponse::class => false,
             \FlowCatalyst\Generated\Model\ApplicationResponse1::class => false,
+            \FlowCatalyst\Generated\Model\ApplicationResponse2::class => false,
+            \FlowCatalyst\Generated\Model\ApplicationRolesResponse::class => false,
+            \FlowCatalyst\Generated\Model\ApplicationStatusResponse::class => false,
+            \FlowCatalyst\Generated\Model\ApplicationsUpdatedResponse::class => false,
             \FlowCatalyst\Generated\Model\AssignApplicationAccessRequest::class => false,
             \FlowCatalyst\Generated\Model\AssignRoleRequest::class => false,
             \FlowCatalyst\Generated\Model\AssignRolesRequest::class => false,
             \FlowCatalyst\Generated\Model\AssignRolesRequest1::class => false,
             \FlowCatalyst\Generated\Model\AssignRolesRequest2::class => false,
+            \FlowCatalyst\Generated\Model\AuditLogDetailDto::class => false,
             \FlowCatalyst\Generated\Model\AuditLogDto::class => false,
             \FlowCatalyst\Generated\Model\AuditLogListResponse::class => false,
+            \FlowCatalyst\Generated\Model\BatchAuditLogResponse::class => false,
             \FlowCatalyst\Generated\Model\BatchDispatchJobResponse::class => false,
             \FlowCatalyst\Generated\Model\BatchEventResponse::class => false,
             \FlowCatalyst\Generated\Model\ClientAccessGrantDto::class => false,
             \FlowCatalyst\Generated\Model\ClientAccessListResponse::class => false,
             \FlowCatalyst\Generated\Model\ClientApplicationDto::class => false,
+            \FlowCatalyst\Generated\Model\ClientApplicationStatusResponse::class => false,
+            \FlowCatalyst\Generated\Model\ClientApplicationStatusResponse1::class => false,
             \FlowCatalyst\Generated\Model\ClientApplicationsResponse::class => false,
+            \FlowCatalyst\Generated\Model\ClientConfigListResponse::class => false,
             \FlowCatalyst\Generated\Model\ClientConfigRequest::class => false,
+            \FlowCatalyst\Generated\Model\ClientConfigResponse::class => false,
             \FlowCatalyst\Generated\Model\ClientDto::class => false,
             \FlowCatalyst\Generated\Model\ClientDto1::class => false,
             \FlowCatalyst\Generated\Model\ClientDto2::class => false,
@@ -456,13 +549,19 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\ClientListResponse2::class => false,
             \FlowCatalyst\Generated\Model\ClientListResponse3::class => false,
             \FlowCatalyst\Generated\Model\ClientResponse::class => false,
+            \FlowCatalyst\Generated\Model\ClientStatusResponse::class => false,
             \FlowCatalyst\Generated\Model\ConfigEntry::class => false,
+            \FlowCatalyst\Generated\Model\ConflictResponse::class => false,
             \FlowCatalyst\Generated\Model\ContextData::class => false,
             \FlowCatalyst\Generated\Model\ContextDataResponse::class => false,
             \FlowCatalyst\Generated\Model\ContextDataResponse1::class => false,
             \FlowCatalyst\Generated\Model\ContextDataResponse2::class => false,
+            \FlowCatalyst\Generated\Model\CorsOriginDeletedResponse::class => false,
+            \FlowCatalyst\Generated\Model\CorsOriginDto::class => false,
+            \FlowCatalyst\Generated\Model\CorsOriginListResponse::class => false,
             \FlowCatalyst\Generated\Model\CreateApplicationRequest::class => false,
             \FlowCatalyst\Generated\Model\CreateApplicationRequest1::class => false,
+            \FlowCatalyst\Generated\Model\CreateAuditLogRequest::class => false,
             \FlowCatalyst\Generated\Model\CreateClientRequest::class => false,
             \FlowCatalyst\Generated\Model\CreateClientRequest1::class => false,
             \FlowCatalyst\Generated\Model\CreateClientRequest2::class => false,
@@ -486,6 +585,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\CreateSubscriptionRequest::class => false,
             \FlowCatalyst\Generated\Model\CreateUserRequest::class => false,
             \FlowCatalyst\Generated\Model\CreateUserRequest1::class => false,
+            \FlowCatalyst\Generated\Model\DeleteResponse::class => false,
             \FlowCatalyst\Generated\Model\DispatchAttemptResponse::class => false,
             \FlowCatalyst\Generated\Model\DispatchJobReadResponse::class => false,
             \FlowCatalyst\Generated\Model\DispatchJobResponse::class => false,
@@ -496,10 +596,14 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\EmailDomainCheckResponse::class => false,
             \FlowCatalyst\Generated\Model\EmailDomainMappingDto::class => false,
             \FlowCatalyst\Generated\Model\EmailDomainMappingListResponse::class => false,
+            \FlowCatalyst\Generated\Model\EntityAuditLogsResponse::class => false,
+            \FlowCatalyst\Generated\Model\EntityTypesResponse::class => false,
             \FlowCatalyst\Generated\Model\ErrorResponse::class => false,
             \FlowCatalyst\Generated\Model\ErrorResponse1::class => false,
             \FlowCatalyst\Generated\Model\ErrorResponse2::class => false,
             \FlowCatalyst\Generated\Model\ErrorResponse3::class => false,
+            \FlowCatalyst\Generated\Model\ErrorResponse4::class => false,
+            \FlowCatalyst\Generated\Model\ErrorResponse5::class => false,
             \FlowCatalyst\Generated\Model\EventReadResponse::class => false,
             \FlowCatalyst\Generated\Model\EventResponse::class => false,
             \FlowCatalyst\Generated\Model\EventTypeBinding::class => false,
@@ -510,11 +614,13 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\EventTypeListResponse1::class => false,
             \FlowCatalyst\Generated\Model\EventTypeResponse::class => false,
             \FlowCatalyst\Generated\Model\FeaturesConfig::class => false,
+            \FlowCatalyst\Generated\Model\FieldError::class => false,
             \FlowCatalyst\Generated\Model\FilterOption::class => false,
             \FlowCatalyst\Generated\Model\FilterOption1::class => false,
             \FlowCatalyst\Generated\Model\FilterOptionsResponse::class => false,
             \FlowCatalyst\Generated\Model\FilterOptionsResponse1::class => false,
             \FlowCatalyst\Generated\Model\FilterOptionsResponse2::class => false,
+            \FlowCatalyst\Generated\Model\ForbiddenResponse::class => false,
             \FlowCatalyst\Generated\Model\GrantAccessRequest::class => false,
             \FlowCatalyst\Generated\Model\GrantClientAccessRequest::class => false,
             \FlowCatalyst\Generated\Model\HealthResponse::class => false,
@@ -523,7 +629,16 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\JsonValue::class => false,
             \FlowCatalyst\Generated\Model\LoginRequest::class => false,
             \FlowCatalyst\Generated\Model\LoginResponse::class => false,
+            \FlowCatalyst\Generated\Model\MessageResponse::class => false,
+            \FlowCatalyst\Generated\Model\MyApplicationDto::class => false,
+            \FlowCatalyst\Generated\Model\MyApplicationsResponse::class => false,
+            \FlowCatalyst\Generated\Model\MyClientDto::class => false,
+            \FlowCatalyst\Generated\Model\MyClientsResponse::class => false,
+            \FlowCatalyst\Generated\Model\NotFoundResponse::class => false,
+            \FlowCatalyst\Generated\Model\NoteAddedResponse::class => false,
+            \FlowCatalyst\Generated\Model\OAuthClientInfo::class => false,
             \FlowCatalyst\Generated\Model\OAuthCredentials::class => false,
+            \FlowCatalyst\Generated\Model\OperationsResponse::class => false,
             \FlowCatalyst\Generated\Model\PagedDispatchJobReadResponse::class => false,
             \FlowCatalyst\Generated\Model\PagedDispatchJobResponse::class => false,
             \FlowCatalyst\Generated\Model\PagedEventResponse::class => false,
@@ -546,6 +661,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\PrincipalListResponse1::class => false,
             \FlowCatalyst\Generated\Model\ProcessRequest::class => false,
             \FlowCatalyst\Generated\Model\ProcessResponse::class => false,
+            \FlowCatalyst\Generated\Model\ProvisionServiceAccountResponse::class => false,
             \FlowCatalyst\Generated\Model\RawDispatchJobResponse::class => false,
             \FlowCatalyst\Generated\Model\RawEventResponse::class => false,
             \FlowCatalyst\Generated\Model\ResetPasswordRequest::class => false,
@@ -560,12 +676,14 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\RolesAssignedResponse::class => false,
             \FlowCatalyst\Generated\Model\RotateSecretResponse::class => false,
             \FlowCatalyst\Generated\Model\ServiceAccountDto::class => false,
+            \FlowCatalyst\Generated\Model\ServiceAccountInfo::class => false,
             \FlowCatalyst\Generated\Model\ServiceAccountListResponse::class => false,
             \FlowCatalyst\Generated\Model\SessionUserResponse::class => false,
             \FlowCatalyst\Generated\Model\SetConfigRequest::class => false,
             \FlowCatalyst\Generated\Model\SpecVersionResponse::class => false,
             \FlowCatalyst\Generated\Model\StatusChangeRequest::class => false,
             \FlowCatalyst\Generated\Model\StatusChangeRequest1::class => false,
+            \FlowCatalyst\Generated\Model\StatusChangeResponse::class => false,
             \FlowCatalyst\Generated\Model\StatusResponse::class => false,
             \FlowCatalyst\Generated\Model\StatusResponse1::class => false,
             \FlowCatalyst\Generated\Model\SubscriptionDto::class => false,
@@ -586,6 +704,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\SyncRolesRequest::class => false,
             \FlowCatalyst\Generated\Model\SyncSubscriptionItem::class => false,
             \FlowCatalyst\Generated\Model\SyncSubscriptionsRequest::class => false,
+            \FlowCatalyst\Generated\Model\UnauthorizedResponse::class => false,
             \FlowCatalyst\Generated\Model\UpdateAccessRequest::class => false,
             \FlowCatalyst\Generated\Model\UpdateApplicationRequest::class => false,
             \FlowCatalyst\Generated\Model\UpdateApplicationRequest1::class => false,
@@ -606,6 +725,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\UpdateRoleRequest2::class => false,
             \FlowCatalyst\Generated\Model\UpdateServiceAccountRequest::class => false,
             \FlowCatalyst\Generated\Model\UpdateSubscriptionRequest::class => false,
+            \FlowCatalyst\Generated\Model\ValidationErrorResponse::class => false,
             \FlowCatalyst\Generated\Model\WebhookCredentials::class => false,
             \FlowCatalyst\Generated\Model\OauthTokenPostBody::class => false,
             \Jane\Component\JsonSchemaRuntime\Reference::class => false,

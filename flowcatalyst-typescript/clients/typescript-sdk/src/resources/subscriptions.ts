@@ -9,22 +9,26 @@ import type { SdkError } from '../errors';
 import type { FlowCatalystClient } from '../client';
 import * as sdk from '../generated/sdk.gen';
 import type {
-  SubscriptionDto,
-  SubscriptionListResponse,
-  CreateSubscriptionRequest,
-  UpdateSubscriptionRequest,
-  SyncSubscriptionsRequest,
-  SyncResponse3,
-  SubscriptionStatus,
-  SubscriptionSource,
+  GetApiAdminSubscriptionsResponse,
+  GetApiAdminSubscriptionsByIdResponse,
+  PostApiAdminSubscriptionsData,
+  PutApiAdminSubscriptionsByIdData,
+  PostApiAdminSubscriptionsSyncData,
+  PostApiAdminSubscriptionsSyncResponse,
 } from '../generated/types.gen';
+
+export type SubscriptionListResponse = GetApiAdminSubscriptionsResponse;
+export type SubscriptionDto = GetApiAdminSubscriptionsByIdResponse;
+export type CreateSubscriptionRequest = PostApiAdminSubscriptionsData['body'];
+export type UpdateSubscriptionRequest = PutApiAdminSubscriptionsByIdData['body'];
+export type SyncSubscriptionsResponse = PostApiAdminSubscriptionsSyncResponse;
 
 export interface SubscriptionFilters {
   clientId?: string;
-  status?: SubscriptionStatus;
+  status?: string;
   dispatchPoolId?: string;
-  source?: SubscriptionSource;
-  anchorLevel?: boolean;
+  source?: string;
+  anchorLevel?: string;
 }
 
 /**
@@ -126,37 +130,18 @@ export class SubscriptionsResource {
   }
 
   /**
-   * List subscriptions for an application.
-   */
-  listForApplication(
-    appCode: string,
-    source?: string,
-  ): ResultAsync<SubscriptionListResponse, SdkError> {
-    return this.client.request<SubscriptionListResponse>((httpClient, headers) =>
-      sdk.listApplicationSubscriptions({
-        client: httpClient,
-        headers,
-        path: { appCode },
-        query: { source },
-      }),
-    );
-  }
-
-  /**
    * Sync subscriptions for an application.
    */
   sync(
-    appCode: string,
-    subscriptions: SyncSubscriptionsRequest['subscriptions'],
+    applicationCode: string,
+    subscriptions: PostApiAdminSubscriptionsSyncData['body']['subscriptions'],
     removeUnlisted = false,
-  ): ResultAsync<SyncResponse3, SdkError> {
-    return this.client.request<SyncResponse3>((httpClient, headers) =>
-      sdk.syncApplicationSubscriptions({
+  ): ResultAsync<SyncSubscriptionsResponse, SdkError> {
+    return this.client.request<SyncSubscriptionsResponse>((httpClient, headers) =>
+      sdk.postApiAdminSubscriptionsSync({
         client: httpClient,
         headers,
-        path: { appCode },
-        query: { removeUnlisted },
-        body: { subscriptions },
+        body: { applicationCode, subscriptions, removeUnlisted },
       }),
     );
   }
