@@ -188,11 +188,11 @@ export function registerOAuthCompatibilityRoutes(
       done(null);
     });
 
-    // /oauth/authorize -> /oidc/auth
+    // /oauth/authorize -> /oidc/authorize (authorization endpoint)
     instance.get('/oauth/authorize', async (request, reply) => {
       // Preserve query string
       const queryString = request.raw.url?.split('?')[1] ?? '';
-      const oidcPath = queryString ? `/auth?${queryString}` : '/auth';
+      const oidcPath = queryString ? `/authorize?${queryString}` : '/authorize';
       await forwardToOidc(request, reply, oidcPath);
     });
 
@@ -218,4 +218,106 @@ export function registerOAuthCompatibilityRoutes(
   });
 
   fastify.log.info('OAuth compatibility routes registered (/oauth/* -> /oidc/*)');
+}
+
+/**
+ * Register root-level OIDC endpoint forwarding routes.
+ *
+ * oidc-provider's discovery document advertises endpoints at root-level paths
+ * (e.g., /authorize, /token, /userinfo) because it constructs URLs from the
+ * request origin. Since the provider is mounted at /oidc/*, these root-level
+ * paths need to be forwarded to the provider.
+ *
+ * This ensures that standard OIDC clients following the discovery document
+ * can reach the provider endpoints.
+ */
+export function registerOidcEndpointRoutes(
+  fastify: FastifyInstance,
+  provider: OidcProvider,
+): void {
+  const callback = provider.callback();
+
+  const forwardToOidc = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    oidcPath: string,
+  ): Promise<void> => {
+    const req = request.raw;
+    const res = reply.raw;
+
+    const storedUrl = req.url;
+    req.url = oidcPath;
+
+    await new Promise<void>((resolve, reject) => {
+      callback(req, res)
+        .then(() => resolve())
+        .catch((err: Error) => reject(err))
+        .finally(() => {
+          req.url = storedUrl;
+        });
+    });
+
+    reply.hijack();
+  };
+
+  fastify.register(async (instance) => {
+    instance.removeAllContentTypeParsers();
+    instance.addContentTypeParser('*', function (_request, _payload, done) {
+      done(null);
+    });
+
+    // GET /authorize -> authorization endpoint
+    instance.get('/authorize', async (request, reply) => {
+      const queryString = request.raw.url?.split('?')[1] ?? '';
+      const oidcPath = queryString ? `/authorize?${queryString}` : '/authorize';
+      await forwardToOidc(request, reply, oidcPath);
+    });
+
+    // GET /authorize/:uid -> authorization resume (after interactionFinished)
+    instance.get<{ Params: { uid: string } }>('/authorize/:uid', async (request, reply) => {
+      const { uid } = request.params;
+      const queryString = request.raw.url?.split('?')[1] ?? '';
+      const oidcPath = queryString ? `/authorize/${uid}?${queryString}` : `/authorize/${uid}`;
+      await forwardToOidc(request, reply, oidcPath);
+    });
+
+    // POST /token -> token endpoint
+    instance.post('/token', async (request, reply) => {
+      await forwardToOidc(request, reply, '/token');
+    });
+
+    // GET/POST /userinfo -> userinfo endpoint
+    instance.get('/userinfo', async (request, reply) => {
+      await forwardToOidc(request, reply, '/userinfo');
+    });
+    instance.post('/userinfo', async (request, reply) => {
+      await forwardToOidc(request, reply, '/userinfo');
+    });
+
+    // GET/POST /session/end -> RP-initiated logout
+    instance.get('/session/end', async (request, reply) => {
+      const queryString = request.raw.url?.split('?')[1] ?? '';
+      const oidcPath = queryString ? `/session/end?${queryString}` : '/session/end';
+      await forwardToOidc(request, reply, oidcPath);
+    });
+    instance.post('/session/end', async (request, reply) => {
+      const queryString = request.raw.url?.split('?')[1] ?? '';
+      const oidcPath = queryString ? `/session/end?${queryString}` : '/session/end';
+      await forwardToOidc(request, reply, oidcPath);
+    });
+
+    // GET /session/end/confirm -> logout confirmation callback
+    instance.get('/session/end/confirm', async (request, reply) => {
+      const queryString = request.raw.url?.split('?')[1] ?? '';
+      const oidcPath = queryString ? `/session/end/confirm?${queryString}` : '/session/end/confirm';
+      await forwardToOidc(request, reply, oidcPath);
+    });
+    instance.post('/session/end/confirm', async (request, reply) => {
+      const queryString = request.raw.url?.split('?')[1] ?? '';
+      const oidcPath = queryString ? `/session/end/confirm?${queryString}` : '/session/end/confirm';
+      await forwardToOidc(request, reply, oidcPath);
+    });
+  });
+
+  fastify.log.info('OIDC endpoint forwarding routes registered (/authorize, /token, /userinfo, /session/end)');
 }

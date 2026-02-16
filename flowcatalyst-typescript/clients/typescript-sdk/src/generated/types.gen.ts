@@ -4389,7 +4389,6 @@ export type GetApiAdminOauthClientsResponse = GetApiAdminOauthClientsResponses[k
 
 export type PostApiAdminOauthClientsData = {
     body: {
-        clientId: string;
         clientName: string;
         clientType: 'PUBLIC' | 'CONFIDENTIAL';
         clientSecretRef?: string | null;

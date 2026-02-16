@@ -1,0 +1,33 @@
+node_modules
+**/node_modules
+**/dist
+**/.turbo
+**/.next
+**/.nuxt
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+*.tgz
+*.log
+
+# SDK clients (not needed for platform image)
+clients/
+
+# Dev tooling
+coverage/
+.nyc_output/
+keys/

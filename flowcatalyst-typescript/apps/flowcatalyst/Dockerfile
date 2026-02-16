@@ -46,6 +46,9 @@ RUN adduser -u 1001 -D appuser
 
 WORKDIR /app
 
+# Copy entrypoint script
+COPY apps/flowcatalyst/entrypoint.sh /app/entrypoint.sh
+
 # Copy built output
 COPY --from=build /app/apps/flowcatalyst/dist ./dist
 
@@ -53,14 +56,14 @@ COPY --from=build /app/apps/flowcatalyst/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/flowcatalyst/node_modules ./apps/flowcatalyst/node_modules
 
-# Set ownership
-RUN chown -R 1001:1001 /app
+# Make entrypoint executable and set ownership
+RUN chmod +x /app/entrypoint.sh && chown -R 1001:1001 /app
 
 USER 1001
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=30s \
-  CMD curl -sf http://localhost:8080/health/ready || exit 1
+  CMD curl -sf http://localhost:8080/health || exit 1
 
-CMD ["node", "dist/index.js"]
+ENTRYPOINT ["/app/entrypoint.sh"]

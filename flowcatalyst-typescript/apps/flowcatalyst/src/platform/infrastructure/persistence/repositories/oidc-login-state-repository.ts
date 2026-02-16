@@ -29,6 +29,7 @@ export interface OidcLoginState {
   oauthCodeChallenge: string | null;
   oauthCodeChallengeMethod: string | null;
   oauthNonce: string | null;
+  interactionUid: string | null;
   createdAt: Date;
   expiresAt: Date;
 }
@@ -59,6 +60,7 @@ export function createOidcLoginStateRepository(defaultDb: AnyDb): OidcLoginState
       oauthCodeChallenge: record.oauthCodeChallenge,
       oauthCodeChallengeMethod: record.oauthCodeChallengeMethod,
       oauthNonce: record.oauthNonce,
+      interactionUid: record.interactionUid ?? null,
       createdAt: record.createdAt,
       expiresAt: record.expiresAt,
     };
@@ -101,6 +103,7 @@ export function createOidcLoginStateRepository(defaultDb: AnyDb): OidcLoginState
         oauthCodeChallenge: loginState.oauthCodeChallenge,
         oauthCodeChallengeMethod: loginState.oauthCodeChallengeMethod,
         oauthNonce: loginState.oauthNonce,
+        interactionUid: loginState.interactionUid,
         createdAt: loginState.createdAt,
         expiresAt: loginState.expiresAt,
       });

@@ -34,7 +34,7 @@ export interface CreateOAuthClientRequest {
   redirectUris: string[];
   allowedOrigins?: string[];
   grantTypes: string[];
-  defaultScopes?: string[];
+  defaultScopes?: string;
   pkceRequired?: boolean;
   applicationIds?: string[];
 }
@@ -47,11 +47,6 @@ export interface UpdateOAuthClientRequest {
   defaultScopes?: string[];
   pkceRequired?: boolean;
   applicationIds?: string[];
-}
-
-export interface CreateOAuthClientResponse {
-  client: OAuthClient;
-  clientSecret: string | null;
 }
 
 export interface RotateSecretResponse {
@@ -76,7 +71,7 @@ export const oauthClientsApi = {
     return apiFetch(`/admin/oauth-clients/by-client-id/${clientId}`);
   },
 
-  create(data: CreateOAuthClientRequest): Promise<CreateOAuthClientResponse> {
+  create(data: CreateOAuthClientRequest): Promise<OAuthClient> {
     return apiFetch('/admin/oauth-clients', {
       method: 'POST',
       body: JSON.stringify(data),

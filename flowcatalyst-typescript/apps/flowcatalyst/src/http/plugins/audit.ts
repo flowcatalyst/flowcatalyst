@@ -119,6 +119,16 @@ const auditPluginAsync: FastifyPluginAsync<AuditPluginOptions> = async (fastify,
       AuditContext.enterWith(principal);
     }
   });
+
+  // Re-enter AuditContext in preHandler to ensure AsyncLocalStorage
+  // propagates to route handlers. enterWith() in onRequest may lose
+  // context across Fastify's hook chain boundaries.
+  fastify.addHook('preHandler', async (request) => {
+    const principal = request.audit?.principal;
+    if (principal) {
+      AuditContext.enterWith(principal);
+    }
+  });
 };
 
 export const auditPlugin = fp(auditPluginAsync, {

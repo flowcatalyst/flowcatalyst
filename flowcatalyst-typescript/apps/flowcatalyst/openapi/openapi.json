@@ -10263,15 +10263,10 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "clientId",
                   "clientName",
                   "clientType"
                 ],
                 "properties": {
-                  "clientId": {
-                    "minLength": 1,
-                    "type": "string"
-                  },
                   "clientName": {
                     "minLength": 1,
                     "type": "string"

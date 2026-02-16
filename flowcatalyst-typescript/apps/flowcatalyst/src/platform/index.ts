@@ -41,11 +41,13 @@ import {
   mountOidcProvider,
   registerWellKnownRoutes,
   registerOAuthCompatibilityRoutes,
+  registerOidcEndpointRoutes,
   registerAuthRoutes,
   registerOidcFederationRoutes,
   registerClientSelectionRoutes,
   createJwtKeyService,
 } from './infrastructure/oidc/index.js';
+import { registerInteractionRoutes } from './infrastructure/oidc/interaction-routes.js';
 import {
   registerAdminRoutes,
   type AdminRoutesDeps,
@@ -460,7 +462,7 @@ export async function startPlatform(config?: PlatformConfig): Promise<PlatformRe
     refreshTokenTtl: env.OIDC_REFRESH_TOKEN_TTL,
     sessionTtl: env.OIDC_SESSION_TTL,
     authCodeTtl: env.OIDC_AUTH_CODE_TTL,
-    devInteractions: isDevelopment(), // Enable dev login pages in development
+    devInteractions: false,
   });
 
   fastify.log.info({ issuer: oidcIssuer }, 'OIDC provider created');
@@ -947,7 +949,10 @@ export async function startPlatform(config?: PlatformConfig): Promise<PlatformRe
           }
         }
 
-        if (!principal || !principal.active) return null;
+        if (!principal || !principal.active) {
+          fastify.log.debug({ principalId, found: !!principal, active: principal?.active }, 'loadPrincipal: principal not resolved');
+          return null;
+        }
         return {
           id: principal.id,
           type: principal.type,
@@ -964,6 +969,16 @@ export async function startPlatform(config?: PlatformConfig): Promise<PlatformRe
     // Error handler
     await fastify.register(errorHandlerPlugin, createStandardErrorHandlerOptions());
 
+    // Register OIDC interaction routes (before wildcard mount so parametric routes win)
+    await registerInteractionRoutes(fastify, {
+      provider: oidcProvider,
+      validateSessionToken: (token) => jwtKeyService.validateAndGetPrincipalId(token),
+      principalRepository,
+      oauthClientRepository,
+      cookieName: 'fc_session',
+      loginPageUrl: '/auth/login',
+    });
+
     // Mount OIDC provider at /oidc
     await mountOidcProvider(fastify, oidcProvider, '/oidc');
 
@@ -972,6 +987,10 @@ export async function startPlatform(config?: PlatformConfig): Promise<PlatformRe
 
     // Register OAuth compatibility routes (/oauth/* -> /oidc/*)
     registerOAuthCompatibilityRoutes(fastify, oidcProvider, '/oidc');
+
+    // Register root-level OIDC endpoint forwarding routes (/authorize, /token, /userinfo)
+    // These forward to oidc-provider because the discovery doc advertises root-level URLs
+    registerOidcEndpointRoutes(fastify, oidcProvider);
 
     // Register auth routes (/auth/login, /auth/logout, /auth/me, /auth/check-domain)
     await registerAuthRoutes(fastify, {
@@ -1010,7 +1029,10 @@ export async function startPlatform(config?: PlatformConfig): Promise<PlatformRe
       resolveClientSecret: async (idp) => {
         if (!idp.oidcClientSecretRef) return undefined;
         const result = encryptionService.decrypt(idp.oidcClientSecretRef);
-        return result.isOk() ? result.value : undefined;
+        if (result.isOk()) {
+          return result.value;
+        }
+        return undefined;
       },
       issueSessionToken: (principalId, email, roles, clients) => {
         return jwtKeyService.issueSessionToken(principalId, email, roles, clients);

@@ -49,6 +49,7 @@ import type { ClientAccessGrantRepository } from '../../infrastructure/persisten
 import type { AnchorDomainRepository } from '../../infrastructure/persistence/repositories/anchor-domain-repository.js';
 import type { ClientAuthConfigRepository } from '../../infrastructure/persistence/repositories/client-auth-config-repository.js';
 import type { ApplicationClientConfigRepository } from '../../infrastructure/persistence/index.js';
+import type { ClientRepository } from '../../infrastructure/persistence/repositories/client-repository.js';
 import type { EmailDomainMappingRepository } from '../../infrastructure/persistence/repositories/email-domain-mapping-repository.js';
 import type { IdentityProviderRepository } from '../../infrastructure/persistence/repositories/identity-provider-repository.js';
 import { requirePermission } from '../../authorization/index.js';
@@ -239,6 +240,7 @@ function toPrincipalDto(principal: Principal, grantedClientIds: string[]): Princ
 export interface PrincipalsRoutesDeps {
   readonly principalRepository: PrincipalRepository;
   readonly applicationRepository: ApplicationRepository;
+  readonly clientRepository: ClientRepository;
   readonly clientAccessGrantRepository: ClientAccessGrantRepository;
   readonly anchorDomainRepository: AnchorDomainRepository;
   readonly clientAuthConfigRepository: ClientAuthConfigRepository;
@@ -270,6 +272,7 @@ export async function registerPrincipalsRoutes(
   const {
     principalRepository,
     applicationRepository,
+    clientRepository,
     clientAccessGrantRepository,
     anchorDomainRepository,
     clientAuthConfigRepository,
@@ -1105,14 +1108,23 @@ export async function registerPrincipalsRoutes(
         return notFound(reply, `Principal not found: ${id}`);
       }
 
+      // Determine accessible client IDs based on scope
       const clientIds: string[] = [];
-      if (principal.clientId) {
-        clientIds.push(principal.clientId);
-      }
-      const grants = await clientAccessGrantRepository.findByPrincipal(id);
-      for (const grant of grants) {
-        if (!clientIds.includes(grant.clientId)) {
-          clientIds.push(grant.clientId);
+      if (principal.scope === 'ANCHOR') {
+        // ANCHOR users can access all clients
+        const allClients = await clientRepository.findAll();
+        for (const c of allClients) {
+          clientIds.push(c.id);
+        }
+      } else {
+        if (principal.clientId) {
+          clientIds.push(principal.clientId);
+        }
+        const grants = await clientAccessGrantRepository.findByPrincipal(id);
+        for (const grant of grants) {
+          if (!clientIds.includes(grant.clientId)) {
+            clientIds.push(grant.clientId);
+          }
         }
       }
 

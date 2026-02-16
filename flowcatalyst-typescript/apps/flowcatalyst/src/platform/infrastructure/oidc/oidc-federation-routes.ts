@@ -85,6 +85,7 @@ export async function registerOidcFederationRoutes(
       oauth_code_challenge?: string;
       oauth_code_challenge_method?: string;
       oauth_nonce?: string;
+      interaction?: string;
     };
   }>('/auth/oidc/login', async (request, reply) => {
     const { domain: rawDomain, return_url: returnUrl } = request.query;
@@ -152,6 +153,7 @@ export async function registerOidcFederationRoutes(
       oauthCodeChallenge: request.query.oauth_code_challenge ?? null,
       oauthCodeChallengeMethod: request.query.oauth_code_challenge_method ?? null,
       oauthNonce: request.query.oauth_nonce ?? null,
+      interactionUid: request.query.interaction ?? null,
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
     };
@@ -524,6 +526,11 @@ async function formatClientEntries(
  * Determine where to redirect after successful login.
  */
 function determineRedirectUrl(loginState: OidcLoginState, baseUrl: string): string {
+  // If this was part of an oidc-provider interaction, redirect back to complete it
+  if (loginState.interactionUid) {
+    return `/oidc/interaction/${loginState.interactionUid}/login`;
+  }
+
   // If this was part of an OAuth flow, redirect back to authorize endpoint
   if (loginState.oauthClientId) {
     const params = new URLSearchParams();

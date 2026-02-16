@@ -28,6 +28,8 @@ export const oidcLoginStates = pgTable(
     oauthCodeChallenge: varchar('oauth_code_challenge', { length: 500 }),
     oauthCodeChallengeMethod: varchar('oauth_code_challenge_method', { length: 20 }),
     oauthNonce: varchar('oauth_nonce', { length: 500 }),
+    // OIDC interaction UID (when login was triggered from an oidc-provider interaction)
+    interactionUid: varchar('interaction_uid', { length: 200 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   },

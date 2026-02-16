@@ -48,9 +48,10 @@ function oauthClientToMetadata(
     // Default scope
     default_max_age: 3600, // 1 hour
 
-    // CORS origins for browser-based requests
-    // oidc-provider doesn't have a direct setting for this,
-    // we'll handle CORS separately in middleware
+    // Post-logout redirect URIs — derive from redirect URI origins + allowed origins.
+    // This enables RP-initiated logout (the SPA redirects to /session/end with
+    // post_logout_redirect_uri and oidc-provider validates it against this list).
+    post_logout_redirect_uris: derivePostLogoutUris(client),
   };
 
   // Add secret for confidential clients
@@ -64,6 +65,31 @@ function oauthClientToMetadata(
   }
 
   return metadata;
+}
+
+/**
+ * Derive post-logout redirect URIs from redirect URIs and allowed origins.
+ * SPA logout typically redirects to the app origin (e.g., http://localhost:3000).
+ */
+function derivePostLogoutUris(client: OAuthClient): string[] {
+  const uris = new Set<string>();
+
+  // Extract origins from redirect URIs
+  for (const uri of client.redirectUris) {
+    try {
+      const url = new URL(uri);
+      uris.add(url.origin);
+    } catch {
+      // Skip invalid URIs
+    }
+  }
+
+  // Add allowed origins directly
+  for (const origin of client.allowedOrigins) {
+    uris.add(origin);
+  }
+
+  return [...uris];
 }
 
 /**

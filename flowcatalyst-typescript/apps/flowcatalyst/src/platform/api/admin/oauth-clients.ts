@@ -36,6 +36,7 @@ import type {
 } from '../../infrastructure/persistence/index.js';
 import { requirePermission } from '../../authorization/index.js';
 import { OAUTH_CLIENT_PERMISSIONS } from '../../authorization/permissions/platform-auth.js';
+import { generateRaw as generateClientId } from '@flowcatalyst/tsid';
 
 // ─── Request Schemas ────────────────────────────────────────────────────────
 
@@ -49,7 +50,6 @@ const OAuthGrantTypeSchema = Type.Union([
 ]);
 
 const CreateOAuthClientSchema = Type.Object({
-  clientId: Type.String({ minLength: 1 }),
   clientName: Type.String({ minLength: 1 }),
   clientType: OAuthClientTypeSchema,
   clientSecretRef: Type.Optional(Type.Union([Type.String(), Type.Null()])),
@@ -292,7 +292,7 @@ export async function registerOAuthClientsRoutes(
       const ctx = request.executionContext;
 
       const command: CreateOAuthClientCommand = {
-        clientId: body.clientId,
+        clientId: generateClientId(),
         clientName: body.clientName,
         clientType: body.clientType,
         clientSecretRef: body.clientSecretRef,

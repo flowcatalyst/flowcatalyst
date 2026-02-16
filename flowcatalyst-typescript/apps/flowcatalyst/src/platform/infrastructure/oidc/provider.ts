@@ -166,11 +166,15 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
       revocation: { enabled: true },
 
       // Resource indicators for audience restriction
-      // defaultResource ensures all tokens are issued as JWTs (not opaque)
-      // even when the client doesn't specify a resource parameter.
+      // Resource indicators ensure all access tokens are issued as JWTs (not opaque).
+      // - defaultResource: assigns the issuer as the resource when the client omits the parameter
+      // - useGrantedResource: tells the token endpoint to use the granted resource even when
+      //   the client doesn't re-specify it. Without this, oidc-provider issues an opaque
+      //   "UserInfo token" when scope includes 'openid' and userinfo is enabled.
       resourceIndicators: {
         enabled: true,
         defaultResource: async () => issuer,
+        useGrantedResource: async () => true,
         getResourceServerInfo: async (
           _ctx: KoaContextWithOIDC,
           resourceIndicator: string,
@@ -189,6 +193,20 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
 
       // Introspection and revocation
       introspection: { enabled: true },
+
+      // RP-initiated logout — auto-confirm and clear fc_session cookie
+      rpInitiatedLogout: {
+        enabled: true,
+        logoutSource: async (ctx: KoaContextWithOIDC, form: string) => {
+          // Clear the platform session cookie so the user isn't auto-logged back in
+          ctx.res.setHeader(
+            'Set-Cookie',
+            'fc_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax',
+          );
+          // Auto-submit the confirmation form for seamless logout
+          ctx.body = `<!DOCTYPE html><html><head><title>Logging out...</title></head><body>${form}<script>document.forms[0].submit();</script></body></html>`;
+        },
+      },
     },
 
     // Claims configuration
@@ -200,6 +218,12 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
 
     // Scopes configuration
     scopes: ['openid', 'profile', 'email', 'offline_access'],
+
+    // Custom route paths — use /authorize instead of /auth to avoid
+    // conflicts with the platform's /auth/* SPA & API routes.
+    routes: {
+      authorization: '/authorize',
+    },
 
     // Use our RSA signing keys if provided
     ...(jwksConfig ? { jwks: jwksConfig } : {}),

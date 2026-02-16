@@ -35,6 +35,7 @@ export {
   mountOidcProvider,
   registerWellKnownRoutes,
   registerOAuthCompatibilityRoutes,
+  registerOidcEndpointRoutes,
 } from './fastify-adapter.js';
 
 // JWT key service (RS256 signing, JWKS)

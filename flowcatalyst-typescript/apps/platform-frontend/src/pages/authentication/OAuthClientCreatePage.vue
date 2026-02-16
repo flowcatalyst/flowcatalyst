@@ -62,17 +62,11 @@ const scopeOptions = [
 ];
 
 const isValid = computed(() => {
-  const valid =
+  return (
     form.value.clientName.trim() !== '' &&
     form.value.redirectUris.length > 0 &&
-    form.value.grantTypes.length > 0;
-  console.log('Form validation:', {
-    clientName: form.value.clientName,
-    redirectUris: form.value.redirectUris,
-    grantTypes: form.value.grantTypes,
-    isValid: valid,
-  });
-  return valid;
+    form.value.grantTypes.length > 0
+  );
 });
 
 onMounted(async () => {
@@ -167,24 +161,18 @@ async function createClient() {
       redirectUris: form.value.redirectUris,
       allowedOrigins: form.value.allowedOrigins.length > 0 ? form.value.allowedOrigins : undefined,
       grantTypes: form.value.grantTypes,
-      defaultScopes: form.value.defaultScopes,
+      defaultScopes: form.value.defaultScopes.join(' ') || undefined,
       pkceRequired: form.value.pkceRequired,
       applicationIds: form.value.applicationIds.length > 0 ? form.value.applicationIds : undefined,
     });
 
-    // If confidential client, show the secret
-    if (response.clientSecret) {
-      clientSecret.value = response.clientSecret;
-      showSecretDialog.value = true;
-    } else {
-      toast.add({
-        severity: 'success',
-        summary: 'Success',
-        detail: `OAuth client "${response.client.clientName}" created successfully`,
-        life: 3000,
-      });
-      router.push(`/authentication/oauth-clients/${response.client.id}`);
-    }
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: `OAuth client "${response.clientName}" created successfully`,
+      life: 3000,
+    });
+    router.push(`/authentication/oauth-clients/${response.id}`);
   } catch (e: any) {
     error.value = e?.error || e?.message || 'Failed to create OAuth client';
   } finally {

@@ -93,8 +93,15 @@ export async function login(credentials: LoginCredentials): Promise<void> {
     const data: LoginResponse = await response.json();
     authStore.setUser(mapLoginResponseToUser(data));
 
-    // Check if this is part of an OAuth flow - redirect back to /oauth/authorize
+    // Check if this is part of an OIDC interaction flow
     const urlParams = new URLSearchParams(window.location.search);
+    const interactionUid = urlParams.get('interaction');
+    if (interactionUid) {
+      window.location.href = `/oidc/interaction/${interactionUid}/login`;
+      return;
+    }
+
+    // Check if this is part of an OAuth flow - redirect back to /oauth/authorize
     if (urlParams.get('oauth') === 'true') {
       // Rebuild OAuth authorize URL with all params
       const oauthParams = new URLSearchParams();

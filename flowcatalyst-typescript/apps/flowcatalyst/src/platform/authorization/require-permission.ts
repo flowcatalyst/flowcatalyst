@@ -31,14 +31,14 @@ export function requirePermission(
 
     if (!principal) {
       return reply.status(401).send({
-        error: 'UNAUTHORIZED',
+        code: 'UNAUTHORIZED',
         message: 'Authentication required',
       });
     }
 
     if (!hasPermission(principal, permissionString)) {
       return reply.status(403).send({
-        error: 'FORBIDDEN',
+        code: 'FORBIDDEN',
         message: 'Insufficient permissions',
         required: permissionString,
       });
@@ -72,14 +72,14 @@ export function requireAnyPermission(
 
     if (!principal) {
       return reply.status(401).send({
-        error: 'UNAUTHORIZED',
+        code: 'UNAUTHORIZED',
         message: 'Authentication required',
       });
     }
 
     if (!hasAnyPermission(principal, permissionStrings)) {
       return reply.status(403).send({
-        error: 'FORBIDDEN',
+        code: 'FORBIDDEN',
         message: 'Insufficient permissions',
         required: permissionStrings,
         mode: 'any',
@@ -114,14 +114,14 @@ export function requireAllPermissions(
 
     if (!principal) {
       return reply.status(401).send({
-        error: 'UNAUTHORIZED',
+        code: 'UNAUTHORIZED',
         message: 'Authentication required',
       });
     }
 
     if (!hasAllPermissions(principal, permissionStrings)) {
       return reply.status(403).send({
-        error: 'FORBIDDEN',
+        code: 'FORBIDDEN',
         message: 'Insufficient permissions',
         required: permissionStrings,
         mode: 'all',
@@ -141,7 +141,7 @@ export function requireAuthentication(): preHandlerHookHandler {
 
     if (!principal) {
       return reply.status(401).send({
-        error: 'UNAUTHORIZED',
+        code: 'UNAUTHORIZED',
         message: 'Authentication required',
       });
     }
@@ -166,7 +166,7 @@ export function requireClientAccess(
 
     if (!principal) {
       return reply.status(401).send({
-        error: 'UNAUTHORIZED',
+        code: 'UNAUTHORIZED',
         message: 'Authentication required',
       });
     }
@@ -174,7 +174,7 @@ export function requireClientAccess(
     const clientId = getClientId(request);
     if (!clientId) {
       return reply.status(400).send({
-        error: 'BAD_REQUEST',
+        code: 'BAD_REQUEST',
         message: 'Client ID required',
       });
     }
@@ -184,7 +184,7 @@ export function requireClientAccess(
 
     if (!canAccessClient(principal, clientId)) {
       return reply.status(403).send({
-        error: 'FORBIDDEN',
+        code: 'FORBIDDEN',
         message: 'Access to client denied',
         clientId,
       });

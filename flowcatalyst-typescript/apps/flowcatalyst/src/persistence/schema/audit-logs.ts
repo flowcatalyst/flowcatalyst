@@ -25,8 +25,8 @@ export const auditLogs = pgTable(
     operation: varchar('operation', { length: 100 }).notNull(),
     operationJson: jsonb('operation_json'),
 
-    // Who performed the operation
-    principalId: tsidColumn('principal_id'),
+    // Who performed the operation (typed ID or system identifier like "system:oidc-federation")
+    principalId: varchar('principal_id', { length: 100 }),
 
     // When the operation was performed
     performedAt: timestampColumn('performed_at').notNull().defaultNow(),

@@ -200,7 +200,10 @@ export async function createJwtKeyService(config: JwtKeyServiceConfig): Promise<
           issuer,
         });
         return typeof payload.sub === 'string' ? payload.sub : null;
-      } catch {
+      } catch (err) {
+        // Log validation failures to aid debugging (e.g. issuer mismatch, key mismatch)
+        const message = err instanceof Error ? err.message : String(err);
+        console.debug('[jwt-key-service] Token validation failed:', message);
         return null;
       }
     },

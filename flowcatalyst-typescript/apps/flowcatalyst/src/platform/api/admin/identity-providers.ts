@@ -31,6 +31,7 @@ import type {
 import type { IdentityProviderRepository } from '../../infrastructure/persistence/index.js';
 import { requirePermission } from '../../authorization/index.js';
 import { IDENTITY_PROVIDER_PERMISSIONS } from '../../authorization/permissions/platform-admin.js';
+import type { EncryptionService } from '../../../crypto/encryption.js';
 
 // ─── Request Schemas ────────────────────────────────────────────────────────
 
@@ -87,6 +88,7 @@ type IdentityProviderResponse = Static<typeof IdentityProviderResponseSchema>;
 
 export interface IdentityProvidersRoutesDeps {
   readonly identityProviderRepository: IdentityProviderRepository;
+  readonly encryptionService: EncryptionService;
   readonly createIdentityProviderUseCase: UseCase<
     CreateIdentityProviderCommand,
     IdentityProviderCreated
@@ -109,6 +111,7 @@ export async function registerIdentityProvidersRoutes(
 ): Promise<void> {
   const {
     identityProviderRepository,
+    encryptionService,
     createIdentityProviderUseCase,
     updateIdentityProviderUseCase,
     deleteIdentityProviderUseCase,
@@ -175,13 +178,24 @@ export async function registerIdentityProvidersRoutes(
       const body = request.body as Static<typeof CreateIdentityProviderSchema>;
       const ctx = request.executionContext;
 
+      // Encrypt client secret if provided as plaintext
+      let secretRef = body.oidcClientSecretRef;
+      if (secretRef && !secretRef.startsWith('encrypted:')) {
+        const encResult = encryptionService.encrypt(secretRef);
+        if (encResult.isOk()) {
+          secretRef = encResult.value;
+        } else {
+          return reply.status(400).send({ code: 'ENCRYPTION_FAILED', message: 'Failed to encrypt client secret' });
+        }
+      }
+
       const command: CreateIdentityProviderCommand = {
         code: body.code,
         name: body.name,
         type: body.type,
         oidcIssuerUrl: body.oidcIssuerUrl,
         oidcClientId: body.oidcClientId,
-        oidcClientSecretRef: body.oidcClientSecretRef,
+        oidcClientSecretRef: secretRef,
         oidcMultiTenant: body.oidcMultiTenant,
         oidcIssuerPattern: body.oidcIssuerPattern,
         allowedEmailDomains: body.allowedEmailDomains,
@@ -223,6 +237,17 @@ export async function registerIdentityProvidersRoutes(
       const body = request.body as Static<typeof UpdateIdentityProviderSchema>;
       const ctx = request.executionContext;
 
+      // Encrypt client secret if provided as plaintext
+      let secretRef = body.oidcClientSecretRef;
+      if (secretRef && !secretRef.startsWith('encrypted:')) {
+        const encResult = encryptionService.encrypt(secretRef);
+        if (encResult.isOk()) {
+          secretRef = encResult.value;
+        } else {
+          return reply.status(400).send({ code: 'ENCRYPTION_FAILED', message: 'Failed to encrypt client secret' });
+        }
+      }
+
       const command: UpdateIdentityProviderCommand = {
         identityProviderId: id,
         ...(body.name !== undefined ? { name: body.name } : {}),
@@ -230,7 +255,7 @@ export async function registerIdentityProvidersRoutes(
         ...(body.oidcIssuerUrl !== undefined ? { oidcIssuerUrl: body.oidcIssuerUrl } : {}),
         ...(body.oidcClientId !== undefined ? { oidcClientId: body.oidcClientId } : {}),
         ...(body.oidcClientSecretRef !== undefined
-          ? { oidcClientSecretRef: body.oidcClientSecretRef }
+          ? { oidcClientSecretRef: secretRef }
           : {}),
         ...(body.oidcMultiTenant !== undefined ? { oidcMultiTenant: body.oidcMultiTenant } : {}),
         ...(body.oidcIssuerPattern !== undefined

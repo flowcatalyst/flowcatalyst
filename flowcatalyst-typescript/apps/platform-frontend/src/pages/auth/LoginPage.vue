@@ -84,7 +84,13 @@ const onCheckEmail = handleEmailSubmit(async (values) => {
       const currentParams = new URLSearchParams(window.location.search);
       let redirectUrl = result.loginUrl;
 
-      if (currentParams.get('oauth') === 'true') {
+      // Forward interaction param for OIDC interaction flow
+      const interactionUid = currentParams.get('interaction');
+      if (interactionUid) {
+        const loginUrl = new URL(result.loginUrl, window.location.origin);
+        loginUrl.searchParams.set('interaction', interactionUid);
+        redirectUrl = loginUrl.toString();
+      } else if (currentParams.get('oauth') === 'true') {
         const oauthFields = [
           'client_id',
           'redirect_uri',

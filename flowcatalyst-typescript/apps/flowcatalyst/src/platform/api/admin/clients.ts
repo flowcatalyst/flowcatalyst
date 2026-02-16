@@ -625,20 +625,26 @@ export async function registerClientsRoutes(
       // Enable apps that should be enabled but aren't
       for (const appId of enabledApplicationIds) {
         if (!currentlyEnabled.has(appId)) {
-          await enableApplicationForClientUseCase.execute(
+          const result = await enableApplicationForClientUseCase.execute(
             { applicationId: appId, clientId: id },
             ctx,
           );
+          if (Result.isFailure(result)) {
+            return sendResult(reply, result);
+          }
         }
       }
 
       // Disable apps that are currently enabled but shouldn't be
       for (const appId of currentlyEnabled) {
         if (!desiredEnabled.has(appId)) {
-          await disableApplicationForClientUseCase.execute(
+          const result = await disableApplicationForClientUseCase.execute(
             { applicationId: appId, clientId: id },
             ctx,
           );
+          if (Result.isFailure(result)) {
+            return sendResult(reply, result);
+          }
         }
       }
 
