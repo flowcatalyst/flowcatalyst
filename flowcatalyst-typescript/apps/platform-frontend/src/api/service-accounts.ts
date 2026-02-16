@@ -1,4 +1,5 @@
 import { apiFetch } from './client';
+import type { PrincipalScope } from './users';
 
 export type WebhookAuthType = 'BEARER' | 'BASIC';
 
@@ -7,6 +8,7 @@ export interface ServiceAccount {
   code: string;
   name: string;
   description: string | null;
+  scope: PrincipalScope | null;
   clientIds: string[];
   applicationId: string | null;
   active: boolean;
@@ -28,6 +30,7 @@ export interface CreateServiceAccountRequest {
   description?: string;
   clientIds?: string[];
   applicationId?: string;
+  scope?: PrincipalScope;
 }
 
 export interface OAuthCredentials {
@@ -51,6 +54,7 @@ export interface UpdateServiceAccountRequest {
   name?: string;
   description?: string;
   clientIds?: string[];
+  scope?: PrincipalScope;
 }
 
 export interface RegenerateTokenResponse {

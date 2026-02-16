@@ -52,12 +52,20 @@ export function getClientQueryScope(): QueryScope<ClientScopeFilter> {
  * Get the client scope for a specific principal.
  *
  * - ANCHOR: unrestricted (can see all clients)
+ * - SERVICE with no linked client: unrestricted (anchor service accounts)
  * - PARTNER: restricted to home client + granted clients
  * - CLIENT: restricted to home client only
  */
 export function getClientQueryScopeForPrincipal(
   principal: PrincipalInfo,
 ): QueryScope<ClientScopeFilter> {
+  // SERVICE principals with no linked client are unrestricted (anchor service accounts).
+  // This matches Java behaviour: if no clients are linked to a service account,
+  // it has access to all clients.
+  if (principal.type === 'SERVICE' && !principal.clientId) {
+    return { type: 'unrestricted' };
+  }
+
   switch (principal.scope) {
     case 'ANCHOR':
       return { type: 'unrestricted' };

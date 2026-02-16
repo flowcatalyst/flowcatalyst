@@ -98,11 +98,17 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
     interactionsPath = '/oidc/interaction',
   } = config;
 
-  // Create adapter factory
-  const AdapterFactory = createDrizzleAdapterFactory(db as PostgresJsDatabase);
-
-  // Create client loader for dynamic client registration
+  // Create client loader for dynamic client loading from OAuth repository
   const loadClient = createClientLoader(oauthClientRepository, encryptionService);
+
+  // Create adapter factory with dynamic client loading fallback
+  const AdapterFactory = createDrizzleAdapterFactory(
+    db as PostgresJsDatabase,
+    async (clientId: string) => {
+      const metadata = await loadClient(clientId);
+      return metadata as Record<string, unknown> | undefined;
+    },
+  );
 
   // Create find account function
   const findAccount = createFindAccount(principalRepository);
@@ -160,14 +166,15 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
       revocation: { enabled: true },
 
       // Resource indicators for audience restriction
+      // defaultResource ensures all tokens are issued as JWTs (not opaque)
+      // even when the client doesn't specify a resource parameter.
       resourceIndicators: {
         enabled: true,
+        defaultResource: async () => issuer,
         getResourceServerInfo: async (
           _ctx: KoaContextWithOIDC,
           resourceIndicator: string,
         ): Promise<ResourceServer> => {
-          // Allow any resource indicator for now
-          // In production, validate against known APIs
           return {
             scope: 'openid profile email',
             audience: resourceIndicator,
@@ -223,6 +230,7 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
       _ctx: KoaContextWithOIDC,
       token: AccessToken | ClientCredentials,
     ): Promise<UnknownObject | undefined> => {
+      // For user tokens (AccessToken with accountId)
       const accountId = 'accountId' in token ? token.accountId : undefined;
       if (accountId) {
         const principal = await principalRepository.findById(accountId);
@@ -239,6 +247,35 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
           };
         }
       }
+
+      // For client_credentials tokens (no accountId) - look up the OAuth client's
+      // service account principal to add the same claims as the Java version.
+      // We also set `sub` so the audit plugin can extract the principal ID.
+      const tokenClientId = 'clientId' in token ? token.clientId : undefined;
+      if (tokenClientId) {
+        const oauthClient = await oauthClientRepository.findByClientId(tokenClientId);
+        if (oauthClient?.serviceAccountPrincipalId) {
+          const principal = await principalRepository.findById(oauthClient.serviceAccountPrincipalId);
+          if (principal) {
+            const roleNames = principal.roles.map((r) => r.roleName);
+            return {
+              sub: principal.id,
+              type: principal.type,
+              scope: principal.scope,
+              client_id: principal.clientId,
+              roles: roleNames,
+              applications: extractApplicationCodes(roleNames),
+              clients:
+                principal.scope === 'ANCHOR'
+                  ? ['*']
+                  : principal.clientId
+                    ? [principal.clientId]
+                    : [],
+            };
+          }
+        }
+      }
+
       return undefined;
     },
 
@@ -257,28 +294,9 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
   };
 
   // Create provider
+  // Dynamic client loading is handled by the adapter's Client model fallback
+  // (see createDrizzleAdapterFactory clientLoader parameter above)
   const provider = new Provider(issuer, providerConfig);
-
-  // Add dynamic client loading via middleware
-  provider.use(async (ctx: KoaContextWithOIDC, next: () => Promise<void>) => {
-    // Intercept client lookup - load client from our repository if not found
-    const existingClient = ctx.oidc?.client;
-
-    if (!existingClient && ctx.oidc?.params) {
-      const clientId = ctx.oidc.params['client_id'] as string | undefined;
-      if (clientId) {
-        const clientMetadata = await loadClient(clientId);
-
-        if (clientMetadata) {
-          // Provider.Client.find will use the adapter to find/create the client
-          // Note: oidc-provider will handle setting the client on the context
-          await provider.Client.find(clientId);
-        }
-      }
-    }
-
-    await next();
-  });
 
   return provider;
 }

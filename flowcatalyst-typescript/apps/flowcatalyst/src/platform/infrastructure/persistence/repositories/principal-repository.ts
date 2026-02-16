@@ -6,7 +6,7 @@
  * Roles are stored in the separate principal_roles junction table.
  */
 
-import { eq, and, sql, inArray } from 'drizzle-orm';
+import { eq, and, or, sql, inArray, ilike } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import {
   type PaginatedRepository,
@@ -33,7 +33,7 @@ import {
   type PrincipalType,
   type UserIdentity,
   type RoleAssignment,
-  type UserScope,
+  type PrincipalScope,
   type IdpType,
   type ServiceAccountData,
   type WebhookAuthType,
@@ -51,6 +51,7 @@ export interface PrincipalFilters {
   clientId?: string | undefined;
   active?: boolean | undefined;
   email?: string | undefined;
+  search?: string | undefined;
 }
 
 export interface PrincipalRepository extends PaginatedRepository<Principal> {
@@ -419,6 +420,10 @@ export function createPrincipalRepository(defaultDb: AnyDb): PrincipalRepository
       if (filters.clientId) conditions.push(eq(principals.clientId, filters.clientId));
       if (filters.active !== undefined) conditions.push(eq(principals.active, filters.active));
       if (filters.email) conditions.push(eq(principals.email, filters.email.toLowerCase()));
+      if (filters.search) {
+        const pattern = `%${filters.search}%`;
+        conditions.push(or(ilike(principals.name, pattern), ilike(principals.email, pattern))!);
+      }
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -697,7 +702,7 @@ function recordToPrincipal(
   return {
     id: record.id,
     type: record.type as PrincipalType,
-    scope: record.scope as UserScope | null,
+    scope: record.scope as PrincipalScope | null,
     clientId: record.clientId,
     applicationId: record.applicationId,
     name: record.name,

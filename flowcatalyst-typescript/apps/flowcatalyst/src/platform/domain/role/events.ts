@@ -121,3 +121,41 @@ export class RoleDeleted extends BaseDomainEvent<RoleDeletedData> {
     );
   }
 }
+
+// -----------------------------------------------------------------------------
+// RolesSynced
+// -----------------------------------------------------------------------------
+
+/**
+ * Roles synced event data.
+ */
+export interface RolesSyncedData {
+  readonly applicationCode: string;
+  readonly rolesCreated: number;
+  readonly rolesUpdated: number;
+  readonly rolesDeleted: number;
+  readonly syncedRoleNames: string[];
+  readonly [key: string]: unknown;
+}
+
+/**
+ * Roles synced event.
+ */
+export class RolesSynced extends BaseDomainEvent<RolesSyncedData> {
+  static readonly EVENT_TYPE = DomainEvent.eventType(APP, DOMAIN, 'role', 'synced');
+  static readonly SPEC_VERSION = '1.0';
+
+  constructor(ctx: ExecutionContext, data: RolesSyncedData) {
+    super(
+      {
+        eventType: RolesSynced.EVENT_TYPE,
+        specVersion: RolesSynced.SPEC_VERSION,
+        source: SOURCE,
+        subject: DomainEvent.subject(APP, 'role', data.applicationCode),
+        messageGroup: DomainEvent.messageGroup(APP, 'role', data.applicationCode),
+      },
+      ctx,
+      data,
+    );
+  }
+}

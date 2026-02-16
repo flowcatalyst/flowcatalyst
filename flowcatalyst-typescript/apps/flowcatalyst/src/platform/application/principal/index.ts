@@ -66,3 +66,11 @@ export {
   createAssignApplicationAccessUseCase,
   type AssignApplicationAccessUseCaseDeps,
 } from './assign-application-access/index.js';
+
+// Sync Principals
+export {
+  type SyncPrincipalsCommand,
+  type SyncPrincipalItem,
+  createSyncPrincipalsUseCase,
+  type SyncPrincipalsUseCaseDeps,
+} from './sync-principals/index.js';

@@ -6,7 +6,7 @@
 
 // Types
 export { PrincipalType } from './principal-type.js';
-export { UserScope } from './user-scope.js';
+export { PrincipalScope } from './principal-scope.js';
 export { IdpType } from './idp-type.js';
 
 // Entities
@@ -43,6 +43,7 @@ export {
   ApplicationAccessAssigned,
   ClientAccessGranted,
   ClientAccessRevoked,
+  PrincipalsSynced,
   type UserCreatedData,
   type UserUpdatedData,
   type UserActivatedData,
@@ -52,4 +53,5 @@ export {
   type ApplicationAccessAssignedData,
   type ClientAccessGrantedData,
   type ClientAccessRevokedData,
+  type PrincipalsSyncedData,
 } from './events.js';

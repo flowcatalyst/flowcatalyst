@@ -45,7 +45,7 @@ export { principalRoles } from './principal-roles.js';
 export { clients } from './clients.js';
 export { anchorDomains } from './anchor-domains.js';
 export { applications, applicationClientConfigs } from './applications.js';
-export { authRoles, authPermissions } from './roles.js';
+export { authRoles, authPermissions, rolePermissions } from './roles.js';
 export { clientAccessGrants } from './client-access-grants.js';
 export { clientAuthConfigs } from './client-auth-configs.js';
 export { oidcPayloads } from './oidc-payloads.js';

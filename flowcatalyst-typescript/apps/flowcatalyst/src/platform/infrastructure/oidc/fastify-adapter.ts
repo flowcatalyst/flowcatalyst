@@ -39,55 +39,67 @@ export async function mountOidcProvider(
   // Get the provider's HTTP callback
   const callback = provider.callback();
 
-  // Create a wildcard route that forwards to oidc-provider
-  // oidc-provider expects to handle the full path internally
-  fastify.all(`${basePath}/*`, async (request: FastifyRequest, reply: FastifyReply) => {
-    // oidc-provider expects the path relative to its mount point
-    const originalUrl = request.raw.url ?? '';
-    const oidcPath = originalUrl.replace(basePath, '') || '/';
-
-    // Create a modified request object with the adjusted URL
-    const req = request.raw;
-    const res = reply.raw;
-
-    // Store original URL and modify for oidc-provider
-    const storedUrl = req.url;
-    req.url = oidcPath;
-
-    // Let oidc-provider handle the request
-    await new Promise<void>((resolve, reject) => {
-      // oidc-provider's callback returns a promise
-      callback(req, res)
-        .then(() => resolve())
-        .catch((err: Error) => reject(err))
-        .finally(() => {
-          // Restore original URL
-          req.url = storedUrl;
-        });
+  // Register in an encapsulated plugin context so that body parsing
+  // does not interfere with oidc-provider. oidc-provider (Koa) handles
+  // its own body parsing for application/x-www-form-urlencoded POST requests.
+  await fastify.register(async (instance) => {
+    // Remove Fastify's default content-type parsers and add a passthrough
+    // that leaves the request body stream unconsumed for oidc-provider.
+    instance.removeAllContentTypeParsers();
+    instance.addContentTypeParser('*', function (_request, _payload, done) {
+      done(null);
     });
 
-    // Mark reply as sent (oidc-provider handles the response directly)
-    reply.hijack();
-  });
+    // Create a wildcard route that forwards to oidc-provider
+    // oidc-provider expects to handle the full path internally
+    instance.all(`${basePath}/*`, async (request: FastifyRequest, reply: FastifyReply) => {
+      // oidc-provider expects the path relative to its mount point
+      const originalUrl = request.raw.url ?? '';
+      const oidcPath = originalUrl.replace(basePath, '') || '/';
 
-  // Also handle the exact base path (for discovery)
-  fastify.all(basePath, async (request: FastifyRequest, reply: FastifyReply) => {
-    const req = request.raw;
-    const res = reply.raw;
+      // Create a modified request object with the adjusted URL
+      const req = request.raw;
+      const res = reply.raw;
 
-    const storedUrl = req.url;
-    req.url = '/';
+      // Store original URL and modify for oidc-provider
+      const storedUrl = req.url;
+      req.url = oidcPath;
 
-    await new Promise<void>((resolve, reject) => {
-      callback(req, res)
-        .then(() => resolve())
-        .catch((err: Error) => reject(err))
-        .finally(() => {
-          req.url = storedUrl;
-        });
+      // Let oidc-provider handle the request
+      await new Promise<void>((resolve, reject) => {
+        // oidc-provider's callback returns a promise
+        callback(req, res)
+          .then(() => resolve())
+          .catch((err: Error) => reject(err))
+          .finally(() => {
+            // Restore original URL
+            req.url = storedUrl;
+          });
+      });
+
+      // Mark reply as sent (oidc-provider handles the response directly)
+      reply.hijack();
     });
 
-    reply.hijack();
+    // Also handle the exact base path (for discovery)
+    instance.all(basePath, async (request: FastifyRequest, reply: FastifyReply) => {
+      const req = request.raw;
+      const res = reply.raw;
+
+      const storedUrl = req.url;
+      req.url = '/';
+
+      await new Promise<void>((resolve, reject) => {
+        callback(req, res)
+          .then(() => resolve())
+          .catch((err: Error) => reject(err))
+          .finally(() => {
+            req.url = storedUrl;
+          });
+      });
+
+      reply.hijack();
+    });
   });
 
   fastify.log.info({ path: basePath }, 'OIDC provider mounted');
@@ -166,32 +178,43 @@ export function registerOAuthCompatibilityRoutes(
     reply.hijack();
   };
 
-  // /oauth/authorize -> /oidc/auth
-  fastify.get('/oauth/authorize', async (request, reply) => {
-    // Preserve query string
-    const queryString = request.raw.url?.split('?')[1] ?? '';
-    const oidcPath = queryString ? `/auth?${queryString}` : '/auth';
-    await forwardToOidc(request, reply, oidcPath);
-  });
+  // Register in an encapsulated plugin context so that body parsing
+  // does not interfere with oidc-provider. OAuth token/introspect/revoke
+  // endpoints use application/x-www-form-urlencoded which Fastify doesn't
+  // handle by default. oidc-provider (Koa) handles its own body parsing.
+  fastify.register(async (instance) => {
+    instance.removeAllContentTypeParsers();
+    instance.addContentTypeParser('*', function (_request, _payload, done) {
+      done(null);
+    });
 
-  // /oauth/token -> /oidc/token
-  fastify.post('/oauth/token', async (request, reply) => {
-    await forwardToOidc(request, reply, '/token');
-  });
+    // /oauth/authorize -> /oidc/auth
+    instance.get('/oauth/authorize', async (request, reply) => {
+      // Preserve query string
+      const queryString = request.raw.url?.split('?')[1] ?? '';
+      const oidcPath = queryString ? `/auth?${queryString}` : '/auth';
+      await forwardToOidc(request, reply, oidcPath);
+    });
 
-  // /oauth/jwks -> /oidc/jwks
-  fastify.get('/oauth/jwks', async (request, reply) => {
-    await forwardToOidc(request, reply, '/jwks');
-  });
+    // /oauth/token -> /oidc/token
+    instance.post('/oauth/token', async (request, reply) => {
+      await forwardToOidc(request, reply, '/token');
+    });
 
-  // /oauth/introspect -> /oidc/token/introspection
-  fastify.post('/oauth/introspect', async (request, reply) => {
-    await forwardToOidc(request, reply, '/token/introspection');
-  });
+    // /oauth/jwks -> /oidc/jwks
+    instance.get('/oauth/jwks', async (request, reply) => {
+      await forwardToOidc(request, reply, '/jwks');
+    });
 
-  // /oauth/revoke -> /oidc/token/revocation
-  fastify.post('/oauth/revoke', async (request, reply) => {
-    await forwardToOidc(request, reply, '/token/revocation');
+    // /oauth/introspect -> /oidc/token/introspection
+    instance.post('/oauth/introspect', async (request, reply) => {
+      await forwardToOidc(request, reply, '/token/introspection');
+    });
+
+    // /oauth/revoke -> /oidc/token/revocation
+    instance.post('/oauth/revoke', async (request, reply) => {
+      await forwardToOidc(request, reply, '/token/revocation');
+    });
   });
 
   fastify.log.info('OAuth compatibility routes registered (/oauth/* -> /oidc/*)');

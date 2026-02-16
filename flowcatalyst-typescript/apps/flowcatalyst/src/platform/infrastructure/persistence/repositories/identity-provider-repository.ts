@@ -76,7 +76,7 @@ export function createIdentityProviderRepository(defaultDb: PlatformDb): Identit
 
     async findById(id: string, tx?: TransactionContext): Promise<IdentityProvider | undefined> {
       const result = await rq(tx).identityProviders.findFirst({
-        where: { RAW: eq(identityProviders.id, id) },
+        where: { id },
         with: withChildren,
       });
       if (!result) return undefined;
@@ -85,7 +85,7 @@ export function createIdentityProviderRepository(defaultDb: PlatformDb): Identit
 
     async findByCode(code: string, tx?: TransactionContext): Promise<IdentityProvider | undefined> {
       const result = await rq(tx).identityProviders.findFirst({
-        where: { RAW: eq(identityProviders.code, code) },
+        where: { code },
         with: withChildren,
       });
       if (!result) return undefined;

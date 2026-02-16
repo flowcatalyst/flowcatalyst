@@ -131,7 +131,7 @@ export function createEmailDomainMappingRepository(defaultDb: PlatformDb): Email
 
     async findById(id: string, tx?: TransactionContext): Promise<EmailDomainMapping | undefined> {
       const result = await rq(tx).emailDomainMappings.findFirst({
-        where: { RAW: eq(emailDomainMappings.id, id) },
+        where: { id },
         with: withChildren,
       });
       if (!result) return undefined;
@@ -143,7 +143,7 @@ export function createEmailDomainMappingRepository(defaultDb: PlatformDb): Email
       tx?: TransactionContext,
     ): Promise<EmailDomainMapping | undefined> {
       const result = await rq(tx).emailDomainMappings.findFirst({
-        where: { RAW: eq(emailDomainMappings.emailDomain, emailDomain.toLowerCase()) },
+        where: { emailDomain: emailDomain.toLowerCase() },
         with: withChildren,
       });
       if (!result) return undefined;

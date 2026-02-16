@@ -7,6 +7,7 @@
 import type { UseCase } from '@flowcatalyst/application';
 import { Result, UseCaseError } from '@flowcatalyst/application';
 import type { ExecutionContext, UnitOfWork } from '@flowcatalyst/domain-core';
+import type { TransactionContext } from '@flowcatalyst/persistence';
 
 import type { DispatchPoolRepository } from '../../../infrastructure/persistence/index.js';
 import {
@@ -89,65 +90,68 @@ export function createSyncDispatchPoolsUseCase(
       let deleted = 0;
       const syncedCodes: string[] = [];
 
-      // Process each pool item (anchor-level: clientId = null)
-      for (const item of command.pools) {
-        const existing = await dispatchPoolRepository.findByCodeAndClientId(item.code, null);
-
-        if (existing) {
-          // Update existing
-          const updatedPool = updateDispatchPool(existing, {
-            name: item.name,
-            description: item.description ?? null,
-            rateLimit: item.rateLimit ?? 100,
-            concurrency: item.concurrency ?? 10,
-            status: 'ACTIVE',
-          });
-          await dispatchPoolRepository.update(updatedPool);
-          updated++;
-        } else {
-          // Create new
-          const pool = createDispatchPool({
-            code: item.code,
-            name: item.name,
-            description: item.description ?? null,
-            rateLimit: item.rateLimit ?? 100,
-            concurrency: item.concurrency ?? 10,
-          });
-          await dispatchPoolRepository.insert(pool);
-          created++;
-        }
-
-        syncedCodes.push(item.code);
-      }
-
-      // Remove unlisted pools if requested
-      if (command.removeUnlisted) {
-        const anchorPools = await dispatchPoolRepository.findAnchorLevel();
-        for (const pool of anchorPools) {
-          if (!seenCodes.has(pool.code) && pool.status !== 'ARCHIVED') {
-            const archived = updateDispatchPool(pool, { status: 'ARCHIVED' });
-            await dispatchPoolRepository.update(archived);
-            deleted++;
-          }
-        }
-      }
-
-      const syncEvent = new DispatchPoolsSynced(context, {
+      const eventData = {
         applicationCode: command.applicationCode,
-        poolsCreated: created,
-        poolsUpdated: updated,
-        poolsDeleted: deleted,
-        syncedPoolCodes: syncedCodes,
-      });
-
-      // Use synthetic aggregate to commit the sync event
-      const syncResult = {
-        id: command.applicationCode,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        poolsCreated: 0,
+        poolsUpdated: 0,
+        poolsDeleted: 0,
+        syncedPoolCodes: [] as string[],
       };
 
-      return unitOfWork.commit(syncResult, syncEvent, command);
+      const event = new DispatchPoolsSynced(context, eventData);
+
+      return unitOfWork.commitOperations(event, command, async (tx) => {
+        const txCtx = tx as TransactionContext;
+
+        // Process each pool item (anchor-level: clientId = null)
+        for (const item of command.pools) {
+          const existing = await dispatchPoolRepository.findByCodeAndClientId(item.code, null, txCtx);
+
+          if (existing) {
+            // Update existing
+            const updatedPool = updateDispatchPool(existing, {
+              name: item.name,
+              description: item.description ?? null,
+              rateLimit: item.rateLimit ?? 100,
+              concurrency: item.concurrency ?? 10,
+              status: 'ACTIVE',
+            });
+            await dispatchPoolRepository.update(updatedPool, txCtx);
+            updated++;
+          } else {
+            // Create new
+            const pool = createDispatchPool({
+              code: item.code,
+              name: item.name,
+              description: item.description ?? null,
+              rateLimit: item.rateLimit ?? 100,
+              concurrency: item.concurrency ?? 10,
+            });
+            await dispatchPoolRepository.insert(pool, txCtx);
+            created++;
+          }
+
+          syncedCodes.push(item.code);
+        }
+
+        // Remove unlisted pools if requested
+        if (command.removeUnlisted) {
+          const anchorPools = await dispatchPoolRepository.findAnchorLevel(txCtx);
+          for (const pool of anchorPools) {
+            if (!seenCodes.has(pool.code) && pool.status !== 'ARCHIVED') {
+              const archived = updateDispatchPool(pool, { status: 'ARCHIVED' });
+              await dispatchPoolRepository.update(archived, txCtx);
+              deleted++;
+            }
+          }
+        }
+
+        // Update event data with final counts (mutate the same object reference held by the event)
+        eventData.poolsCreated = created;
+        eventData.poolsUpdated = updated;
+        eventData.poolsDeleted = deleted;
+        eventData.syncedPoolCodes = syncedCodes;
+      });
     },
   };
 }

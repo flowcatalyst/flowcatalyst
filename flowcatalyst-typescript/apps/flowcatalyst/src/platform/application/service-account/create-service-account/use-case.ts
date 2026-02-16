@@ -118,6 +118,7 @@ export function createCreateServiceAccountUseCase(
         applicationId: command.applicationId,
         clientId: command.clientId,
         serviceAccount: serviceAccountData,
+        ...(command.scope !== undefined ? { scope: command.scope } : {}),
       });
 
       // Create CONFIDENTIAL OAuthClient for client_credentials

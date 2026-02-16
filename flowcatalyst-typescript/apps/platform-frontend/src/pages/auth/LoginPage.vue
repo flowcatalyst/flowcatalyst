@@ -35,18 +35,11 @@ const emailSchema = toTypedSchema(
   }),
 );
 
-// Password step schema
-const passwordSchema = toTypedSchema(
-  z.object({
-    password: z.string().min(1, 'Password is required'),
-  }),
-);
-
 // Email form
 const {
   handleSubmit: handleEmailSubmit,
-  values: emailValues,
-  meta: emailMeta,
+  values: _emailValues,
+  meta: _emailMeta,
 } = useForm({
   validationSchema: emailSchema,
   initialValues: { email: '' },

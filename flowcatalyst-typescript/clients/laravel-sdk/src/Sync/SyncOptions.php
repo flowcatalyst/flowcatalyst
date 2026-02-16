@@ -35,6 +35,11 @@ final class SyncOptions
          * Whether to sync dispatch pools.
          */
         public readonly bool $syncDispatchPools = true,
+
+        /**
+         * Whether to sync principals (users with roles).
+         */
+        public readonly bool $syncPrincipals = true,
     ) {}
 
     /**
@@ -63,6 +68,7 @@ final class SyncOptions
             syncEventTypes: false,
             syncSubscriptions: false,
             syncDispatchPools: false,
+            syncPrincipals: false,
         );
     }
 
@@ -76,6 +82,7 @@ final class SyncOptions
             syncEventTypes: true,
             syncSubscriptions: false,
             syncDispatchPools: false,
+            syncPrincipals: false,
         );
     }
 
@@ -89,6 +96,7 @@ final class SyncOptions
             syncEventTypes: false,
             syncSubscriptions: true,
             syncDispatchPools: false,
+            syncPrincipals: false,
         );
     }
 
@@ -102,6 +110,21 @@ final class SyncOptions
             syncEventTypes: false,
             syncSubscriptions: false,
             syncDispatchPools: true,
+            syncPrincipals: false,
+        );
+    }
+
+    /**
+     * Create options that only sync principals.
+     */
+    public static function principalsOnly(): self
+    {
+        return new self(
+            syncRoles: false,
+            syncEventTypes: false,
+            syncSubscriptions: false,
+            syncDispatchPools: false,
+            syncPrincipals: true,
         );
     }
 
@@ -116,6 +139,7 @@ final class SyncOptions
             syncEventTypes: $this->syncEventTypes,
             syncSubscriptions: $this->syncSubscriptions,
             syncDispatchPools: $this->syncDispatchPools,
+            syncPrincipals: $this->syncPrincipals,
         );
     }
 }

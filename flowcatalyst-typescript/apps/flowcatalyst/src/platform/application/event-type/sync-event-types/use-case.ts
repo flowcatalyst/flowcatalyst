@@ -7,8 +7,9 @@
  */
 
 import type { UseCase } from '@flowcatalyst/application';
-import { validateRequired, Result, UseCaseError } from '@flowcatalyst/application';
+import { validateRequired, Result } from '@flowcatalyst/application';
 import type { ExecutionContext, UnitOfWork } from '@flowcatalyst/domain-core';
+import type { TransactionContext } from '@flowcatalyst/persistence';
 
 import type { EventTypeRepository } from '../../../infrastructure/persistence/index.js';
 import {
@@ -47,65 +48,76 @@ export function createSyncEventTypesUseCase(
       let deleted = 0;
       const syncedCodes: string[] = [];
 
-      // Process each event type item
-      for (const item of command.eventTypes) {
-        const code = buildCode(command.applicationCode, item.subdomain, item.aggregate, item.event);
-        syncedCodes.push(code);
-
-        const existing = await eventTypeRepository.findByCode(code);
-
-        if (!existing) {
-          // Create new
-          const newEventType = createEventTypeFromApi({
-            application: command.applicationCode,
-            subdomain: item.subdomain,
-            aggregate: item.aggregate,
-            event: item.event,
-            name: item.name,
-            description: item.description ?? null,
-            clientScoped: item.clientScoped ?? false,
-          });
-          await eventTypeRepository.insert(newEventType);
-          created++;
-        } else if (existing.source === 'API') {
-          // Update existing API-sourced
-          const updatedEntity = updateEventType(existing, {
-            name: item.name,
-            description: item.description ?? null,
-          });
-          await eventTypeRepository.update(updatedEntity);
-          updated++;
-        }
-        // Skip UI-sourced event types
-      }
-
-      // Remove unlisted API-sourced event types
-      if (command.removeUnlisted) {
-        const allForApp = await eventTypeRepository.findByCodePrefix(`${command.applicationCode}:`);
-        for (const et of allForApp) {
-          if (et.source === 'API' && !syncedCodes.includes(et.code)) {
-            await eventTypeRepository.deleteById(et.id);
-            deleted++;
-          }
-        }
-      }
-
-      const event = new EventTypesSynced(context, {
+      const eventData = {
         applicationCode: command.applicationCode,
-        eventTypesCreated: created,
-        eventTypesUpdated: updated,
-        eventTypesDeleted: deleted,
-        syncedEventTypeCodes: syncedCodes,
-      });
-
-      // For sync, we use a synthetic aggregate to commit the event
-      const syncResult = {
-        id: command.applicationCode,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        eventTypesCreated: 0,
+        eventTypesUpdated: 0,
+        eventTypesDeleted: 0,
+        syncedEventTypeCodes: [] as string[],
       };
 
-      return unitOfWork.commit(syncResult, event, command);
+      const event = new EventTypesSynced(context, eventData);
+
+      return unitOfWork.commitOperations(event, command, async (tx) => {
+        const txCtx = tx as TransactionContext;
+
+        // Process each event type item
+        for (const item of command.eventTypes) {
+          const code = buildCode(
+            command.applicationCode,
+            item.subdomain,
+            item.aggregate,
+            item.event,
+          );
+          syncedCodes.push(code);
+
+          const existing = await eventTypeRepository.findByCode(code, txCtx);
+
+          if (!existing) {
+            // Create new
+            const newEventType = createEventTypeFromApi({
+              application: command.applicationCode,
+              subdomain: item.subdomain,
+              aggregate: item.aggregate,
+              event: item.event,
+              name: item.name,
+              description: item.description ?? null,
+              clientScoped: item.clientScoped ?? false,
+            });
+            await eventTypeRepository.insert(newEventType, txCtx);
+            created++;
+          } else if (existing.source === 'API') {
+            // Update existing API-sourced
+            const updatedEntity = updateEventType(existing, {
+              name: item.name,
+              description: item.description ?? null,
+            });
+            await eventTypeRepository.update(updatedEntity, txCtx);
+            updated++;
+          }
+          // Skip UI-sourced event types
+        }
+
+        // Remove unlisted API-sourced event types
+        if (command.removeUnlisted) {
+          const allForApp = await eventTypeRepository.findByCodePrefix(
+            `${command.applicationCode}:`,
+            txCtx,
+          );
+          for (const et of allForApp) {
+            if (et.source === 'API' && !syncedCodes.includes(et.code)) {
+              await eventTypeRepository.deleteById(et.id, txCtx);
+              deleted++;
+            }
+          }
+        }
+
+        // Update event data with final counts (mutate the same object reference held by the event)
+        eventData.eventTypesCreated = created;
+        eventData.eventTypesUpdated = updated;
+        eventData.eventTypesDeleted = deleted;
+        eventData.syncedEventTypeCodes = syncedCodes;
+      });
     },
   };
 }

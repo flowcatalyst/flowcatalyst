@@ -144,7 +144,7 @@ export function createOAuthClientRepository(defaultDb: PlatformDb): OAuthClientR
   return {
     async findById(id: string, tx?: TransactionContext): Promise<OAuthClient | undefined> {
       const result = await rq(tx).oauthClients.findFirst({
-        where: { RAW: eq(oauthClients.id, id) },
+        where: { id },
         with: withCollections,
       });
       if (!result) return undefined;
@@ -156,7 +156,7 @@ export function createOAuthClientRepository(defaultDb: PlatformDb): OAuthClientR
       tx?: TransactionContext,
     ): Promise<OAuthClient | undefined> {
       const result = await rq(tx).oauthClients.findFirst({
-        where: { RAW: eq(oauthClients.clientId, clientId) },
+        where: { clientId },
         with: withCollections,
       });
       if (!result) return undefined;
@@ -172,7 +172,7 @@ export function createOAuthClientRepository(defaultDb: PlatformDb): OAuthClientR
 
     async findActive(tx?: TransactionContext): Promise<OAuthClient[]> {
       const results = await rq(tx).oauthClients.findMany({
-        where: { RAW: eq(oauthClients.active, true) },
+        where: { active: true },
         with: withCollections,
       });
       return (results as OAuthClientRelationalResult[]).map(resultToOAuthClient);

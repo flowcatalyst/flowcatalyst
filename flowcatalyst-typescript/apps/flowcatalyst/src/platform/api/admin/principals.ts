@@ -103,6 +103,7 @@ const PrincipalsListQuery = Type.Object({
   clientId: Type.Optional(Type.String()),
   active: Type.Optional(Type.String()),
   email: Type.Optional(Type.String()),
+  q: Type.Optional(Type.String()),
   page: Type.Optional(Type.String()),
   pageSize: Type.Optional(Type.String()),
 });
@@ -309,6 +310,7 @@ export async function registerPrincipalsRoutes(
         clientId: query.clientId,
         active: query.active !== undefined ? query.active === 'true' : undefined,
         email: query.email,
+        search: query.q,
       };
 
       const pagedResult = await principalRepository.findFilteredPaged(filters, page, pageSize);

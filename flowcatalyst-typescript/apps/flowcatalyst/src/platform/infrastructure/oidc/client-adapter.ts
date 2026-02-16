@@ -31,8 +31,9 @@ function oauthClientToMetadata(
     response_types: client.grantTypes.includes('authorization_code') ? ['code'] : [],
 
     // Token endpoint auth method based on client type
+    // Use client_secret_post for compatibility with SDKs that send credentials as form params
     token_endpoint_auth_method:
-      client.clientType === 'CONFIDENTIAL' ? 'client_secret_basic' : 'none',
+      client.clientType === 'CONFIDENTIAL' ? 'client_secret_post' : 'none',
 
     // PKCE requirement
     // For PUBLIC clients, always require PKCE

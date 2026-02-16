@@ -201,4 +201,30 @@ class Principals
     {
         $this->client->request('DELETE', "/api/sdk/principals/{$id}/clients/{$clientId}");
     }
+
+    /**
+     * Sync principals for an application.
+     *
+     * This creates/updates user principals and assigns roles (prefixed with
+     * the application code). If removeUnlisted is true, SDK-synced roles
+     * for unlisted principals will be removed.
+     *
+     * @param string $appCode The application code
+     * @param array<array{
+     *     email: string,
+     *     name: string,
+     *     roles?: string[],
+     *     active?: bool
+     * }> $principals The principals to sync
+     * @param bool $removeUnlisted If true, removes SDK-synced roles for unlisted principals
+     * @return array{applicationCode: string, created: int, updated: int, deleted: int, syncedCodes: string[]}
+     */
+    public function sync(string $appCode, array $principals, bool $removeUnlisted = false): array
+    {
+        $query = $removeUnlisted ? '?removeUnlisted=true' : '';
+
+        return $this->client->request('POST', "/api/applications/{$appCode}/principals/sync{$query}", [
+            'json' => ['principals' => $principals],
+        ]);
+    }
 }

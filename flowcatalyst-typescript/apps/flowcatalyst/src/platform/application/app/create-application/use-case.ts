@@ -49,13 +49,13 @@ export function createCreateApplicationUseCase(
         return codeResult;
       }
 
-      // Validate code format (lowercase, alphanumeric, hyphens)
-      const codePattern = /^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$|^[a-z0-9]$/;
+      // Validate code format (lowercase, alphanumeric, hyphens, underscores)
+      const codePattern = /^[a-z0-9][a-z0-9_-]{0,48}[a-z0-9]$|^[a-z0-9]$/;
       if (!codePattern.test(command.code.toLowerCase())) {
         return Result.failure(
           UseCaseError.validation(
             'INVALID_CODE',
-            'Code must be lowercase alphanumeric with hyphens, 1-50 characters',
+            'Code must be lowercase alphanumeric with hyphens or underscores, 1-50 characters',
           ),
         );
       }

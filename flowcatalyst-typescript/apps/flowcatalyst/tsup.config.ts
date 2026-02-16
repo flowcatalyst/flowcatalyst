@@ -6,7 +6,7 @@ export default defineConfig({
   dts: false,
   clean: true,
   sourcemap: true,
-  target: 'node22',
+  target: 'node24',
   external: [
     'node:sea',
     '@aws-sdk/client-secrets-manager',

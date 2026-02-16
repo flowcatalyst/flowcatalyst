@@ -26,7 +26,7 @@ import {
   updatePrincipal,
   type Principal,
   type RoleAssignment,
-  type UserScope,
+  type PrincipalScope,
   UserCreated,
   UserUpdated,
   RolesAssigned,
@@ -52,7 +52,7 @@ export async function createOrUpdateOidcUser(
     name: string | null;
     externalIdpId: string;
     clientId: string | null;
-    scope: UserScope;
+    scope: PrincipalScope;
   },
   ctx: ExecutionContext,
   deps: OidcSyncServiceDeps,

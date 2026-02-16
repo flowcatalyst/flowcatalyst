@@ -86,7 +86,7 @@ export {
   type AuditContextData,
   type PrincipalInfo,
   type PrincipalType,
-  type UserScope,
+  type PrincipalScope,
 } from './audit-context.js';
 
 // Domain events

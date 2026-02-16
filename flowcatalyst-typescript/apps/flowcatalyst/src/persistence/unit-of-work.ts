@@ -185,6 +185,51 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
       }
     },
 
+    async commitOperations<T extends DomainEvent>(
+      event: T,
+      command: unknown,
+      operations: (tx: unknown) => Promise<void>,
+    ): Promise<Result<T>> {
+      let collectedJobs: DispatchJobNotification[] = [];
+      try {
+        const result = await transactionManager.inTransaction(async (tx) => {
+          // 1. Run entity operations within the transaction
+          await operations(tx);
+
+          // 2. Create the event record
+          await createEventRecord(tx.db, event, null);
+
+          // 3. Build dispatch jobs for matching subscriptions
+          if (eventDispatchService) {
+            collectedJobs = await eventDispatchService.buildDispatchJobsForEvent(
+              event,
+              null,
+              tx.db,
+            );
+          }
+
+          // 4. Create the audit log
+          await createAuditLogRecord(tx.db, event, command);
+
+          // 5. Return success
+          return Result.success(RESULT_SUCCESS_TOKEN, event);
+        });
+
+        // Transaction committed — push jobs onto queue
+        await dispatchAfterCommit(collectedJobs);
+
+        return result;
+      } catch (error) {
+        return Result.failure(
+          UseCaseError.businessRule(
+            'COMMIT_FAILED',
+            error instanceof Error ? error.message : 'Unknown error during commit',
+            { cause: error instanceof Error ? error.name : 'Unknown' },
+          ),
+        );
+      }
+    },
+
     async commitAll<T extends DomainEvent>(
       aggregates: Aggregate[],
       event: T,
@@ -383,6 +428,15 @@ export function createNoOpUnitOfWork(): UnitOfWork {
       event: T,
       _command: unknown,
     ): Promise<Result<T>> {
+      return Result.success(RESULT_SUCCESS_TOKEN, event);
+    },
+
+    async commitOperations<T extends DomainEvent>(
+      event: T,
+      _command: unknown,
+      operations: (tx: unknown) => Promise<void>,
+    ): Promise<Result<T>> {
+      await operations(undefined);
       return Result.success(RESULT_SUCCESS_TOKEN, event);
     },
   };

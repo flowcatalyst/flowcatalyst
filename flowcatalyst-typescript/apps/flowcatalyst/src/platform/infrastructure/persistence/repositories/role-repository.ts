@@ -4,7 +4,7 @@
  * Data access for AuthRole and AuthPermission entities.
  */
 
-import { eq, sql, ilike, or, and } from 'drizzle-orm';
+import { eq, sql, ilike, or, and, inArray } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import {
   type PaginatedRepository,
@@ -19,6 +19,7 @@ type AnyDb = PostgresJsDatabase<any>;
 import {
   authRoles,
   authPermissions,
+  rolePermissions,
   type AuthRoleRecord,
   type NewAuthRoleRecord,
   type AuthPermissionRecord,
@@ -86,13 +87,77 @@ export interface PermissionRepository {
 export function createRoleRepository(defaultDb: AnyDb): RoleRepository {
   const db = (tx?: TransactionContext): AnyDb => (tx?.db as AnyDb) ?? defaultDb;
 
+  /**
+   * Fetch permissions for a single role from the junction table.
+   */
+  async function fetchPermissions(roleId: string, tx?: TransactionContext): Promise<string[]> {
+    const records = await db(tx)
+      .select({ permission: rolePermissions.permission })
+      .from(rolePermissions)
+      .where(eq(rolePermissions.roleId, roleId));
+    return records.map((r) => r.permission);
+  }
+
+  /**
+   * Fetch permissions for multiple roles in a single query.
+   */
+  async function fetchPermissionsForRoles(
+    roleIds: string[],
+    tx?: TransactionContext,
+  ): Promise<Map<string, string[]>> {
+    if (roleIds.length === 0) return new Map();
+
+    const records = await db(tx)
+      .select()
+      .from(rolePermissions)
+      .where(inArray(rolePermissions.roleId, roleIds));
+
+    const permMap = new Map<string, string[]>();
+    for (const record of records) {
+      const existing = permMap.get(record.roleId) ?? [];
+      existing.push(record.permission);
+      permMap.set(record.roleId, existing);
+    }
+    return permMap;
+  }
+
+  /**
+   * Sync permissions for a role - delete existing and insert new.
+   */
+  async function syncPermissions(
+    roleId: string,
+    permissions: readonly string[],
+    tx?: TransactionContext,
+  ): Promise<void> {
+    await db(tx).delete(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+
+    if (permissions.length > 0) {
+      await db(tx)
+        .insert(rolePermissions)
+        .values(permissions.map((permission) => ({ roleId, permission })));
+    }
+  }
+
+  /**
+   * Build AuthRole domain objects from records, loading permissions in batch.
+   */
+  async function recordsToAuthRoles(
+    records: AuthRoleRecord[],
+    tx?: TransactionContext,
+  ): Promise<AuthRole[]> {
+    const ids = records.map((r) => r.id);
+    const permMap = await fetchPermissionsForRoles(ids, tx);
+    return records.map((r) => recordToAuthRole(r, permMap.get(r.id) ?? []));
+  }
+
   return {
     async findById(id: string, tx?: TransactionContext): Promise<AuthRole | undefined> {
       const [record] = await db(tx).select().from(authRoles).where(eq(authRoles.id, id)).limit(1);
 
       if (!record) return undefined;
 
-      return recordToAuthRole(record);
+      const permissions = await fetchPermissions(id, tx);
+      return recordToAuthRole(record, permissions);
     },
 
     async findByName(name: string, tx?: TransactionContext): Promise<AuthRole | undefined> {
@@ -104,12 +169,13 @@ export function createRoleRepository(defaultDb: AnyDb): RoleRepository {
 
       if (!record) return undefined;
 
-      return recordToAuthRole(record);
+      const permissions = await fetchPermissions(record.id, tx);
+      return recordToAuthRole(record, permissions);
     },
 
     async findBySource(source: RoleSource, tx?: TransactionContext): Promise<AuthRole[]> {
       const records = await db(tx).select().from(authRoles).where(eq(authRoles.source, source));
-      return records.map(recordToAuthRole);
+      return recordsToAuthRoles(records, tx);
     },
 
     async findByApplicationId(applicationId: string, tx?: TransactionContext): Promise<AuthRole[]> {
@@ -117,17 +183,17 @@ export function createRoleRepository(defaultDb: AnyDb): RoleRepository {
         .select()
         .from(authRoles)
         .where(eq(authRoles.applicationId, applicationId));
-      return records.map(recordToAuthRole);
+      return recordsToAuthRoles(records, tx);
     },
 
     async findCodeDefinedRoles(tx?: TransactionContext): Promise<AuthRole[]> {
       const records = await db(tx).select().from(authRoles).where(eq(authRoles.source, 'CODE'));
-      return records.map(recordToAuthRole);
+      return recordsToAuthRoles(records, tx);
     },
 
     async findAll(tx?: TransactionContext): Promise<AuthRole[]> {
       const records = await db(tx).select().from(authRoles);
-      return records.map(recordToAuthRole);
+      return recordsToAuthRoles(records, tx);
     },
 
     async findPaged(
@@ -147,7 +213,7 @@ export function createRoleRepository(defaultDb: AnyDb): RoleRepository {
         .offset(page * pageSize)
         .orderBy(authRoles.name);
 
-      const items = records.map(recordToAuthRole);
+      const items = await recordsToAuthRoles(records, tx);
       return createPagedResult(items, page, pageSize, totalItems);
     },
 
@@ -177,7 +243,7 @@ export function createRoleRepository(defaultDb: AnyDb): RoleRepository {
         .offset(page * pageSize)
         .orderBy(authRoles.name);
 
-      const items = records.map(recordToAuthRole);
+      const items = await recordsToAuthRoles(records, tx);
       return createPagedResult(items, page, pageSize, totalItems);
     },
 
@@ -213,7 +279,6 @@ export function createRoleRepository(defaultDb: AnyDb): RoleRepository {
         name: entity.name,
         displayName: entity.displayName,
         description: entity.description,
-        permissions: entity.permissions as string[],
         source: entity.source,
         clientManaged: entity.clientManaged,
         createdAt: entity.createdAt ?? now,
@@ -221,6 +286,7 @@ export function createRoleRepository(defaultDb: AnyDb): RoleRepository {
       };
 
       await db(tx).insert(authRoles).values(record);
+      await syncPermissions(entity.id, entity.permissions, tx);
 
       return this.findById(entity.id, tx) as Promise<AuthRole>;
     },
@@ -233,11 +299,12 @@ export function createRoleRepository(defaultDb: AnyDb): RoleRepository {
         .set({
           displayName: entity.displayName,
           description: entity.description,
-          permissions: entity.permissions as string[],
           clientManaged: entity.clientManaged,
           updatedAt: now,
         })
         .where(eq(authRoles.id, entity.id));
+
+      await syncPermissions(entity.id, entity.permissions, tx);
 
       return this.findById(entity.id, tx) as Promise<AuthRole>;
     },
@@ -260,6 +327,7 @@ export function createRoleRepository(defaultDb: AnyDb): RoleRepository {
     async deleteById(id: string, tx?: TransactionContext): Promise<boolean> {
       const exists = await this.exists(id, tx);
       if (!exists) return false;
+      // FK cascade handles role_permissions cleanup
       await db(tx).delete(authRoles).where(eq(authRoles.id, id));
       return true;
     },
@@ -395,7 +463,7 @@ export function createPermissionRepository(defaultDb: AnyDb): PermissionReposito
 /**
  * Convert a database record to an AuthRole.
  */
-function recordToAuthRole(record: AuthRoleRecord): AuthRole {
+function recordToAuthRole(record: AuthRoleRecord, permissions: string[]): AuthRole {
   return {
     id: record.id,
     applicationId: record.applicationId,
@@ -403,7 +471,7 @@ function recordToAuthRole(record: AuthRoleRecord): AuthRole {
     name: record.name,
     displayName: record.displayName,
     description: record.description,
-    permissions: record.permissions as readonly string[],
+    permissions,
     source: record.source as RoleSource,
     clientManaged: record.clientManaged,
     createdAt: record.createdAt,

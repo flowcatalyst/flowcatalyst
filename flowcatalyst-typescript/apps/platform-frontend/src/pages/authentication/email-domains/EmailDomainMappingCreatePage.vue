@@ -205,7 +205,7 @@ async function createMapping() {
             v-model="form.emailDomain"
             placeholder="example.com"
             class="w-full"
-            :invalid="form.emailDomain && !isDomainValid"
+            :invalid="!!(form.emailDomain && !isDomainValid)"
           />
           <small v-if="form.emailDomain && !isDomainValid" class="p-error">
             Please enter a valid domain name

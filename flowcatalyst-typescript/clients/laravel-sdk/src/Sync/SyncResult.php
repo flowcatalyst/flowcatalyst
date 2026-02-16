@@ -15,6 +15,7 @@ final class SyncResult
      * @param array{created: int, updated: int, deleted: int, error?: string} $eventTypes Event type sync results
      * @param array{created: int, updated: int, deleted: int, error?: string} $subscriptions Subscription sync results
      * @param array{created: int, updated: int, deleted: int, error?: string} $dispatchPools Dispatch pool sync results
+     * @param array{created: int, updated: int, deleted: int, error?: string} $principals Principal sync results
      */
     public function __construct(
         public readonly string $applicationCode,
@@ -22,6 +23,7 @@ final class SyncResult
         public readonly array $eventTypes = ['created' => 0, 'updated' => 0, 'deleted' => 0],
         public readonly array $subscriptions = ['created' => 0, 'updated' => 0, 'deleted' => 0],
         public readonly array $dispatchPools = ['created' => 0, 'updated' => 0, 'deleted' => 0],
+        public readonly array $principals = ['created' => 0, 'updated' => 0, 'deleted' => 0],
     ) {}
 
     /**
@@ -65,6 +67,16 @@ final class SyncResult
     }
 
     /**
+     * Check if any principals were synced.
+     */
+    public function hasPrincipalChanges(): bool
+    {
+        return ($this->principals['created'] ?? 0) > 0
+            || ($this->principals['updated'] ?? 0) > 0
+            || ($this->principals['deleted'] ?? 0) > 0;
+    }
+
+    /**
      * Check if any changes were made.
      */
     public function hasChanges(): bool
@@ -72,7 +84,8 @@ final class SyncResult
         return $this->hasRoleChanges()
             || $this->hasEventTypeChanges()
             || $this->hasSubscriptionChanges()
-            || $this->hasDispatchPoolChanges();
+            || $this->hasDispatchPoolChanges()
+            || $this->hasPrincipalChanges();
     }
 
     /**
@@ -83,7 +96,8 @@ final class SyncResult
         return isset($this->roles['error'])
             || isset($this->eventTypes['error'])
             || isset($this->subscriptions['error'])
-            || isset($this->dispatchPools['error']);
+            || isset($this->dispatchPools['error'])
+            || isset($this->principals['error']);
     }
 
     /**
@@ -111,6 +125,10 @@ final class SyncResult
             $errors['dispatchPools'] = $this->dispatchPools['error'];
         }
 
+        if (isset($this->principals['error'])) {
+            $errors['principals'] = $this->principals['error'];
+        }
+
         return $errors;
     }
 
@@ -125,15 +143,18 @@ final class SyncResult
             'created' => ($this->roles['created'] ?? 0)
                 + ($this->eventTypes['created'] ?? 0)
                 + ($this->subscriptions['created'] ?? 0)
-                + ($this->dispatchPools['created'] ?? 0),
+                + ($this->dispatchPools['created'] ?? 0)
+                + ($this->principals['created'] ?? 0),
             'updated' => ($this->roles['updated'] ?? 0)
                 + ($this->eventTypes['updated'] ?? 0)
                 + ($this->subscriptions['updated'] ?? 0)
-                + ($this->dispatchPools['updated'] ?? 0),
+                + ($this->dispatchPools['updated'] ?? 0)
+                + ($this->principals['updated'] ?? 0),
             'deleted' => ($this->roles['deleted'] ?? 0)
                 + ($this->eventTypes['deleted'] ?? 0)
                 + ($this->subscriptions['deleted'] ?? 0)
-                + ($this->dispatchPools['deleted'] ?? 0),
+                + ($this->dispatchPools['deleted'] ?? 0)
+                + ($this->principals['deleted'] ?? 0),
         ];
     }
 

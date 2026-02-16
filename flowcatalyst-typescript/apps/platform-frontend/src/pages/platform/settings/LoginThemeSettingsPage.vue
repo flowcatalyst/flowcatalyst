@@ -200,7 +200,8 @@ function resetToDefaults() {
           <label for="logoHeight">Logo Height (px)</label>
           <InputText
             id="logoHeight"
-            v-model.number="theme.logoHeight"
+            :model-value="theme.logoHeight != null ? String(theme.logoHeight) : ''"
+            @update:model-value="(v: string | undefined) => theme.logoHeight = v ? Number(v) : undefined"
             type="number"
             class="w-small"
             min="20"

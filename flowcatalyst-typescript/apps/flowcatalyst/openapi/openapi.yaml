@@ -41,6 +41,11 @@ paths:
         - schema:
             type: string
           in: query
+          name: q
+          required: false
+        - schema:
+            type: string
+          in: query
           name: page
           required: false
         - schema:
@@ -13258,6 +13263,17 @@ paths:
                   type: array
                   items:
                     type: string
+                scope:
+                  anyOf:
+                    - type: string
+                      enum:
+                        - ANCHOR
+                    - type: string
+                      enum:
+                        - PARTNER
+                    - type: string
+                      enum:
+                        - CLIENT
                 webhookAuthType:
                   anyOf:
                     - type: string
@@ -13295,6 +13311,7 @@ paths:
                       - code
                       - name
                       - description
+                      - scope
                       - clientIds
                       - applicationId
                       - active
@@ -13311,6 +13328,10 @@ paths:
                       name:
                         type: string
                       description:
+                        anyOf:
+                          - type: string
+                          - type: "null"
+                      scope:
                         anyOf:
                           - type: string
                           - type: "null"
@@ -13442,6 +13463,7 @@ paths:
                         - code
                         - name
                         - description
+                        - scope
                         - clientIds
                         - applicationId
                         - active
@@ -13458,6 +13480,10 @@ paths:
                         name:
                           type: string
                         description:
+                          anyOf:
+                            - type: string
+                            - type: "null"
+                        scope:
                           anyOf:
                             - type: string
                             - type: "null"
@@ -13512,6 +13538,7 @@ paths:
                   - code
                   - name
                   - description
+                  - scope
                   - clientIds
                   - applicationId
                   - active
@@ -13528,6 +13555,10 @@ paths:
                   name:
                     type: string
                   description:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  scope:
                     anyOf:
                       - type: string
                       - type: "null"
@@ -13601,6 +13632,17 @@ paths:
                   type: array
                   items:
                     type: string
+                scope:
+                  anyOf:
+                    - type: string
+                      enum:
+                        - ANCHOR
+                    - type: string
+                      enum:
+                        - PARTNER
+                    - type: string
+                      enum:
+                        - CLIENT
       parameters:
         - schema:
             type: string
@@ -13619,6 +13661,7 @@ paths:
                   - code
                   - name
                   - description
+                  - scope
                   - clientIds
                   - applicationId
                   - active
@@ -13635,6 +13678,10 @@ paths:
                   name:
                     type: string
                   description:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  scope:
                     anyOf:
                       - type: string
                       - type: "null"
@@ -13757,6 +13804,7 @@ paths:
                   - code
                   - name
                   - description
+                  - scope
                   - clientIds
                   - applicationId
                   - active
@@ -13773,6 +13821,10 @@ paths:
                   name:
                     type: string
                   description:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  scope:
                     anyOf:
                       - type: string
                       - type: "null"
@@ -13857,6 +13909,7 @@ paths:
                   - code
                   - name
                   - description
+                  - scope
                   - clientIds
                   - applicationId
                   - active
@@ -13873,6 +13926,10 @@ paths:
                   name:
                     type: string
                   description:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  scope:
                     anyOf:
                       - type: string
                       - type: "null"

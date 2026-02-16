@@ -116,8 +116,9 @@ export async function registerSdkClientsRoutes(
         },
       },
     },
-    async (_request, reply) => {
-      const accessibleClientIds = getAccessibleClientIds();
+    async (request, reply) => {
+      const principal = request.audit?.principal ?? null;
+      const accessibleClientIds = getAccessibleClientIds(principal);
       const pagedResult = await clientRepository.findPagedScoped(0, 1000, accessibleClientIds);
 
       return jsonSuccess(reply, {
@@ -143,8 +144,9 @@ export async function registerSdkClientsRoutes(
     async (request, reply) => {
       const { id } = request.params as Static<typeof IdParam>;
       const client = await clientRepository.findById(id);
+      const principal = request.audit?.principal ?? null;
 
-      if (!client || !canAccessResourceByClient(client.id)) {
+      if (!client || !canAccessResourceByClient(client.id, principal)) {
         return notFound(reply, `Client not found: ${id}`);
       }
 

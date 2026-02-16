@@ -141,4 +141,18 @@ export const platformRelations = defineRelations(schema, (r) => ({
       to: r.emailDomainMappings.id,
     }),
   },
+
+  // ── Auth Roles ────────────────────────────────────────────────────
+  authRoles: {
+    permissions: r.many.rolePermissions({
+      from: r.authRoles.id,
+      to: r.rolePermissions.roleId,
+    }),
+  },
+  rolePermissions: {
+    role: r.one.authRoles({
+      from: r.rolePermissions.roleId,
+      to: r.authRoles.id,
+    }),
+  },
 }));

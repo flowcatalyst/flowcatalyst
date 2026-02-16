@@ -49,6 +49,9 @@ final class SyncDefinitionSet
     /** @var array<DispatchPoolDefinition|array<string, mixed>> */
     private array $dispatchPools = [];
 
+    /** @var array<PrincipalDefinition|array<string, mixed>> */
+    private array $principals = [];
+
     public function __construct(
         public readonly string $applicationCode,
     ) {}
@@ -210,6 +213,51 @@ final class SyncDefinitionSet
     }
 
     /**
+     * Add principals to the definition set.
+     *
+     * @param array<PrincipalDefinition|array<string, mixed>> $principals
+     */
+    public function withPrincipals(array $principals): self
+    {
+        $clone = clone $this;
+        $clone->principals = $principals;
+        return $clone;
+    }
+
+    /**
+     * Add a single principal to the definition set.
+     *
+     * @param PrincipalDefinition|array<string, mixed> $principal
+     */
+    public function addPrincipal(PrincipalDefinition|array $principal): self
+    {
+        $clone = clone $this;
+        $clone->principals = [...$this->principals, $principal];
+        return $clone;
+    }
+
+    /**
+     * Get principals as arrays for the sync API.
+     *
+     * @return array<array<string, mixed>>
+     */
+    public function getPrincipals(): array
+    {
+        return array_map(
+            fn($p) => $p instanceof PrincipalDefinition ? $p->toArray() : $p,
+            $this->principals
+        );
+    }
+
+    /**
+     * Check if there are any principals to sync.
+     */
+    public function hasPrincipals(): bool
+    {
+        return !empty($this->principals);
+    }
+
+    /**
      * Check if there are any roles to sync.
      */
     public function hasRoles(): bool
@@ -246,14 +294,14 @@ final class SyncDefinitionSet
      */
     public function isEmpty(): bool
     {
-        return !$this->hasRoles() && !$this->hasEventTypes() && !$this->hasSubscriptions() && !$this->hasDispatchPools();
+        return !$this->hasRoles() && !$this->hasEventTypes() && !$this->hasSubscriptions() && !$this->hasDispatchPools() && !$this->hasPrincipals();
     }
 
     /**
      * Create from the scanned definitions repository format.
      *
      * @param string $applicationCode
-     * @param array{roles?: array<array<string, mixed>>, eventTypes?: array<array<string, mixed>>, subscriptions?: array<array<string, mixed>>, dispatchPools?: array<array<string, mixed>>} $data
+     * @param array{roles?: array<array<string, mixed>>, eventTypes?: array<array<string, mixed>>, subscriptions?: array<array<string, mixed>>, dispatchPools?: array<array<string, mixed>>, principals?: array<array<string, mixed>>} $data
      */
     public static function fromScannedDefinitions(string $applicationCode, array $data): self
     {
@@ -279,6 +327,11 @@ final class SyncDefinitionSet
             unset($pool['_class']);
             return $pool;
         }, $data['dispatchPools'] ?? []);
+
+        $set->principals = array_map(function ($principal) {
+            unset($principal['_class']);
+            return $principal;
+        }, $data['principals'] ?? []);
 
         return $set;
     }

@@ -49,8 +49,9 @@ async function loadEvents() {
       },
     });
     if (response.data) {
-      events.value = (response.data.items || []) as RawEvent[];
-      totalRecords.value = response.data.totalItems || 0;
+      const data = response.data as { items?: RawEvent[]; totalItems?: number };
+      events.value = data.items || [];
+      totalRecords.value = data.totalItems || 0;
     }
   } catch (error) {
     console.error('Failed to load raw events:', error);

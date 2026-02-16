@@ -12,6 +12,7 @@ export type GetApiAdminPrincipalsData = {
         clientId?: string;
         active?: string;
         email?: string;
+        q?: string;
         page?: string;
         pageSize?: string;
     };
@@ -8098,6 +8099,7 @@ export type GetApiAdminServiceAccountsResponses = {
             code: string;
             name: string;
             description: string | null;
+            scope: string | null;
             clientIds: Array<string>;
             applicationId: string | null;
             active: boolean;
@@ -8120,6 +8122,7 @@ export type PostApiAdminServiceAccountsData = {
         description?: string | null;
         applicationId?: string | null;
         clientIds?: Array<string>;
+        scope?: 'ANCHOR' | 'PARTNER' | 'CLIENT';
         webhookAuthType?: 'NONE' | 'BEARER_TOKEN' | 'BASIC_AUTH' | 'API_KEY' | 'HMAC_SIGNATURE';
     };
     path?: never;
@@ -8180,6 +8183,7 @@ export type PostApiAdminServiceAccountsResponses = {
             code: string;
             name: string;
             description: string | null;
+            scope: string | null;
             clientIds: Array<string>;
             applicationId: string | null;
             active: boolean;
@@ -8287,6 +8291,7 @@ export type GetApiAdminServiceAccountsByIdResponses = {
         code: string;
         name: string;
         description: string | null;
+        scope: string | null;
         clientIds: Array<string>;
         applicationId: string | null;
         active: boolean;
@@ -8305,6 +8310,7 @@ export type PutApiAdminServiceAccountsByIdData = {
         name?: string;
         description?: string | null;
         clientIds?: Array<string>;
+        scope?: 'ANCHOR' | 'PARTNER' | 'CLIENT';
     };
     path: {
         id: string;
@@ -8365,6 +8371,7 @@ export type PutApiAdminServiceAccountsByIdResponses = {
         code: string;
         name: string;
         description: string | null;
+        scope: string | null;
         clientIds: Array<string>;
         applicationId: string | null;
         active: boolean;
@@ -8420,6 +8427,7 @@ export type GetApiAdminServiceAccountsCodeByCodeResponses = {
         code: string;
         name: string;
         description: string | null;
+        scope: string | null;
         clientIds: Array<string>;
         applicationId: string | null;
         active: boolean;
@@ -8496,6 +8504,7 @@ export type PutApiAdminServiceAccountsByIdAuthTokenResponses = {
         code: string;
         name: string;
         description: string | null;
+        scope: string | null;
         clientIds: Array<string>;
         applicationId: string | null;
         active: boolean;

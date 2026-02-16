@@ -91,10 +91,13 @@ export {
 export {
   authRoles,
   authPermissions,
+  rolePermissions,
   type AuthRoleRecord,
   type NewAuthRoleRecord,
   type AuthPermissionRecord,
   type NewAuthPermissionRecord,
+  type RolePermissionRecord,
+  type NewRolePermissionRecord,
 } from './roles.js';
 
 // Client access grant tables

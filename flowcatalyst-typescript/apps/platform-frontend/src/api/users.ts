@@ -2,12 +2,12 @@ import { apiFetch } from './client';
 
 export type PrincipalType = 'USER' | 'SERVICE';
 export type IdpType = 'INTERNAL' | 'OIDC' | 'SAML';
-export type UserScope = 'ANCHOR' | 'PARTNER' | 'CLIENT';
+export type PrincipalScope = 'ANCHOR' | 'PARTNER' | 'CLIENT';
 
 export interface User {
   id: string;
   type: PrincipalType;
-  scope: UserScope | null;
+  scope: PrincipalScope | null;
   clientId: string | null;
   name: string;
   active: boolean;
@@ -97,6 +97,9 @@ export interface UserFilters {
   clientId?: string;
   type?: PrincipalType;
   active?: boolean;
+  q?: string;
+  page?: number;
+  pageSize?: number;
 }
 
 export const usersApi = {
@@ -105,6 +108,9 @@ export const usersApi = {
     if (filters?.clientId) params.append('clientId', filters.clientId);
     if (filters?.type) params.append('type', filters.type);
     if (filters?.active !== undefined) params.append('active', String(filters.active));
+    if (filters?.q) params.append('q', filters.q);
+    if (filters?.page !== undefined) params.append('page', String(filters.page));
+    if (filters?.pageSize !== undefined) params.append('pageSize', String(filters.pageSize));
 
     const query = params.toString();
     return apiFetch(`/admin/principals${query ? `?${query}` : ''}`);

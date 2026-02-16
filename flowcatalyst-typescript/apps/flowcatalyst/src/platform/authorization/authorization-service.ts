@@ -4,7 +4,7 @@
  * Checks if principals have specific permissions based on their assigned roles.
  */
 
-import type { PrincipalInfo, UserScope } from '@flowcatalyst/domain-core';
+import type { PrincipalInfo, PrincipalScope } from '@flowcatalyst/domain-core';
 import { matchesPattern } from './permission-definition.js';
 import { permissionRegistry } from './permission-registry.js';
 
@@ -15,7 +15,7 @@ import { permissionRegistry } from './permission-registry.js';
 export interface AuthorizablePrincipal {
   readonly id: string;
   readonly roles: ReadonlySet<string>;
-  readonly scope?: UserScope;
+  readonly scope?: PrincipalScope;
   readonly clientId?: string | null;
 }
 

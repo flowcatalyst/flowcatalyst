@@ -5,6 +5,7 @@ import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Textarea from 'primevue/textarea';
+import Select from 'primevue/select';
 import MultiSelect from 'primevue/multiselect';
 import Tag from 'primevue/tag';
 import DataTable from 'primevue/datatable';
@@ -17,6 +18,7 @@ import {
   type RoleAssignment,
   type RolesAssignedResponse,
 } from '@/api/service-accounts';
+import type { PrincipalScope } from '@/api/users';
 import { rolesApi, type Role } from '@/api/roles';
 import { clientsApi, type Client } from '@/api/clients';
 
@@ -37,7 +39,14 @@ const saving = ref(false);
 const editMode = ref(false);
 const editName = ref('');
 const editDescription = ref('');
+const editScope = ref<PrincipalScope>('ANCHOR');
 const editClientIds = ref<string[]>([]);
+
+const scopeOptions = [
+  { label: 'Anchor (all clients)', value: 'ANCHOR' },
+  { label: 'Partner (assigned clients)', value: 'PARTNER' },
+  { label: 'Client (single client)', value: 'CLIENT' },
+];
 
 const clientOptions = computed(() => {
   return clients.value.map((c) => ({
@@ -94,6 +103,7 @@ async function loadServiceAccount() {
     serviceAccount.value = await serviceAccountsApi.get(serviceAccountId);
     editName.value = serviceAccount.value.name;
     editDescription.value = serviceAccount.value.description || '';
+    editScope.value = serviceAccount.value.scope || 'ANCHOR';
     editClientIds.value = serviceAccount.value.clientIds || [];
   } catch (error) {
     toast.add({
@@ -137,6 +147,7 @@ async function loadRoleAssignments() {
 function startEdit() {
   editName.value = serviceAccount.value?.name || '';
   editDescription.value = serviceAccount.value?.description || '';
+  editScope.value = serviceAccount.value?.scope || 'ANCHOR';
   editClientIds.value = serviceAccount.value?.clientIds || [];
   editMode.value = true;
 }
@@ -144,6 +155,7 @@ function startEdit() {
 function cancelEdit() {
   editName.value = serviceAccount.value?.name || '';
   editDescription.value = serviceAccount.value?.description || '';
+  editScope.value = serviceAccount.value?.scope || 'ANCHOR';
   editClientIds.value = serviceAccount.value?.clientIds || [];
   editMode.value = false;
 }
@@ -164,10 +176,12 @@ async function saveServiceAccount() {
     await serviceAccountsApi.update(serviceAccountId, {
       name: editName.value,
       description: editDescription.value || undefined,
+      scope: editScope.value,
       clientIds: editClientIds.value,
     });
     serviceAccount.value!.name = editName.value;
     serviceAccount.value!.description = editDescription.value;
+    serviceAccount.value!.scope = editScope.value;
     serviceAccount.value!.clientIds = editClientIds.value;
     editMode.value = false;
     toast.add({
@@ -429,7 +443,20 @@ async function deleteServiceAccount() {
             <span v-else>{{ serviceAccount.description || '—' }}</span>
           </div>
 
-          <div class="info-item span-2">
+          <div class="info-item">
+            <label>Scope</label>
+            <Select
+              v-if="editMode"
+              v-model="editScope"
+              :options="scopeOptions"
+              optionLabel="label"
+              optionValue="value"
+              class="w-full"
+            />
+            <Tag v-else :value="serviceAccount.scope || 'N/A'" :severity="serviceAccount.scope === 'ANCHOR' ? 'success' : serviceAccount.scope === 'PARTNER' ? 'info' : 'warn'" />
+          </div>
+
+          <div class="info-item span-2" v-if="editMode ? editScope !== 'ANCHOR' : serviceAccount.scope !== 'ANCHOR'">
             <label>Client Access</label>
             <MultiSelect
               v-if="editMode"
@@ -437,7 +464,7 @@ async function deleteServiceAccount() {
               :options="clientOptions"
               optionLabel="label"
               optionValue="value"
-              placeholder="All clients (no restriction)"
+              placeholder="Select clients..."
               display="chip"
               filter
               class="w-full"

@@ -134,7 +134,7 @@ async function onSubmit() {
                 :suggestions="filteredAppCodes"
                 @complete="searchAppCodes"
                 placeholder="e.g., operant"
-                :invalid="application && !isValidSegment(application)"
+                :invalid="!!(application && !isValidSegment(application))"
                 dropdown
               />
               <small v-if="application && !isValidSegment(application)" class="p-error">
@@ -149,7 +149,7 @@ async function onSubmit() {
               <InputText
                 v-model="subdomain"
                 placeholder="e.g., execution"
-                :invalid="subdomain && !isValidSegment(subdomain)"
+                :invalid="!!(subdomain && !isValidSegment(subdomain))"
               />
             </div>
 
@@ -160,7 +160,7 @@ async function onSubmit() {
               <InputText
                 v-model="aggregate"
                 placeholder="e.g., trip"
-                :invalid="aggregate && !isValidSegment(aggregate)"
+                :invalid="!!(aggregate && !isValidSegment(aggregate))"
               />
             </div>
 
@@ -171,7 +171,7 @@ async function onSubmit() {
               <InputText
                 v-model="event"
                 placeholder="e.g., started"
-                :invalid="event && !isValidSegment(event)"
+                :invalid="!!(event && !isValidSegment(event))"
               />
             </div>
           </div>

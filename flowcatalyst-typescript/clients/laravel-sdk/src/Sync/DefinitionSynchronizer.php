@@ -61,6 +61,7 @@ class DefinitionSynchronizer
         $eventTypesResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
         $subscriptionsResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
         $dispatchPoolsResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
+        $principalsResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
 
         // Sync roles
         if ($options->syncRoles && $definitions->hasRoles()) {
@@ -82,12 +83,18 @@ class DefinitionSynchronizer
             $dispatchPoolsResult = $this->syncDispatchPools($appCode, $definitions->getDispatchPools(), $options->removeUnlisted);
         }
 
+        // Sync principals (users with roles)
+        if ($options->syncPrincipals && $definitions->hasPrincipals()) {
+            $principalsResult = $this->syncPrincipals($appCode, $definitions->getPrincipals(), $options->removeUnlisted);
+        }
+
         return new SyncResult(
             applicationCode: $appCode,
             roles: $rolesResult,
             eventTypes: $eventTypesResult,
             subscriptions: $subscriptionsResult,
             dispatchPools: $dispatchPoolsResult,
+            principals: $principalsResult,
         );
     }
 
@@ -283,5 +290,33 @@ class DefinitionSynchronizer
         }
 
         return $errors;
+    }
+
+    /**
+     * Sync principals (users with roles) for an application.
+     *
+     * @param string $appCode Application code
+     * @param array<array<string, mixed>> $principals Principal definitions
+     * @param bool $removeUnlisted Remove SDK-synced roles for unlisted principals
+     * @return array{created: int, updated: int, deleted: int, error?: string}
+     */
+    private function syncPrincipals(string $appCode, array $principals, bool $removeUnlisted): array
+    {
+        try {
+            $result = $this->client->principals()->sync($appCode, $principals, $removeUnlisted);
+
+            return [
+                'created' => $result['created'] ?? 0,
+                'updated' => $result['updated'] ?? 0,
+                'deleted' => $result['deleted'] ?? 0,
+            ];
+        } catch (\Exception $e) {
+            return [
+                'created' => 0,
+                'updated' => 0,
+                'deleted' => 0,
+                'error' => $e->getMessage(),
+            ];
+        }
     }
 }

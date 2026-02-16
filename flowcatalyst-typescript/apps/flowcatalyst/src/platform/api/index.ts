@@ -52,6 +52,10 @@ import {
   registerDebugDispatchJobsBffRoutes,
   type DebugDispatchJobsBffDeps,
 } from './bff/debug-dispatch-jobs.js';
+import {
+  registerApplicationSyncRoutes,
+  type ApplicationSyncRoutesDeps,
+} from './applications/sync.js';
 import { registerSdkClientsRoutes, type SdkClientsDeps } from './sdk/clients.js';
 import { registerSdkRolesRoutes, type SdkRolesDeps } from './sdk/roles.js';
 import { registerSdkPrincipalsRoutes, type SdkPrincipalsDeps } from './sdk/principals.js';
@@ -190,6 +194,21 @@ export async function registerSdkRoutes(
 }
 
 /**
+ * Register application-scoped sync routes (SDK sync endpoints).
+ */
+export async function registerApplicationSyncApiRoutes(
+  fastify: FastifyInstance,
+  deps: ApplicationSyncRoutesDeps,
+): Promise<void> {
+  await fastify.register(
+    async (appRouter) => {
+      await registerApplicationSyncRoutes(appRouter, deps);
+    },
+    { prefix: '/api/applications' },
+  );
+}
+
+/**
  * Dependencies for batch ingestion routes.
  */
 export interface BatchRoutesDeps extends EventsBatchDeps, DispatchJobsBatchDeps, AuditLogsBatchDeps {}
@@ -287,3 +306,4 @@ export { type SdkPrincipalsDeps } from './sdk/principals.js';
 export { type EventsBatchDeps } from './sdk/events-batch.js';
 export { type DispatchJobsBatchDeps } from './sdk/dispatch-jobs-batch.js';
 export { type AuditLogsBatchDeps } from './sdk/audit-logs-batch.js';
+export { type ApplicationSyncRoutesDeps } from './applications/sync.js';

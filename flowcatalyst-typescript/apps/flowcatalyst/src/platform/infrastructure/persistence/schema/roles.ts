@@ -4,7 +4,7 @@
  * Tables for storing roles and permissions.
  */
 
-import { pgTable, varchar, text, boolean, index, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, text, boolean, index, primaryKey } from 'drizzle-orm/pg-core';
 import { baseEntityColumns, tsidColumn } from '@flowcatalyst/persistence';
 
 /**
@@ -28,7 +28,6 @@ export const authRoles = pgTable(
     /** Human-readable display name (e.g., "Tenant Administrator") */
     displayName: varchar('display_name', { length: 255 }).notNull(),
     description: text('description'),
-    permissions: jsonb('permissions').notNull().$type<string[]>().default([]),
     /** Source of this role: CODE, DATABASE, or SDK */
     source: varchar('source', { length: 50 }).notNull().default('DATABASE'),
     /** If true, this role syncs to IDPs configured for client-managed roles */
@@ -64,8 +63,30 @@ export const authPermissions = pgTable(
   ],
 );
 
+/**
+ * Role permissions junction table.
+ *
+ * Stores permission assignments for roles. Each row represents one
+ * permission assigned to one role.
+ */
+export const rolePermissions = pgTable(
+  'role_permissions',
+  {
+    roleId: tsidColumn('role_id')
+      .notNull()
+      .references(() => authRoles.id, { onDelete: 'cascade' }),
+    permission: varchar('permission', { length: 255 }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.roleId, table.permission] }),
+    index('idx_role_permissions_role_id').on(table.roleId),
+  ],
+);
+
 // Type inference
 export type AuthRoleRecord = typeof authRoles.$inferSelect;
 export type NewAuthRoleRecord = typeof authRoles.$inferInsert;
 export type AuthPermissionRecord = typeof authPermissions.$inferSelect;
 export type NewAuthPermissionRecord = typeof authPermissions.$inferInsert;
+export type RolePermissionRecord = typeof rolePermissions.$inferSelect;
+export type NewRolePermissionRecord = typeof rolePermissions.$inferInsert;

@@ -67,8 +67,9 @@ async function loadDispatchJobs() {
       },
     });
     if (response.data) {
-      dispatchJobs.value = (response.data.items || []) as RawDispatchJob[];
-      totalRecords.value = response.data.totalItems || 0;
+      const data = response.data as { items?: RawDispatchJob[]; totalItems?: number };
+      dispatchJobs.value = data.items || [];
+      totalRecords.value = data.totalItems || 0;
     }
   } catch (error) {
     console.error('Failed to load raw dispatch jobs:', error);

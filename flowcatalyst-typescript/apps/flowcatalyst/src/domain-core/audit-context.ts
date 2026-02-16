@@ -20,9 +20,9 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 /**
- * User scope determining access level.
+ * Principal scope determining access level.
  */
-export type UserScope = 'ANCHOR' | 'PARTNER' | 'CLIENT';
+export type PrincipalScope = 'ANCHOR' | 'PARTNER' | 'CLIENT';
 
 /**
  * Principal type.
@@ -37,8 +37,8 @@ export interface PrincipalInfo {
   readonly id: string;
   /** Principal type */
   readonly type: PrincipalType;
-  /** User scope (access level) */
-  readonly scope: UserScope;
+  /** Principal scope (access level) */
+  readonly scope: PrincipalScope;
   /** Home client ID (null for ANCHOR scope) */
   readonly clientId: string | null;
   /** Role names assigned to the principal */
@@ -282,7 +282,7 @@ export const AuditContext = {
   createPrincipal(
     id: string,
     type: PrincipalType,
-    scope: UserScope,
+    scope: PrincipalScope,
     clientId: string | null,
     roles: string[] = [],
   ): PrincipalInfo {

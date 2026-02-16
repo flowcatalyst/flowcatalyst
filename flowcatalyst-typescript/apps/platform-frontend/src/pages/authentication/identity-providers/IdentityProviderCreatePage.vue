@@ -150,7 +150,7 @@ async function createProvider() {
             v-model="form.code"
             placeholder="e.g., google, azure-ad, okta"
             class="w-full"
-            :invalid="form.code && !isCodeValid"
+            :invalid="!!(form.code && !isCodeValid)"
           />
           <small v-if="form.code && !isCodeValid" class="p-error">
             Lowercase letters, numbers, and hyphens only. Must start with a letter.

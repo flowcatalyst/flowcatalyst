@@ -5,9 +5,11 @@ import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Textarea from 'primevue/textarea';
+import Select from 'primevue/select';
 import MultiSelect from 'primevue/multiselect';
 import Dialog from 'primevue/dialog';
 import { serviceAccountsApi, type CreateServiceAccountResponse } from '@/api/service-accounts';
+import type { PrincipalScope } from '@/api/users';
 import { clientsApi, type Client } from '@/api/clients';
 
 const router = useRouter();
@@ -16,9 +18,16 @@ const toast = useToast();
 const code = ref('');
 const name = ref('');
 const description = ref('');
+const scope = ref<PrincipalScope>('ANCHOR');
 const selectedClientIds = ref<string[]>([]);
 const clients = ref<Client[]>([]);
 const saving = ref(false);
+
+const scopeOptions = [
+  { label: 'Anchor (all clients)', value: 'ANCHOR' },
+  { label: 'Partner (assigned clients)', value: 'PARTNER' },
+  { label: 'Client (single client)', value: 'CLIENT' },
+];
 
 // Created credentials dialog
 const showCredentialsDialog = ref(false);
@@ -83,6 +92,7 @@ async function createServiceAccount() {
       code: code.value,
       name: name.value,
       description: description.value || undefined,
+      scope: scope.value,
       clientIds: selectedClientIds.value.length > 0 ? selectedClientIds.value : undefined,
     });
 
@@ -193,6 +203,21 @@ function goBack() {
         </div>
 
         <div class="form-group">
+          <label for="scope">Scope <span class="required">*</span></label>
+          <Select
+            id="scope"
+            v-model="scope"
+            :options="scopeOptions"
+            optionLabel="label"
+            optionValue="value"
+            class="w-full"
+          />
+          <small class="help-text">
+            Determines which clients this service account can access.
+          </small>
+        </div>
+
+        <div class="form-group" v-if="scope !== 'ANCHOR'">
           <label for="clients">Client Access</label>
           <MultiSelect
             id="clients"
@@ -200,13 +225,13 @@ function goBack() {
             :options="clientOptions"
             optionLabel="label"
             optionValue="value"
-            placeholder="All clients (no restriction)"
+            placeholder="Select clients..."
             display="chip"
             filter
             class="w-full"
           />
           <small class="help-text">
-            Select which clients this service account can access. Leave empty for no restrictions.
+            Select which clients this service account can access.
           </small>
         </div>
       </div>

@@ -7,7 +7,7 @@
 
 import { generate } from '@flowcatalyst/tsid';
 import type { PrincipalType } from './principal-type.js';
-import type { UserScope } from './user-scope.js';
+import type { PrincipalScope } from './principal-scope.js';
 import type { UserIdentity } from './user-identity.js';
 import type { RoleAssignment } from './role-assignment.js';
 import type { ServiceAccountData } from '../service-account/service-account-data.js';
@@ -31,7 +31,7 @@ export interface Principal {
    *
    * For SERVICE principals, this may be null.
    */
-  readonly scope: UserScope | null;
+  readonly scope: PrincipalScope | null;
 
   /**
    * Client this principal belongs to (home client).
@@ -88,7 +88,7 @@ export type NewPrincipal = Omit<Principal, 'createdAt' | 'updatedAt'> & {
  */
 export function createUserPrincipal(params: {
   name: string;
-  scope: UserScope;
+  scope: PrincipalScope;
   clientId: string | null;
   userIdentity: UserIdentity;
 }): NewPrincipal {
@@ -115,11 +115,12 @@ export function createServicePrincipal(params: {
   applicationId: string | null;
   clientId: string | null;
   serviceAccount: ServiceAccountData;
+  scope?: PrincipalScope;
 }): NewPrincipal {
   return {
     id: generate('PRINCIPAL'),
     type: 'SERVICE',
-    scope: null,
+    scope: params.scope ?? 'ANCHOR',
     clientId: params.clientId,
     applicationId: params.applicationId,
     name: params.name,

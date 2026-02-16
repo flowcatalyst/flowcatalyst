@@ -3,7 +3,7 @@
  */
 
 import type { Command } from '@flowcatalyst/application';
-import type { WebhookAuthType } from '../../../domain/index.js';
+import type { WebhookAuthType, PrincipalScope } from '../../../domain/index.js';
 
 /**
  * Command to create a new service account.
@@ -31,4 +31,7 @@ export interface CreateServiceAccountCommand extends Command {
 
   /** Webhook authentication type */
   readonly webhookAuthType?: WebhookAuthType | undefined;
+
+  /** Access scope for the service account (defaults to ANCHOR) */
+  readonly scope?: PrincipalScope | undefined;
 }

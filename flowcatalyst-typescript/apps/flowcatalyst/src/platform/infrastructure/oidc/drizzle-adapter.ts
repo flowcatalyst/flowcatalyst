@@ -11,12 +11,23 @@ import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { oidcPayloads } from '../persistence/schema/index.js';
 
 /**
+ * Optional dynamic client loader.
+ * When the Client adapter model doesn't find a client in storage,
+ * it falls back to this function to load from the OAuth client repository.
+ */
+export type ClientLoader = (clientId: string) => Promise<Record<string, unknown> | undefined>;
+
+/**
  * Creates a Drizzle adapter factory for oidc-provider.
  *
  * @param db - Drizzle database instance
+ * @param clientLoader - Optional function to dynamically load OAuth clients from the repository
  * @returns Adapter class constructor
  */
-export function createDrizzleAdapterFactory(db: PostgresJsDatabase): new (name: string) => Adapter {
+export function createDrizzleAdapterFactory(
+  db: PostgresJsDatabase,
+  clientLoader?: ClientLoader,
+): new (name: string) => Adapter {
   return class DrizzleAdapter implements Adapter {
     readonly _name: string;
 
@@ -69,6 +80,7 @@ export function createDrizzleAdapterFactory(db: PostgresJsDatabase): new (name: 
 
     /**
      * Find a payload by ID.
+     * For the Client model, falls back to dynamic loading from the OAuth client repository.
      */
     async find(id: string): Promise<AdapterPayload | undefined> {
       const key = this._key(id);
@@ -79,16 +91,25 @@ export function createDrizzleAdapterFactory(db: PostgresJsDatabase): new (name: 
         .where(eq(oidcPayloads.id, key))
         .limit(1);
 
-      if (!record) {
-        return undefined;
+      if (record) {
+        // Check if expired
+        if (record.expiresAt && record.expiresAt < new Date()) {
+          return undefined;
+        }
+        return this._hydratePayload(record);
       }
 
-      // Check if expired
-      if (record.expiresAt && record.expiresAt < new Date()) {
-        return undefined;
+      // For Client model, fall back to dynamic loading from OAuth client repository
+      if (this._name === 'Client' && clientLoader) {
+        const metadata = await clientLoader(id);
+        if (metadata) {
+          // Cache in storage for future lookups (24 hours)
+          await this.upsert(id, metadata as AdapterPayload, 24 * 3600);
+          return metadata as AdapterPayload;
+        }
       }
 
-      return this._hydratePayload(record);
+      return undefined;
     }
 
     /**

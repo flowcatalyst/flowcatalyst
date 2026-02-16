@@ -11,7 +11,7 @@ import { checkSession } from '@/api/auth';
  */
 export async function authGuard(
   to: RouteLocationNormalized,
-  from: RouteLocationNormalized,
+  _from: RouteLocationNormalized,
   next: NavigationGuardNext,
 ): Promise<void> {
   const authStore = useAuthStore();
@@ -50,7 +50,7 @@ export async function authGuard(
  */
 export async function guestGuard(
   to: RouteLocationNormalized,
-  from: RouteLocationNormalized,
+  _from: RouteLocationNormalized,
   next: NavigationGuardNext,
 ): Promise<void> {
   const authStore = useAuthStore();
@@ -99,8 +99,8 @@ export async function guestGuard(
  */
 export function roleGuard(requiredRole: string) {
   return (
-    to: RouteLocationNormalized,
-    from: RouteLocationNormalized,
+    _to: RouteLocationNormalized,
+    _from: RouteLocationNormalized,
     next: NavigationGuardNext,
   ): void => {
     const authStore = useAuthStore();

@@ -207,7 +207,7 @@ export function createSubscriptionRepository(defaultDb: PlatformDb): Subscriptio
   return {
     async findById(id: string, tx?: TransactionContext): Promise<Subscription | undefined> {
       const result = await rq(tx).subscriptions.findFirst({
-        where: { RAW: eq(subscriptions.id, id) },
+        where: { id },
         with: withChildren,
       });
       if (!result) return undefined;
@@ -224,12 +224,15 @@ export function createSubscriptionRepository(defaultDb: PlatformDb): Subscriptio
           ? and(eq(subscriptions.code, code), isNull(subscriptions.clientId))
           : and(eq(subscriptions.code, code), eq(subscriptions.clientId, clientId));
 
-      const result = await rq(tx).subscriptions.findFirst({
-        where: { RAW: condition },
-        with: withChildren,
-      });
-      if (!result) return undefined;
-      return resultToSubscription(result as SubscriptionRelationalResult);
+      const [record] = await db(tx)
+        .select()
+        .from(subscriptions)
+        .where(condition)
+        .limit(1);
+
+      if (!record) return undefined;
+      const hydrated = await batchHydrate([record], tx);
+      return hydrated[0];
     },
 
     async existsByCodeAndClient(
@@ -259,7 +262,7 @@ export function createSubscriptionRepository(defaultDb: PlatformDb): Subscriptio
 
     async findByClientId(clientId: string, tx?: TransactionContext): Promise<Subscription[]> {
       const results = await rq(tx).subscriptions.findMany({
-        where: { RAW: eq(subscriptions.clientId, clientId) },
+        where: { clientId },
         orderBy: { code: 'asc' },
         with: withChildren,
       });
@@ -268,7 +271,7 @@ export function createSubscriptionRepository(defaultDb: PlatformDb): Subscriptio
 
     async findAnchorLevel(tx?: TransactionContext): Promise<Subscription[]> {
       const results = await rq(tx).subscriptions.findMany({
-        where: { RAW: isNull(subscriptions.clientId) },
+        where: { clientId: null },
         orderBy: { code: 'asc' },
         with: withChildren,
       });
@@ -277,7 +280,7 @@ export function createSubscriptionRepository(defaultDb: PlatformDb): Subscriptio
 
     async findActive(tx?: TransactionContext): Promise<Subscription[]> {
       const results = await rq(tx).subscriptions.findMany({
-        where: { RAW: eq(subscriptions.status, 'ACTIVE') },
+        where: { status: 'ACTIVE' },
         orderBy: { code: 'asc' },
         with: withChildren,
       });
@@ -324,7 +327,7 @@ export function createSubscriptionRepository(defaultDb: PlatformDb): Subscriptio
       tx?: TransactionContext,
     ): Promise<Subscription[]> {
       const results = await rq(tx).subscriptions.findMany({
-        where: { RAW: eq(subscriptions.dispatchPoolId, dispatchPoolId) },
+        where: { dispatchPoolId },
         orderBy: { code: 'asc' },
         with: withChildren,
       });

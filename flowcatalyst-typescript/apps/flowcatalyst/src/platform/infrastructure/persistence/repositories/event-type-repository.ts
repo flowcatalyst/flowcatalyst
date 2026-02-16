@@ -131,7 +131,7 @@ export function createEventTypeRepository(defaultDb: PlatformDb): EventTypeRepos
   return {
     async findById(id: string, tx?: TransactionContext): Promise<EventType | undefined> {
       const result = await rq(tx).eventTypes.findFirst({
-        where: { RAW: eq(eventTypes.id, id) },
+        where: { id },
         with: withChildren,
       });
       if (!result) return undefined;
@@ -140,7 +140,7 @@ export function createEventTypeRepository(defaultDb: PlatformDb): EventTypeRepos
 
     async findByCode(code: string, tx?: TransactionContext): Promise<EventType | undefined> {
       const result = await rq(tx).eventTypes.findFirst({
-        where: { RAW: eq(eventTypes.code, code) },
+        where: { code },
         with: withChildren,
       });
       if (!result) return undefined;
@@ -200,12 +200,12 @@ export function createEventTypeRepository(defaultDb: PlatformDb): EventTypeRepos
     },
 
     async findByCodePrefix(prefix: string, tx?: TransactionContext): Promise<EventType[]> {
-      const results = await rq(tx).eventTypes.findMany({
-        where: { RAW: like(eventTypes.code, `${prefix}%`) },
-        orderBy: { code: 'asc' },
-        with: withChildren,
-      });
-      return (results as EventTypeRelationalResult[]).map(resultToEventType);
+      const records = await db(tx)
+        .select()
+        .from(eventTypes)
+        .where(like(eventTypes.code, `${prefix}%`))
+        .orderBy(eventTypes.code);
+      return batchHydrate(records, tx);
     },
 
     async findWithFilters(

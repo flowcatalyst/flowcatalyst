@@ -80,7 +80,7 @@ async function onSubmit() {
             v-model="identifier"
             placeholder="client-slug"
             class="full-width"
-            :invalid="identifier && !isIdentifierValid"
+            :invalid="!!(identifier && !isIdentifierValid)"
           />
           <small v-if="identifier && !isIdentifierValid" class="p-error">
             Lowercase letters, numbers, hyphens only. Must start with a letter.

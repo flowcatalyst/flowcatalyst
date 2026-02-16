@@ -6,7 +6,7 @@
 
 import { BaseDomainEvent, DomainEvent, type ExecutionContext } from '@flowcatalyst/domain-core';
 import type { IdpType } from './idp-type.js';
-import type { UserScope } from './user-scope.js';
+import type { PrincipalScope } from './principal-scope.js';
 
 const APP = 'platform';
 const DOMAIN = 'iam';
@@ -21,7 +21,7 @@ export interface UserCreatedData {
   readonly email: string;
   readonly emailDomain: string;
   readonly name: string;
-  readonly scope: UserScope;
+  readonly scope: PrincipalScope;
   readonly clientId: string | null;
   readonly idpType: IdpType;
   readonly isAnchorUser: boolean;
@@ -284,6 +284,38 @@ export class ClientAccessRevoked extends BaseDomainEvent<ClientAccessRevokedData
         source: SOURCE,
         subject: DomainEvent.subject(APP, 'user', data.userId),
         messageGroup: DomainEvent.messageGroup(APP, 'user', data.userId),
+      },
+      ctx,
+      data,
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// PrincipalsSynced
+// -----------------------------------------------------------------------------
+
+export interface PrincipalsSyncedData {
+  readonly applicationCode: string;
+  readonly principalsCreated: number;
+  readonly principalsUpdated: number;
+  readonly principalsDeactivated: number;
+  readonly syncedEmails: string[];
+  readonly [key: string]: unknown;
+}
+
+export class PrincipalsSynced extends BaseDomainEvent<PrincipalsSyncedData> {
+  static readonly EVENT_TYPE = DomainEvent.eventType(APP, DOMAIN, 'user', 'principals-synced');
+  static readonly SPEC_VERSION = '1.0';
+
+  constructor(ctx: ExecutionContext, data: PrincipalsSyncedData) {
+    super(
+      {
+        eventType: PrincipalsSynced.EVENT_TYPE,
+        specVersion: PrincipalsSynced.SPEC_VERSION,
+        source: SOURCE,
+        subject: DomainEvent.subject(APP, 'principal', data.applicationCode),
+        messageGroup: DomainEvent.messageGroup(APP, 'principal', data.applicationCode),
       },
       ctx,
       data,

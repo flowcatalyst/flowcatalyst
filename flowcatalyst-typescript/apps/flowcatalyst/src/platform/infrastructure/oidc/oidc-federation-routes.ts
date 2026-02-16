@@ -37,7 +37,7 @@ import type {
 import { createOrUpdateOidcUser, syncIdpRoles, extractIdpRoles } from './oidc-sync-service.js';
 import { getAllowedRoleNames } from '../../authorization/allowed-role-filter.js';
 import type { SessionCookieConfig } from './auth-routes.js';
-import type { UserScope } from '../../domain/principal/user-scope.js';
+import type { PrincipalScope } from '../../domain/principal/principal-scope.js';
 
 export interface OidcFederationDeps {
   identityProviderRepository: IdentityProviderRepository;
@@ -326,8 +326,8 @@ export async function registerOidcFederationRoutes(
         }
       }
 
-      // Map scopeType to UserScope
-      const userScope = mapping.scopeType as UserScope;
+      // Map scopeType to PrincipalScope
+      const userScope = mapping.scopeType as PrincipalScope;
 
       // Determine client ID for user
       const userClientId = mapping.scopeType === 'CLIENT' ? mapping.primaryClientId : null;

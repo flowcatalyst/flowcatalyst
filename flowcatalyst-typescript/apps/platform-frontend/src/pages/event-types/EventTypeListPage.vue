@@ -9,7 +9,7 @@ import MultiSelect from 'primevue/multiselect';
 import Select from 'primevue/select';
 import ProgressSpinner from 'primevue/progressspinner';
 import { useEventTypes } from '@/composables/useEventTypes';
-import type { EventType, SpecVersion } from '@/api/event-types';
+import type { EventType } from '@/api/event-types';
 
 const router = useRouter();
 const {

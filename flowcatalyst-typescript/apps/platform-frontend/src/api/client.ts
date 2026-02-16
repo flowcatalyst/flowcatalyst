@@ -3,6 +3,8 @@
  * This sets up the base URL and any default headers.
  */
 
+import { toast } from '@/utils/errorBus';
+
 export const API_BASE_URL = '/api';
 export const BFF_BASE_URL = '/bff';
 
@@ -74,6 +76,11 @@ async function baseFetch<T>(url: string, options: RequestInit = {}): Promise<T> 
     // Emit error event for 401/403
     if (response.status === 401 || response.status === 403) {
       emitApiError(response.status, message);
+    }
+
+    // Show error toast for non-auth errors
+    if (response.status !== 401) {
+      toast.error('Request Failed', message);
     }
 
     throw new ApiError(message, response.status, error.code);

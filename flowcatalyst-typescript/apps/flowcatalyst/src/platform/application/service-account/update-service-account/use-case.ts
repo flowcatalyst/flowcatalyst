@@ -72,6 +72,7 @@ export function createUpdateServiceAccountUseCase(
       // Build updates inline to satisfy readonly constraints
       const updatedPrincipal = updatePrincipal(principal, {
         ...(command.name !== undefined ? { name: command.name } : {}),
+        ...(command.scope !== undefined ? { scope: command.scope } : {}),
         ...(command.description !== undefined
           ? {
               serviceAccount: {

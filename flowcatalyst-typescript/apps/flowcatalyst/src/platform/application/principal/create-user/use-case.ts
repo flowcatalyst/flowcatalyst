@@ -27,7 +27,7 @@ import {
   extractEmailDomain,
   UserCreated,
   IdpType,
-  UserScope,
+  PrincipalScope,
 } from '../../../domain/index.js';
 
 import type { CreateUserCommand } from './command.js';
@@ -95,12 +95,12 @@ export function createCreateUserUseCase(
       const emailDomain = extractEmailDomain(command.email);
 
       // Determine scope and IDP type from email domain mapping
-      let scope: UserScope = UserScope.CLIENT;
+      let scope: PrincipalScope = PrincipalScope.CLIENT;
       let idpType: IdpType = IdpType.INTERNAL;
       const mapping = await emailDomainMappingRepository.findByEmailDomain(emailDomain);
       if (mapping) {
         // Use the scope configured on the email domain mapping
-        scope = mapping.scopeType as UserScope;
+        scope = mapping.scopeType as PrincipalScope;
 
         const idp = await identityProviderRepository.findById(mapping.identityProviderId);
         if (idp && idp.type === 'OIDC') {
@@ -110,11 +110,11 @@ export function createCreateUserUseCase(
         // Fall back to legacy anchor domain check
         const isAnchorDomain = await anchorDomainRepository.existsByDomain(emailDomain);
         if (isAnchorDomain) {
-          scope = UserScope.ANCHOR;
+          scope = PrincipalScope.ANCHOR;
         }
       }
 
-      const isAnchorUser = scope === UserScope.ANCHOR;
+      const isAnchorUser = scope === PrincipalScope.ANCHOR;
 
       // Validate and hash password for INTERNAL auth, or reject for OIDC
       let passwordHash: string | null = null;

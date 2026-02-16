@@ -60,6 +60,8 @@ import {
   registerPublicApiRoutes,
   registerPlatformConfigApiRoutes,
   registerDebugBffRoutes,
+  registerApplicationSyncApiRoutes,
+  type ApplicationSyncRoutesDeps,
 } from './api/index.js';
 import { createPlatformConfigService } from './domain/index.js';
 import { createEventDispatchService } from './infrastructure/dispatch/event-dispatch-service.js';
@@ -163,6 +165,8 @@ import {
   createAssignApplicationAccessUseCase,
   createAddCorsOriginUseCase,
   createDeleteCorsOriginUseCase,
+  createSyncRolesUseCase,
+  createSyncPrincipalsUseCase,
 } from './application/index.js';
 
 /**
@@ -251,7 +255,7 @@ export async function startPlatform(config?: PlatformConfig): Promise<PlatformRe
   // Schema-aware db instance for repositories that use relational queries (db.query.*)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const schemaDb: any = drizzle({ client: database.client, schema: platformSchema, relations: platformRelations } as any);
-  const transactionManager = createTransactionManager(db);
+  const transactionManager = createTransactionManager(schemaDb);
 
   // Create repositories
   const principalRepository = createPrincipalRepository(db);
@@ -330,7 +334,6 @@ export async function startPlatform(config?: PlatformConfig): Promise<PlatformRe
   aggregateRegistry.register(
     createAggregateHandler('CorsAllowedOrigin', corsAllowedOriginRepository),
   );
-
   // Create event dispatch service (builds dispatch jobs for events inside UoW transaction)
   const eventDispatchService = createEventDispatchService({
     subscriptionRepository,
@@ -427,8 +430,9 @@ export async function startPlatform(config?: PlatformConfig): Promise<PlatformRe
   const oidcIssuer = env.OIDC_ISSUER ?? env.EXTERNAL_BASE_URL ?? `http://localhost:${PORT}`;
 
   // Initialize JWT key service (RS256 key pair)
+  // Use the same issuer as oidc-provider so tokens it issues can be validated.
   const jwtKeyService = await createJwtKeyService({
-    issuer: env.JWT_ISSUER,
+    issuer: oidcIssuer,
     privateKey: env.FLOWCATALYST_JWT_PRIVATE_KEY,
     publicKey: env.FLOWCATALYST_JWT_PUBLIC_KEY,
     previousPublicKey: env.FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY,
@@ -590,6 +594,22 @@ export async function startPlatform(config?: PlatformConfig): Promise<PlatformRe
 
   const deleteRoleUseCase = createDeleteRoleUseCase({
     roleRepository,
+    unitOfWork,
+  });
+
+  const syncRolesUseCase = createSyncRolesUseCase({
+    roleRepository,
+    applicationRepository,
+    unitOfWork,
+  });
+
+  const syncPrincipalsUseCase = createSyncPrincipalsUseCase({
+    principalRepository,
+    applicationRepository,
+    roleRepository,
+    anchorDomainRepository,
+    emailDomainMappingRepository,
+    identityProviderRepository,
     unitOfWork,
   });
 
@@ -914,12 +934,24 @@ export async function startPlatform(config?: PlatformConfig): Promise<PlatformRe
         return jwtKeyService.validateAndGetPrincipalId(token);
       },
       loadPrincipal: async (principalId: string) => {
-        const principal = await principalRepository.findById(principalId);
+        // Try direct principal lookup first (user tokens have sub = principal UUID)
+        let principal = await principalRepository.findById(principalId);
+
+        // For client_credentials tokens, oidc-provider sets sub = OAuth client_id
+        // (e.g. "sa-inhance-php-apps"), not the principal UUID. Look up the OAuth
+        // client's service account principal instead.
+        if (!principal) {
+          const oauthClient = await oauthClientRepository.findByClientId(principalId);
+          if (oauthClient?.serviceAccountPrincipalId) {
+            principal = await principalRepository.findById(oauthClient.serviceAccountPrincipalId);
+          }
+        }
+
         if (!principal || !principal.active) return null;
         return {
           id: principal.id,
           type: principal.type,
-          scope: principal.scope ?? 'CLIENT',
+          scope: principal.scope ?? (principal.type === 'SERVICE' ? 'ANCHOR' : 'CLIENT'),
           clientId: principal.clientId,
           roles: new Set(principal.roles.map((r) => r.roleName)),
         };
@@ -1191,6 +1223,17 @@ export async function startPlatform(config?: PlatformConfig): Promise<PlatformRe
 
     await registerSdkRoutes(fastify, sdkDeps);
 
+    // Application-scoped sync routes (SDK sync endpoints)
+    const applicationSyncDeps: ApplicationSyncRoutesDeps = {
+      syncRolesUseCase,
+      syncEventTypesUseCase,
+      syncSubscriptionsUseCase,
+      syncDispatchPoolsUseCase,
+      syncPrincipalsUseCase,
+    };
+
+    await registerApplicationSyncApiRoutes(fastify, applicationSyncDeps);
+
     // Batch ingestion routes (outbox processor / SDK batch endpoints)
     const batchDeps: BatchRoutesDeps = {
       db,
@@ -1245,6 +1288,11 @@ export async function startPlatform(config?: PlatformConfig): Promise<PlatformRe
     });
 
     fastify.log.info({ frontendDir: config.frontendDir }, 'Frontend static serving enabled');
+  } else {
+    // No frontend — redirect root to login
+    fastify.get('/', async (request, reply) => {
+      return reply.redirect('/auth/login');
+    });
   }
 
   fastify.log.info({ port: PORT, host: HOST }, 'Starting HTTP server');

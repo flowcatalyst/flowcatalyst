@@ -120,6 +120,31 @@ export interface UnitOfWork {
     event: T,
     command: unknown,
   ): Promise<Result<T>>;
+
+  /**
+   * Commit custom operations with a domain event atomically.
+   *
+   * Use this for sync/batch operations where multiple entities are created,
+   * updated, or deleted within a single transaction. The operations callback
+   * receives a transaction context that can be passed to repository methods.
+   *
+   * Within a single database transaction:
+   * 1. Runs the operations callback (entity inserts/updates/deletes)
+   * 2. Creates the domain event in the events table
+   * 3. Creates the audit log entry
+   *
+   * If any step fails, the entire transaction is rolled back.
+   *
+   * @param event - The domain event representing what happened
+   * @param command - The command that was executed (for audit log)
+   * @param operations - Callback receiving the transaction context for entity operations
+   * @returns Success with the event, or Failure if transaction fails
+   */
+  commitOperations<T extends DomainEvent>(
+    event: T,
+    command: unknown,
+    operations: (tx: unknown) => Promise<void>,
+  ): Promise<Result<T>>;
 }
 
 /**

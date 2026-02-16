@@ -22,7 +22,7 @@ import type {
 import {
   createClientAccessGrant,
   PrincipalType,
-  UserScope,
+  PrincipalScope,
   ClientAccessGranted,
 } from '../../../domain/index.js';
 
@@ -81,7 +81,7 @@ export function createGrantClientAccessUseCase(
       }
 
       // Only PARTNER scope users need explicit client access grants
-      if (principal.scope !== UserScope.PARTNER) {
+      if (principal.scope !== PrincipalScope.PARTNER) {
         return Result.failure(
           UseCaseError.businessRule(
             'INVALID_SCOPE',

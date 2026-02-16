@@ -17,12 +17,18 @@ const toast = useToast();
 
 const users = ref<User[]>([]);
 const clients = ref<Client[]>([]);
-const loading = ref(true);
+const loading = ref(false);
+const initialLoading = ref(true);
+const totalRecords = ref(0);
 
 // Filters
 const searchQuery = ref('');
 const selectedClientId = ref<string | null>(null);
 const selectedStatus = ref<string | null>(null);
+
+// Pagination
+const page = ref(0);
+const pageSize = ref(20);
 
 const statusOptions = [
   { label: 'Active', value: 'active' },
@@ -40,27 +46,24 @@ const hasActiveFilters = computed(() => {
   return searchQuery.value || selectedClientId.value || selectedStatus.value;
 });
 
-const filteredUsers = computed(() => {
-  let result = users.value;
-
-  // Client-side search filter (name/email)
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase();
-    result = result.filter(
-      (u) => u.name?.toLowerCase().includes(query) || u.email?.toLowerCase().includes(query),
-    );
-  }
-
-  return result;
-});
-
 onMounted(async () => {
   await Promise.all([loadUsers(), loadClients()]);
 });
 
 // Reload users when filters change (server-side filters)
 watch([selectedClientId, selectedStatus], () => {
+  page.value = 0;
   loadUsers();
+});
+
+// Debounced search
+let searchTimeout: ReturnType<typeof setTimeout> | null = null;
+watch(searchQuery, () => {
+  if (searchTimeout) clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    page.value = 0;
+    loadUsers();
+  }, 300);
 });
 
 async function loadUsers() {
@@ -75,8 +78,12 @@ async function loadUsers() {
           : selectedStatus.value === 'inactive'
             ? false
             : undefined,
+      q: searchQuery.value || undefined,
+      page: page.value,
+      pageSize: pageSize.value,
     });
     users.value = response.principals;
+    totalRecords.value = response.total;
   } catch (error) {
     toast.add({
       severity: 'error',
@@ -87,7 +94,14 @@ async function loadUsers() {
     console.error('Failed to fetch users:', error);
   } finally {
     loading.value = false;
+    initialLoading.value = false;
   }
+}
+
+function onPage(event: { page: number; rows: number }) {
+  page.value = event.page;
+  pageSize.value = event.rows;
+  loadUsers();
 }
 
 async function loadClients() {
@@ -103,6 +117,8 @@ function clearFilters() {
   searchQuery.value = '';
   selectedClientId.value = null;
   selectedStatus.value = null;
+  page.value = 0;
+  loadUsers();
 }
 
 function addUser() {
@@ -226,20 +242,24 @@ function formatDate(dateStr: string | undefined | null) {
 
     <!-- Data Table -->
     <div class="fc-card table-card">
-      <div v-if="loading" class="loading-container">
+      <div v-if="initialLoading" class="loading-container">
         <ProgressSpinner strokeWidth="3" />
       </div>
 
       <DataTable
         v-else
-        :value="filteredUsers"
+        :value="users"
+        :loading="loading"
         :paginator="true"
-        :rows="20"
+        :rows="pageSize"
+        :totalRecords="totalRecords"
         :rowsPerPageOptions="[10, 20, 50]"
+        :lazy="true"
         :showCurrentPageReport="true"
         currentPageReportTemplate="Showing {first} to {last} of {totalRecords} users"
         stripedRows
         class="p-datatable-sm"
+        @page="onPage"
       >
         <Column field="name" header="Name" sortable style="width: 20%">
           <template #body="{ data }">

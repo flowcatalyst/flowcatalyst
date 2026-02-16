@@ -77,9 +77,9 @@ const userType = computed(() => {
       case 'ANCHOR':
         return { label: 'Anchor', severity: 'warn', icon: 'pi pi-star' };
       case 'PARTNER':
-        return { label: 'Partner', severity: 'info', icon: null };
+        return { label: 'Partner', severity: 'info', icon: undefined };
       case 'CLIENT':
-        return { label: 'Client', severity: 'secondary', icon: null };
+        return { label: 'Client', severity: 'secondary', icon: undefined };
     }
   }
 
@@ -89,9 +89,9 @@ const userType = computed(() => {
   }
   const grantedCount = clientGrants.value.length;
   if (grantedCount > 0 || !user.value.clientId) {
-    return { label: 'Partner', severity: 'info', icon: null };
+    return { label: 'Partner', severity: 'info', icon: undefined };
   }
-  return { label: 'Client', severity: 'secondary', icon: null };
+  return { label: 'Client', severity: 'secondary', icon: undefined };
 });
 
 const homeClient = computed(() => {

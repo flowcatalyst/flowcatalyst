@@ -152,7 +152,7 @@ function copyToClipboard(text: string) {
               v-model="code"
               placeholder="e.g., operant"
               class="full-width"
-              :invalid="code && !isCodeValid"
+              :invalid="!!(code && !isCodeValid)"
             />
             <small v-if="code && !isCodeValid" class="p-error">
               Must start with a letter, use only lowercase letters, numbers, and hyphens

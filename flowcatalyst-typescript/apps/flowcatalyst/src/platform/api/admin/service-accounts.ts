@@ -46,12 +46,19 @@ import { SERVICE_ACCOUNT_PERMISSIONS } from '../../authorization/permissions/pla
 
 // ─── Request Schemas ────────────────────────────────────────────────────────
 
+const ScopeEnum = Type.Union([
+  Type.Literal('ANCHOR'),
+  Type.Literal('PARTNER'),
+  Type.Literal('CLIENT'),
+]);
+
 const CreateServiceAccountSchema = Type.Object({
   code: Type.String({ minLength: 1, maxLength: 100 }),
   name: Type.String({ minLength: 1, maxLength: 200 }),
   description: Type.Optional(Type.Union([Type.String({ maxLength: 500 }), Type.Null()])),
   applicationId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   clientIds: Type.Optional(Type.Array(Type.String())),
+  scope: Type.Optional(ScopeEnum),
   webhookAuthType: Type.Optional(
     Type.Union([
       Type.Literal('NONE'),
@@ -67,6 +74,7 @@ const UpdateServiceAccountSchema = Type.Object({
   name: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   description: Type.Optional(Type.Union([Type.String({ maxLength: 500 }), Type.Null()])),
   clientIds: Type.Optional(Type.Array(Type.String())),
+  scope: Type.Optional(ScopeEnum),
 });
 
 const AssignRolesSchema = Type.Object({
@@ -93,6 +101,7 @@ const ServiceAccountResponseSchema = Type.Object({
   code: Type.String(),
   name: Type.String(),
   description: Type.Union([Type.String(), Type.Null()]),
+  scope: Type.Union([Type.String(), Type.Null()]),
   clientIds: Type.Array(Type.String()),
   applicationId: Type.Union([Type.String(), Type.Null()]),
   active: Type.Boolean(),
@@ -224,6 +233,7 @@ export async function registerServiceAccountsRoutes(
         description: body.description ?? null,
         applicationId: body.applicationId ?? null,
         clientId: body.clientIds?.[0] ?? null,
+        scope: body.scope,
         webhookAuthType: body.webhookAuthType as WebhookAuthType | undefined,
       };
 
@@ -369,6 +379,7 @@ export async function registerServiceAccountsRoutes(
         serviceAccountId: id,
         name: body.name,
         description: body.description,
+        scope: body.scope,
       };
 
       const result = await updateServiceAccountUseCase.execute(command, ctx);
@@ -690,6 +701,7 @@ function toServiceAccountResponse(principal: Principal): ServiceAccountResponse 
     code: sa.code,
     name: principal.name,
     description: sa.description,
+    scope: principal.scope,
     clientIds: principal.clientId ? [principal.clientId] : [],
     applicationId: principal.applicationId,
     active: principal.active,

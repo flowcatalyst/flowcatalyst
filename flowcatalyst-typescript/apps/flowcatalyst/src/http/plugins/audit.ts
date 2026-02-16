@@ -103,9 +103,12 @@ const auditPluginAsync: FastifyPluginAsync<AuditPluginOptions> = async (fastify,
       principal = await loadPrincipal(principalId);
     }
 
-    // Store audit data in request
+    // Store audit data in request.
+    // Use the resolved principal ID when available — for client_credentials tokens
+    // the JWT sub is the OAuth client_id (e.g. "sa-inhance-php-apps"), but the
+    // canonical principal ID is the TSID from the database (e.g. "prn_...").
     const auditData: AuditData = {
-      principalId,
+      principalId: principal?.id ?? principalId,
       principal,
     };
     request.audit = auditData;
