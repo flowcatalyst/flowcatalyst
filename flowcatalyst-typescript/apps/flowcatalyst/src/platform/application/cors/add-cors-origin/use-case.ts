@@ -37,14 +37,15 @@ export function createAddCorsOriginUseCase(
         return originResult;
       }
 
-      // Validate origin format (must be a valid URL origin)
+      // Validate origin format (must be a valid URL origin, wildcards allowed in hostname)
+      // Supports: https://example.com, https://*.example.com, https://qa-*.example.com
       const originPattern =
-        /^https?:\/\/[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?)*(:\d+)?$/;
+        /^https?:\/\/(\*\.)?[a-zA-Z0-9*]([a-zA-Z0-9\-*]*[a-zA-Z0-9*])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?)*(:\d+)?$/;
       if (!originPattern.test(command.origin)) {
         return Result.failure(
           UseCaseError.validation(
             'INVALID_ORIGIN',
-            'Origin must be a valid URL origin (e.g., https://example.com)',
+            'Origin must be a valid URL origin (e.g., https://example.com or https://*.example.com)',
           ),
         );
       }

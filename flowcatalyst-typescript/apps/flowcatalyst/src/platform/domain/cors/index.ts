@@ -14,3 +14,5 @@ export {
   type CorsOriginDeletedData,
   CorsOriginDeleted,
 } from './events.js';
+
+export { isOriginAllowed, matchesOriginPattern } from './origin-matcher.js';
