@@ -9,7 +9,7 @@ export interface CorsOrigin {
 }
 
 export interface CorsOriginListResponse {
-  items: CorsOrigin[];
+  corsOrigins: CorsOrigin[];
   total: number;
 }
 

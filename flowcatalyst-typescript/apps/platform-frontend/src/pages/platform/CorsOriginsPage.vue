@@ -48,7 +48,7 @@ async function loadOrigins() {
   error.value = null;
   try {
     const response = await corsApi.list();
-    origins.value = response.items;
+    origins.value = response.corsOrigins;
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load CORS origins';
   } finally {
