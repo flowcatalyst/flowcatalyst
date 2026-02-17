@@ -1,12 +1,13 @@
 /**
- * CORS Origin Matcher
+ * Origin & URI Pattern Matcher
  *
- * Matches request origins against stored patterns that may include wildcards.
- * Supports patterns like:
- *   - https://example.com          (exact match)
- *   - https://*.example.com        (any subdomain)
- *   - https://qa-*.example.com     (prefix wildcard)
- *   - http://localhost:3000         (exact with port)
+ * Matches request origins and redirect URIs against stored patterns that may
+ * include wildcards in the hostname. Supports patterns like:
+ *   - https://example.com                        (exact match)
+ *   - https://*.example.com                      (any subdomain)
+ *   - https://qa-*.example.com                   (prefix wildcard)
+ *   - http://localhost:3000                       (exact with port)
+ *   - https://qa-*.example.com/callback           (wildcard host + path)
  */
 
 /**
@@ -76,10 +77,59 @@ export function matchesOriginPattern(pattern: string, origin: string): boolean {
   }
 }
 
+/**
+ * Check if a redirect URI matches any of the allowed URI patterns.
+ * Like origin matching but also compares the path component exactly.
+ *
+ * @param uri - The incoming redirect_uri (e.g., "https://qa-app1.example.com/callback")
+ * @param allowedPatterns - Stored redirect URI patterns (may include host wildcards)
+ * @returns true if the URI matches any pattern
+ */
+export function isRedirectUriAllowed(uri: string, allowedPatterns: readonly string[]): boolean {
+  for (const pattern of allowedPatterns) {
+    if (matchesRedirectUriPattern(pattern, uri)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Check if a redirect URI matches a single URI pattern.
+ * Wildcards (`*`) in the hostname are expanded to match `[a-zA-Z0-9-]+`.
+ * Scheme, port, and path must match exactly.
+ */
+export function matchesRedirectUriPattern(pattern: string, uri: string): boolean {
+  if (pattern === uri) return true;
+  if (!pattern.includes('*')) return false;
+
+  try {
+    const patternParts = parseUri(pattern);
+    const uriParts = parseUri(uri);
+    if (!patternParts || !uriParts) return false;
+
+    if (patternParts.scheme !== uriParts.scheme) return false;
+    if (patternParts.port !== uriParts.port) return false;
+    if (patternParts.path !== uriParts.path) return false;
+
+    const hostRegex = patternParts.host
+      .replace(/[.]/g, '\\.')
+      .replace(/\*/g, '[a-zA-Z0-9-]+');
+
+    return new RegExp(`^${hostRegex}$`).test(uriParts.host);
+  } catch {
+    return false;
+  }
+}
+
 interface OriginParts {
   scheme: string;
   host: string;
   port: string;
+}
+
+interface UriParts extends OriginParts {
+  path: string;
 }
 
 function parseOrigin(origin: string): OriginParts | null {
@@ -90,5 +140,17 @@ function parseOrigin(origin: string): OriginParts | null {
     scheme: match[1]!,
     host: match[2]!,
     port: match[3] ?? '',
+  };
+}
+
+function parseUri(uri: string): UriParts | null {
+  const match = uri.match(/^(https?):\/\/([^:/]+)(?::(\d+))?(\/.*)?$/);
+  if (!match) return null;
+
+  return {
+    scheme: match[1]!,
+    host: match[2]!,
+    port: match[3] ?? '',
+    path: match[4] ?? '/',
   };
 }

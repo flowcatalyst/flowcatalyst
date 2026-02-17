@@ -49,6 +49,12 @@ const OAuthGrantTypeSchema = Type.Union([
   Type.Literal('password'),
 ]);
 
+const DefaultScopesSchema = Type.Union([
+  Type.Array(Type.String()),
+  Type.String(),
+  Type.Null(),
+]);
+
 const CreateOAuthClientSchema = Type.Object({
   clientName: Type.String({ minLength: 1 }),
   clientType: OAuthClientTypeSchema,
@@ -56,7 +62,7 @@ const CreateOAuthClientSchema = Type.Object({
   redirectUris: Type.Optional(Type.Array(Type.String())),
   allowedOrigins: Type.Optional(Type.Array(Type.String())),
   grantTypes: Type.Optional(Type.Array(OAuthGrantTypeSchema)),
-  defaultScopes: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  defaultScopes: Type.Optional(DefaultScopesSchema),
   pkceRequired: Type.Optional(Type.Boolean()),
   applicationIds: Type.Optional(Type.Array(Type.String())),
 });
@@ -66,7 +72,7 @@ const UpdateOAuthClientSchema = Type.Object({
   redirectUris: Type.Optional(Type.Array(Type.String())),
   allowedOrigins: Type.Optional(Type.Array(Type.String())),
   grantTypes: Type.Optional(Type.Array(OAuthGrantTypeSchema)),
-  defaultScopes: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  defaultScopes: Type.Optional(DefaultScopesSchema),
   pkceRequired: Type.Optional(Type.Boolean()),
   applicationIds: Type.Optional(Type.Array(Type.String())),
   active: Type.Optional(Type.Boolean()),
@@ -86,6 +92,16 @@ const ListOAuthClientsQuery = Type.Object({
 type CreateOAuthClientBody = Static<typeof CreateOAuthClientSchema>;
 type UpdateOAuthClientBody = Static<typeof UpdateOAuthClientSchema>;
 type RegenerateSecretBody = Static<typeof RegenerateSecretSchema>;
+
+/** Normalize defaultScopes input to a space-separated string for storage. */
+function normalizeScopes(
+  scopes: string[] | string | null | undefined,
+): string | null | undefined {
+  if (scopes === undefined) return undefined;
+  if (scopes === null) return null;
+  if (Array.isArray(scopes)) return scopes.join(' ') || null;
+  return scopes; // single string like "openid" or "openid profile" passes through
+}
 
 // ─── Response Schemas ───────────────────────────────────────────────────────
 
@@ -299,7 +315,7 @@ export async function registerOAuthClientsRoutes(
         redirectUris: body.redirectUris,
         allowedOrigins: body.allowedOrigins,
         grantTypes: body.grantTypes,
-        defaultScopes: body.defaultScopes,
+        defaultScopes: normalizeScopes(body.defaultScopes),
         pkceRequired: body.pkceRequired,
         applicationIds: body.applicationIds,
       };
@@ -345,7 +361,7 @@ export async function registerOAuthClientsRoutes(
         redirectUris: body.redirectUris,
         allowedOrigins: body.allowedOrigins,
         grantTypes: body.grantTypes,
-        defaultScopes: body.defaultScopes,
+        defaultScopes: normalizeScopes(body.defaultScopes),
         pkceRequired: body.pkceRequired,
         applicationIds: body.applicationIds,
         active: body.active,

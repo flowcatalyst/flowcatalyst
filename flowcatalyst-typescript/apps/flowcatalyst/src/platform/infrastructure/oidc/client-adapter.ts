@@ -70,12 +70,16 @@ function oauthClientToMetadata(
 /**
  * Derive post-logout redirect URIs from redirect URIs and allowed origins.
  * SPA logout typically redirects to the app origin (e.g., http://localhost:3000).
+ * Wildcard patterns (e.g., https://qa-*.example.com/callback) are skipped since
+ * oidc-provider only supports exact post-logout URIs — the wildcard redirect URIs
+ * are handled separately by the custom redirectUriAllowed override.
  */
 function derivePostLogoutUris(client: OAuthClient): string[] {
   const uris = new Set<string>();
 
-  // Extract origins from redirect URIs
+  // Extract origins from redirect URIs (skip wildcard patterns)
   for (const uri of client.redirectUris) {
+    if (uri.includes('*')) continue;
     try {
       const url = new URL(uri);
       uris.add(url.origin);
@@ -84,8 +88,9 @@ function derivePostLogoutUris(client: OAuthClient): string[] {
     }
   }
 
-  // Add allowed origins directly
+  // Add allowed origins directly (skip wildcard patterns)
   for (const origin of client.allowedOrigins) {
+    if (origin.includes('*')) continue;
     uris.add(origin);
   }
 

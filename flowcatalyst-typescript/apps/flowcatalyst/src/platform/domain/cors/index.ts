@@ -15,4 +15,9 @@ export {
   CorsOriginDeleted,
 } from './events.js';
 
-export { isOriginAllowed, matchesOriginPattern } from './origin-matcher.js';
+export {
+  isOriginAllowed,
+  matchesOriginPattern,
+  isRedirectUriAllowed,
+  matchesRedirectUriPattern,
+} from './origin-matcher.js';

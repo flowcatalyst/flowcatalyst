@@ -24,6 +24,7 @@ import { createDrizzleAdapterFactory } from './drizzle-adapter.js';
 import { createFindAccount } from './account-adapter.js';
 import { createClientLoader } from './client-adapter.js';
 import { extractApplicationCodes } from './jwt-key-service.js';
+import { isRedirectUriAllowed } from '../../domain/cors/origin-matcher.js';
 
 /**
  * Configuration for creating the OIDC provider.
@@ -321,6 +322,27 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
   // Dynamic client loading is handled by the adapter's Client model fallback
   // (see createDrizzleAdapterFactory clientLoader parameter above)
   const provider = new Provider(issuer, providerConfig);
+
+  // Override redirect URI validation to support wildcard patterns in the hostname.
+  // Multi-tenant deployments need patterns like https://qa-*.example.com/callback
+  // instead of registering thousands of exact URIs per tenant.
+  const ClientProto = (provider.Client as unknown as { prototype: Record<string, unknown> })
+    .prototype;
+  const originalRedirectUriAllowed = ClientProto['redirectUriAllowed'] as (
+    value: string,
+  ) => boolean;
+
+  ClientProto['redirectUriAllowed'] = function redirectUriAllowed(
+    this: { redirectUris: string[] },
+    value: string,
+  ): boolean {
+    // Try the library's exact-match logic first (handles native loopback port matching etc.)
+    if (originalRedirectUriAllowed.call(this, value)) {
+      return true;
+    }
+    // Fall back to wildcard pattern matching
+    return isRedirectUriAllowed(value, this.redirectUris);
+  };
 
   return provider;
 }
