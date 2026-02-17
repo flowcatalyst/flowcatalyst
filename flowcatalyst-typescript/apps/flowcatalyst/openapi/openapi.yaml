@@ -12093,7 +12093,7 @@ paths:
                         - type
                         - oidcIssuerUrl
                         - oidcClientId
-                        - oidcClientSecretRef
+                        - hasClientSecret
                         - oidcMultiTenant
                         - oidcIssuerPattern
                         - allowedEmailDomains
@@ -12116,10 +12116,8 @@ paths:
                           anyOf:
                             - type: string
                             - type: "null"
-                        oidcClientSecretRef:
-                          anyOf:
-                            - type: string
-                            - type: "null"
+                        hasClientSecret:
+                          type: boolean
                         oidcMultiTenant:
                           type: boolean
                         oidcIssuerPattern:
@@ -12203,7 +12201,7 @@ paths:
                   - type
                   - oidcIssuerUrl
                   - oidcClientId
-                  - oidcClientSecretRef
+                  - hasClientSecret
                   - oidcMultiTenant
                   - oidcIssuerPattern
                   - allowedEmailDomains
@@ -12226,10 +12224,8 @@ paths:
                     anyOf:
                       - type: string
                       - type: "null"
-                  oidcClientSecretRef:
-                    anyOf:
-                      - type: string
-                      - type: "null"
+                  hasClientSecret:
+                    type: boolean
                   oidcMultiTenant:
                     type: boolean
                   oidcIssuerPattern:
@@ -12308,7 +12304,7 @@ paths:
                   - type
                   - oidcIssuerUrl
                   - oidcClientId
-                  - oidcClientSecretRef
+                  - hasClientSecret
                   - oidcMultiTenant
                   - oidcIssuerPattern
                   - allowedEmailDomains
@@ -12331,10 +12327,8 @@ paths:
                     anyOf:
                       - type: string
                       - type: "null"
-                  oidcClientSecretRef:
-                    anyOf:
-                      - type: string
-                      - type: "null"
+                  hasClientSecret:
+                    type: boolean
                   oidcMultiTenant:
                     type: boolean
                   oidcIssuerPattern:
@@ -12433,7 +12427,7 @@ paths:
                   - type
                   - oidcIssuerUrl
                   - oidcClientId
-                  - oidcClientSecretRef
+                  - hasClientSecret
                   - oidcMultiTenant
                   - oidcIssuerPattern
                   - allowedEmailDomains
@@ -12456,10 +12450,8 @@ paths:
                     anyOf:
                       - type: string
                       - type: "null"
-                  oidcClientSecretRef:
-                    anyOf:
-                      - type: string
-                      - type: "null"
+                  hasClientSecret:
+                    type: boolean
                   oidcMultiTenant:
                     type: boolean
                   oidcIssuerPattern:

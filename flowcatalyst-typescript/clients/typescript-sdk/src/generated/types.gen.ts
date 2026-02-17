@@ -7400,7 +7400,7 @@ export type GetApiAdminIdentityProvidersResponses = {
             type: string;
             oidcIssuerUrl: string | null;
             oidcClientId: string | null;
-            oidcClientSecretRef: string | null;
+            hasClientSecret: boolean;
             oidcMultiTenant: boolean;
             oidcIssuerPattern: string | null;
             allowedEmailDomains: Array<string>;
@@ -7484,7 +7484,7 @@ export type PostApiAdminIdentityProvidersResponses = {
         type: string;
         oidcIssuerUrl: string | null;
         oidcClientId: string | null;
-        oidcClientSecretRef: string | null;
+        hasClientSecret: boolean;
         oidcMultiTenant: boolean;
         oidcIssuerPattern: string | null;
         allowedEmailDomains: Array<string>;
@@ -7581,7 +7581,7 @@ export type GetApiAdminIdentityProvidersByIdResponses = {
         type: string;
         oidcIssuerUrl: string | null;
         oidcClientId: string | null;
-        oidcClientSecretRef: string | null;
+        hasClientSecret: boolean;
         oidcMultiTenant: boolean;
         oidcIssuerPattern: string | null;
         allowedEmailDomains: Array<string>;
@@ -7683,7 +7683,7 @@ export type PutApiAdminIdentityProvidersByIdResponses = {
         type: string;
         oidcIssuerUrl: string | null;
         oidcClientId: string | null;
-        oidcClientSecretRef: string | null;
+        hasClientSecret: boolean;
         oidcMultiTenant: boolean;
         oidcIssuerPattern: string | null;
         allowedEmailDomains: Array<string>;

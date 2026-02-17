@@ -19612,7 +19612,7 @@
                           "type",
                           "oidcIssuerUrl",
                           "oidcClientId",
-                          "oidcClientSecretRef",
+                          "hasClientSecret",
                           "oidcMultiTenant",
                           "oidcIssuerPattern",
                           "allowedEmailDomains",
@@ -19652,15 +19652,8 @@
                               }
                             ]
                           },
-                          "oidcClientSecretRef": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
+                          "hasClientSecret": {
+                            "type": "boolean"
                           },
                           "oidcMultiTenant": {
                             "type": "boolean"
@@ -19810,7 +19803,7 @@
                     "type",
                     "oidcIssuerUrl",
                     "oidcClientId",
-                    "oidcClientSecretRef",
+                    "hasClientSecret",
                     "oidcMultiTenant",
                     "oidcIssuerPattern",
                     "allowedEmailDomains",
@@ -19850,15 +19843,8 @@
                         }
                       ]
                     },
-                    "oidcClientSecretRef": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                    "hasClientSecret": {
+                      "type": "boolean"
                     },
                     "oidcMultiTenant": {
                       "type": "boolean"
@@ -19979,7 +19965,7 @@
                     "type",
                     "oidcIssuerUrl",
                     "oidcClientId",
-                    "oidcClientSecretRef",
+                    "hasClientSecret",
                     "oidcMultiTenant",
                     "oidcIssuerPattern",
                     "allowedEmailDomains",
@@ -20019,15 +20005,8 @@
                         }
                       ]
                     },
-                    "oidcClientSecretRef": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                    "hasClientSecret": {
+                      "type": "boolean"
                     },
                     "oidcMultiTenant": {
                       "type": "boolean"
@@ -20199,7 +20178,7 @@
                     "type",
                     "oidcIssuerUrl",
                     "oidcClientId",
-                    "oidcClientSecretRef",
+                    "hasClientSecret",
                     "oidcMultiTenant",
                     "oidcIssuerPattern",
                     "allowedEmailDomains",
@@ -20239,15 +20218,8 @@
                         }
                       ]
                     },
-                    "oidcClientSecretRef": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                    "hasClientSecret": {
+                      "type": "boolean"
                     },
                     "oidcMultiTenant": {
                       "type": "boolean"
