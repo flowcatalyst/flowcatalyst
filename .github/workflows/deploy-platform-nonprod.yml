@@ -1,0 +1,128 @@
+name: Deploy Platform (nonprod)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'flowcatalyst-typescript/apps/flowcatalyst/**'
+      - 'flowcatalyst-typescript/apps/platform-frontend/**'
+      - 'flowcatalyst-typescript/pnpm-lock.yaml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: af-south-1
+  ECR_REPO: inhance/flowcatalyst
+  ECS_CLUSTER: inhance-np-cluster
+  ECS_SERVICE: inhance-fc-np-svc
+  TASK_FAMILY: inhance-fc-np-platform
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      # ── Build & Push ──────────────────────────────────────────────
+      - name: Build and push Docker image
+        working-directory: flowcatalyst-typescript
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}
+          SHA_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            -f apps/flowcatalyst/Dockerfile \
+            -t $IMAGE:$SHA_TAG \
+            -t $IMAGE:latest \
+            .
+          docker push $IMAGE:$SHA_TAG
+          docker push $IMAGE:latest
+
+      # ── Run Migrations ────────────────────────────────────────────
+      - name: Run database migrations
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ github.sha }}
+        run: |
+          # Get current task definition to extract network config and secrets
+          TASK_DEF=$(aws ecs describe-task-definition --task-definition $TASK_FAMILY --query 'taskDefinition')
+          SUBNETS=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE \
+            --query 'services[0].networkConfiguration.awsvpcConfiguration.subnets' --output json)
+          SECURITY_GROUPS=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE \
+            --query 'services[0].networkConfiguration.awsvpcConfiguration.securityGroups' --output json)
+
+          TASK_ARN=$(aws ecs run-task \
+            --cluster $ECS_CLUSTER \
+            --task-definition $TASK_FAMILY \
+            --launch-type FARGATE \
+            --network-configuration "{
+              \"awsvpcConfiguration\": {
+                \"subnets\": $SUBNETS,
+                \"securityGroups\": $SECURITY_GROUPS,
+                \"assignPublicIp\": \"ENABLED\"
+              }
+            }" \
+            --overrides "{
+              \"containerOverrides\": [{
+                \"name\": \"flowcatalyst\",
+                \"command\": [\"migrate\"],
+                \"image\": \"$IMAGE\"
+              }]
+            }" \
+            --query 'tasks[0].taskArn' --output text)
+
+          echo "Migration task: $TASK_ARN"
+          aws ecs wait tasks-stopped --cluster $ECS_CLUSTER --tasks $TASK_ARN
+
+          # Check exit code
+          EXIT_CODE=$(aws ecs describe-tasks --cluster $ECS_CLUSTER --tasks $TASK_ARN \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Migration failed with exit code $EXIT_CODE"
+            aws ecs describe-tasks --cluster $ECS_CLUSTER --tasks $TASK_ARN \
+              --query 'tasks[0].stoppedReason' --output text
+            exit 1
+          fi
+          echo "Migrations complete"
+
+      # ── Deploy ────────────────────────────────────────────────────
+      - name: Update ECS service
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ github.sha }}
+        run: |
+          # Register new task definition with updated image tag
+          TASK_DEF=$(aws ecs describe-task-definition --task-definition $TASK_FAMILY \
+            --query 'taskDefinition' --output json)
+
+          # Update the image in the container definition
+          NEW_TASK_DEF=$(echo "$TASK_DEF" | jq \
+            --arg IMAGE "$IMAGE" \
+            '.containerDefinitions[0].image = $IMAGE |
+             del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+
+          NEW_REVISION=$(aws ecs register-task-definition \
+            --cli-input-json "$NEW_TASK_DEF" \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+
+          echo "New task definition: $NEW_REVISION"
+
+          # Update service to use new task definition (triggers rolling deploy)
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
+            --task-definition $NEW_REVISION \
+            --query 'service.taskDefinition' --output text
+
+          echo "Deployment triggered"

@@ -10,7 +10,7 @@ export default defineConfig({
   input: openApiInput,
   output: {
     path: 'src/api/generated',
-    format: 'prettier',
+    format: false,
   },
   plugins: ['@hey-api/typescript', '@hey-api/sdk', '@hey-api/client-fetch'],
 });

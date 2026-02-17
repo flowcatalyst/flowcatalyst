@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsup && [ -d drizzle ] && cp -r drizzle ./dist/drizzle || true",
+    "build": "tsup && [ -d drizzle ] && rm -rf ./dist/drizzle && cp -r drizzle ./dist/drizzle || true",
     "build:full": "pnpm --filter @flowcatalyst/platform-frontend build && pnpm run build && cp -r ../platform-frontend/dist ./dist/frontend",
     "build:sea": "pnpm --filter @flowcatalyst/platform-frontend build && tsup && node scripts/pack-migrations.js && node scripts/pack-frontend.js && node --experimental-sea-config sea-config.json && node scripts/build-sea.js",
     "start": "node dist/index.js",

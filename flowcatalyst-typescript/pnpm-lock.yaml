@@ -211,9 +211,12 @@ importers:
       concurrently:
         specifier: ^9.1.0
         version: 9.2.1
-      prettier:
-        specifier: ^3.4.0
-        version: 3.8.1
+      oxfmt:
+        specifier: ^0.28.0
+        version: 0.28.0
+      oxlint:
+        specifier: ^1.43.0
+        version: 1.43.0
       typescript:
         specifier: ~5.8.0
         version: 5.8.3
@@ -2740,11 +2743,6 @@ packages:
   powershell-utils@0.1.0:
     resolution: {integrity: sha512-dM0jVuXJPsDN6DvRpea484tCUaMiXWjuCn++HGTqUWzGDjv5tZkEZldAJ/UMlqRYGFrD/etByo4/xOuC/snX2A==}
     engines: {node: '>=20'}
-
-  prettier@3.8.1:
-    resolution: {integrity: sha512-UOnG6LftzbdaHZcKoPFtOcCKztrQ57WkHDeRD9t/PTQtmT0NHSeWWepj6pS0z/N7+08BHFDQVUrfmfMRcZwbMg==}
-    engines: {node: '>=14'}
-    hasBin: true
 
   primeicons@7.0.0:
     resolution: {integrity: sha512-jK3Et9UzwzTsd6tzl2RmwrVY/b8raJ3QZLzoDACj+oTJ0oX7L9Hy+XnVwgo4QVKlKpnP/Ur13SXV/pVh4LzaDw==}
@@ -6239,8 +6237,6 @@ snapshots:
       commander: 9.5.0
 
   powershell-utils@0.1.0: {}
-
-  prettier@3.8.1: {}
 
   primeicons@7.0.0: {}
 

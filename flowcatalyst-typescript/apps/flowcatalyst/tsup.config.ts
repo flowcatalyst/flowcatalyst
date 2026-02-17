@@ -11,6 +11,14 @@ export default defineConfig({
     'node:sea',
     '@aws-sdk/client-secrets-manager',
     '@aws-sdk/client-ssm',
+    // Native addons / worker-thread loaders / WASM — can't be bundled by esbuild
+    'pino',
+    'pino-pretty',
+    'argon2',
+    'nodemailer',
+    'stompit',
+    'sql.js',
+    'oidc-provider',
   ],
   esbuildOptions(options) {
     options.alias = {

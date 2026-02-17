@@ -2,7 +2,7 @@
 # This Dockerfile builds a Docker image for FlowCatalyst (TypeScript)
 #
 # Build from the monorepo root:
-#   docker build -f apps/flowcatalyst/Dockerfile -t flowcatalyst .
+#   docker build --platform linux/amd64 -f apps/flowcatalyst/Dockerfile -t flowcatalyst .
 #
 ####
 
@@ -12,6 +12,7 @@ FROM node:24-alpine AS build
 # argon2 needs build tools for native compilation
 RUN apk add --no-cache python3 make g++
 
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 WORKDIR /app
@@ -33,6 +34,9 @@ COPY apps/platform-frontend/ apps/platform-frontend/
 # Build frontend + backend
 RUN pnpm --filter @flowcatalyst/flowcatalyst build:full
 
+# Create pruned production-only deploy directory (no devDeps, no .pnpm store)
+RUN pnpm --filter @flowcatalyst/flowcatalyst deploy --prod /app/deploy
+
 # ── Stage 2: Production image ──────────────────────────────────────
 FROM node:24-alpine
 
@@ -46,18 +50,12 @@ RUN adduser -u 1001 -D appuser
 
 WORKDIR /app
 
-# Copy entrypoint script
-COPY apps/flowcatalyst/entrypoint.sh /app/entrypoint.sh
+# Copy files with correct ownership (--chown avoids a duplicate layer from chown -R)
+COPY --chown=1001:1001 apps/flowcatalyst/entrypoint.sh /app/entrypoint.sh
+COPY --chown=1001:1001 --from=build /app/apps/flowcatalyst/dist ./dist
+COPY --chown=1001:1001 --from=build /app/deploy/node_modules ./node_modules
 
-# Copy built output
-COPY --from=build /app/apps/flowcatalyst/dist ./dist
-
-# Copy production node_modules (argon2 native addon, optional AWS SDKs)
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/apps/flowcatalyst/node_modules ./apps/flowcatalyst/node_modules
-
-# Make entrypoint executable and set ownership
-RUN chmod +x /app/entrypoint.sh && chown -R 1001:1001 /app
+RUN chmod +x /app/entrypoint.sh
 
 USER 1001
 

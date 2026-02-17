@@ -8,8 +8,8 @@
     "preview": "vite preview",
     "api:generate": "openapi-ts",
     "api:generate:live": "OPENAPI_LIVE=true openapi-ts",
-    "lint": "eslint .",
-    "format": "prettier --write \"src/**/*.{ts,vue,css}\"",
+    "lint": "oxlint .",
+    "format": "oxfmt --write .",
     "test": "vitest",
     "test:ui": "vitest --ui"
   },
@@ -32,11 +32,15 @@
     "@vitest/ui": "^4.0.18",
     "chokidar": "^4.0.0",
     "concurrently": "^9.1.0",
-    "prettier": "^3.4.0",
+    "oxfmt": "^0.28.0",
+    "oxlint": "^1.43.0",
     "typescript": "~5.8.0",
     "vite": "^7.0.0",
     "vitest": "^4.0.18",
     "vue-tsc": "^2.2.0",
     "wait-on": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
   }
 }
