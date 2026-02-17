@@ -227,6 +227,14 @@ This allows for:
 
 **IMPORTANT**: The TypeScript platform uses **Drizzle ORM v1** (`1.0.0-beta`), NOT v0.x. The v1 API has breaking changes from v0.x. Always follow the Drizzle v1 API when writing queries, defining schemas, or using relational queries. Key differences include changes to the `relations` API and query builder. Refer to the Drizzle v1 documentation, not legacy v0.x examples.
 
+### Migrations Are Mandatory
+
+**IMPORTANT**: When altering a Drizzle schema (adding/removing/renaming columns, tables, or indexes), you MUST create a corresponding migration file. Local dev uses `AUTO_MIGRATE=true` which runs migration files on startup — it does NOT auto-sync schema changes to the database. If you modify a schema definition without creating a migration, local may work (if previously synced via `drizzle-kit push`) but deployed environments will break.
+
+- Migration folder: `apps/flowcatalyst/drizzle/<timestamp>_<name>/migration.sql`
+- Use `IF NOT EXISTS` / `IF EXISTS` for idempotency when the column may already exist in some environments
+- Drizzle v1 discovers migrations by scanning subfolders alphabetically (no `meta/_journal.json` needed)
+
 ## TypeScript Error Handling - neverthrow
 
 **IMPORTANT**: Use `neverthrow` for typed error handling in TypeScript code. Do not use try/catch with untyped exceptions for business logic.

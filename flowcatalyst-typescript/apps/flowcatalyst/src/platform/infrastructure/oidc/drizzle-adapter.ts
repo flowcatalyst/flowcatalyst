@@ -92,11 +92,17 @@ export function createDrizzleAdapterFactory(
         .limit(1);
 
       if (record) {
-        // Check if expired
+        // Check if expired — for Client model, delete stale cache and fall through
+        // to the dynamic client loader below instead of returning undefined.
         if (record.expiresAt && record.expiresAt < new Date()) {
-          return undefined;
+          if (this._name === 'Client') {
+            await this.destroy(id);
+          } else {
+            return undefined;
+          }
+        } else {
+          return this._hydratePayload(record);
         }
-        return this._hydratePayload(record);
       }
 
       // For Client model, fall back to dynamic loading from OAuth client repository
