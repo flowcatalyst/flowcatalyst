@@ -39,6 +39,7 @@ RUN pnpm --filter @flowcatalyst/flowcatalyst deploy --prod /app/deploy
 
 # ── Stage 2: Production image ──────────────────────────────────────
 FROM node:24-alpine
+LABEL org.opencontainers.image.source=https://github.com/flowcatalyst/flowcatalyst
 
 # curl for health checks, RDS CA bundle for AWS Postgres
 RUN apk add --no-cache curl \
