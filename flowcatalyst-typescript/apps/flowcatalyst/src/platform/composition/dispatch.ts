@@ -130,7 +130,15 @@ export async function createDispatchInfrastructure(
     transactionManager,
     aggregateRegistry,
     extractClientId: (aggregate) => {
-      if ('clientId' in aggregate && typeof aggregate.clientId === 'string') {
+      // Only extract tenant client ID from entities that carry multi-tenant scoping
+      // (e.g., Principal.clientId). Skip entities like OAuthClient where clientId
+      // is the OAuth protocol identifier, not a tenant reference.
+      if (
+        'clientId' in aggregate &&
+        typeof aggregate.clientId === 'string' &&
+        'type' in aggregate &&
+        (aggregate.type === 'USER' || aggregate.type === 'SERVICE')
+      ) {
         return aggregate.clientId;
       }
       return null;

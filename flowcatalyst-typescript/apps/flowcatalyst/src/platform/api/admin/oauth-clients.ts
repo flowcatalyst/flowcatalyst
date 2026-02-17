@@ -36,7 +36,6 @@ import type {
 } from '../../infrastructure/persistence/index.js';
 import { requirePermission } from '../../authorization/index.js';
 import { OAUTH_CLIENT_PERMISSIONS } from '../../authorization/permissions/platform-auth.js';
-import { generateRaw as generateClientId } from '@flowcatalyst/tsid';
 
 // ─── Request Schemas ────────────────────────────────────────────────────────
 
@@ -308,7 +307,6 @@ export async function registerOAuthClientsRoutes(
       const ctx = request.executionContext;
 
       const command: CreateOAuthClientCommand = {
-        clientId: generateClientId(),
         clientName: body.clientName,
         clientType: body.clientType,
         clientSecretRef: body.clientSecretRef,

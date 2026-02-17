@@ -4,7 +4,7 @@
  * Represents an OAuth 2.0 client application that can request tokens.
  */
 
-import { generate } from '@flowcatalyst/tsid';
+import { generate, generateRaw } from '@flowcatalyst/tsid';
 import type { OAuthClientType } from './oauth-client-type.js';
 import type { OAuthGrantType } from './oauth-grant-type.js';
 
@@ -70,7 +70,6 @@ export type NewOAuthClient = Omit<OAuthClient, 'createdAt' | 'updatedAt'> & {
  * Input for creating an OAuth client.
  */
 export interface CreateOAuthClientInput {
-  clientId: string;
   clientName: string;
   clientType: OAuthClientType;
   clientSecretRef?: string | null | undefined;
@@ -88,7 +87,7 @@ export interface CreateOAuthClientInput {
 export function createOAuthClient(input: CreateOAuthClientInput): NewOAuthClient {
   return {
     id: generate('OAUTH_CLIENT'),
-    clientId: input.clientId,
+    clientId: generateRaw(),
     clientName: input.clientName,
     clientType: input.clientType,
     clientSecretRef: input.clientSecretRef ?? null,

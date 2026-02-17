@@ -133,11 +133,11 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
 
         return result;
       } catch (error) {
+        getLogger().error({ err: error }, 'Transaction commit failed');
         return Result.failure(
           UseCaseError.businessRule(
             'COMMIT_FAILED',
-            error instanceof Error ? error.message : 'Unknown error during commit',
-            { cause: error instanceof Error ? error.name : 'Unknown' },
+            'An internal error occurred while saving changes. Please try again or contact your administrator.',
           ),
         );
       }
@@ -175,11 +175,11 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
 
         return result;
       } catch (error) {
+        getLogger().error({ err: error }, 'Transaction delete failed');
         return Result.failure(
           UseCaseError.businessRule(
             'DELETE_FAILED',
-            error instanceof Error ? error.message : 'Unknown error during delete',
-            { cause: error instanceof Error ? error.name : 'Unknown' },
+            'An internal error occurred while deleting. Please try again or contact your administrator.',
           ),
         );
       }
@@ -220,11 +220,11 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
 
         return result;
       } catch (error) {
+        getLogger().error({ err: error }, 'Transaction commit failed');
         return Result.failure(
           UseCaseError.businessRule(
             'COMMIT_FAILED',
-            error instanceof Error ? error.message : 'Unknown error during commit',
-            { cause: error instanceof Error ? error.name : 'Unknown' },
+            'An internal error occurred while saving changes. Please try again or contact your administrator.',
           ),
         );
       }
@@ -266,11 +266,11 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
 
         return result;
       } catch (error) {
+        getLogger().error({ err: error }, 'Transaction commit failed');
         return Result.failure(
           UseCaseError.businessRule(
             'COMMIT_ALL_FAILED',
-            error instanceof Error ? error.message : 'Unknown error during commit',
-            { cause: error instanceof Error ? error.name : 'Unknown' },
+            'An internal error occurred while saving changes. Please try again or contact your administrator.',
           ),
         );
       }

@@ -123,7 +123,6 @@ export function createCreateServiceAccountUseCase(
 
       // Create CONFIDENTIAL OAuthClient for client_credentials
       const oauthClient = createOAuthClient({
-        clientId: `sa-${command.code}`,
         clientName: `Service Account: ${command.name}`,
         clientType: 'CONFIDENTIAL',
         clientSecretRef: clientSecretRefResult.value,

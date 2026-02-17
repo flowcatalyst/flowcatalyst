@@ -44,12 +44,6 @@ export function createCreateOAuthClientUseCase(
       command: CreateOAuthClientCommand,
       context: ExecutionContext,
     ): Promise<Result<OAuthClientCreated>> {
-      // Validate clientId
-      const clientIdResult = validateRequired(command.clientId, 'clientId', 'CLIENT_ID_REQUIRED');
-      if (Result.isFailure(clientIdResult)) {
-        return clientIdResult;
-      }
-
       // Validate clientName
       const clientNameResult = validateRequired(
         command.clientName,
@@ -70,19 +64,8 @@ export function createCreateOAuthClientUseCase(
         return clientTypeResult;
       }
 
-      // Check if clientId already exists
-      const clientIdExists = await oauthClientRepository.existsByClientId(command.clientId);
-      if (clientIdExists) {
-        return Result.failure(
-          UseCaseError.businessRule('CLIENT_ID_EXISTS', 'OAuth client ID already exists', {
-            clientId: command.clientId,
-          }),
-        );
-      }
-
-      // Create OAuth client
+      // Create OAuth client (clientId is auto-generated as TSID)
       const oauthClient = createOAuthClient({
-        clientId: command.clientId,
         clientName: command.clientName,
         clientType: command.clientType,
         clientSecretRef: command.clientSecretRef,
