@@ -73,6 +73,7 @@ export async function startPlatform(config?: PlatformConfig): Promise<PlatformRe
 
   // Create Fastify app with logging
   const fastify = Fastify({
+    trustProxy: true,
     logger: createFastifyLoggerOptions({
       serviceName: 'platform',
       level: LOG_LEVEL,
