@@ -16,4 +16,10 @@ if [ -f /certs/global-bundle.pem ]; then
   export NODE_EXTRA_CA_CERTS=/certs/global-bundle.pem
 fi
 
-exec node dist/index.js "$@"
+# If the first arg is an executable (e.g. "node", "sh"), run it directly
+# instead of routing through the CLI. This allows ECS command overrides
+# like ["node", "-e", "..."] to work.
+case "$1" in
+  node|sh|bash) exec "$@" ;;
+  *) exec node dist/index.js "$@" ;;
+esac
