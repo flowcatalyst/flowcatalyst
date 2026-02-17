@@ -323,6 +323,10 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
   // (see createDrizzleAdapterFactory clientLoader parameter above)
   const provider = new Provider(issuer, providerConfig);
 
+  // Trust proxy headers (X-Forwarded-Proto, X-Forwarded-Host) when behind
+  // a TLS-terminating load balancer so endpoint URLs use https://.
+  provider.proxy = true;
+
   // Override redirect URI validation to support wildcard patterns in the hostname.
   // Multi-tenant deployments need patterns like https://qa-*.example.com/callback
   // instead of registering thousands of exact URIs per tenant.
