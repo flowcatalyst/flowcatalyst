@@ -10,6 +10,25 @@
 | `apps/message-router` | `apps/message-router/.env.example` |
 | `apps/stream-processor` | `apps/stream-processor/.env.example` |
 
+## Table Namespace Convention
+
+All database tables use domain prefixes to indicate which bounded context they belong to:
+
+| Prefix | Domain | Examples |
+|--------|--------|----------|
+| `iam_` | Identity & Access Management | `iam_principals`, `iam_roles`, `iam_permissions` |
+| `oauth_` | OAuth / OIDC | `oauth_clients`, `oauth_oidc_payloads`, `oauth_identity_providers` |
+| `tnt_` | Tenancy | `tnt_clients`, `tnt_anchor_domains`, `tnt_email_domain_mappings` |
+| `msg_` | Messaging | `msg_events`, `msg_subscriptions`, `msg_dispatch_jobs` |
+| `aud_` | Audit | `aud_logs` |
+| `app_` | Applications & Platform Config | `app_applications`, `app_platform_configs` |
+
+**Not namespaced** (external/embedded):
+- `queue_messages`, `message_deduplication` — SQLite in-memory (message-router)
+- `outbox_messages` — shared outbox table (configurable via env vars)
+
+When creating new tables, always use the appropriate domain prefix.
+
 ## Java Style Guidelines
 
 ### REST Response Types

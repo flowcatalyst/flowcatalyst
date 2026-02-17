@@ -11,7 +11,7 @@ import { tsidColumn, timestampColumn } from '@flowcatalyst/persistence';
  * Client auth configs table - authentication configuration per email domain.
  */
 export const clientAuthConfigs = pgTable(
-  'client_auth_configs',
+  'tnt_client_auth_configs',
   {
     id: tsidColumn('id').primaryKey(),
     emailDomain: varchar('email_domain', { length: 255 }).notNull().unique(),
@@ -29,9 +29,9 @@ export const clientAuthConfigs = pgTable(
     updatedAt: timestampColumn('updated_at').notNull().defaultNow(),
   },
   (table) => [
-    index('client_auth_configs_email_domain_idx').on(table.emailDomain),
-    index('client_auth_configs_config_type_idx').on(table.configType),
-    index('client_auth_configs_primary_client_id_idx').on(table.primaryClientId),
+    index('tnt_client_auth_configs_email_domain_idx').on(table.emailDomain),
+    index('tnt_client_auth_configs_config_type_idx').on(table.configType),
+    index('tnt_client_auth_configs_primary_client_id_idx').on(table.primaryClientId),
   ],
 );
 

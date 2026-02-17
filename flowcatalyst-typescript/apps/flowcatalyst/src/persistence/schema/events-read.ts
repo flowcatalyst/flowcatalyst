@@ -17,7 +17,7 @@ import { tsidColumn, rawTsidColumn, timestampColumn } from './common.js';
  * Events read table schema.
  */
 export const eventsRead = pgTable(
-  'events_read',
+  'msg_events_read',
   {
     // Primary key (id IS the event id - 1:1 projection, unprefixed for performance)
     id: rawTsidColumn('id').primaryKey(),
@@ -50,13 +50,13 @@ export const eventsRead = pgTable(
     projectedAt: timestampColumn('projected_at').notNull().defaultNow(),
   },
   (table) => [
-    index('idx_events_read_type').on(table.type),
-    index('idx_events_read_client_id').on(table.clientId),
-    index('idx_events_read_time').on(table.time),
-    index('idx_events_read_application').on(table.application),
-    index('idx_events_read_subdomain').on(table.subdomain),
-    index('idx_events_read_aggregate').on(table.aggregate),
-    index('idx_events_read_correlation_id').on(table.correlationId),
+    index('idx_msg_events_read_type').on(table.type),
+    index('idx_msg_events_read_client_id').on(table.clientId),
+    index('idx_msg_events_read_time').on(table.time),
+    index('idx_msg_events_read_application').on(table.application),
+    index('idx_msg_events_read_subdomain').on(table.subdomain),
+    index('idx_msg_events_read_aggregate').on(table.aggregate),
+    index('idx_msg_events_read_correlation_id').on(table.correlationId),
   ],
 );
 

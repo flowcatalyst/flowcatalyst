@@ -4,8 +4,8 @@
  * PostgreSQL-based linear projection services for CQRS read models.
  *
  * Runs two independent polling loops:
- *   - Event projection: event_projection_feed -> events_read
- *   - Dispatch job projection: dispatch_job_projection_feed -> dispatch_jobs_read
+ *   - Event projection: msg_event_projection_feed -> msg_events_read
+ *   - Dispatch job projection: msg_dispatch_job_projection_feed -> msg_dispatch_jobs_read
  *
  * Drop-in replacement for the Java flowcatalyst-stream-processor module.
  */

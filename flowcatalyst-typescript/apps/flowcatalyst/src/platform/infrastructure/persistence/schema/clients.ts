@@ -22,7 +22,7 @@ export interface ClientNoteJson {
  * Status uses VARCHAR to match Java schema (not enum).
  */
 export const clients = pgTable(
-  'clients',
+  'tnt_clients',
   {
     ...baseEntityColumns,
     name: varchar('name', { length: 255 }).notNull(),
@@ -33,8 +33,8 @@ export const clients = pgTable(
     notes: jsonb('notes').$type<ClientNoteJson[]>().default([]),
   },
   (table) => [
-    index('idx_clients_identifier').on(table.identifier),
-    index('idx_clients_status').on(table.status),
+    index('idx_tnt_clients_identifier').on(table.identifier),
+    index('idx_tnt_clients_status').on(table.status),
   ],
 );
 

@@ -13,7 +13,7 @@ import { tsidColumn, timestampColumn } from '@flowcatalyst/persistence';
  * The ID is the same as the principal ID (1:1 relationship).
  */
 export const serviceAccounts = pgTable(
-  'service_accounts',
+  'iam_service_accounts',
   {
     id: tsidColumn('id').primaryKey(),
     code: varchar('code', { length: 100 }).notNull(),
@@ -32,9 +32,9 @@ export const serviceAccounts = pgTable(
     updatedAt: timestampColumn('updated_at').notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('idx_service_accounts_code').on(table.code),
-    index('idx_service_accounts_application_id').on(table.applicationId),
-    index('idx_service_accounts_active').on(table.active),
+    uniqueIndex('idx_iam_service_accounts_code').on(table.code),
+    index('idx_iam_service_accounts_application_id').on(table.applicationId),
+    index('idx_iam_service_accounts_active').on(table.active),
   ],
 );
 

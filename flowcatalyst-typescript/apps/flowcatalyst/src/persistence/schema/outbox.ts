@@ -32,7 +32,7 @@ export type ProjectionFeedProcessedStatus = 0 | 1 | 2 | 3 | 9;
  * Events are immutable, so this is simpler than dispatch_job_projection_feed.
  */
 export const eventProjectionFeed = pgTable(
-  'event_projection_feed',
+  'msg_event_projection_feed',
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     eventId: rawTsidColumn('event_id').notNull(),
@@ -44,11 +44,11 @@ export const eventProjectionFeed = pgTable(
   },
   (table) => [
     // Index for polling unprocessed entries
-    index('idx_event_projection_feed_unprocessed')
+    index('idx_msg_event_projection_feed_unprocessed')
       .on(table.id)
       .where({ processed: 0 } as any),
     // Index for crash recovery
-    index('idx_event_projection_feed_in_progress')
+    index('idx_msg_event_projection_feed_in_progress')
       .on(table.id)
       .where({ processed: 9 } as any),
   ],
@@ -62,7 +62,7 @@ export const eventProjectionFeed = pgTable(
  * dispatch_job_id serves as message group for sequencing.
  */
 export const dispatchJobProjectionFeed = pgTable(
-  'dispatch_job_projection_feed',
+  'msg_dispatch_job_projection_feed',
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     dispatchJobId: rawTsidColumn('dispatch_job_id').notNull(),
@@ -75,15 +75,15 @@ export const dispatchJobProjectionFeed = pgTable(
   },
   (table) => [
     // Index for polling unprocessed entries, ordered by job (message group) then sequence
-    index('idx_dj_projection_feed_unprocessed')
+    index('idx_msg_dj_projection_feed_unprocessed')
       .on(table.dispatchJobId, table.id)
       .where({ processed: 0 } as any),
     // Index for crash recovery
-    index('idx_dj_projection_feed_in_progress')
+    index('idx_msg_dj_projection_feed_in_progress')
       .on(table.id)
       .where({ processed: 9 } as any),
     // Index for cleanup of old processed entries
-    index('idx_dj_projection_feed_processed_at')
+    index('idx_msg_dj_projection_feed_processed_at')
       .on(table.processedAt)
       .where({ processed: 1 } as any),
   ],

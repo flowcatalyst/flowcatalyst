@@ -57,7 +57,7 @@ export interface DispatchJobMetadata {
  * Dispatch jobs table schema.
  */
 export const dispatchJobs = pgTable(
-  'dispatch_jobs',
+  'msg_dispatch_jobs',
   {
     // Primary key (unprefixed TSID for high-volume performance)
     id: rawTsidColumn('id').primaryKey(),
@@ -131,12 +131,12 @@ export const dispatchJobs = pgTable(
     updatedAt: timestampColumn('updated_at').notNull().defaultNow(),
   },
   (table) => [
-    index('idx_dispatch_jobs_status').on(table.status),
-    index('idx_dispatch_jobs_client_id').on(table.clientId),
-    index('idx_dispatch_jobs_message_group').on(table.messageGroup),
-    index('idx_dispatch_jobs_subscription_id').on(table.subscriptionId),
-    index('idx_dispatch_jobs_created_at').on(table.createdAt),
-    index('idx_dispatch_jobs_scheduled_for').on(table.scheduledFor),
+    index('idx_msg_dispatch_jobs_status').on(table.status),
+    index('idx_msg_dispatch_jobs_client_id').on(table.clientId),
+    index('idx_msg_dispatch_jobs_message_group').on(table.messageGroup),
+    index('idx_msg_dispatch_jobs_subscription_id').on(table.subscriptionId),
+    index('idx_msg_dispatch_jobs_created_at').on(table.createdAt),
+    index('idx_msg_dispatch_jobs_scheduled_for').on(table.scheduledFor),
   ],
 );
 

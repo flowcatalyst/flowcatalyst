@@ -21,7 +21,7 @@ import { baseEntityColumns, tsidColumn } from '@flowcatalyst/persistence';
  * Subscriptions - main table defining event-to-endpoint bindings.
  */
 export const subscriptions = pgTable(
-  'subscriptions',
+  'msg_subscriptions',
   {
     ...baseEntityColumns,
     code: varchar('code', { length: 100 }).notNull(),
@@ -47,11 +47,11 @@ export const subscriptions = pgTable(
     dataOnly: boolean('data_only').notNull().default(true),
   },
   (table) => ({
-    codeClientIdx: uniqueIndex('idx_subscriptions_code_client').on(table.code, table.clientId),
-    statusIdx: index('idx_subscriptions_status').on(table.status),
-    clientIdIdx: index('idx_subscriptions_client_id').on(table.clientId),
-    sourceIdx: index('idx_subscriptions_source').on(table.source),
-    dispatchPoolIdx: index('idx_subscriptions_dispatch_pool').on(table.dispatchPoolId),
+    codeClientIdx: uniqueIndex('idx_msg_subscriptions_code_client').on(table.code, table.clientId),
+    statusIdx: index('idx_msg_subscriptions_status').on(table.status),
+    clientIdIdx: index('idx_msg_subscriptions_client_id').on(table.clientId),
+    sourceIdx: index('idx_msg_subscriptions_source').on(table.source),
+    dispatchPoolIdx: index('idx_msg_subscriptions_dispatch_pool').on(table.dispatchPoolId),
   }),
 );
 
@@ -62,7 +62,7 @@ export type NewSubscriptionRecord = typeof subscriptions.$inferInsert;
  * Subscription event type bindings - junction table.
  */
 export const subscriptionEventTypes = pgTable(
-  'subscription_event_types',
+  'msg_subscription_event_types',
   {
     id: serial('id').primaryKey(),
     subscriptionId: varchar('subscription_id', { length: 17 }).notNull(),
@@ -71,8 +71,8 @@ export const subscriptionEventTypes = pgTable(
     specVersion: varchar('spec_version', { length: 50 }),
   },
   (table) => ({
-    subscriptionIdx: index('idx_sub_event_types_subscription').on(table.subscriptionId),
-    eventTypeIdx: index('idx_sub_event_types_event_type').on(table.eventTypeId),
+    subscriptionIdx: index('idx_msg_sub_event_types_subscription').on(table.subscriptionId),
+    eventTypeIdx: index('idx_msg_sub_event_types_event_type').on(table.eventTypeId),
   }),
 );
 
@@ -83,7 +83,7 @@ export type NewSubscriptionEventTypeRecord = typeof subscriptionEventTypes.$infe
  * Subscription custom configuration key-value pairs.
  */
 export const subscriptionCustomConfigs = pgTable(
-  'subscription_custom_configs',
+  'msg_subscription_custom_configs',
   {
     id: serial('id').primaryKey(),
     subscriptionId: varchar('subscription_id', { length: 17 }).notNull(),
@@ -91,7 +91,7 @@ export const subscriptionCustomConfigs = pgTable(
     configValue: varchar('config_value', { length: 1000 }).notNull(),
   },
   (table) => ({
-    subscriptionIdx: index('idx_sub_configs_subscription').on(table.subscriptionId),
+    subscriptionIdx: index('idx_msg_sub_configs_subscription').on(table.subscriptionId),
   }),
 );
 

@@ -11,7 +11,7 @@ import { baseEntityColumns, tsidColumn } from '@flowcatalyst/persistence';
  * Client access grants table - stores grants of client access to users.
  */
 export const clientAccessGrants = pgTable(
-  'client_access_grants',
+  'iam_client_access_grants',
   {
     ...baseEntityColumns,
     principalId: tsidColumn('principal_id').notNull(),
@@ -20,9 +20,9 @@ export const clientAccessGrants = pgTable(
     grantedAt: timestamp('granted_at').notNull().defaultNow(),
   },
   (table) => [
-    index('idx_client_access_grants_principal').on(table.principalId),
-    index('idx_client_access_grants_client').on(table.clientId),
-    unique('uq_client_access_grants_principal_client').on(table.principalId, table.clientId),
+    index('idx_iam_client_access_grants_principal').on(table.principalId),
+    index('idx_iam_client_access_grants_client').on(table.clientId),
+    unique('uq_iam_client_access_grants_principal_client').on(table.principalId, table.clientId),
   ],
 );
 

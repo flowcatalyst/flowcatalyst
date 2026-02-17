@@ -17,7 +17,7 @@ export type DispatchErrorType = 'TIMEOUT' | 'CONNECTION' | 'HTTP_ERROR' | 'VALID
  * Dispatch job attempts table schema.
  */
 export const dispatchJobAttempts = pgTable(
-  'dispatch_job_attempts',
+  'msg_dispatch_job_attempts',
   {
     // Primary key
     id: tsidColumn('id').primaryKey(),
@@ -44,12 +44,12 @@ export const dispatchJobAttempts = pgTable(
   },
   (table) => [
     // Unique constraint for job + attempt number
-    uniqueIndex('idx_dispatch_job_attempts_job_number').on(
+    uniqueIndex('idx_msg_dispatch_job_attempts_job_number').on(
       table.dispatchJobId,
       table.attemptNumber,
     ),
     // Index for finding attempts by job
-    index('idx_dispatch_job_attempts_job').on(table.dispatchJobId),
+    index('idx_msg_dispatch_job_attempts_job').on(table.dispatchJobId),
   ],
 );
 

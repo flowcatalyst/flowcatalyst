@@ -1,15 +1,15 @@
 /**
  * Dispatch Job Projection Service
  *
- * Projects dispatch job changes from dispatch_job_projection_feed to dispatch_jobs_read.
+ * Projects dispatch job changes from msg_dispatch_job_projection_feed to msg_dispatch_jobs_read.
  *
  * Uses a single writable CTE per poll cycle: one atomic statement that
- * selects the batch, applies INSERTs and UPDATEs to dispatch_jobs_read,
+ * selects the batch, applies INSERTs and UPDATEs to msg_dispatch_jobs_read,
  * and marks feed entries as processed. Zero application-layer data
  * transfer - everything stays in PostgreSQL.
  *
  * Algorithm:
- *   1. Single CTE: batch SELECT -> INSERT projection -> UPDATE projection -> mark processed
+ *   1. Single CTE: batch SELECT -> INSERT msg_dispatch_jobs_read -> UPDATE msg_dispatch_jobs_read -> mark processed
  *   2. Sleep: 0ms if full batch, 100ms if partial, 1000ms if zero results
  *
  * Code hierarchy parsing (same as event type):
@@ -57,13 +57,13 @@ export function createDispatchJobProjectionService(
     const result = await sql`
 			WITH batch AS (
 				SELECT id, dispatch_job_id, operation, payload
-				FROM dispatch_job_projection_feed
+				FROM msg_dispatch_job_projection_feed
 				WHERE processed = 0
 				ORDER BY id
 				LIMIT ${config.batchSize}
 			),
 			projected_inserts AS (
-				INSERT INTO dispatch_jobs_read (
+				INSERT INTO msg_dispatch_jobs_read (
 					id, external_id, source, kind, code, subject, event_id, correlation_id,
 					target_url, protocol, service_account_id, client_id, subscription_id,
 					mode, dispatch_pool_id, message_group, sequence, timeout_seconds,
@@ -126,7 +126,7 @@ export function createDispatchJobProjectionService(
 					projected_at = NOW()
 			),
 			projected_updates AS (
-				UPDATE dispatch_jobs_read AS t
+				UPDATE msg_dispatch_jobs_read AS t
 				SET
 					status = COALESCE(src.payload->>'status', t.status),
 					attempt_count = COALESCE((src.payload->>'attemptCount')::int, t.attempt_count),
@@ -146,7 +146,7 @@ export function createDispatchJobProjectionService(
 				) src
 				WHERE t.id = src.dispatch_job_id
 			)
-			UPDATE dispatch_job_projection_feed
+			UPDATE msg_dispatch_job_projection_feed
 			SET processed = 1, processed_at = NOW()
 			WHERE id IN (SELECT id FROM batch)
 		`;

@@ -28,7 +28,7 @@ import { tsidColumn, timestampColumn } from '@flowcatalyst/persistence';
  * - BackchannelAuthenticationRequest: CIBA requests
  */
 export const oidcPayloads = pgTable(
-  'oidc_payloads',
+  'oauth_oidc_payloads',
   {
     // Primary identifier (model-specific ID from oidc-provider)
     id: varchar('id', { length: 128 }).primaryKey(),
@@ -59,19 +59,19 @@ export const oidcPayloads = pgTable(
   },
   (table) => [
     // Index for grant-based lookups (revocation)
-    index('oidc_payloads_grant_id_idx').on(table.grantId),
+    index('oauth_oidc_payloads_grant_id_idx').on(table.grantId),
 
     // Index for user code lookups (device flow)
-    index('oidc_payloads_user_code_idx').on(table.userCode),
+    index('oauth_oidc_payloads_user_code_idx').on(table.userCode),
 
     // Index for UID lookups
-    index('oidc_payloads_uid_idx').on(table.uid),
+    index('oauth_oidc_payloads_uid_idx').on(table.uid),
 
     // Index for type-based queries
-    index('oidc_payloads_type_idx').on(table.type),
+    index('oauth_oidc_payloads_type_idx').on(table.type),
 
     // Index for expiration cleanup
-    index('oidc_payloads_expires_at_idx').on(table.expiresAt),
+    index('oauth_oidc_payloads_expires_at_idx').on(table.expiresAt),
   ],
 );
 

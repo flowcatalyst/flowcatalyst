@@ -11,7 +11,7 @@ import { baseEntityColumns, tsidColumn } from '@flowcatalyst/persistence';
  * Dispatch pools control the rate at which dispatch jobs are processed.
  */
 export const dispatchPools = pgTable(
-  'dispatch_pools',
+  'msg_dispatch_pools',
   {
     ...baseEntityColumns,
     code: varchar('code', { length: 100 }).notNull(),
@@ -24,9 +24,9 @@ export const dispatchPools = pgTable(
     status: varchar('status', { length: 20 }).notNull().default('ACTIVE'),
   },
   (table) => ({
-    codeClientIdx: uniqueIndex('idx_dispatch_pools_code_client').on(table.code, table.clientId),
-    statusIdx: index('idx_dispatch_pools_status').on(table.status),
-    clientIdIdx: index('idx_dispatch_pools_client_id').on(table.clientId),
+    codeClientIdx: uniqueIndex('idx_msg_dispatch_pools_code_client').on(table.code, table.clientId),
+    statusIdx: index('idx_msg_dispatch_pools_status').on(table.status),
+    clientIdIdx: index('idx_msg_dispatch_pools_client_id').on(table.clientId),
   }),
 );
 

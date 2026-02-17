@@ -9,7 +9,7 @@ import { baseEntityColumns } from '@flowcatalyst/persistence';
  * Identity providers table.
  */
 export const identityProviders = pgTable(
-  'identity_providers',
+  'oauth_identity_providers',
   {
     ...baseEntityColumns,
     code: varchar('code', { length: 50 }).notNull(),
@@ -21,7 +21,7 @@ export const identityProviders = pgTable(
     oidcMultiTenant: boolean('oidc_multi_tenant').notNull().default(false),
     oidcIssuerPattern: varchar('oidc_issuer_pattern', { length: 500 }),
   },
-  (table) => [uniqueIndex('idx_identity_providers_code').on(table.code)],
+  (table) => [uniqueIndex('idx_oauth_identity_providers_code').on(table.code)],
 );
 
 export type IdentityProviderRecord = typeof identityProviders.$inferSelect;
@@ -31,13 +31,13 @@ export type NewIdentityProviderRecord = typeof identityProviders.$inferInsert;
  * Identity provider allowed email domains junction table.
  */
 export const identityProviderAllowedDomains = pgTable(
-  'identity_provider_allowed_domains',
+  'oauth_identity_provider_allowed_domains',
   {
     id: serial('id').primaryKey(),
     identityProviderId: varchar('identity_provider_id', { length: 17 }).notNull(),
     emailDomain: varchar('email_domain', { length: 255 }).notNull(),
   },
-  (table) => [index('idx_idp_allowed_domains_idp').on(table.identityProviderId)],
+  (table) => [index('idx_oauth_idp_allowed_domains_idp').on(table.identityProviderId)],
 );
 
 export type IdentityProviderAllowedDomainRecord =

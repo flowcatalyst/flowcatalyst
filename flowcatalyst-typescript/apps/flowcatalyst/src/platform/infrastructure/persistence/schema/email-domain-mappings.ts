@@ -10,7 +10,7 @@ import { baseEntityColumns } from '@flowcatalyst/persistence';
  * Maps email domains to identity providers with access scope configuration.
  */
 export const emailDomainMappings = pgTable(
-  'email_domain_mappings',
+  'tnt_email_domain_mappings',
   {
     ...baseEntityColumns,
     emailDomain: varchar('email_domain', { length: 255 }).notNull(),
@@ -21,9 +21,9 @@ export const emailDomainMappings = pgTable(
     syncRolesFromIdp: boolean('sync_roles_from_idp').notNull().default(false),
   },
   (table) => [
-    uniqueIndex('idx_email_domain_mappings_domain').on(table.emailDomain),
-    index('idx_email_domain_mappings_idp').on(table.identityProviderId),
-    index('idx_email_domain_mappings_scope').on(table.scopeType),
+    uniqueIndex('idx_tnt_email_domain_mappings_domain').on(table.emailDomain),
+    index('idx_tnt_email_domain_mappings_idp').on(table.identityProviderId),
+    index('idx_tnt_email_domain_mappings_scope').on(table.scopeType),
   ],
 );
 
@@ -35,13 +35,13 @@ export type NewEmailDomainMappingRecord = typeof emailDomainMappings.$inferInser
  * For CLIENT scope: extra clients beyond the primary.
  */
 export const emailDomainMappingAdditionalClients = pgTable(
-  'email_domain_mapping_additional_clients',
+  'tnt_email_domain_mapping_additional_clients',
   {
     id: serial('id').primaryKey(),
     emailDomainMappingId: varchar('email_domain_mapping_id', { length: 17 }).notNull(),
     clientId: varchar('client_id', { length: 17 }).notNull(),
   },
-  (table) => [index('idx_edm_additional_clients_mapping').on(table.emailDomainMappingId)],
+  (table) => [index('idx_tnt_edm_additional_clients_mapping').on(table.emailDomainMappingId)],
 );
 
 export type EmailDomainMappingAdditionalClientRecord =
@@ -52,13 +52,13 @@ export type EmailDomainMappingAdditionalClientRecord =
  * For PARTNER scope: clients explicitly granted access.
  */
 export const emailDomainMappingGrantedClients = pgTable(
-  'email_domain_mapping_granted_clients',
+  'tnt_email_domain_mapping_granted_clients',
   {
     id: serial('id').primaryKey(),
     emailDomainMappingId: varchar('email_domain_mapping_id', { length: 17 }).notNull(),
     clientId: varchar('client_id', { length: 17 }).notNull(),
   },
-  (table) => [index('idx_edm_granted_clients_mapping').on(table.emailDomainMappingId)],
+  (table) => [index('idx_tnt_edm_granted_clients_mapping').on(table.emailDomainMappingId)],
 );
 
 export type EmailDomainMappingGrantedClientRecord =
@@ -69,13 +69,13 @@ export type EmailDomainMappingGrantedClientRecord =
  * Restricts which roles users from this domain can be assigned.
  */
 export const emailDomainMappingAllowedRoles = pgTable(
-  'email_domain_mapping_allowed_roles',
+  'tnt_email_domain_mapping_allowed_roles',
   {
     id: serial('id').primaryKey(),
     emailDomainMappingId: varchar('email_domain_mapping_id', { length: 17 }).notNull(),
     roleId: varchar('role_id', { length: 17 }).notNull(),
   },
-  (table) => [index('idx_edm_allowed_roles_mapping').on(table.emailDomainMappingId)],
+  (table) => [index('idx_tnt_edm_allowed_roles_mapping').on(table.emailDomainMappingId)],
 );
 
 export type EmailDomainMappingAllowedRoleRecord =

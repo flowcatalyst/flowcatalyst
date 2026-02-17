@@ -20,7 +20,7 @@ export interface EventContextData {
  * Events table schema (CloudEvents-based).
  */
 export const events = pgTable(
-  'events',
+  'msg_events',
   {
     // Primary key (unprefixed TSID for high-volume performance)
     id: rawTsidColumn('id').primaryKey(),
@@ -54,15 +54,15 @@ export const events = pgTable(
   },
   (table) => [
     // Index for event type queries
-    index('idx_events_type').on(table.type),
+    index('idx_msg_events_type').on(table.type),
     // Index for client-scoped queries
-    index('idx_events_client_type').on(table.clientId, table.type),
+    index('idx_msg_events_client_type').on(table.clientId, table.type),
     // Index for chronological queries
-    index('idx_events_time').on(table.time),
+    index('idx_msg_events_time').on(table.time),
     // Index for correlation tracing
-    index('idx_events_correlation').on(table.correlationId),
+    index('idx_msg_events_correlation').on(table.correlationId),
     // Unique index for idempotency
-    uniqueIndex('idx_events_deduplication').on(table.deduplicationId),
+    uniqueIndex('idx_msg_events_deduplication').on(table.deduplicationId),
   ],
 );
 

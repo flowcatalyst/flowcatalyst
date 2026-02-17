@@ -11,7 +11,7 @@ import { baseEntityColumns, tsidColumn } from '@flowcatalyst/persistence';
  * Applications table - stores registered applications.
  */
 export const applications = pgTable(
-  'applications',
+  'app_applications',
   {
     ...baseEntityColumns,
     /** APPLICATION or INTEGRATION */
@@ -28,9 +28,9 @@ export const applications = pgTable(
     active: boolean('active').notNull().default(true),
   },
   (table) => [
-    index('idx_applications_code').on(table.code),
-    index('idx_applications_type').on(table.type),
-    index('idx_applications_active').on(table.active),
+    index('idx_app_applications_code').on(table.code),
+    index('idx_app_applications_type').on(table.type),
+    index('idx_app_applications_active').on(table.active),
   ],
 );
 
@@ -38,7 +38,7 @@ export const applications = pgTable(
  * Application client configs table - stores per-client application configurations.
  */
 export const applicationClientConfigs = pgTable(
-  'application_client_configs',
+  'app_client_configs',
   {
     ...baseEntityColumns,
     applicationId: tsidColumn('application_id').notNull(),
@@ -46,9 +46,9 @@ export const applicationClientConfigs = pgTable(
     enabled: boolean('enabled').notNull().default(true),
   },
   (table) => [
-    index('idx_app_client_configs_application').on(table.applicationId),
-    index('idx_app_client_configs_client').on(table.clientId),
-    unique('uq_app_client_configs_app_client').on(table.applicationId, table.clientId),
+    index('idx_app_client_configs_app').on(table.applicationId),
+    index('idx_app_client_configs_clt').on(table.clientId),
+    unique('uq_app_client_configs_app_clt').on(table.applicationId, table.clientId),
   ],
 );
 

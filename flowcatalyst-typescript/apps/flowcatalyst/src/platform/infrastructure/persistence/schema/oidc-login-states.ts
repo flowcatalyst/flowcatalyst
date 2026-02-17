@@ -11,7 +11,7 @@ import { pgTable, varchar, timestamp, index } from 'drizzle-orm/pg-core';
  * OIDC login states table.
  */
 export const oidcLoginStates = pgTable(
-  'oidc_login_states',
+  'oauth_oidc_login_states',
   {
     state: varchar('state', { length: 200 }).primaryKey(),
     emailDomain: varchar('email_domain', { length: 255 }).notNull(),
@@ -33,7 +33,7 @@ export const oidcLoginStates = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   },
-  (table) => [index('idx_oidc_login_states_expires').on(table.expiresAt)],
+  (table) => [index('idx_oauth_oidc_login_states_expires').on(table.expiresAt)],
 );
 
 export type OidcLoginStateRecord = typeof oidcLoginStates.$inferSelect;

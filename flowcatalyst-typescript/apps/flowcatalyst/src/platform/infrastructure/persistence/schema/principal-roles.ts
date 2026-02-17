@@ -17,7 +17,7 @@ import { principals } from './principals.js';
  * Each row represents one role assignment to one principal.
  */
 export const principalRoles = pgTable(
-  'principal_roles',
+  'iam_principal_roles',
   {
     principalId: tsidColumn('principal_id')
       .notNull()
@@ -28,8 +28,8 @@ export const principalRoles = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.principalId, table.roleName] }),
-    index('idx_principal_roles_role_name').on(table.roleName),
-    index('idx_principal_roles_assigned_at').on(table.assignedAt),
+    index('idx_iam_principal_roles_role_name').on(table.roleName),
+    index('idx_iam_principal_roles_assigned_at').on(table.assignedAt),
   ],
 );
 

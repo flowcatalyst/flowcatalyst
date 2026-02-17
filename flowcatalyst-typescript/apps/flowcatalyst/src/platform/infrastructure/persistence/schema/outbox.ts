@@ -32,7 +32,7 @@ export type ProjectionFeedStatusValue =
  * - DELETE: just the operation marker
  */
 export const dispatchJobProjectionFeed = pgTable(
-  'dispatch_job_projection_feed',
+  'msg_dispatch_job_projection_feed',
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     dispatchJobId: rawTsidColumn('dispatch_job_id').notNull(),
@@ -45,15 +45,15 @@ export const dispatchJobProjectionFeed = pgTable(
   },
   (table) => [
     // Index for polling unprocessed entries, ordered by job (message group) then sequence
-    index('idx_dj_projection_feed_unprocessed')
+    index('idx_msg_dj_projection_feed_unprocessed')
       .on(table.dispatchJobId, table.id)
       .where(sql`${table.processed} = 0`),
     // Index for crash recovery (find in-progress entries)
-    index('idx_dj_projection_feed_in_progress')
+    index('idx_msg_dj_projection_feed_in_progress')
       .on(table.id)
       .where(sql`${table.processed} = 9`),
     // Index for cleanup of old processed entries
-    index('idx_dj_projection_feed_processed_at')
+    index('idx_msg_dj_projection_feed_processed_at')
       .on(table.processedAt)
       .where(sql`${table.processed} = 1`),
   ],
@@ -71,7 +71,7 @@ export type NewDispatchJobProjectionFeedRecord = typeof dispatchJobProjectionFee
  * - Error tracking
  */
 export const eventProjectionFeed = pgTable(
-  'event_projection_feed',
+  'msg_event_projection_feed',
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     eventId: rawTsidColumn('event_id').notNull(),
@@ -83,11 +83,11 @@ export const eventProjectionFeed = pgTable(
   },
   (table) => [
     // Index for polling unprocessed entries
-    index('idx_event_projection_feed_unprocessed')
+    index('idx_msg_event_projection_feed_unprocessed')
       .on(table.id)
       .where(sql`${table.processed} = 0`),
     // Index for crash recovery
-    index('idx_event_projection_feed_in_progress')
+    index('idx_msg_event_projection_feed_in_progress')
       .on(table.id)
       .where(sql`${table.processed} = 9`),
   ],

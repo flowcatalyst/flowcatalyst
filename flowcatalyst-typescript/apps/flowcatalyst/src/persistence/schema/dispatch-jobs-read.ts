@@ -24,7 +24,7 @@ import type {
  * Dispatch jobs read table schema.
  */
 export const dispatchJobsRead = pgTable(
-  'dispatch_jobs_read',
+  'msg_dispatch_jobs_read',
   {
     // Primary key (same as source dispatch_job.id, unprefixed for performance)
     id: rawTsidColumn('id').primaryKey(),
@@ -88,12 +88,12 @@ export const dispatchJobsRead = pgTable(
     projectedAt: timestampColumn('projected_at'),
   },
   (table) => [
-    index('idx_dispatch_jobs_read_status').on(table.status),
-    index('idx_dispatch_jobs_read_client_id').on(table.clientId),
-    index('idx_dispatch_jobs_read_application').on(table.application),
-    index('idx_dispatch_jobs_read_subscription_id').on(table.subscriptionId),
-    index('idx_dispatch_jobs_read_message_group').on(table.messageGroup),
-    index('idx_dispatch_jobs_read_created_at').on(table.createdAt),
+    index('idx_msg_dispatch_jobs_read_status').on(table.status),
+    index('idx_msg_dispatch_jobs_read_client_id').on(table.clientId),
+    index('idx_msg_dispatch_jobs_read_application').on(table.application),
+    index('idx_msg_dispatch_jobs_read_subscription_id').on(table.subscriptionId),
+    index('idx_msg_dispatch_jobs_read_message_group').on(table.messageGroup),
+    index('idx_msg_dispatch_jobs_read_created_at').on(table.createdAt),
   ],
 );
 

@@ -19,7 +19,7 @@ import { tsidColumn, timestampColumn, baseEntityColumns } from '@flowcatalyst/pe
  * Note: Roles are stored in the principal_roles junction table, not here.
  */
 export const principals = pgTable(
-  'principals',
+  'iam_principals',
   {
     ...baseEntityColumns,
     type: varchar('type', { length: 20 }).notNull(), // 'USER' | 'SERVICE'
@@ -41,12 +41,12 @@ export const principals = pgTable(
     serviceAccountId: tsidColumn('service_account_id'),
   },
   (table) => [
-    index('idx_principals_type').on(table.type),
-    index('idx_principals_client_id').on(table.clientId),
-    index('idx_principals_active').on(table.active),
-    uniqueIndex('idx_principals_email').on(table.email),
-    index('idx_principals_email_domain').on(table.emailDomain),
-    uniqueIndex('idx_principals_service_account_id').on(table.serviceAccountId),
+    index('idx_iam_principals_type').on(table.type),
+    index('idx_iam_principals_client_id').on(table.clientId),
+    index('idx_iam_principals_active').on(table.active),
+    uniqueIndex('idx_iam_principals_email').on(table.email),
+    index('idx_iam_principals_email_domain').on(table.emailDomain),
+    uniqueIndex('idx_iam_principals_service_account_id').on(table.serviceAccountId),
   ],
 );
 

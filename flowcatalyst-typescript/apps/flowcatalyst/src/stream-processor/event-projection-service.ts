@@ -1,15 +1,15 @@
 /**
  * Event Projection Service
  *
- * Projects events from event_projection_feed to events_read using pure SQL.
+ * Projects events from msg_event_projection_feed to msg_events_read using pure SQL.
  *
  * Uses a single writable CTE per poll cycle: one atomic statement that
- * selects the batch, inserts into events_read, and marks feed entries
+ * selects the batch, inserts into msg_events_read, and marks feed entries
  * as processed. Zero application-layer data transfer - everything stays
  * in PostgreSQL.
  *
  * Algorithm:
- *   1. Single CTE: batch SELECT -> INSERT events_read -> UPDATE feed
+ *   1. Single CTE: batch SELECT -> INSERT msg_events_read -> UPDATE feed
  *   2. Sleep: 0ms if full batch, 100ms if partial, 1000ms if zero results
  *
  * Type hierarchy parsing:
@@ -42,7 +42,7 @@ export function createEventProjectionService(
    * Single-statement batch projection using writable CTE.
    *
    * 1. `batch` CTE: selects unprocessed feed entries (LIMIT batchSize)
-   * 2. `projected` CTE: UPSERTs into events_read from batch payloads
+   * 2. `projected` CTE: UPSERTs into msg_events_read from batch payloads
    * 3. Main UPDATE: marks batch entries as processed
    *
    * All three operations execute atomically in one round-trip.
@@ -52,13 +52,13 @@ export function createEventProjectionService(
     const result = await sql`
 			WITH batch AS (
 				SELECT id, event_id, payload
-				FROM event_projection_feed
+				FROM msg_event_projection_feed
 				WHERE processed = 0
 				ORDER BY id
 				LIMIT ${config.batchSize}
 			),
 			projected AS (
-				INSERT INTO events_read (
+				INSERT INTO msg_events_read (
 					id, spec_version, type, source, subject, time, data,
 					correlation_id, causation_id, deduplication_id, message_group,
 					client_id, application, subdomain, aggregate, projected_at
@@ -83,7 +83,7 @@ export function createEventProjectionService(
 				FROM batch b
 				ON CONFLICT (id) DO NOTHING
 			)
-			UPDATE event_projection_feed
+			UPDATE msg_event_projection_feed
 			SET processed = 1, processed_at = NOW()
 			WHERE id IN (SELECT id FROM batch)
 		`;

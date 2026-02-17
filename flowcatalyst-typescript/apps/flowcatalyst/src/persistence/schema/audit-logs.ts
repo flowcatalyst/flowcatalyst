@@ -12,7 +12,7 @@ import { tsidColumn, timestampColumn } from './common.js';
  * Audit logs table schema.
  */
 export const auditLogs = pgTable(
-  'audit_logs',
+  'aud_logs',
   {
     // Primary key
     id: tsidColumn('id').primaryKey(),
@@ -33,13 +33,13 @@ export const auditLogs = pgTable(
   },
   (table) => [
     // Index for entity history queries
-    index('idx_audit_logs_entity').on(table.entityType, table.entityId),
+    index('idx_aud_logs_entity').on(table.entityType, table.entityId),
     // Index for chronological queries
-    index('idx_audit_logs_performed').on(table.performedAt),
+    index('idx_aud_logs_performed').on(table.performedAt),
     // Index for principal queries
-    index('idx_audit_logs_principal').on(table.principalId),
+    index('idx_aud_logs_principal').on(table.principalId),
     // Index for operation type queries
-    index('idx_audit_logs_operation').on(table.operation),
+    index('idx_aud_logs_operation').on(table.operation),
   ],
 );
 

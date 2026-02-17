@@ -16,7 +16,7 @@ import { baseEntityColumns, tsidColumn } from '@flowcatalyst/persistence';
  * - SDK: Registered by external applications via the SDK API
  */
 export const authRoles = pgTable(
-  'auth_roles',
+  'iam_roles',
   {
     ...baseEntityColumns,
     /** The application this role belongs to (ID reference) */
@@ -34,11 +34,11 @@ export const authRoles = pgTable(
     clientManaged: boolean('client_managed').notNull().default(false),
   },
   (table) => [
-    index('idx_auth_roles_name').on(table.name),
-    index('idx_auth_roles_application_id').on(table.applicationId),
-    index('idx_auth_roles_application_code').on(table.applicationCode),
-    index('idx_auth_roles_source').on(table.source),
-    index('idx_auth_roles_client_managed').on(table.clientManaged),
+    index('idx_iam_roles_name').on(table.name),
+    index('idx_iam_roles_application_id').on(table.applicationId),
+    index('idx_iam_roles_application_code').on(table.applicationCode),
+    index('idx_iam_roles_source').on(table.source),
+    index('idx_iam_roles_client_managed').on(table.clientManaged),
   ],
 );
 
@@ -46,7 +46,7 @@ export const authRoles = pgTable(
  * Auth permissions table - stores permission definitions.
  */
 export const authPermissions = pgTable(
-  'auth_permissions',
+  'iam_permissions',
   {
     ...baseEntityColumns,
     code: varchar('code', { length: 255 }).notNull().unique(),
@@ -57,9 +57,9 @@ export const authPermissions = pgTable(
     description: text('description'),
   },
   (table) => [
-    index('idx_auth_permissions_code').on(table.code),
-    index('idx_auth_permissions_subdomain').on(table.subdomain),
-    index('idx_auth_permissions_context').on(table.context),
+    index('idx_iam_permissions_code').on(table.code),
+    index('idx_iam_permissions_subdomain').on(table.subdomain),
+    index('idx_iam_permissions_context').on(table.context),
   ],
 );
 
@@ -70,7 +70,7 @@ export const authPermissions = pgTable(
  * permission assigned to one role.
  */
 export const rolePermissions = pgTable(
-  'role_permissions',
+  'iam_role_permissions',
   {
     roleId: tsidColumn('role_id')
       .notNull()
@@ -79,7 +79,7 @@ export const rolePermissions = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.roleId, table.permission] }),
-    index('idx_role_permissions_role_id').on(table.roleId),
+    index('idx_iam_role_permissions_role_id').on(table.roleId),
   ],
 );
 
