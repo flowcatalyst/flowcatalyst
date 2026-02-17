@@ -111,7 +111,7 @@ export const BatchResultItemSchema = Type.Object({
   id: Type.String(),
   status: Type.Union([Type.Literal('SUCCESS'), Type.Literal('ERROR')]),
   error: Type.Optional(Type.String()),
-}, { $id: 'BatchResultItem' });
+});
 
 /**
  * Standard batch response schema used by all batch ingestion endpoints.

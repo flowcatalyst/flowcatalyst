@@ -18,7 +18,6 @@ import {
   MessageResponseSchema,
   SyncResponseSchema,
   BatchResponseSchema,
-  BatchResultItemSchema,
   CommonSchemas,
 } from '@flowcatalyst/http';
 import type { UnitOfWork } from '@flowcatalyst/domain-core';
@@ -98,7 +97,6 @@ export async function registerPlatformPlugins(
   fastify.addSchema(MessageResponseSchema);
   fastify.addSchema(SyncResponseSchema);
   fastify.addSchema(BatchResponseSchema);
-  fastify.addSchema(BatchResultItemSchema);
   fastify.addSchema(CommonSchemas.PaginationQuery);
 
   // Cookie handling (required for session tokens)
