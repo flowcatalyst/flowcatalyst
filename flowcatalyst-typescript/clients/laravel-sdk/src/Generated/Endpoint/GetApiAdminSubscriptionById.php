@@ -33,30 +33,22 @@ class GetApiAdminSubscriptionById extends \FlowCatalyst\Generated\Runtime\Client
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\GetApiAdminSubscriptionByIdNotFoundException
-     * @throws \FlowCatalyst\Generated\Exception\GetApiAdminSubscriptionByIdUnauthorizedException
-     * @throws \FlowCatalyst\Generated\Exception\GetApiAdminSubscriptionByIdForbiddenException
      *
-     * @return null|\FlowCatalyst\Generated\Model\SubscriptionDto1
+     * @return null|\FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\SubscriptionDto1', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdGetResponse200', 'json');
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminSubscriptionByIdNotFoundException($response);
-        }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminSubscriptionByIdUnauthorizedException($response);
-        }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminSubscriptionByIdForbiddenException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\GetApiAdminSubscriptionByIdNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdGetResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

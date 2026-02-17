@@ -66,7 +66,7 @@ export const CommonSchemas = {
   PaginationQuery: Type.Object({
     page: Type.Optional(Type.Number({ minimum: 0, default: 0 })),
     pageSize: Type.Optional(Type.Number({ minimum: 1, maximum: 100, default: 20 })),
-  }),
+  }, { $id: 'PaginationQuery' }),
 };
 
 /**
@@ -78,9 +78,49 @@ export const ErrorResponseSchema = Type.Object({
   details: Type.Optional(
     Type.Record(Type.String(), Type.Unknown(), { description: 'Additional error details' }),
   ),
-});
+}, { $id: 'ErrorResponse' });
 
 export type ErrorResponseType = Static<typeof ErrorResponseSchema>;
+
+/**
+ * Simple message response schema (e.g. "Application enabled").
+ */
+export const MessageResponseSchema = Type.Object({
+  message: Type.String({ description: 'Human-readable status message' }),
+}, { $id: 'MessageResponse' });
+
+export type MessageResponseType = Static<typeof MessageResponseSchema>;
+
+/**
+ * Standard sync response schema used by all sync endpoints.
+ */
+export const SyncResponseSchema = Type.Object({
+  applicationCode: Type.String(),
+  created: Type.Integer(),
+  updated: Type.Integer(),
+  deleted: Type.Integer(),
+  syncedCodes: Type.Array(Type.String()),
+}, { $id: 'SyncResponse' });
+
+export type SyncResponseType = Static<typeof SyncResponseSchema>;
+
+/**
+ * Individual result item in a batch response.
+ */
+export const BatchResultItemSchema = Type.Object({
+  id: Type.String(),
+  status: Type.Union([Type.Literal('SUCCESS'), Type.Literal('ERROR')]),
+  error: Type.Optional(Type.String()),
+}, { $id: 'BatchResultItem' });
+
+/**
+ * Standard batch response schema used by all batch ingestion endpoints.
+ */
+export const BatchResponseSchema = Type.Object({
+  results: Type.Array(BatchResultItemSchema),
+}, { $id: 'BatchResponse' });
+
+export type BatchResponseType = Static<typeof BatchResponseSchema>;
 
 /**
  * Paginated response wrapper schema.

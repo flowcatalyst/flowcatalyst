@@ -13,7 +13,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { Type, type Static } from '@sinclair/typebox';
-import { sendResult, jsonSuccess, ErrorResponseSchema } from '@flowcatalyst/http';
+import { sendResult, jsonSuccess, ErrorResponseSchema, SyncResponseSchema } from '@flowcatalyst/http';
 import { Result } from '@flowcatalyst/application';
 import type { UseCase } from '@flowcatalyst/application';
 
@@ -131,16 +131,6 @@ const SyncPrincipalsBodySchema = Type.Object({
       active: Type.Optional(Type.Boolean()),
     }),
   ),
-});
-
-// ─── Response Schemas ───────────────────────────────────────────────────────
-
-const SyncResponseSchema = Type.Object({
-  applicationCode: Type.String(),
-  created: Type.Integer(),
-  updated: Type.Integer(),
-  deleted: Type.Integer(),
-  syncedCodes: Type.Array(Type.String()),
 });
 
 // ─── Dependencies ───────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import {
   noContent,
   notFound,
   ErrorResponseSchema,
+  SyncResponseSchema,
 } from '@flowcatalyst/http';
 import { Result } from '@flowcatalyst/application';
 import type { UseCase } from '@flowcatalyst/application';
@@ -147,14 +148,6 @@ const EventTypeResponseSchema = Type.Object({
 const EventTypesListResponseSchema = Type.Object({
   eventTypes: Type.Array(EventTypeResponseSchema),
   total: Type.Integer(),
-});
-
-const SyncResponseSchema = Type.Object({
-  applicationCode: Type.String(),
-  created: Type.Integer(),
-  updated: Type.Integer(),
-  deleted: Type.Integer(),
-  syncedCodes: Type.Array(Type.String()),
 });
 
 const FilterValuesResponseSchema = Type.Object({

@@ -4287,6 +4287,7 @@
                   ],
                   "properties": {
                     "message": {
+                      "description": "Human-readable status message",
                       "type": "string"
                     }
                   }
@@ -4358,6 +4359,7 @@
                   ],
                   "properties": {
                     "message": {
+                      "description": "Human-readable status message",
                       "type": "string"
                     }
                   }
@@ -4429,6 +4431,7 @@
                   ],
                   "properties": {
                     "message": {
+                      "description": "Human-readable status message",
                       "type": "string"
                     }
                   }
@@ -10343,6 +10346,12 @@
                   "defaultScopes": {
                     "anyOf": [
                       {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      {
                         "type": "string"
                       },
                       {
@@ -10761,6 +10770,12 @@
                   },
                   "defaultScopes": {
                     "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
                       {
                         "type": "string"
                       },
@@ -11446,6 +11461,7 @@
                   ],
                   "properties": {
                     "message": {
+                      "description": "Human-readable status message",
                       "type": "string"
                     }
                   }
@@ -11509,6 +11525,7 @@
                   ],
                   "properties": {
                     "message": {
+                      "description": "Human-readable status message",
                       "type": "string"
                     }
                   }

@@ -5,10 +5,12 @@
  *
  * Fixes:
  * - allOf with $ref + default in query parameters → simplified to just the $ref
+ * - anyOf [string, array<string>] in query parameters → simplified to array<string>
+ * - anyOf [string enum A, string enum B] in query parameters → merged to single string enum
  * - Empty schemas {} → replaced with { "type": "object" }
  */
 
-$inputFile = $argv[1] ?? __DIR__ . '/../../../../core/flowcatalyst-platform/openapi/openapi.json';
+$inputFile = $argv[1] ?? __DIR__ . '/../openapi/openapi.json';
 $outputFile = $argv[2] ?? __DIR__ . '/../openapi-processed.json';
 
 $json = json_decode(file_get_contents($inputFile), true);
@@ -30,6 +32,28 @@ foreach ($json['paths'] as $path => &$methods) {
                     $allOf = $param['schema']['allOf'];
                     if (count($allOf) === 2 && isset($allOf[0]['$ref']) && isset($allOf[1]['default'])) {
                         $json['paths'][$path][$method]['parameters'][$i]['schema'] = $allOf[0];
+                        $fixed++;
+                    }
+                }
+
+                // Fix anyOf in query parameters (Jane PHP doesn't support anyOf)
+                if (isset($param['schema']['anyOf'])) {
+                    $anyOf = $param['schema']['anyOf'];
+
+                    // anyOf [string, array<string>] → array<string> (accepts both)
+                    if (count($anyOf) === 2
+                        && ($anyOf[0]['type'] ?? '') === 'string' && !isset($anyOf[0]['enum'])
+                        && ($anyOf[1]['type'] ?? '') === 'array') {
+                        $json['paths'][$path][$method]['parameters'][$i]['schema'] = $anyOf[1];
+                        $fixed++;
+                    }
+                    // anyOf [enum A, enum B, ...] → merge into single string enum
+                    elseif (array_reduce($anyOf, fn($carry, $s) => $carry && ($s['type'] ?? '') === 'string' && isset($s['enum']), true)) {
+                        $merged = [];
+                        foreach ($anyOf as $s) {
+                            $merged = array_merge($merged, $s['enum']);
+                        }
+                        $json['paths'][$path][$method]['parameters'][$i]['schema'] = ['type' => 'string', 'enum' => array_values(array_unique($merged))];
                         $fixed++;
                     }
                 }

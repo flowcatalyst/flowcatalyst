@@ -5,23 +5,22 @@ namespace FlowCatalyst\Generated\Endpoint;
 class GetApiBffDispatchJob extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
 {
     /**
-     * Search dispatch jobs with optional filters and pagination. Multi-value parameters (clientIds, applications, etc.) support comma-separated values for OR filtering. Use 'null' in clientIds to include platform jobs (no client).
      * @param array{
-     *    "aggregates"?: string,
-     *    "applications"?: string,
      *    "clientIds"?: string,
+     *    "statuses"?: string,
+     *    "applications"?: string,
+     *    "subdomains"?: string,
+     *    "aggregates"?: string,
      *    "codes"?: string,
+     *    "source"?: string,
+     *    "kind"?: string,
+     *    "subscriptionId"?: string,
+     *    "dispatchPoolId"?: string,
+     *    "messageGroup"?: string,
      *    "createdAfter"?: string,
      *    "createdBefore"?: string,
-     *    "dispatchPoolId"?: string,
-     *    "kind"?: string,
-     *    "messageGroup"?: string,
-     *    "page"?: int,
-     *    "size"?: int,
-     *    "source"?: string,
-     *    "statuses"?: string,
-     *    "subdomains"?: string,
-     *    "subscriptionId"?: string,
+     *    "page"?: string,
+     *    "size"?: string,
      * } $queryParameters
      */
     public function __construct(array $queryParameters = [])
@@ -48,42 +47,42 @@ class GetApiBffDispatchJob extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['aggregates', 'applications', 'clientIds', 'codes', 'createdAfter', 'createdBefore', 'dispatchPoolId', 'kind', 'messageGroup', 'page', 'size', 'source', 'statuses', 'subdomains', 'subscriptionId']);
+        $optionsResolver->setDefined(['clientIds', 'statuses', 'applications', 'subdomains', 'aggregates', 'codes', 'source', 'kind', 'subscriptionId', 'dispatchPoolId', 'messageGroup', 'createdAfter', 'createdBefore', 'page', 'size']);
         $optionsResolver->setRequired([]);
-        $optionsResolver->setDefaults(['page' => '0', 'size' => '20']);
-        $optionsResolver->addAllowedTypes('aggregates', ['string']);
-        $optionsResolver->addAllowedTypes('applications', ['string']);
+        $optionsResolver->setDefaults([]);
         $optionsResolver->addAllowedTypes('clientIds', ['string']);
+        $optionsResolver->addAllowedTypes('statuses', ['string']);
+        $optionsResolver->addAllowedTypes('applications', ['string']);
+        $optionsResolver->addAllowedTypes('subdomains', ['string']);
+        $optionsResolver->addAllowedTypes('aggregates', ['string']);
         $optionsResolver->addAllowedTypes('codes', ['string']);
+        $optionsResolver->addAllowedTypes('source', ['string']);
+        $optionsResolver->addAllowedTypes('kind', ['string']);
+        $optionsResolver->addAllowedTypes('subscriptionId', ['string']);
+        $optionsResolver->addAllowedTypes('dispatchPoolId', ['string']);
+        $optionsResolver->addAllowedTypes('messageGroup', ['string']);
         $optionsResolver->addAllowedTypes('createdAfter', ['string']);
         $optionsResolver->addAllowedTypes('createdBefore', ['string']);
-        $optionsResolver->addAllowedTypes('dispatchPoolId', ['string']);
-        $optionsResolver->addAllowedTypes('kind', ['string']);
-        $optionsResolver->addAllowedTypes('messageGroup', ['string']);
-        $optionsResolver->addAllowedTypes('page', ['int']);
-        $optionsResolver->addAllowedTypes('size', ['int']);
-        $optionsResolver->addAllowedTypes('source', ['string']);
-        $optionsResolver->addAllowedTypes('statuses', ['string']);
-        $optionsResolver->addAllowedTypes('subdomains', ['string']);
-        $optionsResolver->addAllowedTypes('subscriptionId', ['string']);
+        $optionsResolver->addAllowedTypes('page', ['string']);
+        $optionsResolver->addAllowedTypes('size', ['string']);
         return $optionsResolver;
     }
     /**
      * {@inheritdoc}
      *
      *
-     * @return null|\FlowCatalyst\Generated\Model\PagedDispatchJobReadResponse
+     * @return null|\FlowCatalyst\Generated\Model\ApiBffDispatchJobsGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\PagedDispatchJobReadResponse', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiBffDispatchJobsGetResponse200', 'json');
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

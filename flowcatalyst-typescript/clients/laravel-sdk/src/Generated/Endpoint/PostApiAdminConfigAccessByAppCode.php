@@ -7,9 +7,9 @@ class PostApiAdminConfigAccessByAppCode extends \FlowCatalyst\Generated\Runtime\
     protected $appCode;
     /**
      * @param string $appCode
-     * @param null|\FlowCatalyst\Generated\Model\GrantAccessRequest $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\ApiAdminConfigAccessAppCodePostBody $requestBody
      */
-    public function __construct(string $appCode, ?\FlowCatalyst\Generated\Model\GrantAccessRequest $requestBody = null)
+    public function __construct(string $appCode, ?\FlowCatalyst\Generated\Model\ApiAdminConfigAccessAppCodePostBody $requestBody = null)
     {
         $this->appCode = $appCode;
         $this->body = $requestBody;
@@ -25,39 +25,35 @@ class PostApiAdminConfigAccessByAppCode extends \FlowCatalyst\Generated\Runtime\
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
-        if ($this->body instanceof \FlowCatalyst\Generated\Model\GrantAccessRequest) {
+        if ($this->body instanceof \FlowCatalyst\Generated\Model\ApiAdminConfigAccessAppCodePostBody) {
             return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
         }
         return [[], null];
     }
+    public function getExtraHeaders(): array
+    {
+        return ['Accept' => ['application/json']];
+    }
     /**
      * {@inheritdoc}
      *
-     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminConfigAccessByAppCodeBadRequestException
-     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminConfigAccessByAppCodeForbiddenException
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminConfigAccessByAppCodeConflictException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\ApiAdminConfigAccessAppCodePostResponse201
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (201 === $status) {
-            return null;
+        if (is_null($contentType) === false && (201 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminConfigAccessAppCodePostResponse201', 'json');
         }
-        if (400 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminConfigAccessByAppCodeBadRequestException($response);
-        }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminConfigAccessByAppCodeForbiddenException($response);
-        }
-        if (409 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminConfigAccessByAppCodeConflictException($response);
+        if (is_null($contentType) === false && (409 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PostApiAdminConfigAccessByAppCodeConflictException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminConfigAccessAppCodePostResponse409', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

@@ -14,6 +14,12 @@ import {
   executionContextPlugin,
   errorHandlerPlugin,
   createStandardErrorHandlerOptions,
+  ErrorResponseSchema,
+  MessageResponseSchema,
+  SyncResponseSchema,
+  BatchResponseSchema,
+  BatchResultItemSchema,
+  CommonSchemas,
 } from '@flowcatalyst/http';
 import type { UnitOfWork } from '@flowcatalyst/domain-core';
 import type { EncryptionService, PasswordService } from '@flowcatalyst/platform-crypto';
@@ -86,6 +92,14 @@ export async function registerPlatformPlugins(
       deepLinking: true,
     },
   });
+
+  // Register shared schemas so Fastify emits $ref instead of inlining
+  fastify.addSchema(ErrorResponseSchema);
+  fastify.addSchema(MessageResponseSchema);
+  fastify.addSchema(SyncResponseSchema);
+  fastify.addSchema(BatchResponseSchema);
+  fastify.addSchema(BatchResultItemSchema);
+  fastify.addSchema(CommonSchemas.PaginationQuery);
 
   // Cookie handling (required for session tokens)
   await fastify.register(cookie);

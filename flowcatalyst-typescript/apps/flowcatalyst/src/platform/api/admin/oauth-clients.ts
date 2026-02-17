@@ -13,6 +13,7 @@ import {
   noContent,
   notFound,
   ErrorResponseSchema,
+  MessageResponseSchema,
 } from '@flowcatalyst/http';
 import { Result } from '@flowcatalyst/application';
 import type { UseCase } from '@flowcatalyst/application';
@@ -426,7 +427,7 @@ export async function registerOAuthClientsRoutes(
       schema: {
         params: IdParam,
         response: {
-          200: Type.Object({ message: Type.String() }),
+          200: MessageResponseSchema,
           404: ErrorResponseSchema,
         },
       },
@@ -452,7 +453,7 @@ export async function registerOAuthClientsRoutes(
       schema: {
         params: IdParam,
         response: {
-          200: Type.Object({ message: Type.String() }),
+          200: MessageResponseSchema,
           404: ErrorResponseSchema,
         },
       },

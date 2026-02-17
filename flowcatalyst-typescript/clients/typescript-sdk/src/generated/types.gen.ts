@@ -1958,6 +1958,9 @@ export type PutApiAdminClientsByIdApplicationsResponses = {
      * Default Response
      */
     200: {
+        /**
+         * Human-readable status message
+         */
         message: string;
     };
 };
@@ -2003,6 +2006,9 @@ export type PostApiAdminClientsByIdApplicationsByAppIdEnableResponses = {
      * Default Response
      */
     200: {
+        /**
+         * Human-readable status message
+         */
         message: string;
     };
 };
@@ -2048,6 +2054,9 @@ export type PostApiAdminClientsByIdApplicationsByAppIdDisableResponses = {
      * Default Response
      */
     200: {
+        /**
+         * Human-readable status message
+         */
         message: string;
     };
 };
@@ -4395,7 +4404,7 @@ export type PostApiAdminOauthClientsData = {
         redirectUris?: Array<string>;
         allowedOrigins?: Array<string>;
         grantTypes?: Array<'authorization_code' | 'client_credentials' | 'refresh_token' | 'password'>;
-        defaultScopes?: string | null;
+        defaultScopes?: Array<string> | string | null;
         pkceRequired?: boolean;
         applicationIds?: Array<string>;
     };
@@ -4586,7 +4595,7 @@ export type PutApiAdminOauthClientsByIdData = {
         redirectUris?: Array<string>;
         allowedOrigins?: Array<string>;
         grantTypes?: Array<'authorization_code' | 'client_credentials' | 'refresh_token' | 'password'>;
-        defaultScopes?: string | null;
+        defaultScopes?: Array<string> | string | null;
         pkceRequired?: boolean;
         applicationIds?: Array<string>;
         active?: boolean;
@@ -4872,6 +4881,9 @@ export type PostApiAdminOauthClientsByIdActivateResponses = {
      * Default Response
      */
     200: {
+        /**
+         * Human-readable status message
+         */
         message: string;
     };
 };
@@ -4916,6 +4928,9 @@ export type PostApiAdminOauthClientsByIdDeactivateResponses = {
      * Default Response
      */
     200: {
+        /**
+         * Human-readable status message
+         */
         message: string;
     };
 };

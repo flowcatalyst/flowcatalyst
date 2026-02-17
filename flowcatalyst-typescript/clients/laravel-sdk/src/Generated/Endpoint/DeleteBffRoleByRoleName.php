@@ -32,6 +32,7 @@ class DeleteBffRoleByRoleName extends \FlowCatalyst\Generated\Runtime\Client\Bas
     /**
      * {@inheritdoc}
      *
+     * @throws \FlowCatalyst\Generated\Exception\DeleteBffRoleByRoleNameNotFoundException
      *
      * @return null
      */
@@ -39,12 +40,15 @@ class DeleteBffRoleByRoleName extends \FlowCatalyst\Generated\Runtime\Client\Bas
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+        if (204 === $status) {
+            return null;
+        }
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\DeleteBffRoleByRoleNameNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\BffRolesRoleNameDeleteResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

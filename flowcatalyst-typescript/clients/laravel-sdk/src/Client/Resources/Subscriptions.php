@@ -25,7 +25,7 @@ class Subscriptions
     public function list(array $filters = []): array
     {
         $query = http_build_query($filters);
-        $endpoint = '/api/admin/platform/subscriptions' . ($query ? "?{$query}" : '');
+        $endpoint = '/api/admin/subscriptions' . ($query ? "?{$query}" : '');
 
         $response = $this->client->request('GET', $endpoint);
 
@@ -43,7 +43,7 @@ class Subscriptions
      */
     public function get(string $id): Subscription
     {
-        $response = $this->client->request('GET', "/api/admin/platform/subscriptions/{$id}");
+        $response = $this->client->request('GET', "/api/admin/subscriptions/{$id}");
 
         return Subscription::fromArray($response);
     }
@@ -83,7 +83,7 @@ class Subscriptions
         // Default source to API when created via SDK
         $data['source'] ??= SubscriptionSource::API->value;
 
-        $response = $this->client->request('POST', '/api/admin/platform/subscriptions', [
+        $response = $this->client->request('POST', '/api/admin/subscriptions', [
             'json' => $data,
         ]);
 
@@ -120,7 +120,7 @@ class Subscriptions
             $data['mode'] = $data['mode']->value;
         }
 
-        $response = $this->client->request('PUT', "/api/admin/platform/subscriptions/{$id}", [
+        $response = $this->client->request('PUT', "/api/admin/subscriptions/{$id}", [
             'json' => $data,
         ]);
 
@@ -132,7 +132,7 @@ class Subscriptions
      */
     public function delete(string $id): void
     {
-        $this->client->request('DELETE', "/api/admin/platform/subscriptions/{$id}");
+        $this->client->request('DELETE', "/api/admin/subscriptions/{$id}");
     }
 
     /**
@@ -140,7 +140,7 @@ class Subscriptions
      */
     public function pause(string $id): array
     {
-        return $this->client->request('POST', "/api/admin/platform/subscriptions/{$id}/pause");
+        return $this->client->request('POST', "/api/admin/subscriptions/{$id}/pause");
     }
 
     /**
@@ -148,7 +148,7 @@ class Subscriptions
      */
     public function resume(string $id): array
     {
-        return $this->client->request('POST', "/api/admin/platform/subscriptions/{$id}/resume");
+        return $this->client->request('POST', "/api/admin/subscriptions/{$id}/resume");
     }
 
     /**

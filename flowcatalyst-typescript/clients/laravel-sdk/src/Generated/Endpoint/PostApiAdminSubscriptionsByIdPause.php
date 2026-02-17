@@ -6,7 +6,6 @@ class PostApiAdminSubscriptionsByIdPause extends \FlowCatalyst\Generated\Runtime
 {
     protected $id;
     /**
-     * Stop creating dispatch jobs for this subscription
      * @param string $id
      */
     public function __construct(string $id)
@@ -34,30 +33,22 @@ class PostApiAdminSubscriptionsByIdPause extends \FlowCatalyst\Generated\Runtime
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminSubscriptionsByIdPauseNotFoundException
-     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminSubscriptionsByIdPauseUnauthorizedException
-     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminSubscriptionsByIdPauseForbiddenException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdPausePostResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdPausePostResponse200', 'json');
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminSubscriptionsByIdPauseNotFoundException($response);
-        }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminSubscriptionsByIdPauseUnauthorizedException($response);
-        }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminSubscriptionsByIdPauseForbiddenException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PostApiAdminSubscriptionsByIdPauseNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdPausePostResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

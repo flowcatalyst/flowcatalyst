@@ -5,10 +5,9 @@ namespace FlowCatalyst\Generated\Endpoint;
 class PostApiAdminServiceAccount extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
 {
     /**
-     * Creates a service account and returns credentials. Credentials are shown only once.
-     * @param null|\FlowCatalyst\Generated\Model\CreateServiceAccountRequest $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\ApiAdminServiceAccountsPostBody $requestBody
      */
-    public function __construct(?\FlowCatalyst\Generated\Model\CreateServiceAccountRequest $requestBody = null)
+    public function __construct(?\FlowCatalyst\Generated\Model\ApiAdminServiceAccountsPostBody $requestBody = null)
     {
         $this->body = $requestBody;
     }
@@ -23,7 +22,7 @@ class PostApiAdminServiceAccount extends \FlowCatalyst\Generated\Runtime\Client\
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
-        if ($this->body instanceof \FlowCatalyst\Generated\Model\CreateServiceAccountRequest) {
+        if ($this->body instanceof \FlowCatalyst\Generated\Model\ApiAdminServiceAccountsPostBody) {
             return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
         }
         return [[], null];
@@ -36,22 +35,26 @@ class PostApiAdminServiceAccount extends \FlowCatalyst\Generated\Runtime\Client\
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminServiceAccountBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminServiceAccountConflictException
      *
-     * @return null|\FlowCatalyst\Generated\Model\CreateServiceAccountResponse
+     * @return null|\FlowCatalyst\Generated\Model\ApiAdminServiceAccountsPostResponse201
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (201 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\CreateServiceAccountResponse', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminServiceAccountsPostResponse201', 'json');
         }
-        if (400 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminServiceAccountBadRequestException($response);
+        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PostApiAdminServiceAccountBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminServiceAccountsPostResponse400', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (409 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PostApiAdminServiceAccountConflictException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminServiceAccountsPostResponse409', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

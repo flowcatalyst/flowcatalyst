@@ -32,6 +32,7 @@ class DeleteApiAdminServiceAccountById extends \FlowCatalyst\Generated\Runtime\C
     /**
      * {@inheritdoc}
      *
+     * @throws \FlowCatalyst\Generated\Exception\DeleteApiAdminServiceAccountByIdNotFoundException
      *
      * @return null
      */
@@ -39,12 +40,15 @@ class DeleteApiAdminServiceAccountById extends \FlowCatalyst\Generated\Runtime\C
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+        if (204 === $status) {
+            return null;
+        }
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminServiceAccountByIdNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminServiceAccountsIdDeleteResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

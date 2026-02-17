@@ -13,6 +13,7 @@ import {
   noContent,
   notFound,
   ErrorResponseSchema,
+  SyncResponseSchema,
 } from '@flowcatalyst/http';
 import { Result } from '@flowcatalyst/application';
 import type { UseCase } from '@flowcatalyst/application';
@@ -110,14 +111,6 @@ const DispatchPoolResponseSchema = Type.Object({
 const DispatchPoolListResponseSchema = Type.Object({
   pools: Type.Array(DispatchPoolResponseSchema),
   total: Type.Integer(),
-});
-
-const SyncResponseSchema = Type.Object({
-  applicationCode: Type.String(),
-  created: Type.Integer(),
-  updated: Type.Integer(),
-  deleted: Type.Integer(),
-  syncedCodes: Type.Array(Type.String()),
 });
 
 type DispatchPoolResponse = Static<typeof DispatchPoolResponseSchema>;

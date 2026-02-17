@@ -5,13 +5,12 @@ namespace FlowCatalyst\Generated\Endpoint;
 class GetApiAdminSubscription extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
 {
     /**
-     * Returns subscriptions with optional filtering
      * @param array{
-     *    "anchorLevel"?: bool, //If true, return only anchor-level subscriptions
-     *    "clientId"?: string, //Filter by client ID
-     *    "dispatchPoolId"?: string, //Filter by dispatch pool
-     *    "source"?: string, //Filter by source
-     *    "status"?: string, //Filter by status
+     *    "clientId"?: string,
+     *    "status"?: string,
+     *    "source"?: string,
+     *    "dispatchPoolId"?: string,
+     *    "anchorLevel"?: string,
      * } $queryParameters
      */
     public function __construct(array $queryParameters = [])
@@ -38,40 +37,32 @@ class GetApiAdminSubscription extends \FlowCatalyst\Generated\Runtime\Client\Bas
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['anchorLevel', 'clientId', 'dispatchPoolId', 'source', 'status']);
+        $optionsResolver->setDefined(['clientId', 'status', 'source', 'dispatchPoolId', 'anchorLevel']);
         $optionsResolver->setRequired([]);
         $optionsResolver->setDefaults([]);
-        $optionsResolver->addAllowedTypes('anchorLevel', ['bool']);
         $optionsResolver->addAllowedTypes('clientId', ['string']);
-        $optionsResolver->addAllowedTypes('dispatchPoolId', ['string']);
-        $optionsResolver->addAllowedTypes('source', ['string']);
         $optionsResolver->addAllowedTypes('status', ['string']);
+        $optionsResolver->addAllowedTypes('source', ['string']);
+        $optionsResolver->addAllowedTypes('dispatchPoolId', ['string']);
+        $optionsResolver->addAllowedTypes('anchorLevel', ['string']);
         return $optionsResolver;
     }
     /**
      * {@inheritdoc}
      *
-     * @throws \FlowCatalyst\Generated\Exception\GetApiAdminSubscriptionUnauthorizedException
-     * @throws \FlowCatalyst\Generated\Exception\GetApiAdminSubscriptionForbiddenException
      *
-     * @return null|\FlowCatalyst\Generated\Model\SubscriptionListResponse1
+     * @return null|\FlowCatalyst\Generated\Model\ApiAdminSubscriptionsGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\SubscriptionListResponse1', 'json');
-        }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminSubscriptionUnauthorizedException($response);
-        }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminSubscriptionForbiddenException($response);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminSubscriptionsGetResponse200', 'json');
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

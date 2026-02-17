@@ -18,21 +18,21 @@ class EventTypes
      * List all event types with optional filters.
      *
      * @param array $filters Optional filters: status, application, subdomain, aggregate
-     * @return array{items: EventType[], total: int}
+     * @return array{eventTypes: EventType[], total: int}
      */
     public function list(array $filters = []): array
     {
         $query = http_build_query($filters);
-        $endpoint = '/api/event-types' . ($query ? "?{$query}" : '');
+        $endpoint = '/api/admin/event-types' . ($query ? "?{$query}" : '');
 
         $response = $this->client->request('GET', $endpoint);
 
         return [
-            'items' => array_map(
+            'eventTypes' => array_map(
                 fn(array $item) => EventType::fromArray($item),
-                $response['items'] ?? []
+                $response['eventTypes'] ?? []
             ),
-            'total' => count($response['items'] ?? []),
+            'total' => $response['total'] ?? count($response['eventTypes'] ?? []),
         ];
     }
 
@@ -53,7 +53,7 @@ class EventTypes
      */
     public function create(array $data): EventType
     {
-        $response = $this->client->request('POST', '/api/event-types', [
+        $response = $this->client->request('POST', '/api/admin/event-types', [
             'json' => $data,
         ]);
 
@@ -137,7 +137,7 @@ class EventTypes
      */
     public function filterApplications(): array
     {
-        $response = $this->client->request('GET', '/api/event-types/filters/applications');
+        $response = $this->client->request('GET', '/api/admin/event-types/filters/applications');
 
         return $response['applications'] ?? $response ?? [];
     }

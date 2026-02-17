@@ -33,30 +33,22 @@ class GetApiAdminDispatchPoolById extends \FlowCatalyst\Generated\Runtime\Client
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\GetApiAdminDispatchPoolByIdNotFoundException
-     * @throws \FlowCatalyst\Generated\Exception\GetApiAdminDispatchPoolByIdUnauthorizedException
-     * @throws \FlowCatalyst\Generated\Exception\GetApiAdminDispatchPoolByIdForbiddenException
      *
-     * @return null|\FlowCatalyst\Generated\Model\DispatchPoolDto
+     * @return null|\FlowCatalyst\Generated\Model\ApiAdminDispatchPoolsIdGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\DispatchPoolDto', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminDispatchPoolsIdGetResponse200', 'json');
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminDispatchPoolByIdNotFoundException($response);
-        }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminDispatchPoolByIdUnauthorizedException($response);
-        }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminDispatchPoolByIdForbiddenException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\GetApiAdminDispatchPoolByIdNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminDispatchPoolsIdGetResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

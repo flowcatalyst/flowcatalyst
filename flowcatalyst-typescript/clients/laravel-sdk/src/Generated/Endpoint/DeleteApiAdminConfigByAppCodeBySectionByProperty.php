@@ -5,22 +5,22 @@ namespace FlowCatalyst\Generated\Endpoint;
 class DeleteApiAdminConfigByAppCodeBySectionByProperty extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
 {
     protected $appCode;
-    protected $property;
     protected $section;
+    protected $property;
     /**
      * @param string $appCode
-     * @param string $property
      * @param string $section
+     * @param string $property
      * @param array{
-     *    "clientId"?: string,
      *    "scope"?: string,
+     *    "clientId"?: string,
      * } $queryParameters
      */
-    public function __construct(string $appCode, string $property, string $section, array $queryParameters = [])
+    public function __construct(string $appCode, string $section, string $property, array $queryParameters = [])
     {
         $this->appCode = $appCode;
-        $this->property = $property;
         $this->section = $section;
+        $this->property = $property;
         $this->queryParameters = $queryParameters;
     }
     use \FlowCatalyst\Generated\Runtime\Client\EndpointTrait;
@@ -30,20 +30,24 @@ class DeleteApiAdminConfigByAppCodeBySectionByProperty extends \FlowCatalyst\Gen
     }
     public function getUri(): string
     {
-        return str_replace(['{appCode}', '{property}', '{section}'], [$this->appCode, $this->property, $this->section], '/api/admin/config/{appCode}/{section}/{property}');
+        return str_replace(['{appCode}', '{section}', '{property}'], [$this->appCode, $this->section, $this->property], '/api/admin/config/{appCode}/{section}/{property}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
         return [[], null];
     }
+    public function getExtraHeaders(): array
+    {
+        return ['Accept' => ['application/json']];
+    }
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['clientId', 'scope']);
+        $optionsResolver->setDefined(['scope', 'clientId']);
         $optionsResolver->setRequired([]);
         $optionsResolver->setDefaults([]);
-        $optionsResolver->addAllowedTypes('clientId', ['string']);
         $optionsResolver->addAllowedTypes('scope', ['string']);
+        $optionsResolver->addAllowedTypes('clientId', ['string']);
         return $optionsResolver;
     }
     /**
@@ -61,15 +65,15 @@ class DeleteApiAdminConfigByAppCodeBySectionByProperty extends \FlowCatalyst\Gen
         if (204 === $status) {
             return null;
         }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminConfigByAppCodeBySectionByPropertyForbiddenException($response);
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminConfigByAppCodeBySectionByPropertyForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminConfigAppCodeSectionPropertyDeleteResponse403', 'json'), $response);
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminConfigByAppCodeBySectionByPropertyNotFoundException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminConfigByAppCodeBySectionByPropertyNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminConfigAppCodeSectionPropertyDeleteResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

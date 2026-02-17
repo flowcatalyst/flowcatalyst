@@ -7,9 +7,9 @@ class PutBffRoleByRoleName extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
     protected $roleName;
     /**
      * @param string $roleName
-     * @param null|\FlowCatalyst\Generated\Model\UpdateRoleRequest2 $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\BffRolesRoleNamePutBody $requestBody
      */
-    public function __construct(string $roleName, ?\FlowCatalyst\Generated\Model\UpdateRoleRequest2 $requestBody = null)
+    public function __construct(string $roleName, ?\FlowCatalyst\Generated\Model\BffRolesRoleNamePutBody $requestBody = null)
     {
         $this->roleName = $roleName;
         $this->body = $requestBody;
@@ -25,7 +25,7 @@ class PutBffRoleByRoleName extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
-        if ($this->body instanceof \FlowCatalyst\Generated\Model\UpdateRoleRequest2) {
+        if ($this->body instanceof \FlowCatalyst\Generated\Model\BffRolesRoleNamePutBody) {
             return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
         }
         return [[], null];
@@ -38,22 +38,26 @@ class PutBffRoleByRoleName extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\PutBffRoleByRoleNameBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\PutBffRoleByRoleNameNotFoundException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\BffRolesRoleNamePutResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\BffRolesRoleNamePutResponse200', 'json');
         }
-        if (400 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PutBffRoleByRoleNameBadRequestException($response);
+        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PutBffRoleByRoleNameBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\BffRolesRoleNamePutResponse400', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PutBffRoleByRoleNameNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\BffRolesRoleNamePutResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

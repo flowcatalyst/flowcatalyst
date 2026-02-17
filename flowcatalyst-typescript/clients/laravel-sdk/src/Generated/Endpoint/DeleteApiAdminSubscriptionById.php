@@ -33,8 +33,6 @@ class DeleteApiAdminSubscriptionById extends \FlowCatalyst\Generated\Runtime\Cli
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\DeleteApiAdminSubscriptionByIdNotFoundException
-     * @throws \FlowCatalyst\Generated\Exception\DeleteApiAdminSubscriptionByIdUnauthorizedException
-     * @throws \FlowCatalyst\Generated\Exception\DeleteApiAdminSubscriptionByIdForbiddenException
      *
      * @return null
      */
@@ -42,21 +40,15 @@ class DeleteApiAdminSubscriptionById extends \FlowCatalyst\Generated\Runtime\Cli
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+        if (204 === $status) {
+            return null;
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminSubscriptionByIdNotFoundException($response);
-        }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminSubscriptionByIdUnauthorizedException($response);
-        }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminSubscriptionByIdForbiddenException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminSubscriptionByIdNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdDeleteResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

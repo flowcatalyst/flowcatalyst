@@ -45,18 +45,18 @@ class GetBffRole extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint imp
      * {@inheritdoc}
      *
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\BffRolesGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\BffRolesGetResponse200', 'json');
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

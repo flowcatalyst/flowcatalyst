@@ -6,7 +6,6 @@ class DeleteApiAdminDispatchPoolById extends \FlowCatalyst\Generated\Runtime\Cli
 {
     protected $id;
     /**
-     * Archives the pool (soft delete)
      * @param string $id
      */
     public function __construct(string $id)
@@ -34,9 +33,6 @@ class DeleteApiAdminDispatchPoolById extends \FlowCatalyst\Generated\Runtime\Cli
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\DeleteApiAdminDispatchPoolByIdNotFoundException
-     * @throws \FlowCatalyst\Generated\Exception\DeleteApiAdminDispatchPoolByIdBadRequestException
-     * @throws \FlowCatalyst\Generated\Exception\DeleteApiAdminDispatchPoolByIdUnauthorizedException
-     * @throws \FlowCatalyst\Generated\Exception\DeleteApiAdminDispatchPoolByIdForbiddenException
      *
      * @return null
      */
@@ -44,24 +40,15 @@ class DeleteApiAdminDispatchPoolById extends \FlowCatalyst\Generated\Runtime\Cli
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+        if (204 === $status) {
+            return null;
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminDispatchPoolByIdNotFoundException($response);
-        }
-        if (400 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminDispatchPoolByIdBadRequestException($response);
-        }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminDispatchPoolByIdUnauthorizedException($response);
-        }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminDispatchPoolByIdForbiddenException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminDispatchPoolByIdNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminDispatchPoolsIdDeleteResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

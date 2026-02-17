@@ -32,23 +32,19 @@ class GetApiAdminConfigAccessByAppCode extends \FlowCatalyst\Generated\Runtime\C
     /**
      * {@inheritdoc}
      *
-     * @throws \FlowCatalyst\Generated\Exception\GetApiAdminConfigAccessByAppCodeForbiddenException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\ApiAdminConfigAccessAppCodeGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
-        }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminConfigAccessByAppCodeForbiddenException($response);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminConfigAccessAppCodeGetResponse200', 'json');
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

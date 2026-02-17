@@ -28,10 +28,13 @@ class DeleteApiAdminConfigAccessByAppCodeByRoleCode extends \FlowCatalyst\Genera
     {
         return [[], null];
     }
+    public function getExtraHeaders(): array
+    {
+        return ['Accept' => ['application/json']];
+    }
     /**
      * {@inheritdoc}
      *
-     * @throws \FlowCatalyst\Generated\Exception\DeleteApiAdminConfigAccessByAppCodeByRoleCodeForbiddenException
      * @throws \FlowCatalyst\Generated\Exception\DeleteApiAdminConfigAccessByAppCodeByRoleCodeNotFoundException
      *
      * @return null
@@ -43,15 +46,12 @@ class DeleteApiAdminConfigAccessByAppCodeByRoleCode extends \FlowCatalyst\Genera
         if (204 === $status) {
             return null;
         }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminConfigAccessByAppCodeByRoleCodeForbiddenException($response);
-        }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminConfigAccessByAppCodeByRoleCodeNotFoundException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminConfigAccessByAppCodeByRoleCodeNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminConfigAccessAppCodeRoleCodeDeleteResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

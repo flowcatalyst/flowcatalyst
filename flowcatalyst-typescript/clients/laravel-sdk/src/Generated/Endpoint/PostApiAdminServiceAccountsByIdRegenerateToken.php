@@ -6,7 +6,6 @@ class PostApiAdminServiceAccountsByIdRegenerateToken extends \FlowCatalyst\Gener
 {
     protected $id;
     /**
-     * Generate a new random auth token. Returns the new token (shown only once).
      * @param string $id
      */
     public function __construct(string $id)
@@ -33,19 +32,23 @@ class PostApiAdminServiceAccountsByIdRegenerateToken extends \FlowCatalyst\Gener
     /**
      * {@inheritdoc}
      *
+     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminServiceAccountsByIdRegenerateTokenNotFoundException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\ApiAdminServiceAccountsIdRegenerateTokenPostResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminServiceAccountsIdRegenerateTokenPostResponse200', 'json');
+        }
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PostApiAdminServiceAccountsByIdRegenerateTokenNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminServiceAccountsIdRegenerateTokenPostResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

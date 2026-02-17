@@ -7,9 +7,9 @@ class PutApiAdminSubscriptionById extends \FlowCatalyst\Generated\Runtime\Client
     protected $id;
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\UpdateSubscriptionRequest $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdPutBody $requestBody
      */
-    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\UpdateSubscriptionRequest $requestBody = null)
+    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdPutBody $requestBody = null)
     {
         $this->id = $id;
         $this->body = $requestBody;
@@ -25,7 +25,7 @@ class PutApiAdminSubscriptionById extends \FlowCatalyst\Generated\Runtime\Client
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
-        if ($this->body instanceof \FlowCatalyst\Generated\Model\UpdateSubscriptionRequest) {
+        if ($this->body instanceof \FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdPutBody) {
             return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
         }
         return [[], null];
@@ -37,35 +37,27 @@ class PutApiAdminSubscriptionById extends \FlowCatalyst\Generated\Runtime\Client
     /**
      * {@inheritdoc}
      *
-     * @throws \FlowCatalyst\Generated\Exception\PutApiAdminSubscriptionByIdNotFoundException
      * @throws \FlowCatalyst\Generated\Exception\PutApiAdminSubscriptionByIdBadRequestException
-     * @throws \FlowCatalyst\Generated\Exception\PutApiAdminSubscriptionByIdUnauthorizedException
-     * @throws \FlowCatalyst\Generated\Exception\PutApiAdminSubscriptionByIdForbiddenException
+     * @throws \FlowCatalyst\Generated\Exception\PutApiAdminSubscriptionByIdNotFoundException
      *
-     * @return null|\FlowCatalyst\Generated\Model\SubscriptionDto1
+     * @return null|\FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdPutResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\SubscriptionDto1', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdPutResponse200', 'json');
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PutApiAdminSubscriptionByIdNotFoundException($response);
+        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PutApiAdminSubscriptionByIdBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdPutResponse400', 'json'), $response);
         }
-        if (400 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PutApiAdminSubscriptionByIdBadRequestException($response);
-        }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PutApiAdminSubscriptionByIdUnauthorizedException($response);
-        }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PutApiAdminSubscriptionByIdForbiddenException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PutApiAdminSubscriptionByIdNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdPutResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

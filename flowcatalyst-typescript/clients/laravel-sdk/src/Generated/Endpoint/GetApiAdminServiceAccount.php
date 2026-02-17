@@ -5,11 +5,10 @@ namespace FlowCatalyst\Generated\Endpoint;
 class GetApiAdminServiceAccount extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
 {
     /**
-     * List all service accounts with optional filters
      * @param array{
-     *    "active"?: bool, //Filter by active status
-     *    "applicationId"?: string, //Filter by application ID
-     *    "clientId"?: string, //Filter by client ID
+     *    "clientId"?: string,
+     *    "applicationId"?: string,
+     *    "active"?: string,
      * } $queryParameters
      */
     public function __construct(array $queryParameters = [])
@@ -36,34 +35,30 @@ class GetApiAdminServiceAccount extends \FlowCatalyst\Generated\Runtime\Client\B
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['active', 'applicationId', 'clientId']);
+        $optionsResolver->setDefined(['clientId', 'applicationId', 'active']);
         $optionsResolver->setRequired([]);
         $optionsResolver->setDefaults([]);
-        $optionsResolver->addAllowedTypes('active', ['bool']);
-        $optionsResolver->addAllowedTypes('applicationId', ['string']);
         $optionsResolver->addAllowedTypes('clientId', ['string']);
+        $optionsResolver->addAllowedTypes('applicationId', ['string']);
+        $optionsResolver->addAllowedTypes('active', ['string']);
         return $optionsResolver;
     }
     /**
      * {@inheritdoc}
      *
-     * @throws \FlowCatalyst\Generated\Exception\GetApiAdminServiceAccountUnauthorizedException
      *
-     * @return null|\FlowCatalyst\Generated\Model\ServiceAccountListResponse
+     * @return null|\FlowCatalyst\Generated\Model\ApiAdminServiceAccountsGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ServiceAccountListResponse', 'json');
-        }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminServiceAccountUnauthorizedException($response);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminServiceAccountsGetResponse200', 'json');
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

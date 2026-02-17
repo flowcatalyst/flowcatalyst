@@ -25,18 +25,18 @@ class GetApiConfigPlatform extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
      * {@inheritdoc}
      *
      *
-     * @return null|\FlowCatalyst\Generated\Model\PlatformConfigResponse
+     * @return null|\FlowCatalyst\Generated\Model\ApiConfigPlatformGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\PlatformConfigResponse', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiConfigPlatformGetResponse200', 'json');
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

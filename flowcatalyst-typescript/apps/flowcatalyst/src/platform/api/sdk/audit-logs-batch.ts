@@ -8,7 +8,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { Type, type Static } from '@sinclair/typebox';
-import { jsonSuccess, badRequest } from '@flowcatalyst/http';
+import { jsonSuccess, badRequest, BatchResponseSchema } from '@flowcatalyst/http';
 import { generate } from '@flowcatalyst/tsid';
 import { auditLogs, type NewAuditLog } from '@flowcatalyst/persistence';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
@@ -32,18 +32,6 @@ const AuditLogItemSchema = Type.Object({
 
 const BatchAuditLogsRequestSchema = Type.Object({
   items: Type.Array(AuditLogItemSchema, { minItems: 1, maxItems: MAX_BATCH_SIZE }),
-});
-
-// ─── Response Schemas ───────────────────────────────────────────────────────
-
-const BatchResponseSchema = Type.Object({
-  results: Type.Array(
-    Type.Object({
-      id: Type.String(),
-      status: Type.Union([Type.Literal('SUCCESS'), Type.Literal('ERROR')]),
-      error: Type.Optional(Type.String()),
-    }),
-  ),
 });
 
 // ─── Dependencies ───────────────────────────────────────────────────────────

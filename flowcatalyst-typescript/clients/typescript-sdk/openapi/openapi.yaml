@@ -2730,6 +2730,7 @@ paths:
                   - message
                 properties:
                   message:
+                    description: Human-readable status message
                     type: string
         "404":
           description: Default Response
@@ -2775,6 +2776,7 @@ paths:
                   - message
                 properties:
                   message:
+                    description: Human-readable status message
                     type: string
         "404":
           description: Default Response
@@ -2820,6 +2822,7 @@ paths:
                   - message
                 properties:
                   message:
+                    description: Human-readable status message
                     type: string
         "404":
           description: Default Response
@@ -6457,6 +6460,9 @@ paths:
                           - password
                 defaultScopes:
                   anyOf:
+                    - type: array
+                      items:
+                        type: string
                     - type: string
                     - type: "null"
                 pkceRequired:
@@ -6732,6 +6738,9 @@ paths:
                           - password
                 defaultScopes:
                   anyOf:
+                    - type: array
+                      items:
+                        type: string
                     - type: string
                     - type: "null"
                 pkceRequired:
@@ -7188,6 +7197,7 @@ paths:
                   - message
                 properties:
                   message:
+                    description: Human-readable status message
                     type: string
         "404":
           description: Default Response
@@ -7228,6 +7238,7 @@ paths:
                   - message
                 properties:
                   message:
+                    description: Human-readable status message
                     type: string
         "404":
           description: Default Response

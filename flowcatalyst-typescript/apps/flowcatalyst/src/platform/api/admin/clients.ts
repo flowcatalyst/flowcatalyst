@@ -13,6 +13,7 @@ import {
   noContent,
   notFound,
   ErrorResponseSchema,
+  MessageResponseSchema,
 } from '@flowcatalyst/http';
 import { Result } from '@flowcatalyst/application';
 import type { UseCase } from '@flowcatalyst/application';
@@ -602,7 +603,7 @@ export async function registerClientsRoutes(
           enabledApplicationIds: Type.Array(Type.String()),
         }),
         response: {
-          200: Type.Object({ message: Type.String() }),
+          200: MessageResponseSchema,
           404: ErrorResponseSchema,
         },
       },
@@ -660,7 +661,7 @@ export async function registerClientsRoutes(
       schema: {
         params: Type.Object({ id: Type.String(), appId: Type.String() }),
         response: {
-          200: Type.Object({ message: Type.String() }),
+          200: MessageResponseSchema,
           404: ErrorResponseSchema,
         },
       },
@@ -692,7 +693,7 @@ export async function registerClientsRoutes(
       schema: {
         params: Type.Object({ id: Type.String(), appId: Type.String() }),
         response: {
-          200: Type.Object({ message: Type.String() }),
+          200: MessageResponseSchema,
           404: ErrorResponseSchema,
         },
       },

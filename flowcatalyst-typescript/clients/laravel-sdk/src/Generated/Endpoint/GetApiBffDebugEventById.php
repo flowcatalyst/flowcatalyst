@@ -6,7 +6,6 @@ class GetApiBffDebugEventById extends \FlowCatalyst\Generated\Runtime\Client\Bas
 {
     protected $id;
     /**
-     * Get a single raw event by its ID (debug/admin only)
      * @param string $id
      */
     public function __construct(string $id)
@@ -35,21 +34,21 @@ class GetApiBffDebugEventById extends \FlowCatalyst\Generated\Runtime\Client\Bas
      *
      * @throws \FlowCatalyst\Generated\Exception\GetApiBffDebugEventByIdNotFoundException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\ApiBffDebugEventsIdGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiBffDebugEventsIdGetResponse200', 'json');
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiBffDebugEventByIdNotFoundException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\GetApiBffDebugEventByIdNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiBffDebugEventsIdGetResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

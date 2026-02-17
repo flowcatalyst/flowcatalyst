@@ -6,10 +6,10 @@ class GetBffEventType extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoin
 {
     /**
      * @param array{
-     *    "aggregate"?: array,
-     *    "application"?: array,
      *    "status"?: string,
+     *    "application"?: array,
      *    "subdomain"?: array,
+     *    "aggregate"?: array,
      * } $queryParameters
      */
     public function __construct(array $queryParameters = [])
@@ -36,31 +36,31 @@ class GetBffEventType extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoin
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['aggregate', 'application', 'status', 'subdomain']);
+        $optionsResolver->setDefined(['status', 'application', 'subdomain', 'aggregate']);
         $optionsResolver->setRequired([]);
         $optionsResolver->setDefaults([]);
-        $optionsResolver->addAllowedTypes('aggregate', ['array']);
-        $optionsResolver->addAllowedTypes('application', ['array']);
         $optionsResolver->addAllowedTypes('status', ['string']);
+        $optionsResolver->addAllowedTypes('application', ['array']);
         $optionsResolver->addAllowedTypes('subdomain', ['array']);
+        $optionsResolver->addAllowedTypes('aggregate', ['array']);
         return $optionsResolver;
     }
     /**
      * {@inheritdoc}
      *
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\BffEventTypesGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\BffEventTypesGetResponse200', 'json');
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

@@ -8,7 +8,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { Type, type Static } from '@sinclair/typebox';
-import { jsonSuccess, badRequest } from '@flowcatalyst/http';
+import { jsonSuccess, badRequest, BatchResponseSchema } from '@flowcatalyst/http';
 import { generateRaw } from '@flowcatalyst/tsid';
 import {
   events,
@@ -45,18 +45,6 @@ const EventItemSchema = Type.Object({
 
 const BatchEventsRequestSchema = Type.Object({
   items: Type.Array(EventItemSchema, { minItems: 1, maxItems: MAX_BATCH_SIZE }),
-});
-
-// ─── Response Schemas ───────────────────────────────────────────────────────
-
-const BatchResponseSchema = Type.Object({
-  results: Type.Array(
-    Type.Object({
-      id: Type.String(),
-      status: Type.Union([Type.Literal('SUCCESS'), Type.Literal('ERROR')]),
-      error: Type.Optional(Type.String()),
-    }),
-  ),
 });
 
 // ─── Dependencies ───────────────────────────────────────────────────────────

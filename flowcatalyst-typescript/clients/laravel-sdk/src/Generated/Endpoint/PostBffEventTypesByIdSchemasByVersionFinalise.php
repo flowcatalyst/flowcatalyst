@@ -35,19 +35,27 @@ class PostBffEventTypesByIdSchemasByVersionFinalise extends \FlowCatalyst\Genera
     /**
      * {@inheritdoc}
      *
+     * @throws \FlowCatalyst\Generated\Exception\PostBffEventTypesByIdSchemasByVersionFinaliseNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\PostBffEventTypesByIdSchemasByVersionFinaliseConflictException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\BffEventTypesIdSchemasVersionFinalisePostResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\BffEventTypesIdSchemasVersionFinalisePostResponse200', 'json');
+        }
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PostBffEventTypesByIdSchemasByVersionFinaliseNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\BffEventTypesIdSchemasVersionFinalisePostResponse404', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (409 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PostBffEventTypesByIdSchemasByVersionFinaliseConflictException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\BffEventTypesIdSchemasVersionFinalisePostResponse409', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

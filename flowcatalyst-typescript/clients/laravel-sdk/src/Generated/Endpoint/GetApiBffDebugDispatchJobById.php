@@ -6,7 +6,6 @@ class GetApiBffDebugDispatchJobById extends \FlowCatalyst\Generated\Runtime\Clie
 {
     protected $id;
     /**
-     * Get a single raw dispatch job by its ID (debug/admin only)
      * @param string $id
      */
     public function __construct(string $id)
@@ -35,21 +34,21 @@ class GetApiBffDebugDispatchJobById extends \FlowCatalyst\Generated\Runtime\Clie
      *
      * @throws \FlowCatalyst\Generated\Exception\GetApiBffDebugDispatchJobByIdNotFoundException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\ApiBffDebugDispatchJobsIdGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiBffDebugDispatchJobsIdGetResponse200', 'json');
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiBffDebugDispatchJobByIdNotFoundException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\GetApiBffDebugDispatchJobByIdNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiBffDebugDispatchJobsIdGetResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

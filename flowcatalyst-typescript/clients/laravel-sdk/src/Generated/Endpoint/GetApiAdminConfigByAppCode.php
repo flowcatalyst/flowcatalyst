@@ -8,8 +8,8 @@ class GetApiAdminConfigByAppCode extends \FlowCatalyst\Generated\Runtime\Client\
     /**
      * @param string $appCode
      * @param array{
-     *    "clientId"?: string,
      *    "scope"?: string,
+     *    "clientId"?: string,
      * } $queryParameters
      */
     public function __construct(string $appCode, array $queryParameters = [])
@@ -37,11 +37,11 @@ class GetApiAdminConfigByAppCode extends \FlowCatalyst\Generated\Runtime\Client\
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['clientId', 'scope']);
+        $optionsResolver->setDefined(['scope', 'clientId']);
         $optionsResolver->setRequired([]);
         $optionsResolver->setDefaults([]);
-        $optionsResolver->addAllowedTypes('clientId', ['string']);
         $optionsResolver->addAllowedTypes('scope', ['string']);
+        $optionsResolver->addAllowedTypes('clientId', ['string']);
         return $optionsResolver;
     }
     /**
@@ -49,21 +49,21 @@ class GetApiAdminConfigByAppCode extends \FlowCatalyst\Generated\Runtime\Client\
      *
      * @throws \FlowCatalyst\Generated\Exception\GetApiAdminConfigByAppCodeForbiddenException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\ApiAdminConfigAppCodeGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminConfigAppCodeGetResponse200', 'json');
         }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminConfigByAppCodeForbiddenException($response);
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\GetApiAdminConfigByAppCodeForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminConfigAppCodeGetResponse403', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

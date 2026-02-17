@@ -10,8 +10,8 @@ class GetApiAdminConfigByAppCodeBySection extends \FlowCatalyst\Generated\Runtim
      * @param string $appCode
      * @param string $section
      * @param array{
-     *    "clientId"?: string,
      *    "scope"?: string,
+     *    "clientId"?: string,
      * } $queryParameters
      */
     public function __construct(string $appCode, string $section, array $queryParameters = [])
@@ -40,11 +40,11 @@ class GetApiAdminConfigByAppCodeBySection extends \FlowCatalyst\Generated\Runtim
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['clientId', 'scope']);
+        $optionsResolver->setDefined(['scope', 'clientId']);
         $optionsResolver->setRequired([]);
         $optionsResolver->setDefaults([]);
-        $optionsResolver->addAllowedTypes('clientId', ['string']);
         $optionsResolver->addAllowedTypes('scope', ['string']);
+        $optionsResolver->addAllowedTypes('clientId', ['string']);
         return $optionsResolver;
     }
     /**
@@ -52,21 +52,21 @@ class GetApiAdminConfigByAppCodeBySection extends \FlowCatalyst\Generated\Runtim
      *
      * @throws \FlowCatalyst\Generated\Exception\GetApiAdminConfigByAppCodeBySectionForbiddenException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\ApiAdminConfigAppCodeSectionGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminConfigAppCodeSectionGetResponse200', 'json');
         }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminConfigByAppCodeBySectionForbiddenException($response);
+        if (is_null($contentType) === false && (403 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\GetApiAdminConfigByAppCodeBySectionForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminConfigAppCodeSectionGetResponse403', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

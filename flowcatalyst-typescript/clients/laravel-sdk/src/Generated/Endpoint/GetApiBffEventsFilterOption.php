@@ -5,12 +5,11 @@ namespace FlowCatalyst\Generated\Endpoint;
 class GetApiBffEventsFilterOption extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
 {
     /**
-     * Get available filter values for cascading filters. Each level is narrowed by selections at higher levels (client → application → subdomain → aggregate → type).
      * @param array{
-     *    "aggregates"?: string,
-     *    "applications"?: string,
      *    "clientIds"?: string,
+     *    "applications"?: string,
      *    "subdomains"?: string,
+     *    "aggregates"?: string,
      * } $queryParameters
      */
     public function __construct(array $queryParameters = [])
@@ -37,31 +36,31 @@ class GetApiBffEventsFilterOption extends \FlowCatalyst\Generated\Runtime\Client
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['aggregates', 'applications', 'clientIds', 'subdomains']);
+        $optionsResolver->setDefined(['clientIds', 'applications', 'subdomains', 'aggregates']);
         $optionsResolver->setRequired([]);
         $optionsResolver->setDefaults([]);
-        $optionsResolver->addAllowedTypes('aggregates', ['string']);
-        $optionsResolver->addAllowedTypes('applications', ['string']);
         $optionsResolver->addAllowedTypes('clientIds', ['string']);
+        $optionsResolver->addAllowedTypes('applications', ['string']);
         $optionsResolver->addAllowedTypes('subdomains', ['string']);
+        $optionsResolver->addAllowedTypes('aggregates', ['string']);
         return $optionsResolver;
     }
     /**
      * {@inheritdoc}
      *
      *
-     * @return null|\FlowCatalyst\Generated\Model\FilterOptionsResponse2
+     * @return null|\FlowCatalyst\Generated\Model\ApiBffEventsFilterOptionsGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\FilterOptionsResponse2', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiBffEventsFilterOptionsGetResponse200', 'json');
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

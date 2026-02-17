@@ -32,19 +32,23 @@ class GetBffEventTypeById extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
     /**
      * {@inheritdoc}
      *
+     * @throws \FlowCatalyst\Generated\Exception\GetBffEventTypeByIdNotFoundException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\BffEventTypesIdGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\BffEventTypesIdGetResponse200', 'json');
+        }
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\GetBffEventTypeByIdNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\BffEventTypesIdGetResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

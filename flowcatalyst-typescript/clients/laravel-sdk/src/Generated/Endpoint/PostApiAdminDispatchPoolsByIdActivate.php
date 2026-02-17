@@ -6,7 +6,6 @@ class PostApiAdminDispatchPoolsByIdActivate extends \FlowCatalyst\Generated\Runt
 {
     protected $id;
     /**
-     * Re-enable a suspended pool
      * @param string $id
      */
     public function __construct(string $id)
@@ -34,30 +33,22 @@ class PostApiAdminDispatchPoolsByIdActivate extends \FlowCatalyst\Generated\Runt
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminDispatchPoolsByIdActivateNotFoundException
-     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminDispatchPoolsByIdActivateUnauthorizedException
-     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminDispatchPoolsByIdActivateForbiddenException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\ApiAdminDispatchPoolsIdActivatePostResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminDispatchPoolsIdActivatePostResponse200', 'json');
         }
-        if (404 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminDispatchPoolsByIdActivateNotFoundException($response);
-        }
-        if (401 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminDispatchPoolsByIdActivateUnauthorizedException($response);
-        }
-        if (403 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminDispatchPoolsByIdActivateForbiddenException($response);
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PostApiAdminDispatchPoolsByIdActivateNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminDispatchPoolsIdActivatePostResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

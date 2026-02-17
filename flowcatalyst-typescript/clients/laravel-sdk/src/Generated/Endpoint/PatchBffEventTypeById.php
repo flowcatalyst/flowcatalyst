@@ -7,9 +7,9 @@ class PatchBffEventTypeById extends \FlowCatalyst\Generated\Runtime\Client\BaseE
     protected $id;
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\UpdateEventTypeRequest1 $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\BffEventTypesIdPatchBody $requestBody
      */
-    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\UpdateEventTypeRequest1 $requestBody = null)
+    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\BffEventTypesIdPatchBody $requestBody = null)
     {
         $this->id = $id;
         $this->body = $requestBody;
@@ -25,7 +25,7 @@ class PatchBffEventTypeById extends \FlowCatalyst\Generated\Runtime\Client\BaseE
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
-        if ($this->body instanceof \FlowCatalyst\Generated\Model\UpdateEventTypeRequest1) {
+        if ($this->body instanceof \FlowCatalyst\Generated\Model\BffEventTypesIdPatchBody) {
             return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
         }
         return [[], null];
@@ -37,19 +37,27 @@ class PatchBffEventTypeById extends \FlowCatalyst\Generated\Runtime\Client\BaseE
     /**
      * {@inheritdoc}
      *
+     * @throws \FlowCatalyst\Generated\Exception\PatchBffEventTypeByIdBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\PatchBffEventTypeByIdNotFoundException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\BffEventTypesIdPatchResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\BffEventTypesIdPatchResponse200', 'json');
+        }
+        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PatchBffEventTypeByIdBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\BffEventTypesIdPatchResponse400', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PatchBffEventTypeByIdNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\BffEventTypesIdPatchResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

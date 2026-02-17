@@ -5,7 +5,6 @@ namespace FlowCatalyst\Generated\Endpoint;
 class GetApiBffDebugEvent extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
 {
     /**
-     * List raw events from the transactional collection (debug/admin only)
      * @param array{
      *    "page"?: int,
      *    "size"?: int,
@@ -37,7 +36,7 @@ class GetApiBffDebugEvent extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
         $optionsResolver = parent::getQueryOptionsResolver();
         $optionsResolver->setDefined(['page', 'size']);
         $optionsResolver->setRequired([]);
-        $optionsResolver->setDefaults(['page' => '0', 'size' => '20']);
+        $optionsResolver->setDefaults(['page' => 0, 'size' => 20]);
         $optionsResolver->addAllowedTypes('page', ['int']);
         $optionsResolver->addAllowedTypes('size', ['int']);
         return $optionsResolver;
@@ -46,18 +45,18 @@ class GetApiBffDebugEvent extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
      * {@inheritdoc}
      *
      *
-     * @return null|\FlowCatalyst\Generated\Model\PagedRawEventResponse
+     * @return null|\FlowCatalyst\Generated\Model\ApiBffDebugEventsGetResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\PagedRawEventResponse', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiBffDebugEventsGetResponse200', 'json');
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }

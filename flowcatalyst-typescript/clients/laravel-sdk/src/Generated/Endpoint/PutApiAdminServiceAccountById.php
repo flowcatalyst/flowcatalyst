@@ -7,9 +7,9 @@ class PutApiAdminServiceAccountById extends \FlowCatalyst\Generated\Runtime\Clie
     protected $id;
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\UpdateServiceAccountRequest $requestBody
+     * @param null|\FlowCatalyst\Generated\Model\ApiAdminServiceAccountsIdPutBody $requestBody
      */
-    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\UpdateServiceAccountRequest $requestBody = null)
+    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\ApiAdminServiceAccountsIdPutBody $requestBody = null)
     {
         $this->id = $id;
         $this->body = $requestBody;
@@ -25,7 +25,7 @@ class PutApiAdminServiceAccountById extends \FlowCatalyst\Generated\Runtime\Clie
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
-        if ($this->body instanceof \FlowCatalyst\Generated\Model\UpdateServiceAccountRequest) {
+        if ($this->body instanceof \FlowCatalyst\Generated\Model\ApiAdminServiceAccountsIdPutBody) {
             return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
         }
         return [[], null];
@@ -38,22 +38,26 @@ class PutApiAdminServiceAccountById extends \FlowCatalyst\Generated\Runtime\Clie
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\PutApiAdminServiceAccountByIdBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\PutApiAdminServiceAccountByIdNotFoundException
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\ApiAdminServiceAccountsIdPutResponse200
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return json_decode($body);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminServiceAccountsIdPutResponse200', 'json');
         }
-        if (400 === $status) {
-            throw new \FlowCatalyst\Generated\Exception\PutApiAdminServiceAccountByIdBadRequestException($response);
+        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PutApiAdminServiceAccountByIdBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminServiceAccountsIdPutResponse400', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PutApiAdminServiceAccountByIdNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminServiceAccountsIdPutResponse404', 'json'), $response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return [];
+        return ['bearerAuth'];
     }
 }
