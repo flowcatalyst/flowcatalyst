@@ -12,10 +12,11 @@ on:
 permissions:
   id-token: write
   contents: read
+  packages: write
 
 env:
   AWS_REGION: af-south-1
-  ECR_REPO: inhance/flowcatalyst
+  IMAGE: ghcr.io/flowcatalyst/flowcatalyst
   ECS_CLUSTER: inhance-np-cluster
   ECS_SERVICE: inhance-fc-np-svc
   TASK_FAMILY: inhance-fc-np-platform
@@ -27,41 +28,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ── Build & Push to GHCR ────────────────────────────────────
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        working-directory: flowcatalyst-typescript
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            -f apps/flowcatalyst/Dockerfile \
+            -t $IMAGE:${{ github.sha }} \
+            -t $IMAGE:latest \
+            .
+          docker push $IMAGE:${{ github.sha }}
+          docker push $IMAGE:latest
+
+      # ── AWS Steps ───────────────────────────────────────────────
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - uses: aws-actions/amazon-ecr-login@v2
-        id: ecr
-
-      # ── Build & Push ──────────────────────────────────────────────
-      - name: Build and push Docker image
-        working-directory: flowcatalyst-typescript
-        env:
-          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}
-          SHA_TAG: ${{ github.sha }}
-        run: |
-          docker build \
-            --platform linux/amd64 \
-            -f apps/flowcatalyst/Dockerfile \
-            -t $IMAGE:$SHA_TAG \
-            -t $IMAGE:latest \
-            .
-          docker push $IMAGE:$SHA_TAG
-          docker push $IMAGE:latest
-
-      # ── Register New Task Definition ──────────────────────────────
+      # ── Register New Task Definition ────────────────────────────
       - name: Register new task definition
         id: taskdef
-        env:
-          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ github.sha }}
         run: |
           TASK_DEF=$(aws ecs describe-task-definition --task-definition $TASK_FAMILY \
             --query 'taskDefinition' --output json)
 
           NEW_TASK_DEF=$(echo "$TASK_DEF" | jq \
-            --arg IMAGE "$IMAGE" \
+            --arg IMAGE "$IMAGE:${{ github.sha }}" \
             '.containerDefinitions[0].image = $IMAGE |
              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
 
@@ -72,7 +72,7 @@ jobs:
           echo "revision=$NEW_REVISION" >> "$GITHUB_OUTPUT"
           echo "New task definition: $NEW_REVISION"
 
-      # ── Run Migrations ────────────────────────────────────────────
+      # ── Run Migrations ──────────────────────────────────────────
       - name: Run database migrations
         env:
           TASK_DEF_ARN: ${{ steps.taskdef.outputs.revision }}
@@ -114,7 +114,7 @@ jobs:
           fi
           echo "Migrations complete"
 
-      # ── Deploy ────────────────────────────────────────────────────
+      # ── Deploy ──────────────────────────────────────────────────
       - name: Update ECS service
         env:
           TASK_DEF_ARN: ${{ steps.taskdef.outputs.revision }}
