@@ -9,6 +9,7 @@ export {
   createDrizzleAdapterFactory,
   cleanupExpiredPayloads,
   getPayloadStats,
+  invalidateOidcClientCache,
 } from './drizzle-adapter.js';
 
 // Account adapter (Principal integration)

@@ -20,6 +20,7 @@ import type { UseCase } from '@flowcatalyst/application';
 import type { EncryptionService } from '@flowcatalyst/platform-crypto';
 import { randomBytes } from 'node:crypto';
 
+import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type {
   CreateOAuthClientCommand,
   UpdateOAuthClientCommand,
@@ -39,6 +40,7 @@ import type {
 } from '../../infrastructure/persistence/index.js';
 import { requirePermission } from '../../authorization/index.js';
 import { OAUTH_CLIENT_PERMISSIONS } from '../../authorization/permissions/platform-auth.js';
+import { invalidateOidcClientCache } from '../../infrastructure/oidc/index.js';
 
 // ─── Request Schemas ────────────────────────────────────────────────────────
 
@@ -145,6 +147,7 @@ export interface OAuthClientsRoutesDeps {
   readonly oauthClientRepository: OAuthClientRepository;
   readonly applicationRepository: ApplicationRepository;
   readonly encryptionService: EncryptionService;
+  readonly db: PostgresJsDatabase;
   readonly createOAuthClientUseCase: UseCase<CreateOAuthClientCommand, OAuthClientCreated>;
   readonly updateOAuthClientUseCase: UseCase<UpdateOAuthClientCommand, OAuthClientUpdated>;
   readonly regenerateOAuthClientSecretUseCase: UseCase<
@@ -198,6 +201,7 @@ export async function registerOAuthClientsRoutes(
     oauthClientRepository,
     applicationRepository,
     encryptionService,
+    db,
     createOAuthClientUseCase,
     updateOAuthClientUseCase,
     regenerateOAuthClientSecretUseCase,
@@ -419,6 +423,8 @@ export async function registerOAuthClientsRoutes(
       if (Result.isSuccess(result)) {
         const client = await oauthClientRepository.findById(id);
         if (client) {
+          // Invalidate cached OIDC client metadata so oidc-provider picks up the new secret
+          await invalidateOidcClientCache(db, client.clientId);
           const appMap = await buildAppMap();
           return jsonSuccess(reply, { client: toResponse(client, appMap), clientSecret: plainSecret });
         }
@@ -515,6 +521,8 @@ export async function registerOAuthClientsRoutes(
       if (Result.isSuccess(result)) {
         const client = await oauthClientRepository.findById(id);
         if (client) {
+          // Invalidate cached OIDC client metadata so oidc-provider picks up the new secret
+          await invalidateOidcClientCache(db, client.clientId);
           const appMap = await buildAppMap();
           return jsonSuccess(reply, { client: toResponse(client, appMap), clientSecret: plainSecret });
         }

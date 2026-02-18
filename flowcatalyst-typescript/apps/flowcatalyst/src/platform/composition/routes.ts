@@ -97,6 +97,8 @@ export async function registerPlatformRoutes(
     platformConfigAccessRepository: repos.platformConfigAccessRepository,
     // Service Account management
     encryptionService,
+    // Database (for OIDC client cache invalidation)
+    db,
   };
 
   await registerAdminRoutes(fastify, adminDeps);

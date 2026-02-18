@@ -218,6 +218,19 @@ export async function cleanupExpiredPayloads(db: PostgresJsDatabase): Promise<nu
 }
 
 /**
+ * Invalidate the cached OIDC client metadata for a given OAuth client_id.
+ * Call this after rotating/regenerating a client secret so oidc-provider
+ * reloads fresh metadata (with the new secret) on the next token request.
+ */
+export async function invalidateOidcClientCache(
+  db: PostgresJsDatabase,
+  clientId: string,
+): Promise<void> {
+  const key = `Client:${clientId}`;
+  await db.delete(oidcPayloads).where(eq(oidcPayloads.id, key));
+}
+
+/**
  * Get payload statistics for monitoring.
  */
 export async function getPayloadStats(

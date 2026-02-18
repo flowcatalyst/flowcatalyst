@@ -1108,23 +1108,28 @@ export async function registerPrincipalsRoutes(
         return notFound(reply, `Principal not found: ${id}`);
       }
 
-      // Determine accessible client IDs based on scope
-      const clientIds: string[] = [];
+      // ANCHOR users have access to ALL applications — no need to go through client configs
       if (principal.scope === 'ANCHOR') {
-        // ANCHOR users can access all clients
-        const allClients = await clientRepository.findAll();
-        for (const c of allClients) {
-          clientIds.push(c.id);
-        }
-      } else {
-        if (principal.clientId) {
-          clientIds.push(principal.clientId);
-        }
-        const grants = await clientAccessGrantRepository.findByPrincipal(id);
-        for (const grant of grants) {
-          if (!clientIds.includes(grant.clientId)) {
-            clientIds.push(grant.clientId);
-          }
+        const allApps = await applicationRepository.findAll();
+        return jsonSuccess(reply, {
+          applications: allApps.map((app) => ({
+            applicationId: app.id,
+            applicationCode: app.code,
+            applicationName: app.name,
+            grantedAt: null,
+          })),
+        });
+      }
+
+      // For non-ANCHOR users, determine accessible apps through client configs
+      const clientIds: string[] = [];
+      if (principal.clientId) {
+        clientIds.push(principal.clientId);
+      }
+      const grants = await clientAccessGrantRepository.findByPrincipal(id);
+      for (const grant of grants) {
+        if (!clientIds.includes(grant.clientId)) {
+          clientIds.push(grant.clientId);
         }
       }
 
