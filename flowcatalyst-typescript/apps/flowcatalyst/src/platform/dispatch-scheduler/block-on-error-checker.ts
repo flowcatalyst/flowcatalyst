@@ -23,12 +23,7 @@ export function createBlockOnErrorChecker(db: PostgresJsDatabase): BlockOnErrorC
       const rows = await db
         .select({ id: dispatchJobs.id })
         .from(dispatchJobs)
-        .where(
-          and(
-            eq(dispatchJobs.messageGroup, messageGroup),
-            eq(dispatchJobs.status, 'FAILED'),
-          ),
-        )
+        .where(and(eq(dispatchJobs.messageGroup, messageGroup), eq(dispatchJobs.status, 'FAILED')))
         .limit(1);
 
       return rows.length > 0;
@@ -41,10 +36,7 @@ export function createBlockOnErrorChecker(db: PostgresJsDatabase): BlockOnErrorC
         .selectDistinct({ messageGroup: dispatchJobs.messageGroup })
         .from(dispatchJobs)
         .where(
-          and(
-            inArray(dispatchJobs.messageGroup, messageGroups),
-            eq(dispatchJobs.status, 'FAILED'),
-          ),
+          and(inArray(dispatchJobs.messageGroup, messageGroups), eq(dispatchJobs.status, 'FAILED')),
         );
 
       return new Set(rows.map((r) => r.messageGroup).filter(Boolean) as string[]);

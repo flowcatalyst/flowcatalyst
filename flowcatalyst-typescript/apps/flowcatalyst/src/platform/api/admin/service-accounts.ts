@@ -453,7 +453,9 @@ export async function registerServiceAccountsRoutes(
       // Encrypt the provided auth token
       const encryptResult = encryptionService.encrypt(body.authToken);
       if (encryptResult.isErr()) {
-        return reply.status(400).send({ code: 'ENCRYPTION_FAILED', message: 'Failed to encrypt auth token' });
+        return reply
+          .status(400)
+          .send({ code: 'ENCRYPTION_FAILED', message: 'Failed to encrypt auth token' });
       }
 
       // Update principal with new auth token ref

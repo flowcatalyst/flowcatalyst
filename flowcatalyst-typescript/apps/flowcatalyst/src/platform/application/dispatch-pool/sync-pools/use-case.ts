@@ -105,7 +105,11 @@ export function createSyncDispatchPoolsUseCase(
 
         // Process each pool item (anchor-level: clientId = null)
         for (const item of command.pools) {
-          const existing = await dispatchPoolRepository.findByCodeAndClientId(item.code, null, txCtx);
+          const existing = await dispatchPoolRepository.findByCodeAndClientId(
+            item.code,
+            null,
+            txCtx,
+          );
 
           if (existing) {
             // Update existing

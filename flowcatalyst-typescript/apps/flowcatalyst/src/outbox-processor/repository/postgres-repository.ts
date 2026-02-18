@@ -11,9 +11,7 @@ import { OutboxStatus, type OutboxItem, type OutboxItemType } from '../model.js'
 import type { OutboxRepository } from './outbox-repository.js';
 import type { OutboxProcessorConfig } from '../env.js';
 
-export function createPostgresOutboxRepository(
-  config: OutboxProcessorConfig,
-): OutboxRepository {
+export function createPostgresOutboxRepository(config: OutboxProcessorConfig): OutboxRepository {
   const sql = postgres(config.databaseUrl, {
     max: 10,
     idle_timeout: 30,
@@ -36,7 +34,7 @@ export function createPostgresOutboxRepository(
       type,
       messageGroup: (row['message_group'] as string) ?? 'default',
       payload: row['payload'] as string,
-      status: (row['status'] as number) as OutboxStatus,
+      status: row['status'] as number as OutboxStatus,
       retryCount: (row['retry_count'] as number) ?? 0,
       maxRetries: config.maxRetries,
       errorMessage: (row['error_message'] as string) ?? null,

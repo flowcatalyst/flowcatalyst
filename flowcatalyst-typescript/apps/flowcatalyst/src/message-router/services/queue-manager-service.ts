@@ -847,9 +847,16 @@ export class QueueManagerService {
             queueStat.totalConsumed++;
             queueStat.totalConsumed5min++;
             queueStat.totalConsumed30min++;
-            queueStat.successRate = queueStat.totalMessages > 0 ? queueStat.totalConsumed / queueStat.totalMessages : 1.0;
-            queueStat.successRate5min = queueStat.totalMessages5min > 0 ? queueStat.totalConsumed5min / queueStat.totalMessages5min : 1.0;
-            queueStat.successRate30min = queueStat.totalMessages30min > 0 ? queueStat.totalConsumed30min / queueStat.totalMessages30min : 1.0;
+            queueStat.successRate =
+              queueStat.totalMessages > 0 ? queueStat.totalConsumed / queueStat.totalMessages : 1.0;
+            queueStat.successRate5min =
+              queueStat.totalMessages5min > 0
+                ? queueStat.totalConsumed5min / queueStat.totalMessages5min
+                : 1.0;
+            queueStat.successRate30min =
+              queueStat.totalMessages30min > 0
+                ? queueStat.totalConsumed30min / queueStat.totalMessages30min
+                : 1.0;
           }
         },
         nack: async (visibilityTimeoutSeconds?: number) => {
@@ -861,9 +868,16 @@ export class QueueManagerService {
             queueStat.totalFailed++;
             queueStat.totalFailed5min++;
             queueStat.totalFailed30min++;
-            queueStat.successRate = queueStat.totalMessages > 0 ? queueStat.totalConsumed / queueStat.totalMessages : 1.0;
-            queueStat.successRate5min = queueStat.totalMessages5min > 0 ? queueStat.totalConsumed5min / queueStat.totalMessages5min : 1.0;
-            queueStat.successRate30min = queueStat.totalMessages30min > 0 ? queueStat.totalConsumed30min / queueStat.totalMessages30min : 1.0;
+            queueStat.successRate =
+              queueStat.totalMessages > 0 ? queueStat.totalConsumed / queueStat.totalMessages : 1.0;
+            queueStat.successRate5min =
+              queueStat.totalMessages5min > 0
+                ? queueStat.totalConsumed5min / queueStat.totalMessages5min
+                : 1.0;
+            queueStat.successRate30min =
+              queueStat.totalMessages30min > 0
+                ? queueStat.totalConsumed30min / queueStat.totalMessages30min
+                : 1.0;
           }
         },
       };

@@ -76,10 +76,7 @@ export function createMessageGroupProcessor(
     const batch = queue.splice(0, config.apiBatchSize);
     if (batch.length === 0) return;
 
-    logger.debug(
-      { count: batch.length, type, messageGroup },
-      'Processing batch',
-    );
+    logger.debug({ count: batch.length, type, messageGroup }, 'Processing batch');
 
     try {
       // Call FlowCatalyst API
@@ -152,10 +149,7 @@ export function createMessageGroupProcessor(
 
     if (retryableIds.length > 0) {
       await repository.incrementRetryCount(type, retryableIds);
-      logger.info(
-        { count: retryableIds.length, type, messageGroup },
-        'Scheduled items for retry',
-      );
+      logger.info({ count: retryableIds.length, type, messageGroup }, 'Scheduled items for retry');
     }
 
     for (const [status, ids] of terminalByStatus) {
@@ -183,10 +177,7 @@ export function createMessageGroupProcessor(
 
     if (retryable.length > 0) {
       await repository.incrementRetryCount(type, retryable);
-      logger.info(
-        { count: retryable.length, type, messageGroup },
-        'Scheduled items for retry',
-      );
+      logger.info({ count: retryable.length, type, messageGroup }, 'Scheduled items for retry');
     }
 
     if (exhausted.length > 0) {

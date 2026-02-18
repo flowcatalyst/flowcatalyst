@@ -41,8 +41,11 @@ export interface EmailDomainMappingRepository {
   delete(entity: EmailDomainMapping, tx?: TransactionContext): Promise<boolean>;
 }
 
-export function createEmailDomainMappingRepository(defaultDb: PlatformDb): EmailDomainMappingRepository {
-  const db = (tx?: TransactionContext): PlatformDb => (tx?.db as unknown as PlatformDb) ?? defaultDb;
+export function createEmailDomainMappingRepository(
+  defaultDb: PlatformDb,
+): EmailDomainMappingRepository {
+  const db = (tx?: TransactionContext): PlatformDb =>
+    (tx?.db as unknown as PlatformDb) ?? defaultDb;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rq = (tx?: TransactionContext): any => db(tx).query;
 
@@ -63,12 +66,14 @@ export function createEmailDomainMappingRepository(defaultDb: PlatformDb): Email
       .where(eq(emailDomainMappingAdditionalClients.emailDomainMappingId, mappingId));
 
     if (clientIds.length > 0) {
-      await db(txCtx).insert(emailDomainMappingAdditionalClients).values(
-        clientIds.map((clientId) => ({
-          emailDomainMappingId: mappingId,
-          clientId,
-        })),
-      );
+      await db(txCtx)
+        .insert(emailDomainMappingAdditionalClients)
+        .values(
+          clientIds.map((clientId) => ({
+            emailDomainMappingId: mappingId,
+            clientId,
+          })),
+        );
     }
   }
 
@@ -82,12 +87,14 @@ export function createEmailDomainMappingRepository(defaultDb: PlatformDb): Email
       .where(eq(emailDomainMappingGrantedClients.emailDomainMappingId, mappingId));
 
     if (clientIds.length > 0) {
-      await db(txCtx).insert(emailDomainMappingGrantedClients).values(
-        clientIds.map((clientId) => ({
-          emailDomainMappingId: mappingId,
-          clientId,
-        })),
-      );
+      await db(txCtx)
+        .insert(emailDomainMappingGrantedClients)
+        .values(
+          clientIds.map((clientId) => ({
+            emailDomainMappingId: mappingId,
+            clientId,
+          })),
+        );
     }
   }
 
@@ -101,12 +108,14 @@ export function createEmailDomainMappingRepository(defaultDb: PlatformDb): Email
       .where(eq(emailDomainMappingAllowedRoles.emailDomainMappingId, mappingId));
 
     if (roleIds.length > 0) {
-      await db(txCtx).insert(emailDomainMappingAllowedRoles).values(
-        roleIds.map((roleId) => ({
-          emailDomainMappingId: mappingId,
-          roleId,
-        })),
-      );
+      await db(txCtx)
+        .insert(emailDomainMappingAllowedRoles)
+        .values(
+          roleIds.map((roleId) => ({
+            emailDomainMappingId: mappingId,
+            roleId,
+          })),
+        );
     }
   }
 
@@ -176,17 +185,19 @@ export function createEmailDomainMappingRepository(defaultDb: PlatformDb): Email
 
     async insert(entity: NewEmailDomainMapping, tx?: TransactionContext): Promise<void> {
       const now = new Date();
-      await db(tx).insert(emailDomainMappings).values({
-        id: entity.id,
-        emailDomain: entity.emailDomain,
-        identityProviderId: entity.identityProviderId,
-        scopeType: entity.scopeType,
-        primaryClientId: entity.primaryClientId,
-        requiredOidcTenantId: entity.requiredOidcTenantId,
-        syncRolesFromIdp: entity.syncRolesFromIdp,
-        createdAt: entity.createdAt ?? now,
-        updatedAt: entity.updatedAt ?? now,
-      });
+      await db(tx)
+        .insert(emailDomainMappings)
+        .values({
+          id: entity.id,
+          emailDomain: entity.emailDomain,
+          identityProviderId: entity.identityProviderId,
+          scopeType: entity.scopeType,
+          primaryClientId: entity.primaryClientId,
+          requiredOidcTenantId: entity.requiredOidcTenantId,
+          syncRolesFromIdp: entity.syncRolesFromIdp,
+          createdAt: entity.createdAt ?? now,
+          updatedAt: entity.updatedAt ?? now,
+        });
 
       await Promise.all([
         saveAdditionalClients(entity.id, entity.additionalClientIds, tx),
@@ -228,9 +239,7 @@ export function createEmailDomainMappingRepository(defaultDb: PlatformDb): Email
           .where(eq(emailDomainMappingAllowedRoles.emailDomainMappingId, id)),
       ]);
 
-      const result = await db(tx)
-        .delete(emailDomainMappings)
-        .where(eq(emailDomainMappings.id, id));
+      const result = await db(tx).delete(emailDomainMappings).where(eq(emailDomainMappings.id, id));
       return (result?.length ?? 0) > 0;
     },
 
@@ -261,7 +270,9 @@ interface EmailDomainMappingRelationalResult {
 /**
  * Convert a relational query result to an EmailDomainMapping domain entity.
  */
-function resultToEmailDomainMapping(result: EmailDomainMappingRelationalResult): EmailDomainMapping {
+function resultToEmailDomainMapping(
+  result: EmailDomainMappingRelationalResult,
+): EmailDomainMapping {
   return {
     id: result.id,
     emailDomain: result.emailDomain,

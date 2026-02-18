@@ -27,7 +27,9 @@ export async function createNatsPublisher(config: NatsPublisherConfig): Promise<
     nc = await connect({
       servers: config.servers,
       name: config.connectionName ?? 'flowcatalyst-publisher',
-      ...(config.username && config.password ? { user: config.username, pass: config.password } : {}),
+      ...(config.username && config.password
+        ? { user: config.username, pass: config.password }
+        : {}),
     });
 
     js = nc.jetstream();

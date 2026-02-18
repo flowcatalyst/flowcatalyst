@@ -53,11 +53,7 @@ const OAuthGrantTypeSchema = Type.Union([
   Type.Literal('password'),
 ]);
 
-const DefaultScopesSchema = Type.Union([
-  Type.Array(Type.String()),
-  Type.String(),
-  Type.Null(),
-]);
+const DefaultScopesSchema = Type.Union([Type.Array(Type.String()), Type.String(), Type.Null()]);
 
 const CreateOAuthClientSchema = Type.Object({
   clientName: Type.String({ minLength: 1 }),
@@ -93,9 +89,7 @@ type CreateOAuthClientBody = Static<typeof CreateOAuthClientSchema>;
 type UpdateOAuthClientBody = Static<typeof UpdateOAuthClientSchema>;
 
 /** Normalize defaultScopes input to a space-separated string for storage. */
-function normalizeScopes(
-  scopes: string[] | string | null | undefined,
-): string | null | undefined {
+function normalizeScopes(scopes: string[] | string | null | undefined): string | null | undefined {
   if (scopes === undefined) return undefined;
   if (scopes === null) return null;
   if (Array.isArray(scopes)) return scopes.join(' ') || null;
@@ -161,10 +155,7 @@ export interface OAuthClientsRoutesDeps {
  * Convert OAuthClient to response.
  * @param appMap - Map of application ID -> name for resolving references
  */
-function toResponse(
-  client: OAuthClient,
-  appMap: Map<string, string>,
-): OAuthClientResponse {
+function toResponse(client: OAuthClient, appMap: Map<string, string>): OAuthClientResponse {
   return {
     id: client.id,
     clientId: client.clientId,
@@ -428,7 +419,10 @@ export async function registerOAuthClientsRoutes(
           // Invalidate cached OIDC client metadata so oidc-provider picks up the new secret
           await invalidateOidcClientCache(db, client.clientId);
           const appMap = await buildAppMap();
-          return jsonSuccess(reply, { client: toResponse(client, appMap), clientSecret: plainSecret });
+          return jsonSuccess(reply, {
+            client: toResponse(client, appMap),
+            clientSecret: plainSecret,
+          });
         }
       }
 
@@ -526,7 +520,10 @@ export async function registerOAuthClientsRoutes(
           // Invalidate cached OIDC client metadata so oidc-provider picks up the new secret
           await invalidateOidcClientCache(db, client.clientId);
           const appMap = await buildAppMap();
-          return jsonSuccess(reply, { client: toResponse(client, appMap), clientSecret: plainSecret });
+          return jsonSuccess(reply, {
+            client: toResponse(client, appMap),
+            clientSecret: plainSecret,
+          });
         }
       }
 

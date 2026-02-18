@@ -63,7 +63,8 @@ export interface OAuthClientRepository {
  * Create an OAuthClient repository.
  */
 export function createOAuthClientRepository(defaultDb: PlatformDb): OAuthClientRepository {
-  const db = (tx?: TransactionContext): PlatformDb => (tx?.db as unknown as PlatformDb) ?? defaultDb;
+  const db = (tx?: TransactionContext): PlatformDb =>
+    (tx?.db as unknown as PlatformDb) ?? defaultDb;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rq = (tx?: TransactionContext): any => db(tx).query;
 

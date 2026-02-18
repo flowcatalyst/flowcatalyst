@@ -88,7 +88,11 @@ export async function startPlatform(config?: PlatformConfig): Promise<PlatformRe
   const db = database.db as any;
   // Schema-aware db instance for repositories that use relational queries (db.query.*)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const schemaDb: any = drizzle({ client: database.client, schema: platformSchema, relations: platformRelations } as any);
+  const schemaDb: any = drizzle({
+    client: database.client,
+    schema: platformSchema,
+    relations: platformRelations,
+  } as any);
 
   // 1. Repositories
   const repos = createRepositories(db, schemaDb);

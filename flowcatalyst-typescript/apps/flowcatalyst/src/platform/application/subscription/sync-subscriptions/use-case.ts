@@ -116,7 +116,11 @@ export function createSyncSubscriptionsUseCase(
           let dispatchPoolId: string | null = null;
           const dispatchPoolCode: string | null = item.dispatchPoolCode ?? null;
           if (dispatchPoolCode) {
-            const pool = await dispatchPoolRepository.findByCodeAndClientId(dispatchPoolCode, null, txCtx);
+            const pool = await dispatchPoolRepository.findByCodeAndClientId(
+              dispatchPoolCode,
+              null,
+              txCtx,
+            );
             if (pool) {
               dispatchPoolId = pool.id;
             }

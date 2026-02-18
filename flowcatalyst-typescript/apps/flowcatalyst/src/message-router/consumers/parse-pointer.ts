@@ -27,7 +27,8 @@ export function parseMessagePointer(messageId: string, raw: unknown): MessagePoi
     messageId,
     poolCode: (parsed['poolCode'] as string) || 'DEFAULT',
     messageGroupId: (parsed['messageGroupId'] as string) || messageId,
-    callbackUrl: (parsed['mediationTarget'] as string) || (parsed['callbackUrl'] as string) || undefined,
+    callbackUrl:
+      (parsed['mediationTarget'] as string) || (parsed['callbackUrl'] as string) || undefined,
     authToken: parsed['authToken'] as string | undefined,
     payload: parsed['payload'] ?? parsed,
     highPriority: parsed['highPriority'] === true,

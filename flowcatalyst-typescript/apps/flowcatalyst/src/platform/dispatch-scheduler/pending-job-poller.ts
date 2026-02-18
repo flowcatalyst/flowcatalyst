@@ -46,7 +46,11 @@ export function createPendingJobPoller(
         .select()
         .from(dispatchJobs)
         .where(eq(dispatchJobs.status, 'PENDING'))
-        .orderBy(asc(dispatchJobs.messageGroup), asc(dispatchJobs.sequence), asc(dispatchJobs.createdAt))
+        .orderBy(
+          asc(dispatchJobs.messageGroup),
+          asc(dispatchJobs.sequence),
+          asc(dispatchJobs.createdAt),
+        )
         .limit(config.batchSize);
 
       if (pendingJobs.length === 0) return;

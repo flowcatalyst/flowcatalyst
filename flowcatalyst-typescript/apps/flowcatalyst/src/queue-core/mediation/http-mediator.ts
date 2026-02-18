@@ -195,14 +195,13 @@ export class HttpMediator {
 
       if (statusCode === 429) {
         const retryAfterHeader = response.headers['retry-after'];
-        const retryAfterRaw = Array.isArray(retryAfterHeader) ? retryAfterHeader[0] : retryAfterHeader;
+        const retryAfterRaw = Array.isArray(retryAfterHeader)
+          ? retryAfterHeader[0]
+          : retryAfterHeader;
         const retryAfter = parseInt(retryAfterRaw ?? '', 10);
         const delaySeconds = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 30;
         await this.readResponseBody(response); // drain body
-        this.logger.warn(
-          { statusCode, callbackUrl, delaySeconds },
-          'Rate limited by downstream',
-        );
+        this.logger.warn({ statusCode, callbackUrl, delaySeconds }, 'Rate limited by downstream');
         return {
           outcome: 'ERROR_PROCESS',
           statusCode,

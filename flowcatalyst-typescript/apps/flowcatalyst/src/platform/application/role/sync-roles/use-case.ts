@@ -15,12 +15,7 @@ import type {
   RoleRepository,
   ApplicationRepository,
 } from '../../../infrastructure/persistence/index.js';
-import {
-  createAuthRole,
-  updateAuthRole,
-  RoleSource,
-  RolesSynced,
-} from '../../../domain/index.js';
+import { createAuthRole, updateAuthRole, RoleSource, RolesSynced } from '../../../domain/index.js';
 
 import type { SyncRolesCommand } from './command.js';
 

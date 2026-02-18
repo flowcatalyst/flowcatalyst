@@ -231,10 +231,7 @@ export function registerOAuthCompatibilityRoutes(
  * This ensures that standard OIDC clients following the discovery document
  * can reach the provider endpoints.
  */
-export function registerOidcEndpointRoutes(
-  fastify: FastifyInstance,
-  provider: OidcProvider,
-): void {
+export function registerOidcEndpointRoutes(fastify: FastifyInstance, provider: OidcProvider): void {
   const callback = provider.callback();
 
   const forwardToOidc = async (
@@ -319,5 +316,7 @@ export function registerOidcEndpointRoutes(
     });
   });
 
-  fastify.log.info('OIDC endpoint forwarding routes registered (/authorize, /token, /userinfo, /session/end)');
+  fastify.log.info(
+    'OIDC endpoint forwarding routes registered (/authorize, /token, /userinfo, /session/end)',
+  );
 }

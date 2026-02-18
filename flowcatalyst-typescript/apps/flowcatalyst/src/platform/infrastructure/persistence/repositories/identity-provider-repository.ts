@@ -29,8 +29,11 @@ export interface IdentityProviderRepository {
   delete(entity: IdentityProvider, tx?: TransactionContext): Promise<boolean>;
 }
 
-export function createIdentityProviderRepository(defaultDb: PlatformDb): IdentityProviderRepository {
-  const db = (tx?: TransactionContext): PlatformDb => (tx?.db as unknown as PlatformDb) ?? defaultDb;
+export function createIdentityProviderRepository(
+  defaultDb: PlatformDb,
+): IdentityProviderRepository {
+  const db = (tx?: TransactionContext): PlatformDb =>
+    (tx?.db as unknown as PlatformDb) ?? defaultDb;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rq = (tx?: TransactionContext): any => db(tx).query;
 
@@ -49,12 +52,14 @@ export function createIdentityProviderRepository(defaultDb: PlatformDb): Identit
       .where(eq(identityProviderAllowedDomains.identityProviderId, identityProviderId));
 
     if (domains.length > 0) {
-      await db(txCtx).insert(identityProviderAllowedDomains).values(
-        domains.map((emailDomain) => ({
-          identityProviderId,
-          emailDomain,
-        })),
-      );
+      await db(txCtx)
+        .insert(identityProviderAllowedDomains)
+        .values(
+          domains.map((emailDomain) => ({
+            identityProviderId,
+            emailDomain,
+          })),
+        );
     }
   }
 

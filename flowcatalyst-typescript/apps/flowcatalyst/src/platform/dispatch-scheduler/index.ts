@@ -16,7 +16,11 @@
 
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type { QueuePublisher } from '@flowcatalyst/queue-core';
-import { type DispatchSchedulerConfig, type SchedulerLogger, DEFAULT_DISPATCH_SCHEDULER_CONFIG } from './config.js';
+import {
+  type DispatchSchedulerConfig,
+  type SchedulerLogger,
+  DEFAULT_DISPATCH_SCHEDULER_CONFIG,
+} from './config.js';
 import { createBlockOnErrorChecker } from './block-on-error-checker.js';
 import { createJobDispatcher } from './job-dispatcher.js';
 import { createMessageGroupDispatcher } from './message-group-dispatcher.js';
@@ -46,7 +50,13 @@ export function startDispatchScheduler(deps: DispatchSchedulerDeps): DispatchSch
   const blockOnErrorChecker = createBlockOnErrorChecker(db);
   const jobDispatcher = createJobDispatcher(config, db, publisher, logger);
   const groupDispatcher = createMessageGroupDispatcher(config, jobDispatcher, logger);
-  const pendingJobPoller = createPendingJobPoller(config, db, blockOnErrorChecker, groupDispatcher, logger);
+  const pendingJobPoller = createPendingJobPoller(
+    config,
+    db,
+    blockOnErrorChecker,
+    groupDispatcher,
+    logger,
+  );
   const staleQueuedJobPoller = createStaleQueuedJobPoller(config, db, logger);
 
   // Start pollers

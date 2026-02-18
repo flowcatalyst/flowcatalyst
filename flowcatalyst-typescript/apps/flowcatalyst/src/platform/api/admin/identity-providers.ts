@@ -185,7 +185,9 @@ export async function registerIdentityProvidersRoutes(
         if (encResult.isOk()) {
           secretRef = encResult.value;
         } else {
-          return reply.status(400).send({ code: 'ENCRYPTION_FAILED', message: 'Failed to encrypt client secret' });
+          return reply
+            .status(400)
+            .send({ code: 'ENCRYPTION_FAILED', message: 'Failed to encrypt client secret' });
         }
       }
 
@@ -244,7 +246,9 @@ export async function registerIdentityProvidersRoutes(
         if (encResult.isOk()) {
           secretRef = encResult.value;
         } else {
-          return reply.status(400).send({ code: 'ENCRYPTION_FAILED', message: 'Failed to encrypt client secret' });
+          return reply
+            .status(400)
+            .send({ code: 'ENCRYPTION_FAILED', message: 'Failed to encrypt client secret' });
         }
       }
 
@@ -254,9 +258,7 @@ export async function registerIdentityProvidersRoutes(
         ...(body.type !== undefined ? { type: body.type } : {}),
         ...(body.oidcIssuerUrl !== undefined ? { oidcIssuerUrl: body.oidcIssuerUrl } : {}),
         ...(body.oidcClientId !== undefined ? { oidcClientId: body.oidcClientId } : {}),
-        ...(body.oidcClientSecretRef !== undefined
-          ? { oidcClientSecretRef: secretRef }
-          : {}),
+        ...(body.oidcClientSecretRef !== undefined ? { oidcClientSecretRef: secretRef } : {}),
         ...(body.oidcMultiTenant !== undefined ? { oidcMultiTenant: body.oidcMultiTenant } : {}),
         ...(body.oidcIssuerPattern !== undefined
           ? { oidcIssuerPattern: body.oidcIssuerPattern }

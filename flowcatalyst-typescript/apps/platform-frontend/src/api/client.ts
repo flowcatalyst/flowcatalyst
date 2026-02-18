@@ -58,7 +58,7 @@ export async function bffFetch<T>(path: string, options: RequestInit = {}): Prom
 }
 
 async function baseFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = { ...options.headers as Record<string, string> };
+  const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
   if (options.body) {
     headers['Content-Type'] = 'application/json';
   }

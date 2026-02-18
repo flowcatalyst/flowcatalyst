@@ -26,7 +26,14 @@ export async function registerInteractionRoutes(
   fastify: FastifyInstance,
   deps: InteractionRoutesDeps,
 ): Promise<void> {
-  const { provider, validateSessionToken, principalRepository, oauthClientRepository, cookieName, loginPageUrl } = deps;
+  const {
+    provider,
+    validateSessionToken,
+    principalRepository,
+    oauthClientRepository,
+    cookieName,
+    loginPageUrl,
+  } = deps;
 
   /**
    * Complete the interaction by validating the session, creating a grant,
@@ -101,9 +108,7 @@ export async function registerInteractionRoutes(
       // If there are specific claims requested, grant them
       const claimsRaw = params['claims'];
       if (claimsRaw) {
-        const claimsParam = typeof claimsRaw === 'string'
-          ? JSON.parse(claimsRaw)
-          : claimsRaw;
+        const claimsParam = typeof claimsRaw === 'string' ? JSON.parse(claimsRaw) : claimsRaw;
         grant.addOIDCClaims(Object.keys(claimsParam.id_token || {}));
         grant.addOIDCClaims(Object.keys(claimsParam.userinfo || {}));
       }
@@ -123,10 +128,7 @@ export async function registerInteractionRoutes(
       await provider.interactionFinished(req, res, result);
       reply.hijack();
 
-      fastify.log.info(
-        { uid, principalId, clientId },
-        'OIDC interaction completed',
-      );
+      fastify.log.info({ uid, principalId, clientId }, 'OIDC interaction completed');
 
       return true;
     } finally {
@@ -136,25 +138,25 @@ export async function registerInteractionRoutes(
   }
 
   // GET /oidc/interaction/:uid — Interaction entry point
-  fastify.get<{ Params: { uid: string } }>(
-    '/oidc/interaction/:uid',
-    async (request, reply) => {
-      const { uid } = request.params;
+  fastify.get<{ Params: { uid: string } }>('/oidc/interaction/:uid', async (request, reply) => {
+    const { uid } = request.params;
 
-      try {
-        fastify.log.info({ uid, cookies: Object.keys(request.cookies) }, 'Interaction entry point hit');
-        const completed = await tryCompleteInteraction(request, reply, uid);
-        if (!completed) {
-          fastify.log.info({ uid }, 'No valid session, redirecting to login');
-          return reply.redirect(`${loginPageUrl}?interaction=${encodeURIComponent(uid)}`);
-        }
-        // Response already sent by interactionFinished + hijack
-      } catch (err) {
-        fastify.log.error({ err, uid }, 'Failed to handle interaction');
-        return reply.redirect(`${loginPageUrl}?error=${encodeURIComponent('Login required')}`);
+    try {
+      fastify.log.info(
+        { uid, cookies: Object.keys(request.cookies) },
+        'Interaction entry point hit',
+      );
+      const completed = await tryCompleteInteraction(request, reply, uid);
+      if (!completed) {
+        fastify.log.info({ uid }, 'No valid session, redirecting to login');
+        return reply.redirect(`${loginPageUrl}?interaction=${encodeURIComponent(uid)}`);
       }
-    },
-  );
+      // Response already sent by interactionFinished + hijack
+    } catch (err) {
+      fastify.log.error({ err, uid }, 'Failed to handle interaction');
+      return reply.redirect(`${loginPageUrl}?error=${encodeURIComponent('Login required')}`);
+    }
+  });
 
   // GET /oidc/interaction/:uid/login — Post-login completion
   fastify.get<{ Params: { uid: string } }>(
@@ -163,7 +165,10 @@ export async function registerInteractionRoutes(
       const { uid } = request.params;
 
       try {
-        fastify.log.info({ uid, cookies: Object.keys(request.cookies) }, 'Post-login interaction hit');
+        fastify.log.info(
+          { uid, cookies: Object.keys(request.cookies) },
+          'Post-login interaction hit',
+        );
         const completed = await tryCompleteInteraction(request, reply, uid);
         if (!completed) {
           fastify.log.info({ uid }, 'No valid session after login, redirecting back');
@@ -172,7 +177,9 @@ export async function registerInteractionRoutes(
         fastify.log.info({ uid }, 'Post-login interaction completed successfully');
       } catch (err) {
         fastify.log.error({ err, uid }, 'Failed to complete interaction after login');
-        return reply.redirect(`${loginPageUrl}?error=${encodeURIComponent('Login failed. Please try again.')}`);
+        return reply.redirect(
+          `${loginPageUrl}?error=${encodeURIComponent('Login failed. Please try again.')}`,
+        );
       }
     },
   );

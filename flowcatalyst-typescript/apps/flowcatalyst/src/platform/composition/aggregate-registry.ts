@@ -2,10 +2,7 @@
  * Aggregate registry — prefix map and handler registration.
  */
 
-import {
-  createAggregateRegistry,
-  createAggregateHandler,
-} from '@flowcatalyst/persistence';
+import { createAggregateRegistry, createAggregateHandler } from '@flowcatalyst/persistence';
 import type { Repositories } from './repositories.js';
 
 export function createPlatformAggregateRegistry(repos: Repositories) {

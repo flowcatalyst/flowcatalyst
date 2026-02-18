@@ -90,7 +90,13 @@ export function createSqsPublisher(config: SqsPublisherConfig): QueuePublisher {
 
       // Return in original order
       return messages.map((msg, idx) => {
-        return resultMap.get(String(idx)) ?? { messageId: msg.messageId, success: false, error: 'No response from SQS' };
+        return (
+          resultMap.get(String(idx)) ?? {
+            messageId: msg.messageId,
+            success: false,
+            error: 'No response from SQS',
+          }
+        );
       });
     } catch (error) {
       // Entire batch failed

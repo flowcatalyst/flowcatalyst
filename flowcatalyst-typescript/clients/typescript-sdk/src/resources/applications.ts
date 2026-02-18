@@ -20,7 +20,8 @@ export type ApplicationListResponse = GetApiAdminApplicationsResponse;
 export type ApplicationResponse = GetApiAdminApplicationsByIdResponse;
 export type CreateApplicationRequest = PostApiAdminApplicationsData['body'];
 export type UpdateApplicationRequest = PutApiAdminApplicationsByIdData['body'];
-export type CreateServiceAccountResponse = PostApiAdminApplicationsByIdProvisionServiceAccountResponse;
+export type CreateServiceAccountResponse =
+  PostApiAdminApplicationsByIdProvisionServiceAccountResponse;
 
 /**
  * Applications resource for managing platform applications.

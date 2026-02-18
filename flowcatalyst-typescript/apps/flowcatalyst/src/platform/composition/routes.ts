@@ -43,7 +43,15 @@ export async function registerPlatformRoutes(
   fastify: FastifyInstance,
   deps: RegisterRoutesDeps,
 ): Promise<void> {
-  const { repos, useCases, db, uowConfig, platformConfigService, passwordService, encryptionService } = deps;
+  const {
+    repos,
+    useCases,
+    db,
+    uowConfig,
+    platformConfigService,
+    passwordService,
+    encryptionService,
+  } = deps;
 
   // Health check
   fastify.get('/health', async (request, reply) => {

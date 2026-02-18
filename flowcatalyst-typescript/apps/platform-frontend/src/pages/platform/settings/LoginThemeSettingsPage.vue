@@ -201,7 +201,9 @@ function resetToDefaults() {
           <InputText
             id="logoHeight"
             :model-value="theme.logoHeight != null ? String(theme.logoHeight) : ''"
-            @update:model-value="(v: string | undefined) => theme.logoHeight = v ? Number(v) : undefined"
+            @update:model-value="
+              (v: string | undefined) => (theme.logoHeight = v ? Number(v) : undefined)
+            "
             type="number"
             class="w-small"
             min="20"

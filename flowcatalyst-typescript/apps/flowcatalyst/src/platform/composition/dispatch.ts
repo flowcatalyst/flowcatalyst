@@ -20,7 +20,9 @@ import { createEventDispatchService } from '../infrastructure/dispatch/event-dis
  * Build a PostCommitDispatcher from a QueuePublisher.
  * Converts DispatchJobNotification[] -> PublishMessage[] and publishes.
  */
-export function createPostCommitDispatcherFromPublisher(publisher: QueuePublisher): PostCommitDispatcher {
+export function createPostCommitDispatcherFromPublisher(
+  publisher: QueuePublisher,
+): PostCommitDispatcher {
   return {
     async dispatch(jobs) {
       if (jobs.length === 0) return;
@@ -99,9 +101,8 @@ export async function createDispatchInfrastructure(
   const messagingEnabled = messagingEnabledValue !== 'false';
 
   if (messagingEnabled && env.DISPATCH_QUEUE_TYPE === 'SQS' && env.DISPATCH_QUEUE_URL) {
-    const { createSqsPublisher: createSchedulerPublisher } = await import(
-      '../../queue-core/publisher/sqs-publisher.js'
-    );
+    const { createSqsPublisher: createSchedulerPublisher } =
+      await import('../../queue-core/publisher/sqs-publisher.js');
     const schedulerPublisher = createSchedulerPublisher({
       queueUrl: env.DISPATCH_QUEUE_URL,
       region: env.DISPATCH_QUEUE_REGION,

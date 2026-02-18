@@ -22,7 +22,11 @@ export {
 } from './oauth-client-collections.js';
 
 // Subscriptions
-export { subscriptions, subscriptionEventTypes, subscriptionCustomConfigs } from './subscriptions.js';
+export {
+  subscriptions,
+  subscriptionEventTypes,
+  subscriptionCustomConfigs,
+} from './subscriptions.js';
 
 // Event types
 export { eventTypes, eventTypeSpecVersions } from './event-types.js';
@@ -55,13 +59,9 @@ export { oidcLoginStates } from './oidc-login-states.js';
 export { principalApplicationAccess } from './principal-application-access.js';
 export { platformConfigs, platformConfigAccess } from './platform-configs.js';
 export { corsAllowedOrigins } from './cors-allowed-origins.js';
-export {
-  dispatchJobProjectionFeed,
-  eventProjectionFeed,
-} from './outbox.js';
+export { dispatchJobProjectionFeed, eventProjectionFeed } from './outbox.js';
 
 // Note: Core tables from @flowcatalyst/persistence (events, auditLogs, dispatchJobs, etc.)
 // are NOT included here. Those repositories use standard db.select() and don't need
 // relational query support. Including them would cause type issues since the persistence
 // package may not have declaration files.
-

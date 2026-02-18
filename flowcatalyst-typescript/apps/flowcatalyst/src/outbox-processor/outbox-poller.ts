@@ -53,10 +53,7 @@ export function createOutboxPoller(
         if (stuckItems.length > 0) {
           const ids = stuckItems.map((item) => String(item.id));
           await repository.resetStuckItems(type, ids);
-          logger.info(
-            { count: ids.length, type },
-            'Reset stuck items during crash recovery',
-          );
+          logger.info({ count: ids.length, type }, 'Reset stuck items during crash recovery');
         }
       } catch (err) {
         logger.error({ err, type }, 'Error during crash recovery');
@@ -105,10 +102,7 @@ export function createOutboxPoller(
       // 3. Acquire in-flight permits
       inFlightCount += items.length;
 
-      logger.debug(
-        { count: items.length, type },
-        'Fetched and marked items as in-progress',
-      );
+      logger.debug({ count: items.length, type }, 'Fetched and marked items as in-progress');
 
       // 4. Add to buffer
       const rejected = buffer.addAll(items);
@@ -167,7 +161,10 @@ export function createOutboxPoller(
           }, config.recoveryIntervalMs);
 
           logger.info(
-            { pollIntervalMs: config.pollIntervalMs, recoveryIntervalMs: config.recoveryIntervalMs },
+            {
+              pollIntervalMs: config.pollIntervalMs,
+              recoveryIntervalMs: config.recoveryIntervalMs,
+            },
             'OutboxPoller started',
           );
         })

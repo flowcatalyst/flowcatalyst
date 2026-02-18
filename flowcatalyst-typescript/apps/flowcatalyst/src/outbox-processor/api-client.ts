@@ -5,7 +5,12 @@
  * Sends batches of outbox items and maps HTTP responses to OutboxStatus.
  */
 
-import { OutboxStatus, httpStatusToOutboxStatus, type OutboxItem, type OutboxItemType } from './model.js';
+import {
+  OutboxStatus,
+  httpStatusToOutboxStatus,
+  type OutboxItem,
+  type OutboxItemType,
+} from './model.js';
 import type { OutboxProcessorConfig } from './env.js';
 import type { Logger } from 'pino';
 
@@ -42,10 +47,7 @@ export interface ApiClient {
 export function createApiClient(config: OutboxProcessorConfig, logger: Logger): ApiClient {
   const { apiBaseUrl, apiToken } = config;
 
-  async function post(
-    path: string,
-    items: OutboxItem[],
-  ): Promise<BatchResult> {
+  async function post(path: string, items: OutboxItem[]): Promise<BatchResult> {
     const ids = items.map((item) => String(item.id));
     const payloads = items.map((item) => {
       try {

@@ -63,44 +63,56 @@ export const CommonSchemas = {
   /**
    * Pagination query parameters.
    */
-  PaginationQuery: Type.Object({
-    page: Type.Optional(Type.Number({ minimum: 0, default: 0 })),
-    pageSize: Type.Optional(Type.Number({ minimum: 1, maximum: 100, default: 20 })),
-  }, { $id: 'PaginationQuery' }),
+  PaginationQuery: Type.Object(
+    {
+      page: Type.Optional(Type.Number({ minimum: 0, default: 0 })),
+      pageSize: Type.Optional(Type.Number({ minimum: 1, maximum: 100, default: 20 })),
+    },
+    { $id: 'PaginationQuery' },
+  ),
 };
 
 /**
  * Standard error response schema.
  */
-export const ErrorResponseSchema = Type.Object({
-  message: Type.String({ description: 'Human-readable error message' }),
-  code: Type.String({ description: 'Machine-readable error code' }),
-  details: Type.Optional(
-    Type.Record(Type.String(), Type.Unknown(), { description: 'Additional error details' }),
-  ),
-}, { $id: 'ErrorResponse' });
+export const ErrorResponseSchema = Type.Object(
+  {
+    message: Type.String({ description: 'Human-readable error message' }),
+    code: Type.String({ description: 'Machine-readable error code' }),
+    details: Type.Optional(
+      Type.Record(Type.String(), Type.Unknown(), { description: 'Additional error details' }),
+    ),
+  },
+  { $id: 'ErrorResponse' },
+);
 
 export type ErrorResponseType = Static<typeof ErrorResponseSchema>;
 
 /**
  * Simple message response schema (e.g. "Application enabled").
  */
-export const MessageResponseSchema = Type.Object({
-  message: Type.String({ description: 'Human-readable status message' }),
-}, { $id: 'MessageResponse' });
+export const MessageResponseSchema = Type.Object(
+  {
+    message: Type.String({ description: 'Human-readable status message' }),
+  },
+  { $id: 'MessageResponse' },
+);
 
 export type MessageResponseType = Static<typeof MessageResponseSchema>;
 
 /**
  * Standard sync response schema used by all sync endpoints.
  */
-export const SyncResponseSchema = Type.Object({
-  applicationCode: Type.String(),
-  created: Type.Integer(),
-  updated: Type.Integer(),
-  deleted: Type.Integer(),
-  syncedCodes: Type.Array(Type.String()),
-}, { $id: 'SyncResponse' });
+export const SyncResponseSchema = Type.Object(
+  {
+    applicationCode: Type.String(),
+    created: Type.Integer(),
+    updated: Type.Integer(),
+    deleted: Type.Integer(),
+    syncedCodes: Type.Array(Type.String()),
+  },
+  { $id: 'SyncResponse' },
+);
 
 export type SyncResponseType = Static<typeof SyncResponseSchema>;
 
@@ -116,9 +128,12 @@ export const BatchResultItemSchema = Type.Object({
 /**
  * Standard batch response schema used by all batch ingestion endpoints.
  */
-export const BatchResponseSchema = Type.Object({
-  results: Type.Array(BatchResultItemSchema),
-}, { $id: 'BatchResponse' });
+export const BatchResponseSchema = Type.Object(
+  {
+    results: Type.Array(BatchResultItemSchema),
+  },
+  { $id: 'BatchResponse' },
+);
 
 export type BatchResponseType = Static<typeof BatchResponseSchema>;
 

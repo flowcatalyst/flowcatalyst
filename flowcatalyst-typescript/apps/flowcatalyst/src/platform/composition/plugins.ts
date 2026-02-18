@@ -54,7 +54,16 @@ export async function registerPlatformPlugins(
   fastify: FastifyInstance,
   deps: RegisterPluginsDeps,
 ): Promise<void> {
-  const { env, port, repos, jwtKeyService, oidcProvider, encryptionService, passwordService, unitOfWork } = deps;
+  const {
+    env,
+    port,
+    repos,
+    jwtKeyService,
+    oidcProvider,
+    encryptionService,
+    passwordService,
+    unitOfWork,
+  } = deps;
 
   // OpenAPI / Swagger
   await fastify.register(swagger, {

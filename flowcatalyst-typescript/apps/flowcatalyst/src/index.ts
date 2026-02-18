@@ -312,7 +312,9 @@ async function main() {
   }
 
   // 1. Start Platform
-  let platformResult: Awaited<ReturnType<typeof import('@flowcatalyst/platform').startPlatform>> | null = null;
+  let platformResult: Awaited<
+    ReturnType<typeof import('@flowcatalyst/platform').startPlatform>
+  > | null = null;
 
   if (PLATFORM_ENABLED) {
     logger.info({ port: PLATFORM_PORT }, 'Starting Platform...');
@@ -368,12 +370,9 @@ async function main() {
 
     // Wire embedded post-commit dispatch: Platform → embedded queue → Message Router
     if (platformResult && routerServices.queueManager.hasEmbeddedQueue()) {
-      const { createEmbeddedPublisher } = await import(
-        './queue-core/publisher/embedded-publisher.js'
-      );
-      const { createPostCommitDispatcherFromPublisher } = await import(
-        '@flowcatalyst/platform'
-      );
+      const { createEmbeddedPublisher } =
+        await import('./queue-core/publisher/embedded-publisher.js');
+      const { createPostCommitDispatcherFromPublisher } = await import('@flowcatalyst/platform');
       const publisher = createEmbeddedPublisher((msg) => {
         const queueMsg: Parameters<typeof routerServices.queueManager.publishToEmbeddedQueue>[0] = {
           messageId: msg.messageId,
@@ -385,9 +384,7 @@ async function main() {
         }
         return routerServices.queueManager.publishToEmbeddedQueue(queueMsg);
       });
-      platformResult.setPostCommitDispatcher(
-        createPostCommitDispatcherFromPublisher(publisher),
-      );
+      platformResult.setPostCommitDispatcher(createPostCommitDispatcherFromPublisher(publisher));
       logger.info('Embedded post-commit dispatch wired (Platform → Message Router)');
     }
   }

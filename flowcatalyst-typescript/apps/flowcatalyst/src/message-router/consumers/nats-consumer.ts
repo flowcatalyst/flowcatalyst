@@ -284,10 +284,7 @@ export class NatsConsumer implements QueueConsumer {
 
           // Check for duplicate (failed ack)
           if (this.pendingAckSequences.has(seq)) {
-            this.logger.debug(
-              { seq },
-              'Skipping message with pending ack (deduplication)',
-            );
+            this.logger.debug({ seq }, 'Skipping message with pending ack (deduplication)');
             continue;
           }
 
@@ -332,10 +329,7 @@ export class NatsConsumer implements QueueConsumer {
                 msg.working();
                 this.logger.debug({ seq }, 'Message marked in-progress');
               } catch (error) {
-                this.logger.error(
-                  { err: error, seq },
-                  'Failed to mark message in-progress',
-                );
+                this.logger.error({ err: error, seq }, 'Failed to mark message in-progress');
               }
             },
           });

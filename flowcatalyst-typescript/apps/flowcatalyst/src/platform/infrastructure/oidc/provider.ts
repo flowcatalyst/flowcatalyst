@@ -200,10 +200,7 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
         enabled: true,
         logoutSource: async (ctx: KoaContextWithOIDC, form: string) => {
           // Clear the platform session cookie so the user isn't auto-logged back in
-          ctx.res.setHeader(
-            'Set-Cookie',
-            'fc_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax',
-          );
+          ctx.res.setHeader('Set-Cookie', 'fc_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax');
           // Auto-submit the confirmation form for seamless logout
           ctx.body = `<!DOCTYPE html><html><head><title>Logging out...</title></head><body>${form}<script>document.forms[0].submit();</script></body></html>`;
         },
@@ -280,7 +277,9 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
       if (tokenClientId) {
         const oauthClient = await oauthClientRepository.findByClientId(tokenClientId);
         if (oauthClient?.serviceAccountPrincipalId) {
-          const principal = await principalRepository.findById(oauthClient.serviceAccountPrincipalId);
+          const principal = await principalRepository.findById(
+            oauthClient.serviceAccountPrincipalId,
+          );
           if (principal) {
             const roleNames = principal.roles.map((r) => r.roleName);
             return {

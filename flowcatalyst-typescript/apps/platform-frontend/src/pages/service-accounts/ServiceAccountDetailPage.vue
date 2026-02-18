@@ -453,10 +453,23 @@ async function deleteServiceAccount() {
               optionValue="value"
               class="w-full"
             />
-            <Tag v-else :value="serviceAccount.scope || 'N/A'" :severity="serviceAccount.scope === 'ANCHOR' ? 'success' : serviceAccount.scope === 'PARTNER' ? 'info' : 'warn'" />
+            <Tag
+              v-else
+              :value="serviceAccount.scope || 'N/A'"
+              :severity="
+                serviceAccount.scope === 'ANCHOR'
+                  ? 'success'
+                  : serviceAccount.scope === 'PARTNER'
+                    ? 'info'
+                    : 'warn'
+              "
+            />
           </div>
 
-          <div class="info-item span-2" v-if="editMode ? editScope !== 'ANCHOR' : serviceAccount.scope !== 'ANCHOR'">
+          <div
+            class="info-item span-2"
+            v-if="editMode ? editScope !== 'ANCHOR' : serviceAccount.scope !== 'ANCHOR'"
+          >
             <label>Client Access</label>
             <MultiSelect
               v-if="editMode"

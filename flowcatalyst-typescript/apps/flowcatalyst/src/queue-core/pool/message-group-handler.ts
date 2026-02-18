@@ -94,7 +94,11 @@ export class MessageGroupHandler {
    */
   private startIdleTimeout(): void {
     this.idleTimeoutHandle = setTimeout(() => {
-      if (this.highPriorityQueue.length === 0 && this.regularQueue.length === 0 && !this.processing) {
+      if (
+        this.highPriorityQueue.length === 0 &&
+        this.regularQueue.length === 0 &&
+        !this.processing
+      ) {
         this.logger.debug('Message group handler idle timeout - cleaning up');
         this.onCleanup();
       }

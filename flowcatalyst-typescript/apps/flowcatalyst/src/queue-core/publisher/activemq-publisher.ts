@@ -61,7 +61,10 @@ export function createActiveMqPublisher(config: ActiveMqPublisherConfig): QueueP
             resolve({
               messageId: message.messageId,
               success: false,
-              error: disconnectError instanceof Error ? disconnectError.message : String(disconnectError),
+              error:
+                disconnectError instanceof Error
+                  ? disconnectError.message
+                  : String(disconnectError),
             });
           } else {
             resolve({ messageId: message.messageId, success: true });

@@ -111,10 +111,7 @@ export function createApplicationRepository(defaultDb: AnyDb): ApplicationReposi
 
     async findByIds(ids: string[], tx?: TransactionContext): Promise<Application[]> {
       if (ids.length === 0) return [];
-      const records = await db(tx)
-        .select()
-        .from(applications)
-        .where(inArray(applications.id, ids));
+      const records = await db(tx).select().from(applications).where(inArray(applications.id, ids));
       return records.map(recordToApplication);
     },
 

@@ -43,10 +43,9 @@ const DispatchJobItemSchema = Type.Object({
   subject: Type.Optional(Type.String()),
   correlationId: Type.Optional(Type.String()),
   eventId: Type.Optional(Type.String()),
-  metadata: Type.Optional(Type.Union([
-    Type.Array(MetadataEntrySchema),
-    Type.Record(Type.String(), Type.String()),
-  ])),
+  metadata: Type.Optional(
+    Type.Union([Type.Array(MetadataEntrySchema), Type.Record(Type.String(), Type.String())]),
+  ),
   payloadContentType: Type.Optional(Type.String()),
   dataOnly: Type.Optional(Type.Boolean()),
   messageGroup: Type.Optional(Type.String()),
@@ -176,9 +175,7 @@ export async function registerDispatchJobsBatchRoutes(
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function normalizeMetadata(
-  metadata: unknown,
-): DispatchJobMetadata[] {
+function normalizeMetadata(metadata: unknown): DispatchJobMetadata[] {
   if (!metadata) return [];
 
   // Array format: [{ key, value }]

@@ -38,9 +38,7 @@ const EventItemSchema = Type.Object({
   deduplicationId: Type.Optional(Type.String()),
   messageGroup: Type.Optional(Type.String()),
   clientId: Type.Optional(Type.String()),
-  contextData: Type.Optional(
-    Type.Array(Type.Object({ key: Type.String(), value: Type.String() })),
-  ),
+  contextData: Type.Optional(Type.Array(Type.Object({ key: Type.String(), value: Type.String() }))),
 });
 
 const BatchEventsRequestSchema = Type.Object({

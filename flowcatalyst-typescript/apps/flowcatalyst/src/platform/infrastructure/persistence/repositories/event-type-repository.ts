@@ -78,7 +78,8 @@ export interface EventTypeRepository extends PaginatedRepository<EventType> {
  * Create an EventType repository.
  */
 export function createEventTypeRepository(defaultDb: PlatformDb): EventTypeRepository {
-  const db = (tx?: TransactionContext): PlatformDb => (tx?.db as unknown as PlatformDb) ?? defaultDb;
+  const db = (tx?: TransactionContext): PlatformDb =>
+    (tx?.db as unknown as PlatformDb) ?? defaultDb;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rq = (tx?: TransactionContext): any => db(tx).query;
 
@@ -123,9 +124,7 @@ export function createEventTypeRepository(defaultDb: PlatformDb): EventTypeRepos
     const ids = records.map((r) => r.id);
     const specVersionsMap = await batchLoadSpecVersions(ids, txCtx);
 
-    return records.map((r) =>
-      recordToEventType(r, specVersionsMap.get(r.id) ?? []),
-    );
+    return records.map((r) => recordToEventType(r, specVersionsMap.get(r.id) ?? []));
   }
 
   return {

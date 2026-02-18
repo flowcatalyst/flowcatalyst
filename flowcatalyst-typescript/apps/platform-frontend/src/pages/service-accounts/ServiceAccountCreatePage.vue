@@ -230,9 +230,7 @@ function goBack() {
             filter
             class="w-full"
           />
-          <small class="help-text">
-            Select which clients this service account can access.
-          </small>
+          <small class="help-text"> Select which clients this service account can access. </small>
         </div>
       </div>
 

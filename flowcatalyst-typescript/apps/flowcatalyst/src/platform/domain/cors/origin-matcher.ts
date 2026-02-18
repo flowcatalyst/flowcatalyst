@@ -67,9 +67,7 @@ export function matchesOriginPattern(pattern: string, origin: string): boolean {
     }
 
     // Convert wildcard host to regex: * -> [a-zA-Z0-9-]+
-    const hostRegex = patternParts.host
-      .replace(/[.]/g, '\\.')
-      .replace(/\*/g, '[a-zA-Z0-9-]+');
+    const hostRegex = patternParts.host.replace(/[.]/g, '\\.').replace(/\*/g, '[a-zA-Z0-9-]+');
 
     return new RegExp(`^${hostRegex}$`).test(originParts.host);
   } catch {
@@ -112,9 +110,7 @@ export function matchesRedirectUriPattern(pattern: string, uri: string): boolean
     if (patternParts.port !== uriParts.port) return false;
     if (patternParts.path !== uriParts.path) return false;
 
-    const hostRegex = patternParts.host
-      .replace(/[.]/g, '\\.')
-      .replace(/\*/g, '[a-zA-Z0-9-]+');
+    const hostRegex = patternParts.host.replace(/[.]/g, '\\.').replace(/\*/g, '[a-zA-Z0-9-]+');
 
     return new RegExp(`^${hostRegex}$`).test(uriParts.host);
   } catch {

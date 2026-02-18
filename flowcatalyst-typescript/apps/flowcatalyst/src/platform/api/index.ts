@@ -45,8 +45,14 @@ import { registerConfigRoutes, type ConfigRoutesDeps } from './admin/config.js';
 import { registerConfigAccessRoutes, type ConfigAccessRoutesDeps } from './admin/config-access.js';
 import { registerEventTypesBffRoutes, type EventTypesBffDeps } from './bff/event-types.js';
 import { registerRolesBffRoutes, type RolesBffDeps } from './bff/roles.js';
-import { registerEventsRoutes as registerEventsBffRoutes, type EventsRoutesDeps as EventsBffDeps } from './admin/events.js';
-import { registerDispatchJobsRoutes as registerDispatchJobsBffRoutes, type DispatchJobsRoutesDeps as DispatchJobsBffDeps } from './admin/dispatch-jobs.js';
+import {
+  registerEventsRoutes as registerEventsBffRoutes,
+  type EventsRoutesDeps as EventsBffDeps,
+} from './admin/events.js';
+import {
+  registerDispatchJobsRoutes as registerDispatchJobsBffRoutes,
+  type DispatchJobsRoutesDeps as DispatchJobsBffDeps,
+} from './admin/dispatch-jobs.js';
 import { registerDebugEventsBffRoutes, type DebugEventsBffDeps } from './bff/debug-events.js';
 import {
   registerDebugDispatchJobsBffRoutes,
@@ -129,7 +135,8 @@ export async function registerAdminRoutes(
 /**
  * Dependencies for BFF routes.
  */
-export interface BffRoutesDeps extends EventTypesBffDeps, RolesBffDeps, EventsBffDeps, DispatchJobsBffDeps {}
+export interface BffRoutesDeps
+  extends EventTypesBffDeps, RolesBffDeps, EventsBffDeps, DispatchJobsBffDeps {}
 
 /**
  * Register all BFF routes (frontend-facing).
@@ -211,7 +218,8 @@ export async function registerApplicationSyncApiRoutes(
 /**
  * Dependencies for batch ingestion routes.
  */
-export interface BatchRoutesDeps extends EventsBatchDeps, DispatchJobsBatchDeps, AuditLogsBatchDeps {}
+export interface BatchRoutesDeps
+  extends EventsBatchDeps, DispatchJobsBatchDeps, AuditLogsBatchDeps {}
 
 /**
  * Register batch ingestion routes (outbox processor / SDK batch endpoints).

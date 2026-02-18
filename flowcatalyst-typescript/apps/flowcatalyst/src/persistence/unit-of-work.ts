@@ -118,7 +118,11 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
 
           // 3. Build dispatch jobs for matching subscriptions
           if (eventDispatchService) {
-            collectedJobs = await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
+            collectedJobs = await eventDispatchService.buildDispatchJobsForEvent(
+              event,
+              clientId,
+              tx.db,
+            );
           }
 
           // 4. Create the audit log
@@ -160,7 +164,11 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
 
           // 3. Build dispatch jobs for matching subscriptions
           if (eventDispatchService) {
-            collectedJobs = await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
+            collectedJobs = await eventDispatchService.buildDispatchJobsForEvent(
+              event,
+              clientId,
+              tx.db,
+            );
           }
 
           // 4. Create the audit log
@@ -251,7 +259,11 @@ export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOf
 
           // 3. Build dispatch jobs for matching subscriptions
           if (eventDispatchService) {
-            collectedJobs = await eventDispatchService.buildDispatchJobsForEvent(event, clientId, tx.db);
+            collectedJobs = await eventDispatchService.buildDispatchJobsForEvent(
+              event,
+              clientId,
+              tx.db,
+            );
           }
 
           // 4. Create the audit log

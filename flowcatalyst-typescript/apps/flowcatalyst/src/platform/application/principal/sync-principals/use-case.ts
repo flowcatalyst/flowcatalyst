@@ -76,10 +76,7 @@ export function createSyncPrincipalsUseCase(
 
       if (!command.principals || command.principals.length === 0) {
         return Result.failure(
-          UseCaseError.validation(
-            'PRINCIPALS_REQUIRED',
-            'At least one principal must be provided',
-          ),
+          UseCaseError.validation('PRINCIPALS_REQUIRED', 'At least one principal must be provided'),
         );
       }
 
@@ -134,13 +131,10 @@ export function createSyncPrincipalsUseCase(
             );
             const mergedRoles = [...existingNonSdkRoles, ...roleAssignments];
 
-            const updatedPrincipal = updatePrincipal(
-              assignRoles(existing, mergedRoles),
-              {
-                name: item.name,
-                active: item.active !== false,
-              },
-            );
+            const updatedPrincipal = updatePrincipal(assignRoles(existing, mergedRoles), {
+              name: item.name,
+              active: item.active !== false,
+            });
 
             await principalRepository.update(updatedPrincipal, txCtx);
             updated++;
@@ -152,8 +146,7 @@ export function createSyncPrincipalsUseCase(
             let scope: PrincipalScope = PrincipalScope.CLIENT;
             let idpType: IdpType = IdpType.INTERNAL;
 
-            const mapping =
-              await emailDomainMappingRepository.findByEmailDomain(emailDomain);
+            const mapping = await emailDomainMappingRepository.findByEmailDomain(emailDomain);
             if (mapping) {
               scope = mapping.scopeType as PrincipalScope;
               const idp = await identityProviderRepository.findById(
@@ -165,8 +158,7 @@ export function createSyncPrincipalsUseCase(
               }
             } else {
               // Fall back to legacy anchor domain check
-              const isAnchorDomain =
-                await anchorDomainRepository.existsByDomain(emailDomain);
+              const isAnchorDomain = await anchorDomainRepository.existsByDomain(emailDomain);
               if (isAnchorDomain) {
                 scope = PrincipalScope.ANCHOR;
               }
@@ -205,9 +197,7 @@ export function createSyncPrincipalsUseCase(
             if (!principal.userIdentity?.email) continue;
             if (syncedEmails.includes(principal.userIdentity.email)) continue;
 
-            const hasSdkRoles = principal.roles.some(
-              (r) => r.assignmentSource === 'SDK_SYNC',
-            );
+            const hasSdkRoles = principal.roles.some((r) => r.assignmentSource === 'SDK_SYNC');
 
             if (hasSdkRoles) {
               const remainingRoles = principal.roles.filter(

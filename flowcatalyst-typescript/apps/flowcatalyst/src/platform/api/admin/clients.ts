@@ -620,7 +620,9 @@ export async function registerClientsRoutes(
 
       // Get current configs
       const currentConfigs = await applicationClientConfigRepository.findByClient(id);
-      const currentlyEnabled = new Set(currentConfigs.filter((c) => c.enabled).map((c) => c.applicationId));
+      const currentlyEnabled = new Set(
+        currentConfigs.filter((c) => c.enabled).map((c) => c.applicationId),
+      );
       const desiredEnabled = new Set(enabledApplicationIds);
 
       // Enable apps that should be enabled but aren't

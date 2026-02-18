@@ -41,7 +41,9 @@ export const AuthorizationContext = {
    * Check if the principal can access a specific application by ID.
    */
   canAccessApplication(authz: AuthorizationContext, applicationId: string): boolean {
-    return authz.accessibleApplicationIds !== null && authz.accessibleApplicationIds.has(applicationId);
+    return (
+      authz.accessibleApplicationIds !== null && authz.accessibleApplicationIds.has(applicationId)
+    );
   },
 
   /**
@@ -49,7 +51,8 @@ export const AuthorizationContext = {
    */
   canAccessApplicationByCode(authz: AuthorizationContext, applicationCode: string): boolean {
     return (
-      authz.accessibleApplicationCodes !== null && authz.accessibleApplicationCodes.has(applicationCode)
+      authz.accessibleApplicationCodes !== null &&
+      authz.accessibleApplicationCodes.has(applicationCode)
     );
   },
 

@@ -13,7 +13,12 @@
 
 import type { FastifyInstance } from 'fastify';
 import { Type, type Static } from '@sinclair/typebox';
-import { sendResult, jsonSuccess, ErrorResponseSchema, SyncResponseSchema } from '@flowcatalyst/http';
+import {
+  sendResult,
+  jsonSuccess,
+  ErrorResponseSchema,
+  SyncResponseSchema,
+} from '@flowcatalyst/http';
 import { Result } from '@flowcatalyst/application';
 import type { UseCase } from '@flowcatalyst/application';
 
@@ -34,7 +39,10 @@ import type {
   PrincipalsSynced,
 } from '../../domain/index.js';
 import { requirePermission } from '../../authorization/index.js';
-import { ROLE_PERMISSIONS, USER_PERMISSIONS } from '../../authorization/permissions/platform-iam.js';
+import {
+  ROLE_PERMISSIONS,
+  USER_PERMISSIONS,
+} from '../../authorization/permissions/platform-iam.js';
 import {
   EVENT_TYPE_PERMISSIONS,
   SUBSCRIPTION_PERMISSIONS,

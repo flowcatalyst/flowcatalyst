@@ -32,12 +32,7 @@ export function createStaleQueuedJobPoller(
       const result = await db
         .update(dispatchJobs)
         .set({ status: 'PENDING', updatedAt: new Date() })
-        .where(
-          and(
-            eq(dispatchJobs.status, 'QUEUED'),
-            lt(dispatchJobs.updatedAt, cutoff),
-          ),
-        )
+        .where(and(eq(dispatchJobs.status, 'QUEUED'), lt(dispatchJobs.updatedAt, cutoff)))
         .returning({ id: dispatchJobs.id });
 
       if (result.length > 0) {

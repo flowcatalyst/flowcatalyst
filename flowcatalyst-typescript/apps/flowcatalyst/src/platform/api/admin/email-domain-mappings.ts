@@ -28,7 +28,10 @@ import type {
   EmailDomainMappingDeleted,
   EmailDomainMapping,
 } from '../../domain/index.js';
-import type { EmailDomainMappingRepository, ClientRepository } from '../../infrastructure/persistence/index.js';
+import type {
+  EmailDomainMappingRepository,
+  ClientRepository,
+} from '../../infrastructure/persistence/index.js';
 import type { IdentityProviderRepository } from '../../infrastructure/persistence/repositories/identity-provider-repository.js';
 import { requirePermission } from '../../authorization/index.js';
 import { EMAIL_DOMAIN_MAPPING_PERMISSIONS } from '../../authorization/permissions/platform-admin.js';
@@ -154,7 +157,9 @@ export async function registerEmailDomainMappingsRoutes(
       }
 
       // Batch-load primary client names
-      const clientIds = [...new Set(mappings.map((m) => m.primaryClientId).filter(Boolean))] as string[];
+      const clientIds = [
+        ...new Set(mappings.map((m) => m.primaryClientId).filter(Boolean)),
+      ] as string[];
       const clientNameMap = new Map<string, string>();
       for (const clientId of clientIds) {
         const client = await clientRepository.findById(clientId);

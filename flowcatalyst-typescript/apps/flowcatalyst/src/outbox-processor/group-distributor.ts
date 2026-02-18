@@ -7,7 +7,10 @@
  */
 
 import type { OutboxItem, OutboxItemType } from './model.js';
-import { createMessageGroupProcessor, type MessageGroupProcessor } from './message-group-processor.js';
+import {
+  createMessageGroupProcessor,
+  type MessageGroupProcessor,
+} from './message-group-processor.js';
 import type { OutboxRepository } from './repository/outbox-repository.js';
 import type { ApiClient } from './api-client.js';
 import type { OutboxProcessorConfig } from './env.js';

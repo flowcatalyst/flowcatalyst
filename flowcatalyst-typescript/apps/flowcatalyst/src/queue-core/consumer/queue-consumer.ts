@@ -13,61 +13,61 @@ import type { MessageBatch } from '@flowcatalyst/shared-types';
  * before invoking this handler, so the queue manager never sees broker-specific types.
  */
 export type StandardBatchHandler = (
-	batch: MessageBatch,
-	callbacks: Map<string, MessageCallbackFns>,
+  batch: MessageBatch,
+  callbacks: Map<string, MessageCallbackFns>,
 ) => Promise<void>;
 
 /**
  * Queue consumer interface - the contract all broker implementations must satisfy.
  */
 export interface QueueConsumer {
-	/** Start consuming messages from the queue */
-	start(): Promise<void>;
+  /** Start consuming messages from the queue */
+  start(): Promise<void>;
 
-	/** Stop consuming messages gracefully */
-	stop(): Promise<void>;
+  /** Stop consuming messages gracefully */
+  stop(): Promise<void>;
 
-	/** Get the queue identifier (URL, name, or URI) */
-	getQueueIdentifier(): string;
+  /** Get the queue identifier (URL, name, or URI) */
+  getQueueIdentifier(): string;
 
-	/** Check if consumer is currently running */
-	isRunning(): boolean;
+  /** Check if consumer is currently running */
+  isRunning(): boolean;
 
-	/** Check if consumer is fully stopped (not running and no pending tasks) */
-	isFullyStopped(): boolean;
+  /** Check if consumer is fully stopped (not running and no pending tasks) */
+  isFullyStopped(): boolean;
 
-	/** Get consumer health status */
-	getHealth(): ConsumerHealth;
+  /** Get consumer health status */
+  getHealth(): ConsumerHealth;
 
-	/** Get queue metrics (pending messages, in-flight count) */
-	getQueueMetrics(): QueueMetrics;
+  /** Get queue metrics (pending messages, in-flight count) */
+  getQueueMetrics(): QueueMetrics;
 
-	/** Create a new consumer with the same configuration but a different handler */
-	recreate(handler: StandardBatchHandler): QueueConsumer;
+  /** Create a new consumer with the same configuration but a different handler */
+  recreate(handler: StandardBatchHandler): QueueConsumer;
 }
 
 /**
  * Consumer health info - matches Java ConsumerHealthInfo
  */
 export interface ConsumerHealth {
-	mapKey: string;
-	queueIdentifier: string;
-	consumerQueueIdentifier: string;
-	instanceId: string;
-	isHealthy: boolean;
-	lastPollTimeMs: number;
-	lastPollTime: string;
-	timeSinceLastPollMs: number;
-	timeSinceLastPollSeconds: number;
-	isRunning: boolean;
+  mapKey: string;
+  queueIdentifier: string;
+  consumerQueueIdentifier: string;
+  instanceId: string;
+  isHealthy: boolean;
+  lastPollTimeMs: number;
+  lastPollTime: string;
+  timeSinceLastPollMs: number;
+  timeSinceLastPollSeconds: number;
+  isRunning: boolean;
 }
 
 /**
  * Queue metrics
  */
 export interface QueueMetrics {
-	pendingMessages: number;
-	messagesNotVisible: number;
+  pendingMessages: number;
+  messagesNotVisible: number;
 }
 
 /**
@@ -85,8 +85,8 @@ export type NackFn = (delaySeconds?: number) => Promise<void>;
  * Matches Java MessageCallback + MessageVisibilityControl combined.
  */
 export interface MessageCallbackFns {
-	ack: AckFn;
-	nack: NackFn;
-	updateReceiptHandle?: ((newHandle: string) => void) | undefined;
-	inProgress?: (() => void) | undefined;
+  ack: AckFn;
+  nack: NackFn;
+  updateReceiptHandle?: ((newHandle: string) => void) | undefined;
+  inProgress?: (() => void) | undefined;
 }

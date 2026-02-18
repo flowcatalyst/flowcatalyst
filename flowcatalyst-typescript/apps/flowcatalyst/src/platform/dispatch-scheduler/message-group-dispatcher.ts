@@ -56,7 +56,10 @@ export function createMessageGroupDispatcher(
       const success = await jobDispatcher.dispatch(job);
 
       if (success) {
-        logger.debug({ jobId: job.id, messageGroup: job.messageGroup }, 'Successfully dispatched job');
+        logger.debug(
+          { jobId: job.id, messageGroup: job.messageGroup },
+          'Successfully dispatched job',
+        );
       } else {
         logger.warn({ jobId: job.id, messageGroup: job.messageGroup }, 'Failed to dispatch job');
       }

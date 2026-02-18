@@ -77,7 +77,8 @@ export interface SubscriptionRepository extends Repository<Subscription> {
  * Create a Subscription repository.
  */
 export function createSubscriptionRepository(defaultDb: PlatformDb): SubscriptionRepository {
-  const db = (tx?: TransactionContext): PlatformDb => (tx?.db as unknown as PlatformDb) ?? defaultDb;
+  const db = (tx?: TransactionContext): PlatformDb =>
+    (tx?.db as unknown as PlatformDb) ?? defaultDb;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rq = (tx?: TransactionContext): any => db(tx).query;
 
@@ -224,11 +225,7 @@ export function createSubscriptionRepository(defaultDb: PlatformDb): Subscriptio
           ? and(eq(subscriptions.code, code), isNull(subscriptions.clientId))
           : and(eq(subscriptions.code, code), eq(subscriptions.clientId, clientId));
 
-      const [record] = await db(tx)
-        .select()
-        .from(subscriptions)
-        .where(condition)
-        .limit(1);
+      const [record] = await db(tx).select().from(subscriptions).where(condition).limit(1);
 
       if (!record) return undefined;
       const hydrated = await batchHydrate([record], tx);

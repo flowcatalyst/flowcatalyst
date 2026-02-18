@@ -327,8 +327,12 @@ export class ConfigSyncService {
     if (a.processingPools.length !== b.processingPools.length) return false;
 
     // Deep compare queues (order-insensitive)
-    const sortedQueuesA = [...a.queues].sort((x, y) => (x.queueUri ?? '').localeCompare(y.queueUri ?? ''));
-    const sortedQueuesB = [...b.queues].sort((x, y) => (x.queueUri ?? '').localeCompare(y.queueUri ?? ''));
+    const sortedQueuesA = [...a.queues].sort((x, y) =>
+      (x.queueUri ?? '').localeCompare(y.queueUri ?? ''),
+    );
+    const sortedQueuesB = [...b.queues].sort((x, y) =>
+      (x.queueUri ?? '').localeCompare(y.queueUri ?? ''),
+    );
     for (let i = 0; i < sortedQueuesA.length; i++) {
       const qa = sortedQueuesA[i];
       const qb = sortedQueuesB[i];

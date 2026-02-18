@@ -46,7 +46,12 @@
  * ```
  */
 
-import { Result, UseCaseError, type DomainEvent, type ExecutionContext } from '@flowcatalyst/domain-core';
+import {
+  Result,
+  UseCaseError,
+  type DomainEvent,
+  type ExecutionContext,
+} from '@flowcatalyst/domain-core';
 import type { Command } from './command.js';
 
 export interface UseCase<TCommand extends Command, TEvent extends DomainEvent> {
@@ -118,13 +123,17 @@ export type UseCaseEvent<T> = T extends UseCase<Command, infer TEvent> ? TEvent 
  * }
  * ```
  */
-export abstract class SecuredUseCase<TCommand extends Command, TEvent extends DomainEvent>
-  implements UseCase<TCommand, TEvent>
-{
+export abstract class SecuredUseCase<
+  TCommand extends Command,
+  TEvent extends DomainEvent,
+> implements UseCase<TCommand, TEvent> {
   async execute(command: TCommand, context: ExecutionContext): Promise<Result<TEvent>> {
     if (!this.authorizeResource(command, context)) {
       return Result.failure(
-        UseCaseError.authorization('RESOURCE_ACCESS_DENIED', 'Not authorized to access this resource'),
+        UseCaseError.authorization(
+          'RESOURCE_ACCESS_DENIED',
+          'Not authorized to access this resource',
+        ),
       );
     }
     return this.doExecute(command, context);
