@@ -949,9 +949,9 @@ export type GetApiAdminPrincipalsByIdApplicationAccessResponses = {
      */
     200: {
         applications: Array<{
-            applicationId: string;
-            applicationCode: string | null;
-            applicationName: string | null;
+            id: string;
+            code: string;
+            name: string;
             grantedAt: string | null;
         }>;
     };
@@ -1019,9 +1019,9 @@ export type PutApiAdminPrincipalsByIdApplicationAccessResponses = {
      */
     200: {
         applications: Array<{
-            applicationId: string;
-            applicationCode: string | null;
-            applicationName: string | null;
+            id: string;
+            code: string;
+            name: string;
             grantedAt: string | null;
         }>;
         added: Array<string>;
@@ -1070,9 +1070,9 @@ export type GetApiAdminPrincipalsByIdAvailableApplicationsResponses = {
      */
     200: {
         applications: Array<{
-            applicationId: string;
-            applicationCode: string | null;
-            applicationName: string | null;
+            id: string;
+            code: string;
+            name: string;
             grantedAt: string | null;
         }>;
     };
@@ -4761,9 +4761,7 @@ export type GetApiAdminOauthClientsByClientIdByClientIdResponses = {
 export type GetApiAdminOauthClientsByClientIdByClientIdResponse = GetApiAdminOauthClientsByClientIdByClientIdResponses[keyof GetApiAdminOauthClientsByClientIdByClientIdResponses];
 
 export type PostApiAdminOauthClientsByIdRegenerateSecretData = {
-    body: {
-        newSecretRef: string;
-    };
+    body?: never;
     path: {
         id: string;
     };
@@ -4819,25 +4817,31 @@ export type PostApiAdminOauthClientsByIdRegenerateSecretResponses = {
      * Default Response
      */
     200: {
-        id: string;
-        clientId: string;
-        clientName: string;
-        clientType: string;
-        hasClientSecret: boolean;
-        redirectUris: Array<string>;
-        allowedOrigins: Array<string>;
-        grantTypes: Array<string>;
-        defaultScopes: Array<string>;
-        pkceRequired: boolean;
-        applicationIds: Array<string>;
-        applications: Array<{
+        client: {
             id: string;
-            name: string;
-        }>;
-        serviceAccountPrincipalId: string | null;
-        active: boolean;
-        createdAt: string;
-        updatedAt: string;
+            clientId: string;
+            clientName: string;
+            clientType: string;
+            hasClientSecret: boolean;
+            redirectUris: Array<string>;
+            allowedOrigins: Array<string>;
+            grantTypes: Array<string>;
+            defaultScopes: Array<string>;
+            pkceRequired: boolean;
+            applicationIds: Array<string>;
+            applications: Array<{
+                id: string;
+                name: string;
+            }>;
+            serviceAccountPrincipalId: string | null;
+            active: boolean;
+            createdAt: string;
+            updatedAt: string;
+        };
+        /**
+         * The plaintext client secret (shown only once)
+         */
+        clientSecret: string;
     };
 };
 
@@ -4938,9 +4942,7 @@ export type PostApiAdminOauthClientsByIdDeactivateResponses = {
 export type PostApiAdminOauthClientsByIdDeactivateResponse = PostApiAdminOauthClientsByIdDeactivateResponses[keyof PostApiAdminOauthClientsByIdDeactivateResponses];
 
 export type PostApiAdminOauthClientsByIdRotateSecretData = {
-    body: {
-        newSecretRef: string;
-    };
+    body?: never;
     path: {
         id: string;
     };
@@ -4996,25 +4998,31 @@ export type PostApiAdminOauthClientsByIdRotateSecretResponses = {
      * Default Response
      */
     200: {
-        id: string;
-        clientId: string;
-        clientName: string;
-        clientType: string;
-        hasClientSecret: boolean;
-        redirectUris: Array<string>;
-        allowedOrigins: Array<string>;
-        grantTypes: Array<string>;
-        defaultScopes: Array<string>;
-        pkceRequired: boolean;
-        applicationIds: Array<string>;
-        applications: Array<{
+        client: {
             id: string;
-            name: string;
-        }>;
-        serviceAccountPrincipalId: string | null;
-        active: boolean;
-        createdAt: string;
-        updatedAt: string;
+            clientId: string;
+            clientName: string;
+            clientType: string;
+            hasClientSecret: boolean;
+            redirectUris: Array<string>;
+            allowedOrigins: Array<string>;
+            grantTypes: Array<string>;
+            defaultScopes: Array<string>;
+            pkceRequired: boolean;
+            applicationIds: Array<string>;
+            applications: Array<{
+                id: string;
+                name: string;
+            }>;
+            serviceAccountPrincipalId: string | null;
+            active: boolean;
+            createdAt: string;
+            updatedAt: string;
+        };
+        /**
+         * The plaintext client secret (shown only once)
+         */
+        clientSecret: string;
     };
 };
 

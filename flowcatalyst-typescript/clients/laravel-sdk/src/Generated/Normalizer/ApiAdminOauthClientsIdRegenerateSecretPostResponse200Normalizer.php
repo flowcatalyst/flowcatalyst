@@ -34,157 +34,26 @@ class ApiAdminOauthClientsIdRegenerateSecretPostResponse200Normalizer implements
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
         $object = new \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200();
-        if (\array_key_exists('hasClientSecret', $data) && \is_int($data['hasClientSecret'])) {
-            $data['hasClientSecret'] = (bool) $data['hasClientSecret'];
-        }
-        if (\array_key_exists('pkceRequired', $data) && \is_int($data['pkceRequired'])) {
-            $data['pkceRequired'] = (bool) $data['pkceRequired'];
-        }
-        if (\array_key_exists('active', $data) && \is_int($data['active'])) {
-            $data['active'] = (bool) $data['active'];
-        }
         if (null === $data || false === \is_array($data)) {
             return $object;
         }
-        if (\array_key_exists('id', $data) && $data['id'] !== null) {
-            $object->setId($data['id']);
-            unset($data['id']);
+        if (\array_key_exists('client', $data) && $data['client'] !== null) {
+            $object->setClient($this->denormalizer->denormalize($data['client'], \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200Client::class, 'json', $context));
+            unset($data['client']);
         }
-        elseif (\array_key_exists('id', $data) && $data['id'] === null) {
-            $object->setId(null);
+        elseif (\array_key_exists('client', $data) && $data['client'] === null) {
+            $object->setClient(null);
         }
-        if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
-            $object->setClientId($data['clientId']);
-            unset($data['clientId']);
+        if (\array_key_exists('clientSecret', $data) && $data['clientSecret'] !== null) {
+            $object->setClientSecret($data['clientSecret']);
+            unset($data['clientSecret']);
         }
-        elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
-            $object->setClientId(null);
+        elseif (\array_key_exists('clientSecret', $data) && $data['clientSecret'] === null) {
+            $object->setClientSecret(null);
         }
-        if (\array_key_exists('clientName', $data) && $data['clientName'] !== null) {
-            $object->setClientName($data['clientName']);
-            unset($data['clientName']);
-        }
-        elseif (\array_key_exists('clientName', $data) && $data['clientName'] === null) {
-            $object->setClientName(null);
-        }
-        if (\array_key_exists('clientType', $data) && $data['clientType'] !== null) {
-            $object->setClientType($data['clientType']);
-            unset($data['clientType']);
-        }
-        elseif (\array_key_exists('clientType', $data) && $data['clientType'] === null) {
-            $object->setClientType(null);
-        }
-        if (\array_key_exists('hasClientSecret', $data) && $data['hasClientSecret'] !== null) {
-            $object->setHasClientSecret($data['hasClientSecret']);
-            unset($data['hasClientSecret']);
-        }
-        elseif (\array_key_exists('hasClientSecret', $data) && $data['hasClientSecret'] === null) {
-            $object->setHasClientSecret(null);
-        }
-        if (\array_key_exists('redirectUris', $data) && $data['redirectUris'] !== null) {
-            $values = [];
-            foreach ($data['redirectUris'] as $value) {
-                $values[] = $value;
-            }
-            $object->setRedirectUris($values);
-            unset($data['redirectUris']);
-        }
-        elseif (\array_key_exists('redirectUris', $data) && $data['redirectUris'] === null) {
-            $object->setRedirectUris(null);
-        }
-        if (\array_key_exists('allowedOrigins', $data) && $data['allowedOrigins'] !== null) {
-            $values_1 = [];
-            foreach ($data['allowedOrigins'] as $value_1) {
-                $values_1[] = $value_1;
-            }
-            $object->setAllowedOrigins($values_1);
-            unset($data['allowedOrigins']);
-        }
-        elseif (\array_key_exists('allowedOrigins', $data) && $data['allowedOrigins'] === null) {
-            $object->setAllowedOrigins(null);
-        }
-        if (\array_key_exists('grantTypes', $data) && $data['grantTypes'] !== null) {
-            $values_2 = [];
-            foreach ($data['grantTypes'] as $value_2) {
-                $values_2[] = $value_2;
-            }
-            $object->setGrantTypes($values_2);
-            unset($data['grantTypes']);
-        }
-        elseif (\array_key_exists('grantTypes', $data) && $data['grantTypes'] === null) {
-            $object->setGrantTypes(null);
-        }
-        if (\array_key_exists('defaultScopes', $data) && $data['defaultScopes'] !== null) {
-            $values_3 = [];
-            foreach ($data['defaultScopes'] as $value_3) {
-                $values_3[] = $value_3;
-            }
-            $object->setDefaultScopes($values_3);
-            unset($data['defaultScopes']);
-        }
-        elseif (\array_key_exists('defaultScopes', $data) && $data['defaultScopes'] === null) {
-            $object->setDefaultScopes(null);
-        }
-        if (\array_key_exists('pkceRequired', $data) && $data['pkceRequired'] !== null) {
-            $object->setPkceRequired($data['pkceRequired']);
-            unset($data['pkceRequired']);
-        }
-        elseif (\array_key_exists('pkceRequired', $data) && $data['pkceRequired'] === null) {
-            $object->setPkceRequired(null);
-        }
-        if (\array_key_exists('applicationIds', $data) && $data['applicationIds'] !== null) {
-            $values_4 = [];
-            foreach ($data['applicationIds'] as $value_4) {
-                $values_4[] = $value_4;
-            }
-            $object->setApplicationIds($values_4);
-            unset($data['applicationIds']);
-        }
-        elseif (\array_key_exists('applicationIds', $data) && $data['applicationIds'] === null) {
-            $object->setApplicationIds(null);
-        }
-        if (\array_key_exists('applications', $data) && $data['applications'] !== null) {
-            $values_5 = [];
-            foreach ($data['applications'] as $value_5) {
-                $values_5[] = $this->denormalizer->denormalize($value_5, \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200ApplicationsItem::class, 'json', $context);
-            }
-            $object->setApplications($values_5);
-            unset($data['applications']);
-        }
-        elseif (\array_key_exists('applications', $data) && $data['applications'] === null) {
-            $object->setApplications(null);
-        }
-        if (\array_key_exists('serviceAccountPrincipalId', $data) && $data['serviceAccountPrincipalId'] !== null) {
-            $object->setServiceAccountPrincipalId($data['serviceAccountPrincipalId']);
-            unset($data['serviceAccountPrincipalId']);
-        }
-        elseif (\array_key_exists('serviceAccountPrincipalId', $data) && $data['serviceAccountPrincipalId'] === null) {
-            $object->setServiceAccountPrincipalId(null);
-        }
-        if (\array_key_exists('active', $data) && $data['active'] !== null) {
-            $object->setActive($data['active']);
-            unset($data['active']);
-        }
-        elseif (\array_key_exists('active', $data) && $data['active'] === null) {
-            $object->setActive(null);
-        }
-        if (\array_key_exists('createdAt', $data) && $data['createdAt'] !== null) {
-            $object->setCreatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']));
-            unset($data['createdAt']);
-        }
-        elseif (\array_key_exists('createdAt', $data) && $data['createdAt'] === null) {
-            $object->setCreatedAt(null);
-        }
-        if (\array_key_exists('updatedAt', $data) && $data['updatedAt'] !== null) {
-            $object->setUpdatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['updatedAt']));
-            unset($data['updatedAt']);
-        }
-        elseif (\array_key_exists('updatedAt', $data) && $data['updatedAt'] === null) {
-            $object->setUpdatedAt(null);
-        }
-        foreach ($data as $key => $value_6) {
+        foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
-                $object[$key] = $value_6;
+                $object[$key] = $value;
             }
         }
         return $object;
@@ -192,49 +61,11 @@ class ApiAdminOauthClientsIdRegenerateSecretPostResponse200Normalizer implements
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        $dataArray['id'] = $data->getId();
-        $dataArray['clientId'] = $data->getClientId();
-        $dataArray['clientName'] = $data->getClientName();
-        $dataArray['clientType'] = $data->getClientType();
-        $dataArray['hasClientSecret'] = $data->getHasClientSecret();
-        $values = [];
-        foreach ($data->getRedirectUris() as $value) {
-            $values[] = $value;
-        }
-        $dataArray['redirectUris'] = $values;
-        $values_1 = [];
-        foreach ($data->getAllowedOrigins() as $value_1) {
-            $values_1[] = $value_1;
-        }
-        $dataArray['allowedOrigins'] = $values_1;
-        $values_2 = [];
-        foreach ($data->getGrantTypes() as $value_2) {
-            $values_2[] = $value_2;
-        }
-        $dataArray['grantTypes'] = $values_2;
-        $values_3 = [];
-        foreach ($data->getDefaultScopes() as $value_3) {
-            $values_3[] = $value_3;
-        }
-        $dataArray['defaultScopes'] = $values_3;
-        $dataArray['pkceRequired'] = $data->getPkceRequired();
-        $values_4 = [];
-        foreach ($data->getApplicationIds() as $value_4) {
-            $values_4[] = $value_4;
-        }
-        $dataArray['applicationIds'] = $values_4;
-        $values_5 = [];
-        foreach ($data->getApplications() as $value_5) {
-            $values_5[] = $this->normalizer->normalize($value_5, 'json', $context);
-        }
-        $dataArray['applications'] = $values_5;
-        $dataArray['serviceAccountPrincipalId'] = $data->getServiceAccountPrincipalId();
-        $dataArray['active'] = $data->getActive();
-        $dataArray['createdAt'] = $data->getCreatedAt()->format('Y-m-d\TH:i:sP');
-        $dataArray['updatedAt'] = $data->getUpdatedAt()->format('Y-m-d\TH:i:sP');
-        foreach ($data as $key => $value_6) {
+        $dataArray['client'] = $this->normalizer->normalize($data->getClient(), 'json', $context);
+        $dataArray['clientSecret'] = $data->getClientSecret();
+        foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
-                $dataArray[$key] = $value_6;
+                $dataArray[$key] = $value;
             }
         }
         return $dataArray;

@@ -57,9 +57,9 @@ export interface RolesAssignedResponse {
 }
 
 export interface ApplicationAccessGrant {
-  applicationId: string;
-  applicationCode: string | null;
-  applicationName: string | null;
+  id: string;
+  code: string;
+  name: string;
   grantedAt: string;
 }
 

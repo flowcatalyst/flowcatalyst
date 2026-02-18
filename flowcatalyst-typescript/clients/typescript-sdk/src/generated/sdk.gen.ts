@@ -603,11 +603,7 @@ export const getApiAdminOauthClientsByClientIdByClientId = <ThrowOnError extends
 export const postApiAdminOauthClientsByIdRegenerateSecret = <ThrowOnError extends boolean = false>(options: Options<PostApiAdminOauthClientsByIdRegenerateSecretData, ThrowOnError>) => (options.client ?? client).post<PostApiAdminOauthClientsByIdRegenerateSecretResponses, PostApiAdminOauthClientsByIdRegenerateSecretErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/admin/oauth-clients/{id}/regenerate-secret',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
+    ...options
 });
 
 export const postApiAdminOauthClientsByIdActivate = <ThrowOnError extends boolean = false>(options: Options<PostApiAdminOauthClientsByIdActivateData, ThrowOnError>) => (options.client ?? client).post<PostApiAdminOauthClientsByIdActivateResponses, PostApiAdminOauthClientsByIdActivateErrors, ThrowOnError>({
@@ -625,11 +621,7 @@ export const postApiAdminOauthClientsByIdDeactivate = <ThrowOnError extends bool
 export const postApiAdminOauthClientsByIdRotateSecret = <ThrowOnError extends boolean = false>(options: Options<PostApiAdminOauthClientsByIdRotateSecretData, ThrowOnError>) => (options.client ?? client).post<PostApiAdminOauthClientsByIdRotateSecretResponses, PostApiAdminOauthClientsByIdRotateSecretErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/admin/oauth-clients/{id}/rotate-secret',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
+    ...options
 });
 
 export const getApiAdminAuditLogs = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminAuditLogsData, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminAuditLogsResponses, unknown, ThrowOnError>({

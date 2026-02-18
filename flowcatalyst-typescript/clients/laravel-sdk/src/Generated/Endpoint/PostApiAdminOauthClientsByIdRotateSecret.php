@@ -7,12 +7,10 @@ class PostApiAdminOauthClientsByIdRotateSecret extends \FlowCatalyst\Generated\R
     protected $id;
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostBody $requestBody
      */
-    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostBody $requestBody = null)
+    public function __construct(string $id)
     {
         $this->id = $id;
-        $this->body = $requestBody;
     }
     use \FlowCatalyst\Generated\Runtime\Client\EndpointTrait;
     public function getMethod(): string
@@ -25,9 +23,6 @@ class PostApiAdminOauthClientsByIdRotateSecret extends \FlowCatalyst\Generated\R
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
-        if ($this->body instanceof \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostBody) {
-            return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
-        }
         return [[], null];
     }
     public function getExtraHeaders(): array

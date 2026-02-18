@@ -15,15 +15,15 @@ class ApiAdminPrincipalsIdApplicationAccessPutResponse200ApplicationsItem extend
     /**
      * @var string|null
      */
-    protected $applicationId;
+    protected $id;
     /**
-     * @var mixed|null
+     * @var string|null
      */
-    protected $applicationCode;
+    protected $code;
     /**
-     * @var mixed|null
+     * @var string|null
      */
-    protected $applicationName;
+    protected $name;
     /**
      * @var mixed|null
      */
@@ -31,55 +31,55 @@ class ApiAdminPrincipalsIdApplicationAccessPutResponse200ApplicationsItem extend
     /**
      * @return string|null
      */
-    public function getApplicationId(): ?string
+    public function getId(): ?string
     {
-        return $this->applicationId;
+        return $this->id;
     }
     /**
-     * @param string|null $applicationId
+     * @param string|null $id
      *
      * @return self
      */
-    public function setApplicationId(?string $applicationId): self
+    public function setId(?string $id): self
     {
-        $this->initialized['applicationId'] = true;
-        $this->applicationId = $applicationId;
+        $this->initialized['id'] = true;
+        $this->id = $id;
         return $this;
     }
     /**
-     * @return mixed
+     * @return string|null
      */
-    public function getApplicationCode()
+    public function getCode(): ?string
     {
-        return $this->applicationCode;
+        return $this->code;
     }
     /**
-     * @param mixed $applicationCode
+     * @param string|null $code
      *
      * @return self
      */
-    public function setApplicationCode($applicationCode): self
+    public function setCode(?string $code): self
     {
-        $this->initialized['applicationCode'] = true;
-        $this->applicationCode = $applicationCode;
+        $this->initialized['code'] = true;
+        $this->code = $code;
         return $this;
     }
     /**
-     * @return mixed
+     * @return string|null
      */
-    public function getApplicationName()
+    public function getName(): ?string
     {
-        return $this->applicationName;
+        return $this->name;
     }
     /**
-     * @param mixed $applicationName
+     * @param string|null $name
      *
      * @return self
      */
-    public function setApplicationName($applicationName): self
+    public function setName(?string $name): self
     {
-        $this->initialized['applicationName'] = true;
-        $this->applicationName = $applicationName;
+        $this->initialized['name'] = true;
+        $this->name = $name;
         return $this;
     }
     /**

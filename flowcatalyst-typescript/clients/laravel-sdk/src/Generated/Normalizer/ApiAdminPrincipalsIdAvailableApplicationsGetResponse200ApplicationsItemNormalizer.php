@@ -37,26 +37,26 @@ class ApiAdminPrincipalsIdAvailableApplicationsGetResponse200ApplicationsItemNor
         if (null === $data || false === \is_array($data)) {
             return $object;
         }
-        if (\array_key_exists('applicationId', $data) && $data['applicationId'] !== null) {
-            $object->setApplicationId($data['applicationId']);
-            unset($data['applicationId']);
+        if (\array_key_exists('id', $data) && $data['id'] !== null) {
+            $object->setId($data['id']);
+            unset($data['id']);
         }
-        elseif (\array_key_exists('applicationId', $data) && $data['applicationId'] === null) {
-            $object->setApplicationId(null);
+        elseif (\array_key_exists('id', $data) && $data['id'] === null) {
+            $object->setId(null);
         }
-        if (\array_key_exists('applicationCode', $data) && $data['applicationCode'] !== null) {
-            $object->setApplicationCode($data['applicationCode']);
-            unset($data['applicationCode']);
+        if (\array_key_exists('code', $data) && $data['code'] !== null) {
+            $object->setCode($data['code']);
+            unset($data['code']);
         }
-        elseif (\array_key_exists('applicationCode', $data) && $data['applicationCode'] === null) {
-            $object->setApplicationCode(null);
+        elseif (\array_key_exists('code', $data) && $data['code'] === null) {
+            $object->setCode(null);
         }
-        if (\array_key_exists('applicationName', $data) && $data['applicationName'] !== null) {
-            $object->setApplicationName($data['applicationName']);
-            unset($data['applicationName']);
+        if (\array_key_exists('name', $data) && $data['name'] !== null) {
+            $object->setName($data['name']);
+            unset($data['name']);
         }
-        elseif (\array_key_exists('applicationName', $data) && $data['applicationName'] === null) {
-            $object->setApplicationName(null);
+        elseif (\array_key_exists('name', $data) && $data['name'] === null) {
+            $object->setName(null);
         }
         if (\array_key_exists('grantedAt', $data) && $data['grantedAt'] !== null) {
             $object->setGrantedAt($data['grantedAt']);
@@ -75,9 +75,9 @@ class ApiAdminPrincipalsIdAvailableApplicationsGetResponse200ApplicationsItemNor
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        $dataArray['applicationId'] = $data->getApplicationId();
-        $dataArray['applicationCode'] = $data->getApplicationCode();
-        $dataArray['applicationName'] = $data->getApplicationName();
+        $dataArray['id'] = $data->getId();
+        $dataArray['code'] = $data->getCode();
+        $dataArray['name'] = $data->getName();
         $dataArray['grantedAt'] = $data->getGrantedAt();
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {

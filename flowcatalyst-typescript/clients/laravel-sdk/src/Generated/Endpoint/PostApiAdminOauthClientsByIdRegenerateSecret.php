@@ -7,12 +7,10 @@ class PostApiAdminOauthClientsByIdRegenerateSecret extends \FlowCatalyst\Generat
     protected $id;
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostBody $requestBody
      */
-    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostBody $requestBody = null)
+    public function __construct(string $id)
     {
         $this->id = $id;
-        $this->body = $requestBody;
     }
     use \FlowCatalyst\Generated\Runtime\Client\EndpointTrait;
     public function getMethod(): string
@@ -25,9 +23,6 @@ class PostApiAdminOauthClientsByIdRegenerateSecret extends \FlowCatalyst\Generat
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
-        if ($this->body instanceof \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostBody) {
-            return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
-        }
         return [[], null];
     }
     public function getExtraHeaders(): array

@@ -1195,21 +1195,17 @@ paths:
                     items:
                       type: object
                       required:
-                        - applicationId
-                        - applicationCode
-                        - applicationName
+                        - id
+                        - code
+                        - name
                         - grantedAt
                       properties:
-                        applicationId:
+                        id:
                           type: string
-                        applicationCode:
-                          anyOf:
-                            - type: string
-                            - type: "null"
-                        applicationName:
-                          anyOf:
-                            - type: string
-                            - type: "null"
+                        code:
+                          type: string
+                        name:
+                          type: string
                         grantedAt:
                           anyOf:
                             - format: date-time
@@ -1272,21 +1268,17 @@ paths:
                     items:
                       type: object
                       required:
-                        - applicationId
-                        - applicationCode
-                        - applicationName
+                        - id
+                        - code
+                        - name
                         - grantedAt
                       properties:
-                        applicationId:
+                        id:
                           type: string
-                        applicationCode:
-                          anyOf:
-                            - type: string
-                            - type: "null"
-                        applicationName:
-                          anyOf:
-                            - type: string
-                            - type: "null"
+                        code:
+                          type: string
+                        name:
+                          type: string
                         grantedAt:
                           anyOf:
                             - format: date-time
@@ -1363,21 +1355,17 @@ paths:
                     items:
                       type: object
                       required:
-                        - applicationId
-                        - applicationCode
-                        - applicationName
+                        - id
+                        - code
+                        - name
                         - grantedAt
                       properties:
-                        applicationId:
+                        id:
                           type: string
-                        applicationCode:
-                          anyOf:
-                            - type: string
-                            - type: "null"
-                        applicationName:
-                          anyOf:
-                            - type: string
-                            - type: "null"
+                        code:
+                          type: string
+                        name:
+                          type: string
                         grantedAt:
                           anyOf:
                             - format: date-time
@@ -7039,18 +7027,6 @@ paths:
                     additionalProperties: {}
   "/api/admin/oauth-clients/{id}/regenerate-secret":
     post:
-      requestBody:
-        required: true
-        content:
-          "application/json":
-            schema:
-              type: object
-              required:
-                - newSecretRef
-              properties:
-                newSecretRef:
-                  minLength: 1
-                  type: string
       parameters:
         - schema:
             type: string
@@ -7065,78 +7041,87 @@ paths:
               schema:
                 type: object
                 required:
-                  - id
-                  - clientId
-                  - clientName
-                  - clientType
-                  - hasClientSecret
-                  - redirectUris
-                  - allowedOrigins
-                  - grantTypes
-                  - defaultScopes
-                  - pkceRequired
-                  - applicationIds
-                  - applications
-                  - serviceAccountPrincipalId
-                  - active
-                  - createdAt
-                  - updatedAt
+                  - client
+                  - clientSecret
                 properties:
-                  id:
-                    type: string
-                  clientId:
-                    type: string
-                  clientName:
-                    type: string
-                  clientType:
-                    type: string
-                  hasClientSecret:
-                    type: boolean
-                  redirectUris:
-                    type: array
-                    items:
-                      type: string
-                  allowedOrigins:
-                    type: array
-                    items:
-                      type: string
-                  grantTypes:
-                    type: array
-                    items:
-                      type: string
-                  defaultScopes:
-                    type: array
-                    items:
-                      type: string
-                  pkceRequired:
-                    type: boolean
-                  applicationIds:
-                    type: array
-                    items:
-                      type: string
-                  applications:
-                    type: array
-                    items:
-                      type: object
-                      required:
-                        - id
-                        - name
-                      properties:
-                        id:
+                  client:
+                    type: object
+                    required:
+                      - id
+                      - clientId
+                      - clientName
+                      - clientType
+                      - hasClientSecret
+                      - redirectUris
+                      - allowedOrigins
+                      - grantTypes
+                      - defaultScopes
+                      - pkceRequired
+                      - applicationIds
+                      - applications
+                      - serviceAccountPrincipalId
+                      - active
+                      - createdAt
+                      - updatedAt
+                    properties:
+                      id:
+                        type: string
+                      clientId:
+                        type: string
+                      clientName:
+                        type: string
+                      clientType:
+                        type: string
+                      hasClientSecret:
+                        type: boolean
+                      redirectUris:
+                        type: array
+                        items:
                           type: string
-                        name:
+                      allowedOrigins:
+                        type: array
+                        items:
                           type: string
-                  serviceAccountPrincipalId:
-                    anyOf:
-                      - type: string
-                      - type: "null"
-                  active:
-                    type: boolean
-                  createdAt:
-                    format: date-time
-                    type: string
-                  updatedAt:
-                    format: date-time
+                      grantTypes:
+                        type: array
+                        items:
+                          type: string
+                      defaultScopes:
+                        type: array
+                        items:
+                          type: string
+                      pkceRequired:
+                        type: boolean
+                      applicationIds:
+                        type: array
+                        items:
+                          type: string
+                      applications:
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - id
+                            - name
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                      serviceAccountPrincipalId:
+                        anyOf:
+                          - type: string
+                          - type: "null"
+                      active:
+                        type: boolean
+                      createdAt:
+                        format: date-time
+                        type: string
+                      updatedAt:
+                        format: date-time
+                        type: string
+                  clientSecret:
+                    description: The plaintext client secret (shown only once)
                     type: string
         "400":
           description: Default Response
@@ -7262,18 +7247,6 @@ paths:
                     additionalProperties: {}
   "/api/admin/oauth-clients/{id}/rotate-secret":
     post:
-      requestBody:
-        required: true
-        content:
-          "application/json":
-            schema:
-              type: object
-              required:
-                - newSecretRef
-              properties:
-                newSecretRef:
-                  minLength: 1
-                  type: string
       parameters:
         - schema:
             type: string
@@ -7288,78 +7261,87 @@ paths:
               schema:
                 type: object
                 required:
-                  - id
-                  - clientId
-                  - clientName
-                  - clientType
-                  - hasClientSecret
-                  - redirectUris
-                  - allowedOrigins
-                  - grantTypes
-                  - defaultScopes
-                  - pkceRequired
-                  - applicationIds
-                  - applications
-                  - serviceAccountPrincipalId
-                  - active
-                  - createdAt
-                  - updatedAt
+                  - client
+                  - clientSecret
                 properties:
-                  id:
-                    type: string
-                  clientId:
-                    type: string
-                  clientName:
-                    type: string
-                  clientType:
-                    type: string
-                  hasClientSecret:
-                    type: boolean
-                  redirectUris:
-                    type: array
-                    items:
-                      type: string
-                  allowedOrigins:
-                    type: array
-                    items:
-                      type: string
-                  grantTypes:
-                    type: array
-                    items:
-                      type: string
-                  defaultScopes:
-                    type: array
-                    items:
-                      type: string
-                  pkceRequired:
-                    type: boolean
-                  applicationIds:
-                    type: array
-                    items:
-                      type: string
-                  applications:
-                    type: array
-                    items:
-                      type: object
-                      required:
-                        - id
-                        - name
-                      properties:
-                        id:
+                  client:
+                    type: object
+                    required:
+                      - id
+                      - clientId
+                      - clientName
+                      - clientType
+                      - hasClientSecret
+                      - redirectUris
+                      - allowedOrigins
+                      - grantTypes
+                      - defaultScopes
+                      - pkceRequired
+                      - applicationIds
+                      - applications
+                      - serviceAccountPrincipalId
+                      - active
+                      - createdAt
+                      - updatedAt
+                    properties:
+                      id:
+                        type: string
+                      clientId:
+                        type: string
+                      clientName:
+                        type: string
+                      clientType:
+                        type: string
+                      hasClientSecret:
+                        type: boolean
+                      redirectUris:
+                        type: array
+                        items:
                           type: string
-                        name:
+                      allowedOrigins:
+                        type: array
+                        items:
                           type: string
-                  serviceAccountPrincipalId:
-                    anyOf:
-                      - type: string
-                      - type: "null"
-                  active:
-                    type: boolean
-                  createdAt:
-                    format: date-time
-                    type: string
-                  updatedAt:
-                    format: date-time
+                      grantTypes:
+                        type: array
+                        items:
+                          type: string
+                      defaultScopes:
+                        type: array
+                        items:
+                          type: string
+                      pkceRequired:
+                        type: boolean
+                      applicationIds:
+                        type: array
+                        items:
+                          type: string
+                      applications:
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - id
+                            - name
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                      serviceAccountPrincipalId:
+                        anyOf:
+                          - type: string
+                          - type: "null"
+                      active:
+                        type: boolean
+                      createdAt:
+                        format: date-time
+                        type: string
+                      updatedAt:
+                        format: date-time
+                        type: string
+                  clientSecret:
+                    description: The plaintext client secret (shown only once)
                     type: string
         "400":
           description: Default Response

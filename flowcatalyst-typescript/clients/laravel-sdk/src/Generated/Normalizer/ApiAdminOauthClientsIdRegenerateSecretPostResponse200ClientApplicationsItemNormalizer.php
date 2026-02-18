@@ -11,7 +11,7 @@ use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
 use Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
 use Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
 use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-class ApiAdminOauthClientsIdRegenerateSecretPostBodyNormalizer implements DenormalizerInterface, NormalizerInterface, DenormalizerAwareInterface, NormalizerAwareInterface
+class ApiAdminOauthClientsIdRegenerateSecretPostResponse200ClientApplicationsItemNormalizer implements DenormalizerInterface, NormalizerInterface, DenormalizerAwareInterface, NormalizerAwareInterface
 {
     use DenormalizerAwareTrait;
     use NormalizerAwareTrait;
@@ -19,11 +19,11 @@ class ApiAdminOauthClientsIdRegenerateSecretPostBodyNormalizer implements Denorm
     use ValidatorTrait;
     public function supportsDenormalization(mixed $data, string $type, ?string $format = null, array $context = []): bool
     {
-        return $type === \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostBody::class;
+        return $type === \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200ClientApplicationsItem::class;
     }
     public function supportsNormalization(mixed $data, ?string $format = null, array $context = []): bool
     {
-        return is_object($data) && get_class($data) === \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostBody::class;
+        return is_object($data) && get_class($data) === \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200ClientApplicationsItem::class;
     }
     public function denormalize(mixed $data, string $type, ?string $format = null, array $context = []): mixed
     {
@@ -33,16 +33,23 @@ class ApiAdminOauthClientsIdRegenerateSecretPostBodyNormalizer implements Denorm
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
-        $object = new \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostBody();
+        $object = new \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200ClientApplicationsItem();
         if (null === $data || false === \is_array($data)) {
             return $object;
         }
-        if (\array_key_exists('newSecretRef', $data) && $data['newSecretRef'] !== null) {
-            $object->setNewSecretRef($data['newSecretRef']);
-            unset($data['newSecretRef']);
+        if (\array_key_exists('id', $data) && $data['id'] !== null) {
+            $object->setId($data['id']);
+            unset($data['id']);
         }
-        elseif (\array_key_exists('newSecretRef', $data) && $data['newSecretRef'] === null) {
-            $object->setNewSecretRef(null);
+        elseif (\array_key_exists('id', $data) && $data['id'] === null) {
+            $object->setId(null);
+        }
+        if (\array_key_exists('name', $data) && $data['name'] !== null) {
+            $object->setName($data['name']);
+            unset($data['name']);
+        }
+        elseif (\array_key_exists('name', $data) && $data['name'] === null) {
+            $object->setName(null);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -54,7 +61,8 @@ class ApiAdminOauthClientsIdRegenerateSecretPostBodyNormalizer implements Denorm
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        $dataArray['newSecretRef'] = $data->getNewSecretRef();
+        $dataArray['id'] = $data->getId();
+        $dataArray['name'] = $data->getName();
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
@@ -64,6 +72,6 @@ class ApiAdminOauthClientsIdRegenerateSecretPostBodyNormalizer implements Denorm
     }
     public function getSupportedTypes(?string $format = null): array
     {
-        return [\FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostBody::class => false];
+        return [\FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200ClientApplicationsItem::class => false];
     }
 }

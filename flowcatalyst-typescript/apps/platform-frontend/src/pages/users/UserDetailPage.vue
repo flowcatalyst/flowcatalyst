@@ -143,7 +143,7 @@ const filteredAvailableApps = computed(() => {
 
 // Check if there are unsaved changes in the app picker
 const hasAppChanges = computed(() => {
-  const currentApps = new Set(applicationAccessGrants.value.map((a) => a.applicationId));
+  const currentApps = new Set(applicationAccessGrants.value.map((a) => a.id));
   if (currentApps.size !== selectedAppIds.value.size) return true;
   for (const appId of currentApps) {
     if (!selectedAppIds.value.has(appId)) return true;
@@ -483,7 +483,7 @@ async function openAppPicker() {
     await loadAvailableApplications();
   }
   // Initialize selected apps from current grants
-  selectedAppIds.value = new Set(applicationAccessGrants.value.map((a) => a.applicationId));
+  selectedAppIds.value = new Set(applicationAccessGrants.value.map((a) => a.id));
   appSearchQuery.value = '';
   showAppPickerDialog.value = true;
 }
@@ -781,11 +781,11 @@ function goBack() {
         </div>
 
         <DataTable v-else :value="applicationAccessGrants" class="p-datatable-sm">
-          <Column field="applicationName" header="Application">
+          <Column field="name" header="Application">
             <template #body="{ data }">
               <div class="app-cell">
-                <span class="app-name">{{ data.applicationName || data.applicationId }}</span>
-                <span class="app-code">{{ data.applicationCode }}</span>
+                <span class="app-name">{{ data.name || data.id }}</span>
+                <span class="app-code">{{ data.code }}</span>
               </div>
             </template>
           </Column>

@@ -502,11 +502,11 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\ApiAdminOauthClientsByClientIdClientIdGetResponse404::class => \FlowCatalyst\Generated\Normalizer\ApiAdminOauthClientsByClientIdClientIdGetResponse404Normalizer::class,
         
-        \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostBody::class => \FlowCatalyst\Generated\Normalizer\ApiAdminOauthClientsIdRegenerateSecretPostBodyNormalizer::class,
-        
         \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200::class => \FlowCatalyst\Generated\Normalizer\ApiAdminOauthClientsIdRegenerateSecretPostResponse200Normalizer::class,
         
-        \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200ApplicationsItem::class => \FlowCatalyst\Generated\Normalizer\ApiAdminOauthClientsIdRegenerateSecretPostResponse200ApplicationsItemNormalizer::class,
+        \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200Client::class => \FlowCatalyst\Generated\Normalizer\ApiAdminOauthClientsIdRegenerateSecretPostResponse200ClientNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200ClientApplicationsItem::class => \FlowCatalyst\Generated\Normalizer\ApiAdminOauthClientsIdRegenerateSecretPostResponse200ClientApplicationsItemNormalizer::class,
         
         \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse400::class => \FlowCatalyst\Generated\Normalizer\ApiAdminOauthClientsIdRegenerateSecretPostResponse400Normalizer::class,
         
@@ -520,11 +520,11 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdDeactivatePostResponse404::class => \FlowCatalyst\Generated\Normalizer\ApiAdminOauthClientsIdDeactivatePostResponse404Normalizer::class,
         
-        \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostBody::class => \FlowCatalyst\Generated\Normalizer\ApiAdminOauthClientsIdRotateSecretPostBodyNormalizer::class,
-        
         \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostResponse200::class => \FlowCatalyst\Generated\Normalizer\ApiAdminOauthClientsIdRotateSecretPostResponse200Normalizer::class,
         
-        \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostResponse200ApplicationsItem::class => \FlowCatalyst\Generated\Normalizer\ApiAdminOauthClientsIdRotateSecretPostResponse200ApplicationsItemNormalizer::class,
+        \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostResponse200Client::class => \FlowCatalyst\Generated\Normalizer\ApiAdminOauthClientsIdRotateSecretPostResponse200ClientNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostResponse200ClientApplicationsItem::class => \FlowCatalyst\Generated\Normalizer\ApiAdminOauthClientsIdRotateSecretPostResponse200ClientApplicationsItemNormalizer::class,
         
         \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostResponse400::class => \FlowCatalyst\Generated\Normalizer\ApiAdminOauthClientsIdRotateSecretPostResponse400Normalizer::class,
         
@@ -1736,18 +1736,18 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\ApiAdminOauthClientsByClientIdClientIdGetResponse200::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminOauthClientsByClientIdClientIdGetResponse200ApplicationsItem::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminOauthClientsByClientIdClientIdGetResponse404::class => false,
-            \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostBody::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200::class => false,
-            \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200ApplicationsItem::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200Client::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200ClientApplicationsItem::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse400::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse404::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdActivatePostResponse200::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdActivatePostResponse404::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdDeactivatePostResponse200::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdDeactivatePostResponse404::class => false,
-            \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostBody::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostResponse200::class => false,
-            \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostResponse200ApplicationsItem::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostResponse200Client::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostResponse200ClientApplicationsItem::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostResponse400::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostResponse404::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminAuditLogsGetResponse200::class => false,

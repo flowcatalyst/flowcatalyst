@@ -945,16 +945,15 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostBody $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminOauthClientsByIdRegenerateSecretBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminOauthClientsByIdRegenerateSecretNotFoundException
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostResponse200 : \Psr\Http\Message\ResponseInterface)
      */
-    public function postApiAdminOauthClientsByIdRegenerateSecret(string $id, ?\FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRegenerateSecretPostBody $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    public function postApiAdminOauthClientsByIdRegenerateSecret(string $id, string $fetch = self::FETCH_OBJECT)
     {
-        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiAdminOauthClientsByIdRegenerateSecret($id, $requestBody), $fetch);
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiAdminOauthClientsByIdRegenerateSecret($id), $fetch);
     }
     /**
      * @param string $id
@@ -980,16 +979,15 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostBody $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminOauthClientsByIdRotateSecretBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminOauthClientsByIdRotateSecretNotFoundException
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostResponse200 : \Psr\Http\Message\ResponseInterface)
      */
-    public function postApiAdminOauthClientsByIdRotateSecret(string $id, ?\FlowCatalyst\Generated\Model\ApiAdminOauthClientsIdRotateSecretPostBody $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    public function postApiAdminOauthClientsByIdRotateSecret(string $id, string $fetch = self::FETCH_OBJECT)
     {
-        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiAdminOauthClientsByIdRotateSecret($id, $requestBody), $fetch);
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiAdminOauthClientsByIdRotateSecret($id), $fetch);
     }
     /**
      * @param array{

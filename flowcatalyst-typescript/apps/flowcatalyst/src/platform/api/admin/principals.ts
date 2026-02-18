@@ -195,9 +195,9 @@ const EmailDomainCheckResponseSchema = Type.Object({
 });
 
 const ApplicationAccessItemSchema = Type.Object({
-  applicationId: Type.String(),
-  applicationCode: Type.Union([Type.String(), Type.Null()]),
-  applicationName: Type.Union([Type.String(), Type.Null()]),
+  id: Type.String(),
+  code: Type.String(),
+  name: Type.String(),
   grantedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
 });
 
@@ -1014,9 +1014,9 @@ export async function registerPrincipalsRoutes(
         applications: accessRecords.map((r) => {
           const app = appsById.get(r.applicationId);
           return {
-            applicationId: r.applicationId,
-            applicationCode: app?.code ?? null,
-            applicationName: app?.name ?? null,
+            id: r.applicationId,
+            code: app?.code ?? '',
+            name: app?.name ?? '',
             grantedAt: r.grantedAt.toISOString(),
           };
         }),
@@ -1072,9 +1072,9 @@ export async function registerPrincipalsRoutes(
           applications: accessRecords.map((r) => {
             const app = appsById.get(r.applicationId);
             return {
-              applicationId: r.applicationId,
-              applicationCode: app?.code ?? null,
-              applicationName: app?.name ?? null,
+              id: r.applicationId,
+              code: app?.code ?? '',
+              name: app?.name ?? '',
               grantedAt: r.grantedAt.toISOString(),
             };
           }),
@@ -1087,7 +1087,7 @@ export async function registerPrincipalsRoutes(
     },
   );
 
-  // GET /api/admin/principals/:id/available-applications - Get apps enabled for principal's clients
+  // GET /api/admin/principals/:id/available-applications - Get apps available to a principal
   fastify.get(
     '/principals/:id/available-applications',
     {
@@ -1108,14 +1108,14 @@ export async function registerPrincipalsRoutes(
         return notFound(reply, `Principal not found: ${id}`);
       }
 
-      // ANCHOR users have access to ALL applications — no need to go through client configs
+      // ANCHOR users have access to ALL applications
       if (principal.scope === 'ANCHOR') {
         const allApps = await applicationRepository.findAll();
         return jsonSuccess(reply, {
           applications: allApps.map((app) => ({
-            applicationId: app.id,
-            applicationCode: app.code,
-            applicationName: app.name,
+            id: app.id,
+            code: app.code,
+            name: app.name,
             grantedAt: null,
           })),
         });
@@ -1143,18 +1143,14 @@ export async function registerPrincipalsRoutes(
 
       const appIds = [...appIdSet];
       const apps = appIds.length > 0 ? await applicationRepository.findByIds(appIds) : [];
-      const appsById = new Map(apps.map((a) => [a.id, a]));
 
       return jsonSuccess(reply, {
-        applications: appIds.map((appId) => {
-          const app = appsById.get(appId);
-          return {
-            applicationId: appId,
-            applicationCode: app?.code ?? null,
-            applicationName: app?.name ?? null,
-            grantedAt: null,
-          };
-        }),
+        applications: apps.map((app) => ({
+          id: app.id,
+          code: app.code,
+          name: app.name,
+          grantedAt: null,
+        })),
       });
     },
   );

@@ -2,7 +2,7 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class ApiAdminOauthClientsIdRegenerateSecretPostResponse200ApplicationsItem extends \ArrayObject
+class ApiAdminOauthClientsIdRotateSecretPostResponse200ClientApplicationsItem extends \ArrayObject
 {
     /**
      * @var array
