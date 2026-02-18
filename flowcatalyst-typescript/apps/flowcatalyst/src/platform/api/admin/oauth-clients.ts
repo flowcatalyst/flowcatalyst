@@ -17,6 +17,8 @@ import {
 } from '@flowcatalyst/http';
 import { Result } from '@flowcatalyst/application';
 import type { UseCase } from '@flowcatalyst/application';
+import type { EncryptionService } from '@flowcatalyst/platform-crypto';
+import { randomBytes } from 'node:crypto';
 
 import type {
   CreateOAuthClientCommand,
@@ -78,10 +80,6 @@ const UpdateOAuthClientSchema = Type.Object({
   active: Type.Optional(Type.Boolean()),
 });
 
-const RegenerateSecretSchema = Type.Object({
-  newSecretRef: Type.String({ minLength: 1 }),
-});
-
 const IdParam = Type.Object({ id: Type.String() });
 const ClientIdParam = Type.Object({ clientId: Type.String() });
 
@@ -91,7 +89,6 @@ const ListOAuthClientsQuery = Type.Object({
 
 type CreateOAuthClientBody = Static<typeof CreateOAuthClientSchema>;
 type UpdateOAuthClientBody = Static<typeof UpdateOAuthClientSchema>;
-type RegenerateSecretBody = Static<typeof RegenerateSecretSchema>;
 
 /** Normalize defaultScopes input to a space-separated string for storage. */
 function normalizeScopes(
@@ -134,6 +131,11 @@ const OAuthClientListResponseSchema = Type.Object({
   total: Type.Integer(),
 });
 
+const RegenerateSecretResponseSchema = Type.Object({
+  client: OAuthClientResponseSchema,
+  clientSecret: Type.String({ description: 'The plaintext client secret (shown only once)' }),
+});
+
 type OAuthClientResponse = Static<typeof OAuthClientResponseSchema>;
 
 /**
@@ -142,6 +144,7 @@ type OAuthClientResponse = Static<typeof OAuthClientResponseSchema>;
 export interface OAuthClientsRoutesDeps {
   readonly oauthClientRepository: OAuthClientRepository;
   readonly applicationRepository: ApplicationRepository;
+  readonly encryptionService: EncryptionService;
   readonly createOAuthClientUseCase: UseCase<CreateOAuthClientCommand, OAuthClientCreated>;
   readonly updateOAuthClientUseCase: UseCase<UpdateOAuthClientCommand, OAuthClientUpdated>;
   readonly regenerateOAuthClientSecretUseCase: UseCase<
@@ -194,6 +197,7 @@ export async function registerOAuthClientsRoutes(
   const {
     oauthClientRepository,
     applicationRepository,
+    encryptionService,
     createOAuthClientUseCase,
     updateOAuthClientUseCase,
     regenerateOAuthClientSecretUseCase,
@@ -387,9 +391,8 @@ export async function registerOAuthClientsRoutes(
       preHandler: requirePermission(OAUTH_CLIENT_PERMISSIONS.REGENERATE_SECRET),
       schema: {
         params: IdParam,
-        body: RegenerateSecretSchema,
         response: {
-          200: OAuthClientResponseSchema,
+          200: RegenerateSecretResponseSchema,
           400: ErrorResponseSchema,
           404: ErrorResponseSchema,
         },
@@ -397,12 +400,18 @@ export async function registerOAuthClientsRoutes(
     },
     async (request, reply) => {
       const { id } = request.params as Static<typeof IdParam>;
-      const body = request.body as RegenerateSecretBody;
       const ctx = request.executionContext;
+
+      // Generate a random secret and encrypt it for storage
+      const plainSecret = randomBytes(32).toString('base64url');
+      const encryptResult = encryptionService.encrypt(plainSecret);
+      if (encryptResult.isErr()) {
+        throw new Error('Failed to encrypt client secret');
+      }
 
       const command: RegenerateOAuthClientSecretCommand = {
         oauthClientId: id,
-        newSecretRef: body.newSecretRef,
+        newSecretRef: encryptResult.value,
       };
 
       const result = await regenerateOAuthClientSecretUseCase.execute(command, ctx);
@@ -411,7 +420,7 @@ export async function registerOAuthClientsRoutes(
         const client = await oauthClientRepository.findById(id);
         if (client) {
           const appMap = await buildAppMap();
-          return jsonSuccess(reply, toResponse(client, appMap));
+          return jsonSuccess(reply, { client: toResponse(client, appMap), clientSecret: plainSecret });
         }
       }
 
@@ -478,9 +487,8 @@ export async function registerOAuthClientsRoutes(
       preHandler: requirePermission(OAUTH_CLIENT_PERMISSIONS.REGENERATE_SECRET),
       schema: {
         params: IdParam,
-        body: RegenerateSecretSchema,
         response: {
-          200: OAuthClientResponseSchema,
+          200: RegenerateSecretResponseSchema,
           400: ErrorResponseSchema,
           404: ErrorResponseSchema,
         },
@@ -488,12 +496,18 @@ export async function registerOAuthClientsRoutes(
     },
     async (request, reply) => {
       const { id } = request.params as Static<typeof IdParam>;
-      const body = request.body as RegenerateSecretBody;
       const ctx = request.executionContext;
+
+      // Generate a random secret and encrypt it for storage
+      const plainSecret = randomBytes(32).toString('base64url');
+      const encryptResult = encryptionService.encrypt(plainSecret);
+      if (encryptResult.isErr()) {
+        throw new Error('Failed to encrypt client secret');
+      }
 
       const command: RegenerateOAuthClientSecretCommand = {
         oauthClientId: id,
-        newSecretRef: body.newSecretRef,
+        newSecretRef: encryptResult.value,
       };
 
       const result = await regenerateOAuthClientSecretUseCase.execute(command, ctx);
@@ -502,7 +516,7 @@ export async function registerOAuthClientsRoutes(
         const client = await oauthClientRepository.findById(id);
         if (client) {
           const appMap = await buildAppMap();
-          return jsonSuccess(reply, toResponse(client, appMap));
+          return jsonSuccess(reply, { client: toResponse(client, appMap), clientSecret: plainSecret });
         }
       }
 
