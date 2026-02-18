@@ -379,6 +379,8 @@ export async function registerOAuthClientsRoutes(
       if (Result.isSuccess(result)) {
         const client = await oauthClientRepository.findById(id);
         if (client) {
+          // Invalidate cached OIDC client metadata so oidc-provider picks up changes
+          await invalidateOidcClientCache(db, client.clientId);
           const appMap = await buildAppMap();
           return jsonSuccess(reply, toResponse(client, appMap));
         }
