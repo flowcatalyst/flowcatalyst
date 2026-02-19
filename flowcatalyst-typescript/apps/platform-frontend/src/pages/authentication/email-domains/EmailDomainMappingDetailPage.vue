@@ -61,8 +61,11 @@ const scopeTypeOptions = [
 ];
 
 const isValid = computed(() => {
-  if (editForm.value.scopeType === 'CLIENT') {
-    return editForm.value.primaryClientId != null;
+  if (editForm.value.scopeType === 'CLIENT' && editForm.value.primaryClientId == null) {
+    return false;
+  }
+  if (isOidcMultiTenant.value && !editForm.value.requiredOidcTenantId.trim()) {
+    return false;
   }
   return true;
 });
@@ -345,7 +348,7 @@ function getPrimaryClientName(): string {
               <span class="field-value" v-if="mapping.requiredOidcTenantId">
                 <code class="tenant-id">{{ mapping.requiredOidcTenantId }}</code>
               </span>
-              <span class="field-value muted" v-else>Not set (any tenant allowed)</span>
+              <span class="field-value muted" v-else>Not set</span>
             </div>
 
             <div class="field-group" v-if="showRoleDisplay">
@@ -436,16 +439,17 @@ function getPrimaryClientName(): string {
             </div>
 
             <div v-if="isOidcMultiTenant" class="field">
-              <label for="requiredOidcTenantId">Required OIDC Tenant ID</label>
+              <label for="requiredOidcTenantId">Required OIDC Tenant ID *</label>
               <InputText
                 id="requiredOidcTenantId"
                 v-model="editForm.requiredOidcTenantId"
                 placeholder="e.g., 2e789bd9-a313-462a-b520-df9b586c00ed"
                 class="w-full"
+                :invalid="isOidcMultiTenant && !editForm.requiredOidcTenantId.trim()"
               />
               <small class="field-help">
-                For Azure AD/Entra, enter the tenant GUID. If set, only users from this tenant can
-                authenticate for this domain. Leave empty to allow any tenant.
+                For Azure AD/Entra, enter the tenant GUID. Only users from this tenant can
+                authenticate for this domain.
               </small>
             </div>
 

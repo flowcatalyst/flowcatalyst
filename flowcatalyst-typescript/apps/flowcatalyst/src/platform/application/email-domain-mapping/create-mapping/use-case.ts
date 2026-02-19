@@ -45,12 +45,23 @@ export function createCreateEmailDomainMappingUseCase(
       if (Result.isFailure(idpResult)) return idpResult;
 
       // Verify IDP exists
-      const idpExists = await identityProviderRepository.exists(command.identityProviderId);
-      if (!idpExists) {
+      const idp = await identityProviderRepository.findById(command.identityProviderId);
+      if (!idp) {
         return Result.failure(
           UseCaseError.notFound('IDP_NOT_FOUND', 'Identity provider not found', {
             identityProviderId: command.identityProviderId,
           }),
+        );
+      }
+
+      // Multi-tenant IDPs require a tenant ID
+      if (idp.oidcMultiTenant && !command.requiredOidcTenantId?.trim()) {
+        return Result.failure(
+          UseCaseError.validation(
+            'OIDC_TENANT_ID_REQUIRED',
+            'Required OIDC Tenant ID must be set for multi-tenant identity providers',
+            { field: 'requiredOidcTenantId' },
+          ),
         );
       }
 

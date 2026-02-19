@@ -70,6 +70,7 @@ const isValid = computed(() => {
   if (!form.value.emailDomain.trim() || !isDomainValid.value) return false;
   if (!form.value.identityProviderId) return false;
   if (form.value.scopeType === 'CLIENT' && !form.value.primaryClientId) return false;
+  if (isSelectedProviderMultiTenant.value && !form.value.requiredOidcTenantId.trim()) return false;
   return true;
 });
 
@@ -282,16 +283,17 @@ async function createMapping() {
         </div>
 
         <div v-if="isSelectedProviderMultiTenant" class="field">
-          <label for="requiredOidcTenantId">Required OIDC Tenant ID</label>
+          <label for="requiredOidcTenantId">Required OIDC Tenant ID *</label>
           <InputText
             id="requiredOidcTenantId"
             v-model="form.requiredOidcTenantId"
             placeholder="e.g., 2e789bd9-a313-462a-b520-df9b586c00ed"
             class="w-full"
+            :invalid="isSelectedProviderMultiTenant && !form.requiredOidcTenantId.trim()"
           />
           <small class="field-help">
-            For Azure AD/Entra, enter the tenant GUID. If set, only users from this tenant can
-            authenticate for this domain. Leave empty to allow any tenant.
+            For Azure AD/Entra, enter the tenant GUID. Only users from this tenant can authenticate
+            for this domain.
           </small>
         </div>
 

@@ -39,14 +39,34 @@ export function createUpdateEmailDomainMappingUseCase(
         );
       }
 
-      // If changing IDP, verify it exists
+      // Resolve the effective IDP (new one if changing, existing one otherwise)
+      let idp;
       if (command.identityProviderId !== undefined) {
-        const idpExists = await identityProviderRepository.exists(command.identityProviderId);
-        if (!idpExists) {
+        idp = await identityProviderRepository.findById(command.identityProviderId);
+        if (!idp) {
           return Result.failure(
             UseCaseError.notFound('IDP_NOT_FOUND', 'Identity provider not found', {
               identityProviderId: command.identityProviderId,
             }),
+          );
+        }
+      } else {
+        idp = await identityProviderRepository.findById(mapping.identityProviderId);
+      }
+
+      // Multi-tenant IDPs require a tenant ID
+      if (idp?.oidcMultiTenant) {
+        const effectiveTenantId =
+          command.requiredOidcTenantId !== undefined
+            ? command.requiredOidcTenantId
+            : mapping.requiredOidcTenantId;
+        if (!effectiveTenantId?.trim()) {
+          return Result.failure(
+            UseCaseError.validation(
+              'OIDC_TENANT_ID_REQUIRED',
+              'Required OIDC Tenant ID must be set for multi-tenant identity providers',
+              { field: 'requiredOidcTenantId' },
+            ),
           );
         }
       }
