@@ -6,9 +6,9 @@
  * tracing and audit plugins.
  */
 
-import type { FastifyPluginAsync } from 'fastify';
-import fp from 'fastify-plugin';
-import { ExecutionContext } from '@flowcatalyst/domain-core';
+import type { FastifyPluginAsync } from "fastify";
+import fp from "fastify-plugin";
+import { ExecutionContext } from "@flowcatalyst/domain-core";
 
 /**
  * Execution context plugin for Fastify.
@@ -37,44 +37,47 @@ import { ExecutionContext } from '@flowcatalyst/domain-core';
  * ```
  */
 const executionContextPluginAsync: FastifyPluginAsync = async (fastify) => {
-  // Decorate request with execution context (using getter/setter pattern)
-  fastify.decorateRequest('executionContext', {
-    getter() {
-      return (this as unknown as { _executionContext: ExecutionContext })._executionContext;
-    },
-    setter(value: ExecutionContext) {
-      (this as unknown as { _executionContext: ExecutionContext })._executionContext = value;
-    },
-  });
+	// Decorate request with execution context (using getter/setter pattern)
+	fastify.decorateRequest("executionContext", {
+		getter() {
+			return (this as unknown as { _executionContext: ExecutionContext })
+				._executionContext;
+		},
+		setter(value: ExecutionContext) {
+			(
+				this as unknown as { _executionContext: ExecutionContext }
+			)._executionContext = value;
+		},
+	});
 
-  // Create execution context from tracing and audit data
-  fastify.addHook('onRequest', async (request) => {
-    const tracing = request.tracing;
-    const audit = request.audit;
+	// Create execution context from tracing and audit data
+	fastify.addHook("onRequest", async (request) => {
+		const tracing = request.tracing;
+		const audit = request.audit;
 
-    if (!tracing) {
-      throw new Error(
-        'Tracing context not available. Register tracingPlugin before executionContextPlugin.',
-      );
-    }
+		if (!tracing) {
+			throw new Error(
+				"Tracing context not available. Register tracingPlugin before executionContextPlugin.",
+			);
+		}
 
-    // Create execution context from tracing and audit data
-    const executionContext = ExecutionContext.fromTracingContext(
-      {
-        correlationId: tracing.correlationId,
-        causationId: tracing.causationId,
-      },
-      audit?.principalId ?? 'anonymous',
-    );
+		// Create execution context from tracing and audit data
+		const executionContext = ExecutionContext.fromTracingContext(
+			{
+				correlationId: tracing.correlationId,
+				causationId: tracing.causationId,
+			},
+			audit?.principalId ?? "anonymous",
+		);
 
-    request.executionContext = executionContext;
-  });
+		request.executionContext = executionContext;
+	});
 };
 
 export const executionContextPlugin = fp(executionContextPluginAsync, {
-  name: '@flowcatalyst/execution-context',
-  fastify: '5.x',
-  dependencies: ['@flowcatalyst/tracing'],
+	name: "@flowcatalyst/execution-context",
+	fastify: "5.x",
+	dependencies: ["@flowcatalyst/tracing"],
 });
 
 /**
@@ -85,11 +88,13 @@ export const executionContextPlugin = fp(executionContextPluginAsync, {
  * @throws Error if execution context plugin has not been registered
  */
 export function requireExecutionContext(request: {
-  executionContext?: ExecutionContext;
+	executionContext?: ExecutionContext;
 }): ExecutionContext {
-  const ctx = request.executionContext;
-  if (!ctx) {
-    throw new Error('ExecutionContext not available. Ensure executionContextPlugin is registered.');
-  }
-  return ctx;
+	const ctx = request.executionContext;
+	if (!ctx) {
+		throw new Error(
+			"ExecutionContext not available. Ensure executionContextPlugin is registered.",
+		);
+	}
+	return ctx;
 }

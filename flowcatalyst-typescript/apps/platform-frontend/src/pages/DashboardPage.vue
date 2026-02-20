@@ -1,57 +1,57 @@
 <script setup lang="ts">
-import { useAuthStore } from '@/stores/auth';
+import { useAuthStore } from "@/stores/auth";
 
 const authStore = useAuthStore();
 
 const dashboardCards = [
-  {
-    title: 'Applications',
-    description: 'Manage applications in the platform ecosystem',
-    route: '/applications',
-    icon: 'pi pi-th-large',
-    bgColor: 'bg-indigo',
-    iconColor: 'text-indigo',
-  },
-  {
-    title: 'Clients',
-    description: 'Manage clients and their configurations',
-    route: '/clients',
-    icon: 'pi pi-building',
-    bgColor: 'bg-blue',
-    iconColor: 'text-blue',
-  },
-  {
-    title: 'Users',
-    description: 'Manage platform users and their access',
-    route: '/users',
-    icon: 'pi pi-users',
-    bgColor: 'bg-green',
-    iconColor: 'text-green',
-  },
-  {
-    title: 'Roles',
-    description: 'Configure roles and permissions',
-    route: '/roles',
-    icon: 'pi pi-shield',
-    bgColor: 'bg-purple',
-    iconColor: 'text-purple',
-  },
-  {
-    title: 'Event Types',
-    description: 'Define event types and schemas for messaging',
-    route: '/event-types',
-    icon: 'pi pi-bolt',
-    bgColor: 'bg-amber',
-    iconColor: 'text-amber',
-  },
-  {
-    title: 'Subscriptions',
-    description: 'Manage event subscriptions and routing',
-    route: '/subscriptions',
-    icon: 'pi pi-bell',
-    bgColor: 'bg-teal',
-    iconColor: 'text-teal',
-  },
+	{
+		title: "Applications",
+		description: "Manage applications in the platform ecosystem",
+		route: "/applications",
+		icon: "pi pi-th-large",
+		bgColor: "bg-indigo",
+		iconColor: "text-indigo",
+	},
+	{
+		title: "Clients",
+		description: "Manage clients and their configurations",
+		route: "/clients",
+		icon: "pi pi-building",
+		bgColor: "bg-blue",
+		iconColor: "text-blue",
+	},
+	{
+		title: "Users",
+		description: "Manage platform users and their access",
+		route: "/users",
+		icon: "pi pi-users",
+		bgColor: "bg-green",
+		iconColor: "text-green",
+	},
+	{
+		title: "Roles",
+		description: "Configure roles and permissions",
+		route: "/roles",
+		icon: "pi pi-shield",
+		bgColor: "bg-purple",
+		iconColor: "text-purple",
+	},
+	{
+		title: "Event Types",
+		description: "Define event types and schemas for messaging",
+		route: "/event-types",
+		icon: "pi pi-bolt",
+		bgColor: "bg-amber",
+		iconColor: "text-amber",
+	},
+	{
+		title: "Subscriptions",
+		description: "Manage event subscriptions and routing",
+		route: "/subscriptions",
+		icon: "pi pi-bell",
+		bgColor: "bg-teal",
+		iconColor: "text-teal",
+	},
 ];
 </script>
 

@@ -35,11 +35,11 @@
  * Each command represents a single, atomic operation intent.
  */
 export interface Command {
-  /**
-   * Optional operation type identifier.
-   * If not provided, the command class/interface name is used for audit logs.
-   */
-  readonly _type?: string;
+	/**
+	 * Optional operation type identifier.
+	 * If not provided, the command class/interface name is used for audit logs.
+	 */
+	readonly _type?: string;
 }
 
 /**
@@ -59,7 +59,7 @@ export interface Command {
  * ```
  */
 export type PartialCommand<T extends Command> = {
-  readonly [K in keyof T]?: T[K];
+	readonly [K in keyof T]?: T[K];
 };
 
 /**
@@ -77,8 +77,8 @@ export type PartialCommand<T extends Command> = {
  * // Results in: { productId: string; name?: string; price?: number; }
  * ```
  */
-export type EntityCommand<T, TIdField extends string = 'id'> = Command & {
-  readonly [K in TIdField]: string;
+export type EntityCommand<T, TIdField extends string = "id"> = Command & {
+	readonly [K in TIdField]: string;
 } & T;
 
 /**
@@ -91,8 +91,8 @@ export type EntityCommand<T, TIdField extends string = 'id'> = Command & {
  * // Results in: { userId: string; _type?: string; }
  * ```
  */
-export type DeleteCommand<TIdField extends string = 'id'> = Command & {
-  readonly [K in TIdField]: string;
+export type DeleteCommand<TIdField extends string = "id"> = Command & {
+	readonly [K in TIdField]: string;
 };
 
 /**
@@ -113,8 +113,8 @@ export type DeleteCommand<TIdField extends string = 'id'> = Command & {
  * ```
  */
 export function createCommand<T extends Record<string, unknown>>(
-  type: string,
-  data: T,
+	type: string,
+	data: T,
 ): Command & T {
-  return { _type: type, ...data };
+	return { _type: type, ...data };
 }

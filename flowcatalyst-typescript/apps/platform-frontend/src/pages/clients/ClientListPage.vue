@@ -1,62 +1,56 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Tag from 'primevue/tag';
-import ProgressSpinner from 'primevue/progressspinner';
-import Message from 'primevue/message';
-import { clientsApi, type Client } from '@/api/clients';
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { clientsApi, type Client } from "@/api/clients";
 
 const router = useRouter();
 const clients = ref<Client[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
-const searchQuery = ref('');
+const searchQuery = ref("");
 
 const filteredClients = computed(() => {
-  if (!searchQuery.value) return clients.value;
-  const query = searchQuery.value.toLowerCase();
-  return clients.value.filter(
-    (client) =>
-      client.identifier.toLowerCase().includes(query) || client.name.toLowerCase().includes(query),
-  );
+	if (!searchQuery.value) return clients.value;
+	const query = searchQuery.value.toLowerCase();
+	return clients.value.filter(
+		(client) =>
+			client.identifier.toLowerCase().includes(query) ||
+			client.name.toLowerCase().includes(query),
+	);
 });
 
 onMounted(async () => {
-  await loadClients();
+	await loadClients();
 });
 
 async function loadClients() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const response = await clientsApi.list();
-    clients.value = response.clients;
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load clients';
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	error.value = null;
+	try {
+		const response = await clientsApi.list();
+		clients.value = response.clients;
+	} catch (e) {
+		error.value = e instanceof Error ? e.message : "Failed to load clients";
+	} finally {
+		loading.value = false;
+	}
 }
 
 function getStatusSeverity(status: string) {
-  switch (status) {
-    case 'ACTIVE':
-      return 'success';
-    case 'SUSPENDED':
-      return 'warn';
-    case 'INACTIVE':
-      return 'secondary';
-    default:
-      return 'secondary';
-  }
+	switch (status) {
+		case "ACTIVE":
+			return "success";
+		case "SUSPENDED":
+			return "warn";
+		case "INACTIVE":
+			return "secondary";
+		default:
+			return "secondary";
+	}
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString();
+	return new Date(dateString).toLocaleDateString();
 }
 </script>
 

@@ -1,16 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
-import { useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Select from 'primevue/select';
-import Tag from 'primevue/tag';
-import ProgressSpinner from 'primevue/progressspinner';
-import { usersApi, type User } from '@/api/users';
-import { clientsApi, type Client } from '@/api/clients';
+import { ref, computed, onMounted, watch } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import { usersApi, type User } from "@/api/users";
+import { clientsApi, type Client } from "@/api/clients";
 
 const router = useRouter();
 const toast = useToast();
@@ -22,7 +15,7 @@ const initialLoading = ref(true);
 const totalRecords = ref(0);
 
 // Filters
-const searchQuery = ref('');
+const searchQuery = ref("");
 const selectedClientId = ref<string | null>(null);
 const selectedStatus = ref<string | null>(null);
 
@@ -31,148 +24,152 @@ const page = ref(0);
 const pageSize = ref(20);
 
 const statusOptions = [
-  { label: 'Active', value: 'active' },
-  { label: 'Inactive', value: 'inactive' },
+	{ label: "Active", value: "active" },
+	{ label: "Inactive", value: "inactive" },
 ];
 
 const clientOptions = computed(() => {
-  return clients.value.map((c) => ({
-    label: c.name,
-    value: c.id,
-  }));
+	return clients.value.map((c) => ({
+		label: c.name,
+		value: c.id,
+	}));
 });
 
 const hasActiveFilters = computed(() => {
-  return searchQuery.value || selectedClientId.value || selectedStatus.value;
+	return searchQuery.value || selectedClientId.value || selectedStatus.value;
 });
 
 onMounted(async () => {
-  await Promise.all([loadUsers(), loadClients()]);
+	await Promise.all([loadUsers(), loadClients()]);
 });
 
 // Reload users when filters change (server-side filters)
 watch([selectedClientId, selectedStatus], () => {
-  page.value = 0;
-  loadUsers();
+	page.value = 0;
+	loadUsers();
 });
 
 // Debounced search
 let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 watch(searchQuery, () => {
-  if (searchTimeout) clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => {
-    page.value = 0;
-    loadUsers();
-  }, 300);
+	if (searchTimeout) clearTimeout(searchTimeout);
+	searchTimeout = setTimeout(() => {
+		page.value = 0;
+		loadUsers();
+	}, 300);
 });
 
 async function loadUsers() {
-  loading.value = true;
-  try {
-    const response = await usersApi.list({
-      type: 'USER',
-      clientId: selectedClientId.value || undefined,
-      active:
-        selectedStatus.value === 'active'
-          ? true
-          : selectedStatus.value === 'inactive'
-            ? false
-            : undefined,
-      q: searchQuery.value || undefined,
-      page: page.value,
-      pageSize: pageSize.value,
-    });
-    users.value = response.principals;
-    totalRecords.value = response.total;
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load users',
-      life: 5000,
-    });
-    console.error('Failed to fetch users:', error);
-  } finally {
-    loading.value = false;
-    initialLoading.value = false;
-  }
+	loading.value = true;
+	try {
+		const response = await usersApi.list({
+			type: "USER",
+			clientId: selectedClientId.value || undefined,
+			active:
+				selectedStatus.value === "active"
+					? true
+					: selectedStatus.value === "inactive"
+						? false
+						: undefined,
+			q: searchQuery.value || undefined,
+			page: page.value,
+			pageSize: pageSize.value,
+		});
+		users.value = response.principals;
+		totalRecords.value = response.total;
+	} catch (error) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to load users",
+			life: 5000,
+		});
+		console.error("Failed to fetch users:", error);
+	} finally {
+		loading.value = false;
+		initialLoading.value = false;
+	}
 }
 
 function onPage(event: { page: number; rows: number }) {
-  page.value = event.page;
-  pageSize.value = event.rows;
-  loadUsers();
+	page.value = event.page;
+	pageSize.value = event.rows;
+	loadUsers();
 }
 
 async function loadClients() {
-  try {
-    const response = await clientsApi.list();
-    clients.value = response.clients;
-  } catch (error) {
-    console.error('Failed to fetch clients:', error);
-  }
+	try {
+		const response = await clientsApi.list();
+		clients.value = response.clients;
+	} catch (error) {
+		console.error("Failed to fetch clients:", error);
+	}
 }
 
 function clearFilters() {
-  searchQuery.value = '';
-  selectedClientId.value = null;
-  selectedStatus.value = null;
-  page.value = 0;
-  loadUsers();
+	searchQuery.value = "";
+	selectedClientId.value = null;
+	selectedStatus.value = null;
+	page.value = 0;
+	loadUsers();
 }
 
 function addUser() {
-  router.push('/users/new');
+	router.push("/users/new");
 }
 
 function viewUser(user: User) {
-  router.push(`/users/${user.id}`);
+	router.push(`/users/${user.id}`);
 }
 
 function editUser(user: User) {
-  router.push(`/users/${user.id}?edit=true`);
+	router.push(`/users/${user.id}?edit=true`);
 }
 
 function getClientName(clientId: string | null): string {
-  if (!clientId) return 'No Client';
-  const client = clients.value.find((c) => c.id === clientId);
-  return client?.name || clientId;
+	if (!clientId) return "No Client";
+	const client = clients.value.find((c) => c.id === clientId);
+	return client?.name || clientId;
 }
 
 // Determine user type based on access pattern
-function getUserType(user: User): { label: string; severity: string; tooltip: string } {
-  if (user.isAnchorUser) {
-    return {
-      label: 'Anchor',
-      severity: 'warn',
-      tooltip: 'Has access to all clients via anchor domain',
-    };
-  }
+function getUserType(user: User): {
+	label: string;
+	severity: string;
+	tooltip: string;
+} {
+	if (user.isAnchorUser) {
+		return {
+			label: "Anchor",
+			severity: "warn",
+			tooltip: "Has access to all clients via anchor domain",
+		};
+	}
 
-  const grantedCount = user.grantedClientIds?.length || 0;
+	const grantedCount = user.grantedClientIds?.length || 0;
 
-  if (grantedCount > 0 || (!user.clientId && grantedCount === 0)) {
-    // Has grants to multiple clients OR no home client = Partner
-    return {
-      label: 'Partner',
-      severity: 'info',
-      tooltip: user.clientId
-        ? `Home: ${getClientName(user.clientId)}, +${grantedCount} granted`
-        : `Access to ${grantedCount} client(s)`,
-    };
-  }
+	if (grantedCount > 0 || (!user.clientId && grantedCount === 0)) {
+		// Has grants to multiple clients OR no home client = Partner
+		return {
+			label: "Partner",
+			severity: "info",
+			tooltip: user.clientId
+				? `Home: ${getClientName(user.clientId)}, +${grantedCount} granted`
+				: `Access to ${grantedCount} client(s)`,
+		};
+	}
 
-  // Has a home client only
-  return {
-    label: 'Client',
-    severity: 'secondary',
-    tooltip: `Home client: ${getClientName(user.clientId)}`,
-  };
+	// Has a home client only
+	return {
+		label: "Client",
+		severity: "secondary",
+		tooltip: `Home client: ${getClientName(user.clientId)}`,
+	};
 }
 
 function formatDate(dateStr: string | undefined | null) {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString();
+	if (!dateStr) return "—";
+	return new Date(dateStr).toLocaleDateString();
 }
 </script>
 

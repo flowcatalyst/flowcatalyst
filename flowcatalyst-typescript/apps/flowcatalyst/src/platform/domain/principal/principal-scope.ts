@@ -11,23 +11,24 @@
  * 2. Explicitly set on the principal for override cases
  */
 export const PrincipalScope = {
-  /**
-   * Anchor/platform principals - have access to all clients.
-   * Typically users from the anchor domain (e.g., flowcatalyst.local).
-   */
-  ANCHOR: 'ANCHOR',
+	/**
+	 * Anchor/platform principals - have access to all clients.
+	 * Typically users from the anchor domain (e.g., flowcatalyst.local).
+	 */
+	ANCHOR: "ANCHOR",
 
-  /**
-   * Partner principals - have access to multiple explicitly assigned clients.
-   * Their accessible clients are stored in client access grants.
-   */
-  PARTNER: 'PARTNER',
+	/**
+	 * Partner principals - have access to multiple explicitly assigned clients.
+	 * Their accessible clients are stored in client access grants.
+	 */
+	PARTNER: "PARTNER",
 
-  /**
-   * Client principals - bound to a single client (their home client).
-   * Their clientId determines their access scope.
-   */
-  CLIENT: 'CLIENT',
+	/**
+	 * Client principals - bound to a single client (their home client).
+	 * Their clientId determines their access scope.
+	 */
+	CLIENT: "CLIENT",
 } as const;
 
-export type PrincipalScope = (typeof PrincipalScope)[keyof typeof PrincipalScope];
+export type PrincipalScope =
+	(typeof PrincipalScope)[keyof typeof PrincipalScope];

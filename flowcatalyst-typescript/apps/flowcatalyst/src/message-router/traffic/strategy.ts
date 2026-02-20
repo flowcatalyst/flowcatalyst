@@ -1,5 +1,5 @@
-import { ResultAsync } from 'neverthrow';
-import type { TrafficError } from './errors.js';
+import type { ResultAsync } from "neverthrow";
+import type { TrafficError } from "./errors.js";
 
 /**
  * Strategy interface for traffic management
@@ -10,25 +10,25 @@ import type { TrafficError } from './errors.js';
  * Matches Java TrafficManagementStrategy interface.
  */
 export interface TrafficManagementStrategy {
-  /**
-   * Get the strategy name for identification
-   */
-  getName(): string;
+	/**
+	 * Get the strategy name for identification
+	 */
+	getName(): string;
 
-  /**
-   * Register this instance as active with the load balancer.
-   * Called when transitioning to PRIMARY mode.
-   */
-  registerAsActive(): ResultAsync<void, TrafficError>;
+	/**
+	 * Register this instance as active with the load balancer.
+	 * Called when transitioning to PRIMARY mode.
+	 */
+	registerAsActive(): ResultAsync<void, TrafficError>;
 
-  /**
-   * Deregister this instance from the load balancer.
-   * Called when transitioning to STANDBY mode.
-   */
-  deregisterFromActive(): ResultAsync<void, TrafficError>;
+	/**
+	 * Deregister this instance from the load balancer.
+	 * Called when transitioning to STANDBY mode.
+	 */
+	deregisterFromActive(): ResultAsync<void, TrafficError>;
 
-  /**
-   * Check if this instance is currently registered with the load balancer.
-   */
-  isRegistered(): boolean;
+	/**
+	 * Check if this instance is currently registered with the load balancer.
+	 */
+	isRegistered(): boolean;
 }

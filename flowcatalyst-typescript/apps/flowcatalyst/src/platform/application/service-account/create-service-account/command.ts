@@ -2,8 +2,8 @@
  * Create Service Account Command
  */
 
-import type { Command } from '@flowcatalyst/application';
-import type { WebhookAuthType, PrincipalScope } from '../../../domain/index.js';
+import type { Command } from "@flowcatalyst/application";
+import type { WebhookAuthType, PrincipalScope } from "../../../domain/index.js";
 
 /**
  * Command to create a new service account.
@@ -14,24 +14,24 @@ import type { WebhookAuthType, PrincipalScope } from '../../../domain/index.js';
  * - Encrypted webhook auth token and signing secret
  */
 export interface CreateServiceAccountCommand extends Command {
-  /** Unique code for the service account (e.g., "my-app-service") */
-  readonly code: string;
+	/** Unique code for the service account (e.g., "my-app-service") */
+	readonly code: string;
 
-  /** Display name for the service account */
-  readonly name: string;
+	/** Display name for the service account */
+	readonly name: string;
 
-  /** Optional description */
-  readonly description: string | null;
+	/** Optional description */
+	readonly description: string | null;
 
-  /** Application ID this service account belongs to (optional) */
-  readonly applicationId: string | null;
+	/** Application ID this service account belongs to (optional) */
+	readonly applicationId: string | null;
 
-  /** Client ID this service account is scoped to (optional) */
-  readonly clientId: string | null;
+	/** Client ID this service account is scoped to (optional) */
+	readonly clientId: string | null;
 
-  /** Webhook authentication type */
-  readonly webhookAuthType?: WebhookAuthType | undefined;
+	/** Webhook authentication type */
+	readonly webhookAuthType?: WebhookAuthType | undefined;
 
-  /** Access scope for the service account (defaults to ANCHOR) */
-  readonly scope?: PrincipalScope | undefined;
+	/** Access scope for the service account (defaults to ANCHOR) */
+	readonly scope?: PrincipalScope | undefined;
 }

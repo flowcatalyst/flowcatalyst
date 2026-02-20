@@ -1,14 +1,13 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { useRouter } from 'vue-router';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Select from 'primevue/select';
-import Checkbox from 'primevue/checkbox';
-import Chip from 'primevue/chip';
-import Message from 'primevue/message';
-import { useToast } from 'primevue/usetoast';
-import { identityProvidersApi, type IdentityProviderType } from '@/api/identity-providers';
+import { ref, computed } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import {
+	identityProvidersApi,
+	type CreateIdentityProviderRequest,
+	type IdentityProviderType,
+} from "@/api/identity-providers";
+import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
 const toast = useToast();
@@ -18,101 +17,113 @@ const error = ref<string | null>(null);
 
 // Form state
 const form = ref({
-  code: '',
-  name: '',
-  type: 'OIDC' as IdentityProviderType,
-  oidcIssuerUrl: '',
-  oidcClientId: '',
-  oidcClientSecretRef: '',
-  oidcMultiTenant: false,
-  oidcIssuerPattern: '',
-  allowedEmailDomains: [] as string[],
+	code: "",
+	name: "",
+	type: "OIDC" as IdentityProviderType,
+	oidcIssuerUrl: "",
+	oidcClientId: "",
+	oidcClientSecretRef: "",
+	oidcMultiTenant: false,
+	oidcIssuerPattern: "",
+	allowedEmailDomains: [] as string[],
 });
 
-const newAllowedDomain = ref('');
+const newAllowedDomain = ref("");
 
 const typeOptions = [
-  {
-    label: 'Internal (Local)',
-    value: 'INTERNAL',
-    description: 'Internal authentication (username/password)',
-  },
-  { label: 'OIDC (External)', value: 'OIDC', description: 'External OpenID Connect provider' },
+	{
+		label: "Internal (Local)",
+		value: "INTERNAL",
+		description: "Internal authentication (username/password)",
+	},
+	{
+		label: "OIDC (External)",
+		value: "OIDC",
+		description: "External OpenID Connect provider",
+	},
 ];
 
 const CODE_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 const isCodeValid = computed(() => {
-  return !form.value.code || CODE_PATTERN.test(form.value.code);
+	return !form.value.code || CODE_PATTERN.test(form.value.code);
 });
 
 const isValid = computed(() => {
-  if (!form.value.code.trim() || !form.value.name.trim()) return false;
-  if (!isCodeValid.value) return false;
-  if (form.value.type === 'OIDC') {
-    if (!form.value.oidcClientId.trim()) return false;
-    if (!form.value.oidcIssuerUrl.trim()) return false; // Always required for OIDC
-  }
-  return true;
+	if (!form.value.code.trim() || !form.value.name.trim()) return false;
+	if (!isCodeValid.value) return false;
+	if (form.value.type === "OIDC") {
+		if (!form.value.oidcClientId.trim()) return false;
+		if (!form.value.oidcIssuerUrl.trim()) return false; // Always required for OIDC
+	}
+	return true;
 });
 
 function addAllowedDomain() {
-  const domain = newAllowedDomain.value.trim().toLowerCase();
-  if (domain && !form.value.allowedEmailDomains.includes(domain)) {
-    if (domain.match(/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/)) {
-      form.value.allowedEmailDomains.push(domain);
-      newAllowedDomain.value = '';
-    } else {
-      toast.add({
-        severity: 'error',
-        summary: 'Invalid Domain',
-        detail: 'Please enter a valid domain name',
-        life: 3000,
-      });
-    }
-  }
+	const domain = newAllowedDomain.value.trim().toLowerCase();
+	if (domain && !form.value.allowedEmailDomains.includes(domain)) {
+		if (domain.match(/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/)) {
+			form.value.allowedEmailDomains.push(domain);
+			newAllowedDomain.value = "";
+		} else {
+			toast.add({
+				severity: "error",
+				summary: "Invalid Domain",
+				detail: "Please enter a valid domain name",
+				life: 3000,
+			});
+		}
+	}
 }
 
 function removeAllowedDomain(domain: string) {
-  form.value.allowedEmailDomains = form.value.allowedEmailDomains.filter((d) => d !== domain);
+	form.value.allowedEmailDomains = form.value.allowedEmailDomains.filter(
+		(d) => d !== domain,
+	);
 }
 
 async function createProvider() {
-  if (!isValid.value) return;
+	if (!isValid.value) return;
 
-  loading.value = true;
-  error.value = null;
+	loading.value = true;
+	error.value = null;
 
-  try {
-    const requestData: any = {
-      code: form.value.code.trim(),
-      name: form.value.name.trim(),
-      type: form.value.type,
-      allowedEmailDomains:
-        form.value.allowedEmailDomains.length > 0 ? form.value.allowedEmailDomains : undefined,
-    };
+	try {
+		const requestData: CreateIdentityProviderRequest = {
+			code: form.value.code.trim(),
+			name: form.value.name.trim(),
+			type: form.value.type,
+			allowedEmailDomains:
+				form.value.allowedEmailDomains.length > 0
+					? form.value.allowedEmailDomains
+					: undefined,
+			...(form.value.type === "OIDC"
+				? {
+						oidcIssuerUrl:
+							form.value.oidcIssuerUrl.trim() || undefined,
+						oidcClientId: form.value.oidcClientId.trim(),
+						oidcClientSecretRef:
+							form.value.oidcClientSecretRef.trim() || undefined,
+						oidcMultiTenant: form.value.oidcMultiTenant,
+						oidcIssuerPattern:
+							form.value.oidcIssuerPattern.trim() || undefined,
+					}
+				: {}),
+		};
 
-    if (form.value.type === 'OIDC') {
-      requestData.oidcIssuerUrl = form.value.oidcIssuerUrl.trim() || undefined;
-      requestData.oidcClientId = form.value.oidcClientId.trim();
-      requestData.oidcClientSecretRef = form.value.oidcClientSecretRef.trim() || undefined;
-      requestData.oidcMultiTenant = form.value.oidcMultiTenant;
-      requestData.oidcIssuerPattern = form.value.oidcIssuerPattern.trim() || undefined;
-    }
-
-    const created = await identityProvidersApi.create(requestData);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: `Identity provider "${created.name}" created successfully`,
-      life: 3000,
-    });
-    router.push(`/authentication/identity-providers/${created.id}`);
-  } catch (e: any) {
-    error.value = e?.error || e?.message || 'Failed to create identity provider';
-  } finally {
-    loading.value = false;
-  }
+		const created = await identityProvidersApi.create(requestData);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: `Identity provider "${created.name}" created successfully`,
+			life: 3000,
+		});
+		router.push(`/authentication/identity-providers/${created.id}`);
+	} catch (e: unknown) {
+		error.value = getErrorMessage(e, "Failed to create identity provider");
+	} finally {
+		loading.value = false;
+	}
 }
 </script>
 

@@ -5,7 +5,8 @@
  */
 
 export const SignatureAlgorithm = {
-  HMAC_SHA256: 'HMAC_SHA256',
+	HMAC_SHA256: "HMAC_SHA256",
 } as const;
 
-export type SignatureAlgorithm = (typeof SignatureAlgorithm)[keyof typeof SignatureAlgorithm];
+export type SignatureAlgorithm =
+	(typeof SignatureAlgorithm)[keyof typeof SignatureAlgorithm];

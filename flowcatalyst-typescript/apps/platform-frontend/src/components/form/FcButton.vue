@@ -1,44 +1,42 @@
 <script setup lang="ts">
-import Button from 'primevue/button';
-
 withDefaults(
-  defineProps<{
-    label?: string;
-    icon?: string;
-    iconPos?: 'left' | 'right' | 'top' | 'bottom';
-    loading?: boolean;
-    disabled?: boolean;
-    severity?:
-      | 'primary'
-      | 'secondary'
-      | 'success'
-      | 'danger'
-      | 'info'
-      | 'help'
-      | 'contrast'
-      | 'warn';
-    outlined?: boolean;
-    text?: boolean;
-    rounded?: boolean;
-    size?: 'small' | 'large';
-    type?: 'button' | 'submit' | 'reset';
-  }>(),
-  {
-    label: '',
-    icon: '',
-    iconPos: 'left',
-    loading: false,
-    disabled: false,
-    severity: 'primary',
-    outlined: false,
-    text: false,
-    rounded: false,
-    type: 'button',
-  },
+	defineProps<{
+		label?: string;
+		icon?: string;
+		iconPos?: "left" | "right" | "top" | "bottom";
+		loading?: boolean;
+		disabled?: boolean;
+		severity?:
+			| "primary"
+			| "secondary"
+			| "success"
+			| "danger"
+			| "info"
+			| "help"
+			| "contrast"
+			| "warn";
+		outlined?: boolean;
+		text?: boolean;
+		rounded?: boolean;
+		size?: "small" | "large";
+		type?: "button" | "submit" | "reset";
+	}>(),
+	{
+		label: "",
+		icon: "",
+		iconPos: "left",
+		loading: false,
+		disabled: false,
+		severity: "primary",
+		outlined: false,
+		text: false,
+		rounded: false,
+		type: "button",
+	},
 );
 
 const emit = defineEmits<{
-  click: [event: MouseEvent];
+	click: [event: MouseEvent];
 }>();
 </script>
 

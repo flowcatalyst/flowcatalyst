@@ -4,10 +4,14 @@
  * Fastify preHandler hook that enforces permission requirements on routes.
  */
 
-import type { preHandlerHookHandler } from 'fastify';
-import type { PermissionDefinition } from './permission-definition.js';
-import { permissionToString } from './permission-definition.js';
-import { hasPermission, hasAnyPermission, hasAllPermissions } from './authorization-service.js';
+import type { preHandlerHookHandler } from "fastify";
+import type { PermissionDefinition } from "./permission-definition.js";
+import { permissionToString } from "./permission-definition.js";
+import {
+	hasPermission,
+	hasAnyPermission,
+	hasAllPermissions,
+} from "./authorization-service.js";
 
 /**
  * Create a preHandler hook that requires a specific permission.
@@ -21,29 +25,31 @@ import { hasPermission, hasAnyPermission, hasAllPermissions } from './authorizat
  * }, handler);
  */
 export function requirePermission(
-  permission: PermissionDefinition | string,
+	permission: PermissionDefinition | string,
 ): preHandlerHookHandler {
-  const permissionString =
-    typeof permission === 'string' ? permission : permissionToString(permission);
+	const permissionString =
+		typeof permission === "string"
+			? permission
+			: permissionToString(permission);
 
-  return async (request, reply) => {
-    const principal = request.audit?.principal;
+	return async (request, reply) => {
+		const principal = request.audit?.principal;
 
-    if (!principal) {
-      return reply.status(401).send({
-        code: 'UNAUTHORIZED',
-        message: 'Authentication required',
-      });
-    }
+		if (!principal) {
+			return reply.status(401).send({
+				code: "UNAUTHORIZED",
+				message: "Authentication required",
+			});
+		}
 
-    if (!hasPermission(principal, permissionString)) {
-      return reply.status(403).send({
-        code: 'FORBIDDEN',
-        message: 'Insufficient permissions',
-        required: permissionString,
-      });
-    }
-  };
+		if (!hasPermission(principal, permissionString)) {
+			return reply.status(403).send({
+				code: "FORBIDDEN",
+				message: "Insufficient permissions",
+				required: permissionString,
+			});
+		}
+	};
 }
 
 /**
@@ -61,31 +67,31 @@ export function requirePermission(
  * }, handler);
  */
 export function requireAnyPermission(
-  permissions: readonly (PermissionDefinition | string)[],
+	permissions: readonly (PermissionDefinition | string)[],
 ): preHandlerHookHandler {
-  const permissionStrings = permissions.map((p) =>
-    typeof p === 'string' ? p : permissionToString(p),
-  );
+	const permissionStrings = permissions.map((p) =>
+		typeof p === "string" ? p : permissionToString(p),
+	);
 
-  return async (request, reply) => {
-    const principal = request.audit?.principal;
+	return async (request, reply) => {
+		const principal = request.audit?.principal;
 
-    if (!principal) {
-      return reply.status(401).send({
-        code: 'UNAUTHORIZED',
-        message: 'Authentication required',
-      });
-    }
+		if (!principal) {
+			return reply.status(401).send({
+				code: "UNAUTHORIZED",
+				message: "Authentication required",
+			});
+		}
 
-    if (!hasAnyPermission(principal, permissionStrings)) {
-      return reply.status(403).send({
-        code: 'FORBIDDEN',
-        message: 'Insufficient permissions',
-        required: permissionStrings,
-        mode: 'any',
-      });
-    }
-  };
+		if (!hasAnyPermission(principal, permissionStrings)) {
+			return reply.status(403).send({
+				code: "FORBIDDEN",
+				message: "Insufficient permissions",
+				required: permissionStrings,
+				mode: "any",
+			});
+		}
+	};
 }
 
 /**
@@ -103,31 +109,31 @@ export function requireAnyPermission(
  * }, handler);
  */
 export function requireAllPermissions(
-  permissions: readonly (PermissionDefinition | string)[],
+	permissions: readonly (PermissionDefinition | string)[],
 ): preHandlerHookHandler {
-  const permissionStrings = permissions.map((p) =>
-    typeof p === 'string' ? p : permissionToString(p),
-  );
+	const permissionStrings = permissions.map((p) =>
+		typeof p === "string" ? p : permissionToString(p),
+	);
 
-  return async (request, reply) => {
-    const principal = request.audit?.principal;
+	return async (request, reply) => {
+		const principal = request.audit?.principal;
 
-    if (!principal) {
-      return reply.status(401).send({
-        code: 'UNAUTHORIZED',
-        message: 'Authentication required',
-      });
-    }
+		if (!principal) {
+			return reply.status(401).send({
+				code: "UNAUTHORIZED",
+				message: "Authentication required",
+			});
+		}
 
-    if (!hasAllPermissions(principal, permissionStrings)) {
-      return reply.status(403).send({
-        code: 'FORBIDDEN',
-        message: 'Insufficient permissions',
-        required: permissionStrings,
-        mode: 'all',
-      });
-    }
-  };
+		if (!hasAllPermissions(principal, permissionStrings)) {
+			return reply.status(403).send({
+				code: "FORBIDDEN",
+				message: "Insufficient permissions",
+				required: permissionStrings,
+				mode: "all",
+			});
+		}
+	};
 }
 
 /**
@@ -136,20 +142,20 @@ export function requireAllPermissions(
  * @returns Fastify preHandler hook
  */
 export function requireAuthentication(): preHandlerHookHandler {
-  return async (request, reply) => {
-    const principal = request.audit?.principal;
+	return async (request, reply) => {
+		const principal = request.audit?.principal;
 
-    if (!principal) {
-      return reply.status(401).send({
-        code: 'UNAUTHORIZED',
-        message: 'Authentication required',
-      });
-    }
+		if (!principal) {
+			return reply.status(401).send({
+				code: "UNAUTHORIZED",
+				message: "Authentication required",
+			});
+		}
 
-    // Note: If the principal exists in request context, it means
-    // authentication was successful and the account is active.
-    // Inactive accounts should fail authentication at the token validation stage.
-  };
+		// Note: If the principal exists in request context, it means
+		// authentication was successful and the account is active.
+		// Inactive accounts should fail authentication at the token validation stage.
+	};
 }
 
 /**
@@ -159,35 +165,35 @@ export function requireAuthentication(): preHandlerHookHandler {
  * @returns Fastify preHandler hook
  */
 export function requireClientAccess(
-  getClientId: (request: Parameters<preHandlerHookHandler>[0]) => string | null,
+	getClientId: (request: Parameters<preHandlerHookHandler>[0]) => string | null,
 ): preHandlerHookHandler {
-  return async (request, reply) => {
-    const principal = request.audit?.principal;
+	return async (request, reply) => {
+		const principal = request.audit?.principal;
 
-    if (!principal) {
-      return reply.status(401).send({
-        code: 'UNAUTHORIZED',
-        message: 'Authentication required',
-      });
-    }
+		if (!principal) {
+			return reply.status(401).send({
+				code: "UNAUTHORIZED",
+				message: "Authentication required",
+			});
+		}
 
-    const clientId = getClientId(request);
-    if (!clientId) {
-      return reply.status(400).send({
-        code: 'BAD_REQUEST',
-        message: 'Client ID required',
-      });
-    }
+		const clientId = getClientId(request);
+		if (!clientId) {
+			return reply.status(400).send({
+				code: "BAD_REQUEST",
+				message: "Client ID required",
+			});
+		}
 
-    // Import dynamically to avoid circular dependency
-    const { canAccessClient } = await import('./authorization-service.js');
+		// Import dynamically to avoid circular dependency
+		const { canAccessClient } = await import("./authorization-service.js");
 
-    if (!canAccessClient(principal, clientId)) {
-      return reply.status(403).send({
-        code: 'FORBIDDEN',
-        message: 'Access to client denied',
-        clientId,
-      });
-    }
-  };
+		if (!canAccessClient(principal, clientId)) {
+			return reply.status(403).send({
+				code: "FORBIDDEN",
+				message: "Access to client denied",
+				clientId,
+			});
+		}
+	};
 }

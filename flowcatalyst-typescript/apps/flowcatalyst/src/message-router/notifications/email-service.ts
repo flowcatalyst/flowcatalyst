@@ -1,125 +1,132 @@
-import nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
-import type { Logger } from '@flowcatalyst/logging';
-import type { NotificationService, WarningNotification, SystemEventNotification } from './types.js';
-import { SEVERITY_COLORS, SEVERITY_EMOJIS } from './types.js';
+import nodemailer from "nodemailer";
+import type { Transporter } from "nodemailer";
+import type { Logger } from "@flowcatalyst/logging";
+import type {
+	NotificationService,
+	WarningNotification,
+	SystemEventNotification,
+} from "./types.js";
+import { SEVERITY_COLORS, SEVERITY_EMOJIS } from "./types.js";
 
 /**
  * Email notification configuration
  */
 export interface EmailNotificationConfig {
-  enabled: boolean;
-  from: string;
-  to: string[];
-  smtp: {
-    host: string;
-    port: number;
-    secure: boolean;
-    auth?:
-      | {
-          user: string;
-          pass: string;
-        }
-      | undefined;
-  };
-  instanceId: string;
+	enabled: boolean;
+	from: string;
+	to: string[];
+	smtp: {
+		host: string;
+		port: number;
+		secure: boolean;
+		auth?:
+			| {
+					user: string;
+					pass: string;
+			  }
+			| undefined;
+	};
+	instanceId: string;
 }
 
 /**
  * Email notification service using nodemailer
  */
 export class EmailNotificationService implements NotificationService {
-  private readonly config: EmailNotificationConfig;
-  private readonly logger: Logger;
-  private transporter: Transporter | null = null;
+	private readonly config: EmailNotificationConfig;
+	private readonly logger: Logger;
+	private transporter: Transporter | null = null;
 
-  constructor(config: EmailNotificationConfig, logger: Logger) {
-    this.config = config;
-    this.logger = logger.child({ component: 'EmailNotification' });
+	constructor(config: EmailNotificationConfig, logger: Logger) {
+		this.config = config;
+		this.logger = logger.child({ component: "EmailNotification" });
 
-    if (config.enabled) {
-      this.initializeTransporter();
-    }
-  }
+		if (config.enabled) {
+			this.initializeTransporter();
+		}
+	}
 
-  private initializeTransporter(): void {
-    this.transporter = nodemailer.createTransport({
-      host: this.config.smtp.host,
-      port: this.config.smtp.port,
-      secure: this.config.smtp.secure,
-      auth: this.config.smtp.auth,
-    });
+	private initializeTransporter(): void {
+		this.transporter = nodemailer.createTransport({
+			host: this.config.smtp.host,
+			port: this.config.smtp.port,
+			secure: this.config.smtp.secure,
+			auth: this.config.smtp.auth,
+		});
 
-    this.logger.info(
-      { host: this.config.smtp.host, port: this.config.smtp.port },
-      'Email transporter initialized',
-    );
-  }
+		this.logger.info(
+			{ host: this.config.smtp.host, port: this.config.smtp.port },
+			"Email transporter initialized",
+		);
+	}
 
-  isEnabled(): boolean {
-    return this.config.enabled && this.transporter !== null;
-  }
+	isEnabled(): boolean {
+		return this.config.enabled && this.transporter !== null;
+	}
 
-  async notifyWarning(warning: WarningNotification): Promise<void> {
-    if (!this.isEnabled()) return;
+	async notifyWarning(warning: WarningNotification): Promise<void> {
+		if (!this.isEnabled()) return;
 
-    const subject = `${SEVERITY_EMOJIS[warning.severity]} [${warning.severity}] ${warning.category} - ${this.config.instanceId}`;
-    const html = this.formatWarningHtml(warning);
+		const subject = `${SEVERITY_EMOJIS[warning.severity]} [${warning.severity}] ${warning.category} - ${this.config.instanceId}`;
+		const html = this.formatWarningHtml(warning);
 
-    await this.sendEmail(subject, html);
-  }
+		await this.sendEmail(subject, html);
+	}
 
-  async notifyCriticalError(error: WarningNotification): Promise<void> {
-    if (!this.isEnabled()) return;
+	async notifyCriticalError(error: WarningNotification): Promise<void> {
+		if (!this.isEnabled()) return;
 
-    const subject = `${SEVERITY_EMOJIS.CRITICAL} [CRITICAL] ${error.category} - ${this.config.instanceId}`;
-    const html = this.formatWarningHtml(error);
+		const subject = `${SEVERITY_EMOJIS.CRITICAL} [CRITICAL] ${error.category} - ${this.config.instanceId}`;
+		const html = this.formatWarningHtml(error);
 
-    await this.sendEmail(subject, html);
-  }
+		await this.sendEmail(subject, html);
+	}
 
-  async notifySystemEvent(event: SystemEventNotification): Promise<void> {
-    if (!this.isEnabled()) return;
+	async notifySystemEvent(event: SystemEventNotification): Promise<void> {
+		if (!this.isEnabled()) return;
 
-    const subject = `[${event.eventType}] ${this.config.instanceId}`;
-    const html = this.formatSystemEventHtml(event);
+		const subject = `[${event.eventType}] ${this.config.instanceId}`;
+		const html = this.formatSystemEventHtml(event);
 
-    await this.sendEmail(subject, html);
-  }
+		await this.sendEmail(subject, html);
+	}
 
-  /**
-   * Send batch notification for multiple warnings
-   */
-  async notifyBatch(warnings: WarningNotification[]): Promise<void> {
-    if (!this.isEnabled() || warnings.length === 0) return;
+	/**
+	 * Send batch notification for multiple warnings
+	 */
+	async notifyBatch(warnings: WarningNotification[]): Promise<void> {
+		if (!this.isEnabled() || warnings.length === 0) return;
 
-    const subject = `${SEVERITY_EMOJIS.WARNING} [BATCH] ${warnings.length} warnings - ${this.config.instanceId}`;
-    const html = this.formatBatchHtml(warnings);
+		const subject = `${SEVERITY_EMOJIS.WARNING} [BATCH] ${warnings.length} warnings - ${this.config.instanceId}`;
+		const html = this.formatBatchHtml(warnings);
 
-    await this.sendEmail(subject, html);
-  }
+		await this.sendEmail(subject, html);
+	}
 
-  private async sendEmail(subject: string, html: string): Promise<void> {
-    if (!this.transporter) return;
+	private async sendEmail(subject: string, html: string): Promise<void> {
+		if (!this.transporter) return;
 
-    try {
-      await this.transporter.sendMail({
-        from: this.config.from,
-        to: this.config.to.join(', '),
-        subject,
-        html,
-      });
+		try {
+			await this.transporter.sendMail({
+				from: this.config.from,
+				to: this.config.to.join(", "),
+				subject,
+				html,
+			});
 
-      this.logger.debug({ subject }, 'Email notification sent');
-    } catch (error) {
-      this.logger.error({ error, subject }, 'Failed to send email notification');
-    }
-  }
+			this.logger.debug({ subject }, "Email notification sent");
+		} catch (error) {
+			this.logger.error(
+				{ error, subject },
+				"Failed to send email notification",
+			);
+		}
+	}
 
-  private formatWarningHtml(warning: WarningNotification): string {
-    const color = SEVERITY_COLORS[warning.severity];
+	private formatWarningHtml(warning: WarningNotification): string {
+		const color = SEVERITY_COLORS[warning.severity];
 
-    return `
+		return `
 <!DOCTYPE html>
 <html>
 <head>
@@ -161,28 +168,28 @@ export class EmailNotificationService implements NotificationService {
   </div>
 </body>
 </html>`;
-  }
+	}
 
-  private formatBatchHtml(warnings: WarningNotification[]): string {
-    const groupedByCategory = warnings.reduce(
-      (acc, warning) => {
-        const category = warning.category;
-        const existing = acc[category] ?? [];
-        existing.push(warning);
-        acc[category] = existing;
-        return acc;
-      },
-      {} as Record<string, WarningNotification[]>,
-    );
+	private formatBatchHtml(warnings: WarningNotification[]): string {
+		const groupedByCategory = warnings.reduce(
+			(acc, warning) => {
+				const category = warning.category;
+				const existing = acc[category] ?? [];
+				existing.push(warning);
+				acc[category] = existing;
+				return acc;
+			},
+			{} as Record<string, WarningNotification[]>,
+		);
 
-    const categorySections = Object.entries(groupedByCategory)
-      .map(
-        ([category, categoryWarnings]) => `
+		const categorySections = Object.entries(groupedByCategory)
+			.map(
+				([category, categoryWarnings]) => `
       <div class="category">
         <h3>${category} (${categoryWarnings.length})</h3>
         ${categoryWarnings
-          .map(
-            (w) => `
+					.map(
+						(w) => `
           <div class="warning-item" style="border-left: 3px solid ${SEVERITY_COLORS[w.severity]};">
             <div class="warning-header">
               ${SEVERITY_EMOJIS[w.severity]} <strong>${w.severity}</strong> - ${w.source}
@@ -191,14 +198,14 @@ export class EmailNotificationService implements NotificationService {
             <div class="warning-message">${this.escapeHtml(w.message)}</div>
           </div>
         `,
-          )
-          .join('')}
+					)
+					.join("")}
       </div>
     `,
-      )
-      .join('');
+			)
+			.join("");
 
-    return `
+		return `
 <!DOCTYPE html>
 <html>
 <head>
@@ -224,7 +231,7 @@ export class EmailNotificationService implements NotificationService {
       <h1>${SEVERITY_EMOJIS.WARNING} Batch Notification: ${warnings.length} Warnings</h1>
     </div>
     <div class="summary">
-      <strong>Categories:</strong> ${Object.keys(groupedByCategory).join(', ')}
+      <strong>Categories:</strong> ${Object.keys(groupedByCategory).join(", ")}
     </div>
     <div class="content">
       ${categorySections}
@@ -235,19 +242,19 @@ export class EmailNotificationService implements NotificationService {
   </div>
 </body>
 </html>`;
-  }
+	}
 
-  private formatSystemEventHtml(event: SystemEventNotification): string {
-    const metadataHtml = event.metadata
-      ? `
+	private formatSystemEventHtml(event: SystemEventNotification): string {
+		const metadataHtml = event.metadata
+			? `
       <div class="field">
         <div class="field-label">Metadata</div>
         <div class="message">${this.escapeHtml(JSON.stringify(event.metadata, null, 2))}</div>
       </div>
     `
-      : '';
+			: "";
 
-    return `
+		return `
 <!DOCTYPE html>
 <html>
 <head>
@@ -286,14 +293,14 @@ export class EmailNotificationService implements NotificationService {
   </div>
 </body>
 </html>`;
-  }
+	}
 
-  private escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
+	private escapeHtml(text: string): string {
+		return text
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;")
+			.replace(/'/g, "&#039;");
+	}
 }

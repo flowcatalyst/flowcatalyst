@@ -4,494 +4,601 @@
  * Data access for AuthRole and AuthPermission entities.
  */
 
-import { eq, sql, ilike, or, and, inArray } from 'drizzle-orm';
-import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { eq, sql, ilike, or, and, inArray } from "drizzle-orm";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
-  type PaginatedRepository,
-  type PagedResult,
-  type TransactionContext,
-  createPagedResult,
-} from '@flowcatalyst/persistence';
+	type PaginatedRepository,
+	type PagedResult,
+	type TransactionContext,
+	createPagedResult,
+} from "@flowcatalyst/persistence";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = PostgresJsDatabase<any>;
 
 import {
-  authRoles,
-  authPermissions,
-  rolePermissions,
-  type AuthRoleRecord,
-  type NewAuthRoleRecord,
-  type AuthPermissionRecord,
-  type NewAuthPermissionRecord,
-} from '../schema/index.js';
-import { type AuthRole, type RoleSource, type AuthPermission } from '../../../domain/index.js';
+	authRoles,
+	authPermissions,
+	rolePermissions,
+	type AuthRoleRecord,
+	type NewAuthRoleRecord,
+	type AuthPermissionRecord,
+	type NewAuthPermissionRecord,
+} from "../schema/index.js";
+import type {
+	AuthRole,
+	RoleSource,
+	AuthPermission,
+} from "../../../domain/index.js";
 
 /**
  * Type for creating a new AuthRole.
  */
-export type NewAuthRole = Omit<AuthRole, 'createdAt' | 'updatedAt'> & {
-  createdAt?: Date;
-  updatedAt?: Date;
+export type NewAuthRole = Omit<AuthRole, "createdAt" | "updatedAt"> & {
+	createdAt?: Date;
+	updatedAt?: Date;
 };
 
 /**
  * Type for creating a new AuthPermission.
  */
-export type NewAuthPermission = Omit<AuthPermission, 'createdAt' | 'updatedAt'> & {
-  createdAt?: Date;
-  updatedAt?: Date;
+export type NewAuthPermission = Omit<
+	AuthPermission,
+	"createdAt" | "updatedAt"
+> & {
+	createdAt?: Date;
+	updatedAt?: Date;
 };
 
 /**
  * Role repository interface.
  */
 export interface RoleRepository extends PaginatedRepository<AuthRole> {
-  findByName(name: string, tx?: TransactionContext): Promise<AuthRole | undefined>;
-  findBySource(source: RoleSource, tx?: TransactionContext): Promise<AuthRole[]>;
-  findByApplicationId(applicationId: string, tx?: TransactionContext): Promise<AuthRole[]>;
-  findCodeDefinedRoles(tx?: TransactionContext): Promise<AuthRole[]>;
-  existsByName(name: string, tx?: TransactionContext): Promise<boolean>;
-  search(
-    query: string,
-    page: number,
-    pageSize: number,
-    tx?: TransactionContext,
-  ): Promise<PagedResult<AuthRole>>;
+	findByName(
+		name: string,
+		tx?: TransactionContext,
+	): Promise<AuthRole | undefined>;
+	findBySource(
+		source: RoleSource,
+		tx?: TransactionContext,
+	): Promise<AuthRole[]>;
+	findByApplicationId(
+		applicationId: string,
+		tx?: TransactionContext,
+	): Promise<AuthRole[]>;
+	findCodeDefinedRoles(tx?: TransactionContext): Promise<AuthRole[]>;
+	existsByName(name: string, tx?: TransactionContext): Promise<boolean>;
+	search(
+		query: string,
+		page: number,
+		pageSize: number,
+		tx?: TransactionContext,
+	): Promise<PagedResult<AuthRole>>;
 }
 
 /**
  * Permission repository interface.
  */
 export interface PermissionRepository {
-  findById(id: string, tx?: TransactionContext): Promise<AuthPermission | undefined>;
-  findByCode(code: string, tx?: TransactionContext): Promise<AuthPermission | undefined>;
-  findAll(tx?: TransactionContext): Promise<AuthPermission[]>;
-  findBySubdomain(subdomain: string, tx?: TransactionContext): Promise<AuthPermission[]>;
-  findByContext(
-    subdomain: string,
-    context: string,
-    tx?: TransactionContext,
-  ): Promise<AuthPermission[]>;
-  exists(id: string, tx?: TransactionContext): Promise<boolean>;
-  existsByCode(code: string, tx?: TransactionContext): Promise<boolean>;
-  insert(entity: NewAuthPermission, tx?: TransactionContext): Promise<AuthPermission>;
-  update(entity: AuthPermission, tx?: TransactionContext): Promise<AuthPermission>;
-  persist(entity: NewAuthPermission, tx?: TransactionContext): Promise<AuthPermission>;
-  deleteById(id: string, tx?: TransactionContext): Promise<boolean>;
+	findById(
+		id: string,
+		tx?: TransactionContext,
+	): Promise<AuthPermission | undefined>;
+	findByCode(
+		code: string,
+		tx?: TransactionContext,
+	): Promise<AuthPermission | undefined>;
+	findAll(tx?: TransactionContext): Promise<AuthPermission[]>;
+	findBySubdomain(
+		subdomain: string,
+		tx?: TransactionContext,
+	): Promise<AuthPermission[]>;
+	findByContext(
+		subdomain: string,
+		context: string,
+		tx?: TransactionContext,
+	): Promise<AuthPermission[]>;
+	exists(id: string, tx?: TransactionContext): Promise<boolean>;
+	existsByCode(code: string, tx?: TransactionContext): Promise<boolean>;
+	insert(
+		entity: NewAuthPermission,
+		tx?: TransactionContext,
+	): Promise<AuthPermission>;
+	update(
+		entity: AuthPermission,
+		tx?: TransactionContext,
+	): Promise<AuthPermission>;
+	persist(
+		entity: NewAuthPermission,
+		tx?: TransactionContext,
+	): Promise<AuthPermission>;
+	deleteById(id: string, tx?: TransactionContext): Promise<boolean>;
 }
 
 /**
  * Create a Role repository.
  */
 export function createRoleRepository(defaultDb: AnyDb): RoleRepository {
-  const db = (tx?: TransactionContext): AnyDb => (tx?.db as AnyDb) ?? defaultDb;
+	const db = (tx?: TransactionContext): AnyDb => (tx?.db as AnyDb) ?? defaultDb;
 
-  /**
-   * Fetch permissions for a single role from the junction table.
-   */
-  async function fetchPermissions(roleId: string, tx?: TransactionContext): Promise<string[]> {
-    const records = await db(tx)
-      .select({ permission: rolePermissions.permission })
-      .from(rolePermissions)
-      .where(eq(rolePermissions.roleId, roleId));
-    return records.map((r) => r.permission);
-  }
+	/**
+	 * Fetch permissions for a single role from the junction table.
+	 */
+	async function fetchPermissions(
+		roleId: string,
+		tx?: TransactionContext,
+	): Promise<string[]> {
+		const records = await db(tx)
+			.select({ permission: rolePermissions.permission })
+			.from(rolePermissions)
+			.where(eq(rolePermissions.roleId, roleId));
+		return records.map((r) => r.permission);
+	}
 
-  /**
-   * Fetch permissions for multiple roles in a single query.
-   */
-  async function fetchPermissionsForRoles(
-    roleIds: string[],
-    tx?: TransactionContext,
-  ): Promise<Map<string, string[]>> {
-    if (roleIds.length === 0) return new Map();
+	/**
+	 * Fetch permissions for multiple roles in a single query.
+	 */
+	async function fetchPermissionsForRoles(
+		roleIds: string[],
+		tx?: TransactionContext,
+	): Promise<Map<string, string[]>> {
+		if (roleIds.length === 0) return new Map();
 
-    const records = await db(tx)
-      .select()
-      .from(rolePermissions)
-      .where(inArray(rolePermissions.roleId, roleIds));
+		const records = await db(tx)
+			.select()
+			.from(rolePermissions)
+			.where(inArray(rolePermissions.roleId, roleIds));
 
-    const permMap = new Map<string, string[]>();
-    for (const record of records) {
-      const existing = permMap.get(record.roleId) ?? [];
-      existing.push(record.permission);
-      permMap.set(record.roleId, existing);
-    }
-    return permMap;
-  }
+		const permMap = new Map<string, string[]>();
+		for (const record of records) {
+			const existing = permMap.get(record.roleId) ?? [];
+			existing.push(record.permission);
+			permMap.set(record.roleId, existing);
+		}
+		return permMap;
+	}
 
-  /**
-   * Sync permissions for a role - delete existing and insert new.
-   */
-  async function syncPermissions(
-    roleId: string,
-    permissions: readonly string[],
-    tx?: TransactionContext,
-  ): Promise<void> {
-    await db(tx).delete(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+	/**
+	 * Sync permissions for a role - delete existing and insert new.
+	 */
+	async function syncPermissions(
+		roleId: string,
+		permissions: readonly string[],
+		tx?: TransactionContext,
+	): Promise<void> {
+		await db(tx)
+			.delete(rolePermissions)
+			.where(eq(rolePermissions.roleId, roleId));
 
-    if (permissions.length > 0) {
-      await db(tx)
-        .insert(rolePermissions)
-        .values(permissions.map((permission) => ({ roleId, permission })));
-    }
-  }
+		if (permissions.length > 0) {
+			await db(tx)
+				.insert(rolePermissions)
+				.values(permissions.map((permission) => ({ roleId, permission })));
+		}
+	}
 
-  /**
-   * Build AuthRole domain objects from records, loading permissions in batch.
-   */
-  async function recordsToAuthRoles(
-    records: AuthRoleRecord[],
-    tx?: TransactionContext,
-  ): Promise<AuthRole[]> {
-    const ids = records.map((r) => r.id);
-    const permMap = await fetchPermissionsForRoles(ids, tx);
-    return records.map((r) => recordToAuthRole(r, permMap.get(r.id) ?? []));
-  }
+	/**
+	 * Build AuthRole domain objects from records, loading permissions in batch.
+	 */
+	async function recordsToAuthRoles(
+		records: AuthRoleRecord[],
+		tx?: TransactionContext,
+	): Promise<AuthRole[]> {
+		const ids = records.map((r) => r.id);
+		const permMap = await fetchPermissionsForRoles(ids, tx);
+		return records.map((r) => recordToAuthRole(r, permMap.get(r.id) ?? []));
+	}
 
-  return {
-    async findById(id: string, tx?: TransactionContext): Promise<AuthRole | undefined> {
-      const [record] = await db(tx).select().from(authRoles).where(eq(authRoles.id, id)).limit(1);
+	return {
+		async findById(
+			id: string,
+			tx?: TransactionContext,
+		): Promise<AuthRole | undefined> {
+			const [record] = await db(tx)
+				.select()
+				.from(authRoles)
+				.where(eq(authRoles.id, id))
+				.limit(1);
 
-      if (!record) return undefined;
+			if (!record) return undefined;
 
-      const permissions = await fetchPermissions(id, tx);
-      return recordToAuthRole(record, permissions);
-    },
+			const permissions = await fetchPermissions(id, tx);
+			return recordToAuthRole(record, permissions);
+		},
 
-    async findByName(name: string, tx?: TransactionContext): Promise<AuthRole | undefined> {
-      const [record] = await db(tx)
-        .select()
-        .from(authRoles)
-        .where(eq(authRoles.name, name.toLowerCase()))
-        .limit(1);
+		async findByName(
+			name: string,
+			tx?: TransactionContext,
+		): Promise<AuthRole | undefined> {
+			const [record] = await db(tx)
+				.select()
+				.from(authRoles)
+				.where(eq(authRoles.name, name.toLowerCase()))
+				.limit(1);
 
-      if (!record) return undefined;
+			if (!record) return undefined;
 
-      const permissions = await fetchPermissions(record.id, tx);
-      return recordToAuthRole(record, permissions);
-    },
+			const permissions = await fetchPermissions(record.id, tx);
+			return recordToAuthRole(record, permissions);
+		},
 
-    async findBySource(source: RoleSource, tx?: TransactionContext): Promise<AuthRole[]> {
-      const records = await db(tx).select().from(authRoles).where(eq(authRoles.source, source));
-      return recordsToAuthRoles(records, tx);
-    },
+		async findBySource(
+			source: RoleSource,
+			tx?: TransactionContext,
+		): Promise<AuthRole[]> {
+			const records = await db(tx)
+				.select()
+				.from(authRoles)
+				.where(eq(authRoles.source, source));
+			return recordsToAuthRoles(records, tx);
+		},
 
-    async findByApplicationId(applicationId: string, tx?: TransactionContext): Promise<AuthRole[]> {
-      const records = await db(tx)
-        .select()
-        .from(authRoles)
-        .where(eq(authRoles.applicationId, applicationId));
-      return recordsToAuthRoles(records, tx);
-    },
+		async findByApplicationId(
+			applicationId: string,
+			tx?: TransactionContext,
+		): Promise<AuthRole[]> {
+			const records = await db(tx)
+				.select()
+				.from(authRoles)
+				.where(eq(authRoles.applicationId, applicationId));
+			return recordsToAuthRoles(records, tx);
+		},
 
-    async findCodeDefinedRoles(tx?: TransactionContext): Promise<AuthRole[]> {
-      const records = await db(tx).select().from(authRoles).where(eq(authRoles.source, 'CODE'));
-      return recordsToAuthRoles(records, tx);
-    },
+		async findCodeDefinedRoles(tx?: TransactionContext): Promise<AuthRole[]> {
+			const records = await db(tx)
+				.select()
+				.from(authRoles)
+				.where(eq(authRoles.source, "CODE"));
+			return recordsToAuthRoles(records, tx);
+		},
 
-    async findAll(tx?: TransactionContext): Promise<AuthRole[]> {
-      const records = await db(tx).select().from(authRoles);
-      return recordsToAuthRoles(records, tx);
-    },
+		async findAll(tx?: TransactionContext): Promise<AuthRole[]> {
+			const records = await db(tx).select().from(authRoles);
+			return recordsToAuthRoles(records, tx);
+		},
 
-    async findPaged(
-      page: number,
-      pageSize: number,
-      tx?: TransactionContext,
-    ): Promise<PagedResult<AuthRole>> {
-      const [countResult] = await db(tx)
-        .select({ count: sql<number>`count(*)` })
-        .from(authRoles);
-      const totalItems = Number(countResult?.count ?? 0);
+		async findPaged(
+			page: number,
+			pageSize: number,
+			tx?: TransactionContext,
+		): Promise<PagedResult<AuthRole>> {
+			const [countResult] = await db(tx)
+				.select({ count: sql<number>`count(*)` })
+				.from(authRoles);
+			const totalItems = Number(countResult?.count ?? 0);
 
-      const records = await db(tx)
-        .select()
-        .from(authRoles)
-        .limit(pageSize)
-        .offset(page * pageSize)
-        .orderBy(authRoles.name);
+			const records = await db(tx)
+				.select()
+				.from(authRoles)
+				.limit(pageSize)
+				.offset(page * pageSize)
+				.orderBy(authRoles.name);
 
-      const items = await recordsToAuthRoles(records, tx);
-      return createPagedResult(items, page, pageSize, totalItems);
-    },
+			const items = await recordsToAuthRoles(records, tx);
+			return createPagedResult(items, page, pageSize, totalItems);
+		},
 
-    async search(
-      query: string,
-      page: number,
-      pageSize: number,
-      tx?: TransactionContext,
-    ): Promise<PagedResult<AuthRole>> {
-      const searchPattern = `%${query}%`;
+		async search(
+			query: string,
+			page: number,
+			pageSize: number,
+			tx?: TransactionContext,
+		): Promise<PagedResult<AuthRole>> {
+			const searchPattern = `%${query}%`;
 
-      const [countResult] = await db(tx)
-        .select({ count: sql<number>`count(*)` })
-        .from(authRoles)
-        .where(
-          or(ilike(authRoles.name, searchPattern), ilike(authRoles.displayName, searchPattern)),
-        );
-      const totalItems = Number(countResult?.count ?? 0);
+			const [countResult] = await db(tx)
+				.select({ count: sql<number>`count(*)` })
+				.from(authRoles)
+				.where(
+					or(
+						ilike(authRoles.name, searchPattern),
+						ilike(authRoles.displayName, searchPattern),
+					),
+				);
+			const totalItems = Number(countResult?.count ?? 0);
 
-      const records = await db(tx)
-        .select()
-        .from(authRoles)
-        .where(
-          or(ilike(authRoles.name, searchPattern), ilike(authRoles.displayName, searchPattern)),
-        )
-        .limit(pageSize)
-        .offset(page * pageSize)
-        .orderBy(authRoles.name);
+			const records = await db(tx)
+				.select()
+				.from(authRoles)
+				.where(
+					or(
+						ilike(authRoles.name, searchPattern),
+						ilike(authRoles.displayName, searchPattern),
+					),
+				)
+				.limit(pageSize)
+				.offset(page * pageSize)
+				.orderBy(authRoles.name);
 
-      const items = await recordsToAuthRoles(records, tx);
-      return createPagedResult(items, page, pageSize, totalItems);
-    },
+			const items = await recordsToAuthRoles(records, tx);
+			return createPagedResult(items, page, pageSize, totalItems);
+		},
 
-    async count(tx?: TransactionContext): Promise<number> {
-      const [result] = await db(tx)
-        .select({ count: sql<number>`count(*)` })
-        .from(authRoles);
-      return Number(result?.count ?? 0);
-    },
+		async count(tx?: TransactionContext): Promise<number> {
+			const [result] = await db(tx)
+				.select({ count: sql<number>`count(*)` })
+				.from(authRoles);
+			return Number(result?.count ?? 0);
+		},
 
-    async exists(id: string, tx?: TransactionContext): Promise<boolean> {
-      const [result] = await db(tx)
-        .select({ count: sql<number>`count(*)` })
-        .from(authRoles)
-        .where(eq(authRoles.id, id));
-      return Number(result?.count ?? 0) > 0;
-    },
+		async exists(id: string, tx?: TransactionContext): Promise<boolean> {
+			const [result] = await db(tx)
+				.select({ count: sql<number>`count(*)` })
+				.from(authRoles)
+				.where(eq(authRoles.id, id));
+			return Number(result?.count ?? 0) > 0;
+		},
 
-    async existsByName(name: string, tx?: TransactionContext): Promise<boolean> {
-      const [result] = await db(tx)
-        .select({ count: sql<number>`count(*)` })
-        .from(authRoles)
-        .where(eq(authRoles.name, name.toLowerCase()));
-      return Number(result?.count ?? 0) > 0;
-    },
+		async existsByName(
+			name: string,
+			tx?: TransactionContext,
+		): Promise<boolean> {
+			const [result] = await db(tx)
+				.select({ count: sql<number>`count(*)` })
+				.from(authRoles)
+				.where(eq(authRoles.name, name.toLowerCase()));
+			return Number(result?.count ?? 0) > 0;
+		},
 
-    async insert(entity: NewAuthRole, tx?: TransactionContext): Promise<AuthRole> {
-      const now = new Date();
-      const record: NewAuthRoleRecord = {
-        id: entity.id,
-        applicationId: entity.applicationId,
-        applicationCode: entity.applicationCode,
-        name: entity.name,
-        displayName: entity.displayName,
-        description: entity.description,
-        source: entity.source,
-        clientManaged: entity.clientManaged,
-        createdAt: entity.createdAt ?? now,
-        updatedAt: entity.updatedAt ?? now,
-      };
+		async insert(
+			entity: NewAuthRole,
+			tx?: TransactionContext,
+		): Promise<AuthRole> {
+			const now = new Date();
+			const record: NewAuthRoleRecord = {
+				id: entity.id,
+				applicationId: entity.applicationId,
+				applicationCode: entity.applicationCode,
+				name: entity.name,
+				displayName: entity.displayName,
+				description: entity.description,
+				source: entity.source,
+				clientManaged: entity.clientManaged,
+				createdAt: entity.createdAt ?? now,
+				updatedAt: entity.updatedAt ?? now,
+			};
 
-      await db(tx).insert(authRoles).values(record);
-      await syncPermissions(entity.id, entity.permissions, tx);
+			await db(tx).insert(authRoles).values(record);
+			await syncPermissions(entity.id, entity.permissions, tx);
 
-      return this.findById(entity.id, tx) as Promise<AuthRole>;
-    },
+			return this.findById(entity.id, tx) as Promise<AuthRole>;
+		},
 
-    async update(entity: AuthRole, tx?: TransactionContext): Promise<AuthRole> {
-      const now = new Date();
+		async update(entity: AuthRole, tx?: TransactionContext): Promise<AuthRole> {
+			const now = new Date();
 
-      await db(tx)
-        .update(authRoles)
-        .set({
-          displayName: entity.displayName,
-          description: entity.description,
-          clientManaged: entity.clientManaged,
-          updatedAt: now,
-        })
-        .where(eq(authRoles.id, entity.id));
+			await db(tx)
+				.update(authRoles)
+				.set({
+					displayName: entity.displayName,
+					description: entity.description,
+					clientManaged: entity.clientManaged,
+					updatedAt: now,
+				})
+				.where(eq(authRoles.id, entity.id));
 
-      await syncPermissions(entity.id, entity.permissions, tx);
+			await syncPermissions(entity.id, entity.permissions, tx);
 
-      return this.findById(entity.id, tx) as Promise<AuthRole>;
-    },
+			return this.findById(entity.id, tx) as Promise<AuthRole>;
+		},
 
-    async persist(entity: NewAuthRole, tx?: TransactionContext): Promise<AuthRole> {
-      const existing = await this.findById(entity.id, tx);
-      if (existing) {
-        // Merge with existing entity to preserve timestamps
-        const merged: AuthRole = {
-          ...existing,
-          ...entity,
-          createdAt: existing.createdAt,
-          updatedAt: entity.updatedAt ?? existing.updatedAt,
-        };
-        return this.update(merged, tx);
-      }
-      return this.insert(entity, tx);
-    },
+		async persist(
+			entity: NewAuthRole,
+			tx?: TransactionContext,
+		): Promise<AuthRole> {
+			const existing = await this.findById(entity.id, tx);
+			if (existing) {
+				// Merge with existing entity to preserve timestamps
+				const merged: AuthRole = {
+					...existing,
+					...entity,
+					createdAt: existing.createdAt,
+					updatedAt: entity.updatedAt ?? existing.updatedAt,
+				};
+				return this.update(merged, tx);
+			}
+			return this.insert(entity, tx);
+		},
 
-    async deleteById(id: string, tx?: TransactionContext): Promise<boolean> {
-      const exists = await this.exists(id, tx);
-      if (!exists) return false;
-      // FK cascade handles role_permissions cleanup
-      await db(tx).delete(authRoles).where(eq(authRoles.id, id));
-      return true;
-    },
+		async deleteById(id: string, tx?: TransactionContext): Promise<boolean> {
+			const exists = await this.exists(id, tx);
+			if (!exists) return false;
+			// FK cascade handles role_permissions cleanup
+			await db(tx).delete(authRoles).where(eq(authRoles.id, id));
+			return true;
+		},
 
-    async delete(entity: AuthRole, tx?: TransactionContext): Promise<boolean> {
-      return this.deleteById(entity.id, tx);
-    },
-  };
+		async delete(entity: AuthRole, tx?: TransactionContext): Promise<boolean> {
+			return this.deleteById(entity.id, tx);
+		},
+	};
 }
 
 /**
  * Create a Permission repository.
  */
-export function createPermissionRepository(defaultDb: AnyDb): PermissionRepository {
-  const db = (tx?: TransactionContext): AnyDb => (tx?.db as AnyDb) ?? defaultDb;
+export function createPermissionRepository(
+	defaultDb: AnyDb,
+): PermissionRepository {
+	const db = (tx?: TransactionContext): AnyDb => (tx?.db as AnyDb) ?? defaultDb;
 
-  return {
-    async findById(id: string, tx?: TransactionContext): Promise<AuthPermission | undefined> {
-      const [record] = await db(tx)
-        .select()
-        .from(authPermissions)
-        .where(eq(authPermissions.id, id))
-        .limit(1);
+	return {
+		async findById(
+			id: string,
+			tx?: TransactionContext,
+		): Promise<AuthPermission | undefined> {
+			const [record] = await db(tx)
+				.select()
+				.from(authPermissions)
+				.where(eq(authPermissions.id, id))
+				.limit(1);
 
-      if (!record) return undefined;
+			if (!record) return undefined;
 
-      return recordToAuthPermission(record);
-    },
+			return recordToAuthPermission(record);
+		},
 
-    async findByCode(code: string, tx?: TransactionContext): Promise<AuthPermission | undefined> {
-      const [record] = await db(tx)
-        .select()
-        .from(authPermissions)
-        .where(eq(authPermissions.code, code))
-        .limit(1);
+		async findByCode(
+			code: string,
+			tx?: TransactionContext,
+		): Promise<AuthPermission | undefined> {
+			const [record] = await db(tx)
+				.select()
+				.from(authPermissions)
+				.where(eq(authPermissions.code, code))
+				.limit(1);
 
-      if (!record) return undefined;
+			if (!record) return undefined;
 
-      return recordToAuthPermission(record);
-    },
+			return recordToAuthPermission(record);
+		},
 
-    async findAll(tx?: TransactionContext): Promise<AuthPermission[]> {
-      const records = await db(tx).select().from(authPermissions);
-      return records.map(recordToAuthPermission);
-    },
+		async findAll(tx?: TransactionContext): Promise<AuthPermission[]> {
+			const records = await db(tx).select().from(authPermissions);
+			return records.map(recordToAuthPermission);
+		},
 
-    async findBySubdomain(subdomain: string, tx?: TransactionContext): Promise<AuthPermission[]> {
-      const records = await db(tx)
-        .select()
-        .from(authPermissions)
-        .where(eq(authPermissions.subdomain, subdomain));
-      return records.map(recordToAuthPermission);
-    },
+		async findBySubdomain(
+			subdomain: string,
+			tx?: TransactionContext,
+		): Promise<AuthPermission[]> {
+			const records = await db(tx)
+				.select()
+				.from(authPermissions)
+				.where(eq(authPermissions.subdomain, subdomain));
+			return records.map(recordToAuthPermission);
+		},
 
-    async findByContext(
-      subdomain: string,
-      context: string,
-      tx?: TransactionContext,
-    ): Promise<AuthPermission[]> {
-      const records = await db(tx)
-        .select()
-        .from(authPermissions)
-        .where(and(eq(authPermissions.subdomain, subdomain), eq(authPermissions.context, context)));
-      return records.map(recordToAuthPermission);
-    },
+		async findByContext(
+			subdomain: string,
+			context: string,
+			tx?: TransactionContext,
+		): Promise<AuthPermission[]> {
+			const records = await db(tx)
+				.select()
+				.from(authPermissions)
+				.where(
+					and(
+						eq(authPermissions.subdomain, subdomain),
+						eq(authPermissions.context, context),
+					),
+				);
+			return records.map(recordToAuthPermission);
+		},
 
-    async exists(id: string, tx?: TransactionContext): Promise<boolean> {
-      const [result] = await db(tx)
-        .select({ count: sql<number>`count(*)` })
-        .from(authPermissions)
-        .where(eq(authPermissions.id, id));
-      return Number(result?.count ?? 0) > 0;
-    },
+		async exists(id: string, tx?: TransactionContext): Promise<boolean> {
+			const [result] = await db(tx)
+				.select({ count: sql<number>`count(*)` })
+				.from(authPermissions)
+				.where(eq(authPermissions.id, id));
+			return Number(result?.count ?? 0) > 0;
+		},
 
-    async existsByCode(code: string, tx?: TransactionContext): Promise<boolean> {
-      const [result] = await db(tx)
-        .select({ count: sql<number>`count(*)` })
-        .from(authPermissions)
-        .where(eq(authPermissions.code, code));
-      return Number(result?.count ?? 0) > 0;
-    },
+		async existsByCode(
+			code: string,
+			tx?: TransactionContext,
+		): Promise<boolean> {
+			const [result] = await db(tx)
+				.select({ count: sql<number>`count(*)` })
+				.from(authPermissions)
+				.where(eq(authPermissions.code, code));
+			return Number(result?.count ?? 0) > 0;
+		},
 
-    async insert(entity: NewAuthPermission, tx?: TransactionContext): Promise<AuthPermission> {
-      const now = new Date();
-      const record: NewAuthPermissionRecord = {
-        id: entity.id,
-        code: entity.code,
-        subdomain: entity.subdomain,
-        context: entity.context,
-        aggregate: entity.aggregate,
-        action: entity.action,
-        description: entity.description,
-        createdAt: entity.createdAt ?? now,
-        updatedAt: entity.updatedAt ?? now,
-      };
+		async insert(
+			entity: NewAuthPermission,
+			tx?: TransactionContext,
+		): Promise<AuthPermission> {
+			const now = new Date();
+			const record: NewAuthPermissionRecord = {
+				id: entity.id,
+				code: entity.code,
+				subdomain: entity.subdomain,
+				context: entity.context,
+				aggregate: entity.aggregate,
+				action: entity.action,
+				description: entity.description,
+				createdAt: entity.createdAt ?? now,
+				updatedAt: entity.updatedAt ?? now,
+			};
 
-      await db(tx).insert(authPermissions).values(record);
+			await db(tx).insert(authPermissions).values(record);
 
-      return this.findById(entity.id, tx) as Promise<AuthPermission>;
-    },
+			return this.findById(entity.id, tx) as Promise<AuthPermission>;
+		},
 
-    async update(entity: AuthPermission, tx?: TransactionContext): Promise<AuthPermission> {
-      const now = new Date();
+		async update(
+			entity: AuthPermission,
+			tx?: TransactionContext,
+		): Promise<AuthPermission> {
+			const now = new Date();
 
-      await db(tx)
-        .update(authPermissions)
-        .set({
-          description: entity.description,
-          updatedAt: now,
-        })
-        .where(eq(authPermissions.id, entity.id));
+			await db(tx)
+				.update(authPermissions)
+				.set({
+					description: entity.description,
+					updatedAt: now,
+				})
+				.where(eq(authPermissions.id, entity.id));
 
-      return this.findById(entity.id, tx) as Promise<AuthPermission>;
-    },
+			return this.findById(entity.id, tx) as Promise<AuthPermission>;
+		},
 
-    async persist(entity: NewAuthPermission, tx?: TransactionContext): Promise<AuthPermission> {
-      const existing = await this.exists(entity.id, tx);
-      if (existing) {
-        return this.update(entity as AuthPermission, tx);
-      }
-      return this.insert(entity, tx);
-    },
+		async persist(
+			entity: NewAuthPermission,
+			tx?: TransactionContext,
+		): Promise<AuthPermission> {
+			const existing = await this.exists(entity.id, tx);
+			if (existing) {
+				return this.update(entity as AuthPermission, tx);
+			}
+			return this.insert(entity, tx);
+		},
 
-    async deleteById(id: string, tx?: TransactionContext): Promise<boolean> {
-      const exists = await this.exists(id, tx);
-      if (!exists) return false;
-      await db(tx).delete(authPermissions).where(eq(authPermissions.id, id));
-      return true;
-    },
-  };
+		async deleteById(id: string, tx?: TransactionContext): Promise<boolean> {
+			const exists = await this.exists(id, tx);
+			if (!exists) return false;
+			await db(tx).delete(authPermissions).where(eq(authPermissions.id, id));
+			return true;
+		},
+	};
 }
 
 /**
  * Convert a database record to an AuthRole.
  */
-function recordToAuthRole(record: AuthRoleRecord, permissions: string[]): AuthRole {
-  return {
-    id: record.id,
-    applicationId: record.applicationId,
-    applicationCode: record.applicationCode,
-    name: record.name,
-    displayName: record.displayName,
-    description: record.description,
-    permissions,
-    source: record.source as RoleSource,
-    clientManaged: record.clientManaged,
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
-  };
+function recordToAuthRole(
+	record: AuthRoleRecord,
+	permissions: string[],
+): AuthRole {
+	return {
+		id: record.id,
+		applicationId: record.applicationId,
+		applicationCode: record.applicationCode,
+		name: record.name,
+		displayName: record.displayName,
+		description: record.description,
+		permissions,
+		source: record.source as RoleSource,
+		clientManaged: record.clientManaged,
+		createdAt: record.createdAt,
+		updatedAt: record.updatedAt,
+	};
 }
 
 /**
  * Convert a database record to an AuthPermission.
  */
 function recordToAuthPermission(record: AuthPermissionRecord): AuthPermission {
-  return {
-    id: record.id,
-    code: record.code,
-    subdomain: record.subdomain,
-    context: record.context,
-    aggregate: record.aggregate,
-    action: record.action,
-    description: record.description,
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
-  };
+	return {
+		id: record.id,
+		code: record.code,
+		subdomain: record.subdomain,
+		context: record.context,
+		aggregate: record.aggregate,
+		action: record.action,
+		description: record.description,
+		createdAt: record.createdAt,
+		updatedAt: record.updatedAt,
+	};
 }

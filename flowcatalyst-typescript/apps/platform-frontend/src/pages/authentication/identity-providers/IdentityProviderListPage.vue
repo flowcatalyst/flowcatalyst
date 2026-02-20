@@ -1,23 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Tag from 'primevue/tag';
-import ProgressSpinner from 'primevue/progressspinner';
-import Message from 'primevue/message';
-import Dialog from 'primevue/dialog';
-import { useToast } from 'primevue/usetoast';
-import { identityProvidersApi, type IdentityProvider } from '@/api/identity-providers';
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import {
+	identityProvidersApi,
+	type IdentityProvider,
+} from "@/api/identity-providers";
+import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
 const toast = useToast();
 const providers = ref<IdentityProvider[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
-const searchQuery = ref('');
+const searchQuery = ref("");
 
 // Delete dialog state
 const showDeleteDialog = ref(false);
@@ -25,72 +21,75 @@ const providerToDelete = ref<IdentityProvider | null>(null);
 const deleteLoading = ref(false);
 
 const filteredProviders = computed(() => {
-  if (!searchQuery.value) return providers.value;
-  const query = searchQuery.value.toLowerCase();
-  return providers.value.filter(
-    (provider) =>
-      provider.name.toLowerCase().includes(query) ||
-      provider.code.toLowerCase().includes(query) ||
-      provider.type.toLowerCase().includes(query),
-  );
+	if (!searchQuery.value) return providers.value;
+	const query = searchQuery.value.toLowerCase();
+	return providers.value.filter(
+		(provider) =>
+			provider.name.toLowerCase().includes(query) ||
+			provider.code.toLowerCase().includes(query) ||
+			provider.type.toLowerCase().includes(query),
+	);
 });
 
 onMounted(async () => {
-  await loadProviders();
+	await loadProviders();
 });
 
 async function loadProviders() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const response = await identityProvidersApi.list();
-    providers.value = response.identityProviders;
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load identity providers';
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	error.value = null;
+	try {
+		const response = await identityProvidersApi.list();
+		providers.value = response.identityProviders;
+	} catch (e) {
+		error.value =
+			e instanceof Error ? e.message : "Failed to load identity providers";
+	} finally {
+		loading.value = false;
+	}
 }
 
 function confirmDelete(provider: IdentityProvider) {
-  providerToDelete.value = provider;
-  showDeleteDialog.value = true;
+	providerToDelete.value = provider;
+	showDeleteDialog.value = true;
 }
 
 async function deleteProvider() {
-  if (!providerToDelete.value) return;
+	if (!providerToDelete.value) return;
 
-  deleteLoading.value = true;
+	deleteLoading.value = true;
 
-  try {
-    await identityProvidersApi.delete(providerToDelete.value.id);
-    providers.value = providers.value.filter((p) => p.id !== providerToDelete.value?.id);
-    showDeleteDialog.value = false;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: `Identity provider "${providerToDelete.value.name}" deleted`,
-      life: 3000,
-    });
-  } catch (e: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: e?.error || e?.message || 'Failed to delete identity provider',
-      life: 5000,
-    });
-  } finally {
-    deleteLoading.value = false;
-    providerToDelete.value = null;
-  }
+	try {
+		await identityProvidersApi.delete(providerToDelete.value.id);
+		providers.value = providers.value.filter(
+			(p) => p.id !== providerToDelete.value?.id,
+		);
+		showDeleteDialog.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: `Identity provider "${providerToDelete.value.name}" deleted`,
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to delete identity provider"),
+			life: 5000,
+		});
+	} finally {
+		deleteLoading.value = false;
+		providerToDelete.value = null;
+	}
 }
 
 function getTypeSeverity(type: string) {
-  return type === 'OIDC' ? 'info' : 'secondary';
+	return type === "OIDC" ? "info" : "secondary";
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString();
+	return new Date(dateString).toLocaleDateString();
 }
 </script>
 

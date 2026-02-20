@@ -1,16 +1,16 @@
 {
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "categories": {
-    "correctness": "error",
-    "suspicious": "warn"
-  },
-  "rules": {
-    "import/no-unused-imports": "error",
-    "no-unused-vars": "error",
-    "prefer-const": "error",
-    "typescript/consistent-type-imports": "error",
-    "typescript/no-explicit-any": "warn",
-    "typescript/no-non-null-assertion": "warn"
-  },
-  "ignorePatterns": ["**/dist/**", "**/node_modules/**", "**/*.gen.ts"]
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"categories": {
+		"correctness": "error",
+		"suspicious": "warn"
+	},
+	"rules": {
+		"import/no-unused-imports": "error",
+		"no-unused-vars": "error",
+		"prefer-const": "error",
+		"typescript/consistent-type-imports": "error",
+		"typescript/no-explicit-any": "warn",
+		"typescript/no-non-null-assertion": "warn"
+	},
+	"ignorePatterns": ["**/dist/**", "**/node_modules/**", "**/*.gen.ts"]
 }

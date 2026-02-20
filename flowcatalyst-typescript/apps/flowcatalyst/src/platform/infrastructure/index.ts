@@ -4,4 +4,4 @@
  * External service integrations and data access.
  */
 
-export * from './persistence/index.js';
+export * from "./persistence/index.js";

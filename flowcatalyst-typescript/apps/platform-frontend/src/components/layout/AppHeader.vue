@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import UserMenu from './UserMenu.vue';
-
 defineProps<{
-  sidebarCollapsed: boolean;
+	sidebarCollapsed: boolean;
 }>();
 
 const emit = defineEmits<{
-  toggleSidebar: [];
+	toggleSidebar: [];
 }>();
 </script>
 

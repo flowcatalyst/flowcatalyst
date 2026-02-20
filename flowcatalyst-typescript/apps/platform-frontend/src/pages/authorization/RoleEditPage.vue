@@ -1,15 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Textarea from 'primevue/textarea';
-import Checkbox from 'primevue/checkbox';
-import Tag from 'primevue/tag';
-import ProgressSpinner from 'primevue/progressspinner';
-import { rolesApi, type Role } from '@/api/roles';
-import { permissionsApi, type Permission } from '@/api/permissions';
+import { ref, computed, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import { rolesApi, type Role } from "@/api/roles";
+import { permissionsApi, type Permission } from "@/api/permissions";
 
 const route = useRoute();
 const router = useRouter();
@@ -22,172 +16,176 @@ const saving = ref(false);
 const error = ref<string | null>(null);
 
 // Form state
-const displayName = ref('');
-const description = ref('');
+const displayName = ref("");
+const description = ref("");
 const selectedPermissions = ref<Set<string>>(new Set());
 const clientManaged = ref(false);
 
 const roleName = computed(() => route.params.roleName as string);
 
 const hasChanges = computed(() => {
-  if (!role.value) return false;
+	if (!role.value) return false;
 
-  const permissionsChanged =
-    selectedPermissions.value.size !== role.value.permissions.length ||
-    !role.value.permissions.every((p) => selectedPermissions.value.has(p));
+	const permissionsChanged =
+		selectedPermissions.value.size !== role.value.permissions.length ||
+		!role.value.permissions.every((p) => selectedPermissions.value.has(p));
 
-  return (
-    displayName.value !== (role.value.displayName || '') ||
-    description.value !== (role.value.description || '') ||
-    clientManaged.value !== role.value.clientManaged ||
-    permissionsChanged
-  );
+	return (
+		displayName.value !== (role.value.displayName || "") ||
+		description.value !== (role.value.description || "") ||
+		clientManaged.value !== role.value.clientManaged ||
+		permissionsChanged
+	);
 });
 
 // Group permissions by application for easier selection
 const permissionsByApplication = computed(() => {
-  const groups = new Map<string, Permission[]>();
-  for (const perm of allPermissions.value) {
-    const list = groups.get(perm.application) || [];
-    list.push(perm);
-    groups.set(perm.application, list);
-  }
-  return groups;
+	const groups = new Map<string, Permission[]>();
+	for (const perm of allPermissions.value) {
+		const list = groups.get(perm.application) || [];
+		list.push(perm);
+		groups.set(perm.application, list);
+	}
+	return groups;
 });
 
-const applications = computed(() => Array.from(permissionsByApplication.value.keys()).sort());
+const applications = computed(() =>
+	Array.from(permissionsByApplication.value.keys()).sort(),
+);
 
 onMounted(async () => {
-  await Promise.all([loadRole(), loadPermissions()]);
+	await Promise.all([loadRole(), loadPermissions()]);
 });
 
 async function loadRole() {
-  try {
-    role.value = await rolesApi.get(roleName.value);
+	try {
+		role.value = await rolesApi.get(roleName.value);
 
-    // Populate form
-    displayName.value = role.value.displayName || '';
-    description.value = role.value.description || '';
-    clientManaged.value = role.value.clientManaged;
-    selectedPermissions.value = new Set(role.value.permissions);
+		// Populate form
+		displayName.value = role.value.displayName || "";
+		description.value = role.value.description || "";
+		clientManaged.value = role.value.clientManaged;
+		selectedPermissions.value = new Set(role.value.permissions);
 
-    // Redirect if not editable
-    if (role.value.source !== 'DATABASE') {
-      toast.add({
-        severity: 'warn',
-        summary: 'Not Editable',
-        detail: 'Only admin-created roles can be edited',
-        life: 5000,
-      });
-      router.push(`/authorization/roles/${encodeURIComponent(roleName.value)}`);
-    }
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load role';
-  }
+		// Redirect if not editable
+		if (role.value.source !== "DATABASE") {
+			toast.add({
+				severity: "warn",
+				summary: "Not Editable",
+				detail: "Only admin-created roles can be edited",
+				life: 5000,
+			});
+			router.push(`/authorization/roles/${encodeURIComponent(roleName.value)}`);
+		}
+	} catch (e) {
+		error.value = e instanceof Error ? e.message : "Failed to load role";
+	}
 }
 
 async function loadPermissions() {
-  try {
-    const response = await permissionsApi.list();
-    allPermissions.value = response.items;
-  } catch (e) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load permissions',
-      life: 5000,
-    });
-  } finally {
-    loading.value = false;
-  }
+	try {
+		const response = await permissionsApi.list();
+		allPermissions.value = response.items;
+	} catch (e) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to load permissions",
+			life: 5000,
+		});
+	} finally {
+		loading.value = false;
+	}
 }
 
 function togglePermission(permissionString: string) {
-  if (selectedPermissions.value.has(permissionString)) {
-    selectedPermissions.value.delete(permissionString);
-  } else {
-    selectedPermissions.value.add(permissionString);
-  }
-  // Trigger reactivity
-  selectedPermissions.value = new Set(selectedPermissions.value);
+	if (selectedPermissions.value.has(permissionString)) {
+		selectedPermissions.value.delete(permissionString);
+	} else {
+		selectedPermissions.value.add(permissionString);
+	}
+	// Trigger reactivity
+	selectedPermissions.value = new Set(selectedPermissions.value);
 }
 
 function selectAllInApplication(application: string) {
-  const perms = permissionsByApplication.value.get(application) || [];
-  for (const perm of perms) {
-    selectedPermissions.value.add(perm.permission);
-  }
-  selectedPermissions.value = new Set(selectedPermissions.value);
+	const perms = permissionsByApplication.value.get(application) || [];
+	for (const perm of perms) {
+		selectedPermissions.value.add(perm.permission);
+	}
+	selectedPermissions.value = new Set(selectedPermissions.value);
 }
 
 function deselectAllInApplication(application: string) {
-  const perms = permissionsByApplication.value.get(application) || [];
-  for (const perm of perms) {
-    selectedPermissions.value.delete(perm.permission);
-  }
-  selectedPermissions.value = new Set(selectedPermissions.value);
+	const perms = permissionsByApplication.value.get(application) || [];
+	for (const perm of perms) {
+		selectedPermissions.value.delete(perm.permission);
+	}
+	selectedPermissions.value = new Set(selectedPermissions.value);
 }
 
 function isApplicationFullySelected(application: string): boolean {
-  const perms = permissionsByApplication.value.get(application) || [];
-  return perms.every((p) => selectedPermissions.value.has(p.permission));
+	const perms = permissionsByApplication.value.get(application) || [];
+	return perms.every((p) => selectedPermissions.value.has(p.permission));
 }
 
 function isApplicationPartiallySelected(application: string): boolean {
-  const perms = permissionsByApplication.value.get(application) || [];
-  const selected = perms.filter((p) => selectedPermissions.value.has(p.permission));
-  return selected.length > 0 && selected.length < perms.length;
+	const perms = permissionsByApplication.value.get(application) || [];
+	const selected = perms.filter((p) =>
+		selectedPermissions.value.has(p.permission),
+	);
+	return selected.length > 0 && selected.length < perms.length;
 }
 
 async function saveRole() {
-  if (!role.value || saving.value) return;
+	if (!role.value || saving.value) return;
 
-  saving.value = true;
-  try {
-    await rolesApi.update(roleName.value, {
-      displayName: displayName.value || undefined,
-      description: description.value || undefined,
-      permissions: Array.from(selectedPermissions.value),
-      clientManaged: clientManaged.value,
-    });
+	saving.value = true;
+	try {
+		await rolesApi.update(roleName.value, {
+			displayName: displayName.value || undefined,
+			description: description.value || undefined,
+			permissions: Array.from(selectedPermissions.value),
+			clientManaged: clientManaged.value,
+		});
 
-    toast.add({
-      severity: 'success',
-      summary: 'Saved',
-      detail: 'Role updated successfully',
-      life: 3000,
-    });
+		toast.add({
+			severity: "success",
+			summary: "Saved",
+			detail: "Role updated successfully",
+			life: 3000,
+		});
 
-    router.push(`/authorization/roles/${encodeURIComponent(roleName.value)}`);
-  } catch (e) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: e instanceof Error ? e.message : 'Failed to save role',
-      life: 5000,
-    });
-  } finally {
-    saving.value = false;
-  }
+		router.push(`/authorization/roles/${encodeURIComponent(roleName.value)}`);
+	} catch (e) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: e instanceof Error ? e.message : "Failed to save role",
+			life: 5000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 function cancel() {
-  router.push(`/authorization/roles/${encodeURIComponent(roleName.value)}`);
+	router.push(`/authorization/roles/${encodeURIComponent(roleName.value)}`);
 }
 
 function getActionSeverity(action: string) {
-  switch (action) {
-    case 'view':
-      return 'info';
-    case 'create':
-      return 'success';
-    case 'update':
-      return 'warn';
-    case 'delete':
-      return 'danger';
-    default:
-      return 'secondary';
-  }
+	switch (action) {
+		case "view":
+			return "info";
+		case "create":
+			return "success";
+		case "update":
+			return "warn";
+		case "delete":
+			return "danger";
+		default:
+			return "secondary";
+	}
 }
 </script>
 

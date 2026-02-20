@@ -1,22 +1,15 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import InputNumber from 'primevue/inputnumber';
-import Textarea from 'primevue/textarea';
-import Checkbox from 'primevue/checkbox';
-import Message from 'primevue/message';
-import ClientSelect from '@/components/ClientSelect.vue';
-import { dispatchPoolsApi } from '@/api/dispatch-pools';
+import { ref, computed } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import { dispatchPoolsApi } from "@/api/dispatch-pools";
 
 const router = useRouter();
 const toast = useToast();
 
-const code = ref('');
-const name = ref('');
-const description = ref('');
+const code = ref("");
+const name = ref("");
+const description = ref("");
 const rateLimit = ref<number>(100);
 const concurrency = ref<number>(10);
 const clientId = ref<string | null>(null);
@@ -28,48 +21,49 @@ const errorMessage = ref<string | null>(null);
 const CODE_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 const isCodeValid = computed(() => {
-  return !code.value || CODE_PATTERN.test(code.value);
+	return !code.value || CODE_PATTERN.test(code.value);
 });
 
 const isFormValid = computed(() => {
-  return (
-    code.value.length >= 2 &&
-    code.value.length <= 100 &&
-    CODE_PATTERN.test(code.value) &&
-    name.value.trim().length > 0 &&
-    name.value.length <= 255 &&
-    rateLimit.value >= 1 &&
-    concurrency.value >= 1
-  );
+	return (
+		code.value.length >= 2 &&
+		code.value.length <= 100 &&
+		CODE_PATTERN.test(code.value) &&
+		name.value.trim().length > 0 &&
+		name.value.length <= 255 &&
+		rateLimit.value >= 1 &&
+		concurrency.value >= 1
+	);
 });
 
 async function onSubmit() {
-  if (!isFormValid.value) return;
+	if (!isFormValid.value) return;
 
-  submitting.value = true;
-  errorMessage.value = null;
+	submitting.value = true;
+	errorMessage.value = null;
 
-  try {
-    const pool = await dispatchPoolsApi.create({
-      code: code.value,
-      name: name.value,
-      description: description.value || undefined,
-      rateLimit: rateLimit.value,
-      concurrency: concurrency.value,
-      clientId: isAnchorLevel.value ? undefined : clientId.value || undefined,
-    });
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Dispatch pool created',
-      life: 3000,
-    });
-    router.push(`/dispatch-pools/${pool.id}`);
-  } catch (e) {
-    errorMessage.value = e instanceof Error ? e.message : 'Failed to create dispatch pool';
-  } finally {
-    submitting.value = false;
-  }
+	try {
+		const pool = await dispatchPoolsApi.create({
+			code: code.value,
+			name: name.value,
+			description: description.value || undefined,
+			rateLimit: rateLimit.value,
+			concurrency: concurrency.value,
+			clientId: isAnchorLevel.value ? undefined : clientId.value || undefined,
+		});
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Dispatch pool created",
+			life: 3000,
+		});
+		router.push(`/dispatch-pools/${pool.id}`);
+	} catch (e) {
+		errorMessage.value =
+			e instanceof Error ? e.message : "Failed to create dispatch pool";
+	} finally {
+		submitting.value = false;
+	}
 }
 </script>
 

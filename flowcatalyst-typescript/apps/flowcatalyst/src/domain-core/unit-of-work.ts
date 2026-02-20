@@ -35,8 +35,8 @@
  * (to avoid circular dependencies).
  */
 
-import type { DomainEvent } from './domain-event.js';
-import type { Result } from './result.js';
+import type { DomainEvent } from "./domain-event.js";
+import type { Result } from "./result.js";
 
 /**
  * Aggregate entity interface.
@@ -44,7 +44,7 @@ import type { Result } from './result.js';
  * Entities must have an `id` field that is a TSID string.
  */
 export interface Aggregate {
-  readonly id: string;
+	readonly id: string;
 }
 
 /**
@@ -57,94 +57,94 @@ export interface Aggregate {
  * 4. Only return Result.success() using the internal token
  */
 export interface UnitOfWork {
-  /**
-   * Commit an entity change with its domain event atomically.
-   *
-   * Within a single database transaction:
-   * 1. Persists or updates the aggregate entity
-   * 2. Creates the domain event in the events table
-   * 3. Creates the audit log entry
-   *
-   * If any step fails, the entire transaction is rolled back.
-   *
-   * @param aggregate - The entity to persist (must have id field)
-   * @param event - The domain event representing what happened
-   * @param command - The command that was executed (for audit log)
-   * @returns Success with the event, or Failure if transaction fails
-   */
-  commit<T extends DomainEvent>(
-    aggregate: Aggregate,
-    event: T,
-    command: unknown,
-  ): Promise<Result<T>>;
+	/**
+	 * Commit an entity change with its domain event atomically.
+	 *
+	 * Within a single database transaction:
+	 * 1. Persists or updates the aggregate entity
+	 * 2. Creates the domain event in the events table
+	 * 3. Creates the audit log entry
+	 *
+	 * If any step fails, the entire transaction is rolled back.
+	 *
+	 * @param aggregate - The entity to persist (must have id field)
+	 * @param event - The domain event representing what happened
+	 * @param command - The command that was executed (for audit log)
+	 * @returns Success with the event, or Failure if transaction fails
+	 */
+	commit<T extends DomainEvent>(
+		aggregate: Aggregate,
+		event: T,
+		command: unknown,
+	): Promise<Result<T>>;
 
-  /**
-   * Commit a delete operation with its domain event atomically.
-   *
-   * Within a single database transaction:
-   * 1. Deletes the aggregate entity
-   * 2. Creates the domain event in the events table
-   * 3. Creates the audit log entry
-   *
-   * @param aggregate - The entity to delete (must have id field)
-   * @param event - The domain event representing the deletion
-   * @param command - The command that was executed (for audit log)
-   * @returns Success with the event, or Failure if transaction fails
-   */
-  commitDelete<T extends DomainEvent>(
-    aggregate: Aggregate,
-    event: T,
-    command: unknown,
-  ): Promise<Result<T>>;
+	/**
+	 * Commit a delete operation with its domain event atomically.
+	 *
+	 * Within a single database transaction:
+	 * 1. Deletes the aggregate entity
+	 * 2. Creates the domain event in the events table
+	 * 3. Creates the audit log entry
+	 *
+	 * @param aggregate - The entity to delete (must have id field)
+	 * @param event - The domain event representing the deletion
+	 * @param command - The command that was executed (for audit log)
+	 * @returns Success with the event, or Failure if transaction fails
+	 */
+	commitDelete<T extends DomainEvent>(
+		aggregate: Aggregate,
+		event: T,
+		command: unknown,
+	): Promise<Result<T>>;
 
-  /**
-   * Commit multiple entity changes with a domain event atomically.
-   *
-   * Use this for operations that create or update multiple aggregates,
-   * such as provisioning a service account (Principal + OAuthClient + Application).
-   *
-   * Within a single database transaction:
-   * 1. Persists or updates all aggregate entities
-   * 2. Creates the domain event in the events table
-   * 3. Creates the audit log entry
-   *
-   * If any step fails, the entire transaction is rolled back.
-   *
-   * @param aggregates - The entities to persist (each must have id field)
-   * @param event - The domain event representing what happened
-   * @param command - The command that was executed (for audit log)
-   * @returns Success with the event, or Failure if transaction fails
-   */
-  commitAll<T extends DomainEvent>(
-    aggregates: Aggregate[],
-    event: T,
-    command: unknown,
-  ): Promise<Result<T>>;
+	/**
+	 * Commit multiple entity changes with a domain event atomically.
+	 *
+	 * Use this for operations that create or update multiple aggregates,
+	 * such as provisioning a service account (Principal + OAuthClient + Application).
+	 *
+	 * Within a single database transaction:
+	 * 1. Persists or updates all aggregate entities
+	 * 2. Creates the domain event in the events table
+	 * 3. Creates the audit log entry
+	 *
+	 * If any step fails, the entire transaction is rolled back.
+	 *
+	 * @param aggregates - The entities to persist (each must have id field)
+	 * @param event - The domain event representing what happened
+	 * @param command - The command that was executed (for audit log)
+	 * @returns Success with the event, or Failure if transaction fails
+	 */
+	commitAll<T extends DomainEvent>(
+		aggregates: Aggregate[],
+		event: T,
+		command: unknown,
+	): Promise<Result<T>>;
 
-  /**
-   * Commit custom operations with a domain event atomically.
-   *
-   * Use this for sync/batch operations where multiple entities are created,
-   * updated, or deleted within a single transaction. The operations callback
-   * receives a transaction context that can be passed to repository methods.
-   *
-   * Within a single database transaction:
-   * 1. Runs the operations callback (entity inserts/updates/deletes)
-   * 2. Creates the domain event in the events table
-   * 3. Creates the audit log entry
-   *
-   * If any step fails, the entire transaction is rolled back.
-   *
-   * @param event - The domain event representing what happened
-   * @param command - The command that was executed (for audit log)
-   * @param operations - Callback receiving the transaction context for entity operations
-   * @returns Success with the event, or Failure if transaction fails
-   */
-  commitOperations<T extends DomainEvent>(
-    event: T,
-    command: unknown,
-    operations: (tx: unknown) => Promise<void>,
-  ): Promise<Result<T>>;
+	/**
+	 * Commit custom operations with a domain event atomically.
+	 *
+	 * Use this for sync/batch operations where multiple entities are created,
+	 * updated, or deleted within a single transaction. The operations callback
+	 * receives a transaction context that can be passed to repository methods.
+	 *
+	 * Within a single database transaction:
+	 * 1. Runs the operations callback (entity inserts/updates/deletes)
+	 * 2. Creates the domain event in the events table
+	 * 3. Creates the audit log entry
+	 *
+	 * If any step fails, the entire transaction is rolled back.
+	 *
+	 * @param event - The domain event representing what happened
+	 * @param command - The command that was executed (for audit log)
+	 * @param operations - Callback receiving the transaction context for entity operations
+	 * @returns Success with the event, or Failure if transaction fails
+	 */
+	commitOperations<T extends DomainEvent>(
+		event: T,
+		command: unknown,
+		operations: (tx: unknown) => Promise<void>,
+	): Promise<Result<T>>;
 }
 
 /**
@@ -152,4 +152,4 @@ export interface UnitOfWork {
  *
  * Provides the success token to implementations for creating successful results.
  */
-export { RESULT_SUCCESS_TOKEN, type ResultSuccessToken } from './result.js';
+export { RESULT_SUCCESS_TOKEN, type ResultSuccessToken } from "./result.js";

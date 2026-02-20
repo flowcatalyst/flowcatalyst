@@ -1,29 +1,29 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import { useField } from 'vee-validate';
-import InputText from 'primevue/inputtext';
-import Password from 'primevue/password';
+import { computed } from "vue";
+import { useField } from "vee-validate";
 
 const props = withDefaults(
-  defineProps<{
-    name: string;
-    label?: string;
-    type?: 'text' | 'email' | 'password' | 'number' | 'tel' | 'url';
-    placeholder?: string;
-    hint?: string;
-    disabled?: boolean;
-    showPasswordStrength?: boolean;
-  }>(),
-  {
-    type: 'text',
-    placeholder: '',
-    hint: '',
-    disabled: false,
-    showPasswordStrength: false,
-  },
+	defineProps<{
+		name: string;
+		label?: string;
+		type?: "text" | "email" | "password" | "number" | "tel" | "url";
+		placeholder?: string;
+		hint?: string;
+		disabled?: boolean;
+		showPasswordStrength?: boolean;
+	}>(),
+	{
+		type: "text",
+		placeholder: "",
+		hint: "",
+		disabled: false,
+		showPasswordStrength: false,
+	},
 );
 
-const { value, errorMessage, handleBlur, meta } = useField<string>(() => props.name);
+const { value, errorMessage, handleBlur, meta } = useField<string>(
+	() => props.name,
+);
 
 const invalid = computed(() => meta.touched && !!errorMessage.value);
 const inputId = computed(() => `fc-input-${props.name}`);

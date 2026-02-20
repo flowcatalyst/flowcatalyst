@@ -57,6 +57,9 @@ public class OidcLoginStateEntity {
     @Column(name = "oauth_nonce", length = 256)
     public String oauthNonce;
 
+    @Column(name = "interaction_uid", length = 256)
+    public String interactionUid;
+
     @Column(name = "created_at", nullable = false)
     public Instant createdAt;
 

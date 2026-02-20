@@ -4,8 +4,8 @@
  * Runs DrizzleORM migrations using a single non-pooled connection.
  */
 
-import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { createMigrationDatabase } from './connection.js';
+import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { createMigrationDatabase } from "./connection.js";
 
 /**
  * Run database migrations from the specified folder.
@@ -15,11 +15,14 @@ import { createMigrationDatabase } from './connection.js';
  * @param databaseUrl - PostgreSQL connection URL
  * @param migrationsFolder - Path to the folder containing migration files
  */
-export async function runMigrations(databaseUrl: string, migrationsFolder: string): Promise<void> {
-  const database = createMigrationDatabase({ url: databaseUrl });
-  try {
-    await migrate(database.db, { migrationsFolder });
-  } finally {
-    await database.close();
-  }
+export async function runMigrations(
+	databaseUrl: string,
+	migrationsFolder: string,
+): Promise<void> {
+	const database = createMigrationDatabase({ url: databaseUrl });
+	try {
+		await migrate(database.db, { migrationsFolder });
+	} finally {
+		await database.close();
+	}
 }

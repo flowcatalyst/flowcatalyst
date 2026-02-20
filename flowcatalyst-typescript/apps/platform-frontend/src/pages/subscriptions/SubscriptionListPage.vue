@@ -1,126 +1,124 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Tag from 'primevue/tag';
-import Select from 'primevue/select';
-import MultiSelect from 'primevue/multiselect';
-import ProgressSpinner from 'primevue/progressspinner';
-import Message from 'primevue/message';
-import { subscriptionsApi, type Subscription, type SubscriptionStatus } from '@/api/subscriptions';
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import {
+	subscriptionsApi,
+	type Subscription,
+	type SubscriptionStatus,
+} from "@/api/subscriptions";
 
 const router = useRouter();
 const subscriptions = ref<Subscription[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
-const searchQuery = ref('');
+const searchQuery = ref("");
 const statusFilter = ref<SubscriptionStatus | null>(null);
 const applicationFilter = ref<string[]>([]);
 
 const statusOptions = [
-  { label: 'All Statuses', value: null },
-  { label: 'Active', value: 'ACTIVE' },
-  { label: 'Paused', value: 'PAUSED' },
+	{ label: "All Statuses", value: null },
+	{ label: "Active", value: "ACTIVE" },
+	{ label: "Paused", value: "PAUSED" },
 ];
 
 const applicationOptions = computed(() => {
-  const codes = new Set<string>();
-  subscriptions.value.forEach((sub) => {
-    if (sub.applicationCode) {
-      codes.add(sub.applicationCode);
-    }
-  });
-  return Array.from(codes)
-    .sort()
-    .map((code) => ({ label: code, value: code }));
+	const codes = new Set<string>();
+	subscriptions.value.forEach((sub) => {
+		if (sub.applicationCode) {
+			codes.add(sub.applicationCode);
+		}
+	});
+	return Array.from(codes)
+		.sort()
+		.map((code) => ({ label: code, value: code }));
 });
 
 const filteredSubscriptions = computed(() => {
-  let result = subscriptions.value;
+	let result = subscriptions.value;
 
-  if (statusFilter.value) {
-    result = result.filter((sub) => sub.status === statusFilter.value);
-  }
+	if (statusFilter.value) {
+		result = result.filter((sub) => sub.status === statusFilter.value);
+	}
 
-  if (applicationFilter.value.length > 0) {
-    result = result.filter(
-      (sub) => sub.applicationCode && applicationFilter.value.includes(sub.applicationCode),
-    );
-  }
+	if (applicationFilter.value.length > 0) {
+		result = result.filter(
+			(sub) =>
+				sub.applicationCode &&
+				applicationFilter.value.includes(sub.applicationCode),
+		);
+	}
 
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase();
-    result = result.filter(
-      (sub) =>
-        sub.code.toLowerCase().includes(query) ||
-        sub.name.toLowerCase().includes(query) ||
-        sub.target.toLowerCase().includes(query) ||
-        sub.applicationCode?.toLowerCase().includes(query) ||
-        sub.clientIdentifier?.toLowerCase().includes(query),
-    );
-  }
+	if (searchQuery.value) {
+		const query = searchQuery.value.toLowerCase();
+		result = result.filter(
+			(sub) =>
+				sub.code.toLowerCase().includes(query) ||
+				sub.name.toLowerCase().includes(query) ||
+				sub.target.toLowerCase().includes(query) ||
+				sub.applicationCode?.toLowerCase().includes(query) ||
+				sub.clientIdentifier?.toLowerCase().includes(query),
+		);
+	}
 
-  return result;
+	return result;
 });
 
 onMounted(async () => {
-  await loadSubscriptions();
+	await loadSubscriptions();
 });
 
 async function loadSubscriptions() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const response = await subscriptionsApi.list();
-    subscriptions.value = response.subscriptions;
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load subscriptions';
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	error.value = null;
+	try {
+		const response = await subscriptionsApi.list();
+		subscriptions.value = response.subscriptions;
+	} catch (e) {
+		error.value =
+			e instanceof Error ? e.message : "Failed to load subscriptions";
+	} finally {
+		loading.value = false;
+	}
 }
 
 function getStatusSeverity(status: SubscriptionStatus) {
-  switch (status) {
-    case 'ACTIVE':
-      return 'success';
-    case 'PAUSED':
-      return 'warn';
-    default:
-      return 'secondary';
-  }
+	switch (status) {
+		case "ACTIVE":
+			return "success";
+		case "PAUSED":
+			return "warn";
+		default:
+			return "secondary";
+	}
 }
 
 function getModeLabel(mode: string) {
-  switch (mode) {
-    case 'IMMEDIATE':
-      return 'Immediate';
-    case 'NEXT_ON_ERROR':
-      return 'Next on Error';
-    case 'BLOCK_ON_ERROR':
-      return 'Block on Error';
-    default:
-      return mode;
-  }
+	switch (mode) {
+		case "IMMEDIATE":
+			return "Immediate";
+		case "NEXT_ON_ERROR":
+			return "Next on Error";
+		case "BLOCK_ON_ERROR":
+			return "Block on Error";
+		default:
+			return mode;
+	}
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString();
+	return new Date(dateString).toLocaleDateString();
 }
 
 function getScopeLabel(sub: Subscription) {
-  if (sub.clientIdentifier) {
-    return sub.clientIdentifier;
-  }
-  return 'Anchor-level';
+	if (sub.clientIdentifier) {
+		return sub.clientIdentifier;
+	}
+	return "Anchor-level";
 }
 
 function getEventTypesLabel(sub: Subscription) {
-  const count = sub.eventTypes?.length || 0;
-  return `${count} event type${count !== 1 ? 's' : ''}`;
+	const count = sub.eventTypes?.length || 0;
+	return `${count} event type${count !== 1 ? "s" : ""}`;
 }
 </script>
 

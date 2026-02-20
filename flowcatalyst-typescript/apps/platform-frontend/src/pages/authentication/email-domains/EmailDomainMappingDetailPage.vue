@@ -1,26 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Select from 'primevue/select';
-import Tag from 'primevue/tag';
-import Chip from 'primevue/chip';
-import Message from 'primevue/message';
-import Dialog from 'primevue/dialog';
-import ProgressSpinner from 'primevue/progressspinner';
-import AutoComplete from 'primevue/autocomplete';
-import PickList from 'primevue/picklist';
-import ToggleSwitch from 'primevue/toggleswitch';
-import { useToast } from 'primevue/usetoast';
+import { ref, computed, onMounted } from "vue";
+import { useRouter, useRoute } from "vue-router";
+import { useToast } from "primevue/usetoast";
 import {
-  emailDomainMappingsApi,
-  type EmailDomainMapping,
-  type ScopeType,
-} from '@/api/email-domain-mappings';
-import { identityProvidersApi, type IdentityProvider } from '@/api/identity-providers';
-import { clientsApi, type Client } from '@/api/clients';
-import { rolesApi, type Role } from '@/api/roles';
+	emailDomainMappingsApi,
+	type EmailDomainMapping,
+	type ScopeType,
+} from "@/api/email-domain-mappings";
+import {
+	identityProvidersApi,
+	type IdentityProvider,
+} from "@/api/identity-providers";
+import { clientsApi, type Client } from "@/api/clients";
+import { rolesApi, type Role } from "@/api/roles";
+import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
 const route = useRoute();
@@ -40,10 +33,10 @@ const rolePickerModel = ref<[Role[], Role[]]>([[], []]);
 // Edit mode
 const isEditing = ref(false);
 const editForm = ref({
-  scopeType: 'CLIENT' as ScopeType,
-  primaryClientId: null as string | null,
-  requiredOidcTenantId: '' as string,
-  syncRolesFromIdp: false,
+	scopeType: "CLIENT" as ScopeType,
+	primaryClientId: null as string | null,
+	requiredOidcTenantId: "" as string,
+	syncRolesFromIdp: false,
 });
 
 // Client autocomplete
@@ -55,228 +48,259 @@ const showDeleteDialog = ref(false);
 const deleteLoading = ref(false);
 
 const scopeTypeOptions = [
-  { label: 'Anchor', value: 'ANCHOR', description: 'Platform admin - access to all clients' },
-  { label: 'Partner', value: 'PARTNER', description: 'Partner user - access to multiple clients' },
-  { label: 'Client', value: 'CLIENT', description: 'Client user - bound to a single client' },
+	{
+		label: "Anchor",
+		value: "ANCHOR",
+		description: "Platform admin - access to all clients",
+	},
+	{
+		label: "Partner",
+		value: "PARTNER",
+		description: "Partner user - access to multiple clients",
+	},
+	{
+		label: "Client",
+		value: "CLIENT",
+		description: "Client user - bound to a single client",
+	},
 ];
 
 const isValid = computed(() => {
-  if (editForm.value.scopeType === 'CLIENT' && editForm.value.primaryClientId == null) {
-    return false;
-  }
-  if (isOidcMultiTenant.value && !editForm.value.requiredOidcTenantId.trim()) {
-    return false;
-  }
-  return true;
+	if (
+		editForm.value.scopeType === "CLIENT" &&
+		editForm.value.primaryClientId == null
+	) {
+		return false;
+	}
+	if (isOidcMultiTenant.value && !editForm.value.requiredOidcTenantId.trim()) {
+		return false;
+	}
+	return true;
 });
 
 onMounted(async () => {
-  await loadData();
+	await loadData();
 });
 
 async function loadData() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const id = route.params.id as string;
-    const [mappingData, clientsResponse, rolesResponse] = await Promise.all([
-      emailDomainMappingsApi.get(id),
-      clientsApi.list(),
-      rolesApi.list(),
-    ]);
-    mapping.value = mappingData;
-    clients.value = clientsResponse.clients;
-    allRoles.value = rolesResponse.items;
+	loading.value = true;
+	error.value = null;
+	try {
+		const id = route.params.id as string;
+		const [mappingData, clientsResponse, rolesResponse] = await Promise.all([
+			emailDomainMappingsApi.get(id),
+			clientsApi.list(),
+			rolesApi.list(),
+		]);
+		mapping.value = mappingData;
+		clients.value = clientsResponse.clients;
+		allRoles.value = rolesResponse.items;
 
-    // Load the identity provider
-    provider.value = await identityProvidersApi.get(mappingData.identityProviderId);
+		// Load the identity provider
+		provider.value = await identityProvidersApi.get(
+			mappingData.identityProviderId,
+		);
 
-    resetEditForm();
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load email domain mapping';
-  } finally {
-    loading.value = false;
-  }
+		resetEditForm();
+	} catch (e) {
+		error.value =
+			e instanceof Error ? e.message : "Failed to load email domain mapping";
+	} finally {
+		loading.value = false;
+	}
 }
 
 function resetEditForm() {
-  if (mapping.value) {
-    editForm.value = {
-      scopeType: mapping.value.scopeType,
-      primaryClientId: mapping.value.primaryClientId || null,
-      requiredOidcTenantId: mapping.value.requiredOidcTenantId || '',
-      syncRolesFromIdp: mapping.value.syncRolesFromIdp ?? false,
-    };
-    if (mapping.value.primaryClientId) {
-      selectedPrimaryClient.value =
-        clients.value.find((c) => c.id === mapping.value?.primaryClientId) || null;
-    } else {
-      selectedPrimaryClient.value = null;
-    }
+	if (mapping.value) {
+		editForm.value = {
+			scopeType: mapping.value.scopeType,
+			primaryClientId: mapping.value.primaryClientId || null,
+			requiredOidcTenantId: mapping.value.requiredOidcTenantId || "",
+			syncRolesFromIdp: mapping.value.syncRolesFromIdp ?? false,
+		};
+		if (mapping.value.primaryClientId) {
+			selectedPrimaryClient.value =
+				clients.value.find((c) => c.id === mapping.value?.primaryClientId) ||
+				null;
+		} else {
+			selectedPrimaryClient.value = null;
+		}
 
-    // Set up role picker
-    const allowedRoleIds = new Set(mapping.value.allowedRoleIds || []);
-    const selectedRoles = allRoles.value.filter((r) => allowedRoleIds.has(r.id));
-    const availableRoles = allRoles.value.filter((r) => !allowedRoleIds.has(r.id));
-    rolePickerModel.value = [availableRoles, selectedRoles];
-  }
+		// Set up role picker
+		const allowedRoleIds = new Set(mapping.value.allowedRoleIds || []);
+		const selectedRoles = allRoles.value.filter((r) =>
+			allowedRoleIds.has(r.id),
+		);
+		const availableRoles = allRoles.value.filter(
+			(r) => !allowedRoleIds.has(r.id),
+		);
+		rolePickerModel.value = [availableRoles, selectedRoles];
+	}
 }
 
 const isOidcMultiTenant = computed(() => {
-  return provider.value?.oidcMultiTenant === true;
+	return provider.value?.oidcMultiTenant === true;
 });
 
 const isExternalIdp = computed(() => {
-  return provider.value?.type === 'OIDC';
+	return provider.value?.type === "OIDC";
 });
 
 const showRolePicker = computed(() => {
-  return isExternalIdp.value && editForm.value.scopeType !== 'ANCHOR';
+	return isExternalIdp.value && editForm.value.scopeType !== "ANCHOR";
 });
 
 const showRoleDisplay = computed(() => {
-  return isExternalIdp.value && mapping.value?.scopeType !== 'ANCHOR';
+	return isExternalIdp.value && mapping.value?.scopeType !== "ANCHOR";
 });
 
 function getAllowedRoleNames(): string[] {
-  if (!mapping.value?.allowedRoleIds?.length) return [];
-  return mapping.value.allowedRoleIds.map((id) => {
-    const role = allRoles.value.find((r) => r.id === id);
-    return role?.displayName || role?.name || id;
-  });
+	if (!mapping.value?.allowedRoleIds?.length) return [];
+	return mapping.value.allowedRoleIds.map((id) => {
+		const role = allRoles.value.find((r) => r.id === id);
+		return role?.displayName || role?.name || id;
+	});
 }
 
 function startEditing() {
-  resetEditForm();
-  isEditing.value = true;
+	resetEditForm();
+	isEditing.value = true;
 }
 
 function cancelEditing() {
-  resetEditForm();
-  isEditing.value = false;
+	resetEditForm();
+	isEditing.value = false;
 }
 
 function searchClients(event: { query: string }) {
-  const query = event.query.toLowerCase();
-  filteredClients.value = clients.value.filter(
-    (c) => c.name.toLowerCase().includes(query) || c.identifier.toLowerCase().includes(query),
-  );
+	const query = event.query.toLowerCase();
+	filteredClients.value = clients.value.filter(
+		(c) =>
+			c.name.toLowerCase().includes(query) ||
+			c.identifier.toLowerCase().includes(query),
+	);
 }
 
 function onClientSelect(event: { value: Client }) {
-  editForm.value.primaryClientId = event.value.id;
+	editForm.value.primaryClientId = event.value.id;
 }
 
 function clearPrimaryClient() {
-  editForm.value.primaryClientId = null;
-  selectedPrimaryClient.value = null;
+	editForm.value.primaryClientId = null;
+	selectedPrimaryClient.value = null;
 }
 
 async function saveChanges() {
-  if (!mapping.value || !isValid.value) return;
+	if (!mapping.value || !isValid.value) return;
 
-  saving.value = true;
-  error.value = null;
+	saving.value = true;
+	error.value = null;
 
-  try {
-    const updateData: any = {
-      scopeType: editForm.value.scopeType,
-    };
+	try {
+		const updateData: Record<string, unknown> = {
+			scopeType: editForm.value.scopeType,
+		};
 
-    if (editForm.value.scopeType === 'CLIENT') {
-      updateData.primaryClientId = editForm.value.primaryClientId;
-    } else if (editForm.value.scopeType === 'ANCHOR') {
-      updateData.primaryClientId = null;
-    }
+		if (editForm.value.scopeType === "CLIENT") {
+			updateData.primaryClientId = editForm.value.primaryClientId;
+		} else if (editForm.value.scopeType === "ANCHOR") {
+			updateData.primaryClientId = null;
+		}
 
-    // Include tenant ID (empty string clears it)
-    if (isOidcMultiTenant.value) {
-      updateData.requiredOidcTenantId = editForm.value.requiredOidcTenantId || '';
-    }
+		// Include tenant ID (empty string clears it)
+		if (isOidcMultiTenant.value) {
+			updateData.requiredOidcTenantId =
+				editForm.value.requiredOidcTenantId || "";
+		}
 
-    // Include allowed roles (send the selected roles' IDs)
-    if (showRolePicker.value) {
-      updateData.allowedRoleIds = rolePickerModel.value[1].map((r) => r.id);
-    }
+		// Include allowed roles (send the selected roles' IDs)
+		if (showRolePicker.value) {
+			updateData.allowedRoleIds = rolePickerModel.value[1].map((r) => r.id);
+		}
 
-    // Include syncRolesFromIdp for external IDPs with non-ANCHOR scope
-    if (showRolePicker.value) {
-      updateData.syncRolesFromIdp = editForm.value.syncRolesFromIdp;
-    }
+		// Include syncRolesFromIdp for external IDPs with non-ANCHOR scope
+		if (showRolePicker.value) {
+			updateData.syncRolesFromIdp = editForm.value.syncRolesFromIdp;
+		}
 
-    const updated = await emailDomainMappingsApi.update(mapping.value.id, updateData);
-    mapping.value = updated;
+		const updated = await emailDomainMappingsApi.update(
+			mapping.value.id,
+			updateData,
+		);
+		mapping.value = updated;
 
-    // Update the selected client display
-    if (updated.primaryClientId) {
-      selectedPrimaryClient.value =
-        clients.value.find((c) => c.id === updated.primaryClientId) || null;
-    } else {
-      selectedPrimaryClient.value = null;
-    }
+		// Update the selected client display
+		if (updated.primaryClientId) {
+			selectedPrimaryClient.value =
+				clients.value.find((c) => c.id === updated.primaryClientId) || null;
+		} else {
+			selectedPrimaryClient.value = null;
+		}
 
-    isEditing.value = false;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Email domain mapping updated successfully',
-      life: 3000,
-    });
-  } catch (e: any) {
-    error.value = e?.error || e?.message || 'Failed to update mapping';
-  } finally {
-    saving.value = false;
-  }
+		isEditing.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Email domain mapping updated successfully",
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		error.value = getErrorMessage(e, "Failed to update mapping");
+	} finally {
+		saving.value = false;
+	}
 }
 
 async function deleteMapping() {
-  if (!mapping.value) return;
+	if (!mapping.value) return;
 
-  deleteLoading.value = true;
+	deleteLoading.value = true;
 
-  try {
-    await emailDomainMappingsApi.delete(mapping.value.id);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: `Email domain mapping for "${mapping.value.emailDomain}" deleted`,
-      life: 3000,
-    });
-    router.push('/authentication/email-domain-mappings');
-  } catch (e: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: e?.error || e?.message || 'Failed to delete mapping',
-      life: 5000,
-    });
-  } finally {
-    deleteLoading.value = false;
-    showDeleteDialog.value = false;
-  }
+	try {
+		await emailDomainMappingsApi.delete(mapping.value.id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: `Email domain mapping for "${mapping.value.emailDomain}" deleted`,
+			life: 3000,
+		});
+		router.push("/authentication/email-domain-mappings");
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to delete mapping"),
+			life: 5000,
+		});
+	} finally {
+		deleteLoading.value = false;
+		showDeleteDialog.value = false;
+	}
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleString();
+	return new Date(dateString).toLocaleString();
 }
 
 function getScopeTypeSeverity(scopeType: string) {
-  switch (scopeType) {
-    case 'ANCHOR':
-      return 'danger';
-    case 'PARTNER':
-      return 'warn';
-    case 'CLIENT':
-      return 'info';
-    default:
-      return 'secondary';
-  }
+	switch (scopeType) {
+		case "ANCHOR":
+			return "danger";
+		case "PARTNER":
+			return "warn";
+		case "CLIENT":
+			return "info";
+		default:
+			return "secondary";
+	}
 }
 
 function getPrimaryClientName(): string {
-  if (!mapping.value?.primaryClientId) return '-';
-  const client = clients.value.find((c) => c.id === mapping.value?.primaryClientId);
-  return client?.name || 'Unknown';
+	if (!mapping.value?.primaryClientId) return "-";
+	const client = clients.value.find(
+		(c) => c.id === mapping.value?.primaryClientId,
+	);
+	return client?.name || "Unknown";
 }
 </script>
 

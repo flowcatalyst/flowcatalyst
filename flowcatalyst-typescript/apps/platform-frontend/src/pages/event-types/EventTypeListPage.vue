@@ -1,51 +1,44 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import Tag from 'primevue/tag';
-import MultiSelect from 'primevue/multiselect';
-import Select from 'primevue/select';
-import ProgressSpinner from 'primevue/progressspinner';
-import { useEventTypes } from '@/composables/useEventTypes';
-import type { EventType } from '@/api/event-types';
+import { onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { useEventTypes } from "@/composables/useEventTypes";
+import type { EventType } from "@/api/event-types";
 
 const router = useRouter();
 const {
-  eventTypes,
-  initialLoading,
-  loading,
-  selectedApplications,
-  selectedSubdomains,
-  selectedAggregates,
-  selectedStatus,
-  hasActiveFilters,
-  applicationOptions,
-  subdomainOptions,
-  aggregateOptions,
-  statusOptions,
-  clearFilters,
-  initialize,
+	eventTypes,
+	initialLoading,
+	loading,
+	selectedApplications,
+	selectedSubdomains,
+	selectedAggregates,
+	selectedStatus,
+	hasActiveFilters,
+	applicationOptions,
+	subdomainOptions,
+	aggregateOptions,
+	statusOptions,
+	clearFilters,
+	initialize,
 } = useEventTypes();
 
 onMounted(() => initialize());
 
 function viewEventType(eventType: EventType) {
-  router.push(`/event-types/${eventType.id}`);
+	router.push(`/event-types/${eventType.id}`);
 }
 
 function getSchemaStatusSeverity(status: string) {
-  switch (status) {
-    case 'CURRENT':
-      return 'success';
-    case 'FINALISING':
-      return 'info';
-    case 'DEPRECATED':
-      return 'warn';
-    default:
-      return 'secondary';
-  }
+	switch (status) {
+		case "CURRENT":
+			return "success";
+		case "FINALISING":
+			return "info";
+		case "DEPRECATED":
+			return "warn";
+		default:
+			return "secondary";
+	}
 }
 </script>
 

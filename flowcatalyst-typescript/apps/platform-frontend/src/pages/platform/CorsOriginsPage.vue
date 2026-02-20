@@ -1,26 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Textarea from 'primevue/textarea';
-import ProgressSpinner from 'primevue/progressspinner';
-import Message from 'primevue/message';
-import Dialog from 'primevue/dialog';
-import { useToast } from 'primevue/usetoast';
-import { corsApi, type CorsOrigin } from '@/api/cors';
+import { ref, computed, onMounted } from "vue";
+import { useToast } from "primevue/usetoast";
+import { corsApi, type CorsOrigin } from "@/api/cors";
+import { getErrorMessage } from "@/utils/errors";
 
 const toast = useToast();
 const origins = ref<CorsOrigin[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
-const searchQuery = ref('');
+const searchQuery = ref("");
 
 // Add origin dialog
 const showAddDialog = ref(false);
-const newOrigin = ref('');
-const newDescription = ref('');
+const newOrigin = ref("");
+const newDescription = ref("");
 const addLoading = ref(false);
 const addError = ref<string | null>(null);
 
@@ -30,110 +23,113 @@ const originToDelete = ref<CorsOrigin | null>(null);
 const deleteLoading = ref(false);
 
 const filteredOrigins = computed(() => {
-  if (!searchQuery.value) return origins.value;
-  const query = searchQuery.value.toLowerCase();
-  return origins.value.filter(
-    (origin) =>
-      origin.origin.toLowerCase().includes(query) ||
-      origin.description?.toLowerCase().includes(query),
-  );
+	if (!searchQuery.value) return origins.value;
+	const query = searchQuery.value.toLowerCase();
+	return origins.value.filter(
+		(origin) =>
+			origin.origin.toLowerCase().includes(query) ||
+			origin.description?.toLowerCase().includes(query),
+	);
 });
 
 onMounted(async () => {
-  await loadOrigins();
+	await loadOrigins();
 });
 
 async function loadOrigins() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const response = await corsApi.list();
-    origins.value = response.corsOrigins;
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load CORS origins';
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	error.value = null;
+	try {
+		const response = await corsApi.list();
+		origins.value = response.corsOrigins;
+	} catch (e) {
+		error.value =
+			e instanceof Error ? e.message : "Failed to load CORS origins";
+	} finally {
+		loading.value = false;
+	}
 }
 
 function openAddDialog() {
-  newOrigin.value = '';
-  newDescription.value = '';
-  addError.value = null;
-  showAddDialog.value = true;
+	newOrigin.value = "";
+	newDescription.value = "";
+	addError.value = null;
+	showAddDialog.value = true;
 }
 
 async function addOrigin() {
-  if (!newOrigin.value.trim()) {
-    addError.value = 'Origin URL is required';
-    return;
-  }
+	if (!newOrigin.value.trim()) {
+		addError.value = "Origin URL is required";
+		return;
+	}
 
-  // Basic validation
-  const origin = newOrigin.value.trim().toLowerCase();
-  if (!origin.startsWith('http://') && !origin.startsWith('https://')) {
-    addError.value = 'Origin must start with http:// or https://';
-    return;
-  }
+	// Basic validation
+	const origin = newOrigin.value.trim().toLowerCase();
+	if (!origin.startsWith("http://") && !origin.startsWith("https://")) {
+		addError.value = "Origin must start with http:// or https://";
+		return;
+	}
 
-  addLoading.value = true;
-  addError.value = null;
+	addLoading.value = true;
+	addError.value = null;
 
-  try {
-    const created = await corsApi.create({
-      origin: origin,
-      description: newDescription.value.trim() || undefined,
-    });
-    origins.value.push(created);
-    showAddDialog.value = false;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: `CORS origin "${created.origin}" added successfully`,
-      life: 3000,
-    });
-  } catch (e: any) {
-    addError.value = e?.error || e?.message || 'Failed to add CORS origin';
-  } finally {
-    addLoading.value = false;
-  }
+	try {
+		const created = await corsApi.create({
+			origin: origin,
+			description: newDescription.value.trim() || undefined,
+		});
+		origins.value.push(created);
+		showAddDialog.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: `CORS origin "${created.origin}" added successfully`,
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		addError.value = getErrorMessage(e, "Failed to add CORS origin");
+	} finally {
+		addLoading.value = false;
+	}
 }
 
 function confirmDelete(origin: CorsOrigin) {
-  originToDelete.value = origin;
-  showDeleteDialog.value = true;
+	originToDelete.value = origin;
+	showDeleteDialog.value = true;
 }
 
 async function deleteOrigin() {
-  if (!originToDelete.value) return;
+	if (!originToDelete.value) return;
 
-  deleteLoading.value = true;
+	deleteLoading.value = true;
 
-  try {
-    await corsApi.delete(originToDelete.value.id);
-    origins.value = origins.value.filter((o) => o.id !== originToDelete.value?.id);
-    showDeleteDialog.value = false;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: `CORS origin "${originToDelete.value.origin}" removed`,
-      life: 3000,
-    });
-  } catch (e: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: e?.error || e?.message || 'Failed to delete CORS origin',
-      life: 5000,
-    });
-  } finally {
-    deleteLoading.value = false;
-    originToDelete.value = null;
-  }
+	try {
+		await corsApi.delete(originToDelete.value.id);
+		origins.value = origins.value.filter(
+			(o) => o.id !== originToDelete.value?.id,
+		);
+		showDeleteDialog.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: `CORS origin "${originToDelete.value.origin}" removed`,
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to delete CORS origin"),
+			life: 5000,
+		});
+	} finally {
+		deleteLoading.value = false;
+		originToDelete.value = null;
+	}
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString();
+	return new Date(dateString).toLocaleDateString();
 }
 </script>
 

@@ -42,64 +42,64 @@
 
 // Error types
 export {
-  UseCaseError,
-  type UseCaseErrorBase,
-  type ValidationError,
-  type NotFoundError,
-  type BusinessRuleViolation,
-  type ConcurrencyError,
-  type AuthorizationError,
-} from './errors.js';
+	UseCaseError,
+	type UseCaseErrorBase,
+	type ValidationError,
+	type NotFoundError,
+	type BusinessRuleViolation,
+	type ConcurrencyError,
+	type AuthorizationError,
+} from "./errors.js";
 
 // Result type
 export {
-  Result,
-  isSuccess,
-  isFailure,
-  type Success,
-  type Failure,
-  // Internal exports for UnitOfWork implementations
-  RESULT_SUCCESS_TOKEN,
-  type ResultSuccessToken,
-} from './result.js';
+	Result,
+	isSuccess,
+	isFailure,
+	type Success,
+	type Failure,
+	// Internal exports for UnitOfWork implementations
+	RESULT_SUCCESS_TOKEN,
+	type ResultSuccessToken,
+} from "./result.js";
 
 // Tracing context
-export { TracingContext, type TracingContextData } from './tracing-context.js';
+export { TracingContext, type TracingContextData } from "./tracing-context.js";
 
 // Execution context
 export {
-  ExecutionContext,
-  type ExecutionContext as ExecutionContextType,
-} from './execution-context.js';
+	ExecutionContext,
+	type ExecutionContext as ExecutionContextType,
+} from "./execution-context.js";
 
 // Authorization context
 export {
-  AuthorizationContext,
-  type AuthorizationContext as AuthorizationContextType,
-} from './authorization-context.js';
+	AuthorizationContext,
+	type AuthorizationContext as AuthorizationContextType,
+} from "./authorization-context.js";
 
 // Audit context
 export {
-  AuditContext,
-  SYSTEM_PRINCIPAL_CODE,
-  SYSTEM_PRINCIPAL_NAME,
-  type AuditContextData,
-  type PrincipalInfo,
-  type PrincipalType,
-  type PrincipalScope,
-} from './audit-context.js';
+	AuditContext,
+	SYSTEM_PRINCIPAL_CODE,
+	SYSTEM_PRINCIPAL_NAME,
+	type AuditContextData,
+	type PrincipalInfo,
+	type PrincipalType,
+	type PrincipalScope,
+} from "./audit-context.js";
 
 // Domain events
 export {
-  DomainEvent,
-  BaseDomainEvent,
-  type DomainEvent as DomainEventType,
-  type DomainEventBase,
-  type DomainEventMetadata,
-} from './domain-event.js';
+	DomainEvent,
+	BaseDomainEvent,
+	type DomainEvent as DomainEventType,
+	type DomainEventBase,
+	type DomainEventMetadata,
+} from "./domain-event.js";
 
 // Audit log
-export { type AuditLog, type CreateAuditLogData } from './audit-log.js';
+export { type AuditLog, type CreateAuditLogData } from "./audit-log.js";
 
 // Unit of Work
-export { type UnitOfWork, type Aggregate } from './unit-of-work.js';
+export { type UnitOfWork, type Aggregate } from "./unit-of-work.js";

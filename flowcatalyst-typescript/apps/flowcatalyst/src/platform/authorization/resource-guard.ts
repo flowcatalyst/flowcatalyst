@@ -13,12 +13,16 @@
  * leaking the existence of resources the principal cannot access.
  */
 
-import type { UseCase, Command } from '@flowcatalyst/application';
-import { Result, UseCaseError } from '@flowcatalyst/application';
-import { AuditContext, type PrincipalInfo, type ExecutionContext } from '@flowcatalyst/domain-core';
-import type { DomainEvent } from '@flowcatalyst/domain-core';
+import type { UseCase, Command } from "@flowcatalyst/application";
+import { Result, UseCaseError } from "@flowcatalyst/application";
+import {
+	AuditContext,
+	type PrincipalInfo,
+	type ExecutionContext,
+} from "@flowcatalyst/domain-core";
+import type { DomainEvent } from "@flowcatalyst/domain-core";
 
-import { canAccessClient } from './authorization-service.js';
+import { canAccessClient } from "./authorization-service.js";
 
 /**
  * A resource guard function that determines whether the current principal
@@ -29,8 +33,8 @@ import { canAccessClient } from './authorization-service.js';
  * @returns true if authorized, false if not
  */
 export type ResourceGuard<TCommand> = (
-  command: TCommand,
-  principal: PrincipalInfo,
+	command: TCommand,
+	principal: PrincipalInfo,
 ) => boolean | Promise<boolean>;
 
 /**
@@ -44,25 +48,35 @@ export type ResourceGuard<TCommand> = (
  * @param guard - The resource guard function
  * @returns A guarded use case
  */
-export function createGuardedUseCase<TCommand extends Command, TEvent extends DomainEvent>(
-  useCase: UseCase<TCommand, TEvent>,
-  guard: ResourceGuard<TCommand>,
+export function createGuardedUseCase<
+	TCommand extends Command,
+	TEvent extends DomainEvent,
+>(
+	useCase: UseCase<TCommand, TEvent>,
+	guard: ResourceGuard<TCommand>,
 ): UseCase<TCommand, TEvent> {
-  return {
-    async execute(command: TCommand, context: ExecutionContext): Promise<Result<TEvent>> {
-      const principal = AuditContext.getPrincipal();
-      if (!principal) {
-        return Result.failure(UseCaseError.notFound('RESOURCE_NOT_FOUND', 'Resource not found'));
-      }
+	return {
+		async execute(
+			command: TCommand,
+			context: ExecutionContext,
+		): Promise<Result<TEvent>> {
+			const principal = AuditContext.getPrincipal();
+			if (!principal) {
+				return Result.failure(
+					UseCaseError.notFound("RESOURCE_NOT_FOUND", "Resource not found"),
+				);
+			}
 
-      const authorized = await guard(command, principal);
-      if (!authorized) {
-        return Result.failure(UseCaseError.notFound('RESOURCE_NOT_FOUND', 'Resource not found'));
-      }
+			const authorized = await guard(command, principal);
+			if (!authorized) {
+				return Result.failure(
+					UseCaseError.notFound("RESOURCE_NOT_FOUND", "Resource not found"),
+				);
+			}
 
-      return useCase.execute(command, context);
-    },
-  };
+			return useCase.execute(command, context);
+		},
+	};
 }
 
 // ─── Common Guard Predicates ────────────────────────────────────────────────
@@ -73,7 +87,7 @@ export function createGuardedUseCase<TCommand extends Command, TEvent extends Do
  * (e.g., platform-wide operations that are already protected by action-level auth).
  */
 export function noResourceRestriction<TCommand>(): ResourceGuard<TCommand> {
-  return () => true;
+	return () => true;
 }
 
 /**
@@ -86,15 +100,15 @@ export function noResourceRestriction<TCommand>(): ResourceGuard<TCommand> {
  * (the operation is not client-scoped).
  */
 export function clientScopedGuard<
-  TCommand extends { clientId?: string | null | undefined },
+	TCommand extends { clientId?: string | null | undefined },
 >(): ResourceGuard<TCommand> {
-  return (command, principal) => {
-    if (!command.clientId) {
-      // Not client-scoped, allow
-      return true;
-    }
-    return canAccessClient(principal, command.clientId);
-  };
+	return (command, principal) => {
+		if (!command.clientId) {
+			// Not client-scoped, allow
+			return true;
+		}
+		return canAccessClient(principal, command.clientId);
+	};
 }
 
 /**
@@ -104,15 +118,15 @@ export function clientScopedGuard<
  * @param getClientId - Function to extract client ID from the command
  */
 export function clientAccessGuard<TCommand>(
-  getClientId: (command: TCommand) => string | null | undefined,
+	getClientId: (command: TCommand) => string | null | undefined,
 ): ResourceGuard<TCommand> {
-  return (command, principal) => {
-    const clientId = getClientId(command);
-    if (!clientId) {
-      return true;
-    }
-    return canAccessClient(principal, clientId);
-  };
+	return (command, principal) => {
+		const clientId = getClientId(command);
+		if (!clientId) {
+			return true;
+		}
+		return canAccessClient(principal, clientId);
+	};
 }
 
 /**
@@ -120,21 +134,23 @@ export function clientAccessGuard<TCommand>(
  * Use for operations that should only be performed by platform administrators.
  */
 export function anchorOnlyGuard<TCommand>(): ResourceGuard<TCommand> {
-  return (_command, principal) => {
-    return principal.scope === 'ANCHOR';
-  };
+	return (_command, principal) => {
+		return principal.scope === "ANCHOR";
+	};
 }
 
 /**
  * Compose multiple guards with AND semantics.
  * All guards must pass for the operation to proceed.
  */
-export function allGuards<TCommand>(...guards: ResourceGuard<TCommand>[]): ResourceGuard<TCommand> {
-  return async (command, principal) => {
-    for (const guard of guards) {
-      const result = await guard(command, principal);
-      if (!result) return false;
-    }
-    return true;
-  };
+export function allGuards<TCommand>(
+	...guards: ResourceGuard<TCommand>[]
+): ResourceGuard<TCommand> {
+	return async (command, principal) => {
+		for (const guard of guards) {
+			const result = await guard(command, principal);
+			if (!result) return false;
+		}
+		return true;
+	};
 }

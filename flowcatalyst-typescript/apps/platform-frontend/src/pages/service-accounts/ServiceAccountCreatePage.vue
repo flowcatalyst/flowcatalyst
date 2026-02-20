@@ -1,150 +1,152 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Textarea from 'primevue/textarea';
-import Select from 'primevue/select';
-import MultiSelect from 'primevue/multiselect';
-import Dialog from 'primevue/dialog';
-import { serviceAccountsApi, type CreateServiceAccountResponse } from '@/api/service-accounts';
-import type { PrincipalScope } from '@/api/users';
-import { clientsApi, type Client } from '@/api/clients';
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import {
+	serviceAccountsApi,
+	type CreateServiceAccountResponse,
+} from "@/api/service-accounts";
+import type { PrincipalScope } from "@/api/users";
+import { clientsApi, type Client } from "@/api/clients";
+import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
 const toast = useToast();
 
-const code = ref('');
-const name = ref('');
-const description = ref('');
-const scope = ref<PrincipalScope>('ANCHOR');
+const code = ref("");
+const name = ref("");
+const description = ref("");
+const scope = ref<PrincipalScope>("ANCHOR");
 const selectedClientIds = ref<string[]>([]);
 const clients = ref<Client[]>([]);
 const saving = ref(false);
 
 const scopeOptions = [
-  { label: 'Anchor (all clients)', value: 'ANCHOR' },
-  { label: 'Partner (assigned clients)', value: 'PARTNER' },
-  { label: 'Client (single client)', value: 'CLIENT' },
+	{ label: "Anchor (all clients)", value: "ANCHOR" },
+	{ label: "Partner (assigned clients)", value: "PARTNER" },
+	{ label: "Client (single client)", value: "CLIENT" },
 ];
 
 // Created credentials dialog
 const showCredentialsDialog = ref(false);
 const createdCredentials = ref<{
-  clientId: string;
-  clientSecret: string;
-  authToken: string;
-  signingSecret: string;
+	clientId: string;
+	clientSecret: string;
+	authToken: string;
+	signingSecret: string;
 } | null>(null);
 const createdServiceAccountId = ref<string | null>(null);
 
 const isValid = computed(() => {
-  return code.value.trim() && name.value.trim();
+	return code.value.trim() && name.value.trim();
 });
 
 const clientOptions = computed(() => {
-  return clients.value.map((c) => ({
-    label: c.name,
-    value: c.id,
-  }));
+	return clients.value.map((c) => ({
+		label: c.name,
+		value: c.id,
+	}));
 });
 
 onMounted(async () => {
-  await loadClients();
+	await loadClients();
 });
 
 async function loadClients() {
-  try {
-    const response = await clientsApi.list();
-    clients.value = response.clients;
-  } catch (error) {
-    console.error('Failed to fetch clients:', error);
-  }
+	try {
+		const response = await clientsApi.list();
+		clients.value = response.clients;
+	} catch (error) {
+		console.error("Failed to fetch clients:", error);
+	}
 }
 
 function generateCode() {
-  // Generate a code from the name (lowercase, replace spaces with dashes, remove special chars)
-  if (name.value) {
-    code.value = name.value
-      .toLowerCase()
-      .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9-]/g, '')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '');
-  }
+	// Generate a code from the name (lowercase, replace spaces with dashes, remove special chars)
+	if (name.value) {
+		code.value = name.value
+			.toLowerCase()
+			.replace(/\s+/g, "-")
+			.replace(/[^a-z0-9-]/g, "")
+			.replace(/-+/g, "-")
+			.replace(/^-|-$/g, "");
+	}
 }
 
 async function createServiceAccount() {
-  if (!isValid.value) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Code and name are required',
-      life: 3000,
-    });
-    return;
-  }
+	if (!isValid.value) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Code and name are required",
+			life: 3000,
+		});
+		return;
+	}
 
-  saving.value = true;
-  try {
-    const response: CreateServiceAccountResponse = await serviceAccountsApi.create({
-      code: code.value,
-      name: name.value,
-      description: description.value || undefined,
-      scope: scope.value,
-      clientIds: selectedClientIds.value.length > 0 ? selectedClientIds.value : undefined,
-    });
+	saving.value = true;
+	try {
+		const response: CreateServiceAccountResponse =
+			await serviceAccountsApi.create({
+				code: code.value,
+				name: name.value,
+				description: description.value || undefined,
+				scope: scope.value,
+				clientIds:
+					selectedClientIds.value.length > 0
+						? selectedClientIds.value
+						: undefined,
+			});
 
-    // Store credentials and show dialog
-    createdCredentials.value = {
-      clientId: response.oauth.clientId,
-      clientSecret: response.oauth.clientSecret,
-      authToken: response.webhook.authToken,
-      signingSecret: response.webhook.signingSecret,
-    };
-    createdServiceAccountId.value = response.serviceAccount.id;
-    showCredentialsDialog.value = true;
+		// Store credentials and show dialog
+		createdCredentials.value = {
+			clientId: response.oauth.clientId,
+			clientSecret: response.oauth.clientSecret,
+			authToken: response.webhook.authToken,
+			signingSecret: response.webhook.signingSecret,
+		};
+		createdServiceAccountId.value = response.serviceAccount.id;
+		showCredentialsDialog.value = true;
 
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Service account created successfully',
-      life: 3000,
-    });
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.message || 'Failed to create service account',
-      life: 5000,
-    });
-  } finally {
-    saving.value = false;
-  }
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Service account created successfully",
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to create service account"),
+			life: 5000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 function copyToClipboard(text: string, label: string) {
-  navigator.clipboard.writeText(text);
-  toast.add({
-    severity: 'info',
-    summary: 'Copied',
-    detail: `${label} copied to clipboard`,
-    life: 2000,
-  });
+	navigator.clipboard.writeText(text);
+	toast.add({
+		severity: "info",
+		summary: "Copied",
+		detail: `${label} copied to clipboard`,
+		life: 2000,
+	});
 }
 
 function closeDialogAndNavigate() {
-  showCredentialsDialog.value = false;
-  if (createdServiceAccountId.value) {
-    router.push(`/identity/service-accounts/${createdServiceAccountId.value}`);
-  } else {
-    router.push('/identity/service-accounts');
-  }
+	showCredentialsDialog.value = false;
+	if (createdServiceAccountId.value) {
+		router.push(`/identity/service-accounts/${createdServiceAccountId.value}`);
+	} else {
+		router.push("/identity/service-accounts");
+	}
 }
 
 function goBack() {
-  router.push('/identity/service-accounts');
+	router.push("/identity/service-accounts");
 }
 </script>
 

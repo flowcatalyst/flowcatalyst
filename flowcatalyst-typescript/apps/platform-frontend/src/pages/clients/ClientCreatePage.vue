@@ -1,54 +1,57 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Message from 'primevue/message';
-import { clientsApi } from '@/api/clients';
+import { ref, computed } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import { clientsApi } from "@/api/clients";
 
 const router = useRouter();
 const toast = useToast();
 
-const name = ref('');
-const identifier = ref('');
+const name = ref("");
+const identifier = ref("");
 const submitting = ref(false);
 const errorMessage = ref<string | null>(null);
 
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 const isIdentifierValid = computed(() => {
-  return !identifier.value || IDENTIFIER_PATTERN.test(identifier.value);
+	return !identifier.value || IDENTIFIER_PATTERN.test(identifier.value);
 });
 
 const isFormValid = computed(() => {
-  return (
-    name.value.trim().length > 0 &&
-    name.value.length <= 255 &&
-    identifier.value.length >= 2 &&
-    identifier.value.length <= 100 &&
-    IDENTIFIER_PATTERN.test(identifier.value)
-  );
+	return (
+		name.value.trim().length > 0 &&
+		name.value.length <= 255 &&
+		identifier.value.length >= 2 &&
+		identifier.value.length <= 100 &&
+		IDENTIFIER_PATTERN.test(identifier.value)
+	);
 });
 
 async function onSubmit() {
-  if (!isFormValid.value) return;
+	if (!isFormValid.value) return;
 
-  submitting.value = true;
-  errorMessage.value = null;
+	submitting.value = true;
+	errorMessage.value = null;
 
-  try {
-    const client = await clientsApi.create({
-      name: name.value,
-      identifier: identifier.value,
-    });
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Client created', life: 3000 });
-    router.push(`/clients/${client.id}`);
-  } catch (e) {
-    errorMessage.value = e instanceof Error ? e.message : 'Failed to create client';
-  } finally {
-    submitting.value = false;
-  }
+	try {
+		const client = await clientsApi.create({
+			name: name.value,
+			identifier: identifier.value,
+		});
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Client created",
+			life: 3000,
+		});
+		router.push(`/clients/${client.id}`);
+	} catch (e) {
+		errorMessage.value =
+			e instanceof Error ? e.message : "Failed to create client";
+	} finally {
+		submitting.value = false;
+	}
 }
 </script>
 

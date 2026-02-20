@@ -9,31 +9,35 @@
  */
 
 import {
-  type UnitOfWork,
-  type Aggregate,
-  type DomainEvent,
-  Result,
-  RESULT_SUCCESS_TOKEN,
-  UseCaseError,
-  DomainEvent as DomainEventUtils,
-} from '@flowcatalyst/domain-core';
-import { generate } from '@flowcatalyst/tsid';
-import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import type { AggregateRegistry } from './aggregate-registry.js';
-import type { TransactionContext, TransactionManager } from './transaction.js';
-import { events, type NewEvent, type EventContextData } from './schema/events.js';
-import { auditLogs, type NewAuditLog } from './schema/audit-logs.js';
-import { eventProjectionFeed } from './schema/outbox.js';
-import { getLogger } from '@flowcatalyst/logging';
+	type UnitOfWork,
+	type Aggregate,
+	type DomainEvent,
+	Result,
+	RESULT_SUCCESS_TOKEN,
+	UseCaseError,
+	DomainEvent as DomainEventUtils,
+} from "@flowcatalyst/domain-core";
+import { generate } from "@flowcatalyst/tsid";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import type { AggregateRegistry } from "./aggregate-registry.js";
+import type { TransactionManager } from "./transaction.js";
+import {
+	events,
+	type NewEvent,
+	type EventContextData,
+} from "./schema/events.js";
+import { auditLogs, type NewAuditLog } from "./schema/audit-logs.js";
+import { eventProjectionFeed } from "./schema/outbox.js";
+import { getLogger } from "@flowcatalyst/logging";
 
 /**
  * Notification about a dispatch job created inside the transaction.
  * Matches DispatchJobNotification from event-dispatch-service.
  */
 export interface DispatchJobNotification {
-  id: string;
-  dispatchPoolId: string | null;
-  messageGroup: string;
+	id: string;
+	dispatchPoolId: string | null;
+	messageGroup: string;
 }
 
 /**
@@ -41,29 +45,29 @@ export interface DispatchJobNotification {
  * to push dispatch job notifications onto a queue.
  */
 export interface PostCommitDispatcher {
-  dispatch(jobs: DispatchJobNotification[]): Promise<void>;
+	dispatch(jobs: DispatchJobNotification[]): Promise<void>;
 }
 
 /**
  * Configuration for the Drizzle Unit of Work.
  */
 export interface DrizzleUnitOfWorkConfig {
-  /** Transaction manager for database operations */
-  readonly transactionManager: TransactionManager;
-  /** Registry for dispatching aggregate persistence */
-  readonly aggregateRegistry: AggregateRegistry;
-  /** Optional: Function to extract client ID from aggregates */
-  readonly extractClientId?: (aggregate: Aggregate) => string | null;
-  /** Optional: Service to build dispatch jobs for events within the transaction */
-  readonly eventDispatchService?: {
-    buildDispatchJobsForEvent(
-      event: DomainEvent,
-      clientId: string | null,
-      db: PostgresJsDatabase,
-    ): Promise<DispatchJobNotification[]>;
-  };
-  /** Optional: Dispatcher called after transaction commits to push jobs onto a queue */
-  postCommitDispatch?: PostCommitDispatcher | undefined;
+	/** Transaction manager for database operations */
+	readonly transactionManager: TransactionManager;
+	/** Registry for dispatching aggregate persistence */
+	readonly aggregateRegistry: AggregateRegistry;
+	/** Optional: Function to extract client ID from aggregates */
+	readonly extractClientId?: (aggregate: Aggregate) => string | null;
+	/** Optional: Service to build dispatch jobs for events within the transaction */
+	readonly eventDispatchService?: {
+		buildDispatchJobsForEvent(
+			event: DomainEvent,
+			clientId: string | null,
+			db: PostgresJsDatabase,
+		): Promise<DispatchJobNotification[]>;
+	};
+	/** Optional: Dispatcher called after transaction commits to push jobs onto a queue */
+	postCommitDispatch?: PostCommitDispatcher | undefined;
 }
 
 /**
@@ -84,296 +88,313 @@ export interface DrizzleUnitOfWorkConfig {
  * return unitOfWork.commit(user, event, createUserCommand);
  * ```
  */
-export function createDrizzleUnitOfWork(config: DrizzleUnitOfWorkConfig): UnitOfWork {
-  const { transactionManager, aggregateRegistry, extractClientId, eventDispatchService } = config;
+export function createDrizzleUnitOfWork(
+	config: DrizzleUnitOfWorkConfig,
+): UnitOfWork {
+	const {
+		transactionManager,
+		aggregateRegistry,
+		extractClientId,
+		eventDispatchService,
+	} = config;
 
-  async function dispatchAfterCommit(jobs: DispatchJobNotification[]): Promise<void> {
-    if (jobs.length === 0 || !config.postCommitDispatch) return;
-    try {
-      await config.postCommitDispatch.dispatch(jobs);
-    } catch (error) {
-      // Log warning but never fail the use case — jobs are safely in DB
-      getLogger().warn(
-        { err: error, jobCount: jobs.length },
-        'Post-commit queue dispatch failed (jobs are persisted in DB)',
-      );
-    }
-  }
+	async function dispatchAfterCommit(
+		jobs: DispatchJobNotification[],
+	): Promise<void> {
+		if (jobs.length === 0 || !config.postCommitDispatch) return;
+		try {
+			await config.postCommitDispatch.dispatch(jobs);
+		} catch (error) {
+			// Log warning but never fail the use case — jobs are safely in DB
+			getLogger().warn(
+				{ err: error, jobCount: jobs.length },
+				"Post-commit queue dispatch failed (jobs are persisted in DB)",
+			);
+		}
+	}
 
-  return {
-    async commit<T extends DomainEvent>(
-      aggregate: Aggregate,
-      event: T,
-      command: unknown,
-    ): Promise<Result<T>> {
-      let collectedJobs: DispatchJobNotification[] = [];
-      try {
-        const result = await transactionManager.inTransaction(async (tx) => {
-          // 1. Persist the aggregate
-          await aggregateRegistry.persist(aggregate as never, tx);
+	return {
+		async commit<T extends DomainEvent>(
+			aggregate: Aggregate,
+			event: T,
+			command: unknown,
+		): Promise<Result<T>> {
+			let collectedJobs: DispatchJobNotification[] = [];
+			try {
+				const result = await transactionManager.inTransaction(async (tx) => {
+					// 1. Persist the aggregate
+					await aggregateRegistry.persist(aggregate as never, tx);
 
-          // 2. Create the event record
-          const clientId = extractClientId?.(aggregate) ?? null;
-          await createEventRecord(tx.db, event, clientId);
+					// 2. Create the event record
+					const clientId = extractClientId?.(aggregate) ?? null;
+					await createEventRecord(tx.db, event, clientId);
 
-          // 3. Build dispatch jobs for matching subscriptions
-          if (eventDispatchService) {
-            collectedJobs = await eventDispatchService.buildDispatchJobsForEvent(
-              event,
-              clientId,
-              tx.db,
-            );
-          }
+					// 3. Build dispatch jobs for matching subscriptions
+					if (eventDispatchService) {
+						collectedJobs =
+							await eventDispatchService.buildDispatchJobsForEvent(
+								event,
+								clientId,
+								tx.db,
+							);
+					}
 
-          // 4. Create the audit log
-          await createAuditLogRecord(tx.db, event, command);
+					// 4. Create the audit log
+					await createAuditLogRecord(tx.db, event, command);
 
-          // 5. Return success (only UnitOfWork can do this)
-          return Result.success(RESULT_SUCCESS_TOKEN, event);
-        });
+					// 5. Return success (only UnitOfWork can do this)
+					return Result.success(RESULT_SUCCESS_TOKEN, event);
+				});
 
-        // Transaction committed — push jobs onto queue
-        await dispatchAfterCommit(collectedJobs);
+				// Transaction committed — push jobs onto queue
+				await dispatchAfterCommit(collectedJobs);
 
-        return result;
-      } catch (error) {
-        getLogger().error({ err: error }, 'Transaction commit failed');
-        return Result.failure(
-          UseCaseError.businessRule(
-            'COMMIT_FAILED',
-            'An internal error occurred while saving changes. Please try again or contact your administrator.',
-          ),
-        );
-      }
-    },
+				return result;
+			} catch (error) {
+				getLogger().error({ err: error }, "Transaction commit failed");
+				return Result.failure(
+					UseCaseError.businessRule(
+						"COMMIT_FAILED",
+						"An internal error occurred while saving changes. Please try again or contact your administrator.",
+					),
+				);
+			}
+		},
 
-    async commitDelete<T extends DomainEvent>(
-      aggregate: Aggregate,
-      event: T,
-      command: unknown,
-    ): Promise<Result<T>> {
-      let collectedJobs: DispatchJobNotification[] = [];
-      try {
-        const result = await transactionManager.inTransaction(async (tx) => {
-          // 1. Delete the aggregate
-          await aggregateRegistry.delete(aggregate as never, tx);
+		async commitDelete<T extends DomainEvent>(
+			aggregate: Aggregate,
+			event: T,
+			command: unknown,
+		): Promise<Result<T>> {
+			let collectedJobs: DispatchJobNotification[] = [];
+			try {
+				const result = await transactionManager.inTransaction(async (tx) => {
+					// 1. Delete the aggregate
+					await aggregateRegistry.delete(aggregate as never, tx);
 
-          // 2. Create the event record
-          const clientId = extractClientId?.(aggregate) ?? null;
-          await createEventRecord(tx.db, event, clientId);
+					// 2. Create the event record
+					const clientId = extractClientId?.(aggregate) ?? null;
+					await createEventRecord(tx.db, event, clientId);
 
-          // 3. Build dispatch jobs for matching subscriptions
-          if (eventDispatchService) {
-            collectedJobs = await eventDispatchService.buildDispatchJobsForEvent(
-              event,
-              clientId,
-              tx.db,
-            );
-          }
+					// 3. Build dispatch jobs for matching subscriptions
+					if (eventDispatchService) {
+						collectedJobs =
+							await eventDispatchService.buildDispatchJobsForEvent(
+								event,
+								clientId,
+								tx.db,
+							);
+					}
 
-          // 4. Create the audit log
-          await createAuditLogRecord(tx.db, event, command);
+					// 4. Create the audit log
+					await createAuditLogRecord(tx.db, event, command);
 
-          // 5. Return success
-          return Result.success(RESULT_SUCCESS_TOKEN, event);
-        });
+					// 5. Return success
+					return Result.success(RESULT_SUCCESS_TOKEN, event);
+				});
 
-        // Transaction committed — push jobs onto queue
-        await dispatchAfterCommit(collectedJobs);
+				// Transaction committed — push jobs onto queue
+				await dispatchAfterCommit(collectedJobs);
 
-        return result;
-      } catch (error) {
-        getLogger().error({ err: error }, 'Transaction delete failed');
-        return Result.failure(
-          UseCaseError.businessRule(
-            'DELETE_FAILED',
-            'An internal error occurred while deleting. Please try again or contact your administrator.',
-          ),
-        );
-      }
-    },
+				return result;
+			} catch (error) {
+				getLogger().error({ err: error }, "Transaction delete failed");
+				return Result.failure(
+					UseCaseError.businessRule(
+						"DELETE_FAILED",
+						"An internal error occurred while deleting. Please try again or contact your administrator.",
+					),
+				);
+			}
+		},
 
-    async commitOperations<T extends DomainEvent>(
-      event: T,
-      command: unknown,
-      operations: (tx: unknown) => Promise<void>,
-    ): Promise<Result<T>> {
-      let collectedJobs: DispatchJobNotification[] = [];
-      try {
-        const result = await transactionManager.inTransaction(async (tx) => {
-          // 1. Run entity operations within the transaction
-          await operations(tx);
+		async commitOperations<T extends DomainEvent>(
+			event: T,
+			command: unknown,
+			operations: (tx: unknown) => Promise<void>,
+		): Promise<Result<T>> {
+			let collectedJobs: DispatchJobNotification[] = [];
+			try {
+				const result = await transactionManager.inTransaction(async (tx) => {
+					// 1. Run entity operations within the transaction
+					await operations(tx);
 
-          // 2. Create the event record
-          await createEventRecord(tx.db, event, null);
+					// 2. Create the event record
+					await createEventRecord(tx.db, event, null);
 
-          // 3. Build dispatch jobs for matching subscriptions
-          if (eventDispatchService) {
-            collectedJobs = await eventDispatchService.buildDispatchJobsForEvent(
-              event,
-              null,
-              tx.db,
-            );
-          }
+					// 3. Build dispatch jobs for matching subscriptions
+					if (eventDispatchService) {
+						collectedJobs =
+							await eventDispatchService.buildDispatchJobsForEvent(
+								event,
+								null,
+								tx.db,
+							);
+					}
 
-          // 4. Create the audit log
-          await createAuditLogRecord(tx.db, event, command);
+					// 4. Create the audit log
+					await createAuditLogRecord(tx.db, event, command);
 
-          // 5. Return success
-          return Result.success(RESULT_SUCCESS_TOKEN, event);
-        });
+					// 5. Return success
+					return Result.success(RESULT_SUCCESS_TOKEN, event);
+				});
 
-        // Transaction committed — push jobs onto queue
-        await dispatchAfterCommit(collectedJobs);
+				// Transaction committed — push jobs onto queue
+				await dispatchAfterCommit(collectedJobs);
 
-        return result;
-      } catch (error) {
-        getLogger().error({ err: error }, 'Transaction commit failed');
-        return Result.failure(
-          UseCaseError.businessRule(
-            'COMMIT_FAILED',
-            'An internal error occurred while saving changes. Please try again or contact your administrator.',
-          ),
-        );
-      }
-    },
+				return result;
+			} catch (error) {
+				getLogger().error({ err: error }, "Transaction commit failed");
+				return Result.failure(
+					UseCaseError.businessRule(
+						"COMMIT_FAILED",
+						"An internal error occurred while saving changes. Please try again or contact your administrator.",
+					),
+				);
+			}
+		},
 
-    async commitAll<T extends DomainEvent>(
-      aggregates: Aggregate[],
-      event: T,
-      command: unknown,
-    ): Promise<Result<T>> {
-      let collectedJobs: DispatchJobNotification[] = [];
-      try {
-        const result = await transactionManager.inTransaction(async (tx) => {
-          // 1. Persist all aggregates
-          for (const aggregate of aggregates) {
-            await aggregateRegistry.persist(aggregate as never, tx);
-          }
+		async commitAll<T extends DomainEvent>(
+			aggregates: Aggregate[],
+			event: T,
+			command: unknown,
+		): Promise<Result<T>> {
+			let collectedJobs: DispatchJobNotification[] = [];
+			try {
+				const result = await transactionManager.inTransaction(async (tx) => {
+					// 1. Persist all aggregates
+					for (const aggregate of aggregates) {
+						await aggregateRegistry.persist(aggregate as never, tx);
+					}
 
-          // 2. Create the event record (use first aggregate for client ID)
-          const firstAggregate = aggregates[0];
-          const clientId =
-            firstAggregate !== undefined ? (extractClientId?.(firstAggregate) ?? null) : null;
-          await createEventRecord(tx.db, event, clientId);
+					// 2. Create the event record (use first aggregate for client ID)
+					const firstAggregate = aggregates[0];
+					const clientId =
+						firstAggregate !== undefined
+							? (extractClientId?.(firstAggregate) ?? null)
+							: null;
+					await createEventRecord(tx.db, event, clientId);
 
-          // 3. Build dispatch jobs for matching subscriptions
-          if (eventDispatchService) {
-            collectedJobs = await eventDispatchService.buildDispatchJobsForEvent(
-              event,
-              clientId,
-              tx.db,
-            );
-          }
+					// 3. Build dispatch jobs for matching subscriptions
+					if (eventDispatchService) {
+						collectedJobs =
+							await eventDispatchService.buildDispatchJobsForEvent(
+								event,
+								clientId,
+								tx.db,
+							);
+					}
 
-          // 4. Create the audit log
-          await createAuditLogRecord(tx.db, event, command);
+					// 4. Create the audit log
+					await createAuditLogRecord(tx.db, event, command);
 
-          // 5. Return success
-          return Result.success(RESULT_SUCCESS_TOKEN, event);
-        });
+					// 5. Return success
+					return Result.success(RESULT_SUCCESS_TOKEN, event);
+				});
 
-        // Transaction committed — push jobs onto queue
-        await dispatchAfterCommit(collectedJobs);
+				// Transaction committed — push jobs onto queue
+				await dispatchAfterCommit(collectedJobs);
 
-        return result;
-      } catch (error) {
-        getLogger().error({ err: error }, 'Transaction commit failed');
-        return Result.failure(
-          UseCaseError.businessRule(
-            'COMMIT_ALL_FAILED',
-            'An internal error occurred while saving changes. Please try again or contact your administrator.',
-          ),
-        );
-      }
-    },
-  };
+				return result;
+			} catch (error) {
+				getLogger().error({ err: error }, "Transaction commit failed");
+				return Result.failure(
+					UseCaseError.businessRule(
+						"COMMIT_ALL_FAILED",
+						"An internal error occurred while saving changes. Please try again or contact your administrator.",
+					),
+				);
+			}
+		},
+	};
 }
 
 /**
  * Create an event record in the database.
  */
 async function createEventRecord(
-  db: PostgresJsDatabase,
-  event: DomainEvent,
-  clientId: string | null,
+	db: PostgresJsDatabase,
+	event: DomainEvent,
+	clientId: string | null,
 ): Promise<void> {
-  const contextData: EventContextData[] = [];
+	const contextData: EventContextData[] = [];
 
-  // Add aggregate type and ID to context data for filtering
-  const aggregateType = DomainEventUtils.extractAggregateType(event.subject);
-  const entityId = DomainEventUtils.extractEntityId(event.subject);
+	// Add aggregate type and ID to context data for filtering
+	const aggregateType = DomainEventUtils.extractAggregateType(event.subject);
+	const entityId = DomainEventUtils.extractEntityId(event.subject);
 
-  if (aggregateType !== 'Unknown') {
-    contextData.push({ key: 'aggregateType', value: aggregateType });
-  }
-  if (entityId) {
-    contextData.push({ key: 'entityId', value: entityId });
-  }
+	if (aggregateType !== "Unknown") {
+		contextData.push({ key: "aggregateType", value: aggregateType });
+	}
+	if (entityId) {
+		contextData.push({ key: "entityId", value: entityId });
+	}
 
-  const newEvent: NewEvent = {
-    id: event.eventId,
-    specVersion: event.specVersion,
-    type: event.eventType,
-    source: event.source,
-    subject: event.subject,
-    time: event.time,
-    data: JSON.parse(event.toDataJson()),
-    correlationId: event.correlationId,
-    causationId: event.causationId,
-    deduplicationId: `${event.eventType}-${event.eventId}`,
-    messageGroup: event.messageGroup,
-    clientId,
-    contextData: contextData.length > 0 ? contextData : null,
-  };
+	const newEvent: NewEvent = {
+		id: event.eventId,
+		specVersion: event.specVersion,
+		type: event.eventType,
+		source: event.source,
+		subject: event.subject,
+		time: event.time,
+		data: JSON.parse(event.toDataJson()),
+		correlationId: event.correlationId,
+		causationId: event.causationId,
+		deduplicationId: `${event.eventType}-${event.eventId}`,
+		messageGroup: event.messageGroup,
+		clientId,
+		contextData: contextData.length > 0 ? contextData : null,
+	};
 
-  await db.insert(events).values(newEvent);
+	await db.insert(events).values(newEvent);
 
-  // Write to event projection feed for stream-processor projection to events_read
-  await db.insert(eventProjectionFeed).values({
-    eventId: event.eventId,
-    payload: {
-      specVersion: event.specVersion,
-      type: event.eventType,
-      source: event.source,
-      subject: event.subject,
-      time: event.time.toISOString(),
-      data: event.toDataJson(),
-      correlationId: event.correlationId,
-      causationId: event.causationId,
-      deduplicationId: `${event.eventType}-${event.eventId}`,
-      messageGroup: event.messageGroup,
-      clientId,
-    },
-  });
+	// Write to event projection feed for stream-processor projection to events_read
+	await db.insert(eventProjectionFeed).values({
+		eventId: event.eventId,
+		payload: {
+			specVersion: event.specVersion,
+			type: event.eventType,
+			source: event.source,
+			subject: event.subject,
+			time: event.time.toISOString(),
+			data: event.toDataJson(),
+			correlationId: event.correlationId,
+			causationId: event.causationId,
+			deduplicationId: `${event.eventType}-${event.eventId}`,
+			messageGroup: event.messageGroup,
+			clientId,
+		},
+	});
 }
 
 /**
  * Create an audit log record in the database.
  */
 async function createAuditLogRecord(
-  db: PostgresJsDatabase,
-  event: DomainEvent,
-  command: unknown,
+	db: PostgresJsDatabase,
+	event: DomainEvent,
+	command: unknown,
 ): Promise<void> {
-  const entityType = DomainEventUtils.extractAggregateType(event.subject);
-  const entityId = DomainEventUtils.extractEntityId(event.subject);
+	const entityType = DomainEventUtils.extractAggregateType(event.subject);
+	const entityId = DomainEventUtils.extractEntityId(event.subject);
 
-  // Get operation name from command, or fall back to event class name
-  const operationName = getOperationName(command, event);
+	// Get operation name from command, or fall back to event class name
+	const operationName = getOperationName(command, event);
 
-  const newAuditLog: NewAuditLog = {
-    id: generate('AUDIT_LOG'),
-    entityType,
-    entityId: entityId ?? 'unknown',
-    operation: operationName,
-    operationJson:
-      command !== null && command !== undefined ? JSON.parse(JSON.stringify(command)) : null,
-    principalId: event.principalId,
-    performedAt: event.time,
-  };
+	const newAuditLog: NewAuditLog = {
+		id: generate("AUDIT_LOG"),
+		entityType,
+		entityId: entityId ?? "unknown",
+		operation: operationName,
+		operationJson:
+			command !== null && command !== undefined
+				? JSON.parse(JSON.stringify(command))
+				: null,
+		principalId: event.principalId,
+		performedAt: event.time,
+	};
 
-  await db.insert(auditLogs).values(newAuditLog);
+	await db.insert(auditLogs).values(newAuditLog);
 }
 
 /**
@@ -386,31 +407,35 @@ async function createAuditLogRecord(
  * 4. "Unknown"
  */
 function getOperationName(command: unknown, event?: DomainEvent): string {
-  if (command !== null && command !== undefined) {
-    // If it's a class instance, use the class name
-    const constructor = (command as object).constructor;
-    if (constructor && constructor.name && constructor.name !== 'Object') {
-      return constructor.name;
-    }
+	if (command !== null && command !== undefined) {
+		// If it's a class instance, use the class name
+		const constructor = (command as object).constructor;
+		if (constructor && constructor.name && constructor.name !== "Object") {
+			return constructor.name;
+		}
 
-    // If it has an 'operation' or 'type' field, use that
-    if (typeof command === 'object') {
-      const cmd = command as Record<string, unknown>;
-      if (typeof cmd['operation'] === 'string') return cmd['operation'];
-      if (typeof cmd['type'] === 'string') return cmd['type'];
-      if (typeof cmd['_type'] === 'string') return cmd['_type'];
-    }
-  }
+		// If it has an 'operation' or 'type' field, use that
+		if (typeof command === "object") {
+			const cmd = command as Record<string, unknown>;
+			if (typeof cmd["operation"] === "string") return cmd["operation"];
+			if (typeof cmd["type"] === "string") return cmd["type"];
+			if (typeof cmd["_type"] === "string") return cmd["_type"];
+		}
+	}
 
-  // Fall back to the event's class name (e.g., EventTypeCreated, UserUpdated)
-  if (event) {
-    const eventConstructor = (event as object).constructor;
-    if (eventConstructor && eventConstructor.name && eventConstructor.name !== 'Object') {
-      return eventConstructor.name;
-    }
-  }
+	// Fall back to the event's class name (e.g., EventTypeCreated, UserUpdated)
+	if (event) {
+		const eventConstructor = (event as object).constructor;
+		if (
+			eventConstructor &&
+			eventConstructor.name &&
+			eventConstructor.name !== "Object"
+		) {
+			return eventConstructor.name;
+		}
+	}
 
-  return 'Unknown';
+	return "Unknown";
 }
 
 /**
@@ -418,38 +443,38 @@ function getOperationName(command: unknown, event?: DomainEvent): string {
  * Returns success without persisting anything.
  */
 export function createNoOpUnitOfWork(): UnitOfWork {
-  return {
-    async commit<T extends DomainEvent>(
-      _aggregate: Aggregate,
-      event: T,
-      _command: unknown,
-    ): Promise<Result<T>> {
-      return Result.success(RESULT_SUCCESS_TOKEN, event);
-    },
+	return {
+		async commit<T extends DomainEvent>(
+			_aggregate: Aggregate,
+			event: T,
+			_command: unknown,
+		): Promise<Result<T>> {
+			return Result.success(RESULT_SUCCESS_TOKEN, event);
+		},
 
-    async commitDelete<T extends DomainEvent>(
-      _aggregate: Aggregate,
-      event: T,
-      _command: unknown,
-    ): Promise<Result<T>> {
-      return Result.success(RESULT_SUCCESS_TOKEN, event);
-    },
+		async commitDelete<T extends DomainEvent>(
+			_aggregate: Aggregate,
+			event: T,
+			_command: unknown,
+		): Promise<Result<T>> {
+			return Result.success(RESULT_SUCCESS_TOKEN, event);
+		},
 
-    async commitAll<T extends DomainEvent>(
-      _aggregates: Aggregate[],
-      event: T,
-      _command: unknown,
-    ): Promise<Result<T>> {
-      return Result.success(RESULT_SUCCESS_TOKEN, event);
-    },
+		async commitAll<T extends DomainEvent>(
+			_aggregates: Aggregate[],
+			event: T,
+			_command: unknown,
+		): Promise<Result<T>> {
+			return Result.success(RESULT_SUCCESS_TOKEN, event);
+		},
 
-    async commitOperations<T extends DomainEvent>(
-      event: T,
-      _command: unknown,
-      operations: (tx: unknown) => Promise<void>,
-    ): Promise<Result<T>> {
-      await operations(undefined);
-      return Result.success(RESULT_SUCCESS_TOKEN, event);
-    },
-  };
+		async commitOperations<T extends DomainEvent>(
+			event: T,
+			_command: unknown,
+			operations: (tx: unknown) => Promise<void>,
+		): Promise<Result<T>> {
+			await operations(undefined);
+			return Result.success(RESULT_SUCCESS_TOKEN, event);
+		},
+	};
 }

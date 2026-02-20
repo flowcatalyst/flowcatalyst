@@ -1,45 +1,42 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import Tag from 'primevue/tag';
-import Message from 'primevue/message';
-import Dialog from 'primevue/dialog';
-import { getApiBffDebugDispatchJobs, getApiBffDebugDispatchJobsById } from '@/api/generated';
+import { ref, onMounted } from "vue";
+import {
+	getApiBffDebugDispatchJobs,
+	getApiBffDebugDispatchJobsById,
+} from "@/api/generated";
 
 interface RawDispatchJob {
-  id: string;
-  externalId?: string;
-  source: string;
-  kind: string;
-  code: string;
-  subject?: string;
-  eventId?: string;
-  correlationId?: string;
-  targetUrl: string;
-  protocol: string;
-  clientId?: string;
-  subscriptionId?: string;
-  serviceAccountId?: string;
-  dispatchPoolId?: string;
-  messageGroup?: string;
-  mode: string;
-  sequence: number;
-  status: string;
-  attemptCount: number;
-  maxRetries: number;
-  lastError?: string;
-  timeoutSeconds: number;
-  retryStrategy: string;
-  idempotencyKey?: string;
-  createdAt: string;
-  updatedAt: string;
-  scheduledFor?: string;
-  completedAt?: string;
-  payloadContentType?: string;
-  payloadLength: number;
-  attemptHistoryCount: number;
+	id: string;
+	externalId?: string;
+	source: string;
+	kind: string;
+	code: string;
+	subject?: string;
+	eventId?: string;
+	correlationId?: string;
+	targetUrl: string;
+	protocol: string;
+	clientId?: string;
+	subscriptionId?: string;
+	serviceAccountId?: string;
+	dispatchPoolId?: string;
+	messageGroup?: string;
+	mode: string;
+	sequence: number;
+	status: string;
+	attemptCount: number;
+	maxRetries: number;
+	lastError?: string;
+	timeoutSeconds: number;
+	retryStrategy: string;
+	idempotencyKey?: string;
+	createdAt: string;
+	updatedAt: string;
+	scheduledFor?: string;
+	completedAt?: string;
+	payloadContentType?: string;
+	payloadLength: number;
+	attemptHistoryCount: number;
 }
 
 const dispatchJobs = ref<RawDispatchJob[]>([]);
@@ -54,84 +51,96 @@ const showDetailDialog = ref(false);
 const loadingDetail = ref(false);
 
 onMounted(async () => {
-  await loadDispatchJobs();
+	await loadDispatchJobs();
 });
 
 async function loadDispatchJobs() {
-  loading.value = true;
-  try {
-    const response = await getApiBffDebugDispatchJobs({
-      query: {
-        page: currentPage.value,
-        size: pageSize.value,
-      },
-    });
-    if (response.data) {
-      const data = response.data as { items?: RawDispatchJob[]; totalItems?: number };
-      dispatchJobs.value = data.items || [];
-      totalRecords.value = data.totalItems || 0;
-    }
-  } catch (error) {
-    console.error('Failed to load raw dispatch jobs:', error);
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	try {
+		const response = await getApiBffDebugDispatchJobs({
+			query: {
+				page: currentPage.value,
+				size: pageSize.value,
+			},
+		});
+		if (response.data) {
+			const data = response.data as {
+				items?: RawDispatchJob[];
+				totalItems?: number;
+			};
+			dispatchJobs.value = data.items || [];
+			totalRecords.value = data.totalItems || 0;
+		}
+	} catch (error) {
+		console.error("Failed to load raw dispatch jobs:", error);
+	} finally {
+		loading.value = false;
+	}
 }
 
 async function onPage(event: { page: number; rows: number }) {
-  currentPage.value = event.page;
-  pageSize.value = event.rows;
-  await loadDispatchJobs();
+	currentPage.value = event.page;
+	pageSize.value = event.rows;
+	await loadDispatchJobs();
 }
 
 async function viewJobDetail(job: RawDispatchJob) {
-  loadingDetail.value = true;
-  showDetailDialog.value = true;
-  try {
-    const response = await getApiBffDebugDispatchJobsById({ path: { id: job.id } });
-    if (response.data) {
-      selectedJob.value = response.data as RawDispatchJob;
-    }
-  } catch (error) {
-    console.error('Failed to load job details:', error);
-  } finally {
-    loadingDetail.value = false;
-  }
+	loadingDetail.value = true;
+	showDetailDialog.value = true;
+	try {
+		const response = await getApiBffDebugDispatchJobsById({
+			path: { id: job.id },
+		});
+		if (response.data) {
+			selectedJob.value = response.data as RawDispatchJob;
+		}
+	} catch (error) {
+		console.error("Failed to load job details:", error);
+	} finally {
+		loadingDetail.value = false;
+	}
 }
 
 function getSeverity(
-  status: string,
-): 'success' | 'info' | 'warn' | 'danger' | 'secondary' | 'contrast' | undefined {
-  switch (status) {
-    case 'COMPLETED':
-      return 'success';
-    case 'PENDING':
-      return 'info';
-    case 'QUEUED':
-      return 'info';
-    case 'IN_PROGRESS':
-      return 'warn';
-    case 'ERROR':
-      return 'danger';
-    case 'CANCELLED':
-      return 'secondary';
-    default:
-      return 'secondary';
-  }
+	status: string,
+):
+	| "success"
+	| "info"
+	| "warn"
+	| "danger"
+	| "secondary"
+	| "contrast"
+	| undefined {
+	switch (status) {
+		case "COMPLETED":
+			return "success";
+		case "PENDING":
+			return "info";
+		case "QUEUED":
+			return "info";
+		case "IN_PROGRESS":
+			return "warn";
+		case "ERROR":
+			return "danger";
+		case "CANCELLED":
+			return "secondary";
+		default:
+			return "secondary";
+	}
 }
 
 function formatDate(dateStr: string | undefined): string {
-  if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleString();
+	if (!dateStr) return "-";
+	return new Date(dateStr).toLocaleString();
 }
 
 function truncateId(id: string | undefined): string {
-  if (!id) return '-';
-  return id.length > 10 ? `${id.slice(0, 10)}...` : id;
+	if (!id) return "-";
+	return id.length > 10 ? `${id.slice(0, 10)}...` : id;
 }
 
 function formatAttempts(job: RawDispatchJob): string {
-  return `${job.attemptCount || 0}/${job.maxRetries || 3}`;
+	return `${job.attemptCount || 0}/${job.maxRetries || 3}`;
 }
 </script>
 

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { useAuthStore } from '@/stores/auth';
-import { logout, checkEmailDomain } from '@/api/auth';
+import { ref, onMounted, onUnmounted } from "vue";
+import { useRouter } from "vue-router";
+import { useAuthStore } from "@/stores/auth";
+import { logout, checkEmailDomain } from "@/api/auth";
 
 const authStore = useAuthStore();
 const router = useRouter();
@@ -12,52 +12,52 @@ const showIdpNotice = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
 
 function toggleMenu() {
-  menuOpen.value = !menuOpen.value;
+	menuOpen.value = !menuOpen.value;
 }
 
 function closeMenu() {
-  menuOpen.value = false;
+	menuOpen.value = false;
 }
 
 async function handleResetPassword() {
-  closeMenu();
+	closeMenu();
 
-  const email = authStore.user?.email;
-  if (!email) return;
+	const email = authStore.user?.email;
+	if (!email) return;
 
-  try {
-    const domainCheck = await checkEmailDomain(email);
-    if (domainCheck.authMethod === 'external') {
-      showIdpNotice.value = true;
-    } else {
-      await router.push('/auth/reset-password');
-    }
-  } catch {
-    await router.push('/auth/reset-password');
-  }
+	try {
+		const domainCheck = await checkEmailDomain(email);
+		if (domainCheck.authMethod === "external") {
+			showIdpNotice.value = true;
+		} else {
+			await router.push("/auth/reset-password");
+		}
+	} catch {
+		await router.push("/auth/reset-password");
+	}
 }
 
 function closeIdpNotice() {
-  showIdpNotice.value = false;
+	showIdpNotice.value = false;
 }
 
 async function handleLogout() {
-  closeMenu();
-  await logout();
+	closeMenu();
+	await logout();
 }
 
 function handleClickOutside(event: MouseEvent) {
-  if (menuRef.value && !menuRef.value.contains(event.target as Node)) {
-    menuOpen.value = false;
-  }
+	if (menuRef.value && !menuRef.value.contains(event.target as Node)) {
+		menuOpen.value = false;
+	}
 }
 
 onMounted(() => {
-  document.addEventListener('click', handleClickOutside);
+	document.addEventListener("click", handleClickOutside);
 });
 
 onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside);
+	document.removeEventListener("click", handleClickOutside);
 });
 </script>
 

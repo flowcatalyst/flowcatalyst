@@ -1,13 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
-import InputText from 'primevue/inputtext';
-import Textarea from 'primevue/textarea';
-import Button from 'primevue/button';
-import ProgressSpinner from 'primevue/progressspinner';
-import Message from 'primevue/message';
-import ColorPicker from 'primevue/colorpicker';
-import { useToast } from 'primevue/usetoast';
-import { configApi, type LoginTheme } from '@/api/config';
+import { ref, onMounted, computed } from "vue";
+import { useToast } from "primevue/usetoast";
+import { configApi, type LoginTheme } from "@/api/config";
+import { getErrorMessage } from "@/utils/errors";
 
 const toast = useToast();
 
@@ -17,117 +12,120 @@ const error = ref<string | null>(null);
 
 // Form state
 const theme = ref<LoginTheme>({
-  brandName: 'FlowCatalyst',
-  brandSubtitle: 'Platform Administration',
-  logoUrl: null,
-  logoSvg: null,
-  logoHeight: 40,
-  primaryColor: '#102a43',
-  accentColor: '#0967d2',
-  backgroundColor: '#0a1929',
-  backgroundGradient: 'linear-gradient(135deg, #102a43 0%, #0a1929 100%)',
-  footerText: 'Secure access to your FlowCatalyst platform',
-  customCss: null,
+	brandName: "FlowCatalyst",
+	brandSubtitle: "Platform Administration",
+	logoUrl: null,
+	logoSvg: null,
+	logoHeight: 40,
+	primaryColor: "#102a43",
+	accentColor: "#0967d2",
+	backgroundColor: "#0a1929",
+	backgroundGradient: "linear-gradient(135deg, #102a43 0%, #0a1929 100%)",
+	footerText: "Secure access to your FlowCatalyst platform",
+	customCss: null,
 });
 
 // Color picker values (without #)
-const primaryColorPicker = ref('102a43');
-const accentColorPicker = ref('0967d2');
-const backgroundColorPicker = ref('0a1929');
+const primaryColorPicker = ref("102a43");
+const accentColorPicker = ref("0967d2");
+const backgroundColorPicker = ref("0a1929");
 
 // Preview background
 const previewBackground = computed(
-  () => theme.value.backgroundGradient || theme.value.backgroundColor,
+	() => theme.value.backgroundGradient || theme.value.backgroundColor,
 );
 
 onMounted(async () => {
-  await loadTheme();
+	await loadTheme();
 });
 
 async function loadTheme() {
-  loading.value = true;
-  error.value = null;
+	loading.value = true;
+	error.value = null;
 
-  try {
-    // Try to get existing theme config
-    const themeJson = await configApi.getLoginThemeConfig();
-    if (themeJson) {
-      const parsed = JSON.parse(themeJson);
-      theme.value = { ...theme.value, ...parsed };
-      // Update color pickers
-      primaryColorPicker.value = theme.value.primaryColor.replace('#', '');
-      accentColorPicker.value = theme.value.accentColor.replace('#', '');
-      backgroundColorPicker.value = theme.value.backgroundColor.replace('#', '');
-    }
-  } catch (e) {
-    // No existing config, use defaults
-    console.log('No existing theme config, using defaults');
-  } finally {
-    loading.value = false;
-  }
+	try {
+		// Try to get existing theme config
+		const themeJson = await configApi.getLoginThemeConfig();
+		if (themeJson) {
+			const parsed = JSON.parse(themeJson);
+			theme.value = { ...theme.value, ...parsed };
+			// Update color pickers
+			primaryColorPicker.value = theme.value.primaryColor.replace("#", "");
+			accentColorPicker.value = theme.value.accentColor.replace("#", "");
+			backgroundColorPicker.value = theme.value.backgroundColor.replace(
+				"#",
+				"",
+			);
+		}
+	} catch (e) {
+		// No existing config, use defaults
+		console.log("No existing theme config, using defaults");
+	} finally {
+		loading.value = false;
+	}
 }
 
 function onPrimaryColorChange(color: string) {
-  theme.value.primaryColor = '#' + color;
-  updateGradient();
+	theme.value.primaryColor = "#" + color;
+	updateGradient();
 }
 
 function onAccentColorChange(color: string) {
-  theme.value.accentColor = '#' + color;
+	theme.value.accentColor = "#" + color;
 }
 
 function onBackgroundColorChange(color: string) {
-  theme.value.backgroundColor = '#' + color;
-  updateGradient();
+	theme.value.backgroundColor = "#" + color;
+	updateGradient();
 }
 
 function updateGradient() {
-  // Auto-generate gradient from primary and background colors
-  theme.value.backgroundGradient = `linear-gradient(135deg, ${theme.value.primaryColor} 0%, ${theme.value.backgroundColor} 100%)`;
+	// Auto-generate gradient from primary and background colors
+	theme.value.backgroundGradient = `linear-gradient(135deg, ${theme.value.primaryColor} 0%, ${theme.value.backgroundColor} 100%)`;
 }
 
 async function saveTheme() {
-  saving.value = true;
-  error.value = null;
+	saving.value = true;
+	error.value = null;
 
-  try {
-    await configApi.setLoginThemeConfig(theme.value);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Theme saved successfully',
-      life: 3000,
-    });
-  } catch (e: any) {
-    error.value = e?.message || 'Failed to save theme';
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.value,
-      life: 5000,
-    });
-  } finally {
-    saving.value = false;
-  }
+	try {
+		await configApi.setLoginThemeConfig(theme.value);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Theme saved successfully",
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		error.value = getErrorMessage(e, "Failed to save theme");
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: error.value,
+			life: 5000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 function resetToDefaults() {
-  theme.value = {
-    brandName: 'FlowCatalyst',
-    brandSubtitle: 'Platform Administration',
-    logoUrl: null,
-    logoSvg: null,
-    logoHeight: 40,
-    primaryColor: '#102a43',
-    accentColor: '#0967d2',
-    backgroundColor: '#0a1929',
-    backgroundGradient: 'linear-gradient(135deg, #102a43 0%, #0a1929 100%)',
-    footerText: 'Secure access to your FlowCatalyst platform',
-    customCss: null,
-  };
-  primaryColorPicker.value = '102a43';
-  accentColorPicker.value = '0967d2';
-  backgroundColorPicker.value = '0a1929';
+	theme.value = {
+		brandName: "FlowCatalyst",
+		brandSubtitle: "Platform Administration",
+		logoUrl: null,
+		logoSvg: null,
+		logoHeight: 40,
+		primaryColor: "#102a43",
+		accentColor: "#0967d2",
+		backgroundColor: "#0a1929",
+		backgroundGradient: "linear-gradient(135deg, #102a43 0%, #0a1929 100%)",
+		footerText: "Secure access to your FlowCatalyst platform",
+		customCss: null,
+	};
+	primaryColorPicker.value = "102a43";
+	accentColorPicker.value = "0967d2";
+	backgroundColorPicker.value = "0a1929";
 }
 </script>
 

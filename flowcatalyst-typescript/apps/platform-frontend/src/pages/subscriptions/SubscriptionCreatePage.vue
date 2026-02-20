@@ -1,38 +1,29 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
-import { useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import InputNumber from 'primevue/inputnumber';
-import Textarea from 'primevue/textarea';
-import Select from 'primevue/select';
-import ToggleSwitch from 'primevue/toggleswitch';
-import MultiSelect from 'primevue/multiselect';
-import Message from 'primevue/message';
-import ClientSelect from '@/components/ClientSelect.vue';
+import { ref, computed, onMounted, watch } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
 import {
-  subscriptionsApi,
-  type SubscriptionMode,
-  type EventTypeBinding,
-} from '@/api/subscriptions';
-import { dispatchPoolsApi, type DispatchPool } from '@/api/dispatch-pools';
-import { eventTypesApi, type EventType } from '@/api/event-types';
+	subscriptionsApi,
+	type SubscriptionMode,
+	type EventTypeBinding,
+} from "@/api/subscriptions";
+import { dispatchPoolsApi, type DispatchPool } from "@/api/dispatch-pools";
+import { eventTypesApi, type EventType } from "@/api/event-types";
 
 const router = useRouter();
 const toast = useToast();
 
 // Form fields
-const code = ref('');
-const name = ref('');
-const description = ref('');
-const target = ref('');
-const queue = ref('');
+const code = ref("");
+const name = ref("");
+const description = ref("");
+const target = ref("");
+const queue = ref("");
 const maxAgeSeconds = ref<number>(86400);
 const delaySeconds = ref<number>(0);
 const sequence = ref<number>(99);
 const timeoutSeconds = ref<number>(30);
-const mode = ref<SubscriptionMode>('IMMEDIATE');
+const mode = ref<SubscriptionMode>("IMMEDIATE");
 const dispatchPoolId = ref<string | null>(null);
 const clientScoped = ref(false);
 const clientId = ref<string | null>(null);
@@ -49,140 +40,142 @@ const errorMessage = ref<string | null>(null);
 const CODE_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 const modeOptions = [
-  { label: 'Immediate', value: 'IMMEDIATE' },
-  { label: 'Next on Error', value: 'NEXT_ON_ERROR' },
-  { label: 'Block on Error', value: 'BLOCK_ON_ERROR' },
+	{ label: "Immediate", value: "IMMEDIATE" },
+	{ label: "Next on Error", value: "NEXT_ON_ERROR" },
+	{ label: "Block on Error", value: "BLOCK_ON_ERROR" },
 ];
 
 const isCodeValid = computed(() => {
-  return !code.value || CODE_PATTERN.test(code.value);
+	return !code.value || CODE_PATTERN.test(code.value);
 });
 
 const isTargetValid = computed(() => {
-  if (!target.value) return true;
-  try {
-    const url = new URL(target.value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
+	if (!target.value) return true;
+	try {
+		const url = new URL(target.value);
+		return url.protocol === "http:" || url.protocol === "https:";
+	} catch {
+		return false;
+	}
 });
 
 const isFormValid = computed(() => {
-  return (
-    code.value.length >= 2 &&
-    code.value.length <= 100 &&
-    CODE_PATTERN.test(code.value) &&
-    name.value.trim().length > 0 &&
-    name.value.length <= 255 &&
-    target.value.length > 0 &&
-    isTargetValid.value &&
-    queue.value.trim().length > 0 &&
-    dispatchPoolId.value !== null &&
-    selectedEventTypes.value.length > 0 &&
-    maxAgeSeconds.value >= 1 &&
-    timeoutSeconds.value >= 1
-  );
+	return (
+		code.value.length >= 2 &&
+		code.value.length <= 100 &&
+		CODE_PATTERN.test(code.value) &&
+		name.value.trim().length > 0 &&
+		name.value.length <= 255 &&
+		target.value.length > 0 &&
+		isTargetValid.value &&
+		queue.value.trim().length > 0 &&
+		dispatchPoolId.value !== null &&
+		selectedEventTypes.value.length > 0 &&
+		maxAgeSeconds.value >= 1 &&
+		timeoutSeconds.value >= 1
+	);
 });
 
 // Filtered event types with CURRENT spec versions for selection
 // Only show event types that match the subscription's clientScoped setting
 const eventTypeOptions = computed(() => {
-  return eventTypes.value
-    .filter((et) => et.specVersions.some((sv) => sv.status === 'CURRENT'))
-    .filter((et) => et.clientScoped === clientScoped.value)
-    .map((et) => ({
-      id: et.id,
-      code: et.code,
-      name: et.name,
-      currentVersion: et.specVersions.find((sv) => sv.status === 'CURRENT')?.version || '',
-    }));
+	return eventTypes.value
+		.filter((et) => et.specVersions.some((sv) => sv.status === "CURRENT"))
+		.filter((et) => et.clientScoped === clientScoped.value)
+		.map((et) => ({
+			id: et.id,
+			code: et.code,
+			name: et.name,
+			currentVersion:
+				et.specVersions.find((sv) => sv.status === "CURRENT")?.version || "",
+		}));
 });
 
 // Clear selected event types when clientScoped changes
 watch(clientScoped, () => {
-  selectedEventTypes.value = [];
-  // Also clear clientId when switching to non-client-scoped
-  if (!clientScoped.value) {
-    clientId.value = null;
-  }
+	selectedEventTypes.value = [];
+	// Also clear clientId when switching to non-client-scoped
+	if (!clientScoped.value) {
+		clientId.value = null;
+	}
 });
 
 onMounted(async () => {
-  await Promise.all([loadDispatchPools(), loadEventTypes()]);
+	await Promise.all([loadDispatchPools(), loadEventTypes()]);
 });
 
 async function loadDispatchPools() {
-  loadingPools.value = true;
-  try {
-    const response = await dispatchPoolsApi.list({ status: 'ACTIVE' });
-    dispatchPools.value = response.pools;
-  } catch (e) {
-    console.error('Failed to load dispatch pools:', e);
-  } finally {
-    loadingPools.value = false;
-  }
+	loadingPools.value = true;
+	try {
+		const response = await dispatchPoolsApi.list({ status: "ACTIVE" });
+		dispatchPools.value = response.pools;
+	} catch (e) {
+		console.error("Failed to load dispatch pools:", e);
+	} finally {
+		loadingPools.value = false;
+	}
 }
 
 async function loadEventTypes() {
-  loadingEventTypes.value = true;
-  try {
-    const response = await eventTypesApi.list({ status: 'CURRENT' });
-    eventTypes.value = response.items;
-  } catch (e) {
-    console.error('Failed to load event types:', e);
-  } finally {
-    loadingEventTypes.value = false;
-  }
+	loadingEventTypes.value = true;
+	try {
+		const response = await eventTypesApi.list({ status: "CURRENT" });
+		eventTypes.value = response.items;
+	} catch (e) {
+		console.error("Failed to load event types:", e);
+	} finally {
+		loadingEventTypes.value = false;
+	}
 }
 
 function buildEventTypeBindings(): EventTypeBinding[] {
-  return selectedEventTypes.value.map((etId) => {
-    const et = eventTypeOptions.value.find((e) => e.id === etId);
-    return {
-      eventTypeId: etId,
-      eventTypeCode: et?.code || '',
-      specVersion: et?.currentVersion || '',
-    };
-  });
+	return selectedEventTypes.value.map((etId) => {
+		const et = eventTypeOptions.value.find((e) => e.id === etId);
+		return {
+			eventTypeId: etId,
+			eventTypeCode: et?.code || "",
+			specVersion: et?.currentVersion || "",
+		};
+	});
 }
 
 async function onSubmit() {
-  if (!isFormValid.value) return;
+	if (!isFormValid.value) return;
 
-  submitting.value = true;
-  errorMessage.value = null;
+	submitting.value = true;
+	errorMessage.value = null;
 
-  try {
-    const subscription = await subscriptionsApi.create({
-      code: code.value,
-      name: name.value,
-      description: description.value || undefined,
-      clientScoped: clientScoped.value,
-      target: target.value,
-      queue: queue.value,
-      eventTypes: buildEventTypeBindings(),
-      dispatchPoolId: dispatchPoolId.value!,
-      clientId: clientScoped.value ? clientId.value || undefined : undefined,
-      maxAgeSeconds: maxAgeSeconds.value,
-      delaySeconds: delaySeconds.value,
-      sequence: sequence.value,
-      timeoutSeconds: timeoutSeconds.value,
-      mode: mode.value,
-      source: 'UI',
-    });
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Subscription created',
-      life: 3000,
-    });
-    router.push(`/subscriptions/${subscription.id}`);
-  } catch (e) {
-    errorMessage.value = e instanceof Error ? e.message : 'Failed to create subscription';
-  } finally {
-    submitting.value = false;
-  }
+	try {
+		const subscription = await subscriptionsApi.create({
+			code: code.value,
+			name: name.value,
+			description: description.value || undefined,
+			clientScoped: clientScoped.value,
+			target: target.value,
+			queue: queue.value,
+			eventTypes: buildEventTypeBindings(),
+			dispatchPoolId: dispatchPoolId.value!,
+			clientId: clientScoped.value ? clientId.value || undefined : undefined,
+			maxAgeSeconds: maxAgeSeconds.value,
+			delaySeconds: delaySeconds.value,
+			sequence: sequence.value,
+			timeoutSeconds: timeoutSeconds.value,
+			mode: mode.value,
+			source: "UI",
+		});
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Subscription created",
+			life: 3000,
+		});
+		router.push(`/subscriptions/${subscription.id}`);
+	} catch (e) {
+		errorMessage.value =
+			e instanceof Error ? e.message : "Failed to create subscription";
+	} finally {
+		submitting.value = false;
+	}
 }
 </script>
 

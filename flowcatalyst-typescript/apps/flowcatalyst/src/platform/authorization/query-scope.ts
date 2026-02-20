@@ -13,7 +13,7 @@
  * for efficiency (don't fetch all then filter in memory).
  */
 
-import { AuditContext, type PrincipalInfo } from '@flowcatalyst/domain-core';
+import { AuditContext, type PrincipalInfo } from "@flowcatalyst/domain-core";
 
 /**
  * Result of a scope check for queries.
@@ -22,16 +22,16 @@ import { AuditContext, type PrincipalInfo } from '@flowcatalyst/domain-core';
  * - `denied`: Principal has no access (shouldn't normally happen after auth)
  */
 export type QueryScope<T> =
-  | { readonly type: 'unrestricted' }
-  | { readonly type: 'restricted'; readonly filter: T }
-  | { readonly type: 'denied' };
+	| { readonly type: "unrestricted" }
+	| { readonly type: "restricted"; readonly filter: T }
+	| { readonly type: "denied" };
 
 /**
  * Client scope filter - determines which client IDs the principal can access.
  */
 export interface ClientScopeFilter {
-  /** Client IDs the principal can access */
-  readonly clientIds: string[];
+	/** Client IDs the principal can access */
+	readonly clientIds: string[];
 }
 
 /**
@@ -40,12 +40,12 @@ export interface ClientScopeFilter {
  * @returns QueryScope with client ID filter
  */
 export function getClientQueryScope(): QueryScope<ClientScopeFilter> {
-  const principal = AuditContext.getPrincipal();
-  if (!principal) {
-    return { type: 'denied' };
-  }
+	const principal = AuditContext.getPrincipal();
+	if (!principal) {
+		return { type: "denied" };
+	}
 
-  return getClientQueryScopeForPrincipal(principal);
+	return getClientQueryScopeForPrincipal(principal);
 }
 
 /**
@@ -57,35 +57,38 @@ export function getClientQueryScope(): QueryScope<ClientScopeFilter> {
  * - CLIENT: restricted to home client only
  */
 export function getClientQueryScopeForPrincipal(
-  principal: PrincipalInfo,
+	principal: PrincipalInfo,
 ): QueryScope<ClientScopeFilter> {
-  // SERVICE principals with no linked client are unrestricted (anchor service accounts).
-  // This matches Java behaviour: if no clients are linked to a service account,
-  // it has access to all clients.
-  if (principal.type === 'SERVICE' && !principal.clientId) {
-    return { type: 'unrestricted' };
-  }
+	// SERVICE principals with no linked client are unrestricted (anchor service accounts).
+	// This matches Java behaviour: if no clients are linked to a service account,
+	// it has access to all clients.
+	if (principal.type === "SERVICE" && !principal.clientId) {
+		return { type: "unrestricted" };
+	}
 
-  switch (principal.scope) {
-    case 'ANCHOR':
-      return { type: 'unrestricted' };
+	switch (principal.scope) {
+		case "ANCHOR":
+			return { type: "unrestricted" };
 
-    case 'PARTNER': {
-      const clientIds = principal.clientId ? [principal.clientId] : [];
-      // TODO: Add explicitly granted client IDs from client access grants
-      return { type: 'restricted', filter: { clientIds } };
-    }
+		case "PARTNER": {
+			const clientIds = principal.clientId ? [principal.clientId] : [];
+			// TODO: Add explicitly granted client IDs from client access grants
+			return { type: "restricted", filter: { clientIds } };
+		}
 
-    case 'CLIENT': {
-      if (!principal.clientId) {
-        return { type: 'denied' };
-      }
-      return { type: 'restricted', filter: { clientIds: [principal.clientId] } };
-    }
+		case "CLIENT": {
+			if (!principal.clientId) {
+				return { type: "denied" };
+			}
+			return {
+				type: "restricted",
+				filter: { clientIds: [principal.clientId] },
+			};
+		}
 
-    default:
-      return { type: 'denied' };
-  }
+		default:
+			return { type: "denied" };
+	}
 }
 
 /**
@@ -97,27 +100,27 @@ export function getClientQueryScopeForPrincipal(
  * @param principal - Optional principal (falls back to AuditContext)
  */
 export function canAccessResourceByClient(
-  clientId: string | null,
-  principal?: PrincipalInfo | null,
+	clientId: string | null,
+	principal?: PrincipalInfo | null,
 ): boolean {
-  if (!clientId) {
-    // Unscoped resource, allow
-    return true;
-  }
+	if (!clientId) {
+		// Unscoped resource, allow
+		return true;
+	}
 
-  const p = principal ?? AuditContext.getPrincipal();
-  if (!p) return false;
+	const p = principal ?? AuditContext.getPrincipal();
+	if (!p) return false;
 
-  const scope = getClientQueryScopeForPrincipal(p);
+	const scope = getClientQueryScopeForPrincipal(p);
 
-  switch (scope.type) {
-    case 'unrestricted':
-      return true;
-    case 'restricted':
-      return scope.filter.clientIds.includes(clientId);
-    case 'denied':
-      return false;
-  }
+	switch (scope.type) {
+		case "unrestricted":
+			return true;
+		case "restricted":
+			return scope.filter.clientIds.includes(clientId);
+		case "denied":
+			return false;
+	}
 }
 
 /**
@@ -127,18 +130,20 @@ export function canAccessResourceByClient(
  * @param principal - Optional principal (falls back to AuditContext)
  * @returns Array of accessible client IDs, or null for unrestricted access
  */
-export function getAccessibleClientIds(principal?: PrincipalInfo | null): string[] | null {
-  const p = principal ?? AuditContext.getPrincipal();
-  if (!p) return [];
+export function getAccessibleClientIds(
+	principal?: PrincipalInfo | null,
+): string[] | null {
+	const p = principal ?? AuditContext.getPrincipal();
+	if (!p) return [];
 
-  const scope = getClientQueryScopeForPrincipal(p);
+	const scope = getClientQueryScopeForPrincipal(p);
 
-  switch (scope.type) {
-    case 'unrestricted':
-      return null; // No filter needed
-    case 'restricted':
-      return scope.filter.clientIds;
-    case 'denied':
-      return []; // Empty array = no results
-  }
+	switch (scope.type) {
+		case "unrestricted":
+			return null; // No filter needed
+		case "restricted":
+			return scope.filter.clientIds;
+		case "denied":
+			return []; // Empty array = no results
+	}
 }

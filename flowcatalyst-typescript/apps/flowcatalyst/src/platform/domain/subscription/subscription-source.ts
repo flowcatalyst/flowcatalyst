@@ -4,4 +4,4 @@
  * How the subscription was created.
  */
 
-export type SubscriptionSource = 'CODE' | 'API' | 'UI';
+export type SubscriptionSource = "CODE" | "API" | "UI";

@@ -1,4 +1,4 @@
-import type { Database } from 'sql.js';
+import type { Database } from "sql.js";
 
 /**
  * SQL schema for the embedded queue
@@ -47,34 +47,34 @@ ON message_deduplication (created_at)
  * Initialize the embedded queue schema
  */
 export function initializeSchema(db: Database): void {
-  db.run(CREATE_QUEUE_TABLE);
-  db.run(CREATE_DEDUPLICATION_TABLE);
-  db.run(CREATE_GROUP_VISIBILITY_INDEX);
-  db.run(CREATE_VISIBILITY_ID_INDEX);
-  db.run(CREATE_DEDUP_CREATED_INDEX);
+	db.run(CREATE_QUEUE_TABLE);
+	db.run(CREATE_DEDUPLICATION_TABLE);
+	db.run(CREATE_GROUP_VISIBILITY_INDEX);
+	db.run(CREATE_VISIBILITY_ID_INDEX);
+	db.run(CREATE_DEDUP_CREATED_INDEX);
 }
 
 /**
  * Queue message row from database
  */
 export interface QueueMessageRow {
-  id: number;
-  message_id: string;
-  message_group_id: string;
-  message_deduplication_id: string | null;
-  message_json: string;
-  created_at: number;
-  visible_at: number;
-  receipt_handle: string;
-  receive_count: number;
-  first_received_at: number | null;
+	id: number;
+	message_id: string;
+	message_group_id: string;
+	message_deduplication_id: string | null;
+	message_json: string;
+	created_at: number;
+	visible_at: number;
+	receipt_handle: string;
+	receive_count: number;
+	first_received_at: number | null;
 }
 
 /**
  * Deduplication row from database
  */
 export interface DeduplicationRow {
-  message_deduplication_id: string;
-  message_id: string;
-  created_at: number;
+	message_deduplication_id: string;
+	message_id: string;
+	created_at: number;
 }

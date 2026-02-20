@@ -1,23 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Tag from 'primevue/tag';
-import ProgressSpinner from 'primevue/progressspinner';
-import Message from 'primevue/message';
-import Dialog from 'primevue/dialog';
-import { useToast } from 'primevue/usetoast';
-import { oauthClientsApi, type OAuthClient } from '@/api/oauth-clients';
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import { oauthClientsApi, type OAuthClient } from "@/api/oauth-clients";
+import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
 const toast = useToast();
 const clients = ref<OAuthClient[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
-const searchQuery = ref('');
+const searchQuery = ref("");
 
 // Delete dialog state
 const showDeleteDialog = ref(false);
@@ -25,103 +18,106 @@ const clientToDelete = ref<OAuthClient | null>(null);
 const deleteLoading = ref(false);
 
 const filteredClients = computed(() => {
-  if (!searchQuery.value) return clients.value;
-  const query = searchQuery.value.toLowerCase();
-  return clients.value.filter(
-    (client) =>
-      client.clientName.toLowerCase().includes(query) ||
-      client.clientId.toLowerCase().includes(query) ||
-      client.applications.some((app) => app.name.toLowerCase().includes(query)),
-  );
+	if (!searchQuery.value) return clients.value;
+	const query = searchQuery.value.toLowerCase();
+	return clients.value.filter(
+		(client) =>
+			client.clientName.toLowerCase().includes(query) ||
+			client.clientId.toLowerCase().includes(query) ||
+			client.applications.some((app) => app.name.toLowerCase().includes(query)),
+	);
 });
 
 onMounted(async () => {
-  await loadClients();
+	await loadClients();
 });
 
 async function loadClients() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const response = await oauthClientsApi.list();
-    clients.value = response.clients;
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load OAuth clients';
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	error.value = null;
+	try {
+		const response = await oauthClientsApi.list();
+		clients.value = response.clients;
+	} catch (e) {
+		error.value =
+			e instanceof Error ? e.message : "Failed to load OAuth clients";
+	} finally {
+		loading.value = false;
+	}
 }
 
 function confirmDelete(client: OAuthClient) {
-  clientToDelete.value = client;
-  showDeleteDialog.value = true;
+	clientToDelete.value = client;
+	showDeleteDialog.value = true;
 }
 
 async function deleteClient() {
-  if (!clientToDelete.value) return;
+	if (!clientToDelete.value) return;
 
-  deleteLoading.value = true;
+	deleteLoading.value = true;
 
-  try {
-    await oauthClientsApi.delete(clientToDelete.value.id);
-    clients.value = clients.value.filter((c) => c.id !== clientToDelete.value?.id);
-    showDeleteDialog.value = false;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: `OAuth client "${clientToDelete.value.clientName}" deleted`,
-      life: 3000,
-    });
-  } catch (e: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: e?.error || e?.message || 'Failed to delete OAuth client',
-      life: 5000,
-    });
-  } finally {
-    deleteLoading.value = false;
-    clientToDelete.value = null;
-  }
+	try {
+		await oauthClientsApi.delete(clientToDelete.value.id);
+		clients.value = clients.value.filter(
+			(c) => c.id !== clientToDelete.value?.id,
+		);
+		showDeleteDialog.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: `OAuth client "${clientToDelete.value.clientName}" deleted`,
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to delete OAuth client"),
+			life: 5000,
+		});
+	} finally {
+		deleteLoading.value = false;
+		clientToDelete.value = null;
+	}
 }
 
 async function toggleActive(client: OAuthClient) {
-  try {
-    if (client.active) {
-      await oauthClientsApi.deactivate(client.id);
-      client.active = false;
-      toast.add({
-        severity: 'success',
-        summary: 'Deactivated',
-        detail: `OAuth client "${client.clientName}" has been deactivated`,
-        life: 3000,
-      });
-    } else {
-      await oauthClientsApi.activate(client.id);
-      client.active = true;
-      toast.add({
-        severity: 'success',
-        summary: 'Activated',
-        detail: `OAuth client "${client.clientName}" has been activated`,
-        life: 3000,
-      });
-    }
-  } catch (e: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: e?.error || e?.message || 'Failed to update client status',
-      life: 5000,
-    });
-  }
+	try {
+		if (client.active) {
+			await oauthClientsApi.deactivate(client.id);
+			client.active = false;
+			toast.add({
+				severity: "success",
+				summary: "Deactivated",
+				detail: `OAuth client "${client.clientName}" has been deactivated`,
+				life: 3000,
+			});
+		} else {
+			await oauthClientsApi.activate(client.id);
+			client.active = true;
+			toast.add({
+				severity: "success",
+				summary: "Activated",
+				detail: `OAuth client "${client.clientName}" has been activated`,
+				life: 3000,
+			});
+		}
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to update client status"),
+			life: 5000,
+		});
+	}
 }
 
 function getClientTypeSeverity(clientType: string) {
-  return clientType === 'PUBLIC' ? 'info' : 'warn';
+	return clientType === "PUBLIC" ? "info" : "warn";
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString();
+	return new Date(dateString).toLocaleDateString();
 }
 </script>
 

@@ -28,39 +28,39 @@
 
 // TSID generation
 export {
-  Tsid,
-  generate as generateRaw, // Renamed to make it clear this generates unprefixed IDs
-  toBigInt,
-  fromBigInt,
-  isValid,
-  getTimestamp,
-} from './tsid.js';
+	Tsid,
+	generate as generateRaw, // Renamed to make it clear this generates unprefixed IDs
+	toBigInt,
+	fromBigInt,
+	isValid,
+	getTimestamp,
+} from "./tsid.js";
 
 // TypedId utilities
 export {
-  EntityType,
-  SEPARATOR,
-  type EntityTypeKey,
-  type EntityTypePrefix,
-  type TypedIdErrorReason,
-  TypedIdError,
-  // Primary API
-  generate, // Generates prefixed IDs
-  validate,
-  validateOrNull,
-  isValidTypedId,
-  isValidFormat,
-  extractRawId,
-  extractPrefix,
-  parseAny,
-  getPrefix,
-  getTypeFromPrefix,
-  // Deprecated (for backwards compatibility)
-  serialize,
-  serializeAll,
-  deserialize,
-  deserializeAll,
-  deserializeOrNull,
-  stripPrefix,
-  ensurePrefix,
-} from './typed-id.js';
+	EntityType,
+	SEPARATOR,
+	type EntityTypeKey,
+	type EntityTypePrefix,
+	type TypedIdErrorReason,
+	TypedIdError,
+	// Primary API
+	generate, // Generates prefixed IDs
+	validate,
+	validateOrNull,
+	isValidTypedId,
+	isValidFormat,
+	extractRawId,
+	extractPrefix,
+	parseAny,
+	getPrefix,
+	getTypeFromPrefix,
+	// Deprecated (for backwards compatibility)
+	serialize,
+	serializeAll,
+	deserialize,
+	deserializeAll,
+	deserializeOrNull,
+	stripPrefix,
+	ensurePrefix,
+} from "./typed-id.js";

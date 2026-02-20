@@ -55,6 +55,12 @@ public class OidcLoginState {
     public String oauthCodeChallengeMethod;
     public String oauthNonce;
 
+    /**
+     * The interaction UID from the OIDC provider session.
+     * Used to resume the interaction after the external IDP callback.
+     */
+    public String interactionUid;
+
     public Instant createdAt = Instant.now();
 
     /**

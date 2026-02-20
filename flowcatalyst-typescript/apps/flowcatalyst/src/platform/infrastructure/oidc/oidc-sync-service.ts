@@ -17,29 +17,33 @@
  * - Attack is logged and prevented
  */
 
-import type { FastifyBaseLogger } from 'fastify';
-import { type ExecutionContext, type UnitOfWork, type Result } from '@flowcatalyst/domain-core';
+import type { FastifyBaseLogger } from "fastify";
+import type {
+	ExecutionContext,
+	UnitOfWork,
+	Result,
+} from "@flowcatalyst/domain-core";
 import {
-  createUserPrincipal,
-  createUserIdentity,
-  extractEmailDomain,
-  updatePrincipal,
-  type Principal,
-  type RoleAssignment,
-  type PrincipalScope,
-  UserCreated,
-  UserUpdated,
-  RolesAssigned,
-  IdpType,
-} from '../../domain/index.js';
-import type { PrincipalRepository } from '../persistence/repositories/principal-repository.js';
-import type { IdpRoleMappingRepository } from '../persistence/repositories/idp-role-mapping-repository.js';
+	createUserPrincipal,
+	createUserIdentity,
+	extractEmailDomain,
+	updatePrincipal,
+	type Principal,
+	type RoleAssignment,
+	type PrincipalScope,
+	UserCreated,
+	UserUpdated,
+	RolesAssigned,
+	IdpType,
+} from "../../domain/index.js";
+import type { PrincipalRepository } from "../persistence/repositories/principal-repository.js";
+import type { IdpRoleMappingRepository } from "../persistence/repositories/idp-role-mapping-repository.js";
 
 export interface OidcSyncServiceDeps {
-  principalRepository: PrincipalRepository;
-  idpRoleMappingRepository: IdpRoleMappingRepository;
-  unitOfWork: UnitOfWork;
-  log: FastifyBaseLogger;
+	principalRepository: PrincipalRepository;
+	idpRoleMappingRepository: IdpRoleMappingRepository;
+	unitOfWork: UnitOfWork;
+	log: FastifyBaseLogger;
 }
 
 /**
@@ -47,79 +51,85 @@ export interface OidcSyncServiceDeps {
  * Uses UnitOfWork to ensure domain events and audit logs are created.
  */
 export async function createOrUpdateOidcUser(
-  params: {
-    email: string;
-    name: string | null;
-    externalIdpId: string;
-    clientId: string | null;
-    scope: PrincipalScope;
-  },
-  ctx: ExecutionContext,
-  deps: OidcSyncServiceDeps,
+	params: {
+		email: string;
+		name: string | null;
+		externalIdpId: string;
+		clientId: string | null;
+		scope: PrincipalScope;
+	},
+	ctx: ExecutionContext,
+	deps: OidcSyncServiceDeps,
 ): Promise<Result<UserCreated | UserUpdated>> {
-  const { email, name, externalIdpId, clientId, scope } = params;
+	const { email, name, externalIdpId, clientId, scope } = params;
 
-  // Try to find existing user by email
-  const existing = await deps.principalRepository.findByEmail(email.toLowerCase());
+	// Try to find existing user by email
+	const existing = await deps.principalRepository.findByEmail(
+		email.toLowerCase(),
+	);
 
-  if (existing) {
-    // Update existing user with latest OIDC info
-    const updated = updatePrincipal(existing, {
-      name: name ?? existing.name,
-      scope,
-      clientId,
-      userIdentity: existing.userIdentity
-        ? {
-            ...existing.userIdentity,
-            externalIdpId,
-            idpType: 'OIDC',
-            lastLoginAt: new Date(),
-          }
-        : createUserIdentity({
-            email: email.toLowerCase(),
-            idpType: 'OIDC',
-            externalIdpId,
-          }),
-    });
+	if (existing) {
+		// Update existing user with latest OIDC info
+		const updated = updatePrincipal(existing, {
+			name: name ?? existing.name,
+			scope,
+			clientId,
+			userIdentity: existing.userIdentity
+				? {
+						...existing.userIdentity,
+						externalIdpId,
+						idpType: "OIDC",
+						lastLoginAt: new Date(),
+					}
+				: createUserIdentity({
+						email: email.toLowerCase(),
+						idpType: "OIDC",
+						externalIdpId,
+					}),
+		});
 
-    const event = new UserUpdated(ctx, {
-      userId: existing.id,
-      name: updated.name,
-      previousName: existing.name,
-    });
+		const event = new UserUpdated(ctx, {
+			userId: existing.id,
+			name: updated.name,
+			previousName: existing.name,
+		});
 
-    return deps.unitOfWork.commit(updated, event, { _type: 'OidcUserSync', email, externalIdpId });
-  }
+		return deps.unitOfWork.commit(updated, event, {
+			_type: "OidcUserSync",
+			email,
+			externalIdpId,
+		});
+	}
 
-  // Create new user principal
-  const emailDomain = extractEmailDomain(email.toLowerCase());
-  const newPrincipal = createUserPrincipal({
-    name: name ?? email,
-    scope,
-    clientId,
-    userIdentity: createUserIdentity({
-      email: email.toLowerCase(),
-      idpType: 'OIDC',
-      externalIdpId,
-    }),
-  });
+	// Create new user principal
+	const emailDomain = extractEmailDomain(email.toLowerCase());
+	const newPrincipal = createUserPrincipal({
+		name: name ?? email,
+		scope,
+		clientId,
+		userIdentity: createUserIdentity({
+			email: email.toLowerCase(),
+			idpType: "OIDC",
+			externalIdpId,
+		}),
+	});
 
-  const event = new UserCreated(ctx, {
-    userId: newPrincipal.id,
-    email: email.toLowerCase(),
-    emailDomain,
-    name: newPrincipal.name,
-    scope,
-    clientId,
-    idpType: IdpType.OIDC,
-    isAnchorUser: scope === 'ANCHOR',
-  });
+	const event = new UserCreated(ctx, {
+		userId: newPrincipal.id,
+		email: email.toLowerCase(),
+		emailDomain,
+		name: newPrincipal.name,
+		scope,
+		clientId,
+		idpType: IdpType.OIDC,
+		isAnchorUser: scope === "ANCHOR",
+	});
 
-  return deps.unitOfWork.commit(newPrincipal, event, {
-    _type: 'OidcUserCreate',
-    email,
-    externalIdpId,
-  });
+	return deps.unitOfWork.commit(newPrincipal, event, {
+		_type: "OidcUserCreate",
+		email,
+		externalIdpId,
+	});
 }
 
 /**
@@ -141,148 +151,160 @@ export async function createOrUpdateOidcUser(
  * 5. Commit via UnitOfWork (creates RolesAssigned event + audit log)
  */
 export async function syncIdpRoles(
-  principal: Principal,
-  idpRoleNames: string[],
-  allowedRoleNames: Set<string> | null,
-  ctx: ExecutionContext,
-  deps: OidcSyncServiceDeps,
+	principal: Principal,
+	idpRoleNames: string[],
+	allowedRoleNames: Set<string> | null,
+	ctx: ExecutionContext,
+	deps: OidcSyncServiceDeps,
 ): Promise<Result<RolesAssigned>> {
-  const authorizedRoleNames = new Set<string>();
+	const authorizedRoleNames = new Set<string>();
 
-  if (!idpRoleNames || idpRoleNames.length === 0) {
-    deps.log.info({ principalId: principal.id }, 'No IDP roles provided for principal');
-  } else {
-    // SECURITY: Only accept IDP roles that are explicitly authorized in idp_role_mappings
-    for (const idpRoleName of idpRoleNames) {
-      const mapping = await deps.idpRoleMappingRepository.findByIdpRoleName(idpRoleName);
+	if (!idpRoleNames || idpRoleNames.length === 0) {
+		deps.log.info(
+			{ principalId: principal.id },
+			"No IDP roles provided for principal",
+		);
+	} else {
+		// SECURITY: Only accept IDP roles that are explicitly authorized in idp_role_mappings
+		for (const idpRoleName of idpRoleNames) {
+			const mapping =
+				await deps.idpRoleMappingRepository.findByIdpRoleName(idpRoleName);
 
-      if (mapping) {
-        authorizedRoleNames.add(mapping.internalRoleName);
-        deps.log.debug(
-          {
-            principalId: principal.id,
-            idpRole: idpRoleName,
-            internalRole: mapping.internalRoleName,
-          },
-          'Accepted IDP role',
-        );
-      } else {
-        // SECURITY: Reject unauthorized IDP role
-        deps.log.warn(
-          {
-            principalId: principal.id,
-            email: principal.userIdentity?.email,
-            idpRole: idpRoleName,
-          },
-          'SECURITY: REJECTED unauthorized IDP role. Role not found in idp_role_mappings table. Platform administrator must explicitly authorize this IDP role before it can be used.',
-        );
-      }
-    }
-  }
+			if (mapping) {
+				authorizedRoleNames.add(mapping.internalRoleName);
+				deps.log.debug(
+					{
+						principalId: principal.id,
+						idpRole: idpRoleName,
+						internalRole: mapping.internalRoleName,
+					},
+					"Accepted IDP role",
+				);
+			} else {
+				// SECURITY: Reject unauthorized IDP role
+				deps.log.warn(
+					{
+						principalId: principal.id,
+						email: principal.userIdentity?.email,
+						idpRole: idpRoleName,
+					},
+					"SECURITY: REJECTED unauthorized IDP role. Role not found in idp_role_mappings table. Platform administrator must explicitly authorize this IDP role before it can be used.",
+				);
+			}
+		}
+	}
 
-  // Apply domain filter if provided
-  let finalRoleNames = authorizedRoleNames;
-  if (allowedRoleNames && allowedRoleNames.size > 0) {
-    finalRoleNames = new Set<string>();
-    for (const roleName of authorizedRoleNames) {
-      if (allowedRoleNames.has(roleName)) {
-        finalRoleNames.add(roleName);
-      } else {
-        deps.log.warn(
-          {
-            principalId: principal.id,
-            email: principal.userIdentity?.email,
-            role: roleName,
-          },
-          "SECURITY: Domain role filter REMOVED IDP-synced role. Role not in email domain mapping's allowedRoleIds.",
-        );
-      }
-    }
+	// Apply domain filter if provided
+	let finalRoleNames = authorizedRoleNames;
+	if (allowedRoleNames && allowedRoleNames.size > 0) {
+		finalRoleNames = new Set<string>();
+		for (const roleName of authorizedRoleNames) {
+			if (allowedRoleNames.has(roleName)) {
+				finalRoleNames.add(roleName);
+			} else {
+				deps.log.warn(
+					{
+						principalId: principal.id,
+						email: principal.userIdentity?.email,
+						role: roleName,
+					},
+					"SECURITY: Domain role filter REMOVED IDP-synced role. Role not in email domain mapping's allowedRoleIds.",
+				);
+			}
+		}
 
-    deps.log.info(
-      {
-        principalId: principal.id,
-        authorized: authorizedRoleNames.size,
-        passedFilter: finalRoleNames.size,
-      },
-      'Domain role filter applied',
-    );
-  }
+		deps.log.info(
+			{
+				principalId: principal.id,
+				authorized: authorizedRoleNames.size,
+				passedFilter: finalRoleNames.size,
+			},
+			"Domain role filter applied",
+		);
+	}
 
-  // Build new role list: keep non-IDP roles, add authorized IDP roles
-  const nonIdpRoles = principal.roles.filter((r) => r.assignmentSource !== 'IDP_SYNC');
-  const idpRoleAssignments: RoleAssignment[] = [...finalRoleNames].map((roleName) => ({
-    roleName,
-    assignmentSource: 'IDP_SYNC',
-    assignedAt: new Date(),
-  }));
+	// Build new role list: keep non-IDP roles, add authorized IDP roles
+	const nonIdpRoles = principal.roles.filter(
+		(r) => r.assignmentSource !== "IDP_SYNC",
+	);
+	const idpRoleAssignments: RoleAssignment[] = [...finalRoleNames].map(
+		(roleName) => ({
+			roleName,
+			assignmentSource: "IDP_SYNC",
+			assignedAt: new Date(),
+		}),
+	);
 
-  const allRoles = [...nonIdpRoles, ...idpRoleAssignments];
-  const previousRoles = principal.roles.map((r) => r.roleName);
+	const allRoles = [...nonIdpRoles, ...idpRoleAssignments];
+	const previousRoles = principal.roles.map((r) => r.roleName);
 
-  // Update principal with new role list
-  const updated = updatePrincipal(principal, { roles: allRoles });
+	// Update principal with new role list
+	const updated = updatePrincipal(principal, { roles: allRoles });
 
-  const event = new RolesAssigned(ctx, {
-    userId: principal.id,
-    email: principal.userIdentity?.email ?? '',
-    roles: allRoles.map((r) => r.roleName),
-    previousRoles,
-  });
+	const event = new RolesAssigned(ctx, {
+		userId: principal.id,
+		email: principal.userIdentity?.email ?? "",
+		roles: allRoles.map((r) => r.roleName),
+		previousRoles,
+	});
 
-  deps.log.info(
-    {
-      principalId: principal.id,
-      email: principal.userIdentity?.email,
-      provided: idpRoleNames?.length ?? 0,
-      authorized: authorizedRoleNames.size,
-      assigned: idpRoleAssignments.length,
-    },
-    'IDP role sync complete',
-  );
+	deps.log.info(
+		{
+			principalId: principal.id,
+			email: principal.userIdentity?.email,
+			provided: idpRoleNames?.length ?? 0,
+			authorized: authorizedRoleNames.size,
+			assigned: idpRoleAssignments.length,
+		},
+		"IDP role sync complete",
+	);
 
-  return deps.unitOfWork.commit(updated, event, {
-    _type: 'OidcIdpRoleSync',
-    principalId: principal.id,
-  });
+	return deps.unitOfWork.commit(updated, event, {
+		_type: "OidcIdpRoleSync",
+		principalId: principal.id,
+	});
 }
 
 /**
  * Extract role names from an ID token payload.
  * Checks common claims: realm_access.roles (Keycloak), roles (generic), groups (Entra ID).
  */
-export function extractIdpRoles(idTokenPayload: Record<string, unknown>): string[] {
-  const roles: string[] = [];
+export function extractIdpRoles(
+	idTokenPayload: Record<string, unknown>,
+): string[] {
+	const roles: string[] = [];
 
-  // Keycloak: realm_access.roles
-  const realmAccess = idTokenPayload['realm_access'] as { roles?: string[] } | undefined;
-  if (realmAccess?.roles && Array.isArray(realmAccess.roles)) {
-    for (const role of realmAccess.roles) {
-      if (typeof role === 'string' && !roles.includes(role)) {
-        roles.push(role);
-      }
-    }
-  }
+	// Keycloak: realm_access.roles
+	const realmAccess = idTokenPayload["realm_access"] as
+		| { roles?: string[] }
+		| undefined;
+	if (realmAccess?.roles && Array.isArray(realmAccess.roles)) {
+		for (const role of realmAccess.roles) {
+			if (typeof role === "string" && !roles.includes(role)) {
+				roles.push(role);
+			}
+		}
+	}
 
-  // Generic: roles
-  const rolesArray = idTokenPayload['roles'] as string[] | undefined;
-  if (Array.isArray(rolesArray)) {
-    for (const role of rolesArray) {
-      if (typeof role === 'string' && !roles.includes(role)) {
-        roles.push(role);
-      }
-    }
-  }
+	// Generic: roles
+	const rolesArray = idTokenPayload["roles"] as string[] | undefined;
+	if (Array.isArray(rolesArray)) {
+		for (const role of rolesArray) {
+			if (typeof role === "string" && !roles.includes(role)) {
+				roles.push(role);
+			}
+		}
+	}
 
-  // Entra ID: groups
-  const groups = idTokenPayload['groups'] as string[] | undefined;
-  if (Array.isArray(groups)) {
-    for (const group of groups) {
-      if (typeof group === 'string' && !roles.includes(group)) {
-        roles.push(group);
-      }
-    }
-  }
+	// Entra ID: groups
+	const groups = idTokenPayload["groups"] as string[] | undefined;
+	if (Array.isArray(groups)) {
+		for (const group of groups) {
+			if (typeof group === "string" && !roles.includes(group)) {
+				roles.push(group);
+			}
+		}
+	}
 
-  return roles;
+	return roles;
 }

@@ -6,7 +6,7 @@
  */
 
 /** Message types supported by the outbox. */
-export type MessageType = 'EVENT' | 'DISPATCH_JOB' | 'AUDIT_LOG';
+export type MessageType = "EVENT" | "DISPATCH_JOB" | "AUDIT_LOG";
 
 /**
  * Outbox status codes matching the Java outbox-processor.
@@ -15,41 +15,41 @@ export type MessageType = 'EVENT' | 'DISPATCH_JOB' | 'AUDIT_LOG';
  * Only PENDING (0) is written by the SDK; all others are set by the processor.
  */
 export const OutboxStatus = {
-  /** Waiting to be processed. */
-  PENDING: 0,
-  /** Successfully sent to FlowCatalyst. */
-  SUCCESS: 1,
-  /** API returned 400 Bad Request (permanent failure). */
-  BAD_REQUEST: 2,
-  /** API returned 500 Internal Server Error (retryable). */
-  INTERNAL_ERROR: 3,
-  /** API returned 401 Unauthorized (retryable). */
-  UNAUTHORIZED: 4,
-  /** API returned 403 Forbidden (permanent failure). */
-  FORBIDDEN: 5,
-  /** API returned 502/503/504 Gateway Error (retryable). */
-  GATEWAY_ERROR: 6,
-  /** Currently being processed - crash recovery marker. */
-  IN_PROGRESS: 9,
+	/** Waiting to be processed. */
+	PENDING: 0,
+	/** Successfully sent to FlowCatalyst. */
+	SUCCESS: 1,
+	/** API returned 400 Bad Request (permanent failure). */
+	BAD_REQUEST: 2,
+	/** API returned 500 Internal Server Error (retryable). */
+	INTERNAL_ERROR: 3,
+	/** API returned 401 Unauthorized (retryable). */
+	UNAUTHORIZED: 4,
+	/** API returned 403 Forbidden (permanent failure). */
+	FORBIDDEN: 5,
+	/** API returned 502/503/504 Gateway Error (retryable). */
+	GATEWAY_ERROR: 6,
+	/** Currently being processed - crash recovery marker. */
+	IN_PROGRESS: 9,
 } as const;
 
 export type OutboxStatusCode = (typeof OutboxStatus)[keyof typeof OutboxStatus];
 
 /** An outbox message record to be persisted by the driver. */
 export interface OutboxMessage {
-  id: string;
-  type: MessageType;
-  message_group: string | null;
-  payload: string;
-  status: number;
-  created_at: string;
-  updated_at: string;
-  /** SDK-specific: client identifier for multi-tenant routing. */
-  client_id: string;
-  /** SDK-specific: byte size of payload. */
-  payload_size: number;
-  /** SDK-specific: optional headers. */
-  headers: Record<string, string> | null;
+	id: string;
+	type: MessageType;
+	message_group: string | null;
+	payload: string;
+	status: number;
+	created_at: string;
+	updated_at: string;
+	/** SDK-specific: client identifier for multi-tenant routing. */
+	client_id: string;
+	/** SDK-specific: byte size of payload. */
+	payload_size: number;
+	/** SDK-specific: optional headers. */
+	headers: Record<string, string> | null;
 }
 
 /**
@@ -100,9 +100,9 @@ export interface OutboxMessage {
  * ```
  */
 export interface OutboxDriver {
-  /** Insert a single message into the outbox. */
-  insert(message: OutboxMessage): Promise<void>;
+	/** Insert a single message into the outbox. */
+	insert(message: OutboxMessage): Promise<void>;
 
-  /** Insert multiple messages into the outbox (batch). */
-  insertBatch(messages: OutboxMessage[]): Promise<void>;
+	/** Insert multiple messages into the outbox (batch). */
+	insertBatch(messages: OutboxMessage[]): Promise<void>;
 }

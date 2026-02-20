@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import AppSidebar from '@/components/layout/AppSidebar.vue';
-import AppHeader from '@/components/layout/AppHeader.vue';
+import { ref } from "vue";
 
 const sidebarCollapsed = ref(false);
 
 function toggleSidebar() {
-  sidebarCollapsed.value = !sidebarCollapsed.value;
+	sidebarCollapsed.value = !sidebarCollapsed.value;
 }
 </script>
 

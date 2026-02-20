@@ -3,15 +3,15 @@
  */
 
 export type {
-  UpdateOidcSettingsCommand,
-  UpdateConfigTypeCommand,
-  UpdateAdditionalClientsCommand,
-  UpdateGrantedClientsCommand,
-} from './command.js';
+	UpdateOidcSettingsCommand,
+	UpdateConfigTypeCommand,
+	UpdateAdditionalClientsCommand,
+	UpdateGrantedClientsCommand,
+} from "./command.js";
 export {
-  createUpdateOidcSettingsUseCase,
-  createUpdateConfigTypeUseCase,
-  createUpdateAdditionalClientsUseCase,
-  createUpdateGrantedClientsUseCase,
-  type UpdateAuthConfigUseCaseDeps,
-} from './use-case.js';
+	createUpdateOidcSettingsUseCase,
+	createUpdateConfigTypeUseCase,
+	createUpdateAdditionalClientsUseCase,
+	createUpdateGrantedClientsUseCase,
+	type UpdateAuthConfigUseCaseDeps,
+} from "./use-case.js";

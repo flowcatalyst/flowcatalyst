@@ -1,16 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
-import { useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Select from 'primevue/select';
-import Tag from 'primevue/tag';
-import ProgressSpinner from 'primevue/progressspinner';
-import { serviceAccountsApi, type ServiceAccount } from '@/api/service-accounts';
-import { clientsApi, type Client } from '@/api/clients';
+import { ref, computed, onMounted, watch } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import {
+	serviceAccountsApi,
+	type ServiceAccount,
+} from "@/api/service-accounts";
+import { clientsApi, type Client } from "@/api/clients";
 
 const router = useRouter();
 const toast = useToast();
@@ -20,117 +16,120 @@ const clients = ref<Client[]>([]);
 const loading = ref(true);
 
 // Filters
-const searchQuery = ref('');
+const searchQuery = ref("");
 const selectedClientId = ref<string | null>(null);
 const selectedStatus = ref<string | null>(null);
 
 const statusOptions = [
-  { label: 'Active', value: 'active' },
-  { label: 'Inactive', value: 'inactive' },
+	{ label: "Active", value: "active" },
+	{ label: "Inactive", value: "inactive" },
 ];
 
 const clientOptions = computed(() => {
-  return clients.value.map((c) => ({
-    label: c.name,
-    value: c.id,
-  }));
+	return clients.value.map((c) => ({
+		label: c.name,
+		value: c.id,
+	}));
 });
 
 const hasActiveFilters = computed(() => {
-  return searchQuery.value || selectedClientId.value || selectedStatus.value;
+	return searchQuery.value || selectedClientId.value || selectedStatus.value;
 });
 
 const filteredServiceAccounts = computed(() => {
-  let result = serviceAccounts.value;
+	let result = serviceAccounts.value;
 
-  // Client-side search filter (name/code)
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase();
-    result = result.filter(
-      (sa) => sa.name?.toLowerCase().includes(query) || sa.code?.toLowerCase().includes(query),
-    );
-  }
+	// Client-side search filter (name/code)
+	if (searchQuery.value) {
+		const query = searchQuery.value.toLowerCase();
+		result = result.filter(
+			(sa) =>
+				sa.name?.toLowerCase().includes(query) ||
+				sa.code?.toLowerCase().includes(query),
+		);
+	}
 
-  return result;
+	return result;
 });
 
 onMounted(async () => {
-  await Promise.all([loadServiceAccounts(), loadClients()]);
+	await Promise.all([loadServiceAccounts(), loadClients()]);
 });
 
 // Reload when filters change (server-side filters)
 watch([selectedClientId, selectedStatus], () => {
-  loadServiceAccounts();
+	loadServiceAccounts();
 });
 
 async function loadServiceAccounts() {
-  loading.value = true;
-  try {
-    const response = await serviceAccountsApi.list({
-      clientId: selectedClientId.value || undefined,
-      active:
-        selectedStatus.value === 'active'
-          ? true
-          : selectedStatus.value === 'inactive'
-            ? false
-            : undefined,
-    });
-    serviceAccounts.value = response.serviceAccounts;
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load service accounts',
-      life: 5000,
-    });
-    console.error('Failed to fetch service accounts:', error);
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	try {
+		const response = await serviceAccountsApi.list({
+			clientId: selectedClientId.value || undefined,
+			active:
+				selectedStatus.value === "active"
+					? true
+					: selectedStatus.value === "inactive"
+						? false
+						: undefined,
+		});
+		serviceAccounts.value = response.serviceAccounts;
+	} catch (error) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to load service accounts",
+			life: 5000,
+		});
+		console.error("Failed to fetch service accounts:", error);
+	} finally {
+		loading.value = false;
+	}
 }
 
 async function loadClients() {
-  try {
-    const response = await clientsApi.list();
-    clients.value = response.clients;
-  } catch (error) {
-    console.error('Failed to fetch clients:', error);
-  }
+	try {
+		const response = await clientsApi.list();
+		clients.value = response.clients;
+	} catch (error) {
+		console.error("Failed to fetch clients:", error);
+	}
 }
 
 function clearFilters() {
-  searchQuery.value = '';
-  selectedClientId.value = null;
-  selectedStatus.value = null;
+	searchQuery.value = "";
+	selectedClientId.value = null;
+	selectedStatus.value = null;
 }
 
 function addServiceAccount() {
-  router.push('/identity/service-accounts/new');
+	router.push("/identity/service-accounts/new");
 }
 
 function viewServiceAccount(sa: ServiceAccount) {
-  router.push(`/identity/service-accounts/${sa.id}`);
+	router.push(`/identity/service-accounts/${sa.id}`);
 }
 
 function editServiceAccount(sa: ServiceAccount) {
-  router.push(`/identity/service-accounts/${sa.id}?edit=true`);
+	router.push(`/identity/service-accounts/${sa.id}?edit=true`);
 }
 
 function getClientName(clientId: string): string {
-  const client = clients.value.find((c) => c.id === clientId);
-  return client?.name || clientId;
+	const client = clients.value.find((c) => c.id === clientId);
+	return client?.name || clientId;
 }
 
 function getClientNames(clientIds: string[]): string {
-  if (!clientIds || clientIds.length === 0) return 'All';
-  if (clientIds.length === 1) return getClientName(clientIds[0]);
-  if (clientIds.length <= 2) return clientIds.map((id) => getClientName(id)).join(', ');
-  return `${getClientName(clientIds[0])} +${clientIds.length - 1} more`;
+	if (!clientIds || clientIds.length === 0) return "All";
+	if (clientIds.length === 1) return getClientName(clientIds[0]);
+	if (clientIds.length <= 2)
+		return clientIds.map((id) => getClientName(id)).join(", ");
+	return `${getClientName(clientIds[0])} +${clientIds.length - 1} more`;
 }
 
 function formatDate(dateStr: string | undefined | null) {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString();
+	if (!dateStr) return "—";
+	return new Date(dateStr).toLocaleDateString();
 }
 </script>
 

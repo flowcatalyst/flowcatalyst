@@ -47,28 +47,36 @@
  */
 
 import {
-  Result,
-  UseCaseError,
-  type DomainEvent,
-  type ExecutionContext,
-} from '@flowcatalyst/domain-core';
-import type { Command } from './command.js';
+	Result,
+	UseCaseError,
+	type DomainEvent,
+	type ExecutionContext,
+} from "@flowcatalyst/domain-core";
+import type { Command } from "./command.js";
 
 export interface UseCase<TCommand extends Command, TEvent extends DomainEvent> {
-  execute(command: TCommand, context: ExecutionContext): Promise<Result<TEvent>>;
+	execute(
+		command: TCommand,
+		context: ExecutionContext,
+	): Promise<Result<TEvent>>;
 }
 
 /**
  * Synchronous UseCase interface for operations that don't need async.
  * Prefer the async version for database operations.
  */
-export interface SyncUseCase<TCommand extends Command, TEvent extends DomainEvent> {
-  execute(command: TCommand, context: ExecutionContext): Result<TEvent>;
+export interface SyncUseCase<
+	TCommand extends Command,
+	TEvent extends DomainEvent,
+> {
+	execute(command: TCommand, context: ExecutionContext): Result<TEvent>;
 }
 
-export type UseCaseCommand<T> = T extends UseCase<infer TCommand, DomainEvent> ? TCommand : never;
+export type UseCaseCommand<T> =
+	T extends UseCase<infer TCommand, DomainEvent> ? TCommand : never;
 
-export type UseCaseEvent<T> = T extends UseCase<Command, infer TEvent> ? TEvent : never;
+export type UseCaseEvent<T> =
+	T extends UseCase<Command, infer TEvent> ? TEvent : never;
 
 /**
  * A use case factory function type.
@@ -124,44 +132,51 @@ export type UseCaseEvent<T> = T extends UseCase<Command, infer TEvent> ? TEvent 
  * ```
  */
 export abstract class SecuredUseCase<
-  TCommand extends Command,
-  TEvent extends DomainEvent,
-> implements UseCase<TCommand, TEvent> {
-  async execute(command: TCommand, context: ExecutionContext): Promise<Result<TEvent>> {
-    if (!this.authorizeResource(command, context)) {
-      return Result.failure(
-        UseCaseError.authorization(
-          'RESOURCE_ACCESS_DENIED',
-          'Not authorized to access this resource',
-        ),
-      );
-    }
-    return this.doExecute(command, context);
-  }
+	TCommand extends Command,
+	TEvent extends DomainEvent,
+> implements UseCase<TCommand, TEvent>
+{
+	async execute(
+		command: TCommand,
+		context: ExecutionContext,
+	): Promise<Result<TEvent>> {
+		if (!this.authorizeResource(command, context)) {
+			return Result.failure(
+				UseCaseError.authorization(
+					"RESOURCE_ACCESS_DENIED",
+					"Not authorized to access this resource",
+				),
+			);
+		}
+		return this.doExecute(command, context);
+	}
 
-  /**
-   * Resource-level authorization guard.
-   *
-   * **Returns false by default** — denies access unless explicitly overridden.
-   * Subclasses MUST override this method to either:
-   * - Return true (no resource-level restriction needed)
-   * - Check context.authz and return true/false based on the principal's access
-   *
-   * When authz is null (system/internal call), return true to bypass auth.
-   * When entity not found, return true to let doExecute() handle 404 properly.
-   */
-  authorizeResource(_command: TCommand, _context: ExecutionContext): boolean {
-    return false;
-  }
+	/**
+	 * Resource-level authorization guard.
+	 *
+	 * **Returns false by default** — denies access unless explicitly overridden.
+	 * Subclasses MUST override this method to either:
+	 * - Return true (no resource-level restriction needed)
+	 * - Check context.authz and return true/false based on the principal's access
+	 *
+	 * When authz is null (system/internal call), return true to bypass auth.
+	 * When entity not found, return true to let doExecute() handle 404 properly.
+	 */
+	authorizeResource(_command: TCommand, _context: ExecutionContext): boolean {
+		return false;
+	}
 
-  /**
-   * Business logic implementation.
-   */
-  abstract doExecute(command: TCommand, context: ExecutionContext): Promise<Result<TEvent>>;
+	/**
+	 * Business logic implementation.
+	 */
+	abstract doExecute(
+		command: TCommand,
+		context: ExecutionContext,
+	): Promise<Result<TEvent>>;
 }
 
 export type UseCaseFactory<
-  TCommand extends Command,
-  TEvent extends DomainEvent,
-  TDeps = unknown,
+	TCommand extends Command,
+	TEvent extends DomainEvent,
+	TDeps = unknown,
 > = (deps: TDeps) => UseCase<TCommand, TEvent>;

@@ -33,6 +33,7 @@ public final class OidcLoginStateMapper {
         domain.oauthCodeChallenge = entity.oauthCodeChallenge;
         domain.oauthCodeChallengeMethod = entity.oauthCodeChallengeMethod;
         domain.oauthNonce = entity.oauthNonce;
+        domain.interactionUid = entity.interactionUid;
         domain.createdAt = entity.createdAt;
         domain.expiresAt = entity.expiresAt;
         return domain;
@@ -58,6 +59,7 @@ public final class OidcLoginStateMapper {
         entity.oauthCodeChallenge = domain.oauthCodeChallenge;
         entity.oauthCodeChallengeMethod = domain.oauthCodeChallengeMethod;
         entity.oauthNonce = domain.oauthNonce;
+        entity.interactionUid = domain.interactionUid;
         entity.createdAt = domain.createdAt != null ? domain.createdAt : Instant.now();
         entity.expiresAt = domain.expiresAt != null ? domain.expiresAt : Instant.now().plusSeconds(600);
         return entity;

@@ -2,4 +2,4 @@
  * Subscription Status
  */
 
-export type SubscriptionStatus = 'ACTIVE' | 'PAUSED';
+export type SubscriptionStatus = "ACTIVE" | "PAUSED";

@@ -1,17 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useConfirm } from 'primevue/useconfirm';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import Tag from 'primevue/tag';
-import InputText from 'primevue/inputtext';
-import Textarea from 'primevue/textarea';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import ProgressSpinner from 'primevue/progressspinner';
-import Message from 'primevue/message';
-import { eventTypesApi, type EventType, type SpecVersion } from '@/api/event-types';
+import { ref, computed, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useConfirm } from "primevue/useconfirm";
+import { useToast } from "primevue/usetoast";
+import {
+	eventTypesApi,
+	type EventType,
+	type SpecVersion,
+} from "@/api/event-types";
 
 const route = useRoute();
 const router = useRouter();
@@ -24,205 +20,240 @@ const editing = ref(false);
 const saving = ref(false);
 
 // Edit form
-const editName = ref('');
-const editDescription = ref('');
+const editName = ref("");
+const editDescription = ref("");
 
 const canArchive = computed(() => {
-  const et = eventType.value;
-  if (!et || et.status !== 'CURRENT') return false;
-  if (et.specVersions.length === 0) return true;
-  return et.specVersions.every((sv) => sv.status === 'DEPRECATED');
+	const et = eventType.value;
+	if (!et || et.status !== "CURRENT") return false;
+	if (et.specVersions.length === 0) return true;
+	return et.specVersions.every((sv) => sv.status === "DEPRECATED");
 });
 
 const canDelete = computed(() => {
-  const et = eventType.value;
-  if (!et) return false;
-  if (et.status === 'ARCHIVE') return true;
-  if (et.status === 'CURRENT' && et.specVersions.length === 0) return true;
-  return et.status === 'CURRENT' && et.specVersions.every((sv) => sv.status === 'FINALISING');
+	const et = eventType.value;
+	if (!et) return false;
+	if (et.status === "ARCHIVE") return true;
+	if (et.status === "CURRENT" && et.specVersions.length === 0) return true;
+	return (
+		et.status === "CURRENT" &&
+		et.specVersions.every((sv) => sv.status === "FINALISING")
+	);
 });
 
 onMounted(async () => {
-  const id = route.params.id as string;
-  if (id) {
-    await loadEventType(id);
-  }
+	const id = route.params.id as string;
+	if (id) {
+		await loadEventType(id);
+	}
 });
 
 async function loadEventType(id: string) {
-  loading.value = true;
-  try {
-    eventType.value = await eventTypesApi.get(id);
-  } catch {
-    eventType.value = null;
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	try {
+		eventType.value = await eventTypesApi.get(id);
+	} catch {
+		eventType.value = null;
+	} finally {
+		loading.value = false;
+	}
 }
 
 function startEditing() {
-  if (eventType.value) {
-    editName.value = eventType.value.name;
-    editDescription.value = eventType.value.description || '';
-    editing.value = true;
-  }
+	if (eventType.value) {
+		editName.value = eventType.value.name;
+		editDescription.value = eventType.value.description || "";
+		editing.value = true;
+	}
 }
 
 function cancelEditing() {
-  editing.value = false;
+	editing.value = false;
 }
 
 async function saveChanges() {
-  if (!eventType.value) return;
+	if (!eventType.value) return;
 
-  saving.value = true;
-  try {
-    eventType.value = await eventTypesApi.update(eventType.value.id, {
-      name: editName.value,
-      description: editDescription.value,
-    });
-    editing.value = false;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Event type updated',
-      life: 3000,
-    });
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update', life: 3000 });
-  } finally {
-    saving.value = false;
-  }
+	saving.value = true;
+	try {
+		eventType.value = await eventTypesApi.update(eventType.value.id, {
+			name: editName.value,
+			description: editDescription.value,
+		});
+		editing.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Event type updated",
+			life: 3000,
+		});
+	} catch (e) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to update",
+			life: 3000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 function getSchemaStatusSeverity(status: string) {
-  switch (status) {
-    case 'CURRENT':
-      return 'success';
-    case 'FINALISING':
-      return 'info';
-    case 'DEPRECATED':
-      return 'warn';
-    default:
-      return 'secondary';
-  }
+	switch (status) {
+		case "CURRENT":
+			return "success";
+		case "FINALISING":
+			return "info";
+		case "DEPRECATED":
+			return "warn";
+		default:
+			return "secondary";
+	}
 }
 
 function formatSchemaType(type: string) {
-  switch (type) {
-    case 'JSON_SCHEMA':
-      return 'JSON Schema';
-    case 'PROTO':
-      return 'Protocol Buffers';
-    case 'XSD':
-      return 'XML Schema';
-    default:
-      return type;
-  }
+	switch (type) {
+		case "JSON_SCHEMA":
+			return "JSON Schema";
+		case "PROTO":
+			return "Protocol Buffers";
+		case "XSD":
+			return "XML Schema";
+		default:
+			return type;
+	}
 }
 
 function confirmFinalise(sv: SpecVersion) {
-  confirm.require({
-    message: `Finalise schema version ${sv.version}? This makes it the current version.`,
-    header: 'Finalise Schema',
-    icon: 'pi pi-check-circle',
-    acceptLabel: 'Finalise',
-    accept: () => finaliseSchema(sv.version),
-  });
+	confirm.require({
+		message: `Finalise schema version ${sv.version}? This makes it the current version.`,
+		header: "Finalise Schema",
+		icon: "pi pi-check-circle",
+		acceptLabel: "Finalise",
+		accept: () => finaliseSchema(sv.version),
+	});
 }
 
 async function finaliseSchema(version: string) {
-  if (!eventType.value) return;
-  try {
-    eventType.value = await eventTypesApi.finaliseSchema(eventType.value.id, version);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: `Schema ${version} finalised`,
-      life: 3000,
-    });
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to finalise', life: 3000 });
-  }
+	if (!eventType.value) return;
+	try {
+		eventType.value = await eventTypesApi.finaliseSchema(
+			eventType.value.id,
+			version,
+		);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: `Schema ${version} finalised`,
+			life: 3000,
+		});
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to finalise",
+			life: 3000,
+		});
+	}
 }
 
 function confirmDeprecate(sv: SpecVersion) {
-  confirm.require({
-    message: `Deprecate schema version ${sv.version}?`,
-    header: 'Deprecate Schema',
-    icon: 'pi pi-exclamation-triangle',
-    acceptLabel: 'Deprecate',
-    acceptClass: 'p-button-warning',
-    accept: () => deprecateSchema(sv.version),
-  });
+	confirm.require({
+		message: `Deprecate schema version ${sv.version}?`,
+		header: "Deprecate Schema",
+		icon: "pi pi-exclamation-triangle",
+		acceptLabel: "Deprecate",
+		acceptClass: "p-button-warning",
+		accept: () => deprecateSchema(sv.version),
+	});
 }
 
 async function deprecateSchema(version: string) {
-  if (!eventType.value) return;
-  try {
-    eventType.value = await eventTypesApi.deprecateSchema(eventType.value.id, version);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: `Schema ${version} deprecated`,
-      life: 3000,
-    });
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to deprecate', life: 3000 });
-  }
+	if (!eventType.value) return;
+	try {
+		eventType.value = await eventTypesApi.deprecateSchema(
+			eventType.value.id,
+			version,
+		);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: `Schema ${version} deprecated`,
+			life: 3000,
+		});
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to deprecate",
+			life: 3000,
+		});
+	}
 }
 
 function confirmArchive() {
-  confirm.require({
-    message: 'Archive this event type? No new events can be created for archived types.',
-    header: 'Archive Event Type',
-    icon: 'pi pi-exclamation-triangle',
-    acceptLabel: 'Archive',
-    acceptClass: 'p-button-warning',
-    accept: archiveEventType,
-  });
+	confirm.require({
+		message:
+			"Archive this event type? No new events can be created for archived types.",
+		header: "Archive Event Type",
+		icon: "pi pi-exclamation-triangle",
+		acceptLabel: "Archive",
+		acceptClass: "p-button-warning",
+		accept: archiveEventType,
+	});
 }
 
 async function archiveEventType() {
-  if (!eventType.value) return;
-  try {
-    eventType.value = await eventTypesApi.archive(eventType.value.id);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Event type archived',
-      life: 3000,
-    });
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to archive', life: 3000 });
-  }
+	if (!eventType.value) return;
+	try {
+		eventType.value = await eventTypesApi.archive(eventType.value.id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Event type archived",
+			life: 3000,
+		});
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to archive",
+			life: 3000,
+		});
+	}
 }
 
 function confirmDelete() {
-  confirm.require({
-    message: 'Delete this event type? This cannot be undone.',
-    header: 'Delete Event Type',
-    icon: 'pi pi-exclamation-triangle',
-    acceptLabel: 'Delete',
-    acceptClass: 'p-button-danger',
-    accept: deleteEventType,
-  });
+	confirm.require({
+		message: "Delete this event type? This cannot be undone.",
+		header: "Delete Event Type",
+		icon: "pi pi-exclamation-triangle",
+		acceptLabel: "Delete",
+		acceptClass: "p-button-danger",
+		accept: deleteEventType,
+	});
 }
 
 async function deleteEventType() {
-  if (!eventType.value) return;
-  try {
-    await eventTypesApi.delete(eventType.value.id);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Event type deleted',
-      life: 3000,
-    });
-    router.push('/event-types');
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete', life: 3000 });
-  }
+	if (!eventType.value) return;
+	try {
+		await eventTypesApi.delete(eventType.value.id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Event type deleted",
+			life: 3000,
+		});
+		router.push("/event-types");
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to delete",
+			life: 3000,
+		});
+	}
 }
 </script>
 

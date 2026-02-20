@@ -116,6 +116,15 @@ public class CreateEmailDomainMappingUseCase implements UseCase<CreateEmailDomai
             ));
         }
 
+        // Validate requiredOidcTenantId for multi-tenant IDPs
+        if (idp.oidcMultiTenant && (command.requiredOidcTenantId() == null || command.requiredOidcTenantId().isBlank())) {
+            return Result.failure(new UseCaseError.ValidationError(
+                "REQUIRED_OIDC_TENANT_ID_REQUIRED",
+                "Required OIDC Tenant ID must be set for multi-tenant identity providers",
+                Map.of("field", "requiredOidcTenantId")
+            ));
+        }
+
         // Validate email domain is allowed by IDP (if IDP has restrictions)
         if (!idp.isEmailDomainAllowed(normalizedDomain)) {
             return Result.failure(new UseCaseError.BusinessRuleViolation(

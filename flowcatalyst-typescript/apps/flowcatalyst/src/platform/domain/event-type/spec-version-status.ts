@@ -6,10 +6,10 @@
  * - DEPRECATED: Superseded but still valid for reading
  */
 
-export type SpecVersionStatus = 'FINALISING' | 'CURRENT' | 'DEPRECATED';
+export type SpecVersionStatus = "FINALISING" | "CURRENT" | "DEPRECATED";
 
 export const SpecVersionStatus = {
-  FINALISING: 'FINALISING' as const,
-  CURRENT: 'CURRENT' as const,
-  DEPRECATED: 'DEPRECATED' as const,
+	FINALISING: "FINALISING" as const,
+	CURRENT: "CURRENT" as const,
+	DEPRECATED: "DEPRECATED" as const,
 } as const;

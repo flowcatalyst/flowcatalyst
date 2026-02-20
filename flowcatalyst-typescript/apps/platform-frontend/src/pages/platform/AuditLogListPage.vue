@@ -1,20 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Select from 'primevue/select';
-import Button from 'primevue/button';
-import Tag from 'primevue/tag';
-import Dialog from 'primevue/dialog';
-import ProgressSpinner from 'primevue/progressspinner';
+import { ref, onMounted, computed } from "vue";
 import {
-  fetchAuditLogs,
-  fetchAuditLogById,
-  fetchEntityTypes,
-  fetchOperations,
-  type AuditLog,
-  type AuditLogDetail,
-} from '@/api/audit-logs';
+	fetchAuditLogs,
+	fetchAuditLogById,
+	fetchEntityTypes,
+	fetchOperations,
+	type AuditLog,
+	type AuditLogDetail,
+} from "@/api/audit-logs";
 
 const auditLogs = ref<AuditLog[]>([]);
 const totalRecords = ref(0);
@@ -37,107 +30,107 @@ const showDetailDialog = ref(false);
 const loadingDetail = ref(false);
 
 const hasActiveFilters = computed(() => {
-  return selectedEntityType.value !== null || selectedOperation.value !== null;
+	return selectedEntityType.value !== null || selectedOperation.value !== null;
 });
 
 async function loadFilters() {
-  try {
-    const [entityTypesRes, operationsRes] = await Promise.all([
-      fetchEntityTypes(),
-      fetchOperations(),
-    ]);
-    entityTypes.value = entityTypesRes.entityTypes;
-    operations.value = operationsRes.operations;
-  } catch (error) {
-    console.error('Failed to load filters:', error);
-  }
+	try {
+		const [entityTypesRes, operationsRes] = await Promise.all([
+			fetchEntityTypes(),
+			fetchOperations(),
+		]);
+		entityTypes.value = entityTypesRes.entityTypes;
+		operations.value = operationsRes.operations;
+	} catch (error) {
+		console.error("Failed to load filters:", error);
+	}
 }
 
 async function loadAuditLogs() {
-  loading.value = true;
-  try {
-    const response = await fetchAuditLogs({
-      entityType: selectedEntityType.value || undefined,
-      operation: selectedOperation.value || undefined,
-      page: page.value,
-      pageSize: pageSize.value,
-    });
-    auditLogs.value = response.auditLogs;
-    totalRecords.value = response.total;
-  } catch (error) {
-    console.error('Failed to load audit logs:', error);
-  } finally {
-    loading.value = false;
-    initialLoading.value = false;
-  }
+	loading.value = true;
+	try {
+		const response = await fetchAuditLogs({
+			entityType: selectedEntityType.value || undefined,
+			operation: selectedOperation.value || undefined,
+			page: page.value,
+			pageSize: pageSize.value,
+		});
+		auditLogs.value = response.auditLogs;
+		totalRecords.value = response.total;
+	} catch (error) {
+		console.error("Failed to load audit logs:", error);
+	} finally {
+		loading.value = false;
+		initialLoading.value = false;
+	}
 }
 
 async function viewDetails(log: AuditLog) {
-  loadingDetail.value = true;
-  showDetailDialog.value = true;
-  try {
-    selectedLog.value = await fetchAuditLogById(log.id);
-  } catch (error) {
-    console.error('Failed to load audit log details:', error);
-  } finally {
-    loadingDetail.value = false;
-  }
+	loadingDetail.value = true;
+	showDetailDialog.value = true;
+	try {
+		selectedLog.value = await fetchAuditLogById(log.id);
+	} catch (error) {
+		console.error("Failed to load audit log details:", error);
+	} finally {
+		loadingDetail.value = false;
+	}
 }
 
 function onPage(event: { page: number; rows: number }) {
-  page.value = event.page;
-  pageSize.value = event.rows;
-  loadAuditLogs();
+	page.value = event.page;
+	pageSize.value = event.rows;
+	loadAuditLogs();
 }
 
 function clearFilters() {
-  selectedEntityType.value = null;
-  selectedOperation.value = null;
-  page.value = 0;
-  loadAuditLogs();
+	selectedEntityType.value = null;
+	selectedOperation.value = null;
+	page.value = 0;
+	loadAuditLogs();
 }
 
 function applyFilters() {
-  page.value = 0;
-  loadAuditLogs();
+	page.value = 0;
+	loadAuditLogs();
 }
 
 function formatDateTime(isoString: string): string {
-  return new Date(isoString).toLocaleString();
+	return new Date(isoString).toLocaleString();
 }
 
 function formatOperationName(operation: string): string {
-  // Convert camelCase/PascalCase to readable format
-  return operation
-    .replace(/([A-Z])/g, ' $1')
-    .replace(/^./, (str) => str.toUpperCase())
-    .trim();
+	// Convert camelCase/PascalCase to readable format
+	return operation
+		.replace(/([A-Z])/g, " $1")
+		.replace(/^./, (str) => str.toUpperCase())
+		.trim();
 }
 
 function getEntityTypeSeverity(entityType: string): string {
-  const types: Record<string, string> = {
-    ClientAuthConfig: 'info',
-    Role: 'warn',
-    Principal: 'success',
-    Application: 'secondary',
-    Client: 'secondary',
-    EventType: 'info',
-  };
-  return types[entityType] || 'secondary';
+	const types: Record<string, string> = {
+		ClientAuthConfig: "info",
+		Role: "warn",
+		Principal: "success",
+		Application: "secondary",
+		Client: "secondary",
+		EventType: "info",
+	};
+	return types[entityType] || "secondary";
 }
 
 function formatJson(json: string | null): string {
-  if (!json) return 'No data';
-  try {
-    return JSON.stringify(JSON.parse(json), null, 2);
-  } catch {
-    return json;
-  }
+	if (!json) return "No data";
+	try {
+		return JSON.stringify(JSON.parse(json), null, 2);
+	} catch {
+		return json;
+	}
 }
 
 onMounted(async () => {
-  await loadFilters();
-  await loadAuditLogs();
+	await loadFilters();
+	await loadAuditLogs();
 });
 </script>
 

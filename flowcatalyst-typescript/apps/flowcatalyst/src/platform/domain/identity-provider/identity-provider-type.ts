@@ -2,4 +2,4 @@
  * Identity Provider Type
  */
 
-export type IdentityProviderType = 'INTERNAL' | 'OIDC';
+export type IdentityProviderType = "INTERNAL" | "OIDC";

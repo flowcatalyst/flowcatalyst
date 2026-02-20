@@ -51,86 +51,86 @@
 
 // Types
 export {
-  type TracingData,
-  type AuditData,
-  type TracingPluginOptions,
-  type AuditPluginOptions,
-  type ErrorResponse,
-  type FastifyRequest,
-  type FastifyReply,
-  type Logger,
-} from './types.js';
+	type TracingData,
+	type AuditData,
+	type TracingPluginOptions,
+	type AuditPluginOptions,
+	type ErrorResponse,
+	type FastifyRequest,
+	type FastifyReply,
+	type Logger,
+} from "./types.js";
 
 // Plugins
 export {
-  tracingPlugin,
-  requireTracing,
-  getTracingHeaders,
-  auditPlugin,
-  requireAuth,
-  getPrincipalId,
-  isAuthenticated,
-  requireAuthHook,
-  requireRoleHook,
-  executionContextPlugin,
-  requireExecutionContext,
-} from './plugins/index.js';
+	tracingPlugin,
+	requireTracing,
+	getTracingHeaders,
+	auditPlugin,
+	requireAuth,
+	getPrincipalId,
+	isAuthenticated,
+	requireAuthHook,
+	requireRoleHook,
+	executionContextPlugin,
+	requireExecutionContext,
+} from "./plugins/index.js";
 
 // Logging
 export {
-  createLogger,
-  createRequestLogger,
-  createFastifyLoggerOptions,
-  type LoggingConfig,
-} from './logging.js';
+	createLogger,
+	createRequestLogger,
+	createFastifyLoggerOptions,
+	type LoggingConfig,
+} from "./logging.js";
 
 // Response utilities
 export {
-  getErrorStatus,
-  toErrorResponse,
-  sendResult,
-  matchResult,
-  jsonSuccess,
-  jsonCreated,
-  noContent,
-  jsonError,
-  notFound,
-  unauthorized,
-  forbidden,
-  badRequest,
-  type SendResultOptions,
-} from './response.js';
+	getErrorStatus,
+	toErrorResponse,
+	sendResult,
+	matchResult,
+	jsonSuccess,
+	jsonCreated,
+	noContent,
+	jsonError,
+	notFound,
+	unauthorized,
+	forbidden,
+	badRequest,
+	type SendResultOptions,
+} from "./response.js";
 
 // Error handler
 export {
-  errorHandlerPlugin,
-  createCommonErrorMappers,
-  createStandardErrorHandlerOptions,
-  type ErrorHandlerConfig,
-  type ErrorMapper,
-} from './error-handler.js';
+	errorHandlerPlugin,
+	createCommonErrorMappers,
+	createStandardErrorHandlerOptions,
+	type ErrorHandlerConfig,
+	type ErrorMapper,
+} from "./error-handler.js";
 
 // OpenAPI utilities (TypeBox for native Fastify JSON Schema support)
 export {
-  CommonSchemas,
-  ErrorResponseSchema,
-  type ErrorResponseType,
-  MessageResponseSchema,
-  type MessageResponseType,
-  SyncResponseSchema,
-  type SyncResponseType,
-  BatchResponseSchema,
-  BatchResultItemSchema,
-  type BatchResponseType,
-  paginatedResponse,
-  entitySchema,
-  OpenAPIResponses,
-  combineResponses,
-  validateBody,
-  safeValidate,
-  Type,
-  Value,
-  type Static,
-  type TSchema,
-  type TObject,
-} from './openapi.js';
+	CommonSchemas,
+	ErrorResponseSchema,
+	type ErrorResponseType,
+	MessageResponseSchema,
+	type MessageResponseType,
+	SyncResponseSchema,
+	type SyncResponseType,
+	BatchResponseSchema,
+	BatchResultItemSchema,
+	type BatchResponseType,
+	paginatedResponse,
+	entitySchema,
+	OpenAPIResponses,
+	combineResponses,
+	validateBody,
+	safeValidate,
+	Type,
+	Value,
+	type Static,
+	type TSchema,
+	type TObject,
+} from "./openapi.js";

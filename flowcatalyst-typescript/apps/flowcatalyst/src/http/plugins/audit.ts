@@ -8,16 +8,16 @@
  * for consistent principal tracking across the application.
  */
 
-import type { FastifyPluginAsync, preHandlerHookHandler } from 'fastify';
-import fp from 'fastify-plugin';
-import { AuditContext } from '@flowcatalyst/domain-core';
-import type { AuditPluginOptions, AuditData } from '../types.js';
+import type { FastifyPluginAsync, preHandlerHookHandler } from "fastify";
+import fp from "fastify-plugin";
+import { AuditContext } from "@flowcatalyst/domain-core";
+import type { AuditPluginOptions, AuditData } from "../types.js";
 
 // Declare the cookies property from @fastify/cookie
-declare module 'fastify' {
-  interface FastifyRequest {
-    cookies: Record<string, string | undefined>;
-  }
+declare module "fastify" {
+	interface FastifyRequest {
+		cookies: Record<string, string | undefined>;
+	}
 }
 
 /**
@@ -54,86 +54,94 @@ declare module 'fastify' {
  * });
  * ```
  */
-const auditPluginAsync: FastifyPluginAsync<AuditPluginOptions> = async (fastify, opts) => {
-  const { sessionCookieName = 'session', skipPaths = [], validateToken, loadPrincipal } = opts;
+const auditPluginAsync: FastifyPluginAsync<AuditPluginOptions> = async (
+	fastify,
+	opts,
+) => {
+	const {
+		sessionCookieName = "session",
+		skipPaths = [],
+		validateToken,
+		loadPrincipal,
+	} = opts;
 
-  // Decorate request with audit data (using getter/setter pattern)
-  fastify.decorateRequest('audit', {
-    getter() {
-      return (this as unknown as { _audit: AuditData })._audit;
-    },
-    setter(value: AuditData) {
-      (this as unknown as { _audit: AuditData })._audit = value;
-    },
-  });
+	// Decorate request with audit data (using getter/setter pattern)
+	fastify.decorateRequest("audit", {
+		getter() {
+			return (this as unknown as { _audit: AuditData })._audit;
+		},
+		setter(value: AuditData) {
+			(this as unknown as { _audit: AuditData })._audit = value;
+		},
+	});
 
-  // Add audit data to each request
-  fastify.addHook('onRequest', async (request) => {
-    const path = new URL(request.url, `http://${request.hostname}`).pathname;
+	// Add audit data to each request
+	fastify.addHook("onRequest", async (request) => {
+		const path = new URL(request.url, `http://${request.hostname}`).pathname;
 
-    // Skip authentication for specified paths
-    for (const skipPath of skipPaths) {
-      if (path.startsWith(skipPath)) {
-        request.audit = { principalId: null, principal: null };
-        return;
-      }
-    }
+		// Skip authentication for specified paths
+		for (const skipPath of skipPaths) {
+			if (path.startsWith(skipPath)) {
+				request.audit = { principalId: null, principal: null };
+				return;
+			}
+		}
 
-    let principalId: string | null = null;
+		let principalId: string | null = null;
 
-    // Try session cookie first (requires @fastify/cookie)
-    const cookies = request.cookies;
-    const sessionToken = cookies?.[sessionCookieName];
-    if (sessionToken) {
-      principalId = await validateToken(sessionToken);
-    }
+		// Try session cookie first (requires @fastify/cookie)
+		const cookies = request.cookies;
+		const sessionToken = cookies?.[sessionCookieName];
+		if (sessionToken) {
+			principalId = await validateToken(sessionToken);
+		}
 
-    // Fall back to Bearer token
-    if (!principalId) {
-      const authHeader = request.headers.authorization;
-      if (authHeader?.startsWith('Bearer ')) {
-        const token = authHeader.substring('Bearer '.length);
-        principalId = await validateToken(token);
-      }
-    }
+		// Fall back to Bearer token
+		if (!principalId) {
+			const authHeader = request.headers.authorization;
+			if (authHeader?.startsWith("Bearer ")) {
+				const token = authHeader.substring("Bearer ".length);
+				principalId = await validateToken(token);
+			}
+		}
 
-    // Load full principal if configured and authenticated
-    let principal = null;
-    if (principalId && loadPrincipal) {
-      principal = await loadPrincipal(principalId);
-    }
+		// Load full principal if configured and authenticated
+		let principal = null;
+		if (principalId && loadPrincipal) {
+			principal = await loadPrincipal(principalId);
+		}
 
-    // Store audit data in request.
-    // Use the resolved principal ID when available — for client_credentials tokens
-    // the JWT sub is the OAuth client_id (e.g. "sa-inhance-php-apps"), but the
-    // canonical principal ID is the TSID from the database (e.g. "prn_...").
-    const auditData: AuditData = {
-      principalId: principal?.id ?? principalId,
-      principal,
-    };
-    request.audit = auditData;
+		// Store audit data in request.
+		// Use the resolved principal ID when available — for client_credentials tokens
+		// the JWT sub is the OAuth client_id (e.g. "sa-inhance-php-apps"), but the
+		// canonical principal ID is the TSID from the database (e.g. "prn_...").
+		const auditData: AuditData = {
+			principalId: principal?.id ?? principalId,
+			principal,
+		};
+		request.audit = auditData;
 
-    // Populate AuditContext AsyncLocalStorage so that authorization
-    // helpers (getAccessibleClientIds, canAccessResourceByClient) work
-    if (principal) {
-      AuditContext.enterWith(principal);
-    }
-  });
+		// Populate AuditContext AsyncLocalStorage so that authorization
+		// helpers (getAccessibleClientIds, canAccessResourceByClient) work
+		if (principal) {
+			AuditContext.enterWith(principal);
+		}
+	});
 
-  // Re-enter AuditContext in preHandler to ensure AsyncLocalStorage
-  // propagates to route handlers. enterWith() in onRequest may lose
-  // context across Fastify's hook chain boundaries.
-  fastify.addHook('preHandler', async (request) => {
-    const principal = request.audit?.principal;
-    if (principal) {
-      AuditContext.enterWith(principal);
-    }
-  });
+	// Re-enter AuditContext in preHandler to ensure AsyncLocalStorage
+	// propagates to route handlers. enterWith() in onRequest may lose
+	// context across Fastify's hook chain boundaries.
+	fastify.addHook("preHandler", async (request) => {
+		const principal = request.audit?.principal;
+		if (principal) {
+			AuditContext.enterWith(principal);
+		}
+	});
 };
 
 export const auditPlugin = fp(auditPluginAsync, {
-  name: '@flowcatalyst/audit',
-  fastify: '5.x',
+	name: "@flowcatalyst/audit",
+	fastify: "5.x",
 });
 
 /**
@@ -144,11 +152,11 @@ export const auditPlugin = fp(auditPluginAsync, {
  * @throws Object with statusCode for Fastify error handling
  */
 export function requireAuth(request: { audit?: AuditData }): string {
-  const audit = request.audit;
-  if (!audit?.principalId) {
-    throw { statusCode: 401, message: 'Authentication required' };
-  }
-  return audit.principalId;
+	const audit = request.audit;
+	if (!audit?.principalId) {
+		throw { statusCode: 401, message: "Authentication required" };
+	}
+	return audit.principalId;
 }
 
 /**
@@ -158,7 +166,7 @@ export function requireAuth(request: { audit?: AuditData }): string {
  * @returns Principal ID or null
  */
 export function getPrincipalId(request: { audit?: AuditData }): string | null {
-  return request.audit?.principalId ?? null;
+	return request.audit?.principalId ?? null;
 }
 
 /**
@@ -168,7 +176,7 @@ export function getPrincipalId(request: { audit?: AuditData }): string | null {
  * @returns True if authenticated
  */
 export function isAuthenticated(request: { audit?: AuditData }): boolean {
-  return request.audit?.principalId != null;
+	return request.audit?.principalId != null;
 }
 
 /**
@@ -184,15 +192,15 @@ export function isAuthenticated(request: { audit?: AuditData }): boolean {
  * ```
  */
 export function requireAuthHook(): preHandlerHookHandler {
-  return async (request, reply) => {
-    const audit = request.audit;
-    if (!audit?.principalId) {
-      return reply.status(401).send({
-        code: 'UNAUTHORIZED',
-        message: 'Authentication required',
-      });
-    }
-  };
+	return async (request, reply) => {
+		const audit = request.audit;
+		if (!audit?.principalId) {
+			return reply.status(401).send({
+				code: "UNAUTHORIZED",
+				message: "Authentication required",
+			});
+		}
+	};
 }
 
 /**
@@ -209,20 +217,20 @@ export function requireAuthHook(): preHandlerHookHandler {
  * ```
  */
 export function requireRoleHook(roleName: string): preHandlerHookHandler {
-  return async (request, reply) => {
-    const audit = request.audit;
-    if (!audit?.principal) {
-      return reply.status(401).send({
-        code: 'UNAUTHORIZED',
-        message: 'Authentication required',
-      });
-    }
+	return async (request, reply) => {
+		const audit = request.audit;
+		if (!audit?.principal) {
+			return reply.status(401).send({
+				code: "UNAUTHORIZED",
+				message: "Authentication required",
+			});
+		}
 
-    if (!audit.principal.roles.has(roleName)) {
-      return reply.status(403).send({
-        code: 'FORBIDDEN',
-        message: 'Insufficient permissions',
-      });
-    }
-  };
+		if (!audit.principal.roles.has(roleName)) {
+			return reply.status(403).send({
+				code: "FORBIDDEN",
+				message: "Insufficient permissions",
+			});
+		}
+	};
 }

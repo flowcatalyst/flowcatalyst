@@ -7,10 +7,10 @@
  * - UI: Created via admin UI
  */
 
-export type EventTypeSource = 'CODE' | 'API' | 'UI';
+export type EventTypeSource = "CODE" | "API" | "UI";
 
 export const EventTypeSource = {
-  CODE: 'CODE' as const,
-  API: 'API' as const,
-  UI: 'UI' as const,
+	CODE: "CODE" as const,
+	API: "API" as const,
+	UI: "UI" as const,
 } as const;

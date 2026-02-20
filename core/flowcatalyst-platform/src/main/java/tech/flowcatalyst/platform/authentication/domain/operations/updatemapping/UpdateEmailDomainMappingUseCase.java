@@ -152,6 +152,18 @@ public class UpdateEmailDomainMappingUseCase implements UseCase<UpdateEmailDomai
                 : command.requiredOidcTenantId();
         }
 
+        // Validate requiredOidcTenantId for multi-tenant IDPs
+        // Load the effective IDP to check oidcMultiTenant
+        var effectiveIdp = idp != null ? idp : idpRepo.findByIdOptional(mapping.identityProviderId).orElse(null);
+        if (effectiveIdp != null && effectiveIdp.oidcMultiTenant
+                && (mapping.requiredOidcTenantId == null || mapping.requiredOidcTenantId.isBlank())) {
+            return Result.failure(new UseCaseError.ValidationError(
+                "REQUIRED_OIDC_TENANT_ID_REQUIRED",
+                "Required OIDC Tenant ID must be set for multi-tenant identity providers",
+                Map.of("field", "requiredOidcTenantId")
+            ));
+        }
+
         // Update allowedRoleIds if provided
         if (command.allowedRoleIds() != null) {
             mapping.allowedRoleIds = new ArrayList<>(command.allowedRoleIds());

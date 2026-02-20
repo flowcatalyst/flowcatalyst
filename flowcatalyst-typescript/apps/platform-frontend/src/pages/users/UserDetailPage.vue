@@ -1,28 +1,20 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Tag from 'primevue/tag';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import AutoComplete from 'primevue/autocomplete';
-import Dialog from 'primevue/dialog';
-import Message from 'primevue/message';
-import ProgressSpinner from 'primevue/progressspinner';
+import { ref, computed, onMounted } from "vue";
+import { useRouter, useRoute } from "vue-router";
+import { useToast } from "primevue/usetoast";
 import {
-  usersApi,
-  type User,
-  type ClientAccessGrant,
-  type RoleAssignment,
-  type RolesAssignedResponse,
-  type ApplicationAccessGrant,
-  type ApplicationAccessAssignedResponse,
-  type AvailableApplication,
-} from '@/api/users';
-import { clientsApi, type Client } from '@/api/clients';
-import { rolesApi, type Role } from '@/api/roles';
+	usersApi,
+	type User,
+	type ClientAccessGrant,
+	type RoleAssignment,
+	type RolesAssignedResponse,
+	type ApplicationAccessGrant,
+	type ApplicationAccessAssignedResponse,
+	type AvailableApplication,
+} from "@/api/users";
+import { clientsApi, type Client } from "@/api/clients";
+import { rolesApi, type Role } from "@/api/roles";
+import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
 const route = useRoute();
@@ -38,11 +30,11 @@ const saving = ref(false);
 
 // Edit mode
 const editMode = ref(false);
-const editName = ref('');
+const editName = ref("");
 
 // Add client access dialog
 const showAddClientDialog = ref(false);
-const clientSearchQuery = ref('');
+const clientSearchQuery = ref("");
 const selectedClient = ref<Client | null>(null);
 const filteredClients = ref<Client[]>([]);
 
@@ -50,7 +42,7 @@ const filteredClients = ref<Client[]>([]);
 const roleAssignments = ref<RoleAssignment[]>([]);
 const availableRoles = ref<Role[]>([]);
 const showRolePickerDialog = ref(false);
-const roleSearchQuery = ref('');
+const roleSearchQuery = ref("");
 const selectedRoleNames = ref<Set<string>>(new Set());
 const savingRoles = ref(false);
 
@@ -58,7 +50,7 @@ const savingRoles = ref(false);
 const applicationAccessGrants = ref<ApplicationAccessGrant[]>([]);
 const availableApplications = ref<AvailableApplication[]>([]);
 const showAppPickerDialog = ref(false);
-const appSearchQuery = ref('');
+const appSearchQuery = ref("");
 const selectedAppIds = ref<Set<string>>(new Set());
 const savingApps = ref(false);
 
@@ -69,503 +61,526 @@ const deleteLoading = ref(false);
 const isAnchorUser = computed(() => user.value?.isAnchorUser ?? false);
 
 const userType = computed(() => {
-  if (!user.value) return null;
+	if (!user.value) return null;
 
-  // Use the explicit scope if available
-  if (user.value.scope) {
-    switch (user.value.scope) {
-      case 'ANCHOR':
-        return { label: 'Anchor', severity: 'warn', icon: 'pi pi-star' };
-      case 'PARTNER':
-        return { label: 'Partner', severity: 'info', icon: undefined };
-      case 'CLIENT':
-        return { label: 'Client', severity: 'secondary', icon: undefined };
-    }
-  }
+	// Use the explicit scope if available
+	if (user.value.scope) {
+		switch (user.value.scope) {
+			case "ANCHOR":
+				return { label: "Anchor", severity: "warn", icon: "pi pi-star" };
+			case "PARTNER":
+				return { label: "Partner", severity: "info", icon: undefined };
+			case "CLIENT":
+				return { label: "Client", severity: "secondary", icon: undefined };
+		}
+	}
 
-  // Fallback to derived logic for backwards compatibility
-  if (user.value.isAnchorUser) {
-    return { label: 'Anchor', severity: 'warn', icon: 'pi pi-star' };
-  }
-  const grantedCount = clientGrants.value.length;
-  if (grantedCount > 0 || !user.value.clientId) {
-    return { label: 'Partner', severity: 'info', icon: undefined };
-  }
-  return { label: 'Client', severity: 'secondary', icon: undefined };
+	// Fallback to derived logic for backwards compatibility
+	if (user.value.isAnchorUser) {
+		return { label: "Anchor", severity: "warn", icon: "pi pi-star" };
+	}
+	const grantedCount = clientGrants.value.length;
+	if (grantedCount > 0 || !user.value.clientId) {
+		return { label: "Partner", severity: "info", icon: undefined };
+	}
+	return { label: "Client", severity: "secondary", icon: undefined };
 });
 
 const homeClient = computed(() => {
-  if (!user.value?.clientId) return null;
-  return clients.value.find((c) => c.id === user.value?.clientId);
+	if (!user.value?.clientId) return null;
+	return clients.value.find((c) => c.id === user.value?.clientId);
 });
 
 const grantedClients = computed(() => {
-  return clientGrants.value.map((g) => {
-    const client = clients.value.find((c) => c.id === g.clientId);
-    return {
-      ...g,
-      clientName: client?.name || g.clientId,
-      clientIdentifier: client?.identifier || '',
-    };
-  });
+	return clientGrants.value.map((g) => {
+		const client = clients.value.find((c) => c.id === g.clientId);
+		return {
+			...g,
+			clientName: client?.name || g.clientId,
+			clientIdentifier: client?.identifier || "",
+		};
+	});
 });
 
 const availableClients = computed(() => {
-  const existingIds = new Set([user.value?.clientId, ...clientGrants.value.map((g) => g.clientId)]);
-  return clients.value.filter((c) => !existingIds.has(c.id));
+	const existingIds = new Set([
+		user.value?.clientId,
+		...clientGrants.value.map((g) => g.clientId),
+	]);
+	return clients.value.filter((c) => !existingIds.has(c.id));
 });
 
 // Roles filtered by search query for the picker
 const filteredAvailableRoles = computed(() => {
-  const query = roleSearchQuery.value.toLowerCase();
-  return availableRoles.value.filter(
-    (r) => r.name.toLowerCase().includes(query) || r.displayName?.toLowerCase().includes(query),
-  );
+	const query = roleSearchQuery.value.toLowerCase();
+	return availableRoles.value.filter(
+		(r) =>
+			r.name.toLowerCase().includes(query) ||
+			r.displayName?.toLowerCase().includes(query),
+	);
 });
 
 // Check if there are unsaved changes in the role picker
 const hasRoleChanges = computed(() => {
-  const currentRoles = new Set(roleAssignments.value.map((r) => r.roleName));
-  if (currentRoles.size !== selectedRoleNames.value.size) return true;
-  for (const role of currentRoles) {
-    if (!selectedRoleNames.value.has(role)) return true;
-  }
-  return false;
+	const currentRoles = new Set(roleAssignments.value.map((r) => r.roleName));
+	if (currentRoles.size !== selectedRoleNames.value.size) return true;
+	for (const role of currentRoles) {
+		if (!selectedRoleNames.value.has(role)) return true;
+	}
+	return false;
 });
 
 // Filtered available apps for the picker
 const filteredAvailableApps = computed(() => {
-  const query = appSearchQuery.value.toLowerCase();
-  return availableApplications.value.filter(
-    (a) => a.name.toLowerCase().includes(query) || a.code.toLowerCase().includes(query),
-  );
+	const query = appSearchQuery.value.toLowerCase();
+	return availableApplications.value.filter(
+		(a) =>
+			a.name.toLowerCase().includes(query) ||
+			a.code.toLowerCase().includes(query),
+	);
 });
 
 // Check if there are unsaved changes in the app picker
 const hasAppChanges = computed(() => {
-  const currentApps = new Set(applicationAccessGrants.value.map((a) => a.id));
-  if (currentApps.size !== selectedAppIds.value.size) return true;
-  for (const appId of currentApps) {
-    if (!selectedAppIds.value.has(appId)) return true;
-  }
-  return false;
+	const currentApps = new Set(applicationAccessGrants.value.map((a) => a.id));
+	if (currentApps.size !== selectedAppIds.value.size) return true;
+	for (const appId of currentApps) {
+		if (!selectedAppIds.value.has(appId)) return true;
+	}
+	return false;
 });
 
 onMounted(async () => {
-  await Promise.all([loadUser(), loadClients(), loadAvailableRoles()]);
-  if (user.value) {
-    await Promise.all([loadClientGrants(), loadRoleAssignments(), loadApplicationAccess()]);
-    // Check if we should start in edit mode
-    if (route.query.edit === 'true') {
-      startEdit();
-    }
-  }
-  loading.value = false;
+	await Promise.all([loadUser(), loadClients(), loadAvailableRoles()]);
+	if (user.value) {
+		await Promise.all([
+			loadClientGrants(),
+			loadRoleAssignments(),
+			loadApplicationAccess(),
+		]);
+		// Check if we should start in edit mode
+		if (route.query.edit === "true") {
+			startEdit();
+		}
+	}
+	loading.value = false;
 });
 
 async function loadUser() {
-  try {
-    user.value = await usersApi.get(userId);
-    editName.value = user.value.name;
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load user',
-      life: 5000,
-    });
-    console.error('Failed to fetch user:', error);
-    router.push('/users');
-  }
+	try {
+		user.value = await usersApi.get(userId);
+		editName.value = user.value.name;
+	} catch (error) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to load user",
+			life: 5000,
+		});
+		console.error("Failed to fetch user:", error);
+		router.push("/users");
+	}
 }
 
 async function loadClients() {
-  try {
-    const response = await clientsApi.list();
-    clients.value = response.clients;
-  } catch (error) {
-    console.error('Failed to fetch clients:', error);
-  }
+	try {
+		const response = await clientsApi.list();
+		clients.value = response.clients;
+	} catch (error) {
+		console.error("Failed to fetch clients:", error);
+	}
 }
 
 async function loadClientGrants() {
-  try {
-    const response = await usersApi.getClientAccess(userId);
-    clientGrants.value = response.grants;
-  } catch (error) {
-    console.error('Failed to fetch client grants:', error);
-  }
+	try {
+		const response = await usersApi.getClientAccess(userId);
+		clientGrants.value = response.grants;
+	} catch (error) {
+		console.error("Failed to fetch client grants:", error);
+	}
 }
 
 async function loadAvailableRoles() {
-  try {
-    const response = await rolesApi.list();
-    availableRoles.value = response.items;
-  } catch (error) {
-    console.error('Failed to fetch available roles:', error);
-  }
+	try {
+		const response = await rolesApi.list();
+		availableRoles.value = response.items;
+	} catch (error) {
+		console.error("Failed to fetch available roles:", error);
+	}
 }
 
 async function loadRoleAssignments() {
-  try {
-    const response = await usersApi.getRoles(userId);
-    roleAssignments.value = response.roles;
-  } catch (error) {
-    console.error('Failed to fetch role assignments:', error);
-  }
+	try {
+		const response = await usersApi.getRoles(userId);
+		roleAssignments.value = response.roles;
+	} catch (error) {
+		console.error("Failed to fetch role assignments:", error);
+	}
 }
 
 async function loadApplicationAccess() {
-  try {
-    const response = await usersApi.getApplicationAccess(userId);
-    applicationAccessGrants.value = response.applications;
-  } catch (error) {
-    console.error('Failed to fetch application access:', error);
-  }
+	try {
+		const response = await usersApi.getApplicationAccess(userId);
+		applicationAccessGrants.value = response.applications;
+	} catch (error) {
+		console.error("Failed to fetch application access:", error);
+	}
 }
 
 async function loadAvailableApplications() {
-  try {
-    const response = await usersApi.getAvailableApplications(userId);
-    availableApplications.value = response.applications;
-  } catch (error) {
-    console.error('Failed to fetch available applications:', error);
-  }
+	try {
+		const response = await usersApi.getAvailableApplications(userId);
+		availableApplications.value = response.applications;
+	} catch (error) {
+		console.error("Failed to fetch available applications:", error);
+	}
 }
 
 function startEdit() {
-  editName.value = user.value?.name || '';
-  editMode.value = true;
+	editName.value = user.value?.name || "";
+	editMode.value = true;
 }
 
 function cancelEdit() {
-  editName.value = user.value?.name || '';
-  editMode.value = false;
+	editName.value = user.value?.name || "";
+	editMode.value = false;
 }
 
 async function saveUser() {
-  if (!editName.value.trim()) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Name is required',
-      life: 3000,
-    });
-    return;
-  }
+	if (!editName.value.trim()) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Name is required",
+			life: 3000,
+		});
+		return;
+	}
 
-  saving.value = true;
-  try {
-    await usersApi.update(userId, { name: editName.value });
-    user.value!.name = editName.value;
-    editMode.value = false;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'User updated successfully',
-      life: 3000,
-    });
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.message || 'Failed to update user',
-      life: 5000,
-    });
-  } finally {
-    saving.value = false;
-  }
+	saving.value = true;
+	try {
+		await usersApi.update(userId, { name: editName.value });
+		user.value!.name = editName.value;
+		editMode.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "User updated successfully",
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to update user"),
+			life: 5000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 async function toggleUserStatus() {
-  if (!user.value) return;
+	if (!user.value) return;
 
-  saving.value = true;
-  try {
-    if (user.value.active) {
-      await usersApi.deactivate(userId);
-      user.value.active = false;
-      toast.add({
-        severity: 'success',
-        summary: 'Success',
-        detail: 'User deactivated',
-        life: 3000,
-      });
-    } else {
-      await usersApi.activate(userId);
-      user.value.active = true;
-      toast.add({
-        severity: 'success',
-        summary: 'Success',
-        detail: 'User activated',
-        life: 3000,
-      });
-    }
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.message || 'Failed to update user status',
-      life: 5000,
-    });
-  } finally {
-    saving.value = false;
-  }
+	saving.value = true;
+	try {
+		if (user.value.active) {
+			await usersApi.deactivate(userId);
+			user.value.active = false;
+			toast.add({
+				severity: "success",
+				summary: "Success",
+				detail: "User deactivated",
+				life: 3000,
+			});
+		} else {
+			await usersApi.activate(userId);
+			user.value.active = true;
+			toast.add({
+				severity: "success",
+				summary: "Success",
+				detail: "User activated",
+				life: 3000,
+			});
+		}
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to update user status"),
+			life: 5000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 async function deleteUser() {
-  deleteLoading.value = true;
-  try {
-    await usersApi.delete(userId);
-    showDeleteDialog.value = false;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: `User "${user.value?.name}" deleted`,
-      life: 3000,
-    });
-    router.push('/users');
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.message || 'Failed to delete user',
-      life: 5000,
-    });
-  } finally {
-    deleteLoading.value = false;
-  }
+	deleteLoading.value = true;
+	try {
+		await usersApi.delete(userId);
+		showDeleteDialog.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: `User "${user.value?.name}" deleted`,
+			life: 3000,
+		});
+		router.push("/users");
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to delete user"),
+			life: 5000,
+		});
+	} finally {
+		deleteLoading.value = false;
+	}
 }
 
-function searchClients(event: any) {
-  const query = event.query.toLowerCase();
-  filteredClients.value = availableClients.value.filter(
-    (c) => c.name.toLowerCase().includes(query) || c.identifier?.toLowerCase().includes(query),
-  );
+function searchClients(event: { query: string }) {
+	const query = event.query.toLowerCase();
+	filteredClients.value = availableClients.value.filter(
+		(c) =>
+			c.name.toLowerCase().includes(query) ||
+			c.identifier?.toLowerCase().includes(query),
+	);
 }
 
 async function grantClientAccess() {
-  if (!selectedClient.value) return;
+	if (!selectedClient.value) return;
 
-  saving.value = true;
-  try {
-    const grant = await usersApi.grantClientAccess(userId, selectedClient.value.id);
-    clientGrants.value.push(grant);
-    showAddClientDialog.value = false;
-    selectedClient.value = null;
-    clientSearchQuery.value = '';
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Client access granted',
-      life: 3000,
-    });
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.message || 'Failed to grant client access',
-      life: 5000,
-    });
-  } finally {
-    saving.value = false;
-  }
+	saving.value = true;
+	try {
+		const grant = await usersApi.grantClientAccess(
+			userId,
+			selectedClient.value.id,
+		);
+		clientGrants.value.push(grant);
+		showAddClientDialog.value = false;
+		selectedClient.value = null;
+		clientSearchQuery.value = "";
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Client access granted",
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to grant client access"),
+			life: 5000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 async function revokeClientAccess(clientId: string) {
-  saving.value = true;
-  try {
-    await usersApi.revokeClientAccess(userId, clientId);
-    clientGrants.value = clientGrants.value.filter((g) => g.clientId !== clientId);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Client access revoked',
-      life: 3000,
-    });
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.message || 'Failed to revoke client access',
-      life: 5000,
-    });
-  } finally {
-    saving.value = false;
-  }
+	saving.value = true;
+	try {
+		await usersApi.revokeClientAccess(userId, clientId);
+		clientGrants.value = clientGrants.value.filter(
+			(g) => g.clientId !== clientId,
+		);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Client access revoked",
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to revoke client access"),
+			life: 5000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 function openRolePicker() {
-  // Initialize selected roles from current assignments
-  selectedRoleNames.value = new Set(roleAssignments.value.map((r) => r.roleName));
-  roleSearchQuery.value = '';
-  showRolePickerDialog.value = true;
+	// Initialize selected roles from current assignments
+	selectedRoleNames.value = new Set(
+		roleAssignments.value.map((r) => r.roleName),
+	);
+	roleSearchQuery.value = "";
+	showRolePickerDialog.value = true;
 }
 
 function toggleRole(roleName: string) {
-  if (selectedRoleNames.value.has(roleName)) {
-    selectedRoleNames.value.delete(roleName);
-  } else {
-    selectedRoleNames.value.add(roleName);
-  }
-  // Force reactivity update
-  selectedRoleNames.value = new Set(selectedRoleNames.value);
+	if (selectedRoleNames.value.has(roleName)) {
+		selectedRoleNames.value.delete(roleName);
+	} else {
+		selectedRoleNames.value.add(roleName);
+	}
+	// Force reactivity update
+	selectedRoleNames.value = new Set(selectedRoleNames.value);
 }
 
 function removeSelectedRole(roleName: string) {
-  selectedRoleNames.value.delete(roleName);
-  selectedRoleNames.value = new Set(selectedRoleNames.value);
+	selectedRoleNames.value.delete(roleName);
+	selectedRoleNames.value = new Set(selectedRoleNames.value);
 }
 
 function cancelRolePicker() {
-  showRolePickerDialog.value = false;
+	showRolePickerDialog.value = false;
 }
 
 async function saveRoles() {
-  savingRoles.value = true;
-  try {
-    const roles = Array.from(selectedRoleNames.value);
-    const response: RolesAssignedResponse = await usersApi.assignRoles(userId, roles);
+	savingRoles.value = true;
+	try {
+		const roles = Array.from(selectedRoleNames.value);
+		const response: RolesAssignedResponse = await usersApi.assignRoles(
+			userId,
+			roles,
+		);
 
-    // Update role assignments from response
-    roleAssignments.value = response.roles;
+		// Update role assignments from response
+		roleAssignments.value = response.roles;
 
-    // Update user.roles for display
-    if (user.value) {
-      user.value.roles = roles;
-    }
+		// Update user.roles for display
+		if (user.value) {
+			user.value.roles = roles;
+		}
 
-    showRolePickerDialog.value = false;
+		showRolePickerDialog.value = false;
 
-    const added = response.added.length;
-    const removed = response.removed.length;
-    let detail = 'Roles updated';
-    if (added > 0 && removed > 0) {
-      detail = `Added ${added} role(s), removed ${removed} role(s)`;
-    } else if (added > 0) {
-      detail = `Added ${added} role(s)`;
-    } else if (removed > 0) {
-      detail = `Removed ${removed} role(s)`;
-    }
+		const added = response.added.length;
+		const removed = response.removed.length;
+		let detail = "Roles updated";
+		if (added > 0 && removed > 0) {
+			detail = `Added ${added} role(s), removed ${removed} role(s)`;
+		} else if (added > 0) {
+			detail = `Added ${added} role(s)`;
+		} else if (removed > 0) {
+			detail = `Removed ${removed} role(s)`;
+		}
 
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail,
-      life: 3000,
-    });
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.message || 'Failed to save roles',
-      life: 5000,
-    });
-  } finally {
-    savingRoles.value = false;
-  }
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail,
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to save roles"),
+			life: 5000,
+		});
+	} finally {
+		savingRoles.value = false;
+	}
 }
 
 // Get role display info from available roles
 function getRoleDisplay(roleName: string) {
-  const role = availableRoles.value.find((r) => r.name === roleName);
-  return {
-    displayName: role?.displayName || roleName.split(':').pop() || roleName,
-    fullName: roleName,
-  };
+	const role = availableRoles.value.find((r) => r.name === roleName);
+	return {
+		displayName: role?.displayName || roleName.split(":").pop() || roleName,
+		fullName: roleName,
+	};
 }
 
 // ========== Application Access Functions ==========
 
 async function openAppPicker() {
-  // Load available applications if not already loaded
-  if (availableApplications.value.length === 0) {
-    await loadAvailableApplications();
-  }
-  // Initialize selected apps from current grants
-  selectedAppIds.value = new Set(applicationAccessGrants.value.map((a) => a.id));
-  appSearchQuery.value = '';
-  showAppPickerDialog.value = true;
+	// Load available applications if not already loaded
+	if (availableApplications.value.length === 0) {
+		await loadAvailableApplications();
+	}
+	// Initialize selected apps from current grants
+	selectedAppIds.value = new Set(
+		applicationAccessGrants.value.map((a) => a.id),
+	);
+	appSearchQuery.value = "";
+	showAppPickerDialog.value = true;
 }
 
 function toggleApp(appId: string) {
-  if (selectedAppIds.value.has(appId)) {
-    selectedAppIds.value.delete(appId);
-  } else {
-    selectedAppIds.value.add(appId);
-  }
-  // Force reactivity update
-  selectedAppIds.value = new Set(selectedAppIds.value);
+	if (selectedAppIds.value.has(appId)) {
+		selectedAppIds.value.delete(appId);
+	} else {
+		selectedAppIds.value.add(appId);
+	}
+	// Force reactivity update
+	selectedAppIds.value = new Set(selectedAppIds.value);
 }
 
 function removeSelectedApp(appId: string) {
-  selectedAppIds.value.delete(appId);
-  selectedAppIds.value = new Set(selectedAppIds.value);
+	selectedAppIds.value.delete(appId);
+	selectedAppIds.value = new Set(selectedAppIds.value);
 }
 
 function cancelAppPicker() {
-  showAppPickerDialog.value = false;
+	showAppPickerDialog.value = false;
 }
 
 async function saveApps() {
-  savingApps.value = true;
-  try {
-    const applicationIds = Array.from(selectedAppIds.value);
-    const response: ApplicationAccessAssignedResponse = await usersApi.assignApplicationAccess(
-      userId,
-      applicationIds,
-    );
+	savingApps.value = true;
+	try {
+		const applicationIds = Array.from(selectedAppIds.value);
+		const response: ApplicationAccessAssignedResponse =
+			await usersApi.assignApplicationAccess(userId, applicationIds);
 
-    // Update application access grants from response
-    applicationAccessGrants.value = response.applications;
+		// Update application access grants from response
+		applicationAccessGrants.value = response.applications;
 
-    showAppPickerDialog.value = false;
+		showAppPickerDialog.value = false;
 
-    const added = response.added.length;
-    const removed = response.removed.length;
-    let detail = 'Application access updated';
-    if (added > 0 && removed > 0) {
-      detail = `Added ${added} app(s), removed ${removed} app(s)`;
-    } else if (added > 0) {
-      detail = `Added ${added} app(s)`;
-    } else if (removed > 0) {
-      detail = `Removed ${removed} app(s)`;
-    }
+		const added = response.added.length;
+		const removed = response.removed.length;
+		let detail = "Application access updated";
+		if (added > 0 && removed > 0) {
+			detail = `Added ${added} app(s), removed ${removed} app(s)`;
+		} else if (added > 0) {
+			detail = `Added ${added} app(s)`;
+		} else if (removed > 0) {
+			detail = `Removed ${removed} app(s)`;
+		}
 
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail,
-      life: 3000,
-    });
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.message || 'Failed to save application access',
-      life: 5000,
-    });
-  } finally {
-    savingApps.value = false;
-  }
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail,
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to save application access"),
+			life: 5000,
+		});
+	} finally {
+		savingApps.value = false;
+	}
 }
 
 // Get app display info from available applications
 function getAppDisplay(appId: string) {
-  const app = availableApplications.value.find((a) => a.id === appId);
-  return {
-    name: app?.name || appId,
-    code: app?.code || '',
-  };
+	const app = availableApplications.value.find((a) => a.id === appId);
+	return {
+		name: app?.name || appId,
+		code: app?.code || "",
+	};
 }
 
 function formatDate(dateStr: string | null | undefined) {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString();
+	if (!dateStr) return "—";
+	return new Date(dateStr).toLocaleDateString();
 }
 
 function goBack() {
-  router.push('/users');
+	router.push("/users");
 }
 </script>
 

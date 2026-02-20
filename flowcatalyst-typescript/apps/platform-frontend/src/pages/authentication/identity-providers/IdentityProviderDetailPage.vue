@@ -1,16 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Checkbox from 'primevue/checkbox';
-import Chip from 'primevue/chip';
-import Tag from 'primevue/tag';
-import Message from 'primevue/message';
-import Dialog from 'primevue/dialog';
-import ProgressSpinner from 'primevue/progressspinner';
-import { useToast } from 'primevue/usetoast';
-import { identityProvidersApi, type IdentityProvider } from '@/api/identity-providers';
+import { ref, computed, onMounted } from "vue";
+import { useRouter, useRoute } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import {
+	identityProvidersApi,
+	type IdentityProvider,
+} from "@/api/identity-providers";
+import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
 const route = useRoute();
@@ -24,165 +20,170 @@ const error = ref<string | null>(null);
 // Edit mode
 const isEditing = ref(false);
 const editForm = ref({
-  name: '',
-  oidcIssuerUrl: '',
-  oidcClientId: '',
-  oidcClientSecretRef: '',
-  oidcMultiTenant: false,
-  oidcIssuerPattern: '',
-  allowedEmailDomains: [] as string[],
+	name: "",
+	oidcIssuerUrl: "",
+	oidcClientId: "",
+	oidcClientSecretRef: "",
+	oidcMultiTenant: false,
+	oidcIssuerPattern: "",
+	allowedEmailDomains: [] as string[],
 });
-const newAllowedDomain = ref('');
+const newAllowedDomain = ref("");
 
 // Delete dialog
 const showDeleteDialog = ref(false);
 const deleteLoading = ref(false);
 
 const isValid = computed(() => {
-  if (!editForm.value.name.trim()) return false;
-  if (provider.value?.type === 'OIDC') {
-    if (!editForm.value.oidcIssuerUrl.trim()) return false; // Always required for OIDC
-    if (!editForm.value.oidcClientId.trim()) return false;
-  }
-  return true;
+	if (!editForm.value.name.trim()) return false;
+	if (provider.value?.type === "OIDC") {
+		if (!editForm.value.oidcIssuerUrl.trim()) return false; // Always required for OIDC
+		if (!editForm.value.oidcClientId.trim()) return false;
+	}
+	return true;
 });
 
 onMounted(async () => {
-  await loadProvider();
+	await loadProvider();
 });
 
 async function loadProvider() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const id = route.params.id as string;
-    provider.value = await identityProvidersApi.get(id);
-    resetEditForm();
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load identity provider';
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	error.value = null;
+	try {
+		const id = route.params.id as string;
+		provider.value = await identityProvidersApi.get(id);
+		resetEditForm();
+	} catch (e) {
+		error.value =
+			e instanceof Error ? e.message : "Failed to load identity provider";
+	} finally {
+		loading.value = false;
+	}
 }
 
 function resetEditForm() {
-  if (provider.value) {
-    editForm.value = {
-      name: provider.value.name,
-      oidcIssuerUrl: provider.value.oidcIssuerUrl || '',
-      oidcClientId: provider.value.oidcClientId || '',
-      oidcClientSecretRef: '',
-      oidcMultiTenant: provider.value.oidcMultiTenant,
-      oidcIssuerPattern: provider.value.oidcIssuerPattern || '',
-      allowedEmailDomains: [...(provider.value.allowedEmailDomains || [])],
-    };
-  }
+	if (provider.value) {
+		editForm.value = {
+			name: provider.value.name,
+			oidcIssuerUrl: provider.value.oidcIssuerUrl || "",
+			oidcClientId: provider.value.oidcClientId || "",
+			oidcClientSecretRef: "",
+			oidcMultiTenant: provider.value.oidcMultiTenant,
+			oidcIssuerPattern: provider.value.oidcIssuerPattern || "",
+			allowedEmailDomains: [...(provider.value.allowedEmailDomains || [])],
+		};
+	}
 }
 
 function startEditing() {
-  resetEditForm();
-  isEditing.value = true;
+	resetEditForm();
+	isEditing.value = true;
 }
 
 function cancelEditing() {
-  resetEditForm();
-  isEditing.value = false;
+	resetEditForm();
+	isEditing.value = false;
 }
 
 function addAllowedDomain() {
-  const domain = newAllowedDomain.value.trim().toLowerCase();
-  if (domain && !editForm.value.allowedEmailDomains.includes(domain)) {
-    if (domain.match(/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/)) {
-      editForm.value.allowedEmailDomains.push(domain);
-      newAllowedDomain.value = '';
-    } else {
-      toast.add({
-        severity: 'error',
-        summary: 'Invalid Domain',
-        detail: 'Please enter a valid domain name',
-        life: 3000,
-      });
-    }
-  }
+	const domain = newAllowedDomain.value.trim().toLowerCase();
+	if (domain && !editForm.value.allowedEmailDomains.includes(domain)) {
+		if (domain.match(/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/)) {
+			editForm.value.allowedEmailDomains.push(domain);
+			newAllowedDomain.value = "";
+		} else {
+			toast.add({
+				severity: "error",
+				summary: "Invalid Domain",
+				detail: "Please enter a valid domain name",
+				life: 3000,
+			});
+		}
+	}
 }
 
 function removeAllowedDomain(domain: string) {
-  editForm.value.allowedEmailDomains = editForm.value.allowedEmailDomains.filter(
-    (d) => d !== domain,
-  );
+	editForm.value.allowedEmailDomains =
+		editForm.value.allowedEmailDomains.filter((d) => d !== domain);
 }
 
 async function saveChanges() {
-  if (!provider.value || !isValid.value) return;
+	if (!provider.value || !isValid.value) return;
 
-  saving.value = true;
-  error.value = null;
+	saving.value = true;
+	error.value = null;
 
-  try {
-    const updateData: any = {
-      name: editForm.value.name.trim(),
-      allowedEmailDomains: editForm.value.allowedEmailDomains,
-    };
+	try {
+		const updateData: Record<string, unknown> = {
+			name: editForm.value.name.trim(),
+			allowedEmailDomains: editForm.value.allowedEmailDomains,
+		};
 
-    if (provider.value.type === 'OIDC') {
-      updateData.oidcIssuerUrl = editForm.value.oidcIssuerUrl.trim() || null;
-      updateData.oidcClientId = editForm.value.oidcClientId.trim();
-      updateData.oidcMultiTenant = editForm.value.oidcMultiTenant;
-      updateData.oidcIssuerPattern = editForm.value.oidcIssuerPattern.trim() || null;
-      if (editForm.value.oidcClientSecretRef.trim()) {
-        updateData.oidcClientSecretRef = editForm.value.oidcClientSecretRef.trim();
-      }
-    }
+		if (provider.value.type === "OIDC") {
+			updateData.oidcIssuerUrl = editForm.value.oidcIssuerUrl.trim() || null;
+			updateData.oidcClientId = editForm.value.oidcClientId.trim();
+			updateData.oidcMultiTenant = editForm.value.oidcMultiTenant;
+			updateData.oidcIssuerPattern =
+				editForm.value.oidcIssuerPattern.trim() || null;
+			if (editForm.value.oidcClientSecretRef.trim()) {
+				updateData.oidcClientSecretRef =
+					editForm.value.oidcClientSecretRef.trim();
+			}
+		}
 
-    const updated = await identityProvidersApi.update(provider.value.id, updateData);
-    provider.value = updated;
-    isEditing.value = false;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Identity provider updated successfully',
-      life: 3000,
-    });
-  } catch (e: any) {
-    error.value = e?.error || e?.message || 'Failed to update identity provider';
-  } finally {
-    saving.value = false;
-  }
+		const updated = await identityProvidersApi.update(
+			provider.value.id,
+			updateData,
+		);
+		provider.value = updated;
+		isEditing.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Identity provider updated successfully",
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		error.value = getErrorMessage(e, "Failed to update identity provider");
+	} finally {
+		saving.value = false;
+	}
 }
 
 async function deleteProvider() {
-  if (!provider.value) return;
+	if (!provider.value) return;
 
-  deleteLoading.value = true;
+	deleteLoading.value = true;
 
-  try {
-    await identityProvidersApi.delete(provider.value.id);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: `Identity provider "${provider.value.name}" deleted`,
-      life: 3000,
-    });
-    router.push('/authentication/identity-providers');
-  } catch (e: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: e?.error || e?.message || 'Failed to delete identity provider',
-      life: 5000,
-    });
-  } finally {
-    deleteLoading.value = false;
-    showDeleteDialog.value = false;
-  }
+	try {
+		await identityProvidersApi.delete(provider.value.id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: `Identity provider "${provider.value.name}" deleted`,
+			life: 3000,
+		});
+		router.push("/authentication/identity-providers");
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to delete identity provider"),
+			life: 5000,
+		});
+	} finally {
+		deleteLoading.value = false;
+		showDeleteDialog.value = false;
+	}
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleString();
+	return new Date(dateString).toLocaleString();
 }
 
 function getTypeSeverity(type: string) {
-  return type === 'OIDC' ? 'info' : 'secondary';
+	return type === "OIDC" ? "info" : "secondary";
 }
 </script>
 

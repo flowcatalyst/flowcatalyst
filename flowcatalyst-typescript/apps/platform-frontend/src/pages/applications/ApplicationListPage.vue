@@ -1,83 +1,80 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Tag from 'primevue/tag';
-import Select from 'primevue/select';
-import ProgressSpinner from 'primevue/progressspinner';
-import Message from 'primevue/message';
-import { applicationsApi, type Application, type ApplicationType } from '@/api/applications';
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import {
+	applicationsApi,
+	type Application,
+	type ApplicationType,
+} from "@/api/applications";
 
 const router = useRouter();
 const applications = ref<Application[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
-const searchQuery = ref('');
-const typeFilter = ref<ApplicationType | 'ALL'>('ALL');
-const activeFilter = ref<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+const searchQuery = ref("");
+const typeFilter = ref<ApplicationType | "ALL">("ALL");
+const activeFilter = ref<"ALL" | "ACTIVE" | "INACTIVE">("ALL");
 
 const typeOptions = [
-  { label: 'All Types', value: 'ALL' },
-  { label: 'Application', value: 'APPLICATION' },
-  { label: 'Integration', value: 'INTEGRATION' },
+	{ label: "All Types", value: "ALL" },
+	{ label: "Application", value: "APPLICATION" },
+	{ label: "Integration", value: "INTEGRATION" },
 ];
 
 const activeOptions = [
-  { label: 'All Status', value: 'ALL' },
-  { label: 'Active', value: 'ACTIVE' },
-  { label: 'Inactive', value: 'INACTIVE' },
+	{ label: "All Status", value: "ALL" },
+	{ label: "Active", value: "ACTIVE" },
+	{ label: "Inactive", value: "INACTIVE" },
 ];
 
 const filteredApplications = computed(() => {
-  let result = applications.value;
+	let result = applications.value;
 
-  // Filter by type
-  if (typeFilter.value !== 'ALL') {
-    result = result.filter((app) => app.type === typeFilter.value);
-  }
+	// Filter by type
+	if (typeFilter.value !== "ALL") {
+		result = result.filter((app) => app.type === typeFilter.value);
+	}
 
-  // Filter by active status
-  if (activeFilter.value !== 'ALL') {
-    const isActive = activeFilter.value === 'ACTIVE';
-    result = result.filter((app) => app.active === isActive);
-  }
+	// Filter by active status
+	if (activeFilter.value !== "ALL") {
+		const isActive = activeFilter.value === "ACTIVE";
+		result = result.filter((app) => app.active === isActive);
+	}
 
-  // Filter by search query
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase();
-    result = result.filter(
-      (app) =>
-        app.code.toLowerCase().includes(query) ||
-        app.name.toLowerCase().includes(query) ||
-        (app.description?.toLowerCase().includes(query) ?? false),
-    );
-  }
+	// Filter by search query
+	if (searchQuery.value) {
+		const query = searchQuery.value.toLowerCase();
+		result = result.filter(
+			(app) =>
+				app.code.toLowerCase().includes(query) ||
+				app.name.toLowerCase().includes(query) ||
+				(app.description?.toLowerCase().includes(query) ?? false),
+		);
+	}
 
-  return result;
+	return result;
 });
 
 onMounted(async () => {
-  await loadApplications();
+	await loadApplications();
 });
 
 async function loadApplications() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const response = await applicationsApi.list();
-    applications.value = response.applications;
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load applications';
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	error.value = null;
+	try {
+		const response = await applicationsApi.list();
+		applications.value = response.applications;
+	} catch (e) {
+		error.value =
+			e instanceof Error ? e.message : "Failed to load applications";
+	} finally {
+		loading.value = false;
+	}
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString();
+	return new Date(dateString).toLocaleDateString();
 }
 </script>
 

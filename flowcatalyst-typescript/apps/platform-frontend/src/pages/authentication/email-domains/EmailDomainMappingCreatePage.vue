@@ -1,18 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Select from 'primevue/select';
-import Message from 'primevue/message';
-import AutoComplete from 'primevue/autocomplete';
-import PickList from 'primevue/picklist';
-import ToggleSwitch from 'primevue/toggleswitch';
-import { useToast } from 'primevue/usetoast';
-import { emailDomainMappingsApi, type ScopeType } from '@/api/email-domain-mappings';
-import { identityProvidersApi, type IdentityProvider } from '@/api/identity-providers';
-import { clientsApi, type Client } from '@/api/clients';
-import { rolesApi, type Role } from '@/api/roles';
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import {
+	emailDomainMappingsApi,
+	type CreateEmailDomainMappingRequest,
+	type ScopeType,
+} from "@/api/email-domain-mappings";
+import {
+	identityProvidersApi,
+	type IdentityProvider,
+} from "@/api/identity-providers";
+import { clientsApi, type Client } from "@/api/clients";
+import { rolesApi, type Role } from "@/api/roles";
+import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
 const toast = useToast();
@@ -29,24 +30,24 @@ const rolePickerModel = ref<[Role[], Role[]]>([[], []]);
 
 // Form state
 const form = ref({
-  emailDomain: '',
-  identityProviderId: null as string | null,
-  scopeType: 'CLIENT' as ScopeType,
-  primaryClientId: null as string | null,
-  requiredOidcTenantId: '' as string,
-  syncRolesFromIdp: false,
+	emailDomain: "",
+	identityProviderId: null as string | null,
+	scopeType: "CLIENT" as ScopeType,
+	primaryClientId: null as string | null,
+	requiredOidcTenantId: "" as string,
+	syncRolesFromIdp: false,
 });
 
 const isSelectedProviderMultiTenant = computed(() => {
-  return selectedProvider.value?.oidcMultiTenant === true;
+	return selectedProvider.value?.oidcMultiTenant === true;
 });
 
 const isExternalIdp = computed(() => {
-  return selectedProvider.value?.type === 'OIDC';
+	return selectedProvider.value?.type === "OIDC";
 });
 
 const showRolePicker = computed(() => {
-  return isExternalIdp.value && form.value.scopeType !== 'ANCHOR';
+	return isExternalIdp.value && form.value.scopeType !== "ANCHOR";
 });
 
 // Selection state
@@ -55,118 +56,139 @@ const filteredClients = ref<Client[]>([]);
 const selectedClient = ref<Client | null>(null);
 
 const scopeTypeOptions = [
-  { label: 'Anchor', value: 'ANCHOR', description: 'Platform admin - access to all clients' },
-  { label: 'Partner', value: 'PARTNER', description: 'Partner user - access to multiple clients' },
-  { label: 'Client', value: 'CLIENT', description: 'Client user - bound to a single client' },
+	{
+		label: "Anchor",
+		value: "ANCHOR",
+		description: "Platform admin - access to all clients",
+	},
+	{
+		label: "Partner",
+		value: "PARTNER",
+		description: "Partner user - access to multiple clients",
+	},
+	{
+		label: "Client",
+		value: "CLIENT",
+		description: "Client user - bound to a single client",
+	},
 ];
 
 const DOMAIN_PATTERN = /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/;
 
 const isDomainValid = computed(() => {
-  return !form.value.emailDomain || DOMAIN_PATTERN.test(form.value.emailDomain.toLowerCase());
+	return (
+		!form.value.emailDomain ||
+		DOMAIN_PATTERN.test(form.value.emailDomain.toLowerCase())
+	);
 });
 
 const isValid = computed(() => {
-  if (!form.value.emailDomain.trim() || !isDomainValid.value) return false;
-  if (!form.value.identityProviderId) return false;
-  if (form.value.scopeType === 'CLIENT' && !form.value.primaryClientId) return false;
-  if (isSelectedProviderMultiTenant.value && !form.value.requiredOidcTenantId.trim()) return false;
-  return true;
+	if (!form.value.emailDomain.trim() || !isDomainValid.value) return false;
+	if (!form.value.identityProviderId) return false;
+	if (form.value.scopeType === "CLIENT" && !form.value.primaryClientId)
+		return false;
+	if (
+		isSelectedProviderMultiTenant.value &&
+		!form.value.requiredOidcTenantId.trim()
+	)
+		return false;
+	return true;
 });
 
 onMounted(async () => {
-  await loadData();
+	await loadData();
 });
 
 async function loadData() {
-  dataLoading.value = true;
-  try {
-    const [providersResponse, clientsResponse, rolesResponse] = await Promise.all([
-      identityProvidersApi.list(),
-      clientsApi.list(),
-      rolesApi.list(),
-    ]);
-    providers.value = providersResponse.identityProviders;
-    clients.value = clientsResponse.clients;
-    allRoles.value = rolesResponse.items;
-    // Initialize role picker with all roles available, none selected
-    rolePickerModel.value = [[...rolesResponse.items], []];
-  } catch (e: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load data: ' + (e?.message || 'Unknown error'),
-      life: 5000,
-    });
-  } finally {
-    dataLoading.value = false;
-  }
+	dataLoading.value = true;
+	try {
+		const [providersResponse, clientsResponse, rolesResponse] =
+			await Promise.all([
+				identityProvidersApi.list(),
+				clientsApi.list(),
+				rolesApi.list(),
+			]);
+		providers.value = providersResponse.identityProviders;
+		clients.value = clientsResponse.clients;
+		allRoles.value = rolesResponse.items;
+		// Initialize role picker with all roles available, none selected
+		rolePickerModel.value = [[...rolesResponse.items], []];
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to load data: " + getErrorMessage(e, "Unknown error"),
+			life: 5000,
+		});
+	} finally {
+		dataLoading.value = false;
+	}
 }
 
 function onProviderChange() {
-  form.value.identityProviderId = selectedProvider.value?.id || null;
+	form.value.identityProviderId = selectedProvider.value?.id || null;
 }
 
 function searchClients(event: { query: string }) {
-  const query = event.query.toLowerCase();
-  filteredClients.value = clients.value.filter(
-    (c) => c.name.toLowerCase().includes(query) || c.identifier.toLowerCase().includes(query),
-  );
+	const query = event.query.toLowerCase();
+	filteredClients.value = clients.value.filter(
+		(c) =>
+			c.name.toLowerCase().includes(query) ||
+			c.identifier.toLowerCase().includes(query),
+	);
 }
 
 function onClientSelect(event: { value: Client }) {
-  form.value.primaryClientId = event.value.id;
+	form.value.primaryClientId = event.value.id;
 }
 
 function clearClient() {
-  form.value.primaryClientId = null;
-  selectedClient.value = null;
+	form.value.primaryClientId = null;
+	selectedClient.value = null;
 }
 
 async function createMapping() {
-  if (!isValid.value) return;
+	if (!isValid.value) return;
 
-  loading.value = true;
-  error.value = null;
+	loading.value = true;
+	error.value = null;
 
-  try {
-    const requestData: any = {
-      emailDomain: form.value.emailDomain.trim().toLowerCase(),
-      identityProviderId: form.value.identityProviderId!,
-      scopeType: form.value.scopeType,
-    };
+	try {
+		const requestData: CreateEmailDomainMappingRequest = {
+			emailDomain: form.value.emailDomain.trim().toLowerCase(),
+			identityProviderId: form.value.identityProviderId!,
+			scopeType: form.value.scopeType,
+			primaryClientId:
+				form.value.scopeType === "CLIENT"
+					? (form.value.primaryClientId ?? undefined)
+					: undefined,
+			requiredOidcTenantId:
+				isSelectedProviderMultiTenant.value &&
+				form.value.requiredOidcTenantId.trim()
+					? form.value.requiredOidcTenantId.trim()
+					: undefined,
+			allowedRoleIds:
+				showRolePicker.value && rolePickerModel.value[1].length > 0
+					? rolePickerModel.value[1].map((r) => r.id)
+					: undefined,
+			syncRolesFromIdp: showRolePicker.value
+				? form.value.syncRolesFromIdp
+				: undefined,
+		};
 
-    if (form.value.scopeType === 'CLIENT') {
-      requestData.primaryClientId = form.value.primaryClientId;
-    }
-
-    if (isSelectedProviderMultiTenant.value && form.value.requiredOidcTenantId.trim()) {
-      requestData.requiredOidcTenantId = form.value.requiredOidcTenantId.trim();
-    }
-
-    // Include allowed roles if role picker is shown and has selections
-    if (showRolePicker.value && rolePickerModel.value[1].length > 0) {
-      requestData.allowedRoleIds = rolePickerModel.value[1].map((r) => r.id);
-    }
-
-    // Include syncRolesFromIdp for external IDPs with non-ANCHOR scope
-    if (showRolePicker.value) {
-      requestData.syncRolesFromIdp = form.value.syncRolesFromIdp;
-    }
-
-    const created = await emailDomainMappingsApi.create(requestData);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: `Email domain mapping for "${created.emailDomain}" created successfully`,
-      life: 3000,
-    });
-    router.push(`/authentication/email-domain-mappings/${created.id}`);
-  } catch (e: any) {
-    error.value = e?.error || e?.message || 'Failed to create mapping';
-  } finally {
-    loading.value = false;
-  }
+		const created = await emailDomainMappingsApi.create(requestData);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: `Email domain mapping for "${created.emailDomain}" created successfully`,
+			life: 3000,
+		});
+		router.push(`/authentication/email-domain-mappings/${created.id}`);
+	} catch (e: unknown) {
+		error.value = getErrorMessage(e, "Failed to create mapping");
+	} finally {
+		loading.value = false;
+	}
 }
 </script>
 

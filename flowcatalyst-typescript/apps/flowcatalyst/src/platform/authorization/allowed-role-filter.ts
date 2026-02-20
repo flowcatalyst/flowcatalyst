@@ -8,12 +8,12 @@
  * keeping IDs as the source of truth in the database.
  */
 
-import type { EmailDomainMappingRepository } from '../infrastructure/persistence/repositories/email-domain-mapping-repository.js';
-import type { RoleRepository } from '../infrastructure/persistence/repositories/role-repository.js';
+import type { EmailDomainMappingRepository } from "../infrastructure/persistence/repositories/email-domain-mapping-repository.js";
+import type { RoleRepository } from "../infrastructure/persistence/repositories/role-repository.js";
 
 export interface AllowedRoleFilterDeps {
-  emailDomainMappingRepository: EmailDomainMappingRepository;
-  roleRepository: RoleRepository;
+	emailDomainMappingRepository: EmailDomainMappingRepository;
+	roleRepository: RoleRepository;
 }
 
 /**
@@ -23,40 +23,40 @@ export interface AllowedRoleFilterDeps {
  *          Set<string> if restrictions apply
  */
 export async function getAllowedRoleNames(
-  emailDomain: string,
-  deps: AllowedRoleFilterDeps,
+	emailDomain: string,
+	deps: AllowedRoleFilterDeps,
 ): Promise<Set<string> | null> {
-  if (!emailDomain) {
-    return null;
-  }
+	if (!emailDomain) {
+		return null;
+	}
 
-  const mapping = await deps.emailDomainMappingRepository.findByEmailDomain(
-    emailDomain.toLowerCase(),
-  );
-  if (!mapping) {
-    return null;
-  }
+	const mapping = await deps.emailDomainMappingRepository.findByEmailDomain(
+		emailDomain.toLowerCase(),
+	);
+	if (!mapping) {
+		return null;
+	}
 
-  // ANCHOR scope has no role restrictions
-  if (mapping.scopeType === 'ANCHOR') {
-    return null;
-  }
+	// ANCHOR scope has no role restrictions
+	if (mapping.scopeType === "ANCHOR") {
+		return null;
+	}
 
-  // No restrictions if allowedRoleIds is empty
-  if (mapping.allowedRoleIds.length === 0) {
-    return null;
-  }
+	// No restrictions if allowedRoleIds is empty
+	if (mapping.allowedRoleIds.length === 0) {
+		return null;
+	}
 
-  // Resolve role IDs to names
-  const allowedNames = new Set<string>();
-  for (const roleId of mapping.allowedRoleIds) {
-    const role = await deps.roleRepository.findById(roleId);
-    if (role) {
-      allowedNames.add(role.name);
-    }
-  }
+	// Resolve role IDs to names
+	const allowedNames = new Set<string>();
+	for (const roleId of mapping.allowedRoleIds) {
+		const role = await deps.roleRepository.findById(roleId);
+		if (role) {
+			allowedNames.add(role.name);
+		}
+	}
 
-  return allowedNames;
+	return allowedNames;
 }
 
 /**
@@ -65,13 +65,13 @@ export async function getAllowedRoleNames(
  * @returns the filtered set of allowed role names (returns all if no restrictions apply)
  */
 export async function filterAllowedRoles(
-  requestedRoleNames: Set<string>,
-  emailDomain: string,
-  deps: AllowedRoleFilterDeps,
+	requestedRoleNames: Set<string>,
+	emailDomain: string,
+	deps: AllowedRoleFilterDeps,
 ): Promise<Set<string>> {
-  const allowed = await getAllowedRoleNames(emailDomain, deps);
-  if (!allowed) {
-    return requestedRoleNames;
-  }
-  return new Set([...requestedRoleNames].filter((name) => allowed.has(name)));
+	const allowed = await getAllowedRoleNames(emailDomain, deps);
+	if (!allowed) {
+		return requestedRoleNames;
+	}
+	return new Set([...requestedRoleNames].filter((name) => allowed.has(name)));
 }

@@ -1,20 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useConfirm } from 'primevue/useconfirm';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import Tag from 'primevue/tag';
-import InputText from 'primevue/inputtext';
-import Textarea from 'primevue/textarea';
-import ProgressSpinner from 'primevue/progressspinner';
-import Message from 'primevue/message';
-import Dialog from 'primevue/dialog';
+import { ref, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useConfirm } from "primevue/useconfirm";
+import { useToast } from "primevue/usetoast";
 import {
-  applicationsApi,
-  type Application,
-  type ServiceAccountCredentials,
-} from '@/api/applications';
+	applicationsApi,
+	type Application,
+	type ServiceAccountCredentials,
+} from "@/api/applications";
+import { getErrorMessage } from "@/utils/errors";
 
 const route = useRoute();
 const router = useRouter();
@@ -27,13 +21,13 @@ const editing = ref(false);
 const saving = ref(false);
 
 // Edit form
-const editName = ref('');
-const editDescription = ref('');
-const editDefaultBaseUrl = ref('');
-const editIconUrl = ref('');
-const editWebsite = ref('');
-const editLogo = ref('');
-const editLogoMimeType = ref('');
+const editName = ref("");
+const editDescription = ref("");
+const editDefaultBaseUrl = ref("");
+const editIconUrl = ref("");
+const editWebsite = ref("");
+const editLogo = ref("");
+const editLogoMimeType = ref("");
 
 // Service account provisioning
 const provisioning = ref(false);
@@ -41,202 +35,228 @@ const showCredentialsDialog = ref(false);
 const provisionedCredentials = ref<ServiceAccountCredentials | null>(null);
 
 onMounted(async () => {
-  const id = route.params.id as string;
-  if (id) {
-    await loadApplication(id);
-  }
+	const id = route.params.id as string;
+	if (id) {
+		await loadApplication(id);
+	}
 });
 
 async function loadApplication(id: string) {
-  loading.value = true;
-  try {
-    application.value = await applicationsApi.get(id);
-  } catch {
-    application.value = null;
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	try {
+		application.value = await applicationsApi.get(id);
+	} catch {
+		application.value = null;
+	} finally {
+		loading.value = false;
+	}
 }
 
 function startEditing() {
-  if (application.value) {
-    editName.value = application.value.name;
-    editDescription.value = application.value.description || '';
-    editDefaultBaseUrl.value = application.value.defaultBaseUrl || '';
-    editIconUrl.value = application.value.iconUrl || '';
-    editWebsite.value = application.value.website || '';
-    editLogo.value = application.value.logo || '';
-    editLogoMimeType.value = application.value.logoMimeType || '';
-    editing.value = true;
-  }
+	if (application.value) {
+		editName.value = application.value.name;
+		editDescription.value = application.value.description || "";
+		editDefaultBaseUrl.value = application.value.defaultBaseUrl || "";
+		editIconUrl.value = application.value.iconUrl || "";
+		editWebsite.value = application.value.website || "";
+		editLogo.value = application.value.logo || "";
+		editLogoMimeType.value = application.value.logoMimeType || "";
+		editing.value = true;
+	}
 }
 
 function cancelEditing() {
-  editing.value = false;
+	editing.value = false;
 }
 
 async function saveChanges() {
-  const id = application.value?.id || (route.params.id as string);
-  if (!id) return;
+	const id = application.value?.id || (route.params.id as string);
+	if (!id) return;
 
-  saving.value = true;
-  try {
-    application.value = await applicationsApi.update(id, {
-      name: editName.value,
-      description: editDescription.value || undefined,
-      defaultBaseUrl: editDefaultBaseUrl.value || undefined,
-      iconUrl: editIconUrl.value || undefined,
-      website: editWebsite.value || undefined,
-      logo: editLogo.value || undefined,
-      logoMimeType: editLogoMimeType.value || undefined,
-    });
-    editing.value = false;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Application updated',
-      life: 3000,
-    });
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update', life: 3000 });
-  } finally {
-    saving.value = false;
-  }
+	saving.value = true;
+	try {
+		application.value = await applicationsApi.update(id, {
+			name: editName.value,
+			description: editDescription.value || undefined,
+			defaultBaseUrl: editDefaultBaseUrl.value || undefined,
+			iconUrl: editIconUrl.value || undefined,
+			website: editWebsite.value || undefined,
+			logo: editLogo.value || undefined,
+			logoMimeType: editLogoMimeType.value || undefined,
+		});
+		editing.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Application updated",
+			life: 3000,
+		});
+	} catch (e) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to update",
+			life: 3000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 function confirmActivate() {
-  confirm.require({
-    message: 'Activate this application?',
-    header: 'Activate Application',
-    icon: 'pi pi-check-circle',
-    acceptLabel: 'Activate',
-    accept: activateApplication,
-  });
+	confirm.require({
+		message: "Activate this application?",
+		header: "Activate Application",
+		icon: "pi pi-check-circle",
+		acceptLabel: "Activate",
+		accept: activateApplication,
+	});
 }
 
 async function activateApplication() {
-  const id = application.value?.id || (route.params.id as string);
-  if (!id) return;
-  try {
-    application.value = await applicationsApi.activate(id);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Application activated',
-      life: 3000,
-    });
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to activate', life: 3000 });
-  }
+	const id = application.value?.id || (route.params.id as string);
+	if (!id) return;
+	try {
+		application.value = await applicationsApi.activate(id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Application activated",
+			life: 3000,
+		});
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to activate",
+			life: 3000,
+		});
+	}
 }
 
 function confirmDeactivate() {
-  confirm.require({
-    message: 'Deactivate this application? It will no longer be available for new event types.',
-    header: 'Deactivate Application',
-    icon: 'pi pi-exclamation-triangle',
-    acceptLabel: 'Deactivate',
-    acceptClass: 'p-button-warning',
-    accept: deactivateApplication,
-  });
+	confirm.require({
+		message:
+			"Deactivate this application? It will no longer be available for new event types.",
+		header: "Deactivate Application",
+		icon: "pi pi-exclamation-triangle",
+		acceptLabel: "Deactivate",
+		acceptClass: "p-button-warning",
+		accept: deactivateApplication,
+	});
 }
 
 async function deactivateApplication() {
-  const id = application.value?.id || (route.params.id as string);
-  if (!id) return;
-  try {
-    application.value = await applicationsApi.deactivate(id);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Application deactivated',
-      life: 3000,
-    });
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to deactivate', life: 3000 });
-  }
+	const id = application.value?.id || (route.params.id as string);
+	if (!id) return;
+	try {
+		application.value = await applicationsApi.deactivate(id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Application deactivated",
+			life: 3000,
+		});
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to deactivate",
+			life: 3000,
+		});
+	}
 }
 
 function confirmDelete() {
-  confirm.require({
-    message: 'Delete this application? This cannot be undone.',
-    header: 'Delete Application',
-    icon: 'pi pi-exclamation-triangle',
-    acceptLabel: 'Delete',
-    acceptClass: 'p-button-danger',
-    accept: deleteApplication,
-  });
+	confirm.require({
+		message: "Delete this application? This cannot be undone.",
+		header: "Delete Application",
+		icon: "pi pi-exclamation-triangle",
+		acceptLabel: "Delete",
+		acceptClass: "p-button-danger",
+		accept: deleteApplication,
+	});
 }
 
 async function deleteApplication() {
-  const id = application.value?.id || (route.params.id as string);
-  if (!id) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Application ID not found',
-      life: 3000,
-    });
-    return;
-  }
-  try {
-    await applicationsApi.delete(id);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Application deleted',
-      life: 3000,
-    });
-    router.push('/applications');
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete', life: 3000 });
-  }
+	const id = application.value?.id || (route.params.id as string);
+	if (!id) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Application ID not found",
+			life: 3000,
+		});
+		return;
+	}
+	try {
+		await applicationsApi.delete(id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Application deleted",
+			life: 3000,
+		});
+		router.push("/applications");
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to delete",
+			life: 3000,
+		});
+	}
 }
 
 async function provisionServiceAccount() {
-  const id = application.value?.id || (route.params.id as string);
-  if (!id) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Application ID not found',
-      life: 3000,
-    });
-    return;
-  }
+	const id = application.value?.id || (route.params.id as string);
+	if (!id) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Application ID not found",
+			life: 3000,
+		});
+		return;
+	}
 
-  provisioning.value = true;
-  try {
-    const result = await applicationsApi.provisionServiceAccount(id);
-    provisionedCredentials.value = result.serviceAccount;
-    showCredentialsDialog.value = true;
+	provisioning.value = true;
+	try {
+		const result = await applicationsApi.provisionServiceAccount(id);
+		provisionedCredentials.value = result.serviceAccount;
+		showCredentialsDialog.value = true;
 
-    // Reload application to get updated serviceAccountPrincipalId
-    await loadApplication(id);
-  } catch (e: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: e?.message || 'Failed to provision service account',
-      life: 5000,
-    });
-  } finally {
-    provisioning.value = false;
-  }
+		// Reload application to get updated serviceAccountPrincipalId
+		await loadApplication(id);
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to provision service account"),
+			life: 5000,
+		});
+	} finally {
+		provisioning.value = false;
+	}
 }
 
 function onCredentialsDialogClose() {
-  showCredentialsDialog.value = false;
-  provisionedCredentials.value = null;
+	showCredentialsDialog.value = false;
+	provisionedCredentials.value = null;
 }
 
 function copyToClipboard(text: string) {
-  navigator.clipboard.writeText(text);
-  toast.add({ severity: 'info', summary: 'Copied', detail: 'Copied to clipboard', life: 2000 });
+	navigator.clipboard.writeText(text);
+	toast.add({
+		severity: "info",
+		summary: "Copied",
+		detail: "Copied to clipboard",
+		life: 2000,
+	});
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleString();
+	return new Date(dateString).toLocaleString();
 }
 </script>
 

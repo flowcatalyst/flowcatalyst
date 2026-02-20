@@ -1,14 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useToast } from 'primevue/usetoast';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import InputText from 'primevue/inputtext';
-import Tag from 'primevue/tag';
-import Select from 'primevue/select';
-import Button from 'primevue/button';
-import ProgressSpinner from 'primevue/progressspinner';
-import { permissionsApi, type Permission } from '@/api/permissions';
+import { ref, computed, onMounted } from "vue";
+import { useToast } from "primevue/usetoast";
+import { permissionsApi, type Permission } from "@/api/permissions";
 
 const toast = useToast();
 
@@ -16,107 +9,113 @@ const permissions = ref<Permission[]>([]);
 const loading = ref(true);
 
 // Filters
-const searchQuery = ref('');
+const searchQuery = ref("");
 const selectedApplication = ref<string | null>(null);
 const selectedContext = ref<string | null>(null);
 const selectedAction = ref<string | null>(null);
 
 // Compute unique filter options
 const applicationOptions = computed(() => {
-  const unique = [...new Set(permissions.value.map((p) => p.application))];
-  return unique.sort().map((s) => ({ label: s, value: s }));
+	const unique = [...new Set(permissions.value.map((p) => p.application))];
+	return unique.sort().map((s) => ({ label: s, value: s }));
 });
 
 const contextOptions = computed(() => {
-  let filtered = permissions.value;
-  if (selectedApplication.value) {
-    filtered = filtered.filter((p) => p.application === selectedApplication.value);
-  }
-  const unique = [...new Set(filtered.map((p) => p.context))];
-  return unique.sort().map((c) => ({ label: c, value: c }));
+	let filtered = permissions.value;
+	if (selectedApplication.value) {
+		filtered = filtered.filter(
+			(p) => p.application === selectedApplication.value,
+		);
+	}
+	const unique = [...new Set(filtered.map((p) => p.context))];
+	return unique.sort().map((c) => ({ label: c, value: c }));
 });
 
 const actionOptions = computed(() => [
-  { label: 'view', value: 'view' },
-  { label: 'create', value: 'create' },
-  { label: 'update', value: 'update' },
-  { label: 'delete', value: 'delete' },
-  { label: 'retry', value: 'retry' },
+	{ label: "view", value: "view" },
+	{ label: "create", value: "create" },
+	{ label: "update", value: "update" },
+	{ label: "delete", value: "delete" },
+	{ label: "retry", value: "retry" },
 ]);
 
 const hasActiveFilters = computed(() => {
-  return (
-    searchQuery.value || selectedApplication.value || selectedContext.value || selectedAction.value
-  );
+	return (
+		searchQuery.value ||
+		selectedApplication.value ||
+		selectedContext.value ||
+		selectedAction.value
+	);
 });
 
 const filteredPermissions = computed(() => {
-  let result = permissions.value;
+	let result = permissions.value;
 
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase();
-    result = result.filter(
-      (p) =>
-        p.permission.toLowerCase().includes(query) || p.description?.toLowerCase().includes(query),
-    );
-  }
+	if (searchQuery.value) {
+		const query = searchQuery.value.toLowerCase();
+		result = result.filter(
+			(p) =>
+				p.permission.toLowerCase().includes(query) ||
+				p.description?.toLowerCase().includes(query),
+		);
+	}
 
-  if (selectedApplication.value) {
-    result = result.filter((p) => p.application === selectedApplication.value);
-  }
+	if (selectedApplication.value) {
+		result = result.filter((p) => p.application === selectedApplication.value);
+	}
 
-  if (selectedContext.value) {
-    result = result.filter((p) => p.context === selectedContext.value);
-  }
+	if (selectedContext.value) {
+		result = result.filter((p) => p.context === selectedContext.value);
+	}
 
-  if (selectedAction.value) {
-    result = result.filter((p) => p.action === selectedAction.value);
-  }
+	if (selectedAction.value) {
+		result = result.filter((p) => p.action === selectedAction.value);
+	}
 
-  return result;
+	return result;
 });
 
 onMounted(async () => {
-  await loadPermissions();
+	await loadPermissions();
 });
 
 async function loadPermissions() {
-  loading.value = true;
-  try {
-    const response = await permissionsApi.list();
-    permissions.value = response.items;
-  } catch (e) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: e instanceof Error ? e.message : 'Failed to load permissions',
-      life: 5000,
-    });
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	try {
+		const response = await permissionsApi.list();
+		permissions.value = response.items;
+	} catch (e) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: e instanceof Error ? e.message : "Failed to load permissions",
+			life: 5000,
+		});
+	} finally {
+		loading.value = false;
+	}
 }
 
 function clearFilters() {
-  searchQuery.value = '';
-  selectedApplication.value = null;
-  selectedContext.value = null;
-  selectedAction.value = null;
+	searchQuery.value = "";
+	selectedApplication.value = null;
+	selectedContext.value = null;
+	selectedAction.value = null;
 }
 
 function getActionSeverity(action: string) {
-  switch (action) {
-    case 'view':
-      return 'info';
-    case 'create':
-      return 'success';
-    case 'update':
-      return 'warn';
-    case 'delete':
-      return 'danger';
-    default:
-      return 'secondary';
-  }
+	switch (action) {
+		case "view":
+			return "info";
+		case "create":
+			return "success";
+		case "update":
+			return "warn";
+		case "delete":
+			return "danger";
+		default:
+			return "secondary";
+	}
 }
 </script>
 

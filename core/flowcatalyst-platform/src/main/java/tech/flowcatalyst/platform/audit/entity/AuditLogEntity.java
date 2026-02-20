@@ -32,7 +32,7 @@ public class AuditLogEntity {
     @Column(name = "operation_json", columnDefinition = "jsonb")
     public String operationJson;
 
-    @Column(name = "principal_id", length = 17)
+    @Column(name = "principal_id", length = 100)
     public String principalId;
 
     @Column(name = "performed_at", nullable = false)

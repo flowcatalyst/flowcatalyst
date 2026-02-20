@@ -1,60 +1,58 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import { useRouter } from 'vue-router';
-import Dialog from 'primevue/dialog';
-import Button from 'primevue/button';
-import { usePermissionsStore } from '@/stores/permissions';
-import { logout } from '@/api/auth';
+import { computed } from "vue";
+import { useRouter } from "vue-router";
+import { usePermissionsStore } from "@/stores/permissions";
+import { logout } from "@/api/auth";
 
 const router = useRouter();
 const permissionsStore = usePermissionsStore();
 
 const visible = computed({
-  get: () => permissionsStore.showPermissionModal,
-  set: (value) => {
-    if (!value) {
-      permissionsStore.hidePermissionDenied();
-    }
-  },
+	get: () => permissionsStore.showPermissionModal,
+	set: (value) => {
+		if (!value) {
+			permissionsStore.hidePermissionDenied();
+		}
+	},
 });
 
 const event = computed(() => permissionsStore.permissionDenied);
 
 const isSessionExpired = computed(() => {
-  return (
-    event.value?.message?.toLowerCase().includes('session') ||
-    event.value?.message?.toLowerCase().includes('expired') ||
-    event.value?.message?.toLowerCase().includes('authenticated')
-  );
+	return (
+		event.value?.message?.toLowerCase().includes("session") ||
+		event.value?.message?.toLowerCase().includes("expired") ||
+		event.value?.message?.toLowerCase().includes("authenticated")
+	);
 });
 
 const title = computed(() => {
-  if (isSessionExpired.value) {
-    return 'Session Expired';
-  }
-  return 'Permission Denied';
+	if (isSessionExpired.value) {
+		return "Session Expired";
+	}
+	return "Permission Denied";
 });
 
 const icon = computed(() => {
-  if (isSessionExpired.value) {
-    return 'pi pi-clock';
-  }
-  return 'pi pi-lock';
+	if (isSessionExpired.value) {
+		return "pi pi-clock";
+	}
+	return "pi pi-lock";
 });
 
 function goBack() {
-  permissionsStore.hidePermissionDenied();
-  router.back();
+	permissionsStore.hidePermissionDenied();
+	router.back();
 }
 
 function goHome() {
-  permissionsStore.hidePermissionDenied();
-  router.push('/dashboard');
+	permissionsStore.hidePermissionDenied();
+	router.push("/dashboard");
 }
 
 async function handleLogout() {
-  permissionsStore.hidePermissionDenied();
-  await logout();
+	permissionsStore.hidePermissionDenied();
+	await logout();
 }
 </script>
 

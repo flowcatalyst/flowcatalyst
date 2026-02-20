@@ -1,26 +1,17 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Textarea from 'primevue/textarea';
-import Select from 'primevue/select';
-import MultiSelect from 'primevue/multiselect';
-import Tag from 'primevue/tag';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Dialog from 'primevue/dialog';
-import ProgressSpinner from 'primevue/progressspinner';
+import { ref, computed, onMounted } from "vue";
+import { useRouter, useRoute } from "vue-router";
+import { useToast } from "primevue/usetoast";
 import {
-  serviceAccountsApi,
-  type ServiceAccount,
-  type RoleAssignment,
-  type RolesAssignedResponse,
-} from '@/api/service-accounts';
-import type { PrincipalScope } from '@/api/users';
-import { rolesApi, type Role } from '@/api/roles';
-import { clientsApi, type Client } from '@/api/clients';
+	serviceAccountsApi,
+	type ServiceAccount,
+	type RoleAssignment,
+	type RolesAssignedResponse,
+} from "@/api/service-accounts";
+import type { PrincipalScope } from "@/api/users";
+import { rolesApi, type Role } from "@/api/roles";
+import { clientsApi, type Client } from "@/api/clients";
+import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
 const route = useRoute();
@@ -37,22 +28,22 @@ const saving = ref(false);
 
 // Edit mode
 const editMode = ref(false);
-const editName = ref('');
-const editDescription = ref('');
-const editScope = ref<PrincipalScope>('ANCHOR');
+const editName = ref("");
+const editDescription = ref("");
+const editScope = ref<PrincipalScope>("ANCHOR");
 const editClientIds = ref<string[]>([]);
 
 const scopeOptions = [
-  { label: 'Anchor (all clients)', value: 'ANCHOR' },
-  { label: 'Partner (assigned clients)', value: 'PARTNER' },
-  { label: 'Client (single client)', value: 'CLIENT' },
+	{ label: "Anchor (all clients)", value: "ANCHOR" },
+	{ label: "Partner (assigned clients)", value: "PARTNER" },
+	{ label: "Client (single client)", value: "CLIENT" },
 ];
 
 const clientOptions = computed(() => {
-  return clients.value.map((c) => ({
-    label: c.name,
-    value: c.id,
-  }));
+	return clients.value.map((c) => ({
+		label: c.name,
+		value: c.id,
+	}));
 });
 
 // Credentials dialogs
@@ -63,7 +54,7 @@ const newSecret = ref<string | null>(null);
 
 // Role picker dialog
 const showRolePickerDialog = ref(false);
-const roleSearchQuery = ref('');
+const roleSearchQuery = ref("");
 const selectedRoleNames = ref<Set<string>>(new Set());
 const savingRoles = ref(false);
 
@@ -72,306 +63,314 @@ const showDeleteDialog = ref(false);
 const deleting = ref(false);
 
 const filteredAvailableRoles = computed(() => {
-  const query = roleSearchQuery.value.toLowerCase();
-  return availableRoles.value.filter(
-    (r) => r.name.toLowerCase().includes(query) || r.displayName?.toLowerCase().includes(query),
-  );
+	const query = roleSearchQuery.value.toLowerCase();
+	return availableRoles.value.filter(
+		(r) =>
+			r.name.toLowerCase().includes(query) ||
+			r.displayName?.toLowerCase().includes(query),
+	);
 });
 
 const hasRoleChanges = computed(() => {
-  const currentRoles = new Set(roleAssignments.value.map((r) => r.roleName));
-  if (currentRoles.size !== selectedRoleNames.value.size) return true;
-  for (const role of currentRoles) {
-    if (!selectedRoleNames.value.has(role)) return true;
-  }
-  return false;
+	const currentRoles = new Set(roleAssignments.value.map((r) => r.roleName));
+	if (currentRoles.size !== selectedRoleNames.value.size) return true;
+	for (const role of currentRoles) {
+		if (!selectedRoleNames.value.has(role)) return true;
+	}
+	return false;
 });
 
 onMounted(async () => {
-  await Promise.all([loadServiceAccount(), loadClients(), loadAvailableRoles()]);
-  if (serviceAccount.value) {
-    await loadRoleAssignments();
-    if (route.query.edit === 'true') {
-      startEdit();
-    }
-  }
-  loading.value = false;
+	await Promise.all([
+		loadServiceAccount(),
+		loadClients(),
+		loadAvailableRoles(),
+	]);
+	if (serviceAccount.value) {
+		await loadRoleAssignments();
+		if (route.query.edit === "true") {
+			startEdit();
+		}
+	}
+	loading.value = false;
 });
 
 async function loadServiceAccount() {
-  try {
-    serviceAccount.value = await serviceAccountsApi.get(serviceAccountId);
-    editName.value = serviceAccount.value.name;
-    editDescription.value = serviceAccount.value.description || '';
-    editScope.value = serviceAccount.value.scope || 'ANCHOR';
-    editClientIds.value = serviceAccount.value.clientIds || [];
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load service account',
-      life: 5000,
-    });
-    console.error('Failed to fetch service account:', error);
-    router.push('/identity/service-accounts');
-  }
+	try {
+		serviceAccount.value = await serviceAccountsApi.get(serviceAccountId);
+		editName.value = serviceAccount.value.name;
+		editDescription.value = serviceAccount.value.description || "";
+		editScope.value = serviceAccount.value.scope || "ANCHOR";
+		editClientIds.value = serviceAccount.value.clientIds || [];
+	} catch (error) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to load service account",
+			life: 5000,
+		});
+		console.error("Failed to fetch service account:", error);
+		router.push("/identity/service-accounts");
+	}
 }
 
 async function loadClients() {
-  try {
-    const response = await clientsApi.list();
-    clients.value = response.clients;
-  } catch (error) {
-    console.error('Failed to fetch clients:', error);
-  }
+	try {
+		const response = await clientsApi.list();
+		clients.value = response.clients;
+	} catch (error) {
+		console.error("Failed to fetch clients:", error);
+	}
 }
 
 async function loadAvailableRoles() {
-  try {
-    const response = await rolesApi.list();
-    availableRoles.value = response.items;
-  } catch (error) {
-    console.error('Failed to fetch available roles:', error);
-  }
+	try {
+		const response = await rolesApi.list();
+		availableRoles.value = response.items;
+	} catch (error) {
+		console.error("Failed to fetch available roles:", error);
+	}
 }
 
 async function loadRoleAssignments() {
-  try {
-    const response = await serviceAccountsApi.getRoles(serviceAccountId);
-    roleAssignments.value = response.roles;
-  } catch (error) {
-    console.error('Failed to fetch role assignments:', error);
-  }
+	try {
+		const response = await serviceAccountsApi.getRoles(serviceAccountId);
+		roleAssignments.value = response.roles;
+	} catch (error) {
+		console.error("Failed to fetch role assignments:", error);
+	}
 }
 
 function startEdit() {
-  editName.value = serviceAccount.value?.name || '';
-  editDescription.value = serviceAccount.value?.description || '';
-  editScope.value = serviceAccount.value?.scope || 'ANCHOR';
-  editClientIds.value = serviceAccount.value?.clientIds || [];
-  editMode.value = true;
+	editName.value = serviceAccount.value?.name || "";
+	editDescription.value = serviceAccount.value?.description || "";
+	editScope.value = serviceAccount.value?.scope || "ANCHOR";
+	editClientIds.value = serviceAccount.value?.clientIds || [];
+	editMode.value = true;
 }
 
 function cancelEdit() {
-  editName.value = serviceAccount.value?.name || '';
-  editDescription.value = serviceAccount.value?.description || '';
-  editScope.value = serviceAccount.value?.scope || 'ANCHOR';
-  editClientIds.value = serviceAccount.value?.clientIds || [];
-  editMode.value = false;
+	editName.value = serviceAccount.value?.name || "";
+	editDescription.value = serviceAccount.value?.description || "";
+	editScope.value = serviceAccount.value?.scope || "ANCHOR";
+	editClientIds.value = serviceAccount.value?.clientIds || [];
+	editMode.value = false;
 }
 
 async function saveServiceAccount() {
-  if (!editName.value.trim()) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Name is required',
-      life: 3000,
-    });
-    return;
-  }
+	if (!editName.value.trim()) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Name is required",
+			life: 3000,
+		});
+		return;
+	}
 
-  saving.value = true;
-  try {
-    await serviceAccountsApi.update(serviceAccountId, {
-      name: editName.value,
-      description: editDescription.value || undefined,
-      scope: editScope.value,
-      clientIds: editClientIds.value,
-    });
-    serviceAccount.value!.name = editName.value;
-    serviceAccount.value!.description = editDescription.value;
-    serviceAccount.value!.scope = editScope.value;
-    serviceAccount.value!.clientIds = editClientIds.value;
-    editMode.value = false;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Service account updated successfully',
-      life: 3000,
-    });
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.message || 'Failed to update service account',
-      life: 5000,
-    });
-  } finally {
-    saving.value = false;
-  }
+	saving.value = true;
+	try {
+		await serviceAccountsApi.update(serviceAccountId, {
+			name: editName.value,
+			description: editDescription.value || undefined,
+			scope: editScope.value,
+			clientIds: editClientIds.value,
+		});
+		serviceAccount.value!.name = editName.value;
+		serviceAccount.value!.description = editDescription.value;
+		serviceAccount.value!.scope = editScope.value;
+		serviceAccount.value!.clientIds = editClientIds.value;
+		editMode.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Service account updated successfully",
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to update service account"),
+			life: 5000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 async function regenerateToken() {
-  saving.value = true;
-  try {
-    const response = await serviceAccountsApi.regenerateToken(serviceAccountId);
-    newToken.value = response.authToken;
-    showRegenerateTokenDialog.value = true;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Auth token regenerated',
-      life: 3000,
-    });
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.message || 'Failed to regenerate token',
-      life: 5000,
-    });
-  } finally {
-    saving.value = false;
-  }
+	saving.value = true;
+	try {
+		const response = await serviceAccountsApi.regenerateToken(serviceAccountId);
+		newToken.value = response.authToken;
+		showRegenerateTokenDialog.value = true;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Auth token regenerated",
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to regenerate token"),
+			life: 5000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 async function regenerateSecret() {
-  saving.value = true;
-  try {
-    const response = await serviceAccountsApi.regenerateSecret(serviceAccountId);
-    newSecret.value = response.signingSecret;
-    showRegenerateSecretDialog.value = true;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Signing secret regenerated',
-      life: 3000,
-    });
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.message || 'Failed to regenerate secret',
-      life: 5000,
-    });
-  } finally {
-    saving.value = false;
-  }
+	saving.value = true;
+	try {
+		const response =
+			await serviceAccountsApi.regenerateSecret(serviceAccountId);
+		newSecret.value = response.signingSecret;
+		showRegenerateSecretDialog.value = true;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Signing secret regenerated",
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to regenerate secret"),
+			life: 5000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 function copyToClipboard(text: string, label: string) {
-  navigator.clipboard.writeText(text);
-  toast.add({
-    severity: 'info',
-    summary: 'Copied',
-    detail: `${label} copied to clipboard`,
-    life: 2000,
-  });
+	navigator.clipboard.writeText(text);
+	toast.add({
+		severity: "info",
+		summary: "Copied",
+		detail: `${label} copied to clipboard`,
+		life: 2000,
+	});
 }
 
 function openRolePicker() {
-  selectedRoleNames.value = new Set(roleAssignments.value.map((r) => r.roleName));
-  roleSearchQuery.value = '';
-  showRolePickerDialog.value = true;
+	selectedRoleNames.value = new Set(
+		roleAssignments.value.map((r) => r.roleName),
+	);
+	roleSearchQuery.value = "";
+	showRolePickerDialog.value = true;
 }
 
 function toggleRole(roleName: string) {
-  if (selectedRoleNames.value.has(roleName)) {
-    selectedRoleNames.value.delete(roleName);
-  } else {
-    selectedRoleNames.value.add(roleName);
-  }
-  selectedRoleNames.value = new Set(selectedRoleNames.value);
+	if (selectedRoleNames.value.has(roleName)) {
+		selectedRoleNames.value.delete(roleName);
+	} else {
+		selectedRoleNames.value.add(roleName);
+	}
+	selectedRoleNames.value = new Set(selectedRoleNames.value);
 }
 
 function removeSelectedRole(roleName: string) {
-  selectedRoleNames.value.delete(roleName);
-  selectedRoleNames.value = new Set(selectedRoleNames.value);
+	selectedRoleNames.value.delete(roleName);
+	selectedRoleNames.value = new Set(selectedRoleNames.value);
 }
 
 async function saveRoles() {
-  savingRoles.value = true;
-  try {
-    const roles = Array.from(selectedRoleNames.value);
-    const response: RolesAssignedResponse = await serviceAccountsApi.assignRoles(
-      serviceAccountId,
-      roles,
-    );
-    roleAssignments.value = response.roles;
-    if (serviceAccount.value) {
-      serviceAccount.value.roles = roles;
-    }
-    showRolePickerDialog.value = false;
+	savingRoles.value = true;
+	try {
+		const roles = Array.from(selectedRoleNames.value);
+		const response: RolesAssignedResponse =
+			await serviceAccountsApi.assignRoles(serviceAccountId, roles);
+		roleAssignments.value = response.roles;
+		if (serviceAccount.value) {
+			serviceAccount.value.roles = roles;
+		}
+		showRolePickerDialog.value = false;
 
-    const added = response.addedRoles.length;
-    const removed = response.removedRoles.length;
-    let detail = 'Roles updated';
-    if (added > 0 && removed > 0) {
-      detail = `Added ${added} role(s), removed ${removed} role(s)`;
-    } else if (added > 0) {
-      detail = `Added ${added} role(s)`;
-    } else if (removed > 0) {
-      detail = `Removed ${removed} role(s)`;
-    }
+		const added = response.addedRoles.length;
+		const removed = response.removedRoles.length;
+		let detail = "Roles updated";
+		if (added > 0 && removed > 0) {
+			detail = `Added ${added} role(s), removed ${removed} role(s)`;
+		} else if (added > 0) {
+			detail = `Added ${added} role(s)`;
+		} else if (removed > 0) {
+			detail = `Removed ${removed} role(s)`;
+		}
 
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail,
-      life: 3000,
-    });
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.message || 'Failed to save roles',
-      life: 5000,
-    });
-  } finally {
-    savingRoles.value = false;
-  }
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail,
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to save roles"),
+			life: 5000,
+		});
+	} finally {
+		savingRoles.value = false;
+	}
 }
 
 function getRoleDisplay(roleName: string) {
-  const role = availableRoles.value.find((r) => r.name === roleName);
-  return {
-    displayName: role?.displayName || roleName.split(':').pop() || roleName,
-    fullName: roleName,
-  };
+	const role = availableRoles.value.find((r) => r.name === roleName);
+	return {
+		displayName: role?.displayName || roleName.split(":").pop() || roleName,
+		fullName: roleName,
+	};
 }
 
 function getClientName(clientId: string): string {
-  const client = clients.value.find((c) => c.id === clientId);
-  return client?.name || clientId;
+	const client = clients.value.find((c) => c.id === clientId);
+	return client?.name || clientId;
 }
 
 function getClientNames(clientIds: string[]): string {
-  if (!clientIds || clientIds.length === 0) return 'All clients (no restriction)';
-  return clientIds.map((id) => getClientName(id)).join(', ');
+	if (!clientIds || clientIds.length === 0)
+		return "All clients (no restriction)";
+	return clientIds.map((id) => getClientName(id)).join(", ");
 }
 
 function formatDate(dateStr: string | null | undefined) {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString();
+	if (!dateStr) return "—";
+	return new Date(dateStr).toLocaleDateString();
 }
 
 function goBack() {
-  router.push('/identity/service-accounts');
+	router.push("/identity/service-accounts");
 }
 
 async function deleteServiceAccount() {
-  deleting.value = true;
-  try {
-    await serviceAccountsApi.delete(serviceAccountId);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Service account deleted successfully',
-      life: 3000,
-    });
-    router.push('/identity/service-accounts');
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.message || 'Failed to delete service account',
-      life: 5000,
-    });
-  } finally {
-    deleting.value = false;
-    showDeleteDialog.value = false;
-  }
+	deleting.value = true;
+	try {
+		await serviceAccountsApi.delete(serviceAccountId);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Service account deleted successfully",
+			life: 3000,
+		});
+		router.push("/identity/service-accounts");
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to delete service account"),
+			life: 5000,
+		});
+	} finally {
+		deleting.value = false;
+		showDeleteDialog.value = false;
+	}
 }
 </script>
 

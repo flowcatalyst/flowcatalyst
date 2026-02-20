@@ -1,17 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Select from 'primevue/select';
-import MultiSelect from 'primevue/multiselect';
-import Checkbox from 'primevue/checkbox';
-import Chip from 'primevue/chip';
-import Message from 'primevue/message';
-import Dialog from 'primevue/dialog';
-import { useToast } from 'primevue/usetoast';
-import { oauthClientsApi, type ClientType } from '@/api/oauth-clients';
-import { applicationsApi, type Application } from '@/api/applications';
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import { oauthClientsApi, type ClientType } from "@/api/oauth-clients";
+import { applicationsApi, type Application } from "@/api/applications";
+import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
 const toast = useToast();
@@ -22,179 +15,192 @@ const error = ref<string | null>(null);
 
 // Form state
 const form = ref({
-  clientName: '',
-  clientType: 'PUBLIC' as ClientType,
-  redirectUris: [] as string[],
-  allowedOrigins: [] as string[],
-  grantTypes: ['authorization_code', 'refresh_token'],
-  defaultScopes: ['openid', 'profile', 'email'],
-  pkceRequired: true,
-  applicationIds: [] as string[],
+	clientName: "",
+	clientType: "PUBLIC" as ClientType,
+	redirectUris: [] as string[],
+	allowedOrigins: [] as string[],
+	grantTypes: ["authorization_code", "refresh_token"],
+	defaultScopes: ["openid", "profile", "email"],
+	pkceRequired: true,
+	applicationIds: [] as string[],
 });
 
-const newRedirectUri = ref('');
-const newAllowedOrigin = ref('');
+const newRedirectUri = ref("");
+const newAllowedOrigin = ref("");
 
 // Secret dialog state
 const showSecretDialog = ref(false);
 const clientSecret = ref<string | null>(null);
 
 const clientTypeOptions = [
-  {
-    label: 'Public (SPA, Mobile)',
-    value: 'PUBLIC',
-    description: 'No client secret, PKCE required',
-  },
-  { label: 'Confidential (Server)', value: 'CONFIDENTIAL', description: 'Has client secret' },
+	{
+		label: "Public (SPA, Mobile)",
+		value: "PUBLIC",
+		description: "No client secret, PKCE required",
+	},
+	{
+		label: "Confidential (Server)",
+		value: "CONFIDENTIAL",
+		description: "Has client secret",
+	},
 ];
 
 const grantTypeOptions = [
-  { label: 'Authorization Code', value: 'authorization_code' },
-  { label: 'Refresh Token', value: 'refresh_token' },
-  { label: 'Client Credentials', value: 'client_credentials' },
+	{ label: "Authorization Code", value: "authorization_code" },
+	{ label: "Refresh Token", value: "refresh_token" },
+	{ label: "Client Credentials", value: "client_credentials" },
 ];
 
 const scopeOptions = [
-  { label: 'openid', value: 'openid' },
-  { label: 'profile', value: 'profile' },
-  { label: 'email', value: 'email' },
-  { label: 'offline_access', value: 'offline_access' },
+	{ label: "openid", value: "openid" },
+	{ label: "profile", value: "profile" },
+	{ label: "email", value: "email" },
+	{ label: "offline_access", value: "offline_access" },
 ];
 
 const isValid = computed(() => {
-  return (
-    form.value.clientName.trim() !== '' &&
-    form.value.redirectUris.length > 0 &&
-    form.value.grantTypes.length > 0
-  );
+	return (
+		form.value.clientName.trim() !== "" &&
+		form.value.redirectUris.length > 0 &&
+		form.value.grantTypes.length > 0
+	);
 });
 
 onMounted(async () => {
-  await loadApplications();
+	await loadApplications();
 });
 
 async function loadApplications() {
-  try {
-    // Only load user-facing applications (not integrations)
-    // OAuth clients are associated with applications, not integrations
-    const response = await applicationsApi.listApplicationsOnly(true);
-    applications.value = response.applications || [];
-    console.log('Loaded applications:', applications.value);
-  } catch (e: any) {
-    console.error('Failed to load applications:', e);
-    toast.add({
-      severity: 'warn',
-      summary: 'Warning',
-      detail: 'Could not load applications: ' + (e?.message || 'Unknown error'),
-      life: 5000,
-    });
-  }
+	try {
+		// Only load user-facing applications (not integrations)
+		// OAuth clients are associated with applications, not integrations
+		const response = await applicationsApi.listApplicationsOnly(true);
+		applications.value = response.applications || [];
+		console.log("Loaded applications:", applications.value);
+	} catch (e: unknown) {
+		console.error("Failed to load applications:", e);
+		toast.add({
+			severity: "warn",
+			summary: "Warning",
+			detail: "Could not load applications: " + getErrorMessage(e, "Unknown error"),
+			life: 5000,
+		});
+	}
 }
 
 function addRedirectUri() {
-  const uri = newRedirectUri.value.trim();
-  if (uri && !form.value.redirectUris.includes(uri)) {
-    // Basic URL validation
-    try {
-      new URL(uri);
-      form.value.redirectUris.push(uri);
-      newRedirectUri.value = '';
-    } catch {
-      toast.add({
-        severity: 'error',
-        summary: 'Invalid URL',
-        detail: 'Please enter a valid URL',
-        life: 3000,
-      });
-    }
-  }
+	const uri = newRedirectUri.value.trim();
+	if (uri && !form.value.redirectUris.includes(uri)) {
+		// Basic URL validation
+		try {
+			new URL(uri);
+			form.value.redirectUris.push(uri);
+			newRedirectUri.value = "";
+		} catch {
+			toast.add({
+				severity: "error",
+				summary: "Invalid URL",
+				detail: "Please enter a valid URL",
+				life: 3000,
+			});
+		}
+	}
 }
 
 function removeRedirectUri(uri: string) {
-  form.value.redirectUris = form.value.redirectUris.filter((u) => u !== uri);
+	form.value.redirectUris = form.value.redirectUris.filter((u) => u !== uri);
 }
 
 function addAllowedOrigin() {
-  const origin = newAllowedOrigin.value.trim();
-  if (origin && !form.value.allowedOrigins.includes(origin)) {
-    // Basic URL validation - must be a valid origin (scheme + host)
-    try {
-      const url = new URL(origin);
-      // Origin should not have path (other than /)
-      if (url.pathname !== '/' && url.pathname !== '') {
-        toast.add({
-          severity: 'error',
-          summary: 'Invalid Origin',
-          detail: 'Origin should not include a path (e.g., https://example.com)',
-          life: 3000,
-        });
-        return;
-      }
-      // Use the origin (scheme + host + port)
-      form.value.allowedOrigins.push(url.origin);
-      newAllowedOrigin.value = '';
-    } catch {
-      toast.add({
-        severity: 'error',
-        summary: 'Invalid URL',
-        detail: 'Please enter a valid origin URL',
-        life: 3000,
-      });
-    }
-  }
+	const origin = newAllowedOrigin.value.trim();
+	if (origin && !form.value.allowedOrigins.includes(origin)) {
+		// Basic URL validation - must be a valid origin (scheme + host)
+		try {
+			const url = new URL(origin);
+			// Origin should not have path (other than /)
+			if (url.pathname !== "/" && url.pathname !== "") {
+				toast.add({
+					severity: "error",
+					summary: "Invalid Origin",
+					detail:
+						"Origin should not include a path (e.g., https://example.com)",
+					life: 3000,
+				});
+				return;
+			}
+			// Use the origin (scheme + host + port)
+			form.value.allowedOrigins.push(url.origin);
+			newAllowedOrigin.value = "";
+		} catch {
+			toast.add({
+				severity: "error",
+				summary: "Invalid URL",
+				detail: "Please enter a valid origin URL",
+				life: 3000,
+			});
+		}
+	}
 }
 
 function removeAllowedOrigin(origin: string) {
-  form.value.allowedOrigins = form.value.allowedOrigins.filter((o) => o !== origin);
+	form.value.allowedOrigins = form.value.allowedOrigins.filter(
+		(o) => o !== origin,
+	);
 }
 
 async function createClient() {
-  if (!isValid.value) return;
+	if (!isValid.value) return;
 
-  loading.value = true;
-  error.value = null;
+	loading.value = true;
+	error.value = null;
 
-  try {
-    const response = await oauthClientsApi.create({
-      clientName: form.value.clientName.trim(),
-      clientType: form.value.clientType,
-      redirectUris: form.value.redirectUris,
-      allowedOrigins: form.value.allowedOrigins.length > 0 ? form.value.allowedOrigins : undefined,
-      grantTypes: form.value.grantTypes,
-      defaultScopes: form.value.defaultScopes.join(' ') || undefined,
-      pkceRequired: form.value.pkceRequired,
-      applicationIds: form.value.applicationIds.length > 0 ? form.value.applicationIds : undefined,
-    });
+	try {
+		const response = await oauthClientsApi.create({
+			clientName: form.value.clientName.trim(),
+			clientType: form.value.clientType,
+			redirectUris: form.value.redirectUris,
+			allowedOrigins:
+				form.value.allowedOrigins.length > 0
+					? form.value.allowedOrigins
+					: undefined,
+			grantTypes: form.value.grantTypes,
+			defaultScopes: form.value.defaultScopes.join(" ") || undefined,
+			pkceRequired: form.value.pkceRequired,
+			applicationIds:
+				form.value.applicationIds.length > 0
+					? form.value.applicationIds
+					: undefined,
+		});
 
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: `OAuth client "${response.clientName}" created successfully`,
-      life: 3000,
-    });
-    router.push(`/authentication/oauth-clients/${response.id}`);
-  } catch (e: any) {
-    error.value = e?.error || e?.message || 'Failed to create OAuth client';
-  } finally {
-    loading.value = false;
-  }
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: `OAuth client "${response.clientName}" created successfully`,
+			life: 3000,
+		});
+		router.push(`/authentication/oauth-clients/${response.id}`);
+	} catch (e: unknown) {
+		error.value = getErrorMessage(e, "Failed to create OAuth client");
+	} finally {
+		loading.value = false;
+	}
 }
 
 function copySecret() {
-  if (clientSecret.value) {
-    navigator.clipboard.writeText(clientSecret.value);
-    toast.add({
-      severity: 'success',
-      summary: 'Copied',
-      detail: 'Client secret copied to clipboard',
-      life: 2000,
-    });
-  }
+	if (clientSecret.value) {
+		navigator.clipboard.writeText(clientSecret.value);
+		toast.add({
+			severity: "success",
+			summary: "Copied",
+			detail: "Client secret copied to clipboard",
+			life: 2000,
+		});
+	}
 }
 
 function closeSecretDialog() {
-  showSecretDialog.value = false;
-  router.push('/authentication/oauth-clients');
+	showSecretDialog.value = false;
+	router.push("/authentication/oauth-clients");
 }
 </script>
 

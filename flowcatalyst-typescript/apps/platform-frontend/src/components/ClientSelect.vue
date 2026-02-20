@@ -1,28 +1,27 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue';
-import AutoComplete from 'primevue/autocomplete';
-import { clientsApi, type Client } from '@/api/clients';
+import { ref, watch, onMounted } from "vue";
+import { clientsApi, type Client } from "@/api/clients";
 
 interface Props {
-  modelValue: string | null;
-  placeholder?: string;
-  disabled?: boolean;
-  showClear?: boolean;
-  status?: string;
-  invalid?: boolean;
+	modelValue: string | null;
+	placeholder?: string;
+	disabled?: boolean;
+	showClear?: boolean;
+	status?: string;
+	invalid?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  placeholder: 'Search for a client...',
-  disabled: false,
-  showClear: true,
-  status: 'ACTIVE',
-  invalid: false,
+	placeholder: "Search for a client...",
+	disabled: false,
+	showClear: true,
+	status: "ACTIVE",
+	invalid: false,
 });
 
 const emit = defineEmits<{
-  'update:modelValue': [value: string | null];
-  'client-selected': [client: Client | null];
+	"update:modelValue": [value: string | null];
+	"client-selected": [client: Client | null];
 }>();
 
 // Internal state
@@ -32,60 +31,63 @@ const loading = ref(false);
 
 // Load initial client if modelValue is provided
 onMounted(async () => {
-  if (props.modelValue) {
-    await loadClientById(props.modelValue);
-  }
+	if (props.modelValue) {
+		await loadClientById(props.modelValue);
+	}
 });
 
 // Watch for external modelValue changes
 watch(
-  () => props.modelValue,
-  async (newValue) => {
-    if (newValue && (!selectedClient.value || selectedClient.value.id !== newValue)) {
-      await loadClientById(newValue);
-    } else if (!newValue) {
-      selectedClient.value = null;
-    }
-  },
+	() => props.modelValue,
+	async (newValue) => {
+		if (
+			newValue &&
+			(!selectedClient.value || selectedClient.value.id !== newValue)
+		) {
+			await loadClientById(newValue);
+		} else if (!newValue) {
+			selectedClient.value = null;
+		}
+	},
 );
 
 async function loadClientById(id: string) {
-  try {
-    const client = await clientsApi.get(id);
-    selectedClient.value = client;
-  } catch (e) {
-    console.error('Failed to load client:', e);
-    selectedClient.value = null;
-  }
+	try {
+		const client = await clientsApi.get(id);
+		selectedClient.value = client;
+	} catch (e) {
+		console.error("Failed to load client:", e);
+		selectedClient.value = null;
+	}
 }
 
 async function searchClients(event: { query: string }) {
-  loading.value = true;
-  try {
-    const response = await clientsApi.search({
-      q: event.query,
-      status: props.status,
-      limit: 20,
-    });
-    suggestions.value = response.clients;
-  } catch (e) {
-    console.error('Failed to search clients:', e);
-    suggestions.value = [];
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	try {
+		const response = await clientsApi.search({
+			q: event.query,
+			status: props.status,
+			limit: 20,
+		});
+		suggestions.value = response.clients;
+	} catch (e) {
+		console.error("Failed to search clients:", e);
+		suggestions.value = [];
+	} finally {
+		loading.value = false;
+	}
 }
 
 function onSelect(event: { value: Client }) {
-  selectedClient.value = event.value;
-  emit('update:modelValue', event.value.id);
-  emit('client-selected', event.value);
+	selectedClient.value = event.value;
+	emit("update:modelValue", event.value.id);
+	emit("client-selected", event.value);
 }
 
 function onClear() {
-  selectedClient.value = null;
-  emit('update:modelValue', null);
-  emit('client-selected', null);
+	selectedClient.value = null;
+	emit("update:modelValue", null);
+	emit("client-selected", null);
 }
 </script>
 

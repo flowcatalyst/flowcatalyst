@@ -8,23 +8,23 @@
  * configuring logging and creating child loggers with tracing context.
  */
 
-import pino, { type Logger, type LoggerOptions } from 'pino';
-import type { TracingData } from './types.js';
+import pino, { type Logger, type LoggerOptions } from "pino";
+import type { TracingData } from "./types.js";
 
 /**
  * Configuration for logging.
  */
 export interface LoggingConfig {
-  /** Log level (default: 'info') */
-  readonly level?: string;
-  /** Service name for log context */
-  readonly serviceName?: string;
-  /** Paths to skip logging (e.g., /health) */
-  readonly skipPaths?: string[];
-  /** Additional base context to include in all logs */
-  readonly baseContext?: Record<string, unknown>;
-  /** Custom Pino options */
-  readonly pinoOptions?: LoggerOptions;
+	/** Log level (default: 'info') */
+	readonly level?: string;
+	/** Service name for log context */
+	readonly serviceName?: string;
+	/** Paths to skip logging (e.g., /health) */
+	readonly skipPaths?: string[];
+	/** Additional base context to include in all logs */
+	readonly baseContext?: Record<string, unknown>;
+	/** Custom Pino options */
+	readonly pinoOptions?: LoggerOptions;
 }
 
 /**
@@ -44,19 +44,24 @@ export interface LoggingConfig {
  * ```
  */
 export function createLogger(config: LoggingConfig = {}): Logger {
-  const { level = 'info', serviceName, baseContext = {}, pinoOptions = {} } = config;
+	const {
+		level = "info",
+		serviceName,
+		baseContext = {},
+		pinoOptions = {},
+	} = config;
 
-  const options: LoggerOptions = {
-    level,
-    ...pinoOptions,
-    base: {
-      ...(serviceName ? { service: serviceName } : {}),
-      ...baseContext,
-      ...pinoOptions.base,
-    },
-  };
+	const options: LoggerOptions = {
+		level,
+		...pinoOptions,
+		base: {
+			...(serviceName ? { service: serviceName } : {}),
+			...baseContext,
+			...pinoOptions.base,
+		},
+	};
 
-  return pino(options);
+	return pino(options);
 }
 
 /**
@@ -66,12 +71,15 @@ export function createLogger(config: LoggingConfig = {}): Logger {
  * @param tracing - Tracing data from request context
  * @returns Child logger with tracing fields
  */
-export function createRequestLogger(baseLogger: Logger, tracing: TracingData): Logger {
-  return baseLogger.child({
-    correlationId: tracing.correlationId,
-    executionId: tracing.executionId,
-    ...(tracing.causationId ? { causationId: tracing.causationId } : {}),
-  });
+export function createRequestLogger(
+	baseLogger: Logger,
+	tracing: TracingData,
+): Logger {
+	return baseLogger.child({
+		correlationId: tracing.correlationId,
+		executionId: tracing.executionId,
+		...(tracing.causationId ? { causationId: tracing.causationId } : {}),
+	});
 }
 
 /**
@@ -97,32 +105,39 @@ export function createRequestLogger(baseLogger: Logger, tracing: TracingData): L
  * });
  * ```
  */
-export function createFastifyLoggerOptions(config: LoggingConfig = {}): LoggerOptions | boolean {
-  const { level = 'info', serviceName, baseContext = {}, pinoOptions = {} } = config;
+export function createFastifyLoggerOptions(
+	config: LoggingConfig = {},
+): LoggerOptions | boolean {
+	const {
+		level = "info",
+		serviceName,
+		baseContext = {},
+		pinoOptions = {},
+	} = config;
 
-  const isDev = process.env['NODE_ENV'] !== 'production';
+	const isDev = process.env["NODE_ENV"] !== "production";
 
-  return {
-    level,
-    ...pinoOptions,
-    base: {
-      ...(serviceName ? { service: serviceName } : {}),
-      ...baseContext,
-      ...pinoOptions.base,
-    },
-    ...(isDev
-      ? {
-          transport: {
-            target: 'pino-pretty',
-            options: {
-              colorize: true,
-              translateTime: 'HH:MM:ss',
-              ignore: 'pid,hostname',
-            },
-          },
-        }
-      : {}),
-  };
+	return {
+		level,
+		...pinoOptions,
+		base: {
+			...(serviceName ? { service: serviceName } : {}),
+			...baseContext,
+			...pinoOptions.base,
+		},
+		...(isDev
+			? {
+					transport: {
+						target: "pino-pretty",
+						options: {
+							colorize: true,
+							translateTime: "HH:MM:ss",
+							ignore: "pid,hostname",
+						},
+					},
+				}
+			: {}),
+	};
 }
 
 export type { Logger, LoggerOptions };

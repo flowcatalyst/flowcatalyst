@@ -1,46 +1,46 @@
-import { apiFetch } from './client';
+import { apiFetch } from "./client";
 
 export interface CorsOrigin {
-  id: string;
-  origin: string;
-  description: string | null;
-  createdBy: string;
-  createdAt: string;
+	id: string;
+	origin: string;
+	description: string | null;
+	createdBy: string;
+	createdAt: string;
 }
 
 export interface CorsOriginListResponse {
-  corsOrigins: CorsOrigin[];
-  total: number;
+	corsOrigins: CorsOrigin[];
+	total: number;
 }
 
 export interface CreateCorsOriginRequest {
-  origin: string;
-  description?: string;
+	origin: string;
+	description?: string;
 }
 
 export const corsApi = {
-  list(): Promise<CorsOriginListResponse> {
-    return apiFetch('/admin/platform/cors');
-  },
+	list(): Promise<CorsOriginListResponse> {
+		return apiFetch("/admin/platform/cors");
+	},
 
-  get(id: string): Promise<CorsOrigin> {
-    return apiFetch(`/admin/platform/cors/${id}`);
-  },
+	get(id: string): Promise<CorsOrigin> {
+		return apiFetch(`/admin/platform/cors/${id}`);
+	},
 
-  getAllowed(): Promise<{ origins: string[] }> {
-    return apiFetch('/admin/platform/cors/allowed');
-  },
+	getAllowed(): Promise<{ origins: string[] }> {
+		return apiFetch("/admin/platform/cors/allowed");
+	},
 
-  create(data: CreateCorsOriginRequest): Promise<CorsOrigin> {
-    return apiFetch('/admin/platform/cors', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
+	create(data: CreateCorsOriginRequest): Promise<CorsOrigin> {
+		return apiFetch("/admin/platform/cors", {
+			method: "POST",
+			body: JSON.stringify(data),
+		});
+	},
 
-  delete(id: string): Promise<void> {
-    return apiFetch(`/admin/platform/cors/${id}`, {
-      method: 'DELETE',
-    });
-  },
+	delete(id: string): Promise<void> {
+		return apiFetch(`/admin/platform/cors/${id}`, {
+			method: "DELETE",
+		});
+	},
 };

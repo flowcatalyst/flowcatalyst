@@ -1,89 +1,86 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Tag from 'primevue/tag';
-import Select from 'primevue/select';
-import ProgressSpinner from 'primevue/progressspinner';
-import Message from 'primevue/message';
-import { dispatchPoolsApi, type DispatchPool, type DispatchPoolStatus } from '@/api/dispatch-pools';
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import {
+	dispatchPoolsApi,
+	type DispatchPool,
+	type DispatchPoolStatus,
+} from "@/api/dispatch-pools";
 
 const router = useRouter();
 const pools = ref<DispatchPool[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
-const searchQuery = ref('');
+const searchQuery = ref("");
 const statusFilter = ref<DispatchPoolStatus | null>(null);
 
 const statusOptions = [
-  { label: 'All Statuses', value: null },
-  { label: 'Active', value: 'ACTIVE' },
-  { label: 'Suspended', value: 'SUSPENDED' },
-  { label: 'Archived', value: 'ARCHIVED' },
+	{ label: "All Statuses", value: null },
+	{ label: "Active", value: "ACTIVE" },
+	{ label: "Suspended", value: "SUSPENDED" },
+	{ label: "Archived", value: "ARCHIVED" },
 ];
 
 const filteredPools = computed(() => {
-  let result = pools.value;
+	let result = pools.value;
 
-  if (statusFilter.value) {
-    result = result.filter((pool) => pool.status === statusFilter.value);
-  }
+	if (statusFilter.value) {
+		result = result.filter((pool) => pool.status === statusFilter.value);
+	}
 
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase();
-    result = result.filter(
-      (pool) =>
-        pool.code.toLowerCase().includes(query) ||
-        pool.name.toLowerCase().includes(query) ||
-        pool.clientIdentifier?.toLowerCase().includes(query),
-    );
-  }
+	if (searchQuery.value) {
+		const query = searchQuery.value.toLowerCase();
+		result = result.filter(
+			(pool) =>
+				pool.code.toLowerCase().includes(query) ||
+				pool.name.toLowerCase().includes(query) ||
+				pool.clientIdentifier?.toLowerCase().includes(query),
+		);
+	}
 
-  return result;
+	return result;
 });
 
 onMounted(async () => {
-  await loadPools();
+	await loadPools();
 });
 
 async function loadPools() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const response = await dispatchPoolsApi.list();
-    pools.value = response.pools;
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load dispatch pools';
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	error.value = null;
+	try {
+		const response = await dispatchPoolsApi.list();
+		pools.value = response.pools;
+	} catch (e) {
+		error.value =
+			e instanceof Error ? e.message : "Failed to load dispatch pools";
+	} finally {
+		loading.value = false;
+	}
 }
 
 function getStatusSeverity(status: DispatchPoolStatus) {
-  switch (status) {
-    case 'ACTIVE':
-      return 'success';
-    case 'SUSPENDED':
-      return 'warn';
-    case 'ARCHIVED':
-      return 'secondary';
-    default:
-      return 'secondary';
-  }
+	switch (status) {
+		case "ACTIVE":
+			return "success";
+		case "SUSPENDED":
+			return "warn";
+		case "ARCHIVED":
+			return "secondary";
+		default:
+			return "secondary";
+	}
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString();
+	return new Date(dateString).toLocaleDateString();
 }
 
 function getScopeLabel(pool: DispatchPool) {
-  if (pool.clientIdentifier) {
-    return pool.clientIdentifier;
-  }
-  return 'Anchor-level';
+	if (pool.clientIdentifier) {
+		return pool.clientIdentifier;
+	}
+	return "Anchor-level";
 }
 </script>
 

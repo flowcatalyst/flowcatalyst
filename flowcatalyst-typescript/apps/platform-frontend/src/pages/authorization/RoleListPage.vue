@@ -1,18 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Textarea from 'primevue/textarea';
-import Tag from 'primevue/tag';
-import Select from 'primevue/select';
-import Dialog from 'primevue/dialog';
-import ProgressSpinner from 'primevue/progressspinner';
-import Message from 'primevue/message';
-import { rolesApi, type Role, type RoleSource, type ApplicationOption } from '@/api/roles';
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import {
+	rolesApi,
+	type Role,
+	type RoleSource,
+	type ApplicationOption,
+} from "@/api/roles";
 
 const router = useRouter();
 const toast = useToast();
@@ -26,231 +21,239 @@ const initialLoading = ref(true);
 // Filters
 const selectedApplication = ref<string | null>(null);
 const selectedSource = ref<RoleSource | null>(null);
-const searchQuery = ref('');
+const searchQuery = ref("");
 
 const sourceOptions = [
-  { label: 'Code-defined', value: 'CODE' },
-  { label: 'Admin-created', value: 'DATABASE' },
-  { label: 'SDK-registered', value: 'SDK' },
+	{ label: "Code-defined", value: "CODE" },
+	{ label: "Admin-created", value: "DATABASE" },
+	{ label: "SDK-registered", value: "SDK" },
 ];
 
 const hasActiveFilters = computed(() => {
-  return selectedApplication.value || selectedSource.value || searchQuery.value;
+	return selectedApplication.value || selectedSource.value || searchQuery.value;
 });
 
 // Filtered roles based on search
 const filteredRoles = computed(() => {
-  if (!searchQuery.value) return roles.value;
-  const query = searchQuery.value.toLowerCase();
-  return roles.value.filter(
-    (role) =>
-      role.name.toLowerCase().includes(query) ||
-      role.displayName?.toLowerCase().includes(query) ||
-      role.description?.toLowerCase().includes(query),
-  );
+	if (!searchQuery.value) return roles.value;
+	const query = searchQuery.value.toLowerCase();
+	return roles.value.filter(
+		(role) =>
+			role.name.toLowerCase().includes(query) ||
+			role.displayName?.toLowerCase().includes(query) ||
+			role.description?.toLowerCase().includes(query),
+	);
 });
 
 // Create dialog
 const showCreateDialog = ref(false);
 const createForm = ref({
-  applicationCode: '',
-  name: '',
-  displayName: '',
-  description: '',
+	applicationCode: "",
+	name: "",
+	displayName: "",
+	description: "",
 });
 const creating = ref(false);
 const createError = ref<string | null>(null);
 
 const isCreateFormValid = computed(() => {
-  return createForm.value.applicationCode && createForm.value.name.trim();
+	return createForm.value.applicationCode && createForm.value.name.trim();
 });
 
 // Edit dialog
 const showEditDialog = ref(false);
 const editingRole = ref<Role | null>(null);
 const editForm = ref({
-  displayName: '',
-  description: '',
+	displayName: "",
+	description: "",
 });
 const updating = ref(false);
 const updateError = ref<string | null>(null);
 
 // Initialize
 onMounted(async () => {
-  await Promise.all([loadRoles(), loadApplications()]);
-  initialLoading.value = false;
+	await Promise.all([loadRoles(), loadApplications()]);
+	initialLoading.value = false;
 });
 
 async function loadRoles() {
-  loading.value = true;
-  try {
-    const filters: { application?: string; source?: RoleSource } = {};
-    if (selectedApplication.value) filters.application = selectedApplication.value;
-    if (selectedSource.value) filters.source = selectedSource.value;
+	loading.value = true;
+	try {
+		const filters: { application?: string; source?: RoleSource } = {};
+		if (selectedApplication.value)
+			filters.application = selectedApplication.value;
+		if (selectedSource.value) filters.source = selectedSource.value;
 
-    const response = await rolesApi.list(filters);
-    roles.value = response.items;
-  } catch (e) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: e instanceof Error ? e.message : 'Failed to load roles',
-      life: 5000,
-    });
-  } finally {
-    loading.value = false;
-  }
+		const response = await rolesApi.list(filters);
+		roles.value = response.items;
+	} catch (e) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: e instanceof Error ? e.message : "Failed to load roles",
+			life: 5000,
+		});
+	} finally {
+		loading.value = false;
+	}
 }
 
 async function loadApplications() {
-  try {
-    const response = await rolesApi.getApplications();
-    applications.value = response.options;
-  } catch (e) {
-    console.error('Failed to load applications:', e);
-  }
+	try {
+		const response = await rolesApi.getApplications();
+		applications.value = response.options;
+	} catch (e) {
+		console.error("Failed to load applications:", e);
+	}
 }
 
 function onFilterChange() {
-  loadRoles();
+	loadRoles();
 }
 
 function clearFilters() {
-  selectedApplication.value = null;
-  selectedSource.value = null;
-  searchQuery.value = '';
-  loadRoles();
+	selectedApplication.value = null;
+	selectedSource.value = null;
+	searchQuery.value = "";
+	loadRoles();
 }
 
 function viewRole(role: Role) {
-  router.push(`/authorization/roles/${encodeURIComponent(role.name)}`);
+	router.push(`/authorization/roles/${encodeURIComponent(role.name)}`);
 }
 
 function openCreateDialog() {
-  createForm.value = {
-    applicationCode: applications.value.length > 0 ? applications.value[0].code : '',
-    name: '',
-    displayName: '',
-    description: '',
-  };
-  createError.value = null;
-  showCreateDialog.value = true;
+	createForm.value = {
+		applicationCode:
+			applications.value.length > 0 ? applications.value[0].code : "",
+		name: "",
+		displayName: "",
+		description: "",
+	};
+	createError.value = null;
+	showCreateDialog.value = true;
 }
 
 async function createRole() {
-  if (!isCreateFormValid.value) return;
+	if (!isCreateFormValid.value) return;
 
-  creating.value = true;
-  createError.value = null;
+	creating.value = true;
+	createError.value = null;
 
-  try {
-    await rolesApi.create({
-      applicationCode: createForm.value.applicationCode,
-      name: createForm.value.name,
-      displayName: createForm.value.displayName || undefined,
-      description: createForm.value.description || undefined,
-    });
+	try {
+		await rolesApi.create({
+			applicationCode: createForm.value.applicationCode,
+			name: createForm.value.name,
+			displayName: createForm.value.displayName || undefined,
+			description: createForm.value.description || undefined,
+		});
 
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Role created successfully',
-      life: 3000,
-    });
-    showCreateDialog.value = false;
-    loadRoles();
-  } catch (e) {
-    createError.value = e instanceof Error ? e.message : 'Failed to create role';
-  } finally {
-    creating.value = false;
-  }
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Role created successfully",
+			life: 3000,
+		});
+		showCreateDialog.value = false;
+		loadRoles();
+	} catch (e) {
+		createError.value =
+			e instanceof Error ? e.message : "Failed to create role";
+	} finally {
+		creating.value = false;
+	}
 }
 
 function openEditDialog(role: Role) {
-  editingRole.value = role;
-  editForm.value = {
-    displayName: role.displayName || '',
-    description: role.description || '',
-  };
-  updateError.value = null;
-  showEditDialog.value = true;
+	editingRole.value = role;
+	editForm.value = {
+		displayName: role.displayName || "",
+		description: role.description || "",
+	};
+	updateError.value = null;
+	showEditDialog.value = true;
 }
 
 async function updateRole() {
-  if (!editingRole.value) return;
+	if (!editingRole.value) return;
 
-  updating.value = true;
-  updateError.value = null;
+	updating.value = true;
+	updateError.value = null;
 
-  try {
-    await rolesApi.update(editingRole.value.name, {
-      displayName: editForm.value.displayName || undefined,
-      description: editForm.value.description || undefined,
-    });
+	try {
+		await rolesApi.update(editingRole.value.name, {
+			displayName: editForm.value.displayName || undefined,
+			description: editForm.value.description || undefined,
+		});
 
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Role updated successfully',
-      life: 3000,
-    });
-    showEditDialog.value = false;
-    loadRoles();
-  } catch (e) {
-    updateError.value = e instanceof Error ? e.message : 'Failed to update role';
-  } finally {
-    updating.value = false;
-  }
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Role updated successfully",
+			life: 3000,
+		});
+		showEditDialog.value = false;
+		loadRoles();
+	} catch (e) {
+		updateError.value =
+			e instanceof Error ? e.message : "Failed to update role";
+	} finally {
+		updating.value = false;
+	}
 }
 
 async function deleteRole(role: Role) {
-  if (!confirm(`Are you sure you want to delete the role "${role.displayName || role.name}"?`)) {
-    return;
-  }
+	if (
+		!confirm(
+			`Are you sure you want to delete the role "${role.displayName || role.name}"?`,
+		)
+	) {
+		return;
+	}
 
-  try {
-    await rolesApi.delete(role.name);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Role deleted successfully',
-      life: 3000,
-    });
-    loadRoles();
-  } catch (e) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: e instanceof Error ? e.message : 'Failed to delete role',
-      life: 5000,
-    });
-  }
+	try {
+		await rolesApi.delete(role.name);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Role deleted successfully",
+			life: 3000,
+		});
+		loadRoles();
+	} catch (e) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: e instanceof Error ? e.message : "Failed to delete role",
+			life: 5000,
+		});
+	}
 }
 
 function getSourceSeverity(source: RoleSource) {
-  switch (source) {
-    case 'CODE':
-      return 'info';
-    case 'DATABASE':
-      return 'success';
-    case 'SDK':
-      return 'warn';
-    default:
-      return 'secondary';
-  }
+	switch (source) {
+		case "CODE":
+			return "info";
+		case "DATABASE":
+			return "success";
+		case "SDK":
+			return "warn";
+		default:
+			return "secondary";
+	}
 }
 
 function getSourceLabel(source: RoleSource) {
-  switch (source) {
-    case 'CODE':
-      return 'Code';
-    case 'DATABASE':
-      return 'Admin';
-    case 'SDK':
-      return 'SDK';
-    default:
-      return source;
-  }
+	switch (source) {
+		case "CODE":
+			return "Code";
+		case "DATABASE":
+			return "Admin";
+		case "SDK":
+			return "SDK";
+		default:
+			return source;
+	}
 }
 </script>
 

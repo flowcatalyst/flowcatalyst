@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
-import { NAVIGATION_CONFIG, type NavItem } from '@/config/navigation';
-import { usePlatformConfigStore } from '@/stores/platformConfig';
-import { useAppThemeStore } from '@/stores/appTheme';
+import { ref, computed, onMounted } from "vue";
+import { useRoute } from "vue-router";
+import { NAVIGATION_CONFIG, type NavItem } from "@/config/navigation";
+import { usePlatformConfigStore } from "@/stores/platformConfig";
+import { useAppThemeStore } from "@/stores/appTheme";
 
 defineProps<{
-  collapsed: boolean;
+	collapsed: boolean;
 }>();
 
 const emit = defineEmits<{
-  toggleCollapse: [];
+	toggleCollapse: [];
 }>();
 
 const route = useRoute();
@@ -20,30 +20,30 @@ const expandedItems = ref<Record<string, boolean>>({});
 
 // Load app theme on mount
 onMounted(() => {
-  appThemeStore.loadTheme();
+	appThemeStore.loadTheme();
 });
 
 // Filter navigation based on platform configuration
 const filteredNavigation = computed(() => {
-  return NAVIGATION_CONFIG.filter((group) => {
-    // Hide Messaging group when messaging is disabled
-    if (group.label === 'Messaging' && !platformConfigStore.messagingEnabled) {
-      return false;
-    }
-    return true;
-  });
+	return NAVIGATION_CONFIG.filter((group) => {
+		// Hide Messaging group when messaging is disabled
+		if (group.label === "Messaging" && !platformConfigStore.messagingEnabled) {
+			return false;
+		}
+		return true;
+	});
 });
 
 function toggleExpand(itemLabel: string) {
-  expandedItems.value = {
-    ...expandedItems.value,
-    [itemLabel]: !expandedItems.value[itemLabel],
-  };
+	expandedItems.value = {
+		...expandedItems.value,
+		[itemLabel]: !expandedItems.value[itemLabel],
+	};
 }
 
 function isActive(item: NavItem): boolean {
-  if (!item.route) return false;
-  return route.path === item.route || route.path.startsWith(item.route + '/');
+	if (!item.route) return false;
+	return route.path === item.route || route.path.startsWith(item.route + "/");
 }
 </script>
 

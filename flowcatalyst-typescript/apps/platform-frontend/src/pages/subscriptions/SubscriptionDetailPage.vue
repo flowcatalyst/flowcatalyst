@@ -1,24 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useConfirm } from 'primevue/useconfirm';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import Tag from 'primevue/tag';
-import InputText from 'primevue/inputtext';
-import InputNumber from 'primevue/inputnumber';
-import Textarea from 'primevue/textarea';
-import Select from 'primevue/select';
-import ProgressSpinner from 'primevue/progressspinner';
-import Message from 'primevue/message';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
+import { ref, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useConfirm } from "primevue/useconfirm";
+import { useToast } from "primevue/usetoast";
 import {
-  subscriptionsApi,
-  type Subscription,
-  type SubscriptionStatus,
-  type SubscriptionMode,
-} from '@/api/subscriptions';
+	subscriptionsApi,
+	type Subscription,
+	type SubscriptionStatus,
+	type SubscriptionMode,
+} from "@/api/subscriptions";
 
 const route = useRoute();
 const router = useRouter();
@@ -31,202 +21,222 @@ const editing = ref(false);
 const saving = ref(false);
 
 // Edit form
-const editName = ref('');
-const editDescription = ref('');
-const editTarget = ref('');
-const editQueue = ref('');
+const editName = ref("");
+const editDescription = ref("");
+const editTarget = ref("");
+const editQueue = ref("");
 const editMaxAgeSeconds = ref<number | null>(null);
 const editDelaySeconds = ref<number | null>(null);
 const editSequence = ref<number | null>(null);
 const editTimeoutSeconds = ref<number | null>(null);
-const editMode = ref<SubscriptionMode>('IMMEDIATE');
+const editMode = ref<SubscriptionMode>("IMMEDIATE");
 
 const modeOptions = [
-  { label: 'Immediate', value: 'IMMEDIATE' },
-  { label: 'Next on Error', value: 'NEXT_ON_ERROR' },
-  { label: 'Block on Error', value: 'BLOCK_ON_ERROR' },
+	{ label: "Immediate", value: "IMMEDIATE" },
+	{ label: "Next on Error", value: "NEXT_ON_ERROR" },
+	{ label: "Block on Error", value: "BLOCK_ON_ERROR" },
 ];
 
 onMounted(async () => {
-  const id = route.params.id as string;
-  if (id) {
-    await loadSubscription(id);
-  }
+	const id = route.params.id as string;
+	if (id) {
+		await loadSubscription(id);
+	}
 });
 
 async function loadSubscription(id: string) {
-  loading.value = true;
-  try {
-    subscription.value = await subscriptionsApi.get(id);
-  } catch {
-    subscription.value = null;
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	try {
+		subscription.value = await subscriptionsApi.get(id);
+	} catch {
+		subscription.value = null;
+	} finally {
+		loading.value = false;
+	}
 }
 
 function startEditing() {
-  if (subscription.value) {
-    editName.value = subscription.value.name;
-    editDescription.value = subscription.value.description || '';
-    editTarget.value = subscription.value.target;
-    editQueue.value = subscription.value.queue;
-    editMaxAgeSeconds.value = subscription.value.maxAgeSeconds;
-    editDelaySeconds.value = subscription.value.delaySeconds;
-    editSequence.value = subscription.value.sequence;
-    editTimeoutSeconds.value = subscription.value.timeoutSeconds;
-    editMode.value = subscription.value.mode;
-    editing.value = true;
-  }
+	if (subscription.value) {
+		editName.value = subscription.value.name;
+		editDescription.value = subscription.value.description || "";
+		editTarget.value = subscription.value.target;
+		editQueue.value = subscription.value.queue;
+		editMaxAgeSeconds.value = subscription.value.maxAgeSeconds;
+		editDelaySeconds.value = subscription.value.delaySeconds;
+		editSequence.value = subscription.value.sequence;
+		editTimeoutSeconds.value = subscription.value.timeoutSeconds;
+		editMode.value = subscription.value.mode;
+		editing.value = true;
+	}
 }
 
 function cancelEditing() {
-  editing.value = false;
+	editing.value = false;
 }
 
 async function saveChanges() {
-  if (!subscription.value) return;
+	if (!subscription.value) return;
 
-  saving.value = true;
-  try {
-    subscription.value = await subscriptionsApi.update(subscription.value.id, {
-      name: editName.value,
-      description: editDescription.value || undefined,
-      target: editTarget.value,
-      queue: editQueue.value,
-      maxAgeSeconds: editMaxAgeSeconds.value || undefined,
-      delaySeconds: editDelaySeconds.value || undefined,
-      sequence: editSequence.value || undefined,
-      timeoutSeconds: editTimeoutSeconds.value || undefined,
-      mode: editMode.value,
-    });
-    editing.value = false;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Subscription updated',
-      life: 3000,
-    });
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update', life: 3000 });
-  } finally {
-    saving.value = false;
-  }
+	saving.value = true;
+	try {
+		subscription.value = await subscriptionsApi.update(subscription.value.id, {
+			name: editName.value,
+			description: editDescription.value || undefined,
+			target: editTarget.value,
+			queue: editQueue.value,
+			maxAgeSeconds: editMaxAgeSeconds.value || undefined,
+			delaySeconds: editDelaySeconds.value || undefined,
+			sequence: editSequence.value || undefined,
+			timeoutSeconds: editTimeoutSeconds.value || undefined,
+			mode: editMode.value,
+		});
+		editing.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Subscription updated",
+			life: 3000,
+		});
+	} catch (e) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to update",
+			life: 3000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 function confirmPause() {
-  confirm.require({
-    message: 'Pause this subscription? It will stop creating dispatch jobs.',
-    header: 'Pause Subscription',
-    icon: 'pi pi-pause',
-    acceptLabel: 'Pause',
-    acceptClass: 'p-button-warning',
-    accept: pauseSubscription,
-  });
+	confirm.require({
+		message: "Pause this subscription? It will stop creating dispatch jobs.",
+		header: "Pause Subscription",
+		icon: "pi pi-pause",
+		acceptLabel: "Pause",
+		acceptClass: "p-button-warning",
+		accept: pauseSubscription,
+	});
 }
 
 async function pauseSubscription() {
-  if (!subscription.value) return;
-  try {
-    await subscriptionsApi.pause(subscription.value.id);
-    subscription.value = await subscriptionsApi.get(subscription.value.id);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Subscription paused',
-      life: 3000,
-    });
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to pause', life: 3000 });
-  }
+	if (!subscription.value) return;
+	try {
+		await subscriptionsApi.pause(subscription.value.id);
+		subscription.value = await subscriptionsApi.get(subscription.value.id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Subscription paused",
+			life: 3000,
+		});
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to pause",
+			life: 3000,
+		});
+	}
 }
 
 function confirmResume() {
-  confirm.require({
-    message: 'Resume this subscription?',
-    header: 'Resume Subscription',
-    icon: 'pi pi-play',
-    acceptLabel: 'Resume',
-    accept: resumeSubscription,
-  });
+	confirm.require({
+		message: "Resume this subscription?",
+		header: "Resume Subscription",
+		icon: "pi pi-play",
+		acceptLabel: "Resume",
+		accept: resumeSubscription,
+	});
 }
 
 async function resumeSubscription() {
-  if (!subscription.value) return;
-  try {
-    await subscriptionsApi.resume(subscription.value.id);
-    subscription.value = await subscriptionsApi.get(subscription.value.id);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Subscription resumed',
-      life: 3000,
-    });
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to resume', life: 3000 });
-  }
+	if (!subscription.value) return;
+	try {
+		await subscriptionsApi.resume(subscription.value.id);
+		subscription.value = await subscriptionsApi.get(subscription.value.id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Subscription resumed",
+			life: 3000,
+		});
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to resume",
+			life: 3000,
+		});
+	}
 }
 
 function confirmDelete() {
-  confirm.require({
-    message: 'Delete this subscription? This action cannot be undone.',
-    header: 'Delete Subscription',
-    icon: 'pi pi-exclamation-triangle',
-    acceptLabel: 'Delete',
-    acceptClass: 'p-button-danger',
-    accept: deleteSubscription,
-  });
+	confirm.require({
+		message: "Delete this subscription? This action cannot be undone.",
+		header: "Delete Subscription",
+		icon: "pi pi-exclamation-triangle",
+		acceptLabel: "Delete",
+		acceptClass: "p-button-danger",
+		accept: deleteSubscription,
+	});
 }
 
 async function deleteSubscription() {
-  if (!subscription.value) return;
-  try {
-    await subscriptionsApi.delete(subscription.value.id);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Subscription deleted',
-      life: 3000,
-    });
-    router.push('/subscriptions');
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete', life: 3000 });
-  }
+	if (!subscription.value) return;
+	try {
+		await subscriptionsApi.delete(subscription.value.id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Subscription deleted",
+			life: 3000,
+		});
+		router.push("/subscriptions");
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to delete",
+			life: 3000,
+		});
+	}
 }
 
 function getStatusSeverity(status: SubscriptionStatus) {
-  switch (status) {
-    case 'ACTIVE':
-      return 'success';
-    case 'PAUSED':
-      return 'warn';
-    default:
-      return 'secondary';
-  }
+	switch (status) {
+		case "ACTIVE":
+			return "success";
+		case "PAUSED":
+			return "warn";
+		default:
+			return "secondary";
+	}
 }
 
 function getModeLabel(mode: SubscriptionMode) {
-  switch (mode) {
-    case 'IMMEDIATE':
-      return 'Immediate';
-    case 'NEXT_ON_ERROR':
-      return 'Next on Error';
-    case 'BLOCK_ON_ERROR':
-      return 'Block on Error';
-    default:
-      return mode;
-  }
+	switch (mode) {
+		case "IMMEDIATE":
+			return "Immediate";
+		case "NEXT_ON_ERROR":
+			return "Next on Error";
+		case "BLOCK_ON_ERROR":
+			return "Block on Error";
+		default:
+			return mode;
+	}
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleString();
+	return new Date(dateString).toLocaleString();
 }
 
 function getScopeLabel(sub: Subscription) {
-  if (sub.clientIdentifier) {
-    return sub.clientIdentifier;
-  }
-  return 'Anchor-level (no client)';
+	if (sub.clientIdentifier) {
+		return sub.clientIdentifier;
+	}
+	return "Anchor-level (no client)";
 }
 </script>
 

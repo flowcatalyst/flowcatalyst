@@ -10,28 +10,28 @@
  * Message to publish to a queue.
  */
 export interface PublishMessage {
-  messageId: string;
-  messageGroupId: string;
-  messageDeduplicationId?: string | undefined;
-  body: string;
+	messageId: string;
+	messageGroupId: string;
+	messageDeduplicationId?: string | undefined;
+	body: string;
 }
 
 /**
  * Result of publishing a single message.
  */
 export interface PublishResult {
-  messageId: string;
-  success: boolean;
-  error?: string | undefined;
+	messageId: string;
+	success: boolean;
+	error?: string | undefined;
 }
 
 /**
  * Queue publisher interface — all broker implementations must satisfy this contract.
  */
 export interface QueuePublisher {
-  /** Publish a batch of messages. Returns results per message. */
-  publishBatch(messages: PublishMessage[]): Promise<PublishResult[]>;
+	/** Publish a batch of messages. Returns results per message. */
+	publishBatch(messages: PublishMessage[]): Promise<PublishResult[]>;
 
-  /** Publish a single message. */
-  publish(message: PublishMessage): Promise<PublishResult>;
+	/** Publish a single message. */
+	publish(message: PublishMessage): Promise<PublishResult>;
 }

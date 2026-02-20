@@ -1,129 +1,137 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import Select from 'primevue/select';
-import InputText from 'primevue/inputtext';
-import InputGroup from 'primevue/inputgroup';
-import InputGroupAddon from 'primevue/inputgroupaddon';
-import Button from 'primevue/button';
+import { ref, computed, watch } from "vue";
 
-export type SecretProviderType = 'encrypt' | 'aws-sm' | 'aws-ps' | 'gcp-sm' | 'vault';
+export type SecretProviderType =
+	| "encrypt"
+	| "aws-sm"
+	| "aws-ps"
+	| "gcp-sm"
+	| "vault";
 
 export interface SecretProviderOption {
-  label: string;
-  value: SecretProviderType;
-  prefix: string;
-  placeholder: string;
-  description: string;
+	label: string;
+	value: SecretProviderType;
+	prefix: string;
+	placeholder: string;
+	description: string;
 }
 
 const secretProviderOptions: SecretProviderOption[] = [
-  {
-    label: 'Local Encrypted',
-    value: 'encrypt',
-    prefix: 'encrypt:',
-    placeholder: 'your-client-secret',
-    description: 'Encrypt and store locally (requires APP_KEY)',
-  },
-  {
-    label: 'AWS Secrets Manager',
-    value: 'aws-sm',
-    prefix: 'aws-sm://',
-    placeholder: 'secret-name',
-    description: 'Reference a secret in AWS Secrets Manager',
-  },
-  {
-    label: 'AWS Parameter Store',
-    value: 'aws-ps',
-    prefix: 'aws-ps://',
-    placeholder: '/path/to/parameter',
-    description: 'Reference a parameter in AWS SSM Parameter Store',
-  },
-  {
-    label: 'GCP Secret Manager',
-    value: 'gcp-sm',
-    prefix: 'gcp-sm://',
-    placeholder: 'secret-name',
-    description: 'Reference a secret in Google Cloud Secret Manager',
-  },
-  {
-    label: 'HashiCorp Vault',
-    value: 'vault',
-    prefix: 'vault://',
-    placeholder: 'path/to/secret#key',
-    description: 'Reference a secret in HashiCorp Vault',
-  },
+	{
+		label: "Local Encrypted",
+		value: "encrypt",
+		prefix: "encrypt:",
+		placeholder: "your-client-secret",
+		description: "Encrypt and store locally (requires APP_KEY)",
+	},
+	{
+		label: "AWS Secrets Manager",
+		value: "aws-sm",
+		prefix: "aws-sm://",
+		placeholder: "secret-name",
+		description: "Reference a secret in AWS Secrets Manager",
+	},
+	{
+		label: "AWS Parameter Store",
+		value: "aws-ps",
+		prefix: "aws-ps://",
+		placeholder: "/path/to/parameter",
+		description: "Reference a parameter in AWS SSM Parameter Store",
+	},
+	{
+		label: "GCP Secret Manager",
+		value: "gcp-sm",
+		prefix: "gcp-sm://",
+		placeholder: "secret-name",
+		description: "Reference a secret in Google Cloud Secret Manager",
+	},
+	{
+		label: "HashiCorp Vault",
+		value: "vault",
+		prefix: "vault://",
+		placeholder: "path/to/secret#key",
+		description: "Reference a secret in HashiCorp Vault",
+	},
 ];
 
 const props = defineProps<{
-  modelValue: string;
-  label?: string;
-  helpText?: string;
-  disabled?: boolean;
+	modelValue: string;
+	label?: string;
+	helpText?: string;
+	disabled?: boolean;
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: string): void;
-  (e: 'validate', secretRef: string): void;
+	(e: "update:modelValue", value: string): void;
+	(e: "validate", secretRef: string): void;
 }>();
 
 // Internal state
-const selectedProvider = ref<SecretProviderType>('encrypt');
-const secretValue = ref('');
+const selectedProvider = ref<SecretProviderType>("encrypt");
+const secretValue = ref("");
 
 // Parse initial value if provided
 function parseSecretRef(fullRef: string) {
-  if (!fullRef) {
-    selectedProvider.value = 'encrypt';
-    secretValue.value = '';
-    return;
-  }
+	if (!fullRef) {
+		selectedProvider.value = "encrypt";
+		secretValue.value = "";
+		return;
+	}
 
-  for (const option of secretProviderOptions) {
-    if (fullRef.startsWith(option.prefix)) {
-      selectedProvider.value = option.value;
-      secretValue.value = fullRef.substring(option.prefix.length);
-      return;
-    }
-  }
+	for (const option of secretProviderOptions) {
+		if (fullRef.startsWith(option.prefix)) {
+			selectedProvider.value = option.value;
+			secretValue.value = fullRef.substring(option.prefix.length);
+			return;
+		}
+	}
 
-  // Unknown format, default to encrypt with full value
-  selectedProvider.value = 'encrypt';
-  secretValue.value = fullRef;
+	// Unknown format, default to encrypt with full value
+	selectedProvider.value = "encrypt";
+	secretValue.value = fullRef;
 }
 
 // Initialize from modelValue
 watch(
-  () => props.modelValue,
-  (newVal) => {
-    parseSecretRef(newVal);
-  },
-  { immediate: true },
+	() => props.modelValue,
+	(newVal) => {
+		parseSecretRef(newVal);
+	},
+	{ immediate: true },
 );
 
 // Build full reference when either part changes
 const fullSecretRef = computed(() => {
-  if (!secretValue.value.trim()) return '';
-  const option = secretProviderOptions.find((o) => o.value === selectedProvider.value);
-  return option ? option.prefix + secretValue.value.trim() : secretValue.value.trim();
+	if (!secretValue.value.trim()) return "";
+	const option = secretProviderOptions.find(
+		(o) => o.value === selectedProvider.value,
+	);
+	return option
+		? option.prefix + secretValue.value.trim()
+		: secretValue.value.trim();
 });
 
 // Emit changes
 watch(fullSecretRef, (newVal) => {
-  emit('update:modelValue', newVal);
+	emit("update:modelValue", newVal);
 });
 
 const currentOption = computed(() =>
-  secretProviderOptions.find((o) => o.value === selectedProvider.value),
+	secretProviderOptions.find((o) => o.value === selectedProvider.value),
 );
 
-const currentPlaceholder = computed(() => currentOption.value?.placeholder || '');
-const currentDescription = computed(() => currentOption.value?.description || '');
-const currentPrefix = computed(() => currentOption.value?.prefix || '');
+const currentPlaceholder = computed(
+	() => currentOption.value?.placeholder || "",
+);
+const currentDescription = computed(
+	() => currentOption.value?.description || "",
+);
+const currentPrefix = computed(() => currentOption.value?.prefix || "");
 
 function handleValidate() {
-  if (fullSecretRef.value) {
-    emit('validate', fullSecretRef.value);
-  }
+	if (fullSecretRef.value) {
+		emit("validate", fullSecretRef.value);
+	}
 }
 </script>
 

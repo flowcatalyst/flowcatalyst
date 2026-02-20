@@ -15,7 +15,7 @@
  * ```
  */
 
-import { Result, UseCaseError } from '@flowcatalyst/domain-core';
+import { Result, UseCaseError } from "@flowcatalyst/domain-core";
 
 /**
  * Validate that a value is not null, undefined, or empty string.
@@ -27,28 +27,36 @@ import { Result, UseCaseError } from '@flowcatalyst/domain-core';
  * @returns Success with the value, or Failure with validation error
  */
 export function validateRequired<T>(
-  value: T | null | undefined,
-  fieldName: string,
-  errorCode: string,
-  errorMessage?: string,
+	value: T | null | undefined,
+	fieldName: string,
+	errorCode: string,
+	errorMessage?: string,
 ): Result<NonNullable<T>> {
-  if (value === null || value === undefined) {
-    return Result.failure(
-      UseCaseError.validation(errorCode, errorMessage ?? `${fieldName} is required`, {
-        field: fieldName,
-      }),
-    );
-  }
+	if (value === null || value === undefined) {
+		return Result.failure(
+			UseCaseError.validation(
+				errorCode,
+				errorMessage ?? `${fieldName} is required`,
+				{
+					field: fieldName,
+				},
+			),
+		);
+	}
 
-  if (typeof value === 'string' && value.trim() === '') {
-    return Result.failure(
-      UseCaseError.validation(errorCode, errorMessage ?? `${fieldName} is required`, {
-        field: fieldName,
-      }),
-    );
-  }
+	if (typeof value === "string" && value.trim() === "") {
+		return Result.failure(
+			UseCaseError.validation(
+				errorCode,
+				errorMessage ?? `${fieldName} is required`,
+				{
+					field: fieldName,
+				},
+			),
+		);
+	}
 
-  return unsafeSuccess(value as NonNullable<T>);
+	return unsafeSuccess(value as NonNullable<T>);
 }
 
 /**
@@ -62,22 +70,26 @@ export function validateRequired<T>(
  * @returns Success with the value, or Failure with validation error
  */
 export function validateFormat(
-  value: string,
-  pattern: RegExp,
-  fieldName: string,
-  errorCode: string,
-  errorMessage?: string,
+	value: string,
+	pattern: RegExp,
+	fieldName: string,
+	errorCode: string,
+	errorMessage?: string,
 ): Result<string> {
-  if (!pattern.test(value)) {
-    return Result.failure(
-      UseCaseError.validation(errorCode, errorMessage ?? `${fieldName} has invalid format`, {
-        field: fieldName,
-        pattern: pattern.source,
-      }),
-    );
-  }
+	if (!pattern.test(value)) {
+		return Result.failure(
+			UseCaseError.validation(
+				errorCode,
+				errorMessage ?? `${fieldName} has invalid format`,
+				{
+					field: fieldName,
+					pattern: pattern.source,
+				},
+			),
+		);
+	}
 
-  return unsafeSuccess(value);
+	return unsafeSuccess(value);
 }
 
 /**
@@ -90,22 +102,26 @@ export function validateFormat(
  * @returns Success with the value, or Failure with validation error
  */
 export function validateMaxLength(
-  value: string,
-  maxLength: number,
-  fieldName: string,
-  errorCode: string,
+	value: string,
+	maxLength: number,
+	fieldName: string,
+	errorCode: string,
 ): Result<string> {
-  if (value.length > maxLength) {
-    return Result.failure(
-      UseCaseError.validation(errorCode, `${fieldName} must be ${maxLength} characters or less`, {
-        field: fieldName,
-        length: value.length,
-        maxLength,
-      }),
-    );
-  }
+	if (value.length > maxLength) {
+		return Result.failure(
+			UseCaseError.validation(
+				errorCode,
+				`${fieldName} must be ${maxLength} characters or less`,
+				{
+					field: fieldName,
+					length: value.length,
+					maxLength,
+				},
+			),
+		);
+	}
 
-  return unsafeSuccess(value);
+	return unsafeSuccess(value);
 }
 
 /**
@@ -118,22 +134,26 @@ export function validateMaxLength(
  * @returns Success with the value, or Failure with validation error
  */
 export function validateMinLength(
-  value: string,
-  minLength: number,
-  fieldName: string,
-  errorCode: string,
+	value: string,
+	minLength: number,
+	fieldName: string,
+	errorCode: string,
 ): Result<string> {
-  if (value.length < minLength) {
-    return Result.failure(
-      UseCaseError.validation(errorCode, `${fieldName} must be at least ${minLength} characters`, {
-        field: fieldName,
-        length: value.length,
-        minLength,
-      }),
-    );
-  }
+	if (value.length < minLength) {
+		return Result.failure(
+			UseCaseError.validation(
+				errorCode,
+				`${fieldName} must be at least ${minLength} characters`,
+				{
+					field: fieldName,
+					length: value.length,
+					minLength,
+				},
+			),
+		);
+	}
 
-  return unsafeSuccess(value);
+	return unsafeSuccess(value);
 }
 
 /**
@@ -147,24 +167,28 @@ export function validateMinLength(
  * @returns Success with the value, or Failure with validation error
  */
 export function validateRange(
-  value: number,
-  min: number,
-  max: number,
-  fieldName: string,
-  errorCode: string,
+	value: number,
+	min: number,
+	max: number,
+	fieldName: string,
+	errorCode: string,
 ): Result<number> {
-  if (value < min || value > max) {
-    return Result.failure(
-      UseCaseError.validation(errorCode, `${fieldName} must be between ${min} and ${max}`, {
-        field: fieldName,
-        value,
-        min,
-        max,
-      }),
-    );
-  }
+	if (value < min || value > max) {
+		return Result.failure(
+			UseCaseError.validation(
+				errorCode,
+				`${fieldName} must be between ${min} and ${max}`,
+				{
+					field: fieldName,
+					value,
+					min,
+					max,
+				},
+			),
+		);
+	}
 
-  return unsafeSuccess(value);
+	return unsafeSuccess(value);
 }
 
 /**
@@ -177,26 +201,26 @@ export function validateRange(
  * @returns Success with the value, or Failure with validation error
  */
 export function validateOneOf<T>(
-  value: T,
-  allowedValues: readonly T[],
-  fieldName: string,
-  errorCode: string,
+	value: T,
+	allowedValues: readonly T[],
+	fieldName: string,
+	errorCode: string,
 ): Result<T> {
-  if (!allowedValues.includes(value)) {
-    return Result.failure(
-      UseCaseError.validation(
-        errorCode,
-        `${fieldName} must be one of: ${allowedValues.join(', ')}`,
-        {
-          field: fieldName,
-          value,
-          allowedValues,
-        },
-      ),
-    );
-  }
+	if (!allowedValues.includes(value)) {
+		return Result.failure(
+			UseCaseError.validation(
+				errorCode,
+				`${fieldName} must be one of: ${allowedValues.join(", ")}`,
+				{
+					field: fieldName,
+					value,
+					allowedValues,
+				},
+			),
+		);
+	}
 
-  return unsafeSuccess(value);
+	return unsafeSuccess(value);
 }
 
 /**
@@ -208,20 +232,23 @@ export function validateOneOf<T>(
  * @returns Success with the email, or Failure with validation error
  */
 export function validateEmail(
-  email: string,
-  fieldName: string = 'email',
-  errorCode: string = 'INVALID_EMAIL',
+	email: string,
+	fieldName: string = "email",
+	errorCode: string = "INVALID_EMAIL",
 ): Result<string> {
-  // Basic email pattern - not meant to be exhaustive, just catch obvious errors
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+	// Basic email pattern - not meant to be exhaustive, just catch obvious errors
+	const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  if (!emailPattern.test(email)) {
-    return Result.failure(
-      UseCaseError.validation(errorCode, 'Invalid email format', { field: fieldName, email }),
-    );
-  }
+	if (!emailPattern.test(email)) {
+		return Result.failure(
+			UseCaseError.validation(errorCode, "Invalid email format", {
+				field: fieldName,
+				email,
+			}),
+		);
+	}
 
-  return unsafeSuccess(email);
+	return unsafeSuccess(email);
 }
 
 /**
@@ -241,15 +268,17 @@ export function validateEmail(
  * if (Result.isFailure(result)) return result;
  * ```
  */
-export function validateAll(...validations: Array<() => Result<unknown>>): Result<void> {
-  for (const validation of validations) {
-    const result = validation();
-    if (Result.isFailure(result)) {
-      return Result.failure(result.error);
-    }
-  }
+export function validateAll(
+	...validations: Array<() => Result<unknown>>
+): Result<void> {
+	for (const validation of validations) {
+		const result = validation();
+		if (Result.isFailure(result)) {
+			return Result.failure(result.error);
+		}
+	}
 
-  return unsafeSuccess(undefined);
+	return unsafeSuccess(undefined);
 }
 
 /**
@@ -262,5 +291,5 @@ export function validateAll(...validations: Array<() => Result<unknown>>): Resul
  * still comes from UnitOfWork.commit().
  */
 function unsafeSuccess<T>(value: T): Result<T> {
-  return { _tag: 'success', value } as Result<T>;
+	return { _tag: "success", value } as Result<T>;
 }

@@ -1,18 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useForm, useField } from 'vee-validate';
-import { toTypedSchema } from '@vee-validate/zod';
-import { z } from 'zod';
-import { useToast } from 'primevue/usetoast';
-import InputText from 'primevue/inputtext';
-import Password from 'primevue/password';
-import Button from 'primevue/button';
-import Checkbox from 'primevue/checkbox';
-import { useAuthStore } from '@/stores/auth';
-import { useLoginThemeStore } from '@/stores/loginTheme';
-import { checkEmailDomain, login } from '@/api/auth';
+import { ref, computed, onMounted } from "vue";
+import { useForm, useField } from "vee-validate";
+import { toTypedSchema } from "@vee-validate/zod";
+import { z } from "zod";
+import { useToast } from "primevue/usetoast";
+import { useAuthStore } from "@/stores/auth";
+import { useLoginThemeStore } from "@/stores/loginTheme";
+import { checkEmailDomain, login } from "@/api/auth";
+import { getErrorMessage } from "@/utils/errors";
 
-type LoginStep = 'email' | 'password' | 'redirecting';
+type LoginStep = "email" | "password" | "redirecting";
 
 const authStore = useAuthStore();
 const themeStore = useLoginThemeStore();
@@ -20,127 +17,130 @@ const toast = useToast();
 
 // Load theme on mount
 onMounted(async () => {
-  await themeStore.loadTheme();
-  themeStore.applyThemeColors();
+	await themeStore.loadTheme();
+	themeStore.applyThemeColors();
 });
 
-const step = ref<LoginStep>('email');
+const step = ref<LoginStep>("email");
 const isSubmitting = ref(false);
 const rememberMe = ref(false);
 
 // Email step schema
 const emailSchema = toTypedSchema(
-  z.object({
-    email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
-  }),
+	z.object({
+		email: z
+			.string()
+			.min(1, "Email is required")
+			.email("Please enter a valid email address"),
+	}),
 );
 
 // Email form
 const {
-  handleSubmit: handleEmailSubmit,
-  values: _emailValues,
-  meta: _emailMeta,
+	handleSubmit: handleEmailSubmit,
+	values: _emailValues,
+	meta: _emailMeta,
 } = useForm({
-  validationSchema: emailSchema,
-  initialValues: { email: '' },
+	validationSchema: emailSchema,
+	initialValues: { email: "" },
 });
 
-const { value: emailValue, errorMessage: emailError } = useField<string>('email');
+const { value: emailValue, errorMessage: emailError } =
+	useField<string>("email");
 
 // Password form - separate form context
-const passwordValue = ref('');
+const passwordValue = ref("");
 const passwordTouched = ref(false);
 
 const isEmailValid = computed(() => {
-  // Simple validation - has content and looks like an email
-  const email = emailValue.value || '';
-  return email.length > 0 && email.includes('@') && email.includes('.');
+	// Simple validation - has content and looks like an email
+	const email = emailValue.value || "";
+	return email.length > 0 && email.includes("@") && email.includes(".");
 });
 
 const isPasswordValid = computed(() => {
-  return passwordValue.value.length > 0;
+	return passwordValue.value.length > 0;
 });
 
-const currentEmail = computed(() => emailValue.value || '');
+const currentEmail = computed(() => emailValue.value || "");
 
 function onChangeEmail() {
-  step.value = 'email';
-  passwordValue.value = '';
-  passwordTouched.value = false;
-  authStore.setError(null);
+	step.value = "email";
+	passwordValue.value = "";
+	passwordTouched.value = false;
+	authStore.setError(null);
 }
 
 const onCheckEmail = handleEmailSubmit(async (values) => {
-  isSubmitting.value = true;
-  authStore.setError(null);
+	isSubmitting.value = true;
+	authStore.setError(null);
 
-  try {
-    const result = await checkEmailDomain(values.email);
+	try {
+		const result = await checkEmailDomain(values.email);
 
-    if (result.authMethod === 'external' && result.loginUrl) {
-      step.value = 'redirecting';
+		if (result.authMethod === "external" && result.loginUrl) {
+			step.value = "redirecting";
 
-      // Forward OAuth params to OIDC login if this is part of an OAuth flow
-      const currentParams = new URLSearchParams(window.location.search);
-      let redirectUrl = result.loginUrl;
+			// Forward OAuth params to OIDC login if this is part of an OAuth flow
+			const currentParams = new URLSearchParams(window.location.search);
+			let redirectUrl = result.loginUrl;
 
-      // Forward interaction param for OIDC interaction flow
-      const interactionUid = currentParams.get('interaction');
-      if (interactionUid) {
-        const loginUrl = new URL(result.loginUrl, window.location.origin);
-        loginUrl.searchParams.set('interaction', interactionUid);
-        redirectUrl = loginUrl.toString();
-      } else if (currentParams.get('oauth') === 'true') {
-        const oauthFields = [
-          'client_id',
-          'redirect_uri',
-          'scope',
-          'state',
-          'code_challenge',
-          'code_challenge_method',
-          'nonce',
-        ];
-        const loginUrl = new URL(result.loginUrl, window.location.origin);
+			// Forward interaction param for OIDC interaction flow
+			const interactionUid = currentParams.get("interaction");
+			if (interactionUid) {
+				const loginUrl = new URL(result.loginUrl, window.location.origin);
+				loginUrl.searchParams.set("interaction", interactionUid);
+				redirectUrl = loginUrl.toString();
+			} else if (currentParams.get("oauth") === "true") {
+				const oauthFields = [
+					"client_id",
+					"redirect_uri",
+					"scope",
+					"state",
+					"code_challenge",
+					"code_challenge_method",
+					"nonce",
+				];
+				const loginUrl = new URL(result.loginUrl, window.location.origin);
 
-        for (const field of oauthFields) {
-          const value = currentParams.get(field);
-          if (value) {
-            // Map to oauth_ prefix expected by /auth/oidc/login
-            loginUrl.searchParams.set('oauth_' + field, value);
-          }
-        }
-        redirectUrl = loginUrl.toString();
-      }
+				for (const field of oauthFields) {
+					const value = currentParams.get(field);
+					if (value) {
+						// Map to oauth_ prefix expected by /auth/oidc/login
+						loginUrl.searchParams.set("oauth_" + field, value);
+					}
+				}
+				redirectUrl = loginUrl.toString();
+			}
 
-      window.location.href = redirectUrl;
-    } else {
-      step.value = 'password';
-    }
-  } catch (error: any) {
-    const message = error?.message || 'Unable to verify email domain. Please try again.';
-    toast.add({
-      severity: 'error',
-      summary: 'Connection Error',
-      detail: message,
-      life: 5000,
-    });
-  } finally {
-    isSubmitting.value = false;
-  }
+			window.location.href = redirectUrl;
+		} else {
+			step.value = "password";
+		}
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Connection Error",
+			detail: getErrorMessage(e, "Unable to verify email domain. Please try again."),
+			life: 5000,
+		});
+	} finally {
+		isSubmitting.value = false;
+	}
 });
 
 async function onSubmitPassword() {
-  if (!isPasswordValid.value || isSubmitting.value) return;
+	if (!isPasswordValid.value || isSubmitting.value) return;
 
-  isSubmitting.value = true;
+	isSubmitting.value = true;
 
-  try {
-    await login({ email: currentEmail.value, password: passwordValue.value });
-  } catch {
-    // Error is handled by AuthStore
-  } finally {
-    isSubmitting.value = false;
-  }
+	try {
+		await login({ email: currentEmail.value, password: passwordValue.value });
+	} catch {
+		// Error is handled by AuthStore
+	} finally {
+		isSubmitting.value = false;
+	}
 }
 </script>
 

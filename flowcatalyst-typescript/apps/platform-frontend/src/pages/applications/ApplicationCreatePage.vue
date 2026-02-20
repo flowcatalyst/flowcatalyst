@@ -1,36 +1,30 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Textarea from 'primevue/textarea';
-import Message from 'primevue/message';
-import SelectButton from 'primevue/selectbutton';
-import Dialog from 'primevue/dialog';
+import { ref, computed } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
 import {
-  applicationsApi,
-  type ApplicationType,
-  type ApplicationWithServiceAccount,
-} from '@/api/applications';
+	applicationsApi,
+	type ApplicationType,
+	type ApplicationWithServiceAccount,
+} from "@/api/applications";
 
 const router = useRouter();
 const toast = useToast();
 
 // Form state
-const code = ref('');
-const name = ref('');
-const description = ref('');
-const defaultBaseUrl = ref('');
-const iconUrl = ref('');
-const website = ref('');
-const logo = ref('');
-const logoMimeType = ref('');
-const type = ref<ApplicationType>('APPLICATION');
+const code = ref("");
+const name = ref("");
+const description = ref("");
+const defaultBaseUrl = ref("");
+const iconUrl = ref("");
+const website = ref("");
+const logo = ref("");
+const logoMimeType = ref("");
+const type = ref<ApplicationType>("APPLICATION");
 
 const typeOptions = [
-  { label: 'Application', value: 'APPLICATION' },
-  { label: 'Integration', value: 'INTEGRATION' },
+	{ label: "Application", value: "APPLICATION" },
+	{ label: "Integration", value: "INTEGRATION" },
 ];
 
 // Service account credentials dialog
@@ -43,68 +37,81 @@ const errorMessage = ref<string | null>(null);
 // Validation
 const CODE_PATTERN = /^[a-z][a-z0-9-]*$/;
 
-const isCodeValid = computed(() => !code.value || CODE_PATTERN.test(code.value));
+const isCodeValid = computed(
+	() => !code.value || CODE_PATTERN.test(code.value),
+);
 
 const isFormValid = computed(() => {
-  return (
-    code.value &&
-    CODE_PATTERN.test(code.value) &&
-    name.value.trim().length > 0 &&
-    name.value.length <= 100
-  );
+	return (
+		code.value &&
+		CODE_PATTERN.test(code.value) &&
+		name.value.trim().length > 0 &&
+		name.value.length <= 100
+	);
 });
 
 async function onSubmit() {
-  if (!isFormValid.value) return;
+	if (!isFormValid.value) return;
 
-  submitting.value = true;
-  errorMessage.value = null;
+	submitting.value = true;
+	errorMessage.value = null;
 
-  try {
-    const application = await applicationsApi.create({
-      code: code.value,
-      name: name.value,
-      description: description.value || undefined,
-      defaultBaseUrl: defaultBaseUrl.value || undefined,
-      iconUrl: iconUrl.value || undefined,
-      website: website.value || undefined,
-      logo: logo.value || undefined,
-      logoMimeType: logoMimeType.value || undefined,
-      type: type.value,
-    });
+	try {
+		const application = await applicationsApi.create({
+			code: code.value,
+			name: name.value,
+			description: description.value || undefined,
+			defaultBaseUrl: defaultBaseUrl.value || undefined,
+			iconUrl: iconUrl.value || undefined,
+			website: website.value || undefined,
+			logo: logo.value || undefined,
+			logoMimeType: logoMimeType.value || undefined,
+			type: type.value,
+		});
 
-    createdApplication.value = application;
+		createdApplication.value = application;
 
-    // Show credentials dialog if service account was created
-    if (application.serviceAccount) {
-      showCredentialsDialog.value = true;
-    } else {
-      toast.add({
-        severity: 'success',
-        summary: 'Success',
-        detail: 'Application created',
-        life: 3000,
-      });
-      router.push(`/applications/${application.id}`);
-    }
-  } catch (e) {
-    errorMessage.value = e instanceof Error ? e.message : 'Failed to create application';
-  } finally {
-    submitting.value = false;
-  }
+		// Show credentials dialog if service account was created
+		if (application.serviceAccount) {
+			showCredentialsDialog.value = true;
+		} else {
+			toast.add({
+				severity: "success",
+				summary: "Success",
+				detail: "Application created",
+				life: 3000,
+			});
+			router.push(`/applications/${application.id}`);
+		}
+	} catch (e) {
+		errorMessage.value =
+			e instanceof Error ? e.message : "Failed to create application";
+	} finally {
+		submitting.value = false;
+	}
 }
 
 function onCredentialsDialogClose() {
-  showCredentialsDialog.value = false;
-  toast.add({ severity: 'success', summary: 'Success', detail: 'Application created', life: 3000 });
-  if (createdApplication.value) {
-    router.push(`/applications/${createdApplication.value.id}`);
-  }
+	showCredentialsDialog.value = false;
+	toast.add({
+		severity: "success",
+		summary: "Success",
+		detail: "Application created",
+		life: 3000,
+	});
+	if (createdApplication.value) {
+		router.push(`/applications/${createdApplication.value.id}`);
+	}
 }
 
 function copyToClipboard(text: string) {
-  navigator.clipboard.writeText(text);
-  toast.add({ severity: 'info', summary: 'Copied', detail: 'Copied to clipboard', life: 2000 });
+	navigator.clipboard.writeText(text);
+	toast.add({
+		severity: "info",
+		summary: "Copied",
+		detail: "Copied to clipboard",
+		life: 2000,
+	});
 }
 </script>
 

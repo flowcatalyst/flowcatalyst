@@ -1,15 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useConfirm } from 'primevue/useconfirm';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import Tag from 'primevue/tag';
-import InputText from 'primevue/inputtext';
-import ProgressSpinner from 'primevue/progressspinner';
-import Message from 'primevue/message';
-import PickList from 'primevue/picklist';
-import { clientsApi, type Client, type ClientApplication } from '@/api/clients';
+import { ref, computed, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useConfirm } from "primevue/useconfirm";
+import { useToast } from "primevue/usetoast";
+import { clientsApi, type Client, type ClientApplication } from "@/api/clients";
 
 const route = useRoute();
 const router = useRouter();
@@ -22,7 +16,7 @@ const editing = ref(false);
 const saving = ref(false);
 
 // Edit form
-const editName = ref('');
+const editName = ref("");
 
 // Applications
 const applications = ref<[ClientApplication[], ClientApplication[]]>([[], []]);
@@ -33,190 +27,225 @@ const availableApps = computed(() => applications.value[0]);
 const enabledApps = computed(() => applications.value[1]);
 
 onMounted(async () => {
-  const id = route.params.id as string;
-  if (id) {
-    await Promise.all([loadClient(id), loadApplications(id)]);
-  }
+	const id = route.params.id as string;
+	if (id) {
+		await Promise.all([loadClient(id), loadApplications(id)]);
+	}
 });
 
 async function loadClient(id: string) {
-  loading.value = true;
-  try {
-    client.value = await clientsApi.get(id);
-  } catch {
-    client.value = null;
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	try {
+		client.value = await clientsApi.get(id);
+	} catch {
+		client.value = null;
+	} finally {
+		loading.value = false;
+	}
 }
 
 async function loadApplications(clientId: string) {
-  loadingApps.value = true;
-  try {
-    const response = await clientsApi.getApplications(clientId);
-    const available: ClientApplication[] = [];
-    const enabled: ClientApplication[] = [];
+	loadingApps.value = true;
+	try {
+		const response = await clientsApi.getApplications(clientId);
+		const available: ClientApplication[] = [];
+		const enabled: ClientApplication[] = [];
 
-    for (const app of response.applications) {
-      if (app.enabledForClient) {
-        enabled.push(app);
-      } else {
-        available.push(app);
-      }
-    }
+		for (const app of response.applications) {
+			if (app.enabledForClient) {
+				enabled.push(app);
+			} else {
+				available.push(app);
+			}
+		}
 
-    applications.value = [available, enabled];
-  } catch (error) {
-    console.error('Failed to load applications:', error);
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load applications',
-      life: 3000,
-    });
-  } finally {
-    loadingApps.value = false;
-  }
+		applications.value = [available, enabled];
+	} catch (error) {
+		console.error("Failed to load applications:", error);
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to load applications",
+			life: 3000,
+		});
+	} finally {
+		loadingApps.value = false;
+	}
 }
 
 async function saveApplications() {
-  if (!client.value) return;
+	if (!client.value) return;
 
-  savingApps.value = true;
-  try {
-    const enabledIds = applications.value[1].map((app) => app.id);
-    await clientsApi.updateApplications(client.value.id, enabledIds);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Applications updated',
-      life: 3000,
-    });
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to update applications',
-      life: 3000,
-    });
-  } finally {
-    savingApps.value = false;
-  }
+	savingApps.value = true;
+	try {
+		const enabledIds = applications.value[1].map((app) => app.id);
+		await clientsApi.updateApplications(client.value.id, enabledIds);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Applications updated",
+			life: 3000,
+		});
+	} catch (error) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to update applications",
+			life: 3000,
+		});
+	} finally {
+		savingApps.value = false;
+	}
 }
 
 function startEditing() {
-  if (client.value) {
-    editName.value = client.value.name;
-    editing.value = true;
-  }
+	if (client.value) {
+		editName.value = client.value.name;
+		editing.value = true;
+	}
 }
 
 function cancelEditing() {
-  editing.value = false;
+	editing.value = false;
 }
 
 async function saveChanges() {
-  if (!client.value) return;
+	if (!client.value) return;
 
-  saving.value = true;
-  try {
-    client.value = await clientsApi.update(client.value.id, {
-      name: editName.value,
-    });
-    editing.value = false;
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Client updated', life: 3000 });
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update', life: 3000 });
-  } finally {
-    saving.value = false;
-  }
+	saving.value = true;
+	try {
+		client.value = await clientsApi.update(client.value.id, {
+			name: editName.value,
+		});
+		editing.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Client updated",
+			life: 3000,
+		});
+	} catch (e) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to update",
+			life: 3000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 function confirmActivate() {
-  confirm.require({
-    message: 'Activate this client?',
-    header: 'Activate Client',
-    icon: 'pi pi-check-circle',
-    acceptLabel: 'Activate',
-    accept: activateClient,
-  });
+	confirm.require({
+		message: "Activate this client?",
+		header: "Activate Client",
+		icon: "pi pi-check-circle",
+		acceptLabel: "Activate",
+		accept: activateClient,
+	});
 }
 
 async function activateClient() {
-  if (!client.value) return;
-  try {
-    await clientsApi.activate(client.value.id);
-    client.value = await clientsApi.get(client.value.id);
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Client activated', life: 3000 });
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to activate', life: 3000 });
-  }
+	if (!client.value) return;
+	try {
+		await clientsApi.activate(client.value.id);
+		client.value = await clientsApi.get(client.value.id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Client activated",
+			life: 3000,
+		});
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to activate",
+			life: 3000,
+		});
+	}
 }
 
 function confirmSuspend() {
-  confirm.require({
-    message: 'Suspend this client? Users will not be able to access it.',
-    header: 'Suspend Client',
-    icon: 'pi pi-exclamation-triangle',
-    acceptLabel: 'Suspend',
-    acceptClass: 'p-button-warning',
-    accept: () => suspendClient('Manual suspension'),
-  });
+	confirm.require({
+		message: "Suspend this client? Users will not be able to access it.",
+		header: "Suspend Client",
+		icon: "pi pi-exclamation-triangle",
+		acceptLabel: "Suspend",
+		acceptClass: "p-button-warning",
+		accept: () => suspendClient("Manual suspension"),
+	});
 }
 
 async function suspendClient(reason: string) {
-  if (!client.value) return;
-  try {
-    await clientsApi.suspend(client.value.id, reason);
-    client.value = await clientsApi.get(client.value.id);
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Client suspended', life: 3000 });
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to suspend', life: 3000 });
-  }
+	if (!client.value) return;
+	try {
+		await clientsApi.suspend(client.value.id, reason);
+		client.value = await clientsApi.get(client.value.id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Client suspended",
+			life: 3000,
+		});
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to suspend",
+			life: 3000,
+		});
+	}
 }
 
 function confirmDeactivate() {
-  confirm.require({
-    message: 'Deactivate this client? This is a soft delete.',
-    header: 'Deactivate Client',
-    icon: 'pi pi-exclamation-triangle',
-    acceptLabel: 'Deactivate',
-    acceptClass: 'p-button-danger',
-    accept: () => deactivateClient('Manual deactivation'),
-  });
+	confirm.require({
+		message: "Deactivate this client? This is a soft delete.",
+		header: "Deactivate Client",
+		icon: "pi pi-exclamation-triangle",
+		acceptLabel: "Deactivate",
+		acceptClass: "p-button-danger",
+		accept: () => deactivateClient("Manual deactivation"),
+	});
 }
 
 async function deactivateClient(reason: string) {
-  if (!client.value) return;
-  try {
-    await clientsApi.deactivate(client.value.id, reason);
-    client.value = await clientsApi.get(client.value.id);
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Client deactivated',
-      life: 3000,
-    });
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to deactivate', life: 3000 });
-  }
+	if (!client.value) return;
+	try {
+		await clientsApi.deactivate(client.value.id, reason);
+		client.value = await clientsApi.get(client.value.id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Client deactivated",
+			life: 3000,
+		});
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to deactivate",
+			life: 3000,
+		});
+	}
 }
 
 function getStatusSeverity(status: string) {
-  switch (status) {
-    case 'ACTIVE':
-      return 'success';
-    case 'SUSPENDED':
-      return 'warn';
-    case 'INACTIVE':
-      return 'secondary';
-    default:
-      return 'secondary';
-  }
+	switch (status) {
+		case "ACTIVE":
+			return "success";
+		case "SUSPENDED":
+			return "warn";
+		case "INACTIVE":
+			return "secondary";
+		default:
+			return "secondary";
+	}
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleString();
+	return new Date(dateString).toLocaleString();
 }
 </script>
 

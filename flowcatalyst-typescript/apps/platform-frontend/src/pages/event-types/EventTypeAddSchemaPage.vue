@@ -1,14 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Textarea from 'primevue/textarea';
-import Select from 'primevue/select';
-import Message from 'primevue/message';
-import ProgressSpinner from 'primevue/progressspinner';
-import { eventTypesApi, type EventType, type SchemaType } from '@/api/event-types';
+import { ref, computed, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import {
+	eventTypesApi,
+	type EventType,
+	type SchemaType,
+} from "@/api/event-types";
 
 const route = useRoute();
 const router = useRouter();
@@ -20,15 +18,15 @@ const submitting = ref(false);
 const errorMessage = ref<string | null>(null);
 
 // Form state
-const version = ref('');
-const mimeType = ref('application/json');
-const schemaType = ref<SchemaType>('JSON_SCHEMA');
-const schema = ref('');
+const version = ref("");
+const mimeType = ref("application/json");
+const schemaType = ref<SchemaType>("JSON_SCHEMA");
+const schema = ref("");
 
 const schemaTypeOptions = [
-  { label: 'JSON Schema', value: 'JSON_SCHEMA' },
-  { label: 'Protocol Buffers', value: 'PROTO' },
-  { label: 'XML Schema (XSD)', value: 'XSD' },
+	{ label: "JSON Schema", value: "JSON_SCHEMA" },
+	{ label: "Protocol Buffers", value: "PROTO" },
+	{ label: "XML Schema (XSD)", value: "XSD" },
 ];
 
 // Validation
@@ -37,111 +35,119 @@ const VERSION_PATTERN = /^\d+\.\d+$/;
 const isVersionValid = computed(() => VERSION_PATTERN.test(version.value));
 
 const isVersionDuplicate = computed(() => {
-  if (!eventType.value) return false;
-  return eventType.value.specVersions.some((sv) => sv.version === version.value);
+	if (!eventType.value) return false;
+	return eventType.value.specVersions.some(
+		(sv) => sv.version === version.value,
+	);
 });
 
 const isFormValid = computed(() => {
-  return (
-    isVersionValid.value &&
-    !isVersionDuplicate.value &&
-    mimeType.value.trim().length > 0 &&
-    schema.value.trim().length > 0
-  );
+	return (
+		isVersionValid.value &&
+		!isVersionDuplicate.value &&
+		mimeType.value.trim().length > 0 &&
+		schema.value.trim().length > 0
+	);
 });
 
 const schemaPlaceholder = computed(() => {
-  switch (schemaType.value) {
-    case 'JSON_SCHEMA':
-      return `{
+	switch (schemaType.value) {
+		case "JSON_SCHEMA":
+			return `{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
     "id": { "type": "string" }
   }
 }`;
-    case 'PROTO':
-      return `syntax = "proto3";
+		case "PROTO":
+			return `syntax = "proto3";
 
 message Event {
   string id = 1;
 }`;
-    case 'XSD':
-      return `<?xml version="1.0"?>
+		case "XSD":
+			return `<?xml version="1.0"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="event" type="xs:string"/>
 </xs:schema>`;
-    default:
-      return '';
-  }
+		default:
+			return "";
+	}
 });
 
 onMounted(async () => {
-  const id = route.params.id as string;
-  if (id) {
-    await loadEventType(id);
-  }
+	const id = route.params.id as string;
+	if (id) {
+		await loadEventType(id);
+	}
 });
 
 async function loadEventType(id: string) {
-  loading.value = true;
-  try {
-    eventType.value = await eventTypesApi.get(id);
-    suggestNextVersion();
-  } catch {
-    eventType.value = null;
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	try {
+		eventType.value = await eventTypesApi.get(id);
+		suggestNextVersion();
+	} catch {
+		eventType.value = null;
+	} finally {
+		loading.value = false;
+	}
 }
 
 function suggestNextVersion() {
-  if (!eventType.value || eventType.value.specVersions.length === 0) {
-    version.value = '1.0';
-    return;
-  }
+	if (!eventType.value || eventType.value.specVersions.length === 0) {
+		version.value = "1.0";
+		return;
+	}
 
-  const versions = eventType.value.specVersions.map((sv) => {
-    const [major, minor] = sv.version.split('.').map(Number);
-    return { major, minor };
-  });
+	const versions = eventType.value.specVersions.map((sv) => {
+		const [major, minor] = sv.version.split(".").map(Number);
+		return { major, minor };
+	});
 
-  const highestMajor = Math.max(...versions.map((v) => v.major));
-  const highestMinor = Math.max(
-    ...versions.filter((v) => v.major === highestMajor).map((v) => v.minor),
-  );
+	const highestMajor = Math.max(...versions.map((v) => v.major));
+	const highestMinor = Math.max(
+		...versions.filter((v) => v.major === highestMajor).map((v) => v.minor),
+	);
 
-  version.value = `${highestMajor}.${highestMinor + 1}`;
+	version.value = `${highestMajor}.${highestMinor + 1}`;
 }
 
 function goBack() {
-  if (eventType.value) {
-    router.push(`/event-types/${eventType.value.id}`);
-  } else {
-    router.push('/event-types');
-  }
+	if (eventType.value) {
+		router.push(`/event-types/${eventType.value.id}`);
+	} else {
+		router.push("/event-types");
+	}
 }
 
 async function onSubmit() {
-  if (!isFormValid.value || !eventType.value) return;
+	if (!isFormValid.value || !eventType.value) return;
 
-  submitting.value = true;
-  errorMessage.value = null;
+	submitting.value = true;
+	errorMessage.value = null;
 
-  try {
-    await eventTypesApi.addSchema(eventType.value.id, {
-      version: version.value,
-      mimeType: mimeType.value,
-      schema: schema.value,
-      schemaType: schemaType.value,
-    });
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Schema added', life: 3000 });
-    router.push(`/event-types/${eventType.value.id}`);
-  } catch (e) {
-    errorMessage.value = e instanceof Error ? e.message : 'Failed to add schema';
-  } finally {
-    submitting.value = false;
-  }
+	try {
+		await eventTypesApi.addSchema(eventType.value.id, {
+			version: version.value,
+			mimeType: mimeType.value,
+			schema: schema.value,
+			schemaType: schemaType.value,
+		});
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Schema added",
+			life: 3000,
+		});
+		router.push(`/event-types/${eventType.value.id}`);
+	} catch (e) {
+		errorMessage.value =
+			e instanceof Error ? e.message : "Failed to add schema";
+	} finally {
+		submitting.value = false;
+	}
 }
 </script>
 

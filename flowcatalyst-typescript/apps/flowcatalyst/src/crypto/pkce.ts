@@ -6,14 +6,14 @@
  * @see https://datatracker.ietf.org/doc/html/rfc7636
  */
 
-import crypto from 'node:crypto';
+import crypto from "node:crypto";
 
 /**
  * PKCE challenge method.
  * - S256: SHA-256 hash of verifier (recommended)
  * - plain: Verifier sent as-is (for clients that can't do SHA-256)
  */
-export type ChallengeMethod = 'S256' | 'plain';
+export type ChallengeMethod = "S256" | "plain";
 
 /**
  * Regex for valid code verifier/challenge characters (unreserved URI characters).
@@ -38,7 +38,7 @@ const VERIFIER_BYTES = 48;
  * Convert a Buffer to base64url encoding (no padding).
  */
 function toBase64Url(buffer: Buffer): string {
-  return buffer.toString('base64url');
+	return buffer.toString("base64url");
 }
 
 /**
@@ -50,8 +50,8 @@ function toBase64Url(buffer: Buffer): string {
  * @returns A 64-character base64url-encoded code verifier
  */
 export function generateCodeVerifier(): string {
-  const bytes = crypto.randomBytes(VERIFIER_BYTES);
-  return toBase64Url(bytes);
+	const bytes = crypto.randomBytes(VERIFIER_BYTES);
+	return toBase64Url(bytes);
 }
 
 /**
@@ -63,8 +63,8 @@ export function generateCodeVerifier(): string {
  * @returns The code challenge (43 characters for SHA-256)
  */
 export function generateCodeChallenge(verifier: string): string {
-  const hash = crypto.createHash('sha256').update(verifier, 'ascii').digest();
-  return toBase64Url(hash);
+	const hash = crypto.createHash("sha256").update(verifier, "ascii").digest();
+	return toBase64Url(hash);
 }
 
 /**
@@ -78,27 +78,27 @@ export function generateCodeChallenge(verifier: string): string {
  * @returns true if the verifier matches the challenge
  */
 export function verifyCodeChallenge(
-  verifier: string,
-  challenge: string,
-  method: ChallengeMethod = 'S256',
+	verifier: string,
+	challenge: string,
+	method: ChallengeMethod = "S256",
 ): boolean {
-  if (!verifier || !challenge) {
-    return false;
-  }
+	if (!verifier || !challenge) {
+		return false;
+	}
 
-  let computedChallenge: string;
+	let computedChallenge: string;
 
-  if (method === 'S256') {
-    computedChallenge = generateCodeChallenge(verifier);
-  } else if (method === 'plain') {
-    computedChallenge = verifier;
-  } else {
-    // Unknown method
-    return false;
-  }
+	if (method === "S256") {
+		computedChallenge = generateCodeChallenge(verifier);
+	} else if (method === "plain") {
+		computedChallenge = verifier;
+	} else {
+		// Unknown method
+		return false;
+	}
 
-  // Constant-time comparison to prevent timing attacks
-  return constantTimeEqual(computedChallenge, challenge);
+	// Constant-time comparison to prevent timing attacks
+	return constantTimeEqual(computedChallenge, challenge);
 }
 
 /**
@@ -108,27 +108,27 @@ export function verifyCodeChallenge(
  * regardless of where a mismatch occurs.
  */
 function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    // Still perform comparison to maintain constant time for same-length strings
-    // but result will be false
-    const longer = a.length > b.length ? a : b;
-    const shorter = a.length > b.length ? b : a;
+	if (a.length !== b.length) {
+		// Still perform comparison to maintain constant time for same-length strings
+		// but result will be false
+		const longer = a.length > b.length ? a : b;
+		const shorter = a.length > b.length ? b : a;
 
-    let result = 0;
-    for (let i = 0; i < longer.length; i++) {
-      const charA = longer.charCodeAt(i);
-      const charB = i < shorter.length ? shorter.charCodeAt(i) : 0;
-      result |= charA ^ charB;
-    }
-    // Different lengths always means not equal
-    return false;
-  }
+		let _result = 0;
+		for (let i = 0; i < longer.length; i++) {
+			const charA = longer.charCodeAt(i);
+			const charB = i < shorter.length ? shorter.charCodeAt(i) : 0;
+			_result |= charA ^ charB;
+		}
+		// Different lengths always means not equal
+		return false;
+	}
 
-  let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return result === 0;
+	let result = 0;
+	for (let i = 0; i < a.length; i++) {
+		result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+	}
+	return result === 0;
 }
 
 /**
@@ -142,15 +142,15 @@ function constantTimeEqual(a: string, b: string): boolean {
  * @returns true if the verifier is valid
  */
 export function isValidCodeVerifier(verifier: string): boolean {
-  if (!verifier) {
-    return false;
-  }
+	if (!verifier) {
+		return false;
+	}
 
-  if (verifier.length < MIN_LENGTH || verifier.length > MAX_LENGTH) {
-    return false;
-  }
+	if (verifier.length < MIN_LENGTH || verifier.length > MAX_LENGTH) {
+		return false;
+	}
 
-  return UNRESERVED_URI_REGEX.test(verifier);
+	return UNRESERVED_URI_REGEX.test(verifier);
 }
 
 /**
@@ -164,14 +164,14 @@ export function isValidCodeVerifier(verifier: string): boolean {
  * @returns true if the challenge is valid
  */
 export function isValidCodeChallenge(challenge: string): boolean {
-  if (!challenge) {
-    return false;
-  }
+	if (!challenge) {
+		return false;
+	}
 
-  if (challenge.length < MIN_LENGTH || challenge.length > MAX_LENGTH) {
-    return false;
-  }
+	if (challenge.length < MIN_LENGTH || challenge.length > MAX_LENGTH) {
+		return false;
+	}
 
-  // Base64url uses A-Za-z0-9-_ which is a subset of unreserved URI chars
-  return UNRESERVED_URI_REGEX.test(challenge);
+	// Base64url uses A-Za-z0-9-_ which is a subset of unreserved URI chars
+	return UNRESERVED_URI_REGEX.test(challenge);
 }

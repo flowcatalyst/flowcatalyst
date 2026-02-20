@@ -1,27 +1,24 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import Tag from 'primevue/tag';
-import Message from 'primevue/message';
-import Dialog from 'primevue/dialog';
-import { getApiBffDebugEvents, getApiBffDebugEventsById } from '@/api/generated';
+import { ref, onMounted } from "vue";
+import {
+	getApiBffDebugEvents,
+	getApiBffDebugEventsById,
+} from "@/api/generated";
 
 interface RawEvent {
-  id: string;
-  specVersion: string;
-  type: string;
-  source: string;
-  subject: string;
-  time: string;
-  data: string;
-  messageGroup?: string;
-  correlationId?: string;
-  causationId?: string;
-  deduplicationId?: string;
-  contextData?: { key: string; value: string }[];
-  clientId?: string;
+	id: string;
+	specVersion: string;
+	type: string;
+	source: string;
+	subject: string;
+	time: string;
+	data: string;
+	messageGroup?: string;
+	correlationId?: string;
+	causationId?: string;
+	deduplicationId?: string;
+	contextData?: { key: string; value: string }[];
+	clientId?: string;
 }
 
 const events = ref<RawEvent[]>([]);
@@ -36,68 +33,68 @@ const showDetailDialog = ref(false);
 const loadingDetail = ref(false);
 
 onMounted(async () => {
-  await loadEvents();
+	await loadEvents();
 });
 
 async function loadEvents() {
-  loading.value = true;
-  try {
-    const response = await getApiBffDebugEvents({
-      query: {
-        page: currentPage.value,
-        size: pageSize.value,
-      },
-    });
-    if (response.data) {
-      const data = response.data as { items?: RawEvent[]; totalItems?: number };
-      events.value = data.items || [];
-      totalRecords.value = data.totalItems || 0;
-    }
-  } catch (error) {
-    console.error('Failed to load raw events:', error);
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	try {
+		const response = await getApiBffDebugEvents({
+			query: {
+				page: currentPage.value,
+				size: pageSize.value,
+			},
+		});
+		if (response.data) {
+			const data = response.data as { items?: RawEvent[]; totalItems?: number };
+			events.value = data.items || [];
+			totalRecords.value = data.totalItems || 0;
+		}
+	} catch (error) {
+		console.error("Failed to load raw events:", error);
+	} finally {
+		loading.value = false;
+	}
 }
 
 async function onPage(event: { page: number; rows: number }) {
-  currentPage.value = event.page;
-  pageSize.value = event.rows;
-  await loadEvents();
+	currentPage.value = event.page;
+	pageSize.value = event.rows;
+	await loadEvents();
 }
 
 async function viewEventDetail(event: RawEvent) {
-  loadingDetail.value = true;
-  showDetailDialog.value = true;
-  try {
-    const response = await getApiBffDebugEventsById({ path: { id: event.id } });
-    if (response.data) {
-      selectedEvent.value = response.data as RawEvent;
-    }
-  } catch (error) {
-    console.error('Failed to load event details:', error);
-  } finally {
-    loadingDetail.value = false;
-  }
+	loadingDetail.value = true;
+	showDetailDialog.value = true;
+	try {
+		const response = await getApiBffDebugEventsById({ path: { id: event.id } });
+		if (response.data) {
+			selectedEvent.value = response.data as RawEvent;
+		}
+	} catch (error) {
+		console.error("Failed to load event details:", error);
+	} finally {
+		loadingDetail.value = false;
+	}
 }
 
 function formatDate(dateStr: string | undefined): string {
-  if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleString();
+	if (!dateStr) return "-";
+	return new Date(dateStr).toLocaleString();
 }
 
 function formatData(data: string | undefined): string {
-  if (!data) return '-';
-  try {
-    return JSON.stringify(JSON.parse(data), null, 2);
-  } catch {
-    return data;
-  }
+	if (!data) return "-";
+	try {
+		return JSON.stringify(JSON.parse(data), null, 2);
+	} catch {
+		return data;
+	}
 }
 
 function truncateId(id: string): string {
-  if (!id) return '-';
-  return id.length > 10 ? `${id.slice(0, 10)}...` : id;
+	if (!id) return "-";
+	return id.length > 10 ? `${id.slice(0, 10)}...` : id;
 }
 </script>
 

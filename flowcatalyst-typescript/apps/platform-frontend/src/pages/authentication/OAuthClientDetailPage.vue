@@ -1,18 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import MultiSelect from 'primevue/multiselect';
-import Checkbox from 'primevue/checkbox';
-import Chip from 'primevue/chip';
-import Tag from 'primevue/tag';
-import Message from 'primevue/message';
-import Dialog from 'primevue/dialog';
-import ProgressSpinner from 'primevue/progressspinner';
-import { useToast } from 'primevue/usetoast';
-import { oauthClientsApi, type OAuthClient } from '@/api/oauth-clients';
-import { applicationsApi, type Application } from '@/api/applications';
+import { ref, computed, onMounted } from "vue";
+import { useRouter, useRoute } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import { oauthClientsApi, type OAuthClient } from "@/api/oauth-clients";
+import { applicationsApi, type Application } from "@/api/applications";
+import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
 const route = useRoute();
@@ -27,16 +19,16 @@ const error = ref<string | null>(null);
 // Edit mode
 const isEditing = ref(false);
 const editForm = ref({
-  clientName: '',
-  redirectUris: [] as string[],
-  allowedOrigins: [] as string[],
-  grantTypes: [] as string[],
-  defaultScopes: [] as string[],
-  pkceRequired: true,
-  applicationIds: [] as string[],
+	clientName: "",
+	redirectUris: [] as string[],
+	allowedOrigins: [] as string[],
+	grantTypes: [] as string[],
+	defaultScopes: [] as string[],
+	pkceRequired: true,
+	applicationIds: [] as string[],
 });
-const newRedirectUri = ref('');
-const newAllowedOrigin = ref('');
+const newRedirectUri = ref("");
+const newAllowedOrigin = ref("");
 
 // Secret rotation dialog
 const showRotateSecretDialog = ref(false);
@@ -45,288 +37,294 @@ const showNewSecretDialog = ref(false);
 const newClientSecret = ref<string | null>(null);
 
 const grantTypeOptions = [
-  { label: 'Authorization Code', value: 'authorization_code' },
-  { label: 'Refresh Token', value: 'refresh_token' },
-  { label: 'Client Credentials', value: 'client_credentials' },
+	{ label: "Authorization Code", value: "authorization_code" },
+	{ label: "Refresh Token", value: "refresh_token" },
+	{ label: "Client Credentials", value: "client_credentials" },
 ];
 
 const scopeOptions = [
-  { label: 'openid', value: 'openid' },
-  { label: 'profile', value: 'profile' },
-  { label: 'email', value: 'email' },
-  { label: 'offline_access', value: 'offline_access' },
+	{ label: "openid", value: "openid" },
+	{ label: "profile", value: "profile" },
+	{ label: "email", value: "email" },
+	{ label: "offline_access", value: "offline_access" },
 ];
 
 // Redirect URIs are required for authorization_code or refresh_token grants
 const requiresRedirectUri = computed(() => {
-  return (
-    editForm.value.grantTypes.includes('authorization_code') ||
-    editForm.value.grantTypes.includes('refresh_token')
-  );
+	return (
+		editForm.value.grantTypes.includes("authorization_code") ||
+		editForm.value.grantTypes.includes("refresh_token")
+	);
 });
 
 const isValid = computed(() => {
-  const hasClientName = editForm.value.clientName.trim() !== '';
-  const hasGrantTypes = editForm.value.grantTypes.length > 0;
-  const hasRedirectUris = editForm.value.redirectUris.length > 0;
+	const hasClientName = editForm.value.clientName.trim() !== "";
+	const hasGrantTypes = editForm.value.grantTypes.length > 0;
+	const hasRedirectUris = editForm.value.redirectUris.length > 0;
 
-  // Redirect URIs only required for authorization_code grant
-  const redirectUriValid = !requiresRedirectUri.value || hasRedirectUris;
+	// Redirect URIs only required for authorization_code grant
+	const redirectUriValid = !requiresRedirectUri.value || hasRedirectUris;
 
-  return hasClientName && hasGrantTypes && redirectUriValid;
+	return hasClientName && hasGrantTypes && redirectUriValid;
 });
 
 const validationErrors = computed(() => {
-  const errors: string[] = [];
-  if (editForm.value.clientName.trim() === '') {
-    errors.push('Client name is required');
-  }
-  if (editForm.value.grantTypes.length === 0) {
-    errors.push('At least one grant type is required');
-  }
-  if (requiresRedirectUri.value && editForm.value.redirectUris.length === 0) {
-    errors.push(
-      'At least one redirect URI is required for authorization_code or refresh_token grants',
-    );
-  }
-  return errors;
+	const errors: string[] = [];
+	if (editForm.value.clientName.trim() === "") {
+		errors.push("Client name is required");
+	}
+	if (editForm.value.grantTypes.length === 0) {
+		errors.push("At least one grant type is required");
+	}
+	if (requiresRedirectUri.value && editForm.value.redirectUris.length === 0) {
+		errors.push(
+			"At least one redirect URI is required for authorization_code or refresh_token grants",
+		);
+	}
+	return errors;
 });
 
 onMounted(async () => {
-  await Promise.all([loadClient(), loadApplications()]);
+	await Promise.all([loadClient(), loadApplications()]);
 });
 
 async function loadClient() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const id = route.params.id as string;
-    client.value = await oauthClientsApi.get(id);
-    resetEditForm();
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load OAuth client';
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	error.value = null;
+	try {
+		const id = route.params.id as string;
+		client.value = await oauthClientsApi.get(id);
+		resetEditForm();
+	} catch (e) {
+		error.value =
+			e instanceof Error ? e.message : "Failed to load OAuth client";
+	} finally {
+		loading.value = false;
+	}
 }
 
 async function loadApplications() {
-  try {
-    // Only load user-facing applications (not integrations)
-    const response = await applicationsApi.listApplicationsOnly(true);
-    applications.value = response.applications || [];
-    console.log('Loaded applications:', applications.value);
-  } catch (e: any) {
-    console.error('Failed to load applications:', e);
-    toast.add({
-      severity: 'warn',
-      summary: 'Warning',
-      detail: 'Could not load applications: ' + (e?.message || 'Unknown error'),
-      life: 5000,
-    });
-  }
+	try {
+		// Only load user-facing applications (not integrations)
+		const response = await applicationsApi.listApplicationsOnly(true);
+		applications.value = response.applications || [];
+		console.log("Loaded applications:", applications.value);
+	} catch (e: unknown) {
+		console.error("Failed to load applications:", e);
+		toast.add({
+			severity: "warn",
+			summary: "Warning",
+			detail: "Could not load applications: " + getErrorMessage(e, "Unknown error"),
+			life: 5000,
+		});
+	}
 }
 
 function resetEditForm() {
-  if (client.value) {
-    editForm.value = {
-      clientName: client.value.clientName || '',
-      redirectUris: [...(client.value.redirectUris || [])],
-      allowedOrigins: [...(client.value.allowedOrigins || [])],
-      grantTypes: [...(client.value.grantTypes || [])],
-      defaultScopes: [...(client.value.defaultScopes || [])],
-      pkceRequired: client.value.pkceRequired ?? true,
-      applicationIds: (client.value.applications || []).map((a) => a.id),
-    };
-  }
+	if (client.value) {
+		editForm.value = {
+			clientName: client.value.clientName || "",
+			redirectUris: [...(client.value.redirectUris || [])],
+			allowedOrigins: [...(client.value.allowedOrigins || [])],
+			grantTypes: [...(client.value.grantTypes || [])],
+			defaultScopes: [...(client.value.defaultScopes || [])],
+			pkceRequired: client.value.pkceRequired ?? true,
+			applicationIds: (client.value.applications || []).map((a) => a.id),
+		};
+	}
 }
 
 function startEditing() {
-  resetEditForm();
-  isEditing.value = true;
+	resetEditForm();
+	isEditing.value = true;
 }
 
 function cancelEditing() {
-  resetEditForm();
-  isEditing.value = false;
+	resetEditForm();
+	isEditing.value = false;
 }
 
 function addRedirectUri() {
-  const uri = newRedirectUri.value.trim();
-  if (uri && !editForm.value.redirectUris.includes(uri)) {
-    try {
-      new URL(uri);
-      editForm.value.redirectUris.push(uri);
-      newRedirectUri.value = '';
-    } catch {
-      toast.add({
-        severity: 'error',
-        summary: 'Invalid URL',
-        detail: 'Please enter a valid URL',
-        life: 3000,
-      });
-    }
-  }
+	const uri = newRedirectUri.value.trim();
+	if (uri && !editForm.value.redirectUris.includes(uri)) {
+		try {
+			new URL(uri);
+			editForm.value.redirectUris.push(uri);
+			newRedirectUri.value = "";
+		} catch {
+			toast.add({
+				severity: "error",
+				summary: "Invalid URL",
+				detail: "Please enter a valid URL",
+				life: 3000,
+			});
+		}
+	}
 }
 
 function removeRedirectUri(uri: string) {
-  editForm.value.redirectUris = editForm.value.redirectUris.filter((u) => u !== uri);
+	editForm.value.redirectUris = editForm.value.redirectUris.filter(
+		(u) => u !== uri,
+	);
 }
 
 function addAllowedOrigin() {
-  const origin = newAllowedOrigin.value.trim();
-  if (origin && !editForm.value.allowedOrigins.includes(origin)) {
-    try {
-      const url = new URL(origin);
-      if (url.pathname !== '/' && url.pathname !== '') {
-        toast.add({
-          severity: 'error',
-          summary: 'Invalid Origin',
-          detail: 'Origin should not include a path (e.g., https://example.com)',
-          life: 3000,
-        });
-        return;
-      }
-      editForm.value.allowedOrigins.push(url.origin);
-      newAllowedOrigin.value = '';
-    } catch {
-      toast.add({
-        severity: 'error',
-        summary: 'Invalid URL',
-        detail: 'Please enter a valid origin URL',
-        life: 3000,
-      });
-    }
-  }
+	const origin = newAllowedOrigin.value.trim();
+	if (origin && !editForm.value.allowedOrigins.includes(origin)) {
+		try {
+			const url = new URL(origin);
+			if (url.pathname !== "/" && url.pathname !== "") {
+				toast.add({
+					severity: "error",
+					summary: "Invalid Origin",
+					detail:
+						"Origin should not include a path (e.g., https://example.com)",
+					life: 3000,
+				});
+				return;
+			}
+			editForm.value.allowedOrigins.push(url.origin);
+			newAllowedOrigin.value = "";
+		} catch {
+			toast.add({
+				severity: "error",
+				summary: "Invalid URL",
+				detail: "Please enter a valid origin URL",
+				life: 3000,
+			});
+		}
+	}
 }
 
 function removeAllowedOrigin(origin: string) {
-  editForm.value.allowedOrigins = editForm.value.allowedOrigins.filter((o) => o !== origin);
+	editForm.value.allowedOrigins = editForm.value.allowedOrigins.filter(
+		(o) => o !== origin,
+	);
 }
 
 async function saveChanges() {
-  if (!client.value || !isValid.value) return;
+	if (!client.value || !isValid.value) return;
 
-  saving.value = true;
-  error.value = null;
+	saving.value = true;
+	error.value = null;
 
-  try {
-    const updated = await oauthClientsApi.update(client.value.id, {
-      clientName: editForm.value.clientName.trim(),
-      redirectUris: editForm.value.redirectUris,
-      allowedOrigins: editForm.value.allowedOrigins,
-      grantTypes: editForm.value.grantTypes,
-      defaultScopes: editForm.value.defaultScopes,
-      pkceRequired: editForm.value.pkceRequired,
-      applicationIds: editForm.value.applicationIds,
-    });
+	try {
+		const updated = await oauthClientsApi.update(client.value.id, {
+			clientName: editForm.value.clientName.trim(),
+			redirectUris: editForm.value.redirectUris,
+			allowedOrigins: editForm.value.allowedOrigins,
+			grantTypes: editForm.value.grantTypes,
+			defaultScopes: editForm.value.defaultScopes,
+			pkceRequired: editForm.value.pkceRequired,
+			applicationIds: editForm.value.applicationIds,
+		});
 
-    client.value = updated;
-    isEditing.value = false;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'OAuth client updated successfully',
-      life: 3000,
-    });
-  } catch (e: any) {
-    error.value = e?.error || e?.message || 'Failed to update OAuth client';
-  } finally {
-    saving.value = false;
-  }
+		client.value = updated;
+		isEditing.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "OAuth client updated successfully",
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		error.value = getErrorMessage(e, "Failed to update OAuth client");
+	} finally {
+		saving.value = false;
+	}
 }
 
 async function rotateSecret() {
-  if (!client.value) return;
+	if (!client.value) return;
 
-  rotateLoading.value = true;
+	rotateLoading.value = true;
 
-  try {
-    const response = await oauthClientsApi.rotateSecret(client.value.id);
-    newClientSecret.value = response.clientSecret;
-    showRotateSecretDialog.value = false;
-    showNewSecretDialog.value = true;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Client secret rotated successfully',
-      life: 3000,
-    });
-  } catch (e: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: e?.error || e?.message || 'Failed to rotate client secret',
-      life: 5000,
-    });
-  } finally {
-    rotateLoading.value = false;
-  }
+	try {
+		const response = await oauthClientsApi.rotateSecret(client.value.id);
+		newClientSecret.value = response.clientSecret;
+		showRotateSecretDialog.value = false;
+		showNewSecretDialog.value = true;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Client secret rotated successfully",
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to rotate client secret"),
+			life: 5000,
+		});
+	} finally {
+		rotateLoading.value = false;
+	}
 }
 
 function copySecret() {
-  if (newClientSecret.value) {
-    navigator.clipboard.writeText(newClientSecret.value);
-    toast.add({
-      severity: 'success',
-      summary: 'Copied',
-      detail: 'Client secret copied to clipboard',
-      life: 2000,
-    });
-  }
+	if (newClientSecret.value) {
+		navigator.clipboard.writeText(newClientSecret.value);
+		toast.add({
+			severity: "success",
+			summary: "Copied",
+			detail: "Client secret copied to clipboard",
+			life: 2000,
+		});
+	}
 }
 
 function copyClientId() {
-  if (client.value) {
-    navigator.clipboard.writeText(client.value.clientId);
-    toast.add({
-      severity: 'success',
-      summary: 'Copied',
-      detail: 'Client ID copied to clipboard',
-      life: 2000,
-    });
-  }
+	if (client.value) {
+		navigator.clipboard.writeText(client.value.clientId);
+		toast.add({
+			severity: "success",
+			summary: "Copied",
+			detail: "Client ID copied to clipboard",
+			life: 2000,
+		});
+	}
 }
 
 async function toggleActive() {
-  if (!client.value) return;
+	if (!client.value) return;
 
-  try {
-    if (client.value.active) {
-      await oauthClientsApi.deactivate(client.value.id);
-      client.value.active = false;
-      toast.add({
-        severity: 'success',
-        summary: 'Deactivated',
-        detail: 'OAuth client has been deactivated',
-        life: 3000,
-      });
-    } else {
-      await oauthClientsApi.activate(client.value.id);
-      client.value.active = true;
-      toast.add({
-        severity: 'success',
-        summary: 'Activated',
-        detail: 'OAuth client has been activated',
-        life: 3000,
-      });
-    }
-  } catch (e: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: e?.error || e?.message || 'Failed to update client status',
-      life: 5000,
-    });
-  }
+	try {
+		if (client.value.active) {
+			await oauthClientsApi.deactivate(client.value.id);
+			client.value.active = false;
+			toast.add({
+				severity: "success",
+				summary: "Deactivated",
+				detail: "OAuth client has been deactivated",
+				life: 3000,
+			});
+		} else {
+			await oauthClientsApi.activate(client.value.id);
+			client.value.active = true;
+			toast.add({
+				severity: "success",
+				summary: "Activated",
+				detail: "OAuth client has been activated",
+				life: 3000,
+			});
+		}
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to update client status"),
+			life: 5000,
+		});
+	}
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleString();
+	return new Date(dateString).toLocaleString();
 }
 
 function getClientTypeSeverity(clientType: string) {
-  return clientType === 'PUBLIC' ? 'info' : 'warn';
+	return clientType === "PUBLIC" ? "info" : "warn";
 }
 </script>
 

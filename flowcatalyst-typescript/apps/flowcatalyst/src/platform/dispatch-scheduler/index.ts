@@ -14,66 +14,72 @@
  * - StaleQueuedJobPoller: safety net for stuck QUEUED jobs
  */
 
-import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import type { QueuePublisher } from '@flowcatalyst/queue-core';
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import type { QueuePublisher } from "@flowcatalyst/queue-core";
 import {
-  type DispatchSchedulerConfig,
-  type SchedulerLogger,
-  DEFAULT_DISPATCH_SCHEDULER_CONFIG,
-} from './config.js';
-import { createBlockOnErrorChecker } from './block-on-error-checker.js';
-import { createJobDispatcher } from './job-dispatcher.js';
-import { createMessageGroupDispatcher } from './message-group-dispatcher.js';
-import { createPendingJobPoller } from './pending-job-poller.js';
-import { createStaleQueuedJobPoller } from './stale-queued-job-poller.js';
+	type DispatchSchedulerConfig,
+	type SchedulerLogger,
+	DEFAULT_DISPATCH_SCHEDULER_CONFIG,
+} from "./config.js";
+import { createBlockOnErrorChecker } from "./block-on-error-checker.js";
+import { createJobDispatcher } from "./job-dispatcher.js";
+import { createMessageGroupDispatcher } from "./message-group-dispatcher.js";
+import { createPendingJobPoller } from "./pending-job-poller.js";
+import { createStaleQueuedJobPoller } from "./stale-queued-job-poller.js";
 
 export interface DispatchSchedulerHandle {
-  stop(): void;
+	stop(): void;
 }
 
 export interface DispatchSchedulerDeps {
-  readonly db: PostgresJsDatabase;
-  readonly publisher: QueuePublisher;
-  readonly logger: SchedulerLogger;
-  readonly config?: Partial<DispatchSchedulerConfig> | undefined;
+	readonly db: PostgresJsDatabase;
+	readonly publisher: QueuePublisher;
+	readonly logger: SchedulerLogger;
+	readonly config?: Partial<DispatchSchedulerConfig> | undefined;
 }
 
-export function startDispatchScheduler(deps: DispatchSchedulerDeps): DispatchSchedulerHandle {
-  const config: DispatchSchedulerConfig = {
-    ...DEFAULT_DISPATCH_SCHEDULER_CONFIG,
-    ...deps.config,
-  };
+export function startDispatchScheduler(
+	deps: DispatchSchedulerDeps,
+): DispatchSchedulerHandle {
+	const config: DispatchSchedulerConfig = {
+		...DEFAULT_DISPATCH_SCHEDULER_CONFIG,
+		...deps.config,
+	};
 
-  const { db, publisher, logger } = deps;
+	const { db, publisher, logger } = deps;
 
-  // Create components
-  const blockOnErrorChecker = createBlockOnErrorChecker(db);
-  const jobDispatcher = createJobDispatcher(config, db, publisher, logger);
-  const groupDispatcher = createMessageGroupDispatcher(config, jobDispatcher, logger);
-  const pendingJobPoller = createPendingJobPoller(
-    config,
-    db,
-    blockOnErrorChecker,
-    groupDispatcher,
-    logger,
-  );
-  const staleQueuedJobPoller = createStaleQueuedJobPoller(config, db, logger);
+	// Create components
+	const blockOnErrorChecker = createBlockOnErrorChecker(db);
+	const jobDispatcher = createJobDispatcher(config, db, publisher, logger);
+	const groupDispatcher = createMessageGroupDispatcher(
+		config,
+		jobDispatcher,
+		logger,
+	);
+	const pendingJobPoller = createPendingJobPoller(
+		config,
+		db,
+		blockOnErrorChecker,
+		groupDispatcher,
+		logger,
+	);
+	const staleQueuedJobPoller = createStaleQueuedJobPoller(config, db, logger);
 
-  // Start pollers
-  pendingJobPoller.start();
-  staleQueuedJobPoller.start();
+	// Start pollers
+	pendingJobPoller.start();
+	staleQueuedJobPoller.start();
 
-  logger.info('Dispatch Scheduler started');
+	logger.info("Dispatch Scheduler started");
 
-  return {
-    stop() {
-      pendingJobPoller.stop();
-      staleQueuedJobPoller.stop();
-      logger.info('Dispatch Scheduler stopped');
-    },
-  };
+	return {
+		stop() {
+			pendingJobPoller.stop();
+			staleQueuedJobPoller.stop();
+			logger.info("Dispatch Scheduler stopped");
+		},
+	};
 }
 
 // Re-export types
-export type { DispatchSchedulerConfig } from './config.js';
-export { DEFAULT_DISPATCH_SCHEDULER_CONFIG } from './config.js';
+export type { DispatchSchedulerConfig } from "./config.js";
+export { DEFAULT_DISPATCH_SCHEDULER_CONFIG } from "./config.js";

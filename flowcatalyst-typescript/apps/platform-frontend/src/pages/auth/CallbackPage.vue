@@ -1,87 +1,90 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
-import { useAuthStore } from '@/stores/auth';
-import ProgressSpinner from 'primevue/progressspinner';
+import { onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+import { useAuthStore } from "@/stores/auth";
+import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
 const authStore = useAuthStore();
 const error = ref<string | null>(null);
 
 onMounted(async () => {
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get('code');
-  const state = params.get('state');
-  const errorParam = params.get('error');
-  const errorDescription = params.get('error_description');
+	const params = new URLSearchParams(window.location.search);
+	const code = params.get("code");
+	const state = params.get("state");
+	const errorParam = params.get("error");
+	const errorDescription = params.get("error_description");
 
-  if (errorParam) {
-    error.value = errorDescription || errorParam;
-    return;
-  }
+	if (errorParam) {
+		error.value = errorDescription || errorParam;
+		return;
+	}
 
-  if (!code) {
-    error.value = 'No authorization code received';
-    return;
-  }
+	if (!code) {
+		error.value = "No authorization code received";
+		return;
+	}
 
-  // Verify state
-  const savedState = sessionStorage.getItem('oauth_state');
-  if (state !== savedState) {
-    error.value = 'Invalid state parameter';
-    return;
-  }
+	// Verify state
+	const savedState = sessionStorage.getItem("oauth_state");
+	if (state !== savedState) {
+		error.value = "Invalid state parameter";
+		return;
+	}
 
-  try {
-    // Exchange code for tokens
-    const response = await fetch('/oauth/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: code,
-        redirect_uri: `${window.location.origin}/auth/callback`,
-        client_id: 'platform-admin-ui',
-      }),
-      credentials: 'include',
-    });
+	try {
+		// Exchange code for tokens
+		const response = await fetch("/oauth/token", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/x-www-form-urlencoded",
+			},
+			body: new URLSearchParams({
+				grant_type: "authorization_code",
+				code: code,
+				redirect_uri: `${window.location.origin}/auth/callback`,
+				client_id: "platform-admin-ui",
+			}),
+			credentials: "include",
+		});
 
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.error_description || data.error || 'Token exchange failed');
-    }
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(
+				data.error_description || data.error || "Token exchange failed",
+			);
+		}
 
-    // Token exchange successful - session cookie should be set
-    // Now fetch user info
-    const meResponse = await fetch('/auth/me', {
-      credentials: 'include',
-    });
+		// Token exchange successful - session cookie should be set
+		// Now fetch user info
+		const meResponse = await fetch("/auth/me", {
+			credentials: "include",
+		});
 
-    if (!meResponse.ok) {
-      throw new Error('Failed to fetch user info');
-    }
+		if (!meResponse.ok) {
+			throw new Error("Failed to fetch user info");
+		}
 
-    const userData = await meResponse.json();
-    authStore.setUser({
-      id: userData.principalId,
-      email: userData.email,
-      name: userData.name,
-      clientId: userData.clientId,
-      roles: Array.from(userData.roles || []),
-      permissions: [],
-    });
+		const userData = await meResponse.json();
+		authStore.setUser({
+			id: userData.principalId,
+			email: userData.email,
+			name: userData.name,
+			clientId: userData.clientId,
+			roles: Array.from(userData.roles || []),
+			permissions: [],
+		});
 
-    // Redirect to intended destination
-    const redirectPath = sessionStorage.getItem('auth_redirect') || '/dashboard';
-    sessionStorage.removeItem('auth_redirect');
-    sessionStorage.removeItem('oauth_state');
+		// Redirect to intended destination
+		const redirectPath =
+			sessionStorage.getItem("auth_redirect") || "/dashboard";
+		sessionStorage.removeItem("auth_redirect");
+		sessionStorage.removeItem("oauth_state");
 
-    await router.replace(redirectPath);
-  } catch (e: any) {
-    error.value = e.message || 'Authentication failed';
-  }
+		await router.replace(redirectPath);
+	} catch (e: unknown) {
+		error.value = getErrorMessage(e, "Authentication failed");
+	}
 });
 </script>
 

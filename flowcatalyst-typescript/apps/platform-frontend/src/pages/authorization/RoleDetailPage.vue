@@ -1,13 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import Tag from 'primevue/tag';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import ProgressSpinner from 'primevue/progressspinner';
-import { rolesApi, type Role, type RoleSource } from '@/api/roles';
+import { ref, computed, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import { rolesApi, type Role, type RoleSource } from "@/api/roles";
 
 const route = useRoute();
 const router = useRouter();
@@ -19,79 +14,81 @@ const error = ref<string | null>(null);
 
 const roleName = computed(() => route.params.roleName as string);
 
-const canEdit = computed(() => role.value?.source === 'DATABASE');
+const canEdit = computed(() => role.value?.source === "DATABASE");
 
 onMounted(async () => {
-  await loadRole();
+	await loadRole();
 });
 
 async function loadRole() {
-  loading.value = true;
-  error.value = null;
+	loading.value = true;
+	error.value = null;
 
-  try {
-    role.value = await rolesApi.get(roleName.value);
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load role';
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.value,
-      life: 5000,
-    });
-  } finally {
-    loading.value = false;
-  }
+	try {
+		role.value = await rolesApi.get(roleName.value);
+	} catch (e) {
+		error.value = e instanceof Error ? e.message : "Failed to load role";
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: error.value,
+			life: 5000,
+		});
+	} finally {
+		loading.value = false;
+	}
 }
 
 function goBack() {
-  router.push('/authorization/roles');
+	router.push("/authorization/roles");
 }
 
 function editRole() {
-  router.push(`/authorization/roles/${encodeURIComponent(roleName.value)}/edit`);
+	router.push(
+		`/authorization/roles/${encodeURIComponent(roleName.value)}/edit`,
+	);
 }
 
 function getSourceSeverity(source: RoleSource) {
-  switch (source) {
-    case 'CODE':
-      return 'info';
-    case 'DATABASE':
-      return 'success';
-    case 'SDK':
-      return 'warn';
-    default:
-      return 'secondary';
-  }
+	switch (source) {
+		case "CODE":
+			return "info";
+		case "DATABASE":
+			return "success";
+		case "SDK":
+			return "warn";
+		default:
+			return "secondary";
+	}
 }
 
 function getSourceLabel(source: RoleSource) {
-  switch (source) {
-    case 'CODE':
-      return 'Code-defined';
-    case 'DATABASE':
-      return 'Admin-created';
-    case 'SDK':
-      return 'SDK-registered';
-    default:
-      return source;
-  }
+	switch (source) {
+		case "CODE":
+			return "Code-defined";
+		case "DATABASE":
+			return "Admin-created";
+		case "SDK":
+			return "SDK-registered";
+		default:
+			return source;
+	}
 }
 
 function formatDate(dateStr: string | undefined) {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleString();
+	if (!dateStr) return "—";
+	return new Date(dateStr).toLocaleString();
 }
 
 // Parse permission string into parts
 function parsePermission(permission: string) {
-  const parts = permission.split(':');
-  return {
-    application: parts[0] || '',
-    context: parts[1] || '',
-    aggregate: parts[2] || '',
-    action: parts[3] || '',
-  };
+	const parts = permission.split(":");
+	return {
+		application: parts[0] || "",
+		context: parts[1] || "",
+		aggregate: parts[2] || "",
+		action: parts[3] || "",
+	};
 }
 </script>
 

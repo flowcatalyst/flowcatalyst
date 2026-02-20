@@ -1,16 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Textarea from 'primevue/textarea';
-import Message from 'primevue/message';
-import AutoComplete from 'primevue/autocomplete';
-import ProgressSpinner from 'primevue/progressspinner';
-import ToggleSwitch from 'primevue/toggleswitch';
-import { eventTypesApi } from '@/api/event-types';
-import { applicationsApi, type Application } from '@/api/applications';
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import { eventTypesApi } from "@/api/event-types";
+import { applicationsApi, type Application } from "@/api/applications";
 
 const router = useRouter();
 const toast = useToast();
@@ -21,12 +14,12 @@ const filteredAppCodes = ref<string[]>([]);
 const loadingApps = ref(true);
 
 // Form state
-const application = ref('');
-const subdomain = ref('');
-const aggregate = ref('');
-const event = ref('');
-const name = ref('');
-const description = ref('');
+const application = ref("");
+const subdomain = ref("");
+const aggregate = ref("");
+const event = ref("");
+const name = ref("");
+const description = ref("");
 const clientScoped = ref(false);
 
 const submitting = ref(false);
@@ -35,22 +28,22 @@ const errorMessage = ref<string | null>(null);
 // Load applications on mount
 // Event types can belong to both applications and integrations
 onMounted(async () => {
-  try {
-    const response = await applicationsApi.list({ activeOnly: true }); // Both applications and integrations
-    applications.value = response.applications;
-  } catch (e) {
-    errorMessage.value = 'Failed to load applications';
-  } finally {
-    loadingApps.value = false;
-  }
+	try {
+		const response = await applicationsApi.list({ activeOnly: true }); // Both applications and integrations
+		applications.value = response.applications;
+	} catch (e) {
+		errorMessage.value = "Failed to load applications";
+	} finally {
+		loadingApps.value = false;
+	}
 });
 
 // Filter application codes for autocomplete
 function searchAppCodes(event: { query: string }) {
-  const query = event.query.toLowerCase();
-  filteredAppCodes.value = applications.value
-    .map((app) => app.code)
-    .filter((code) => code.toLowerCase().includes(query));
+	const query = event.query.toLowerCase();
+	filteredAppCodes.value = applications.value
+		.map((app) => app.code)
+		.filter((code) => code.toLowerCase().includes(query));
 }
 
 // Validation
@@ -59,49 +52,54 @@ const CODE_PATTERN = /^[a-z][a-z0-9-]*$/;
 const isValidSegment = (value: string) => !value || CODE_PATTERN.test(value);
 
 const isCodeValid = computed(() => {
-  return (
-    application.value &&
-    subdomain.value &&
-    aggregate.value &&
-    event.value &&
-    CODE_PATTERN.test(application.value) &&
-    CODE_PATTERN.test(subdomain.value) &&
-    CODE_PATTERN.test(aggregate.value) &&
-    CODE_PATTERN.test(event.value)
-  );
+	return (
+		application.value &&
+		subdomain.value &&
+		aggregate.value &&
+		event.value &&
+		CODE_PATTERN.test(application.value) &&
+		CODE_PATTERN.test(subdomain.value) &&
+		CODE_PATTERN.test(aggregate.value) &&
+		CODE_PATTERN.test(event.value)
+	);
 });
 
 const isFormValid = computed(() => {
-  return isCodeValid.value && name.value.trim().length > 0 && name.value.length <= 100;
+	return (
+		isCodeValid.value &&
+		name.value.trim().length > 0 &&
+		name.value.length <= 100
+	);
 });
 
 async function onSubmit() {
-  if (!isFormValid.value) return;
+	if (!isFormValid.value) return;
 
-  submitting.value = true;
-  errorMessage.value = null;
+	submitting.value = true;
+	errorMessage.value = null;
 
-  const code = `${application.value}:${subdomain.value}:${aggregate.value}:${event.value}`;
+	const code = `${application.value}:${subdomain.value}:${aggregate.value}:${event.value}`;
 
-  try {
-    const eventType = await eventTypesApi.create({
-      code,
-      name: name.value,
-      description: description.value || undefined,
-      clientScoped: clientScoped.value,
-    });
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Event type created',
-      life: 3000,
-    });
-    router.push(`/event-types/${eventType.id}`);
-  } catch (e) {
-    errorMessage.value = e instanceof Error ? e.message : 'Failed to create event type';
-  } finally {
-    submitting.value = false;
-  }
+	try {
+		const eventType = await eventTypesApi.create({
+			code,
+			name: name.value,
+			description: description.value || undefined,
+			clientScoped: clientScoped.value,
+		});
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Event type created",
+			life: 3000,
+		});
+		router.push(`/event-types/${eventType.id}`);
+	} catch (e) {
+		errorMessage.value =
+			e instanceof Error ? e.message : "Failed to create event type";
+	} finally {
+		submitting.value = false;
+	}
 }
 </script>
 

@@ -1,8 +1,5 @@
 <script setup lang="ts">
-import { useAuthStore } from '@/stores/auth';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Tag from 'primevue/tag';
+import { useAuthStore } from "@/stores/auth";
 
 const authStore = useAuthStore();
 </script>

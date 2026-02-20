@@ -1,23 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Tag from 'primevue/tag';
-import ProgressSpinner from 'primevue/progressspinner';
-import Message from 'primevue/message';
-import Dialog from 'primevue/dialog';
-import { useToast } from 'primevue/usetoast';
-import { emailDomainMappingsApi, type EmailDomainMapping } from '@/api/email-domain-mappings';
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import {
+	emailDomainMappingsApi,
+	type EmailDomainMapping,
+} from "@/api/email-domain-mappings";
+import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
 const toast = useToast();
 const mappings = ref<EmailDomainMapping[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
-const searchQuery = ref('');
+const searchQuery = ref("");
 
 // Delete dialog state
 const showDeleteDialog = ref(false);
@@ -25,81 +21,84 @@ const mappingToDelete = ref<EmailDomainMapping | null>(null);
 const deleteLoading = ref(false);
 
 const filteredMappings = computed(() => {
-  if (!searchQuery.value) return mappings.value;
-  const query = searchQuery.value.toLowerCase();
-  return mappings.value.filter(
-    (mapping) =>
-      mapping.emailDomain.toLowerCase().includes(query) ||
-      mapping.scopeType.toLowerCase().includes(query) ||
-      (mapping.identityProviderName || '').toLowerCase().includes(query),
-  );
+	if (!searchQuery.value) return mappings.value;
+	const query = searchQuery.value.toLowerCase();
+	return mappings.value.filter(
+		(mapping) =>
+			mapping.emailDomain.toLowerCase().includes(query) ||
+			mapping.scopeType.toLowerCase().includes(query) ||
+			(mapping.identityProviderName || "").toLowerCase().includes(query),
+	);
 });
 
 onMounted(async () => {
-  await loadMappings();
+	await loadMappings();
 });
 
 async function loadMappings() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const response = await emailDomainMappingsApi.list();
-    mappings.value = response.mappings;
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load email domain mappings';
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	error.value = null;
+	try {
+		const response = await emailDomainMappingsApi.list();
+		mappings.value = response.mappings;
+	} catch (e) {
+		error.value =
+			e instanceof Error ? e.message : "Failed to load email domain mappings";
+	} finally {
+		loading.value = false;
+	}
 }
 
 function confirmDelete(mapping: EmailDomainMapping) {
-  mappingToDelete.value = mapping;
-  showDeleteDialog.value = true;
+	mappingToDelete.value = mapping;
+	showDeleteDialog.value = true;
 }
 
 async function deleteMapping() {
-  if (!mappingToDelete.value) return;
+	if (!mappingToDelete.value) return;
 
-  deleteLoading.value = true;
+	deleteLoading.value = true;
 
-  try {
-    await emailDomainMappingsApi.delete(mappingToDelete.value.id);
-    mappings.value = mappings.value.filter((m) => m.id !== mappingToDelete.value?.id);
-    showDeleteDialog.value = false;
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: `Email domain mapping for "${mappingToDelete.value.emailDomain}" deleted`,
-      life: 3000,
-    });
-  } catch (e: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: e?.error || e?.message || 'Failed to delete mapping',
-      life: 5000,
-    });
-  } finally {
-    deleteLoading.value = false;
-    mappingToDelete.value = null;
-  }
+	try {
+		await emailDomainMappingsApi.delete(mappingToDelete.value.id);
+		mappings.value = mappings.value.filter(
+			(m) => m.id !== mappingToDelete.value?.id,
+		);
+		showDeleteDialog.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: `Email domain mapping for "${mappingToDelete.value.emailDomain}" deleted`,
+			life: 3000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to delete mapping"),
+			life: 5000,
+		});
+	} finally {
+		deleteLoading.value = false;
+		mappingToDelete.value = null;
+	}
 }
 
 function getScopeTypeSeverity(scopeType: string) {
-  switch (scopeType) {
-    case 'ANCHOR':
-      return 'danger';
-    case 'PARTNER':
-      return 'warn';
-    case 'CLIENT':
-      return 'info';
-    default:
-      return 'secondary';
-  }
+	switch (scopeType) {
+		case "ANCHOR":
+			return "danger";
+		case "PARTNER":
+			return "warn";
+		case "CLIENT":
+			return "info";
+		default:
+			return "secondary";
+	}
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString();
+	return new Date(dateString).toLocaleDateString();
 }
 </script>
 

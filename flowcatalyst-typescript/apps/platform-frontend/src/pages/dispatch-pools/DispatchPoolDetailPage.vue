@@ -1,16 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useConfirm } from 'primevue/useconfirm';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import Tag from 'primevue/tag';
-import InputText from 'primevue/inputtext';
-import InputNumber from 'primevue/inputnumber';
-import Textarea from 'primevue/textarea';
-import ProgressSpinner from 'primevue/progressspinner';
-import Message from 'primevue/message';
-import { dispatchPoolsApi, type DispatchPool, type DispatchPoolStatus } from '@/api/dispatch-pools';
+import { ref, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useConfirm } from "primevue/useconfirm";
+import { useToast } from "primevue/usetoast";
+import {
+	dispatchPoolsApi,
+	type DispatchPool,
+	type DispatchPoolStatus,
+} from "@/api/dispatch-pools";
 
 const route = useRoute();
 const router = useRouter();
@@ -23,150 +20,190 @@ const editing = ref(false);
 const saving = ref(false);
 
 // Edit form
-const editName = ref('');
-const editDescription = ref('');
+const editName = ref("");
+const editDescription = ref("");
 const editRateLimit = ref<number | null>(null);
 const editConcurrency = ref<number | null>(null);
 
 onMounted(async () => {
-  const id = route.params.id as string;
-  if (id) {
-    await loadPool(id);
-  }
+	const id = route.params.id as string;
+	if (id) {
+		await loadPool(id);
+	}
 });
 
 async function loadPool(id: string) {
-  loading.value = true;
-  try {
-    pool.value = await dispatchPoolsApi.get(id);
-  } catch {
-    pool.value = null;
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	try {
+		pool.value = await dispatchPoolsApi.get(id);
+	} catch {
+		pool.value = null;
+	} finally {
+		loading.value = false;
+	}
 }
 
 function startEditing() {
-  if (pool.value) {
-    editName.value = pool.value.name;
-    editDescription.value = pool.value.description || '';
-    editRateLimit.value = pool.value.rateLimit;
-    editConcurrency.value = pool.value.concurrency;
-    editing.value = true;
-  }
+	if (pool.value) {
+		editName.value = pool.value.name;
+		editDescription.value = pool.value.description || "";
+		editRateLimit.value = pool.value.rateLimit;
+		editConcurrency.value = pool.value.concurrency;
+		editing.value = true;
+	}
 }
 
 function cancelEditing() {
-  editing.value = false;
+	editing.value = false;
 }
 
 async function saveChanges() {
-  if (!pool.value) return;
+	if (!pool.value) return;
 
-  saving.value = true;
-  try {
-    pool.value = await dispatchPoolsApi.update(pool.value.id, {
-      name: editName.value,
-      description: editDescription.value || undefined,
-      rateLimit: editRateLimit.value || undefined,
-      concurrency: editConcurrency.value || undefined,
-    });
-    editing.value = false;
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Pool updated', life: 3000 });
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update', life: 3000 });
-  } finally {
-    saving.value = false;
-  }
+	saving.value = true;
+	try {
+		pool.value = await dispatchPoolsApi.update(pool.value.id, {
+			name: editName.value,
+			description: editDescription.value || undefined,
+			rateLimit: editRateLimit.value || undefined,
+			concurrency: editConcurrency.value || undefined,
+		});
+		editing.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Pool updated",
+			life: 3000,
+		});
+	} catch (e) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to update",
+			life: 3000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 function confirmActivate() {
-  confirm.require({
-    message: 'Activate this dispatch pool?',
-    header: 'Activate Pool',
-    icon: 'pi pi-check-circle',
-    acceptLabel: 'Activate',
-    accept: activatePool,
-  });
+	confirm.require({
+		message: "Activate this dispatch pool?",
+		header: "Activate Pool",
+		icon: "pi pi-check-circle",
+		acceptLabel: "Activate",
+		accept: activatePool,
+	});
 }
 
 async function activatePool() {
-  if (!pool.value) return;
-  try {
-    await dispatchPoolsApi.activate(pool.value.id);
-    pool.value = await dispatchPoolsApi.get(pool.value.id);
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Pool activated', life: 3000 });
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to activate', life: 3000 });
-  }
+	if (!pool.value) return;
+	try {
+		await dispatchPoolsApi.activate(pool.value.id);
+		pool.value = await dispatchPoolsApi.get(pool.value.id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Pool activated",
+			life: 3000,
+		});
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to activate",
+			life: 3000,
+		});
+	}
 }
 
 function confirmSuspend() {
-  confirm.require({
-    message: 'Suspend this dispatch pool? Jobs will not be processed.',
-    header: 'Suspend Pool',
-    icon: 'pi pi-exclamation-triangle',
-    acceptLabel: 'Suspend',
-    acceptClass: 'p-button-warning',
-    accept: suspendPool,
-  });
+	confirm.require({
+		message: "Suspend this dispatch pool? Jobs will not be processed.",
+		header: "Suspend Pool",
+		icon: "pi pi-exclamation-triangle",
+		acceptLabel: "Suspend",
+		acceptClass: "p-button-warning",
+		accept: suspendPool,
+	});
 }
 
 async function suspendPool() {
-  if (!pool.value) return;
-  try {
-    await dispatchPoolsApi.suspend(pool.value.id);
-    pool.value = await dispatchPoolsApi.get(pool.value.id);
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Pool suspended', life: 3000 });
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to suspend', life: 3000 });
-  }
+	if (!pool.value) return;
+	try {
+		await dispatchPoolsApi.suspend(pool.value.id);
+		pool.value = await dispatchPoolsApi.get(pool.value.id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Pool suspended",
+			life: 3000,
+		});
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to suspend",
+			life: 3000,
+		});
+	}
 }
 
 function confirmDelete() {
-  confirm.require({
-    message: 'Delete this dispatch pool? This action will archive it.',
-    header: 'Delete Pool',
-    icon: 'pi pi-exclamation-triangle',
-    acceptLabel: 'Delete',
-    acceptClass: 'p-button-danger',
-    accept: deletePool,
-  });
+	confirm.require({
+		message: "Delete this dispatch pool? This action will archive it.",
+		header: "Delete Pool",
+		icon: "pi pi-exclamation-triangle",
+		acceptLabel: "Delete",
+		acceptClass: "p-button-danger",
+		accept: deletePool,
+	});
 }
 
 async function deletePool() {
-  if (!pool.value) return;
-  try {
-    await dispatchPoolsApi.delete(pool.value.id);
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Pool deleted', life: 3000 });
-    router.push('/dispatch-pools');
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete', life: 3000 });
-  }
+	if (!pool.value) return;
+	try {
+		await dispatchPoolsApi.delete(pool.value.id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Pool deleted",
+			life: 3000,
+		});
+		router.push("/dispatch-pools");
+	} catch {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: "Failed to delete",
+			life: 3000,
+		});
+	}
 }
 
 function getStatusSeverity(status: DispatchPoolStatus) {
-  switch (status) {
-    case 'ACTIVE':
-      return 'success';
-    case 'SUSPENDED':
-      return 'warn';
-    case 'ARCHIVED':
-      return 'secondary';
-    default:
-      return 'secondary';
-  }
+	switch (status) {
+		case "ACTIVE":
+			return "success";
+		case "SUSPENDED":
+			return "warn";
+		case "ARCHIVED":
+			return "secondary";
+		default:
+			return "secondary";
+	}
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleString();
+	return new Date(dateString).toLocaleString();
 }
 
 function getScopeLabel(p: DispatchPool) {
-  if (p.clientIdentifier) {
-    return p.clientIdentifier;
-  }
-  return 'Anchor-level (no client)';
+	if (p.clientIdentifier) {
+		return p.clientIdentifier;
+	}
+	return "Anchor-level (no client)";
 }
 </script>
 

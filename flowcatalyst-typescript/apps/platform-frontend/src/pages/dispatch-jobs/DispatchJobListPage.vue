@@ -1,40 +1,37 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Tag from 'primevue/tag';
-import MultiSelect from 'primevue/multiselect';
-import { getApiBffDispatchJobs, getApiBffDispatchJobsFilterOptions } from '@/api/generated';
+import { ref, onMounted } from "vue";
+import {
+	getApiBffDispatchJobs,
+	getApiBffDispatchJobsFilterOptions,
+} from "@/api/generated";
 
 interface DispatchJob {
-  id: string;
-  source: string;
-  code: string;
-  kind: string;
-  targetUrl: string;
-  status: string;
-  mode: string;
-  clientId?: string;
-  subscriptionId?: string;
-  dispatchPoolId?: string;
-  attemptCount: number;
-  maxRetries: number;
-  createdAt: string;
-  updatedAt: string;
-  completedAt?: string;
-  lastError?: string;
+	id: string;
+	source: string;
+	code: string;
+	kind: string;
+	targetUrl: string;
+	status: string;
+	mode: string;
+	clientId?: string;
+	subscriptionId?: string;
+	dispatchPoolId?: string;
+	attemptCount: number;
+	maxRetries: number;
+	createdAt: string;
+	updatedAt: string;
+	completedAt?: string;
+	lastError?: string;
 }
 
 interface FilterOption {
-  label: string;
-  value: string;
+	label: string;
+	value: string;
 }
 
 const dispatchJobs = ref<DispatchJob[]>([]);
 const loading = ref(true);
-const searchQuery = ref('');
+const searchQuery = ref("");
 const totalRecords = ref(0);
 const currentPage = ref(0);
 const pageSize = ref(20);
@@ -59,181 +56,227 @@ const statusOptions = ref<FilterOption[]>([]);
 const isUpdating = ref(false);
 
 onMounted(async () => {
-  await loadFilterOptions();
-  await loadDispatchJobs();
+	await loadFilterOptions();
+	await loadDispatchJobs();
 });
 
 async function loadFilterOptions() {
-  try {
-    const response = await getApiBffDispatchJobsFilterOptions({
-      query: {
-        clientIds: selectedClients.value.length > 0 ? selectedClients.value.join(',') : undefined,
-        applications:
-          selectedApplications.value.length > 0 ? selectedApplications.value.join(',') : undefined,
-        subdomains:
-          selectedSubdomains.value.length > 0 ? selectedSubdomains.value.join(',') : undefined,
-        aggregates:
-          selectedAggregates.value.length > 0 ? selectedAggregates.value.join(',') : undefined,
-      },
-    });
-    const data = response.data as {
-      clients?: FilterOption[];
-      applications?: FilterOption[];
-      subdomains?: FilterOption[];
-      aggregates?: FilterOption[];
-      codes?: FilterOption[];
-      statuses?: FilterOption[];
-    };
-    if (data) {
-      clientOptions.value = (data.clients || []) as FilterOption[];
-      applicationOptions.value = (data.applications || []) as FilterOption[];
-      subdomainOptions.value = (data.subdomains || []) as FilterOption[];
-      aggregateOptions.value = (data.aggregates || []) as FilterOption[];
-      codeOptions.value = (data.codes || []) as FilterOption[];
-      statusOptions.value = (data.statuses || []) as FilterOption[];
-    }
-  } catch (error) {
-    console.error('Failed to load filter options:', error);
-  }
+	try {
+		const response = await getApiBffDispatchJobsFilterOptions({
+			query: {
+				clientIds:
+					selectedClients.value.length > 0
+						? selectedClients.value.join(",")
+						: undefined,
+				applications:
+					selectedApplications.value.length > 0
+						? selectedApplications.value.join(",")
+						: undefined,
+				subdomains:
+					selectedSubdomains.value.length > 0
+						? selectedSubdomains.value.join(",")
+						: undefined,
+				aggregates:
+					selectedAggregates.value.length > 0
+						? selectedAggregates.value.join(",")
+						: undefined,
+			},
+		});
+		const data = response.data as {
+			clients?: FilterOption[];
+			applications?: FilterOption[];
+			subdomains?: FilterOption[];
+			aggregates?: FilterOption[];
+			codes?: FilterOption[];
+			statuses?: FilterOption[];
+		};
+		if (data) {
+			clientOptions.value = (data.clients || []) as FilterOption[];
+			applicationOptions.value = (data.applications || []) as FilterOption[];
+			subdomainOptions.value = (data.subdomains || []) as FilterOption[];
+			aggregateOptions.value = (data.aggregates || []) as FilterOption[];
+			codeOptions.value = (data.codes || []) as FilterOption[];
+			statusOptions.value = (data.statuses || []) as FilterOption[];
+		}
+	} catch (error) {
+		console.error("Failed to load filter options:", error);
+	}
 }
 
 async function loadDispatchJobs() {
-  loading.value = true;
-  try {
-    const response = await getApiBffDispatchJobs({
-      query: {
-        page: currentPage.value,
-        size: pageSize.value,
-        clientIds: selectedClients.value.length > 0 ? selectedClients.value.join(',') : undefined,
-        statuses: selectedStatuses.value.length > 0 ? selectedStatuses.value.join(',') : undefined,
-        applications:
-          selectedApplications.value.length > 0 ? selectedApplications.value.join(',') : undefined,
-        subdomains:
-          selectedSubdomains.value.length > 0 ? selectedSubdomains.value.join(',') : undefined,
-        aggregates:
-          selectedAggregates.value.length > 0 ? selectedAggregates.value.join(',') : undefined,
-        codes: selectedCodes.value.length > 0 ? selectedCodes.value.join(',') : undefined,
-        source: searchQuery.value || undefined,
-      },
-    });
-    const data = response.data as { items?: DispatchJob[]; totalItems?: number };
-    if (data) {
-      dispatchJobs.value = (data.items || []) as DispatchJob[];
-      totalRecords.value = data.totalItems || 0;
-    }
-  } catch (error) {
-    console.error('Failed to load dispatch jobs:', error);
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	try {
+		const response = await getApiBffDispatchJobs({
+			query: {
+				page: currentPage.value,
+				size: pageSize.value,
+				clientIds:
+					selectedClients.value.length > 0
+						? selectedClients.value.join(",")
+						: undefined,
+				statuses:
+					selectedStatuses.value.length > 0
+						? selectedStatuses.value.join(",")
+						: undefined,
+				applications:
+					selectedApplications.value.length > 0
+						? selectedApplications.value.join(",")
+						: undefined,
+				subdomains:
+					selectedSubdomains.value.length > 0
+						? selectedSubdomains.value.join(",")
+						: undefined,
+				aggregates:
+					selectedAggregates.value.length > 0
+						? selectedAggregates.value.join(",")
+						: undefined,
+				codes:
+					selectedCodes.value.length > 0
+						? selectedCodes.value.join(",")
+						: undefined,
+				source: searchQuery.value || undefined,
+			},
+		});
+		const data = response.data as {
+			items?: DispatchJob[];
+			totalItems?: number;
+		};
+		if (data) {
+			dispatchJobs.value = (data.items || []) as DispatchJob[];
+			totalRecords.value = data.totalItems || 0;
+		}
+	} catch (error) {
+		console.error("Failed to load dispatch jobs:", error);
+	} finally {
+		loading.value = false;
+	}
 }
 
 async function onPage(event: { page: number; rows: number }) {
-  currentPage.value = event.page;
-  pageSize.value = event.rows;
-  await loadDispatchJobs();
+	currentPage.value = event.page;
+	pageSize.value = event.rows;
+	await loadDispatchJobs();
 }
 
 async function onFilterChange(
-  clearDownstream: 'applications' | 'subdomains' | 'aggregates' | 'codes' | 'none' = 'none',
+	clearDownstream:
+		| "applications"
+		| "subdomains"
+		| "aggregates"
+		| "codes"
+		| "none" = "none",
 ) {
-  if (isUpdating.value) return;
-  isUpdating.value = true;
-  try {
-    // Clear downstream selections based on which filter changed
-    if (clearDownstream === 'applications') {
-      selectedApplications.value = [];
-      selectedSubdomains.value = [];
-      selectedAggregates.value = [];
-      selectedCodes.value = [];
-    } else if (clearDownstream === 'subdomains') {
-      selectedSubdomains.value = [];
-      selectedAggregates.value = [];
-      selectedCodes.value = [];
-    } else if (clearDownstream === 'aggregates') {
-      selectedAggregates.value = [];
-      selectedCodes.value = [];
-    } else if (clearDownstream === 'codes') {
-      selectedCodes.value = [];
-    }
+	if (isUpdating.value) return;
+	isUpdating.value = true;
+	try {
+		// Clear downstream selections based on which filter changed
+		if (clearDownstream === "applications") {
+			selectedApplications.value = [];
+			selectedSubdomains.value = [];
+			selectedAggregates.value = [];
+			selectedCodes.value = [];
+		} else if (clearDownstream === "subdomains") {
+			selectedSubdomains.value = [];
+			selectedAggregates.value = [];
+			selectedCodes.value = [];
+		} else if (clearDownstream === "aggregates") {
+			selectedAggregates.value = [];
+			selectedCodes.value = [];
+		} else if (clearDownstream === "codes") {
+			selectedCodes.value = [];
+		}
 
-    currentPage.value = 0;
-    await loadFilterOptions();
-    await loadDispatchJobs();
-  } finally {
-    isUpdating.value = false;
-  }
+		currentPage.value = 0;
+		await loadFilterOptions();
+		await loadDispatchJobs();
+	} finally {
+		isUpdating.value = false;
+	}
 }
 
 async function onStatusChange() {
-  currentPage.value = 0;
-  await loadDispatchJobs();
+	currentPage.value = 0;
+	await loadDispatchJobs();
 }
 
 async function onSearchChange() {
-  currentPage.value = 0;
-  await loadDispatchJobs();
+	currentPage.value = 0;
+	await loadDispatchJobs();
 }
 
 function getSeverity(
-  status: string,
-): 'success' | 'info' | 'warn' | 'danger' | 'secondary' | 'contrast' | undefined {
-  switch (status) {
-    case 'COMPLETED':
-      return 'success';
-    case 'PENDING':
-      return 'info';
-    case 'QUEUED':
-      return 'info';
-    case 'IN_PROGRESS':
-      return 'warn';
-    case 'ERROR':
-      return 'danger';
-    case 'CANCELLED':
-      return 'secondary';
-    default:
-      return 'secondary';
-  }
+	status: string,
+):
+	| "success"
+	| "info"
+	| "warn"
+	| "danger"
+	| "secondary"
+	| "contrast"
+	| undefined {
+	switch (status) {
+		case "COMPLETED":
+			return "success";
+		case "PENDING":
+			return "info";
+		case "QUEUED":
+			return "info";
+		case "IN_PROGRESS":
+			return "warn";
+		case "ERROR":
+			return "danger";
+		case "CANCELLED":
+			return "secondary";
+		default:
+			return "secondary";
+	}
 }
 
 function getModeSeverity(
-  mode: string,
-): 'success' | 'info' | 'warn' | 'danger' | 'secondary' | 'contrast' | undefined {
-  switch (mode) {
-    case 'IMMEDIATE':
-      return 'success';
-    case 'NEXT_ON_ERROR':
-      return 'warn';
-    case 'BLOCK_ON_ERROR':
-      return 'danger';
-    default:
-      return 'secondary';
-  }
+	mode: string,
+):
+	| "success"
+	| "info"
+	| "warn"
+	| "danger"
+	| "secondary"
+	| "contrast"
+	| undefined {
+	switch (mode) {
+		case "IMMEDIATE":
+			return "success";
+		case "NEXT_ON_ERROR":
+			return "warn";
+		case "BLOCK_ON_ERROR":
+			return "danger";
+		default:
+			return "secondary";
+	}
 }
 
 function formatDate(dateStr: string | undefined): string {
-  if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleString();
+	if (!dateStr) return "-";
+	return new Date(dateStr).toLocaleString();
 }
 
 function formatAttempts(job: DispatchJob): string {
-  return `${job.attemptCount || 0}/${job.maxRetries || 3}`;
+	return `${job.attemptCount || 0}/${job.maxRetries || 3}`;
 }
 
 function formatCode(code: string | undefined): {
-  app?: string;
-  subdomain?: string;
-  aggregate?: string;
-  event?: string;
+	app?: string;
+	subdomain?: string;
+	aggregate?: string;
+	event?: string;
 } {
-  if (!code) return {};
-  const parts = code.split(':');
-  return {
-    app: parts[0],
-    subdomain: parts[1],
-    aggregate: parts[2],
-    event: parts[3],
-  };
+	if (!code) return {};
+	const parts = code.split(":");
+	return {
+		app: parts[0],
+		subdomain: parts[1],
+		aggregate: parts[2],
+		event: parts[3],
+	};
 }
 </script>
 

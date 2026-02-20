@@ -1,41 +1,34 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Tag from 'primevue/tag';
-import Dialog from 'primevue/dialog';
-import MultiSelect from 'primevue/multiselect';
+import { ref, onMounted } from "vue";
 import {
-  getApiBffEvents,
-  getApiBffEventsById,
-  getApiBffEventsFilterOptions,
-} from '@/api/generated';
+	getApiBffEvents,
+	getApiBffEventsById,
+	getApiBffEventsFilterOptions,
+} from "@/api/generated";
 
 interface EventRead {
-  id: string;
-  specVersion: string;
-  type: string;
-  application?: string;
-  subdomain?: string;
-  aggregate?: string;
-  source: string;
-  subject: string;
-  time: string;
-  data: string;
-  messageGroup?: string;
-  correlationId?: string;
-  causationId?: string;
-  deduplicationId?: string;
-  contextData?: { key: string; value: string }[];
-  clientId?: string;
-  projectedAt?: string;
+	id: string;
+	specVersion: string;
+	type: string;
+	application?: string;
+	subdomain?: string;
+	aggregate?: string;
+	source: string;
+	subject: string;
+	time: string;
+	data: string;
+	messageGroup?: string;
+	correlationId?: string;
+	causationId?: string;
+	deduplicationId?: string;
+	contextData?: { key: string; value: string }[];
+	clientId?: string;
+	projectedAt?: string;
 }
 
 interface FilterOption {
-  value: string;
-  label: string;
+	value: string;
+	label: string;
 }
 
 // Table state
@@ -51,7 +44,7 @@ const selectedApplications = ref<string[]>([]);
 const selectedSubdomains = ref<string[]>([]);
 const selectedAggregates = ref<string[]>([]);
 const selectedTypes = ref<string[]>([]);
-const searchQuery = ref('');
+const searchQuery = ref("");
 
 // Filter options (from server)
 const clientOptions = ref<FilterOption[]>([]);
@@ -70,178 +63,189 @@ const showDetailDialog = ref(false);
 const loadingDetail = ref(false);
 
 onMounted(async () => {
-  await loadFilterOptions();
-  await loadEvents();
+	await loadFilterOptions();
+	await loadEvents();
 });
 
 // Unified filter change handler to prevent loops
 async function onFilterChange(
-  clearDownstream: 'applications' | 'subdomains' | 'aggregates' | 'types' | 'none' = 'none',
+	clearDownstream:
+		| "applications"
+		| "subdomains"
+		| "aggregates"
+		| "types"
+		| "none" = "none",
 ) {
-  if (isUpdating.value) return;
+	if (isUpdating.value) return;
 
-  isUpdating.value = true;
-  try {
-    // Clear downstream selections based on which filter changed
-    if (clearDownstream === 'applications') {
-      selectedApplications.value = [];
-      selectedSubdomains.value = [];
-      selectedAggregates.value = [];
-      selectedTypes.value = [];
-    } else if (clearDownstream === 'subdomains') {
-      selectedSubdomains.value = [];
-      selectedAggregates.value = [];
-      selectedTypes.value = [];
-    } else if (clearDownstream === 'aggregates') {
-      selectedAggregates.value = [];
-      selectedTypes.value = [];
-    } else if (clearDownstream === 'types') {
-      selectedTypes.value = [];
-    }
+	isUpdating.value = true;
+	try {
+		// Clear downstream selections based on which filter changed
+		if (clearDownstream === "applications") {
+			selectedApplications.value = [];
+			selectedSubdomains.value = [];
+			selectedAggregates.value = [];
+			selectedTypes.value = [];
+		} else if (clearDownstream === "subdomains") {
+			selectedSubdomains.value = [];
+			selectedAggregates.value = [];
+			selectedTypes.value = [];
+		} else if (clearDownstream === "aggregates") {
+			selectedAggregates.value = [];
+			selectedTypes.value = [];
+		} else if (clearDownstream === "types") {
+			selectedTypes.value = [];
+		}
 
-    await loadFilterOptions();
-    await loadEvents();
-  } finally {
-    isUpdating.value = false;
-  }
+		await loadFilterOptions();
+		await loadEvents();
+	} finally {
+		isUpdating.value = false;
+	}
 }
 
 async function loadFilterOptions() {
-  loadingOptions.value = true;
-  try {
-    const response = await getApiBffEventsFilterOptions({
-      query: {
-        clientIds: selectedClients.value.length ? selectedClients.value.join(',') : undefined,
-        applications: selectedApplications.value.length
-          ? selectedApplications.value.join(',')
-          : undefined,
-        subdomains: selectedSubdomains.value.length
-          ? selectedSubdomains.value.join(',')
-          : undefined,
-        aggregates: selectedAggregates.value.length
-          ? selectedAggregates.value.join(',')
-          : undefined,
-      },
-    });
-    const data = response.data as {
-      clients?: FilterOption[];
-      applications?: FilterOption[];
-      subdomains?: FilterOption[];
-      aggregates?: FilterOption[];
-      types?: FilterOption[];
-    };
-    if (data) {
-      clientOptions.value = (data.clients || []) as FilterOption[];
-      applicationOptions.value = (data.applications || []) as FilterOption[];
-      subdomainOptions.value = (data.subdomains || []) as FilterOption[];
-      aggregateOptions.value = (data.aggregates || []) as FilterOption[];
-      typeOptions.value = (data.types || []) as FilterOption[];
-    }
-  } catch (error) {
-    console.error('Failed to load filter options:', error);
-  } finally {
-    loadingOptions.value = false;
-  }
+	loadingOptions.value = true;
+	try {
+		const response = await getApiBffEventsFilterOptions({
+			query: {
+				clientIds: selectedClients.value.length
+					? selectedClients.value.join(",")
+					: undefined,
+				applications: selectedApplications.value.length
+					? selectedApplications.value.join(",")
+					: undefined,
+				subdomains: selectedSubdomains.value.length
+					? selectedSubdomains.value.join(",")
+					: undefined,
+				aggregates: selectedAggregates.value.length
+					? selectedAggregates.value.join(",")
+					: undefined,
+			},
+		});
+		const data = response.data as {
+			clients?: FilterOption[];
+			applications?: FilterOption[];
+			subdomains?: FilterOption[];
+			aggregates?: FilterOption[];
+			types?: FilterOption[];
+		};
+		if (data) {
+			clientOptions.value = (data.clients || []) as FilterOption[];
+			applicationOptions.value = (data.applications || []) as FilterOption[];
+			subdomainOptions.value = (data.subdomains || []) as FilterOption[];
+			aggregateOptions.value = (data.aggregates || []) as FilterOption[];
+			typeOptions.value = (data.types || []) as FilterOption[];
+		}
+	} catch (error) {
+		console.error("Failed to load filter options:", error);
+	} finally {
+		loadingOptions.value = false;
+	}
 }
 
 async function loadEvents() {
-  loading.value = true;
-  try {
-    const response = await getApiBffEvents({
-      query: {
-        page: currentPage.value,
-        size: pageSize.value,
-        clientIds: selectedClients.value.length ? selectedClients.value.join(',') : undefined,
-        applications: selectedApplications.value.length
-          ? selectedApplications.value.join(',')
-          : undefined,
-        subdomains: selectedSubdomains.value.length
-          ? selectedSubdomains.value.join(',')
-          : undefined,
-        aggregates: selectedAggregates.value.length
-          ? selectedAggregates.value.join(',')
-          : undefined,
-        types: selectedTypes.value.length ? selectedTypes.value.join(',') : undefined,
-        source: searchQuery.value || undefined,
-      },
-    });
-    const data = response.data as { items?: EventRead[]; totalItems?: number };
-    if (data) {
-      events.value = (data.items || []) as EventRead[];
-      totalRecords.value = data.totalItems || 0;
-    }
-  } catch (error) {
-    console.error('Failed to load events:', error);
-  } finally {
-    loading.value = false;
-  }
+	loading.value = true;
+	try {
+		const response = await getApiBffEvents({
+			query: {
+				page: currentPage.value,
+				size: pageSize.value,
+				clientIds: selectedClients.value.length
+					? selectedClients.value.join(",")
+					: undefined,
+				applications: selectedApplications.value.length
+					? selectedApplications.value.join(",")
+					: undefined,
+				subdomains: selectedSubdomains.value.length
+					? selectedSubdomains.value.join(",")
+					: undefined,
+				aggregates: selectedAggregates.value.length
+					? selectedAggregates.value.join(",")
+					: undefined,
+				types: selectedTypes.value.length
+					? selectedTypes.value.join(",")
+					: undefined,
+				source: searchQuery.value || undefined,
+			},
+		});
+		const data = response.data as { items?: EventRead[]; totalItems?: number };
+		if (data) {
+			events.value = (data.items || []) as EventRead[];
+			totalRecords.value = data.totalItems || 0;
+		}
+	} catch (error) {
+		console.error("Failed to load events:", error);
+	} finally {
+		loading.value = false;
+	}
 }
 
 async function onPage(event: { page: number; rows: number }) {
-  currentPage.value = event.page;
-  pageSize.value = event.rows;
-  await loadEvents();
+	currentPage.value = event.page;
+	pageSize.value = event.rows;
+	await loadEvents();
 }
 
 async function onSearchChange() {
-  currentPage.value = 0;
-  await loadEvents();
+	currentPage.value = 0;
+	await loadEvents();
 }
 
 async function clearAllFilters() {
-  selectedClients.value = [];
-  selectedApplications.value = [];
-  selectedSubdomains.value = [];
-  selectedAggregates.value = [];
-  selectedTypes.value = [];
-  searchQuery.value = '';
-  await loadFilterOptions();
-  await loadEvents();
+	selectedClients.value = [];
+	selectedApplications.value = [];
+	selectedSubdomains.value = [];
+	selectedAggregates.value = [];
+	selectedTypes.value = [];
+	searchQuery.value = "";
+	await loadFilterOptions();
+	await loadEvents();
 }
 
 async function viewEventDetail(event: EventRead) {
-  loadingDetail.value = true;
-  showDetailDialog.value = true;
-  try {
-    const response = await getApiBffEventsById({ path: { id: event.id } });
-    if (response.data) {
-      selectedEvent.value = response.data as EventRead;
-    }
-  } catch (error) {
-    console.error('Failed to load event details:', error);
-  } finally {
-    loadingDetail.value = false;
-  }
+	loadingDetail.value = true;
+	showDetailDialog.value = true;
+	try {
+		const response = await getApiBffEventsById({ path: { id: event.id } });
+		if (response.data) {
+			selectedEvent.value = response.data as EventRead;
+		}
+	} catch (error) {
+		console.error("Failed to load event details:", error);
+	} finally {
+		loadingDetail.value = false;
+	}
 }
 
 function formatDate(dateStr: string | undefined): string {
-  if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleString();
+	if (!dateStr) return "-";
+	return new Date(dateStr).toLocaleString();
 }
 
 function formatData(data: string | undefined): string {
-  if (!data) return '-';
-  try {
-    return JSON.stringify(JSON.parse(data), null, 2);
-  } catch {
-    return data;
-  }
+	if (!data) return "-";
+	try {
+		return JSON.stringify(JSON.parse(data), null, 2);
+	} catch {
+		return data;
+	}
 }
 
 function truncateId(id: string | undefined): string {
-  if (!id) return '-';
-  return id.length > 10 ? `${id.slice(0, 10)}...` : id;
+	if (!id) return "-";
+	return id.length > 10 ? `${id.slice(0, 10)}...` : id;
 }
 
 function hasActiveFilters(): boolean {
-  return (
-    selectedClients.value.length > 0 ||
-    selectedApplications.value.length > 0 ||
-    selectedSubdomains.value.length > 0 ||
-    selectedAggregates.value.length > 0 ||
-    selectedTypes.value.length > 0 ||
-    searchQuery.value.length > 0
-  );
+	return (
+		selectedClients.value.length > 0 ||
+		selectedApplications.value.length > 0 ||
+		selectedSubdomains.value.length > 0 ||
+		selectedAggregates.value.length > 0 ||
+		selectedTypes.value.length > 0 ||
+		searchQuery.value.length > 0
+	);
 }
 </script>
 

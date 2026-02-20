@@ -2,4 +2,4 @@
  * Dispatch Pool Status
  */
 
-export type DispatchPoolStatus = 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
+export type DispatchPoolStatus = "ACTIVE" | "SUSPENDED" | "ARCHIVED";

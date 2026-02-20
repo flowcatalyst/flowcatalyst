@@ -2,8 +2,8 @@
  * Delete Subscription Command
  */
 
-import type { Command } from '@flowcatalyst/application';
+import type { Command } from "@flowcatalyst/application";
 
 export interface DeleteSubscriptionCommand extends Command {
-  readonly subscriptionId: string;
+	readonly subscriptionId: string;
 }

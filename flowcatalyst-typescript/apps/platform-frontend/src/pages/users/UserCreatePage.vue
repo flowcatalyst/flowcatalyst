@@ -1,12 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Password from 'primevue/password';
-import Message from 'primevue/message';
-import { usersApi, type EmailDomainCheckResponse } from '@/api/users';
+import { ref, computed } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import { usersApi, type EmailDomainCheckResponse } from "@/api/users";
+import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
 const toast = useToast();
@@ -14,184 +11,188 @@ const toast = useToast();
 const saving = ref(false);
 
 // Form fields
-const email = ref('');
-const password = ref('');
-const confirmPassword = ref('');
-const name = ref('');
+const email = ref("");
+const password = ref("");
+const confirmPassword = ref("");
+const name = ref("");
 
 // Validation
-const emailError = ref('');
-const passwordError = ref('');
-const nameError = ref('');
+const emailError = ref("");
+const passwordError = ref("");
+const nameError = ref("");
 
 // Email domain check
 const domainCheck = ref<EmailDomainCheckResponse | null>(null);
 const checkingDomain = ref(false);
-const lastCheckedEmail = ref('');
+const lastCheckedEmail = ref("");
 
 // Whether the domain check has completed successfully (no errors, email validated)
 const domainCheckComplete = computed(() => {
-  return domainCheck.value !== null && !checkingDomain.value && !emailError.value;
+	return (
+		domainCheck.value !== null && !checkingDomain.value && !emailError.value
+	);
 });
 
 // Determine if user needs internal authentication (password)
 const requiresPassword = computed(() => {
-  // Don't show password fields until domain check confirms internal auth
-  if (!domainCheck.value) return false;
-  return domainCheck.value.authProvider === 'INTERNAL';
+	// Don't show password fields until domain check confirms internal auth
+	if (!domainCheck.value) return false;
+	return domainCheck.value.authProvider === "INTERNAL";
 });
 
 // Check if email already exists (blocking error)
 const emailAlreadyExists = computed(() => {
-  return domainCheck.value?.emailExists === true;
+	return domainCheck.value?.emailExists === true;
 });
 
 const isFormValid = computed(() => {
-  // Block if email already exists
-  if (emailAlreadyExists.value) return false;
+	// Block if email already exists
+	if (emailAlreadyExists.value) return false;
 
-  const baseValid =
-    email.value &&
-    name.value &&
-    !emailError.value &&
-    !nameError.value &&
-    !checkingDomain.value &&
-    domainCheckComplete.value; // Must have completed domain check
+	const baseValid =
+		email.value &&
+		name.value &&
+		!emailError.value &&
+		!nameError.value &&
+		!checkingDomain.value &&
+		domainCheckComplete.value; // Must have completed domain check
 
-  if (requiresPassword.value) {
-    return (
-      baseValid &&
-      password.value &&
-      password.value === confirmPassword.value &&
-      !passwordError.value
-    );
-  }
+	if (requiresPassword.value) {
+		return (
+			baseValid &&
+			password.value &&
+			password.value === confirmPassword.value &&
+			!passwordError.value
+		);
+	}
 
-  return baseValid;
+	return baseValid;
 });
 
 async function validateEmail() {
-  if (!email.value) {
-    emailError.value = 'Email is required';
-    domainCheck.value = null;
-    return;
-  }
+	if (!email.value) {
+		emailError.value = "Email is required";
+		domainCheck.value = null;
+		return;
+	}
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) {
-    emailError.value = 'Please enter a valid email address';
-    domainCheck.value = null;
-    return;
-  }
+	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) {
+		emailError.value = "Please enter a valid email address";
+		domainCheck.value = null;
+		return;
+	}
 
-  emailError.value = '';
+	emailError.value = "";
 
-  // Check email domain if email changed
-  if (email.value !== lastCheckedEmail.value) {
-    await checkEmailDomain();
-  }
+	// Check email domain if email changed
+	if (email.value !== lastCheckedEmail.value) {
+		await checkEmailDomain();
+	}
 }
 
 async function checkEmailDomain() {
-  if (!email.value || !email.value.includes('@')) return;
+	if (!email.value || !email.value.includes("@")) return;
 
-  lastCheckedEmail.value = email.value;
-  checkingDomain.value = true;
-  // Clear previous check result while loading
-  domainCheck.value = null;
+	lastCheckedEmail.value = email.value;
+	checkingDomain.value = true;
+	// Clear previous check result while loading
+	domainCheck.value = null;
 
-  try {
-    const result = await usersApi.checkEmailDomain(email.value);
-    domainCheck.value = result;
+	try {
+		const result = await usersApi.checkEmailDomain(email.value);
+		domainCheck.value = result;
 
-    // Clear password fields if switching to OIDC (no password needed)
-    if (result.authProvider !== 'INTERNAL') {
-      password.value = '';
-      confirmPassword.value = '';
-      passwordError.value = '';
-    }
-  } catch (error) {
-    console.error('Failed to check email domain:', error);
-    domainCheck.value = null;
-  } finally {
-    checkingDomain.value = false;
-  }
+		// Clear password fields if switching to OIDC (no password needed)
+		if (result.authProvider !== "INTERNAL") {
+			password.value = "";
+			confirmPassword.value = "";
+			passwordError.value = "";
+		}
+	} catch (error) {
+		console.error("Failed to check email domain:", error);
+		domainCheck.value = null;
+	} finally {
+		checkingDomain.value = false;
+	}
 }
 
 function validatePassword() {
-  // Skip validation if password not required (OIDC users)
-  if (!requiresPassword.value) {
-    passwordError.value = '';
-    return;
-  }
+	// Skip validation if password not required (OIDC users)
+	if (!requiresPassword.value) {
+		passwordError.value = "";
+		return;
+	}
 
-  if (!password.value) {
-    passwordError.value = 'Password is required';
-  } else if (password.value.length < 12) {
-    passwordError.value = 'Password must be at least 12 characters';
-  } else if (confirmPassword.value && password.value !== confirmPassword.value) {
-    passwordError.value = 'Passwords do not match';
-  } else {
-    passwordError.value = '';
-  }
+	if (!password.value) {
+		passwordError.value = "Password is required";
+	} else if (password.value.length < 12) {
+		passwordError.value = "Password must be at least 12 characters";
+	} else if (
+		confirmPassword.value &&
+		password.value !== confirmPassword.value
+	) {
+		passwordError.value = "Passwords do not match";
+	} else {
+		passwordError.value = "";
+	}
 }
 
 function validateName() {
-  if (!name.value) {
-    nameError.value = 'Name is required';
-  } else {
-    nameError.value = '';
-  }
+	if (!name.value) {
+		nameError.value = "Name is required";
+	} else {
+		nameError.value = "";
+	}
 }
 
 async function createUser() {
-  // Validate all fields
-  await validateEmail();
-  validatePassword();
-  validateName();
+	// Validate all fields
+	await validateEmail();
+	validatePassword();
+	validateName();
 
-  if (!isFormValid.value) {
-    return;
-  }
+	if (!isFormValid.value) {
+		return;
+	}
 
-  saving.value = true;
-  try {
-    // Build request - only include password for internal auth users
-    const request: Parameters<typeof usersApi.create>[0] = {
-      email: email.value,
-      name: name.value,
-    };
+	saving.value = true;
+	try {
+		// Build request - only include password for internal auth users
+		const request: Parameters<typeof usersApi.create>[0] = {
+			email: email.value,
+			name: name.value,
+		};
 
-    if (requiresPassword.value) {
-      request.password = password.value;
-    }
+		if (requiresPassword.value) {
+			request.password = password.value;
+		}
 
-    // Create the user (client will be auto-detected from email domain on backend)
-    const user = await usersApi.create(request);
+		// Create the user (client will be auto-detected from email domain on backend)
+		const user = await usersApi.create(request);
 
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'User created successfully',
-      life: 3000,
-    });
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "User created successfully",
+			life: 3000,
+		});
 
-    // Redirect to user detail/edit page
-    router.push(`/users/${user.id}`);
-  } catch (error: any) {
-    const message = error?.message || 'Failed to create user';
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: message,
-      life: 5000,
-    });
-  } finally {
-    saving.value = false;
-  }
+		// Redirect to user detail/edit page
+		router.push(`/users/${user.id}`);
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to create user"),
+			life: 5000,
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 function cancel() {
-  router.push('/users');
+	router.push("/users");
 }
 </script>
 
