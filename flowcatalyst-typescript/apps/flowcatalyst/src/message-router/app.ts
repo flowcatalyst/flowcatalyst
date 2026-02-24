@@ -76,7 +76,14 @@ export async function createApp(
 
 			const __filename = fileURLToPath(import.meta.url);
 			const __dirname = path.dirname(__filename);
-			const cssPath = path.join(__dirname, "../public/tailwind.css");
+			// Bundled: dist/app-XXX.js → dist/public/tailwind.css
+			// Dev tsx: src/message-router/app.ts → public/tailwind.css
+			let cssPath = path.join(__dirname, "public/tailwind.css");
+			try {
+				await fs.access(cssPath);
+			} catch {
+				cssPath = path.join(__dirname, "../../public/tailwind.css");
+			}
 
 			const css = await fs.readFile(cssPath, "utf-8");
 			return reply.type("text/css").send(css);

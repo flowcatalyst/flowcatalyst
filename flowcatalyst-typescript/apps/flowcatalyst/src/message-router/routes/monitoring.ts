@@ -439,10 +439,10 @@ export const monitoringRoutes: FastifyPluginAsync = async (fastify) => {
 			const __filename = fileURLToPath(import.meta.url);
 			const __dirname = path.dirname(__filename);
 
-			// In bundled build: dist/public/dashboard.html (via ../public/)
-			// In tsx source: src/message-router/routes/../../../public/
+			// Bundled: dist/message-router-XXX.js → dist/public/dashboard.html
+			// Dev tsx: src/message-router/routes/monitoring.ts → public/dashboard.html
 			const candidates = [
-				path.join(__dirname, "../public/dashboard.html"),
+				path.join(__dirname, "public/dashboard.html"),
 				path.join(__dirname, "../../../public/dashboard.html"),
 			];
 			let dashboardPath = "";
