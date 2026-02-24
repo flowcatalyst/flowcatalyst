@@ -57,7 +57,7 @@ export async function registerPlatformRoutes(
 	} = deps;
 
 	// Health check
-	fastify.get("/health", async (request, reply) => {
+	fastify.get("/health", async (_request, reply) => {
 		return jsonSuccess(reply, {
 			status: "healthy",
 			service: "platform",

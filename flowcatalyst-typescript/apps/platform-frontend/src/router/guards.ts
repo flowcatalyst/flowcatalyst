@@ -67,14 +67,14 @@ export async function guestGuard(
 	// If authenticated, handle redirect
 	if (authStore.isAuthenticated) {
 		// Check if this is an OIDC interaction flow - complete it
-		const interactionUid = to.query.interaction;
+		const interactionUid = to.query['interaction'];
 		if (interactionUid && typeof interactionUid === "string") {
 			window.location.href = `/oidc/interaction/${interactionUid}/login`;
 			return;
 		}
 
 		// Check if this is an OAuth flow - redirect to /oauth/authorize to complete it
-		if (to.query.oauth === "true") {
+		if (to.query['oauth'] === "true") {
 			const oauthParams = new URLSearchParams();
 			const oauthFields = [
 				"response_type",

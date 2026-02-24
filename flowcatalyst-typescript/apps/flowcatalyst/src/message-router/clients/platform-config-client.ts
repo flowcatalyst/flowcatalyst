@@ -8,8 +8,8 @@ import type {
  * Platform configuration client options
  */
 export interface PlatformConfigClientOptions {
-	/** Platform API base URL */
-	baseUrl: string;
+	/** Full URL of the router config endpoint (e.g. https://platform.example.com/api/router/config) */
+	configUrl: string;
 	/** Optional API key for authentication */
 	apiKey?: string | undefined;
 	/** Connection timeout in milliseconds */
@@ -26,7 +26,7 @@ export interface PlatformConfigClientOptions {
  * Default configuration options
  */
 export const defaultPlatformConfigClientOptions: PlatformConfigClientOptions = {
-	baseUrl: "http://localhost:8080",
+	configUrl: "http://localhost:8080/api/config",
 	connectTimeoutMs: 3000,
 	readTimeoutMs: 5000,
 	maxAttempts: 12,
@@ -55,7 +55,7 @@ export class PlatformConfigClient {
 	constructor(options: Partial<PlatformConfigClientOptions>, logger: Logger) {
 		this.options = { ...defaultPlatformConfigClientOptions, ...options };
 		this.logger = logger.child({ component: "PlatformConfigClient" });
-		this.configEndpoint = `${this.options.baseUrl}/api/router/config`;
+		this.configEndpoint = this.options.configUrl;
 	}
 
 	/**
@@ -154,8 +154,9 @@ export class PlatformConfigClient {
 			if (!data.processingPools || !Array.isArray(data.processingPools)) {
 				throw new Error("Invalid config: missing processingPools array");
 			}
+			// Default connections to 1 if not provided (Java platform omits this field)
 			if (typeof data.connections !== "number") {
-				throw new Error("Invalid config: missing connections number");
+				data.connections = 1;
 			}
 
 			return data;
@@ -184,7 +185,8 @@ export class PlatformConfigClient {
 			);
 
 			try {
-				const response = await fetch(`${this.options.baseUrl}/health/ready`, {
+				const origin = new URL(this.options.configUrl).origin;
+				const response = await fetch(`${origin}/health/ready`, {
 					method: "GET",
 					signal: controller.signal,
 				});
@@ -340,10 +342,10 @@ export class ConfigSyncService {
 		if (a.processingPools.length !== b.processingPools.length) return false;
 
 		// Deep compare queues (order-insensitive)
-		const sortedQueuesA = [...a.queues].sort((x, y) =>
+		const sortedQueuesA = a.queues.toSorted((x, y) =>
 			(x.queueUri ?? "").localeCompare(y.queueUri ?? ""),
 		);
-		const sortedQueuesB = [...b.queues].sort((x, y) =>
+		const sortedQueuesB = b.queues.toSorted((x, y) =>
 			(x.queueUri ?? "").localeCompare(y.queueUri ?? ""),
 		);
 		for (let i = 0; i < sortedQueuesA.length; i++) {
@@ -356,10 +358,10 @@ export class ConfigSyncService {
 		}
 
 		// Deep compare pools (order-insensitive)
-		const sortedPoolsA = [...a.processingPools].sort((x, y) =>
+		const sortedPoolsA = a.processingPools.toSorted((x, y) =>
 			x.code.localeCompare(y.code),
 		);
-		const sortedPoolsB = [...b.processingPools].sort((x, y) =>
+		const sortedPoolsB = b.processingPools.toSorted((x, y) =>
 			x.code.localeCompare(y.code),
 		);
 		for (let i = 0; i < sortedPoolsA.length; i++) {

@@ -92,7 +92,7 @@ async function loadClient() {
 	loading.value = true;
 	error.value = null;
 	try {
-		const id = route.params.id as string;
+		const id = route.params['id'] as string;
 		client.value = await oauthClientsApi.get(id);
 		resetEditForm();
 	} catch (e) {

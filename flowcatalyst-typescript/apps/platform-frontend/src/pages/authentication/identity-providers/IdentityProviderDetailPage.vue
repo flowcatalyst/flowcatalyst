@@ -51,7 +51,7 @@ async function loadProvider() {
 	loading.value = true;
 	error.value = null;
 	try {
-		const id = route.params.id as string;
+		const id = route.params['id'] as string;
 		provider.value = await identityProvidersApi.get(id);
 		resetEditForm();
 	} catch (e) {
@@ -121,13 +121,13 @@ async function saveChanges() {
 		};
 
 		if (provider.value.type === "OIDC") {
-			updateData.oidcIssuerUrl = editForm.value.oidcIssuerUrl.trim() || null;
-			updateData.oidcClientId = editForm.value.oidcClientId.trim();
-			updateData.oidcMultiTenant = editForm.value.oidcMultiTenant;
-			updateData.oidcIssuerPattern =
+			updateData['oidcIssuerUrl'] = editForm.value.oidcIssuerUrl.trim() || null;
+			updateData['oidcClientId'] = editForm.value.oidcClientId.trim();
+			updateData['oidcMultiTenant'] = editForm.value.oidcMultiTenant;
+			updateData['oidcIssuerPattern'] =
 				editForm.value.oidcIssuerPattern.trim() || null;
 			if (editForm.value.oidcClientSecretRef.trim()) {
-				updateData.oidcClientSecretRef =
+				updateData['oidcClientSecretRef'] =
 					editForm.value.oidcClientSecretRef.trim();
 			}
 		}

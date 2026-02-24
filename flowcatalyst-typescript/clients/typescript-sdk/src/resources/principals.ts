@@ -36,7 +36,11 @@ export interface PrincipalFilters {
  * Principals resource for managing users and service accounts.
  */
 export class PrincipalsResource {
-	constructor(private readonly client: FlowCatalystClient) {}
+	private readonly client: FlowCatalystClient;
+
+	constructor(client: FlowCatalystClient) {
+		this.client = client;
+	}
 
 	/**
 	 * List all principals with optional filters.

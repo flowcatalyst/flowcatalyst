@@ -86,7 +86,7 @@ async function loadData() {
 	loading.value = true;
 	error.value = null;
 	try {
-		const id = route.params.id as string;
+		const id = route.params['id'] as string;
 		const [mappingData, clientsResponse, rolesResponse] = await Promise.all([
 			emailDomainMappingsApi.get(id),
 			clientsApi.list(),
@@ -202,25 +202,25 @@ async function saveChanges() {
 		};
 
 		if (editForm.value.scopeType === "CLIENT") {
-			updateData.primaryClientId = editForm.value.primaryClientId;
+			updateData['primaryClientId'] = editForm.value.primaryClientId;
 		} else if (editForm.value.scopeType === "ANCHOR") {
-			updateData.primaryClientId = null;
+			updateData['primaryClientId'] = null;
 		}
 
 		// Include tenant ID (empty string clears it)
 		if (isOidcMultiTenant.value) {
-			updateData.requiredOidcTenantId =
+			updateData['requiredOidcTenantId'] =
 				editForm.value.requiredOidcTenantId || "";
 		}
 
 		// Include allowed roles (send the selected roles' IDs)
 		if (showRolePicker.value) {
-			updateData.allowedRoleIds = rolePickerModel.value[1].map((r) => r.id);
+			updateData['allowedRoleIds'] = rolePickerModel.value[1].map((r) => r.id);
 		}
 
 		// Include syncRolesFromIdp for external IDPs with non-ANCHOR scope
 		if (showRolePicker.value) {
-			updateData.syncRolesFromIdp = editForm.value.syncRolesFromIdp;
+			updateData['syncRolesFromIdp'] = editForm.value.syncRolesFromIdp;
 		}
 
 		const updated = await emailDomainMappingsApi.update(

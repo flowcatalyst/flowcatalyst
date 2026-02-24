@@ -131,7 +131,7 @@ export async function registerCorsRoutes(
 				},
 			},
 		},
-		async (request, reply) => {
+		async (_request, reply) => {
 			const corsOrigins = await corsAllowedOriginRepository.findAll();
 			const total = await corsAllowedOriginRepository.count();
 
@@ -153,7 +153,7 @@ export async function registerCorsRoutes(
 				},
 			},
 		},
-		async (request, reply) => {
+		async (_request, reply) => {
 			const origins = await corsAllowedOriginRepository.getAllowedOrigins();
 			return jsonSuccess(reply, {
 				origins: Array.from(origins),

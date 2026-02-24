@@ -35,7 +35,7 @@ describe("TSID Generation", () => {
 		}
 
 		// IDs should already be in sorted order
-		const sorted = [...ids].sort();
+		const sorted = ids.toSorted();
 		expect(ids).toEqual(sorted);
 	});
 

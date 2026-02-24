@@ -151,6 +151,9 @@ export class EmbeddedQueueConsumer implements QueueConsumer {
 						ack: async () => this.ack(receiptHandle),
 						nack: async (visibilityTimeoutSeconds?: number) =>
 							this.nack(receiptHandle, visibilityTimeoutSeconds),
+						updateReceiptHandle: () => {},
+						getReceiptHandle: () => receiptHandle,
+						inProgress: () => {},
 					});
 				}
 

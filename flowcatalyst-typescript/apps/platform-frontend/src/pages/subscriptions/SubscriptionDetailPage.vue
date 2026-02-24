@@ -38,7 +38,7 @@ const modeOptions = [
 ];
 
 onMounted(async () => {
-	const id = route.params.id as string;
+	const id = route.params['id'] as string;
 	if (id) {
 		await loadSubscription(id);
 	}

@@ -21,7 +21,7 @@ const description = ref("");
 const selectedPermissions = ref<Set<string>>(new Set());
 const clientManaged = ref(false);
 
-const roleName = computed(() => route.params.roleName as string);
+const roleName = computed(() => route.params['roleName'] as string);
 
 const hasChanges = computed(() => {
 	if (!role.value) return false;

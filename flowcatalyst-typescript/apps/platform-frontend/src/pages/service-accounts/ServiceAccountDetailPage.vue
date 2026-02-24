@@ -17,7 +17,7 @@ const router = useRouter();
 const route = useRoute();
 const toast = useToast();
 
-const serviceAccountId = route.params.id as string;
+const serviceAccountId = route.params['id'] as string;
 
 const serviceAccount = ref<ServiceAccount | null>(null);
 const clients = ref<Client[]>([]);
@@ -88,7 +88,7 @@ onMounted(async () => {
 	]);
 	if (serviceAccount.value) {
 		await loadRoleAssignments();
-		if (route.query.edit === "true") {
+		if (route.query['edit'] === "true") {
 			startEdit();
 		}
 	}

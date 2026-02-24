@@ -193,7 +193,7 @@ export async function registerAuthRoutes(
 	 * POST /auth/logout
 	 * Logout and clear session cookie.
 	 */
-	fastify.post("/auth/logout", async (request, reply) => {
+	fastify.post("/auth/logout", async (_request, reply) => {
 		// Clear session cookie by setting expired cookie
 		reply.setCookie(cookieConfig.name, "", {
 			path: "/",

@@ -56,7 +56,11 @@ export interface MyApplicationsResponse {
  * Me resource for user-scoped access to clients and applications.
  */
 export class MeResource {
-	constructor(private readonly client: FlowCatalystClient) {}
+	private readonly client: FlowCatalystClient;
+
+	constructor(client: FlowCatalystClient) {
+		this.client = client;
+	}
 
 	/**
 	 * Get clients the authenticated user has access to.

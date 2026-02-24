@@ -114,15 +114,24 @@ export type TypedIdErrorReason =
  * Error thrown when ID serialization/deserialization fails
  */
 export class TypedIdError extends Error {
+	readonly reason: TypedIdErrorReason;
+	readonly expectedType: EntityTypeKey | undefined;
+	readonly actualType: EntityTypeKey | undefined;
+	readonly id: string | undefined;
+
 	constructor(
 		message: string,
-		public readonly reason: TypedIdErrorReason,
-		public readonly expectedType?: EntityTypeKey,
-		public readonly actualType?: EntityTypeKey,
-		public readonly id?: string,
+		reason: TypedIdErrorReason,
+		expectedType?: EntityTypeKey,
+		actualType?: EntityTypeKey,
+		id?: string,
 	) {
 		super(message);
 		this.name = "TypedIdError";
+		this.reason = reason;
+		this.expectedType = expectedType;
+		this.actualType = actualType;
+		this.id = id;
 	}
 }
 

@@ -139,7 +139,7 @@ export async function registerAnchorDomainsRoutes(
 				},
 			},
 		},
-		async (request, reply) => {
+		async (_request, reply) => {
 			const anchorDomains = await anchorDomainRepository.findAll();
 			const total = await anchorDomainRepository.count();
 

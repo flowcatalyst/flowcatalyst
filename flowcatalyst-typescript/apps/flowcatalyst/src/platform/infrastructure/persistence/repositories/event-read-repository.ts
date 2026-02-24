@@ -77,6 +77,16 @@ export interface EventFilterOptions {
 	readonly types: FilterOption[];
 }
 
+function toFilterOptions(results: { value: string | null }[]): FilterOption[] {
+	return results
+		.filter(
+			(r): r is { value: string } =>
+				r.value !== null && r.value.trim() !== "",
+		)
+		.map((r) => ({ value: r.value, label: r.value }))
+		.sort((a, b) => a.label.localeCompare(b.label));
+}
+
 /**
  * Event read repository interface.
  */
@@ -249,20 +259,11 @@ export function createEventReadRepository(
 								.from(eventsRead),
 				]);
 
-			const toOptions = (results: { value: string | null }[]): FilterOption[] =>
-				results
-					.filter(
-						(r): r is { value: string } =>
-							r.value !== null && r.value.trim() !== "",
-					)
-					.map((r) => ({ value: r.value, label: r.value }))
-					.sort((a, b) => a.label.localeCompare(b.label));
-
 			return {
-				applications: toOptions(appResults),
-				subdomains: toOptions(subResults),
-				aggregates: toOptions(aggResults),
-				types: toOptions(typeResults),
+				applications: toFilterOptions(appResults),
+				subdomains: toFilterOptions(subResults),
+				aggregates: toFilterOptions(aggResults),
+				types: toFilterOptions(typeResults),
 			};
 		},
 

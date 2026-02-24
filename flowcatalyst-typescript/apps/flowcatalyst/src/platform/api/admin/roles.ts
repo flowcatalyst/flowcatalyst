@@ -419,7 +419,7 @@ export async function registerRolesRoutes(
 				},
 			},
 		},
-		async (request, reply) => {
+		async (_request, reply) => {
 			const permissions = await permissionRepository.findAll();
 
 			return jsonSuccess(reply, {

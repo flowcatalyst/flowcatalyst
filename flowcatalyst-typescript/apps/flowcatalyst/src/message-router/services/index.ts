@@ -14,6 +14,10 @@ import {
 } from "../notifications/index.js";
 import { createTrafficManager, type TrafficManager } from "../traffic/index.js";
 import { BrokerHealthService, QueueHealthMonitor } from "../health/index.js";
+import {
+	createStandbyService,
+	type StandbyServiceInstance,
+} from "../standby/index.js";
 import { env } from "../env.js";
 
 /**
@@ -30,6 +34,7 @@ export interface Services {
 	seeder: SeederService;
 	notifications: BatchingNotificationService;
 	traffic: TrafficManager;
+	standby: StandbyServiceInstance;
 }
 
 export { BrokerHealthService, QueueHealthMonitor } from "../health/index.js";
@@ -38,7 +43,7 @@ export type { BrokerHealthResult, BrokerHealthStats } from "../health/index.js";
 /**
  * Create all services
  */
-export function createServices(logger: Logger): Services {
+export async function createServices(logger: Logger): Promise<Services> {
 	const warnings = new WarningService(logger);
 	const circuitBreakers = new CircuitBreakerManager(
 		defaultCircuitBreakerConfig,
@@ -63,6 +68,20 @@ export function createServices(logger: Logger): Services {
 						}
 					: undefined,
 		},
+		logger,
+	);
+
+	// Create standby service (for hot standby leader election)
+	const standby = await createStandbyService(
+		{
+			enabled: env.STANDBY_ENABLED,
+			instanceId: env.STANDBY_INSTANCE_ID,
+			lockKey: env.STANDBY_LOCK_KEY,
+			lockTtlSeconds: env.STANDBY_LOCK_TTL_SECONDS,
+			redisUrl: env.REDIS_URL,
+		},
+		traffic,
+		warnings,
 		logger,
 	);
 
@@ -103,6 +122,7 @@ export function createServices(logger: Logger): Services {
 		brokerHealth,
 		circuitBreakers,
 		logger,
+		standby,
 	);
 	const seeder = new SeederService(queueManager, logger);
 
@@ -138,6 +158,9 @@ export function createServices(logger: Logger): Services {
 
 	// Start services if message router is enabled
 	if (env.MESSAGE_ROUTER_ENABLED) {
+		// Start standby service BEFORE queue manager (sets initial mode)
+		await standby.start();
+
 		queueManager.start().catch((err) => {
 			logger.error({ err }, "Failed to start queue manager");
 		});
@@ -158,5 +181,6 @@ export function createServices(logger: Logger): Services {
 		seeder,
 		notifications,
 		traffic,
+		standby,
 	};
 }

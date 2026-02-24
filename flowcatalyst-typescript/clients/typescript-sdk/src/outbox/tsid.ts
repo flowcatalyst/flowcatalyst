@@ -34,7 +34,7 @@ export function isValid(tsid: string): boolean {
 	if (tsid.length !== TSID_LENGTH) return false;
 	const upper = tsid.toUpperCase();
 	for (let i = 0; i < upper.length; i++) {
-		if (!CROCKFORD_ALPHABET.includes(upper[i])) return false;
+		if (!CROCKFORD_ALPHABET.includes(upper[i]!)) return false;
 	}
 	return true;
 }
@@ -44,7 +44,7 @@ function encodeCrockford(value: bigint): string {
 	let remaining = value;
 
 	for (let i = TSID_LENGTH - 1; i >= 0; i--) {
-		chars[i] = CROCKFORD_ALPHABET[Number(remaining & 31n)];
+		chars[i] = CROCKFORD_ALPHABET[Number(remaining & 31n)]!;
 		remaining >>= 5n;
 	}
 

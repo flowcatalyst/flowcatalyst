@@ -17,7 +17,7 @@ const selectedAction = ref<string | null>(null);
 // Compute unique filter options
 const applicationOptions = computed(() => {
 	const unique = [...new Set(permissions.value.map((p) => p.application))];
-	return unique.sort().map((s) => ({ label: s, value: s }));
+	return unique.toSorted().map((s: string) => ({ label: s, value: s }));
 });
 
 const contextOptions = computed(() => {
@@ -28,7 +28,7 @@ const contextOptions = computed(() => {
 		);
 	}
 	const unique = [...new Set(filtered.map((p) => p.context))];
-	return unique.sort().map((c) => ({ label: c, value: c }));
+	return unique.toSorted().map((c: string) => ({ label: c, value: c }));
 });
 
 const actionOptions = computed(() => [

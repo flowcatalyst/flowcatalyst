@@ -345,6 +345,9 @@ export class ActiveMqConsumer implements QueueConsumer {
 					);
 				}
 			},
+			updateReceiptHandle: () => {},
+			getReceiptHandle: () => brokerMessageId,
+			inProgress: () => {},
 		});
 
 		// Process batch through handler

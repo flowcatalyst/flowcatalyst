@@ -1,5 +1,14 @@
 import type { Logger } from "@flowcatalyst/logging";
 import type { CircuitBreakerStats } from "@flowcatalyst/shared-types";
+import {
+	circuitBreaker,
+	CountBreaker,
+	CircuitState,
+	handleAll,
+	type CircuitBreakerPolicy,
+	isBrokenCircuitError,
+} from "cockatiel";
+import type { MessageRouterMetrics } from "../metrics.js";
 
 /**
  * Circuit breaker state
@@ -34,105 +43,124 @@ export const defaultCircuitBreakerConfig: CircuitBreakerConfig = {
 };
 
 /**
- * Circuit breaker implementation
- * Matches Java Resilience4j circuit breaker behavior
+ * Map cockatiel CircuitState enum to our string type
+ */
+function mapState(state: CircuitState): CircuitBreakerState {
+	switch (state) {
+		case CircuitState.Closed:
+			return "CLOSED";
+		case CircuitState.Open:
+		case CircuitState.Isolated:
+			return "OPEN";
+		case CircuitState.HalfOpen:
+			return "HALF_OPEN";
+	}
+}
+
+/**
+ * Map our string state to Prometheus gauge value
+ */
+function stateToMetricValue(state: CircuitState): number {
+	switch (state) {
+		case CircuitState.Closed:
+			return 0;
+		case CircuitState.Open:
+		case CircuitState.Isolated:
+			return 1;
+		case CircuitState.HalfOpen:
+			return 2;
+	}
+}
+
+/**
+ * Circuit breaker implementation backed by cockatiel
  */
 export class CircuitBreaker {
 	private readonly name: string;
 	private readonly config: CircuitBreakerConfig;
 	private readonly logger: Logger;
+	private readonly metrics: MessageRouterMetrics | undefined;
 
-	private state: CircuitBreakerState = "CLOSED";
+	private policy: CircuitBreakerPolicy;
 	private successCount = 0;
 	private failureCount = 0;
 	private rejectedCount = 0;
-	private halfOpenCallCount = 0;
-	private lastStateChangeTime = Date.now();
 
-	// Sliding window for recent calls
+	// Lightweight sliding window for stats reporting
 	private readonly callResults: boolean[] = [];
 
-	constructor(name: string, config: CircuitBreakerConfig, logger: Logger) {
+	constructor(
+		name: string,
+		config: CircuitBreakerConfig,
+		logger: Logger,
+		metrics?: MessageRouterMetrics,
+	) {
 		this.name = name;
 		this.config = config;
 		this.logger = logger.child({ component: "CircuitBreaker", name });
+		this.metrics = metrics;
+		this.policy = this.createPolicy();
 	}
 
 	/**
-	 * Execute a function with circuit breaker protection
+	 * Create a cockatiel circuit breaker policy with event wiring
 	 */
-	async execute<T>(fn: () => Promise<T>): Promise<T> {
-		if (!this.canExecute()) {
-			this.rejectedCount++;
-			throw new Error(`Circuit breaker is open for ${this.name}`);
-		}
+	private createPolicy(): CircuitBreakerPolicy {
+		const policy = circuitBreaker(handleAll, {
+			halfOpenAfter: this.config.waitDurationMs,
+			breaker: new CountBreaker({
+				threshold: this.config.failureRateThreshold,
+				size: this.config.slidingWindowSize,
+				minimumNumberOfCalls: this.config.minimumCalls,
+			}),
+		});
 
-		try {
-			const result = await fn();
-			this.recordSuccess();
-			return result;
-		} catch (error) {
-			this.recordFailure();
-			throw error;
-		}
-	}
+		policy.onStateChange((state) => {
+			const mapped = mapState(state);
+			this.logger.info(
+				{ newState: mapped, name: this.name },
+				"Circuit breaker state change",
+			);
 
-	/**
-	 * Check if execution is allowed
-	 */
-	private canExecute(): boolean {
-		switch (this.state) {
-			case "CLOSED":
-				return true;
-
-			case "OPEN": {
-				const elapsed = Date.now() - this.lastStateChangeTime;
-				if (elapsed >= this.config.waitDurationMs) {
-					this.transitionTo("HALF_OPEN");
-					return true;
-				}
-				return false;
+			if (mapped === "CLOSED") {
+				this.callResults.length = 0;
 			}
 
-			case "HALF_OPEN":
-				return this.halfOpenCallCount < this.config.permittedCallsInHalfOpen;
-		}
-	}
-
-	/**
-	 * Record successful call
-	 */
-	private recordSuccess(): void {
-		this.successCount++;
-		this.addToWindow(true);
-
-		if (this.state === "HALF_OPEN") {
-			this.halfOpenCallCount++;
-			if (this.halfOpenCallCount >= this.config.permittedCallsInHalfOpen) {
-				this.transitionTo("CLOSED");
+			if (this.metrics) {
+				this.metrics.circuitBreakerState.set(
+					{ name: this.name },
+					stateToMetricValue(state),
+				);
 			}
-		}
+		});
+
+		policy.onSuccess(() => {
+			this.successCount++;
+			this.addToWindow(true);
+			if (this.metrics) {
+				this.metrics.circuitBreakerCalls.inc({
+					name: this.name,
+					result: "success",
+				});
+			}
+		});
+
+		policy.onFailure(() => {
+			this.failureCount++;
+			this.addToWindow(false);
+			if (this.metrics) {
+				this.metrics.circuitBreakerCalls.inc({
+					name: this.name,
+					result: "failure",
+				});
+			}
+		});
+
+		return policy;
 	}
 
 	/**
-	 * Record failed call
-	 */
-	private recordFailure(): void {
-		this.failureCount++;
-		this.addToWindow(false);
-
-		if (this.state === "HALF_OPEN") {
-			this.transitionTo("OPEN");
-			return;
-		}
-
-		if (this.state === "CLOSED") {
-			this.checkThreshold();
-		}
-	}
-
-	/**
-	 * Add result to sliding window
+	 * Add result to sliding window (for stats reporting)
 	 */
 	private addToWindow(success: boolean): void {
 		this.callResults.push(success);
@@ -142,55 +170,31 @@ export class CircuitBreaker {
 	}
 
 	/**
-	 * Check if failure threshold is exceeded
+	 * Execute a function with circuit breaker protection
 	 */
-	private checkThreshold(): void {
-		if (this.callResults.length < this.config.minimumCalls) {
-			return;
+	async execute<T>(fn: () => Promise<T>): Promise<T> {
+		try {
+			return await this.policy.execute(fn);
+		} catch (error) {
+			if (isBrokenCircuitError(error)) {
+				this.rejectedCount++;
+				if (this.metrics) {
+					this.metrics.circuitBreakerCalls.inc({
+						name: this.name,
+						result: "rejected",
+					});
+				}
+				throw new Error(`Circuit breaker is open for ${this.name}`);
+			}
+			throw error;
 		}
-
-		const failures = this.callResults.filter((r) => !r).length;
-		const failureRate = failures / this.callResults.length;
-
-		if (failureRate >= this.config.failureRateThreshold) {
-			this.transitionTo("OPEN");
-		}
-	}
-
-	/**
-	 * Transition to a new state
-	 */
-	private transitionTo(newState: CircuitBreakerState): void {
-		const oldState = this.state;
-		this.state = newState;
-		this.lastStateChangeTime = Date.now();
-
-		if (newState === "HALF_OPEN") {
-			this.halfOpenCallCount = 0;
-		}
-
-		if (newState === "CLOSED") {
-			this.callResults.length = 0;
-		}
-
-		this.logger.info(
-			{ oldState, newState, name: this.name },
-			"Circuit breaker state change",
-		);
 	}
 
 	/**
 	 * Get current state
 	 */
 	getState(): CircuitBreakerState {
-		// Check if we should transition from OPEN to HALF_OPEN
-		if (this.state === "OPEN") {
-			const elapsed = Date.now() - this.lastStateChangeTime;
-			if (elapsed >= this.config.waitDurationMs) {
-				this.transitionTo("HALF_OPEN");
-			}
-		}
-		return this.state;
+		return mapState(this.policy.state);
 	}
 
 	/**
@@ -217,11 +221,10 @@ export class CircuitBreaker {
 	 * Reset the circuit breaker
 	 */
 	reset(): void {
-		this.transitionTo("CLOSED");
+		this.policy = this.createPolicy();
 		this.successCount = 0;
 		this.failureCount = 0;
 		this.rejectedCount = 0;
-		this.halfOpenCallCount = 0;
 		this.callResults.length = 0;
 		this.logger.info({ name: this.name }, "Circuit breaker reset");
 	}
@@ -241,10 +244,16 @@ export class CircuitBreakerManager {
 	private readonly breakers = new Map<string, CircuitBreaker>();
 	private readonly config: CircuitBreakerConfig;
 	private readonly logger: Logger;
+	private readonly metrics: MessageRouterMetrics | undefined;
 
-	constructor(config: CircuitBreakerConfig, logger: Logger) {
+	constructor(
+		config: CircuitBreakerConfig,
+		logger: Logger,
+		metrics?: MessageRouterMetrics,
+	) {
 		this.config = config;
 		this.logger = logger;
+		this.metrics = metrics;
 	}
 
 	/**
@@ -253,7 +262,12 @@ export class CircuitBreakerManager {
 	getOrCreate(name: string): CircuitBreaker {
 		let breaker = this.breakers.get(name);
 		if (!breaker) {
-			breaker = new CircuitBreaker(name, this.config, this.logger);
+			breaker = new CircuitBreaker(
+				name,
+				this.config,
+				this.logger,
+				this.metrics,
+			);
 			this.breakers.set(name, breaker);
 		}
 		return breaker;

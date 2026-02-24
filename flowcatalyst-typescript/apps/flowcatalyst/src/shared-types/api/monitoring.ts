@@ -32,6 +32,7 @@ export interface PoolStats {
 	totalProcessed: number;
 	totalSucceeded: number;
 	totalFailed: number;
+	totalTransient: number;
 	totalRateLimited: number;
 	successRate: number;
 	activeWorkers: number;
@@ -43,10 +44,12 @@ export interface PoolStats {
 	totalProcessed5min: number;
 	totalSucceeded5min: number;
 	totalFailed5min: number;
+	totalTransient5min: number;
 	successRate5min: number;
 	totalProcessed30min: number;
 	totalSucceeded30min: number;
 	totalFailed30min: number;
+	totalTransient30min: number;
 	successRate30min: number;
 	totalRateLimited5min: number;
 	totalRateLimited30min: number;
@@ -58,14 +61,19 @@ export interface PoolStats {
 export const WarningCategory = {
 	QUEUE_BACKLOG: "QUEUE_BACKLOG",
 	QUEUE_GROWING: "QUEUE_GROWING",
+	QUEUE_FULL: "QUEUE_FULL",
 	QUEUE_VALIDATION: "QUEUE_VALIDATION",
 	MEDIATION: "MEDIATION",
 	CONFIGURATION: "CONFIGURATION",
+	CONFIG_SYNC_FAILED: "CONFIG_SYNC_FAILED",
 	POOL_LIMIT: "POOL_LIMIT",
+	PIPELINE_MAP_LEAK: "PIPELINE_MAP_LEAK",
 	BROKER_HEALTH: "BROKER_HEALTH",
 	CONSUMER_RESTART: "CONSUMER_RESTART",
 	CONSUMER_RESTART_FAILED: "CONSUMER_RESTART_FAILED",
 	ROUTING: "ROUTING",
+	SHUTDOWN_CLEANUP_ERRORS: "SHUTDOWN_CLEANUP_ERRORS",
+	STANDBY_REDIS: "STANDBY_REDIS",
 } as const;
 
 export type WarningCategory =

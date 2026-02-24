@@ -96,6 +96,13 @@ export interface ConfigRoutesDeps {
 /**
  * Register config admin API routes.
  */
+function getRoles(request: {
+	audit?: { principal?: { roles?: ReadonlySet<string> } | null };
+}): readonly string[] {
+	const roles = request.audit?.principal?.roles;
+	return roles ? Array.from(roles) : [];
+}
+
 export async function registerConfigRoutes(
 	fastify: FastifyInstance,
 	deps: ConfigRoutesDeps,
@@ -109,13 +116,6 @@ export async function registerConfigRoutes(
 		const scope = (query.scope ?? "GLOBAL") as ConfigScope;
 		const clientId = query.clientId ?? null;
 		return { scope, clientId };
-	}
-
-	function getRoles(request: {
-		audit?: { principal?: { roles?: ReadonlySet<string> } | null };
-	}): readonly string[] {
-		const roles = request.audit?.principal?.roles;
-		return roles ? Array.from(roles) : [];
 	}
 
 	// GET /api/admin/config/:appCode - List configs for application

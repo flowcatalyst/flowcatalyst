@@ -125,7 +125,7 @@ function viewRole(role: Role) {
 function openCreateDialog() {
 	createForm.value = {
 		applicationCode:
-			applications.value.length > 0 ? applications.value[0].code : "",
+			applications.value.length > 0 ? (applications.value[0]?.code ?? "") : "",
 		name: "",
 		displayName: "",
 		description: "",

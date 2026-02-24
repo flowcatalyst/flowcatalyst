@@ -77,7 +77,7 @@ message Event {
 });
 
 onMounted(async () => {
-	const id = route.params.id as string;
+	const id = route.params['id'] as string;
 	if (id) {
 		await loadEventType(id);
 	}
@@ -102,8 +102,8 @@ function suggestNextVersion() {
 	}
 
 	const versions = eventType.value.specVersions.map((sv) => {
-		const [major, minor] = sv.version.split(".").map(Number);
-		return { major, minor };
+		const parts = sv.version.split(".").map(Number);
+		return { major: parts[0] ?? 0, minor: parts[1] ?? 0 };
 	});
 
 	const highestMajor = Math.max(...versions.map((v) => v.major));

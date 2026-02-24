@@ -20,7 +20,7 @@ const router = useRouter();
 const route = useRoute();
 const toast = useToast();
 
-const userId = route.params.id as string;
+const userId = route.params['id'] as string;
 
 const user = ref<User | null>(null);
 const clients = ref<Client[]>([]);
@@ -159,7 +159,7 @@ onMounted(async () => {
 			loadApplicationAccess(),
 		]);
 		// Check if we should start in edit mode
-		if (route.query.edit === "true") {
+		if (route.query['edit'] === "true") {
 			startEdit();
 		}
 	}

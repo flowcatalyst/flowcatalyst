@@ -20,7 +20,11 @@ export type PermissionDto = GetApiAdminRolesPermissionsByPermissionResponse;
  * Permissions resource for querying available permissions.
  */
 export class PermissionsResource {
-	constructor(private readonly client: FlowCatalystClient) {}
+	private readonly client: FlowCatalystClient;
+
+	constructor(client: FlowCatalystClient) {
+		this.client = client;
+	}
 
 	/**
 	 * List all permissions.

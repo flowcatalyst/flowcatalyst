@@ -47,8 +47,11 @@ export interface SecretProvider {
 export class EncryptedSecretProvider implements SecretProvider {
 	private static readonly ENCRYPTED_PREFIX = "encrypted:";
 	private static readonly PLAINTEXT_PREFIX = "encrypt:";
+	private readonly encryptionService: EncryptionService;
 
-	constructor(private encryptionService: EncryptionService) {}
+	constructor(encryptionService: EncryptionService) {
+		this.encryptionService = encryptionService;
+	}
 
 	canHandle(reference: string): boolean {
 		return reference.startsWith(EncryptedSecretProvider.ENCRYPTED_PREFIX);

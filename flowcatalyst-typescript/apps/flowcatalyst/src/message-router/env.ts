@@ -50,8 +50,8 @@ export const envSchema = z.object({
 	AWS_SECRET_ACCESS_KEY: z.string().optional(),
 	SQS_ENDPOINT: z.string().optional(), // For LocalStack
 
-	// Platform Configuration Client
-	PLATFORM_URL: z.url().optional(),
+	// Router Configuration Client
+	ROUTER_CONFIG_URL: z.url().optional(),
 	PLATFORM_API_KEY: z.string().optional(),
 
 	// HTTP Mediation Configuration
@@ -465,6 +465,51 @@ export const envSchema = z.object({
 		.string()
 		.transform((v) => Number.parseInt(v, 10))
 		.prefault("5000"),
+
+	// Hot Standby Configuration (Redis-based leader election)
+	/**
+	 * Enable hot standby mode with Redis-based leader election.
+	 * If false, system operates as single instance without Redis dependency.
+	 * Default: false
+	 */
+	STANDBY_ENABLED: z
+		.string()
+		.transform((v) => v === "true")
+		.prefault("false"),
+
+	/**
+	 * Unique instance identifier for this server.
+	 * Used to identify which instance holds the lock.
+	 * Default: HOSTNAME env var or "instance-{timestamp}"
+	 */
+	STANDBY_INSTANCE_ID: z
+		.string()
+		.default(
+			() => process.env["HOSTNAME"] ?? `instance-${Date.now()}`,
+		),
+
+	/**
+	 * Redis key name for the distributed lock.
+	 * Default: "message-router-primary-lock"
+	 */
+	STANDBY_LOCK_KEY: z.string().default("message-router-primary-lock"),
+
+	/**
+	 * Lock TTL in seconds.
+	 * If lock holder doesn't refresh within this time, lock expires and standby can take over.
+	 * Default: 30
+	 */
+	STANDBY_LOCK_TTL_SECONDS: z
+		.string()
+		.transform((v) => Number.parseInt(v, 10))
+		.prefault("30"),
+
+	/**
+	 * Redis URL for standby lock coordination.
+	 * Required when STANDBY_ENABLED=true.
+	 * Example: redis://localhost:6379
+	 */
+	REDIS_URL: z.string().optional(),
 
 	// Traffic Management Configuration (Standby Mode)
 	/**

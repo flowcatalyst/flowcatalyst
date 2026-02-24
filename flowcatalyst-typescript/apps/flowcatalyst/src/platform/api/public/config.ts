@@ -137,7 +137,7 @@ export async function registerPublicConfigRoutes(
 				},
 			},
 		},
-		async (request, reply) => {
+		async (_request, reply) => {
 			const messagingEnabled = await platformConfigService.getValue(
 				"platform",
 				"features",

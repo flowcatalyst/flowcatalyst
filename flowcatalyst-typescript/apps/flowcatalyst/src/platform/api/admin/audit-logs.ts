@@ -281,7 +281,7 @@ export async function registerAuditLogsRoutes(
 				},
 			},
 		},
-		async (request, reply) => {
+		async (_request, reply) => {
 			const entityTypes = await auditLogRepository.findDistinctEntityTypes();
 
 			return jsonSuccess(reply, {
@@ -301,7 +301,7 @@ export async function registerAuditLogsRoutes(
 				},
 			},
 		},
-		async (request, reply) => {
+		async (_request, reply) => {
 			const operations = await auditLogRepository.findDistinctOperations();
 
 			return jsonSuccess(reply, {

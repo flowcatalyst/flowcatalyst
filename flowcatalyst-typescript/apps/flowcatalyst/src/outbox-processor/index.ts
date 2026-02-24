@@ -70,6 +70,7 @@ export async function startOutboxProcessor(
 
 	// Create poller (we need a reference before creating the distributor)
 	// Use a wrapper to break circular dependency
+	// eslint-disable-next-line unicorn/consistent-function-scoping
 	let releaseInFlightFn: (count: number) => void = () => {};
 
 	// Create group distributor

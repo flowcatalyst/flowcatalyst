@@ -91,9 +91,9 @@ export function createFindAccount(
 			 * @param rejected - Claims that were rejected
 			 */
 			async claims(
-				use: string,
+				_use: string,
 				scope: string,
-				claims: { [key: string]: ClaimsParameterMember | null },
+				_claims: { [key: string]: ClaimsParameterMember | null },
 				rejected: string[],
 			): Promise<AccountClaims> {
 				const allClaims = principalToClaims(principal);

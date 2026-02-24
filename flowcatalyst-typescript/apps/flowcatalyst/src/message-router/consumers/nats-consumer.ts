@@ -343,6 +343,8 @@ export class NatsConsumer implements QueueConsumer {
 								);
 							}
 						},
+						updateReceiptHandle: () => {},
+						getReceiptHandle: () => brokerMessageId,
 						inProgress: () => {
 							try {
 								msg.working();

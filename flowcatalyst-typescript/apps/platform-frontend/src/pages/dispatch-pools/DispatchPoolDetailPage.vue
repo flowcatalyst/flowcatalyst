@@ -26,7 +26,7 @@ const editRateLimit = ref<number | null>(null);
 const editConcurrency = ref<number | null>(null);
 
 onMounted(async () => {
-	const id = route.params.id as string;
+	const id = route.params['id'] as string;
 	if (id) {
 		await loadPool(id);
 	}

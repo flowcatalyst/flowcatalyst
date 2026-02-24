@@ -121,10 +121,12 @@ function getClientName(clientId: string): string {
 
 function getClientNames(clientIds: string[]): string {
 	if (!clientIds || clientIds.length === 0) return "All";
-	if (clientIds.length === 1) return getClientName(clientIds[0]);
+	const first = clientIds[0];
+	if (first === undefined) return "All";
+	if (clientIds.length === 1) return getClientName(first);
 	if (clientIds.length <= 2)
 		return clientIds.map((id) => getClientName(id)).join(", ");
-	return `${getClientName(clientIds[0])} +${clientIds.length - 1} more`;
+	return `${getClientName(first)} +${clientIds.length - 1} more`;
 }
 
 function formatDate(dateStr: string | undefined | null) {

@@ -22,7 +22,7 @@ export interface MessageGroupQueue {
 }
 
 export function createMessageGroupQueue(
-	messageGroup: string,
+	_messageGroup: string,
 	dispatchFn: (job: DispatchJobRecord) => Promise<void>,
 ): MessageGroupQueue {
 	const pendingJobs: DispatchJobRecord[] = [];
@@ -30,7 +30,7 @@ export function createMessageGroupQueue(
 
 	function addJobs(jobs: DispatchJobRecord[]): void {
 		// Sort by sequence then by createdAt
-		const sorted = [...jobs].sort((a, b) => {
+		const sorted = jobs.toSorted((a, b) => {
 			const seqCompare = (a.sequence ?? 99) - (b.sequence ?? 99);
 			if (seqCompare !== 0) return seqCompare;
 			return (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0);

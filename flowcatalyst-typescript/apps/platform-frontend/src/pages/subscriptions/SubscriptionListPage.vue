@@ -29,8 +29,8 @@ const applicationOptions = computed(() => {
 		}
 	});
 	return Array.from(codes)
-		.sort()
-		.map((code) => ({ label: code, value: code }));
+		.toSorted()
+		.map((code: string) => ({ label: code, value: code }));
 });
 
 const filteredSubscriptions = computed(() => {

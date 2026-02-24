@@ -1,494 +1,587 @@
-# FlowCatalyst Message Router - Architecture Documentation
+# FlowCatalyst Message Router — Architecture & Rules
 
-This document provides complete architecture documentation for the FlowCatalyst Message Router, enabling reimplementation in any language without reading the source code.
+This document describes the complete rules, flows, and architecture of the Java message router as implemented in source code. It covers every scenario, branch, and decision point across the full processing pipeline.
+
+---
 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Core Concepts](#core-concepts)
-3. [Message Lifecycle](#message-lifecycle)
-4. [Component Architecture](#component-architecture)
+2. [Core Data Structures](#core-data-structures)
+3. [Startup Sequence](#startup-sequence)
+4. [Configuration Sync](#configuration-sync)
 5. [Queue Consumer Layer](#queue-consumer-layer)
-6. [Queue Manager](#queue-manager)
-7. [Process Pools](#process-pools)
-8. [HTTP Mediator](#http-mediator)
-9. [Message Deduplication](#message-deduplication)
-10. [FIFO Ordering Guarantees](#fifo-ordering-guarantees)
-11. [Rate Limiting](#rate-limiting)
-12. [Error Handling and Retry Logic](#error-handling-and-retry-logic)
-13. [Health Monitoring](#health-monitoring)
-14. [Configuration](#configuration)
-15. [API Reference](#api-reference)
-16. [Data Structures](#data-structures)
-17. [Metrics](#metrics)
-18. [Security](#security)
+6. [Routing Algorithm](#routing-algorithm)
+7. [In-Flight Message Tracking](#in-flight-message-tracking)
+8. [Process Pools](#process-pools)
+9. [Per-Group Virtual Threads](#per-group-virtual-threads)
+10. [Rate Limiting](#rate-limiting)
+11. [FIFO Enforcement (Batch+Group)](#fifo-enforcement-batchgroup)
+12. [HTTP Mediator](#http-mediator)
+13. [Outcome Handling](#outcome-handling)
+14. [Visibility Timeout Control](#visibility-timeout-control)
+15. [Health Monitoring & Consumer Restart](#health-monitoring--consumer-restart)
+16. [Leak Detection](#leak-detection)
+17. [Graceful Shutdown](#graceful-shutdown)
+18. [Scheduled Tasks Summary](#scheduled-tasks-summary)
+19. [Warning Types](#warning-types)
+20. [Configuration Reference](#configuration-reference)
 
 ---
 
 ## Overview
 
-The FlowCatalyst Message Router is a high-throughput message processing system that:
+The message router pulls messages from queues (SQS, ActiveMQ, NATS, or embedded SQLite), routes them to processing pools, and delivers them via HTTP POST to downstream endpoints. The core guarantees are:
 
-1. **Consumes messages** from queues (AWS SQS, ActiveMQ, or embedded SQLite)
-2. **Routes messages** to processing pools based on pool codes
-3. **Processes messages** by making HTTP POST requests to downstream endpoints
-4. **Acknowledges or retries** messages based on processing results
-
-### Key Design Goals
-
-- **High throughput**: Processes thousands of messages per second
-- **FIFO ordering**: Messages with the same `messageGroupId` are processed sequentially
-- **Resilience**: Automatic retries, circuit breakers, rate limiting
-- **Scalability**: Virtual threads for efficient resource usage
-- **Hot standby**: Optional primary/standby deployment with Redis-based leader election
+- **At-least-once delivery** via queue visibility timeouts
+- **FIFO within a message group and batch** — messages with the same `messageGroupId` in the same batch process in arrival order
+- **No concurrent processing of the same message** — in-flight tracking prevents duplicate processing
+- **Automatic retries** for transient errors via queue visibility timeout
+- **Permanent drop** for configuration errors (4xx) to prevent infinite retry loops
 
 ---
 
-## Core Concepts
+## Core Data Structures
 
-### Message Pointer
+### MessagePointer
 
-A `MessagePointer` is the central data structure representing a message to be processed:
-
-```json
-{
-  "id": "01K97FHM11EKYSXT135MVM6AC7",
-  "poolCode": "staging-client-RATE_LIMIT-120",
-  "authToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "mediationType": "HTTP",
-  "mediationTarget": "https://api.example.com/webhook",
-  "messageGroupId": "order-12345"
-}
-```
+The central message object passed through the entire pipeline:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | String | Unique message identifier (TSID format) |
-| `poolCode` | String | Identifier for the processing pool to route to |
-| `authToken` | String | Bearer token for downstream HTTP requests |
-| `mediationType` | Enum | Currently only `HTTP` is supported |
-| `mediationTarget` | String | URL to POST the message to |
-| `messageGroupId` | String | Optional group ID for FIFO ordering |
+| `id` | String | Application message ID (TSID format) |
+| `poolCode` | String | Pool to route to; missing pool falls back to `DEFAULT-POOL` |
+| `authToken` | String | Bearer token sent in HTTP `Authorization` header |
+| `mediationType` | MediationType | Always `HTTP` in current implementation |
+| `mediationTarget` | String | URL to POST to |
+| `messageGroupId` | String | Group ID for FIFO ordering; null/blank uses `__DEFAULT__` |
+| `highPriority` | boolean | Routes to high-priority tier queue within pool |
+| `batchId` | String | UUID assigned when entering routing; used for batch+group FIFO tracking |
+| `sqsMessageId` | String | Broker-level message ID; used as pipeline key for deduplication |
 
-### Processing Pools
+### MediationOutcome
 
-A processing pool is a configurable worker pool that processes messages with:
-- **Concurrency limit**: Maximum parallel workers
-- **Rate limit**: Optional requests per minute cap
-- **Queue capacity**: Bounded buffer for incoming messages
+Returned by the mediator for every processed message:
 
-### Queue Configuration
+| Field | Type | Description |
+|-------|------|-------------|
+| `result` | MediationResult | `SUCCESS`, `ERROR_PROCESS`, `ERROR_CONFIG`, `ERROR_CONNECTION` |
+| `delaySeconds` | Integer | Custom retry delay (1–43200s); null uses default 30s |
+| `error` | MediationError | Typed error: `Timeout`, `CircuitOpen`, `HttpError`, `NetworkError`, `RateLimited` |
 
-```json
-{
-  "queues": [
-    {
-      "queueUri": "https://sqs.eu-west-1.amazonaws.com/123456789/my-queue.fifo",
-      "queueName": "my-queue.fifo",
-      "connections": 2
-    }
-  ],
-  "connections": 1,
-  "processingPools": [
-    {
-      "code": "POOL-HIGH",
-      "concurrency": 10,
-      "rateLimitPerMinute": 600
-    }
-  ]
-}
-```
+`getEffectiveDelaySeconds()` returns `delaySeconds` clamped to `[1, 43200]`, or `30` if null/0.
 
 ---
 
-## Message Lifecycle
+## Startup Sequence
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           MESSAGE LIFECYCLE                                  │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-  ┌──────────┐     ┌──────────────┐     ┌──────────────┐     ┌────────────┐
-  │  Queue   │────►│Queue Consumer│────►│Queue Manager │────►│Process Pool│
-  │(SQS/AMQ) │     │              │     │              │     │            │
-  └──────────┘     └──────────────┘     └──────────────┘     └─────┬──────┘
-                                                                    │
-                                                                    ▼
-                                                            ┌──────────────┐
-                                                            │ HTTP Mediator│
-                                                            └──────┬───────┘
-                                                                   │
-                                              ┌────────────────────┼───────────────────┐
-                                              │                    │                   │
-                                              ▼                    ▼                   ▼
-                                        ┌──────────┐        ┌──────────┐        ┌──────────┐
-                                        │  SUCCESS │        │  RETRY   │        │   DROP   │
-                                        │   ACK    │        │   NACK   │        │   ACK    │
-                                        └──────────┘        └──────────┘        └──────────┘
-```
-
-### Phase 1: Queue Consumption
-
-1. Queue consumer polls for messages (SQS: up to 10 messages, long poll 20s)
-2. Each message is parsed from JSON to `MessagePointer`
-3. Malformed messages are acknowledged (removed) to prevent infinite retries
-
-### Phase 2: Routing
-
-1. QueueManager receives batch of messages
-2. Deduplication check: Already-in-pipeline messages are skipped
-3. Messages grouped by `poolCode`
-4. Pool capacity check: If pool buffer is full, NACK all messages for that pool
-5. Rate limit check: If pool is rate-limited, NACK all messages for that pool
-6. Messages added to pool's internal queue
-
-### Phase 3: Processing
-
-1. Pool's virtual thread picks message from queue
-2. Rate limiter permit acquired (if configured)
-3. Semaphore permit acquired (for concurrency control)
-4. HTTP POST sent to `mediationTarget` with message ID
-5. Response evaluated to determine ACK or NACK
-
-### Phase 4: Completion
-
-Based on the HTTP response:
-- **200 + `ack: true`**: ACK message (delete from queue)
-- **200 + `ack: false`**: NACK message (retry after delay)
-- **4xx (except 429)**: ACK message (configuration error, don't retry)
-- **5xx**: NACK message (transient error, retry later)
-- **Timeout/Connection error**: NACK message (transient, retry)
+1. Quarkus starts and CDI injects all dependencies into `QueueManager`.
+2. `onStartup()` fires (`@Observes StartupEvent`): logs virtual thread configuration and spawns a test virtual thread to verify the JVM is configured correctly.
+3. `scheduledSync()` fires after a **2-second delay** (`delay = 2, delayUnit = SECONDS`). This is the initial configuration sync.
+4. If the standby service is present and this instance is **not primary**, `scheduledSync()` sets `initialized = true` and returns immediately. The instance acts as a hot standby and does not start processing.
+5. If `message-router.enabled = false`, `scheduledSync()` sets `initialized = true` and returns.
+6. Otherwise, `syncConfiguration(isInitialSync=true)` runs. See [Configuration Sync](#configuration-sync).
+7. On success, `initialized = true` and processing begins.
+8. On failure (all retries exhausted), `Quarkus.asyncExit(1)` is called — the process exits.
 
 ---
 
-## Component Architecture
+## Configuration Sync
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                                 MESSAGE ROUTER                                       │
-├─────────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                      │
-│  ┌─────────────────────┐   ┌─────────────────────┐   ┌─────────────────────┐        │
-│  │   SqsQueueConsumer  │   │ ActiveMqQueueConsumer│   │ EmbeddedQueueConsumer│       │
-│  └──────────┬──────────┘   └──────────┬──────────┘   └──────────┬──────────┘        │
-│             │                         │                          │                   │
-│             └─────────────────────────┼──────────────────────────┘                   │
-│                                       ▼                                              │
-│                           ┌───────────────────────┐                                  │
-│                           │     QueueManager      │                                  │
-│                           │  - routeMessageBatch()│                                  │
-│                           │  - deduplication      │                                  │
-│                           │  - pool routing       │                                  │
-│                           └───────────┬───────────┘                                  │
-│                                       │                                              │
-│        ┌──────────────────────────────┼──────────────────────────────────┐           │
-│        ▼                              ▼                                  ▼           │
-│  ┌──────────────┐            ┌──────────────┐                  ┌──────────────┐      │
-│  │ProcessPoolImpl│            │ProcessPoolImpl│                  │ProcessPoolImpl│     │
-│  │  POOL-HIGH   │            │  POOL-MEDIUM │                  │  POOL-LOW    │      │
-│  │  (10 workers)│            │  (5 workers) │                  │  (2 workers) │      │
-│  └──────┬───────┘            └──────┬───────┘                  └──────┬───────┘      │
-│         │                           │                                 │              │
-│         └───────────────────────────┼─────────────────────────────────┘              │
-│                                     ▼                                                │
-│                           ┌───────────────────┐                                      │
-│                           │    HttpMediator   │                                      │
-│                           │  - HTTP POST      │                                      │
-│                           │  - Circuit Breaker│                                      │
-│                           │  - Retry Logic    │                                      │
-│                           └───────────────────┘                                      │
-│                                                                                      │
-└─────────────────────────────────────────────────────────────────────────────────────┘
-```
+Configuration is fetched from an external HTTP endpoint (`MESSAGE_ROUTER_CONFIG_URL`) and applied on startup and periodically thereafter.
+
+### Retry Logic
+
+- **12 attempts**, 5 seconds apart (1 minute total)
+- On each failure, logs a warning with attempt number
+- If **initial sync** fails all retries:
+  - Adds a `CONFIG_SYNC_FAILED` **CRITICAL** warning
+  - Calls `Quarkus.asyncExit(1)` — application exits
+- If a **subsequent sync** fails:
+  - Adds a `CONFIG_SYNC_FAILED` **WARN** warning
+  - Continues processing with the existing (last successfully synced) configuration
+
+### What Gets Applied
+
+**Pools:**
+
+1. For each pool in the existing `processPools` map:
+   - If the pool is **no longer in new config** → call `pool.drain()`, move to `drainingPools`, remove from `processPools`. The draining pool is cleaned up asynchronously by `cleanupDrainingResources()`.
+   - If the pool **still exists** in new config but config changed:
+     - If concurrency changed → `pool.updateConcurrency(newConcurrency, timeoutSeconds=60)`
+     - If rate limit changed → `pool.updateRateLimit(newRateLimitPerMinute)`
+
+2. For each pool in the new config that does **not yet exist**:
+   - Check `processPools.size() >= maxPools` (default 10000): if true → add `POOL_LIMIT` **CRITICAL** warning, skip this pool
+   - Check `processPools.size() >= poolWarningThreshold` (default 5000): if true → add `POOL_LIMIT` **WARNING**
+   - Calculate `queueCapacity = max(effectiveConcurrency × 20, 50)`
+   - Create `ProcessPoolImpl`, call `pool.start()`, add to `processPools`
+
+**Queue consumers:**
+
+1. For each existing consumer whose queue is **no longer in new config**: call `consumer.stop()`, move to `drainingConsumers`, remove from `queueConsumers`.
+
+2. Validate all queues via `queueValidationService.validateQueues()` — issues are logged as warnings but processing continues regardless.
+
+3. For each queue in new config that has **no running consumer**: create via `queueConsumerFactory.createConsumer(queueConfig, connections)` (connections default: 1), call `consumer.start()`.
+
+4. Existing consumers for unchanged queues are left running untouched.
+
+### Sync Lock
+
+`syncConfiguration()` acquires a `ReentrantLock syncLock` (not `synchronized`) to prevent concurrent execution while still being safe on virtual threads.
 
 ---
 
 ## Queue Consumer Layer
 
-### Consumer Interface
+All consumers share a common contract:
 
-All queue consumers implement:
-
-```
-QueueConsumer
-├── start()              // Begin consuming
-├── stop()               // Stop consuming gracefully
-├── isHealthy()          // Return true if actively polling
-├── isFullyStopped()     // Return true if all threads terminated
-├── getLastPollTime()    // Timestamp of last successful poll
-└── getQueueIdentifier() // Queue name/URL
-```
+- `start()` — begin polling
+- `stop()` — signal stop, begin graceful shutdown
+- `isHealthy()` — returns true if `lastPollTime` is within 60 seconds (or never polled yet)
+- `isFullyStopped()` — returns true when all polling threads have exited
+- `getLastPollTime()` — timestamp of last successful poll
 
 ### SQS Consumer
 
 **Polling:**
-- Long poll with `waitTimeSeconds=20`
-- Batch size up to `maxMessagesPerPoll=10`
-- Per-request timeout of 25 seconds (20s poll + 5s buffer)
+- `waitTimeSeconds = 20` (long poll)
+- `maxMessages` = configured value (typically 10)
+- Per-request API call timeout: **25 seconds** (`apiCallTimeout`)
+- One polling thread (virtual) per configured **connection**
 
-**Visibility Timeout:**
-- Default: 120 seconds (configured on queue)
-- Messages are invisible while being processed
-- If processing takes longer, QueueManager extends visibility every 55 seconds
+**Adaptive delays after each poll:**
+- Empty batch (0 messages): no sleep — the long poll already waited up to 20 seconds
+- Partial batch (1 to maxMessages-1): sleep **100ms**
+- Full batch (maxMessages messages): no sleep
+
+**Message parsing:**
+Each SQS message body is JSON-parsed to extract `MessagePointer` fields. If parsing fails, the message is immediately **ACKed** (deleted from the queue) to prevent infinite retry of malformed messages.
+
+**Deferred deletes (`pendingDeleteSqsMessageIds`):**
+When ACKing a message fails because the receipt handle has expired (SQS error: `ReceiptHandleIsInvalid` or `receipt handle has expired`), the SQS message ID is added to `pendingDeleteSqsMessageIds`. On the next delivery of the same SQS message ID, the message is deleted immediately before processing.
+
+**Receipt handle expiry:**
+SQS receipt handles expire if processing takes longer than the queue's visibility timeout. The router stores the latest receipt handle and updates it when SQS redelivers a message (visibility timeout redelivery). This ensures ACKs use a valid handle.
 
 **ACK/NACK:**
 - ACK = `DeleteMessage` API call
-- NACK = No action (message becomes visible after timeout)
-- Receipt handle can expire if processing takes too long
-- Expired receipt handles tracked for deletion on redelivery
-
-**Adaptive Batching:**
-- Empty response: 1 second delay before next poll
-- Partial batch (1-9 messages): 50ms delay
-- Full batch (10 messages): No delay
+- NACK = `ChangeMessageVisibility` API call to set custom timeout
+- Default NACK visibility: **30 seconds**
+- Fast-fail NACK visibility: **10 seconds** (for rate-limited, batch-group-failed messages)
+- Custom delay NACK: 1–43200 seconds (clamped to SQS limits)
 
 ### ActiveMQ Consumer
 
-**Connection:**
-- Uses JMS with `INDIVIDUAL_ACKNOWLEDGE` mode
-- Single shared connection with multiple sessions
+- JMS `INDIVIDUAL_ACKNOWLEDGE` mode — only the specific message is acknowledged
+- ACK = `message.acknowledge()`
+- NACK = no action + sets `AMQ_SCHEDULED_DELAY` property for redelivery delay
 - Configurable redelivery policy (default 30s delay)
 
-**ACK/NACK:**
-- ACK = `message.acknowledge()` (only this message)
-- NACK = No action + set `AMQ_SCHEDULED_DELAY` property
-- Redelivery handled by broker
+### NATS Consumer
+
+- Uses NATS JetStream for durable, at-least-once delivery
+- ACK = `message.ack()`
+- NACK = `message.nak()`
 
 ### Embedded Queue Consumer
 
-**Purpose:** Local development without external dependencies
-
-**Storage:** SQLite database with table `queue_messages`
-
-**Schema:**
-```sql
-CREATE TABLE queue_messages (
-    id INTEGER PRIMARY KEY,
-    message_id TEXT NOT NULL,
-    message_group_id TEXT,
-    message_json TEXT NOT NULL,
-    visible_at INTEGER NOT NULL,
-    receipt_handle TEXT,
-    receive_count INTEGER DEFAULT 0,
-    first_received_at INTEGER
-);
-```
-
-**Dequeue Algorithm:**
-1. Find oldest visible message group
-2. Lock the oldest message in that group (set `visible_at` to future)
-3. Return message with receipt handle
+For local development only. Uses an SQLite database (table `queue_messages`). Implements the same `QueueConsumer` interface.
 
 ---
 
-## Queue Manager
+## Routing Algorithm
 
-### Responsibilities
+`QueueManager.routeMessageBatch()` is called by queue consumers with a list of `BatchMessage` records. Each `BatchMessage` contains the `MessagePointer`, `MessageCallback`, `queueIdentifier`, and `sqsMessageId`.
 
-1. **Batch Routing**: Route batches of messages to pools
-2. **Deduplication**: Prevent duplicate processing of same message
-3. **Pool Buffer Management**: Check capacity before routing
-4. **FIFO Enforcement**: Maintain message group ordering within batches
-5. **Callback Management**: Store callbacks for ACK/NACK operations
-6. **Visibility Extension**: Extend SQS visibility for long-running tasks
+A **snapshot** of `processPools` is taken at the start (`Map.copyOf(processPools)`) to ensure consistent pool references throughout the entire batch, even if `syncConfiguration()` runs concurrently.
 
-### Deduplication Strategy
+A **UUID `batchId`** is generated for this batch.
 
-Two levels of deduplication:
+### Phase 1: Deduplication
 
-1. **SQS Message ID**: Physical redelivery detection (visibility timeout expired)
-   - If same SQS message ID is in pipeline, NACK the duplicate
-   - Update the stored receipt handle with the new one
-
-2. **Application Message ID**: Requeued message detection
-   - If same app message ID but different SQS message ID: ACK the new one
-   - This handles external processes requeueing stuck messages
-
-### Pipeline Tracking
-
+For each message in the batch, derive the pipeline key:
 ```
-inPipelineMap:         Map<SQS_MessageId, MessagePointer>
-inPipelineTimestamps:  Map<SQS_MessageId, Long>  // Start time
-inPipelineQueueIds:    Map<SQS_MessageId, String> // Source queue
-messageCallbacks:      Map<SQS_MessageId, MessageCallback>
-appMessageIdToPipelineKey: Map<AppMessageId, SQS_MessageId>
+pipelineKey = sqsMessageId != null ? sqsMessageId : appMessageId
 ```
 
-### Batch Routing Algorithm
+**Check 1 — Physical redelivery (same broker message ID):**
+If `inFlightTracker.containsKey(sqsMessageId)` is true:
+- The same SQS message was redelivered because the visibility timeout expired while the original is still processing.
+- Attempt to update the stored callback's receipt handle with the new one via `updateReceiptHandleIfPossible()`.
+- Add to `duplicates` list.
+
+**Check 2 — Logical requeue (same app ID, different broker ID):**
+If `inFlightTracker.isInFlight(appMessageId)` is true AND the existing pipeline key differs from the new SQS message ID:
+- An external process requeued this message (e.g., a stuck-message cleanup job).
+- Add to `requeuedDuplicates` list.
+
+**Check 2 edge case:** If the app message ID is in-flight but the broker ID is the same (or null) — treat as physical redelivery (duplicates).
+
+**After checks:**
+- All `duplicates` → **NACK** (let SQS retry after visibility timeout)
+- All `requeuedDuplicates` → **ACK** (permanently remove the new duplicate; original is still processing)
+- All other messages → grouped by `poolCode` in `messagesByPool`
+
+### Phase 2: Pool Capacity Check
+
+For each pool in `messagesByPool`:
+
+1. Look up pool in the snapshot. If not found:
+   - Log warning + increment `defaultPoolUsageCounter` metric
+   - Add `ROUTING` **WARN** warning
+   - Route to `DEFAULT-POOL` (created on demand with concurrency=20 if it doesn't exist)
+
+2. Calculate `availableCapacity = pool.getQueueCapacity() - pool.getQueueSize()`
+
+3. If `availableCapacity < poolMessages.size()` (pool cannot accept ALL messages for this pool from this batch):
+   - Add `QUEUE_FULL` **WARN** warning
+   - Add ALL messages for this pool to `toNackPoolFull`
+
+4. Otherwise, add pool's messages to `messagesToRoute`.
+
+After checking all pools:
+- All `toNackPoolFull` messages → **NACK**
+- Note: **Rate limiting is not checked here** — it is handled inside the pool worker as a blocking wait.
+
+### Phase 3: FIFO Routing with Sequential Nacking
+
+For each pool in `messagesToRoute`, group messages by `messageGroupId` (null/blank → `"__DEFAULT__"`). The grouping uses `LinkedHashMap` to preserve insertion order.
+
+For each group, iterate messages in order:
 
 ```
-function routeMessageBatch(messages):
-    // Phase 1: Filter duplicates
-    for message in messages:
-        if inPipelineMap.contains(message.sqsMessageId):
-            // Visibility timeout redelivery - update receipt handle, NACK
-            updateReceiptHandle(message)
-            nack(message)
-        else if appMessageIdToPipelineKey.contains(message.id):
-            // External requeue - ACK to remove duplicate
-            ack(message)
-        else:
-            groupByPool[message.poolCode].add(message)
+nackRemaining = false
+for each message in group:
+    if nackRemaining:
+        NACK message
+        continue
 
-    // Phase 2: Check pool capacity and rate limits
-    for poolCode, poolMessages in groupByPool:
-        pool = getOrCreatePool(poolCode)
+    enrich message with batchId, sqsMessageId
+    trackResult = inFlightTracker.track(enrichedMessage, callback, queueIdentifier)
 
-        if pool.availableCapacity < poolMessages.size:
-            nackAll(poolMessages)  // Pool buffer full
-        else if pool.isRateLimited:
-            nackAll(poolMessages)  // Rate limited
-        else:
-            toRoute[poolCode] = poolMessages
+    if trackResult is Duplicate:
+        NACK, continue  (unexpected — was checked in Phase 1)
 
-    // Phase 3: Route with FIFO enforcement
-    for poolCode, poolMessages in toRoute:
-        groupByMessageGroup = groupMessages(poolMessages)
+    pipelineKey = trackResult.pipelineKey
+    inPipelineMap.put(pipelineKey, enrichedMessage)  // legacy compatibility
 
-        for groupId, groupMessages in groupByMessageGroup:
-            nackRemaining = false
-            for message in groupMessages:
-                if nackRemaining:
-                    nack(message)
-                else:
-                    if not pool.submit(message):
-                        nack(message)
-                        nackRemaining = true  // FIFO: nack all subsequent
-                    else:
-                        trackInPipeline(message)
+    submitted = pool.submit(enrichedMessage)
+    if not submitted:
+        inFlightTracker.remove(pipelineKey)
+        inPipelineMap.remove(pipelineKey)
+        NACK
+        nackRemaining = true  // FIFO: nack all subsequent in this group
 ```
 
-### Visibility Extension
+This ensures that if message N in a batch+group fails to be submitted to the pool, all messages N+1, N+2, ... in the same batch+group are also NACKed. This preserves ordering — when the messages are redelivered from the queue, they will arrive in the same order.
 
-Every 55 seconds, QueueManager checks all in-pipeline messages:
-- If processing time > 50 seconds, extend visibility by 120 seconds
-- Uses `ChangeMessageVisibility` API for SQS
+---
+
+## In-Flight Message Tracking
+
+`InFlightMessageTracker` consolidates five previously separate maps into a single consistent unit with `ReentrantReadWriteLock`.
+
+### Internal State
+
+- `trackedMessages: ConcurrentHashMap<String, TrackedMessage>` — pipelineKey → full tracking record
+- `appMessageIdIndex: ConcurrentHashMap<String, String>` — appMessageId → pipelineKey (secondary index for requeue detection)
+
+### Pipeline Key Rule
+
+```
+pipelineKey = message.sqsMessageId() != null ? message.sqsMessageId() : message.id()
+```
+
+### TrackedMessage Fields
+
+| Field | Description |
+|-------|-------------|
+| `pipelineKey` | The key used to track this message |
+| `messageId` | Application message ID |
+| `brokerMessageId` | SQS/AMQP message ID |
+| `queueId` | Source queue identifier |
+| `message` | The full MessagePointer |
+| `callback` | Ack/nack callback |
+| `trackedAt` | When tracking started |
+
+### track() — Adding a Message
+
+Acquires **write lock**, then:
+
+1. If `trackedMessages.containsKey(pipelineKey)` → return `Duplicate(pipelineKey, isRequeue=false)`
+2. If `appMessageIdIndex.get(appMessageId)` returns an existing key:
+   - If that key is still in `trackedMessages` → return `Duplicate(existingKey, isRequeue=true)`
+   - Else (stale index entry) → remove from index, proceed
+3. Add to both maps, return `Tracked(pipelineKey)`
+
+### remove() — Removing a Message
+
+Acquires **write lock**, removes from both maps atomically.
+
+### Stale index cleanup
+
+During duplicate detection (step 2), stale entries in `appMessageIdIndex` (where the message was already acked/nacked) are cleaned up automatically.
 
 ---
 
 ## Process Pools
 
-### Architecture: Per-Group Virtual Threads
+Each pool (`ProcessPoolImpl`) manages a set of virtual threads that process messages concurrently.
 
-Each message group gets a dedicated Java virtual thread:
+### Key State
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     PROCESS POOL                                │
-│                                                                 │
-│  Pool-level Semaphore (concurrency=10)                          │
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │                                                             ││
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          ││
-│  │  │Group: order-│  │Group: order-│  │Group: user- │    ...   ││
-│  │  │   12345     │  │   67890     │  │   99999     │          ││
-│  │  ├─────────────┤  ├─────────────┤  ├─────────────┤          ││
-│  │  │VirtualThread│  │VirtualThread│  │VirtualThread│          ││
-│  │  │    ↓        │  │    ↓        │  │    ↓        │          ││
-│  │  │[Queue]      │  │[Queue]      │  │[Queue]      │          ││
-│  │  │ msg1        │  │ msg1        │  │ msg1        │          ││
-│  │  │ msg2        │  │ msg2        │  │ msg2        │          ││
-│  │  └─────────────┘  └─────────────┘  └─────────────┘          ││
-│  │                                                             ││
-│  └─────────────────────────────────────────────────────────────┘│
-│                                                                 │
-│  Rate Limiter (optional): X requests per minute                 │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+| Field | Description |
+|-------|-------------|
+| `poolCode` | Unique identifier |
+| `concurrency` | Maximum concurrent workers (volatile for visibility) |
+| `queueCapacity` | `max(concurrency × 20, 50)` — total messages across all group queues |
+| `semaphore` | Pool-level `Semaphore(concurrency)` — controls total concurrent processing |
+| `rateLimiter` | Resilience4j `RateLimiter` (volatile for atomic replacement); null if not configured |
+| `highPriorityGroupQueues` | `ConcurrentHashMap<String, BlockingQueue<MessagePointer>>` |
+| `regularGroupQueues` | `ConcurrentHashMap<String, BlockingQueue<MessagePointer>>` |
+| `activeGroupThreads` | `ConcurrentHashMap<String, Boolean>` — tracks live virtual threads per group |
+| `totalQueuedMessages` | `AtomicInteger` — total across all group queues; compared against `queueCapacity` |
+| `failedBatchGroups` | `ConcurrentHashMap<String, Boolean>` — key: `"batchId|groupId"` |
+| `batchGroupMessageCount` | `ConcurrentHashMap<String, AtomicInteger>` — count of remaining messages per batch+group |
+| `running` | `AtomicBoolean` |
+| `configLock` | `ReentrantLock` — protects concurrent configuration updates |
 
-### Per-Group Threading
+### submit()
+
+Called by `QueueManager.routeMessageBatch()` to submit a message to the pool.
 
 ```
-messageGroupQueues: Map<messageGroupId, BlockingQueue<MessagePointer>>
-activeGroupThreads: Map<messageGroupId, Boolean>
+if !running → return false (pool is draining)
+
+groupId = message.messageGroupId() == null/blank ? "__DEFAULT__" : message.messageGroupId()
+
+track in batchGroupMessageCount (increment count for batchGroupKey)
+
+targetQueues = message.highPriority() ? highPriorityGroupQueues : regularGroupQueues
+groupQueue = targetQueues.computeIfAbsent(groupId, k -> new LinkedBlockingQueue<>())  // unbounded
+
+// Thread start check (atomic)
+startedThread = activeGroupThreads.putIfAbsent(groupId, TRUE) == null
+if startedThread:
+    check if either queue has messages (= thread died and left orphans)
+    if orphaned messages → log warning + add GROUP_THREAD_RESTART warning
+    executorService.submit(() -> processMessageGroup(groupId))
+
+// Capacity check (atomic CAS loop with Thread.yield())
+while true:
+    current = totalQueuedMessages.get()
+    if current >= queueCapacity:
+        clean up batchGroupMessageCount
+        return false
+    if totalQueuedMessages.compareAndSet(current, current + 1): break
+    Thread.onSpinWait(); Thread.yield()
+
+groupQueue.offer(message)  // always succeeds (unbounded queue)
+return true
 ```
 
-When a message arrives for a new group:
-1. Create `LinkedBlockingQueue` for that group
-2. Start virtual thread calling `processMessageGroup(groupId, queue)`
-3. Virtual thread blocks on `queue.poll(5 minutes)` when idle
-4. After 5 minutes of inactivity, thread exits and group is cleaned up
+### Concurrency Update (`updateConcurrency`)
 
-### Group Thread Algorithm
+Protected by `configLock`.
 
-```
-function processMessageGroup(groupId, queue):
-    while running:
-        message = queue.poll(5 minutes)
+- **Increase**: `semaphore.release(diff)`, `concurrency = newLimit` — immediate
+- **Decrease**: `semaphore.tryAcquire(diff, timeoutSeconds=60, SECONDS)`:
+  - If acquired: `concurrency = newLimit`
+  - If timeout (workers still active): log warning, return false (retain current limit)
 
-        if message == null:
-            // Idle timeout - cleanup
-            if queue.isEmpty():
-                messageGroupQueues.remove(groupId)
-                activeGroupThreads.remove(groupId)
-                return
-            continue
+### Rate Limit Update (`updateRateLimit`)
 
-        // Check batch+group FIFO failure
-        batchGroupKey = message.batchId + "|" + groupId
-        if failedBatchGroups.contains(batchGroupKey):
-            nack(message)  // Previous message in batch failed
-            continue
+Protected by `configLock`. Creates a brand-new `RateLimiter` instance and atomically assigns it to the volatile field. Any worker in `waitForRateLimitPermit()` picks up the new limiter on its next iteration.
 
-        // Rate limit check (before semaphore)
-        if rateLimiter != null and not rateLimiter.acquirePermission():
-            setFastFailVisibility(message, 10s)
-            nack(message)
-            continue
+To disable rate limiting: set `rateLimiter = null`.
 
-        // Acquire concurrency permit
-        semaphore.acquire()
+---
 
-        try:
-            outcome = mediator.process(message)
-            handleOutcome(message, outcome)
-        finally:
-            semaphore.release()
-```
+## Per-Group Virtual Threads
 
-### Concurrency Control
+Each message group gets exactly one dedicated Java virtual thread. Groups are created on demand and cleaned up after idle.
 
-- Pool-level semaphore with `concurrency` permits
-- Each message must acquire permit before processing
-- Rate limiting checked BEFORE acquiring semaphore (prevents slot waste)
-
-### Buffer Sizing
+### Thread Lifecycle
 
 ```
-queueCapacity = max(concurrency × 2, 50)
+Message arrives for group "order-12345":
+  → activeGroupThreads.putIfAbsent("order-12345", TRUE) returns null → start thread
+  → processMessageGroup("order-12345") runs in virtual thread
+
+While thread is running:
+  → activeGroupThreads contains "order-12345" = TRUE
+
+Thread exits (idle timeout or interrupted):
+  → finally block: activeGroupThreads.remove("order-12345")
 ```
 
-Examples:
-- 5 workers → 50 buffer
-- 100 workers → 200 buffer
-- 200 workers → 400 buffer
+### `processMessageGroup()` Loop
 
-### In-Place Configuration Updates
+```
+while running:
+    highQueue = highPriorityGroupQueues.get(groupId)
+    regularQueue = regularGroupQueues.get(groupId)
 
-Pools support live reconfiguration without draining:
+    // Step 1: Non-blocking poll from high priority queue
+    message = highQueue?.poll()  // non-blocking
 
-**Concurrency Increase:**
-```
-semaphore.release(newLimit - currentLimit)
+    // Step 2: If no high-priority message, block on regular queue
+    if message == null:
+        if regularQueue != null:
+            message = regularQueue.poll(5, MINUTES)
+        else if highQueue != null:
+            message = highQueue.poll(5, MINUTES)
+        else:
+            Thread.sleep(100); continue
+
+    // Step 3: Idle timeout handling
+    if message == null:
+        if both queues empty:
+            remove both queues from maps
+            activeGroupThreads.remove(groupId)  // clean exit
+            return
+        continue  // queue became non-empty, keep processing
+
+    // Step 4: Got a message
+    totalQueuedMessages.decrementAndGet()
+    setMDCContext(message)
+
+    // Step 5: Check batch+group FIFO failure
+    batchGroupKey = batchId + "|" + effectiveGroupId
+    if failedBatchGroups.containsKey(batchGroupKey):
+        setFastFailVisibility(message)  // 10s
+        nackSafely(message)
+        decrementAndCleanupBatchGroup(batchGroupKey)
+        continue
+
+    // Step 6: Wait for rate limit permit (blocking)
+    waitForRateLimitPermit()
+
+    // Step 7: Acquire pool concurrency permit
+    semaphore.acquire()  // blocks until a slot is available
+
+    // Step 8: Process
+    outcome = mediator.process(message)
+
+    // Step 9: Handle outcome
+    handleMediationOutcome(message, outcome, durationMs)
+
+    // finally: performCleanup() — semaphore.release(), MDC.clear()
 ```
 
-**Concurrency Decrease:**
-```
-if semaphore.tryAcquire(currentLimit - newLimit, timeout):
-    concurrency = newLimit
-else:
-    // Timeout - keep current limit
+### Thread Death and Restart
+
+If a virtual thread exits abnormally (not via idle timeout):
+- `finally` block removes the group from `activeGroupThreads`
+- If the pool is still `running` and messages remain in the queues: adds a `GROUP_THREAD_EXIT_WITH_MESSAGES` **WARN** warning
+- On the **next** `submit()` for that group: `putIfAbsent` returns null → detects orphaned messages → adds `GROUP_THREAD_RESTART` **WARN** warning → starts new thread
+
+---
+
+## Rate Limiting
+
+### Pool-Level Rate Limiter
+
+Each pool can have an optional `rateLimitPerMinute`. The Resilience4j `RateLimiter` is configured with:
+- `limitRefreshPeriod = 1 minute`
+- `limitForPeriod = rateLimitPerMinute`
+- `timeoutDuration = Duration.ZERO` — `acquirePermission()` returns false immediately if no permits
+
+### `isRateLimited()` (checked by QueueManager — no longer used for routing)
+
+```java
+return rateLimiter != null && rateLimiter.getMetrics().getAvailablePermissions() <= 0
 ```
 
-**Rate Limit Update:**
+Note: As of current code, QueueManager no longer checks `isRateLimited()` before routing. Rate limiting happens entirely inside the pool worker.
+
+### `waitForRateLimitPermit()`
+
+Called inside `processMessageGroup()` after the batch+group check but **before** acquiring the semaphore. This is a **blocking loop** — virtual threads make this cheap (no OS thread is blocked):
+
 ```
-rateLimiter = RateLimiter.of(poolCode, newConfig)
+while running:
+    limiter = this.rateLimiter  // read volatile fresh each iteration
+    if limiter == null: return  // rate limiting disabled
+
+    if limiter.acquirePermission(): return  // got permit
+
+    record rate limit metric (once per wait period)
+    Thread.sleep(100ms)  // wait and retry
 ```
+
+This means:
+- If the rate limiter is **removed** (via `updateRateLimit(null)`) while a worker is waiting, it exits on the next 100ms check.
+- If the rate limit is **increased** (new limiter instance), the worker picks up the new limiter on the next iteration.
+- Messages **stay in memory** (in the virtual thread) while rate-limited rather than being NACKed back to SQS.
+
+---
+
+## FIFO Enforcement (Batch+Group)
+
+### The Problem
+
+Messages with the same `messageGroupId` in a batch must process in order. If message N fails (NACK), messages N+1, N+2, ... should not be processed before N is retried.
+
+### Two Levels of Enforcement
+
+**Level 1 — At routing time (`routeMessageBatch`):**
+If `pool.submit()` returns false for message N in a group (pool full at that exact moment), set `nackRemaining = true` and NACK all subsequent messages in that group within the batch. This is immediate — the messages never enter the pool.
+
+**Level 2 — Inside the pool (`processMessageGroup`):**
+If the mediator returns `ERROR_PROCESS` or `ERROR_CONNECTION` for message N:
+- Mark `"batchId|groupId"` in `failedBatchGroups`
+- When the next message in the same batch+group is dequeued by the group's virtual thread, it checks `failedBatchGroups` and NACKs immediately with 10-second visibility
+
+### Cleanup
+
+```
+decrementAndCleanupBatchGroup(batchGroupKey):
+    count = batchGroupMessageCount.get(key).decrementAndGet()
+    if count <= 0:
+        batchGroupMessageCount.remove(key)
+        failedBatchGroups.remove(key)
+```
+
+Called on every outcome (success, config error, process error, connection error) and on every batch-group-failure NACK. Once all messages in a batch+group have been processed or NACKed, the tracking entries are cleaned up.
 
 ---
 
 ## HTTP Mediator
+
+### Circuit Breaker
+
+```java
+@CircuitBreaker(
+    requestVolumeThreshold = 10,
+    failureRatio = 0.5,        // 50% failure rate
+    delay = 5000,              // 5s in OPEN state
+    successThreshold = 3,      // 3 successes to close from HALF_OPEN
+    failOn = {HttpTimeoutException.class, IOException.class}
+)
+@CircuitBreakerName("http-mediator")
+```
+
+A single circuit breaker named `"http-mediator"` protects all outbound HTTP calls. When open, calls to `mediator.process()` fail immediately (not retried inside the retry loop).
+
+### Retry Loop
+
+`process()` runs up to **3 attempts** with backoff **1s, 2s, 3s**:
+
+```
+for attempt = 1 to 3:
+    outcome = attemptProcess(message)
+    if SUCCESS or ERROR_CONFIG: return immediately (no retry)
+    if outcome.error.isRetryable() and attempt < 3:
+        sleep(1000 * attempt)
+        continue
+    return outcome
+```
+
+**Retryable errors:** `Timeout`, `NetworkError`, `HttpError(5xx)`
+**Non-retryable errors:** `CircuitOpen`, `HttpError(4xx)`
 
 ### Request Format
 
@@ -498,530 +591,261 @@ Authorization: Bearer {authToken}
 Content-Type: application/json
 Accept: application/json
 
-{
-  "messageId": "01K97FHM11EKYSXT135MVM6AC7"
-}
+{"messageId": "{message.id()}"}
 ```
 
-### Response Format
-
-```json
-{
-  "ack": true,
-  "message": "Processed successfully",
-  "delaySeconds": null
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `ack` | Boolean | `true` = message processed, `false` = retry later |
-| `message` | String | Optional description/reason |
-| `delaySeconds` | Integer | Optional delay before retry (1-43200 seconds) |
+**Connect timeout:** 30 seconds (hardcoded on `HttpClient`)
+**Request timeout:** configurable via `mediator.http.timeout.ms` (default 900,000ms = 15 minutes)
 
 ### Response Handling
 
-| HTTP Status | `ack` Value | Action | Retry |
-|-------------|-------------|--------|-------|
-| 200 | true | ACK | No |
-| 200 | false | NACK with delay | Yes |
-| 200 | (parse error) | ACK | No (backward compat) |
-| 400 | - | ACK + warning | No (config error) |
-| 401, 403 | - | ACK + warning | No (auth error) |
-| 404 | - | ACK + warning | No (endpoint missing) |
-| 429 | - | NACK | Yes (rate limited) |
-| 500-599 | - | NACK | Yes (server error) |
-| Timeout | - | NACK | Yes (3 retries first) |
-| Connection Error | - | NACK | Yes (3 retries first) |
+| HTTP Status | Condition | Outcome | Retry? | Warning |
+|-------------|-----------|---------|--------|---------|
+| 200 | `ack=true` | `SUCCESS` | No | — |
+| 200 | `ack=false`, delay provided | `ERROR_PROCESS(delaySeconds)` | Yes | — |
+| 200 | `ack=false`, no delay | `ERROR_PROCESS(null)` | Yes | — |
+| 200 | JSON parse error | `SUCCESS` | No (backward compat) | — |
+| 400 | — | `ERROR_CONFIG` | No | CONFIGURATION/ERROR |
+| 401–499 (except 404, 429) | — | `ERROR_CONFIG` | No | CONFIGURATION/ERROR |
+| 404 | — | `ERROR_CONFIG` | No | CONFIGURATION/ERROR |
+| 429 | `Retry-After` header present (integer) | `ERROR_PROCESS(retryAfterSeconds)` | Yes | — |
+| 429 | No `Retry-After` header | `ERROR_PROCESS(30)` | Yes | — |
+| 501 | — | `ERROR_CONFIG` | No | CONFIGURATION/**CRITICAL** |
+| 5xx (not 501) | — | `ERROR_PROCESS` | Yes (retryable) | — |
+| Unexpected (not 4xx/5xx) | — | `ERROR_PROCESS` | Yes | — |
+| `HttpConnectTimeoutException` | — | `ERROR_CONNECTION` | Yes (retryable) | — |
+| `ConnectException` | — | `ERROR_CONNECTION` | Yes (retryable) | — |
+| `UnresolvedAddressException` | — | `ERROR_CONNECTION` | Yes (retryable) | — |
+| `HttpTimeoutException` | — | `ERROR_PROCESS(Timeout)` | Yes (retryable) | — |
+| `IOException` (general) | — | `ERROR_CONNECTION` | Yes (retryable) | — |
+| Any other exception | — | `ERROR_PROCESS(NetworkError)` | Yes (retryable) | — |
 
-### Retry Logic
-
-For transient errors (timeout, connection error):
-1. Retry up to 3 times with backoff: 1s, 2s, 3s
-2. If all retries fail, NACK message for queue visibility timeout retry
-
-### Circuit Breaker
-
-Configuration:
-```
-requestVolumeThreshold = 10
-failureRatio = 0.5 (50%)
-delay = 5000ms (5 seconds)
-successThreshold = 3
-failOn = [HttpTimeoutException, IOException]
-```
-
-States:
-- **CLOSED**: Normal operation
-- **OPEN**: Requests fail fast (5s duration)
-- **HALF_OPEN**: Test requests to check recovery
-
-### Timeout Configuration
-
-Default: 900,000ms (15 minutes) for long-running endpoint operations.
+**`Retry-After` parsing:** Only integer (delta-seconds) format is supported. HTTP-date format is not parsed — falls back to the default 30s.
 
 ---
 
-## Message Deduplication
+## Outcome Handling
 
-### Problem: Multiple Processing
+After `mediator.process()` returns, `handleMediationOutcome()` in `ProcessPoolImpl` dispatches:
 
-Without deduplication, messages can be processed multiple times when:
-1. SQS visibility timeout expires before processing completes
-2. External process requeues a stuck message
-3. Network issues cause duplicate deliveries
+### SUCCESS
 
-### Solution: Two-Layer Deduplication
+- `messageCallback.ack(message)` — triggers `QueueManager.ack()` → removes from tracker → calls SQS `DeleteMessage`
+- `poolMetrics.recordProcessingSuccess()`
+- `decrementAndCleanupBatchGroup()`
 
-**Layer 1: SQS Message ID (Physical Deduplication)**
-```
-inPipelineMap[sqsMessageId] → MessagePointer
-```
-- Same SQS message ID = visibility timeout redelivery
-- Action: NACK the duplicate, update receipt handle on original
+### ERROR_CONFIG
 
-**Layer 2: Application Message ID (Logical Deduplication)**
-```
-appMessageIdToPipelineKey[appMessageId] → sqsMessageId
-```
-- Same app ID, different SQS ID = external requeue
-- Action: ACK the new message (original still processing)
+- `messageCallback.ack(message)` — **ACKs** (deletes from queue) to prevent infinite retry
+- `poolMetrics.recordProcessingFailure()`
+- `decrementAndCleanupBatchGroup()`
+- Note: `HttpMediator` has already added the warning; no additional warning is added here
 
-### Receipt Handle Update
+### ERROR_PROCESS
 
-When SQS redelivers a message (same SQS ID), the receipt handle changes. The router updates the stored callback's receipt handle so the ACK uses the valid handle.
+- Check `outcome.hasCustomDelay()`:
+  - True → `visibilityControl.setVisibilityDelay(message, delaySeconds)` — custom delay
+  - False → `visibilityControl.resetVisibilityToDefault(message)` — 30s
+- `messageCallback.nack(message)` — message becomes visible after the set delay
+- `poolMetrics.recordProcessingTransient()` (not counted as failure)
+- `failedBatchGroups.putIfAbsent(batchGroupKey, TRUE)` — marks batch+group as failed
+- `decrementAndCleanupBatchGroup()`
 
----
+### ERROR_CONNECTION
 
-## FIFO Ordering Guarantees
+- `visibilityControl.resetVisibilityToDefault(message)` — 30s
+- `messageCallback.nack(message)`
+- `poolMetrics.recordProcessingFailure()`
+- `failedBatchGroups.putIfAbsent(batchGroupKey, TRUE)` — marks batch+group as failed
+- `decrementAndCleanupBatchGroup()`
 
-### Guarantee Level
+### null / unknown result
 
-**FIFO within message group + batch:**
-- Messages with same `messageGroupId` in the same batch process sequentially
-- Messages with same `messageGroupId` across batches may interleave
-
-### Batch+Group FIFO Enforcement
-
-When a message fails in a batch:
-1. Mark `batchId|messageGroupId` as failed
-2. All subsequent messages in that batch+group are automatically NACKed
-3. This prevents out-of-order processing
-
-```
-failedBatchGroups: Set<"batchId|messageGroupId">
-batchGroupMessageCount: Map<"batchId|messageGroupId", AtomicInteger>
-```
-
-### Cleanup
-
-When all messages in a batch+group are processed:
-```
-if batchGroupMessageCount[key].decrementAndGet() == 0:
-    batchGroupMessageCount.remove(key)
-    failedBatchGroups.remove(key)
-```
+- Adds `MEDIATOR_NULL_RESULT` **CRITICAL** warning
+- Treated as `ERROR_PROCESS(null)` — same flow as ERROR_PROCESS without custom delay
 
 ---
 
-## Rate Limiting
+## Visibility Timeout Control
 
-### Per-Pool Rate Limiting
+`SqsMessageCallback` implements `MessageVisibilityControl` with these methods:
 
-Each pool can have an optional rate limit (requests per minute):
+| Method | Visibility Timeout | When Used |
+|--------|--------------------|-----------|
+| `nack()` | 30 seconds (default) | Generic NACK |
+| `resetVisibilityToDefault(message)` | 30 seconds | ERROR_PROCESS (no custom delay), ERROR_CONNECTION |
+| `setFastFailVisibility(message)` | 10 seconds | Batch+group FIFO failure — faster retry |
+| `setVisibilityDelay(message, seconds)` | 1–43200 seconds (clamped) | ERROR_PROCESS with custom delay (429 with Retry-After, `ack=false` with delaySeconds) |
 
-```
-rateLimiter = RateLimiter.of("pool-" + poolCode, config)
-config.limitRefreshPeriod = 1 minute
-config.limitForPeriod = rateLimitPerMinute
-config.timeoutDuration = 0 (fail immediately)
-```
-
-### Rate Limit Behavior
-
-1. Rate limit checked BEFORE acquiring concurrency semaphore
-2. If rate limited:
-   - Set 10-second visibility timeout (fast retry)
-   - NACK message
-   - Don't waste concurrency slot
-
-### Rate Limit Status Check
-
-```
-isRateLimited = rateLimiter.getMetrics().getAvailablePermissions() <= 0
-```
+All visibility changes use `ChangeMessageVisibility` API. Errors are caught and logged but do not affect the NACK itself.
 
 ---
 
-## Error Handling and Retry Logic
+## Health Monitoring & Consumer Restart
 
-### Error Categories
+### Consumer Health Check — every 60 seconds
 
-| Category | Examples | Action |
-|----------|----------|--------|
-| **Config Error** | 400, 401, 403, 404, 501 | ACK (don't retry) |
-| **Transient Error** | 5xx, timeout, connection | NACK (retry) |
-| **Processing Error** | `ack: false` | NACK with custom delay |
-| **Parse Error** | Invalid JSON response | ACK (treat as success) |
+`monitorAndRestartUnhealthyConsumers()` iterates all active consumers:
 
-### Visibility Timeout Control
+For each consumer:
+- `consumer.isHealthy()` checks: `running` is true AND (`lastPollTime == 0` OR `System.currentTimeMillis() - lastPollTime < 60_000`)
+- If **unhealthy**:
+  1. Add `CONSUMER_RESTART` **WARN** warning
+  2. `consumer.stop()` — signal stop
+  3. Move to `drainingConsumers`, remove from `queueConsumers`
+  4. Look up `queueConfigs.get(queueIdentifier)` — if not found, log error and skip
+  5. `queueConsumerFactory.createConsumer(queueConfig, connections)` — creates a brand new consumer
+  6. `newConsumer.start()`
+  7. Add to `queueConsumers`
+  8. If any step throws: add `CONSUMER_RESTART_FAILED` **CRITICAL** warning
 
-For different scenarios:
+### Draining Resource Cleanup — every 10 seconds
 
-| Scenario | Visibility Timeout |
-|----------|-------------------|
-| Rate limited | 10 seconds (fast retry) |
-| Batch+group failed | 10 seconds |
-| Default retry | 30 seconds |
-| Custom delay (from response) | 1-43200 seconds |
-| Processing still running | Extended by 120 seconds |
+`cleanupDrainingResources()` checks `drainingPools` and `drainingConsumers`:
 
-### Graceful Shutdown
-
-1. Stop all queue consumers (stop polling)
-2. Wait up to 25 seconds for consumers to finish current polls
-3. Set pools to draining mode (stop accepting new work)
-4. Wait up to 60 seconds for pools to finish processing
-5. NACK any remaining messages in pipeline
-6. Shutdown executor services
+- Pool: `pool.isFullyDrained()` = `semaphore.availablePermits() == concurrency` → if true: `pool.shutdown()`, remove from `drainingPools`, remove pool metrics
+- Consumer: `consumer.isFullyStopped()` = `!running && pollingTasks.length == 0` → if true: remove from `drainingConsumers`
 
 ---
 
-## Health Monitoring
+## Leak Detection
 
-### Infrastructure Health (`/health`)
+`checkForMapLeaks()` runs every **30 seconds**:
 
-Returns HTTP 200 if infrastructure is operational, 503 if compromised.
+```
+pipelineSize = inFlightTracker.size()
 
-**Checks:**
-1. Message router is enabled
-2. At least one process pool exists
-3. Pools are not stalled (activity within 2 minutes)
+totalCapacity = sum(pool.getConcurrency() * 20 for all active pools)
+totalCapacity = max(totalCapacity, 50)
 
-**NOT checked:** Downstream service failures, circuit breaker states
+if pipelineSize > totalCapacity:
+    add PIPELINE_MAP_LEAK WARN warning
+    log: "LEAK DETECTION: in-flight tracker size (N) > total capacity (M)"
+```
 
-### Consumer Health
-
-Each consumer tracks:
-- `lastPollTime`: Timestamp of last successful poll
-- Unhealthy if no poll in 60 seconds
-
-QueueManager automatically restarts unhealthy consumers.
-
-### Queue Metrics
-
-Polled periodically from SQS/ActiveMQ:
-- `ApproximateNumberOfMessages`: Pending in queue
-- `ApproximateNumberOfMessagesNotVisible`: Currently being processed
-
-### Pool Metrics
-
-Tracked in real-time:
-- `activeWorkers`: Currently processing (concurrency - available permits)
-- `queueSize`: Messages waiting in buffer
-- `totalProcessed`, `totalSucceeded`, `totalFailed`
-- `averageProcessingTimeMs`
+A consistently growing `inFlightTracker` (beyond what active pools can hold) indicates messages are not being removed from tracking after ACK/NACK.
 
 ---
 
-## Configuration
+## Graceful Shutdown
 
-### Application Properties
+`onShutdown()` fires on `@Observes ShutdownEvent`:
 
-```properties
-# Core Settings
-message-router.enabled=true
-message-router.queue-type=SQS  # SQS, ACTIVEMQ, or EMBEDDED
-message-router.sync-interval=5m
-message-router.max-pools=2000
-message-router.pool-warning-threshold=1000
+### Step 1: Pause Scheduled Tasks
 
-# SQS Settings
-message-router.sqs.max-messages-per-poll=10
-message-router.sqs.wait-time-seconds=20
+`shutdownInProgress = true` — all `@Scheduled` methods check this and return immediately. Wait 500ms for any in-progress scheduled tasks to exit.
 
-# ActiveMQ Settings
-activemq.broker.url=tcp://localhost:61616
-activemq.username=admin
-activemq.password=admin
-message-router.activemq.receive-timeout-ms=1000
+### Step 2: Stop All Consumers (`stopAllConsumers`)
 
-# Embedded Queue Settings
-message-router.embedded.visibility-timeout-seconds=30
-message-router.embedded.receive-timeout-ms=1000
+1. For each consumer: `consumer.stop()` (signals stop, returns immediately), move to `drainingConsumers`
+2. Clear `queueConsumers`
+3. Poll `drainingConsumers` every 500ms until all `isFullyStopped()` or **25-second timeout**
+4. After timeout: force-clear `drainingConsumers` (warn if any remain)
 
-# HTTP Mediator Settings
-mediator.http.version=HTTP_2  # or HTTP_1_1
-mediator.http.timeout.ms=900000  # 15 minutes
+### Step 3: Drain All Pools (`drainAllPools`)
 
-# Metrics
-message-router.metrics.poll-interval-seconds=300
+1. For each pool: `pool.drain()` (see below), move to `drainingPools`
+2. Clear `processPools`
+3. Poll `drainingPools` every 500ms until all `isFullyDrained()` or **30-second timeout**
+4. After timeout: force `pool.shutdown()` on remaining pools
 
-# Hot Standby (Optional)
-standby.enabled=false
-standby.instance-id=${HOSTNAME:instance-1}
-standby.lock-key=message-router-primary-lock
-standby.lock-ttl-seconds=30
-```
+**`pool.drain()` behavior:**
+- `running.set(false)` — stop accepting new messages
+- `clearAllQueuedMessages()` — immediately clears ALL messages from both priority tier queues, clears `activeGroupThreads` and batch tracking maps. Total discarded count is logged.
+- `executorService.shutdownNow()` — interrupts all virtual threads blocked on `queue.poll()`
+- Threads that have acquired the semaphore (actively calling HTTP) are **not** interrupted — they complete their current request
+- `isFullyDrained()` = `semaphore.availablePermits() == concurrency` — true only when all active HTTP calls have finished
 
-### Environment Variables
+### Step 4: Cleanup Remaining Messages (`cleanupRemainingMessages`)
 
-```bash
-# Queue Type
-MESSAGE_ROUTER_QUEUE_TYPE=SQS
-
-# SQS Configuration
-AWS_REGION=eu-west-1
-SQS_ENDPOINT_OVERRIDE=  # For LocalStack
-
-# ActiveMQ Configuration
-ACTIVEMQ_BROKER_URL=tcp://localhost:61616
-ACTIVEMQ_USERNAME=admin
-ACTIVEMQ_PASSWORD=admin
-
-# Configuration Client
-MESSAGE_ROUTER_CONFIG_URL=http://localhost:8080/api/config
-
-# Redis for Hot Standby
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_USERNAME=
-REDIS_PASSWORD=
-
-# Authentication
-AUTHENTICATION_ENABLED=false
-AUTHENTICATION_MODE=NONE  # NONE, BASIC, or OIDC
-AUTH_BASIC_USERNAME=admin
-AUTH_BASIC_PASSWORD=secret
-```
-
-### Configuration Client
-
-The router fetches its configuration from an external endpoint:
-
-```
-GET {MESSAGE_ROUTER_CONFIG_URL}
-
-Response:
-{
-  "queues": [...],
-  "connections": 1,
-  "processingPools": [...]
-}
-```
-
-Configuration is synced every 5 minutes (configurable).
+Iterates `inFlightTracker.clear()` and NACKs every remaining tracked message. This returns any still-tracked messages to their queues via visibility timeout. Errors during NACK are counted and reported as a `SHUTDOWN_CLEANUP_ERRORS` **WARN** warning.
 
 ---
 
-## API Reference
+## Scheduled Tasks Summary
 
-### Health Endpoints
+| Task | Schedule | Notes |
+|------|----------|-------|
+| `scheduledSync()` | Every 5 min (configurable), initial delay 2s | Config sync, standby check |
+| `monitorAndRestartUnhealthyConsumers()` | Every 60s | Restarts stalled consumers |
+| `cleanupDrainingResources()` | Every 10s | Removes fully-drained pools and stopped consumers |
+| `checkForMapLeaks()` | Every 30s | Detects in-flight tracker growth |
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /health` | Infrastructure health check (for load balancers) |
-| `GET /health/live` | Kubernetes liveness probe |
-| `GET /health/ready` | Kubernetes readiness probe |
+All scheduled tasks check `!initialized || shutdownInProgress` and return immediately if either is true (except `scheduledSync` which checks `shutdownInProgress` only, since it drives initialization).
 
-### Monitoring Endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /monitoring/health` | Detailed system health status |
-| `GET /monitoring/queue-stats` | Statistics for all queues |
-| `GET /monitoring/pool-stats` | Statistics for all pools |
-| `GET /monitoring/warnings` | All system warnings |
-| `GET /monitoring/warnings/unacknowledged` | Unacknowledged warnings |
-| `POST /monitoring/warnings/{id}/acknowledge` | Acknowledge a warning |
-| `DELETE /monitoring/warnings` | Clear all warnings |
-| `GET /monitoring/circuit-breakers` | Circuit breaker states |
-| `POST /monitoring/circuit-breakers/{name}/reset` | Reset circuit breaker |
-| `GET /monitoring/in-flight-messages` | Messages currently processing |
-| `GET /monitoring/standby-status` | Hot standby status |
-| `GET /monitoring/dashboard` | HTML dashboard UI |
-
-### Message Seeding (Development)
-
-| Endpoint | Description |
-|----------|-------------|
-| `POST /api/seed/message` | Seed a test message |
+All scheduled tasks run on virtual threads (`@RunOnVirtualThread`).
 
 ---
 
-## Data Structures
+## Warning Types
 
-### Queue Statistics
+Warnings are stored in `WarningService` (in-memory) and auto-expire after **8 hours**.
 
-```json
-{
-  "name": "flow-catalyst-high-priority.fifo",
-  "totalMessages": 150000,
-  "totalConsumed": 149950,
-  "totalFailed": 50,
-  "successRate": 0.9996666666666667,
-  "currentSize": 500,
-  "throughput": 25.5,
-  "pendingMessages": 500,
-  "messagesNotVisible": 10
-}
-```
-
-### Pool Statistics
-
-```json
-{
-  "poolCode": "POOL-HIGH",
-  "totalProcessed": 128647,
-  "totalSucceeded": 128637,
-  "totalFailed": 10,
-  "totalRateLimited": 0,
-  "successRate": 0.9999222679114165,
-  "activeWorkers": 10,
-  "availablePermits": 0,
-  "maxConcurrency": 10,
-  "queueSize": 500,
-  "maxQueueCapacity": 500,
-  "averageProcessingTimeMs": 103.8,
-  "messageGroupCount": 45
-}
-```
-
-### Warning
-
-```json
-{
-  "id": "abc123",
-  "type": "CONFIGURATION",
-  "severity": "ERROR",
-  "message": "Endpoint not found for message 01K...: HTTP 404",
-  "source": "HttpMediator",
-  "timestamp": "2024-01-18T10:30:45Z",
-  "acknowledged": false
-}
-```
-
-### Circuit Breaker Stats
-
-```json
-{
-  "name": "http-mediator",
-  "state": "CLOSED",
-  "successfulCalls": 10000,
-  "failedCalls": 5,
-  "rejectedCalls": 0,
-  "failureRate": 0.0005,
-  "bufferedCalls": 100,
-  "bufferSize": 100
-}
-```
+| Warning Code | Severity | Source | Meaning |
+|---|---|---|---|
+| `CONFIG_SYNC_FAILED` | CRITICAL | QueueManager | Initial sync failed after all retries — app will exit |
+| `CONFIG_SYNC_FAILED` | WARN | QueueManager | Periodic sync failed — continuing with old config |
+| `ROUTING` | WARN | QueueManager | No pool found for code, routed to DEFAULT-POOL |
+| `QUEUE_FULL` | WARN | QueueManager | Pool buffer full — batch NACKed |
+| `POOL_LIMIT` | CRITICAL | QueueManager | max-pools limit reached — pool not created |
+| `POOL_LIMIT` | WARNING | QueueManager | Pool count approaching limit |
+| `PIPELINE_MAP_LEAK` | WARN | QueueManager | In-flight tracker exceeds total pool capacity |
+| `CONSUMER_RESTART` | WARN | QueueManager | Consumer restarted due to health check failure |
+| `CONSUMER_RESTART_FAILED` | CRITICAL | QueueManager | Consumer restart threw an exception |
+| `SHUTDOWN_CLEANUP_ERRORS` | WARN | QueueManager | Errors NACKing messages during shutdown |
+| `GROUP_THREAD_RESTART` | WARN | ProcessPool | Virtual thread for group died and was restarted |
+| `GROUP_THREAD_EXIT_WITH_MESSAGES` | WARN | ProcessPool | Thread exited with messages still in its queue |
+| `SEMAPHORE_RELEASE_FAILED` | CRITICAL | ProcessPool | Failed to release semaphore (should never happen) |
+| `MEDIATOR_NULL_RESULT` | CRITICAL | ProcessPool | Mediator returned null outcome |
+| `PROCESSING` | WARN | ProcessPool | Unexpected exception during message processing |
+| `CONFIGURATION` | CRITICAL | HttpMediator | HTTP 501 from endpoint |
+| `CONFIGURATION` | ERROR | HttpMediator | HTTP 400, 404, or 401–499 from endpoint |
 
 ---
 
-## Metrics
+## Configuration Reference
 
-### Micrometer Gauges
+### Core Properties
 
-| Metric | Description |
-|--------|-------------|
-| `flowcatalyst.queuemanager.pipeline.size` | Messages currently in pipeline |
-| `flowcatalyst.queuemanager.callbacks.size` | Callbacks waiting for completion |
-| `flowcatalyst.queuemanager.pools.active` | Number of active pools |
-| `flowcatalyst.queuemanager.defaultpool.usage` | Counter for default pool fallback |
+| Property | Default | Description |
+|----------|---------|-------------|
+| `message-router.enabled` | `true` | Master enable switch |
+| `message-router.sync-interval` | `5m` | How often to sync config from platform |
+| `message-router.max-pools` | `10000` | Hard cap on process pool count |
+| `message-router.pool-warning-threshold` | `5000` | Pool count that triggers a warning |
 
-### Pool Metrics
+### SQS
 
-| Metric | Description |
-|--------|-------------|
-| `pool.{code}.active_workers` | Currently processing messages |
-| `pool.{code}.available_permits` | Available concurrency slots |
-| `pool.{code}.queue_size` | Messages waiting in buffer |
-| `pool.{code}.message_groups` | Active message groups |
-| `pool.{code}.processed` | Total messages processed |
-| `pool.{code}.succeeded` | Successful messages |
-| `pool.{code}.failed` | Failed messages |
-| `pool.{code}.rate_limited` | Rate-limited messages |
-| `pool.{code}.processing_time_ms` | Average processing time |
+| Property | Default | Description |
+|----------|---------|-------------|
+| `message-router.sqs.max-messages-per-poll` | 10 | Batch size per poll |
+| `message-router.sqs.wait-time-seconds` | 20 | Long-poll duration |
+| `SQS_ENDPOINT_OVERRIDE` | (none) | Override for LocalStack/Elasticmq |
 
-### Queue Metrics
+### HTTP Mediator
 
-| Metric | Description |
-|--------|-------------|
-| `queue.{name}.pending` | Messages in queue |
-| `queue.{name}.not_visible` | Messages being processed |
-| `queue.{name}.received` | Total received |
-| `queue.{name}.processed` | Total processed |
+| Property | Default | Description |
+|----------|---------|-------------|
+| `mediator.http.timeout.ms` | `900000` | Per-request timeout (15 min) |
+| `mediator.http.version` | `HTTP_2` | `HTTP_2` or `HTTP_1_1` |
 
----
+### Internal Constants (source code)
 
-## Security
-
-### Authentication Modes
-
-1. **NONE**: No authentication (default)
-2. **BASIC**: Username/password via HTTP Basic Auth
-3. **OIDC**: OpenID Connect (Keycloak, Auth0, etc.)
-
-### Protected Endpoints
-
-When authentication is enabled:
-- `/monitoring/*` - Requires authentication
-- `/api/*` - Requires authentication
-
-### Always Public
-
-- `/health/*` - Kubernetes probes
-- `/q/health/*` - Quarkus health endpoints
-
-### Basic Auth Usage
-
-```bash
-curl -H "Authorization: Basic $(echo -n 'admin:password' | base64)" \
-  http://localhost:8080/monitoring/health
-```
-
-### OIDC Usage
-
-```bash
-TOKEN=$(curl -X POST https://keycloak/token -d "grant_type=client_credentials" | jq -r .access_token)
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/monitoring/health
-```
-
----
-
-## Deployment Considerations
-
-### Resource Sizing
-
-| Pools | Workers/Pool | Recommended Memory | CPU |
-|-------|--------------|-------------------|-----|
-| 50 | 10 | 1GB | 2 cores |
-| 200 | 20 | 2GB | 4 cores |
-| 500 | 50 | 4GB | 8 cores |
-| 1000+ | 100 | 8GB | 16 cores |
-
-### Scaling Strategy
-
-1. **Vertical**: Increase `max-pools` and instance size
-2. **Horizontal**: Use hot standby for HA, not parallel processing
-
-### Queue Recommendations
-
-**SQS FIFO Queues:**
-- Enable deduplication (5-minute window)
-- Set visibility timeout to 120s (longer than typical processing)
-- Configure DLQ with maxReceiveCount=5
-
-**ActiveMQ:**
-- Enable persistence
-- Configure DLQ policies
-- Use `INDIVIDUAL_ACKNOWLEDGE` mode
-
----
-
-## Related Documentation
-
-- [Authentication Guide](AUTHENTICATION.md)
-- [Debugging Guide](DEBUGGING_GUIDE.md)
-- [Native Build Guide](NATIVE_BUILD_GUIDE.md)
-- [Hot Standby Mode](STANDBY.md)
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `QUEUE_CAPACITY_MULTIPLIER` | `20` | `queueCapacity = max(concurrency × 20, 50)` |
+| `MIN_QUEUE_CAPACITY` | `50` | Floor on pool buffer size |
+| `DEFAULT_POOL_CODE` | `"DEFAULT-POOL"` | Fallback pool name |
+| `DEFAULT_POOL_CONCURRENCY` | `20` | Default pool concurrency |
+| `IDLE_TIMEOUT_MINUTES` | `5` | Group thread idle cleanup time |
+| `DEFAULT_GROUP` | `"__DEFAULT__"` | Group ID for messages without messageGroupId |
+| Connect timeout | `30s` | Hardcoded on `HttpClient` |
+| Rate limit wait poll interval | `100ms` | Sleep between rate limit checks |
+| Gauge update interval | `500ms` | How often pool metrics gauges refresh |
+| NACK default visibility | `30s` | Default retry delay |
+| Fast-fail visibility | `10s` | Batch+group failure retry delay |
+| Max delay (SQS limit) | `43200s` | Maximum custom visibility timeout |
+| Shutdown consumer wait | `25s` | Max wait for consumers to stop |
+| Shutdown pool drain wait | `30s` | Max wait for active workers to finish |
+| Consumer health timeout | `60s` | Consumer is unhealthy if no poll in this window |
+| Warning auto-expire | `8h` | Warnings are removed after this duration |

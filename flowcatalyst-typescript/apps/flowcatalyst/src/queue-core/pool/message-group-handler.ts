@@ -18,7 +18,6 @@ interface QueuedMessage {
  * regular messages within the same group, matching Java ProcessPoolImpl.
  */
 export class MessageGroupHandler {
-	private readonly messageGroupId: string;
 	private readonly processor: (
 		message: QueueMessage,
 		callback: MessageCallback,
@@ -43,7 +42,6 @@ export class MessageGroupHandler {
 		onCleanup: () => void,
 		logger: Logger,
 	) {
-		this.messageGroupId = messageGroupId;
 		this.processor = processor;
 		this.onCleanup = onCleanup;
 		this.logger = logger.child({ messageGroupId });

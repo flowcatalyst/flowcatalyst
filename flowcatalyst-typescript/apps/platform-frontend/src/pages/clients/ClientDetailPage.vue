@@ -27,7 +27,7 @@ const availableApps = computed(() => applications.value[0]);
 const enabledApps = computed(() => applications.value[1]);
 
 onMounted(async () => {
-	const id = route.params.id as string;
+	const id = route.params['id'] as string;
 	if (id) {
 		await Promise.all([loadClient(id), loadApplications(id)]);
 	}

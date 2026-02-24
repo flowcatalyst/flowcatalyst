@@ -6,6 +6,7 @@ import type {
 	MessageBatch,
 	PoolConfig,
 	PoolStats,
+	QueueMessage,
 	QueueStats,
 } from "@flowcatalyst/shared-types";
 import {
@@ -63,7 +64,6 @@ export class QueueManagerService {
 	private readonly logger: Logger;
 
 	private running = false;
-	private readonly startTime: number;
 
 	// HTTP Mediation
 	private readonly httpMediator: HttpMediator;
@@ -96,6 +96,9 @@ export class QueueManagerService {
 	// Health check interval for stalled consumer detection
 	private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
 
+	// Leak detection interval (30s, matches Java)
+	private leakDetectionInterval: ReturnType<typeof setInterval> | null = null;
+
 	// Queue and pool statistics
 	private readonly queueStats = new Map<string, QueueStats>();
 
@@ -116,7 +119,6 @@ export class QueueManagerService {
 		this.traffic = traffic;
 		this.queueValidation = queueValidation;
 		this.logger = logger.child({ component: "QueueManager" });
-		this.startTime = Date.now();
 
 		// Create HTTP mediator with configuration from env
 		const mediatorConfig: HttpMediatorConfig = {
@@ -167,7 +169,9 @@ export class QueueManagerService {
 			await this.initializeEmbeddedMode();
 			this.startCleanupTask();
 			this.startHealthMonitor();
+			this.startLeakDetection();
 			this.running = true;
+			this.pauseConsumersIfStandby();
 			this.logger.info("Queue manager started in embedded mode");
 			return;
 		}
@@ -177,7 +181,9 @@ export class QueueManagerService {
 			await this.initializeActiveMqMode();
 			this.startCleanupTask();
 			this.startHealthMonitor();
+			this.startLeakDetection();
 			this.running = true;
+			this.pauseConsumersIfStandby();
 			this.logger.info("Queue manager started in ActiveMQ mode");
 			return;
 		}
@@ -187,16 +193,18 @@ export class QueueManagerService {
 			await this.initializeNatsMode();
 			this.startCleanupTask();
 			this.startHealthMonitor();
+			this.startLeakDetection();
 			this.running = true;
+			this.pauseConsumersIfStandby();
 			this.logger.info("Queue manager started in NATS mode");
 			return;
 		}
 
 		// SQS mode - fetch config from platform
-		if (env.PLATFORM_URL) {
+		if (env.ROUTER_CONFIG_URL) {
 			const configClient = new PlatformConfigClient(
 				{
-					baseUrl: env.PLATFORM_URL,
+					configUrl: env.ROUTER_CONFIG_URL,
 					apiKey: env.PLATFORM_API_KEY,
 				},
 				this.logger,
@@ -212,25 +220,31 @@ export class QueueManagerService {
 			const success = await this.configSyncService.start();
 			if (!success) {
 				this.warnings.add(
-					"CONFIGURATION",
+					"CONFIG_SYNC_FAILED",
 					"CRITICAL",
-					"Failed to fetch initial configuration from platform",
+					"Failed to fetch initial configuration from platform — exiting",
 					"QueueManager",
 				);
-				// Continue with embedded mode
-				await this.initializeEmbeddedMode();
+				this.logger.fatal(
+					"Initial configuration sync failed after all retries — exiting",
+				);
+				throw new Error(
+					"Initial configuration sync failed — cannot start without platform config",
+				);
 			}
 		} else {
 			// No platform URL - use embedded mode
-			this.logger.warn("No PLATFORM_URL configured, using embedded mode");
+			this.logger.warn("No ROUTER_CONFIG_URL configured, using embedded mode");
 			await this.initializeEmbeddedMode();
 		}
 
 		// Start cleanup task (matches Java scheduled tasks)
 		this.startCleanupTask();
 		this.startHealthMonitor();
+		this.startLeakDetection();
 
 		this.running = true;
+		this.pauseConsumersIfStandby();
 		this.logger.info("Queue manager started");
 	}
 
@@ -315,6 +329,45 @@ export class QueueManagerService {
 	}
 
 	/**
+	 * Start leak detection (every 30s, matches Java QueueManager.checkForMapLeaks)
+	 */
+	private startLeakDetection(): void {
+		this.leakDetectionInterval = setInterval(() => {
+			this.checkForMapLeaks();
+		}, 30_000);
+		this.logger.debug("Leak detection started (30s interval)");
+	}
+
+	/**
+	 * Check for in-flight tracker growth beyond total pool capacity.
+	 * Matches Java QueueManager.checkForMapLeaks()
+	 */
+	private checkForMapLeaks(): void {
+		if (!this.running) return;
+
+		const pipelineSize = this.inFlightMessages.size;
+
+		let totalCapacity = 0;
+		for (const pool of this.processPools.values()) {
+			totalCapacity += pool.getStats().maxQueueCapacity;
+		}
+		totalCapacity = Math.max(totalCapacity, 50);
+
+		if (pipelineSize > totalCapacity) {
+			this.warnings.add(
+				"PIPELINE_MAP_LEAK",
+				"WARNING",
+				`In-flight tracker size (${pipelineSize}) exceeds total pool capacity (${totalCapacity})`,
+				"QueueManager",
+			);
+			this.logger.warn(
+				{ pipelineSize, totalCapacity },
+				"LEAK DETECTION: in-flight tracker size exceeds total capacity",
+			);
+		}
+	}
+
+	/**
 	 * Check all consumers for stalled state and restart any that are unhealthy.
 	 * Matches Java QueueManager.monitorAndRestartUnhealthyConsumers()
 	 */
@@ -384,22 +437,29 @@ export class QueueManagerService {
 	}
 
 	/**
-	 * Stop the queue manager
+	 * Stop the queue manager.
+	 * Matches Java QueueManager.onShutdown() sequence:
+	 *   1. Pause scheduled tasks
+	 *   2. Stop consumers (25s timeout)
+	 *   3. Drain pools (30s timeout)
+	 *   4. NACK remaining in-flight messages
 	 */
 	async stop(): Promise<void> {
 		this.logger.info("Stopping queue manager");
 		this.running = false;
 
-		// Stop cleanup interval
+		// Step 1: Stop all scheduled tasks
 		if (this.cleanupInterval) {
 			clearInterval(this.cleanupInterval);
 			this.cleanupInterval = null;
 		}
-
-		// Stop health check interval
 		if (this.healthCheckInterval) {
 			clearInterval(this.healthCheckInterval);
 			this.healthCheckInterval = null;
+		}
+		if (this.leakDetectionInterval) {
+			clearInterval(this.leakDetectionInterval);
+			this.leakDetectionInterval = null;
 		}
 
 		// Stop traffic manager (handles ALB deregistration)
@@ -421,18 +481,39 @@ export class QueueManagerService {
 			this.embeddedQueue = null;
 		}
 
-		// Stop all consumers
-		const stopConsumerPromises = Array.from(this.consumers.values()).map((c) =>
-			c.stop(),
-		);
-		await Promise.allSettled(stopConsumerPromises);
+		// Step 2: Stop all consumers with 25s timeout (matches Java)
+		for (const [queueId, consumer] of this.consumers) {
+			consumer.stop().catch((err) => {
+				this.logger.error({ err, queueId }, "Error stopping consumer");
+			});
+			this.drainingConsumers.set(queueId, consumer);
+		}
 		this.consumers.clear();
 
-		// Drain and shutdown pools
+		const consumerStart = Date.now();
+		while (Date.now() - consumerStart < 25_000) {
+			let allStopped = true;
+			for (const consumer of this.drainingConsumers.values()) {
+				if (!consumer.isFullyStopped()) {
+					allStopped = false;
+					break;
+				}
+			}
+			if (allStopped) break;
+			await sleep(500);
+		}
+		if (this.drainingConsumers.size > 0) {
+			this.logger.warn(
+				{ remaining: this.drainingConsumers.size },
+				"Consumer stop timeout reached — force-clearing draining consumers",
+			);
+		}
+		this.drainingConsumers.clear();
+
+		// Step 3: Drain all pools with 30s timeout (matches Java)
 		for (const pool of this.processPools.values()) {
 			pool.drain();
 		}
-		// Wait for pools to drain (up to 30 seconds)
 		const drainStart = Date.now();
 		while (Date.now() - drainStart < 30_000) {
 			let allDrained = true;
@@ -443,28 +524,40 @@ export class QueueManagerService {
 				}
 			}
 			if (allDrained) break;
-			await sleep(100);
+			await sleep(500);
 		}
-		// Shutdown pools
-		const shutdownPoolPromises = Array.from(this.processPools.values()).map(
-			(p) => p.shutdown(),
+		// Force shutdown remaining pools (parallel — independent)
+		await Promise.all(
+			[...this.processPools.values()].map((pool) => pool.shutdown()),
 		);
-		await Promise.allSettled(shutdownPoolPromises);
 		this.processPools.clear();
 
-		// NACK all in-flight messages
-		for (const [key, info] of this.inFlightMessages) {
-			const callback = this.messageCallbacks.get(key);
-			if (callback) {
-				try {
+		// Step 4: NACK all remaining in-flight messages (parallel — independent API calls)
+		let nackErrors = 0;
+		const nackResults = await Promise.allSettled(
+			[...this.inFlightMessages.entries()].map(async ([key, _info]) => {
+				const callback = this.messageCallbacks.get(key);
+				if (callback) {
 					await callback.nack();
-				} catch (error) {
-					this.logger.error(
-						{ err: error, messageId: info.messageId },
-						"Error NACKing message during shutdown",
-					);
 				}
+			}),
+		);
+		for (const result of nackResults) {
+			if (result.status === "rejected") {
+				nackErrors++;
+				this.logger.error(
+					{ err: result.reason },
+					"Error NACKing message during shutdown",
+				);
 			}
+		}
+		if (nackErrors > 0) {
+			this.warnings.add(
+				"SHUTDOWN_CLEANUP_ERRORS",
+				"WARNING",
+				`${nackErrors} error(s) NACKing messages during shutdown`,
+				"QueueManager",
+			);
 		}
 
 		// Clear tracking maps
@@ -501,6 +594,17 @@ export class QueueManagerService {
 		} else if (newMode === "PRIMARY" && previousMode === "STANDBY") {
 			// Resume all consumers
 			this.resumeAllConsumers();
+		}
+	}
+
+	/**
+	 * If traffic manager is already in STANDBY mode (set by StandbyService before
+	 * consumers were created), immediately pause all consumers.
+	 */
+	private pauseConsumersIfStandby(): void {
+		if (this.traffic.isStandby()) {
+			this.logger.info("StandbyService already set STANDBY mode - pausing consumers");
+			this.pauseAllConsumers();
 		}
 	}
 
@@ -634,7 +738,7 @@ export class QueueManagerService {
 	 * Sync process pools with configuration (matches Java QueueManager.syncConfiguration)
 	 */
 	private async syncProcessPools(poolConfigs: PoolConfig[]): Promise<void> {
-		const _newPoolCodes = new Set(poolConfigs.map((p) => p.code));
+		// Pool codes derived from newPoolConfigs keys below
 		const newPoolConfigs = new Map(poolConfigs.map((p) => [p.code, p]));
 
 		// Step 1: Handle pool changes - update in-place or move to draining
@@ -816,28 +920,54 @@ export class QueueManagerService {
 	/**
 	 * Unified batch handler for all consumer types (SQS, NATS, ActiveMQ, Embedded).
 	 * All consumers now produce standard MessageBatch + MessageCallbackFns.
+	 *
+	 * Three-phase routing algorithm matching Java QueueManager.routeMessageBatch():
+	 *   Phase 1: Deduplication (physical redelivery + logical requeue)
+	 *   Phase 2: Pool capacity pre-check (batch-level rejection)
+	 *   Phase 3: Per-group FIFO routing with nackRemaining
 	 */
 	private async handleBatch(
 		batch: MessageBatch,
 		callbacks: Map<string, MessageCallbackFns>,
 	): Promise<void> {
 		const queueName = this.extractQueueName(batch.queueId);
+		const queueStat = this.queueStats.get(queueName);
+
+		// Take a snapshot of processPools for consistent routing through the batch
+		const poolSnapshot = new Map(this.processPools);
+
+		// ── Phase 1: Deduplication ──────────────────────────────────────
+		interface TrackedMessage {
+			message: QueueMessage;
+			pipelineKey: string;
+			resolvedPoolCode: string;
+			resolvedPool: ProcessPool;
+		}
+
+		const messagesToRoute: TrackedMessage[] = [];
 
 		for (const message of batch.messages) {
 			const pipelineKey = message.brokerMessageId;
 			const callback = callbacks.get(message.brokerMessageId);
 
-			// Signal in-progress if supported (e.g. NATS ack-wait extension)
-			if (callback?.inProgress) {
+			// Signal in-progress (e.g. NATS ack-wait extension)
+			if (callback) {
 				callback.inProgress();
 			}
 
 			// Check for physical redelivery (same broker message ID in pipeline)
 			if (this.inFlightMessages.has(pipelineKey)) {
-				this.logger.debug(
-					{ brokerMessageId: message.brokerMessageId },
-					"Physical redelivery detected - NACKing",
-				);
+				const storedCallback = this.messageCallbacks.get(pipelineKey);
+				if (storedCallback && callback) {
+					const newHandle = callback.getReceiptHandle();
+					if (newHandle) {
+						storedCallback.updateReceiptHandle(newHandle);
+						this.logger.info(
+							{ brokerMessageId: message.brokerMessageId },
+							"Physical redelivery detected - swapped receipt handle on in-flight message",
+						);
+					}
+				}
 				if (callback) {
 					await callback.nack();
 				}
@@ -878,90 +1008,160 @@ export class QueueManagerService {
 			}
 
 			// Update queue stats
-			const queueStat = this.queueStats.get(queueName);
 			if (queueStat) {
 				queueStat.totalMessages++;
 				queueStat.totalMessages5min++;
 				queueStat.totalMessages30min++;
 			}
 
-			// Route to process pool (with DEFAULT-POOL fallback)
-			let pool = this.processPools.get(message.pointer.poolCode);
-			if (!pool) {
+			// Resolve pool (with DEFAULT-POOL fallback)
+			let resolvedPoolCode = message.pointer.poolCode;
+			let resolvedPool = poolSnapshot.get(resolvedPoolCode);
+			if (!resolvedPool) {
 				this.logger.warn(
-					{ poolCode: message.pointer.poolCode, messageId: message.messageId },
+					{ poolCode: resolvedPoolCode, messageId: message.messageId },
 					"No pool found, routing to DEFAULT-POOL",
 				);
 				this.warnings.add(
 					"ROUTING",
 					"WARNING",
-					`No pool found for code [${message.pointer.poolCode}], using default pool`,
+					`No pool found for code [${resolvedPoolCode}], using default pool`,
 					"QueueManager",
 				);
-				pool = this.getOrCreateDefaultPool();
+				resolvedPoolCode = "DEFAULT-POOL";
+				resolvedPool = this.getOrCreateDefaultPool();
 			}
 
-			// Create callback wrapper that cleans up tracking on completion
-			const poolCallback: MessageCallback = {
-				ack: async () => {
-					if (callback) {
-						await callback.ack();
-					}
-					this.cleanupMessage(pipelineKey, message.messageId);
-					if (queueStat) {
-						queueStat.totalConsumed++;
-						queueStat.totalConsumed5min++;
-						queueStat.totalConsumed30min++;
-						queueStat.successRate =
-							queueStat.totalMessages > 0
-								? queueStat.totalConsumed / queueStat.totalMessages
-								: 1.0;
-						queueStat.successRate5min =
-							queueStat.totalMessages5min > 0
-								? queueStat.totalConsumed5min / queueStat.totalMessages5min
-								: 1.0;
-						queueStat.successRate30min =
-							queueStat.totalMessages30min > 0
-								? queueStat.totalConsumed30min / queueStat.totalMessages30min
-								: 1.0;
-					}
-				},
-				nack: async (visibilityTimeoutSeconds?: number) => {
-					if (callback) {
-						await callback.nack(visibilityTimeoutSeconds);
-					}
-					this.cleanupMessage(pipelineKey, message.messageId);
-					if (queueStat) {
-						queueStat.totalFailed++;
-						queueStat.totalFailed5min++;
-						queueStat.totalFailed30min++;
-						queueStat.successRate =
-							queueStat.totalMessages > 0
-								? queueStat.totalConsumed / queueStat.totalMessages
-								: 1.0;
-						queueStat.successRate5min =
-							queueStat.totalMessages5min > 0
-								? queueStat.totalConsumed5min / queueStat.totalMessages5min
-								: 1.0;
-						queueStat.successRate30min =
-							queueStat.totalMessages30min > 0
-								? queueStat.totalConsumed30min / queueStat.totalMessages30min
-								: 1.0;
-					}
-				},
-			};
+			messagesToRoute.push({
+				message,
+				pipelineKey,
+				resolvedPoolCode,
+				resolvedPool,
+			});
+		}
 
-			// Submit to pool
-			const accepted = await pool.submit(message, poolCallback);
-			if (!accepted) {
+		// ── Phase 2: Batch-level pool capacity pre-check ────────────────
+		// Group messages by pool code
+		const messagesByPool = new Map<string, TrackedMessage[]>();
+		for (const tracked of messagesToRoute) {
+			const existing = messagesByPool.get(tracked.resolvedPoolCode) || [];
+			existing.push(tracked);
+			messagesByPool.set(tracked.resolvedPoolCode, existing);
+		}
+
+		// Check each pool can accept its entire sub-batch
+		const toNackPoolFull: TrackedMessage[] = [];
+		const acceptedByPool = new Map<string, TrackedMessage[]>();
+
+		for (const [poolCode, poolMessages] of messagesByPool) {
+			const pool = poolMessages[0]!.resolvedPool;
+			const stats = pool.getStats();
+			const availableCapacity = stats.maxQueueCapacity - stats.queueSize;
+
+			if (availableCapacity < poolMessages.length) {
 				this.logger.warn(
-					{ poolCode: message.pointer.poolCode, messageId: message.messageId },
-					"Pool rejected message (at capacity) - NACKing",
+					{
+						poolCode,
+						batchSize: poolMessages.length,
+						availableCapacity,
+					},
+					"Pool cannot accept batch — NACKing all messages for this pool",
 				);
-				if (callback) {
-					await callback.nack(10); // Short visibility for retry
+				this.warnings.add(
+					"QUEUE_FULL",
+					"WARNING",
+					`Pool [${poolCode}] buffer full — batch of ${poolMessages.length} NACKed (available: ${availableCapacity})`,
+					"QueueManager",
+				);
+				toNackPoolFull.push(...poolMessages);
+			} else {
+				acceptedByPool.set(poolCode, poolMessages);
+			}
+		}
+
+		// NACK all capacity-rejected messages
+		for (const tracked of toNackPoolFull) {
+			const callback = this.messageCallbacks.get(tracked.pipelineKey);
+			if (callback) {
+				await callback.nack(10);
+			}
+			this.cleanupMessage(tracked.pipelineKey, tracked.message.messageId);
+		}
+
+		// ── Phase 3: Per-group FIFO routing with nackRemaining ──────────
+		for (const [_poolCode, poolMessages] of acceptedByPool) {
+			const pool = poolMessages[0]!.resolvedPool;
+
+			// Group by messageGroupId (preserve insertion order)
+			const messagesByGroup = new Map<string, TrackedMessage[]>();
+			for (const tracked of poolMessages) {
+				const groupId =
+					tracked.message.pointer.messageGroupId || "__DEFAULT__";
+				const existing = messagesByGroup.get(groupId) || [];
+				existing.push(tracked);
+				messagesByGroup.set(groupId, existing);
+			}
+
+			for (const [_groupId, groupMessages] of messagesByGroup) {
+				let nackRemaining = false;
+
+				for (const tracked of groupMessages) {
+					const { message, pipelineKey } = tracked;
+					const callback = this.messageCallbacks.get(pipelineKey);
+
+					if (nackRemaining) {
+						if (callback) {
+							await callback.nack(10);
+						}
+						this.cleanupMessage(pipelineKey, message.messageId);
+						continue;
+					}
+
+					// Create callback wrapper that cleans up tracking on completion
+					const poolCallback: MessageCallback = {
+						ack: async () => {
+							if (callback) {
+								await callback.ack();
+							}
+							this.cleanupMessage(pipelineKey, message.messageId);
+							if (queueStat) {
+								queueStat.totalConsumed++;
+								queueStat.totalConsumed5min++;
+								queueStat.totalConsumed30min++;
+								this.recalculateSuccessRates(queueStat);
+							}
+						},
+						nack: async (visibilityTimeoutSeconds?: number) => {
+							if (callback) {
+								await callback.nack(visibilityTimeoutSeconds);
+							}
+							this.cleanupMessage(pipelineKey, message.messageId);
+							if (queueStat) {
+								queueStat.totalFailed++;
+								queueStat.totalFailed5min++;
+								queueStat.totalFailed30min++;
+								this.recalculateSuccessRates(queueStat);
+							}
+						},
+					};
+
+					// Submit to pool
+					const accepted = await pool.submit(message, poolCallback);
+					if (!accepted) {
+						this.logger.warn(
+							{
+								poolCode: tracked.resolvedPoolCode,
+								messageId: message.messageId,
+							},
+							"Pool rejected message (at capacity) - NACKing remaining in group",
+						);
+						if (callback) {
+							await callback.nack(10);
+						}
+						this.cleanupMessage(pipelineKey, message.messageId);
+						nackRemaining = true; // FIFO: nack all subsequent in this group
+					}
 				}
-				this.cleanupMessage(pipelineKey, message.messageId);
 			}
 		}
 	}
@@ -994,6 +1194,23 @@ export class QueueManagerService {
 		this.inFlightMessages.delete(pipelineKey);
 		this.messageCallbacks.delete(pipelineKey);
 		this.appMessageIdToPipelineKey.delete(messageId);
+	}
+
+	/**
+	 * Recalculate success rates based on completed messages only.
+	 * Uses consumed/(consumed+failed) so in-flight messages don't drag the rate down.
+	 */
+	private recalculateSuccessRates(stat: QueueStats): void {
+		const completed = stat.totalConsumed + stat.totalFailed;
+		stat.successRate = completed > 0 ? stat.totalConsumed / completed : 1.0;
+
+		const completed5min = stat.totalConsumed5min + stat.totalFailed5min;
+		stat.successRate5min =
+			completed5min > 0 ? stat.totalConsumed5min / completed5min : 1.0;
+
+		const completed30min = stat.totalConsumed30min + stat.totalFailed30min;
+		stat.successRate30min =
+			completed30min > 0 ? stat.totalConsumed30min / completed30min : 1.0;
 	}
 
 	/**

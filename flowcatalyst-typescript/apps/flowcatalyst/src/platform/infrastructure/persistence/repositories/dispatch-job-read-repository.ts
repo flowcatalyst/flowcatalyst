@@ -85,6 +85,16 @@ export interface DispatchJobFilterOptions {
 	readonly statuses: FilterOption[];
 }
 
+function toFilterOptions(results: { value: string | null }[]): FilterOption[] {
+	return results
+		.filter(
+			(r): r is { value: string } =>
+				r.value !== null && r.value.trim() !== "",
+		)
+		.map((r) => ({ value: r.value, label: r.value }))
+		.sort((a, b) => a.label.localeCompare(b.label));
+}
+
 /**
  * Dispatch job read repository interface.
  */
@@ -289,21 +299,12 @@ export function createDispatchJobReadRepository(
 								.from(dispatchJobsRead),
 				]);
 
-			const toOptions = (results: { value: string | null }[]): FilterOption[] =>
-				results
-					.filter(
-						(r): r is { value: string } =>
-							r.value !== null && r.value.trim() !== "",
-					)
-					.map((r) => ({ value: r.value, label: r.value }))
-					.sort((a, b) => a.label.localeCompare(b.label));
-
 			return {
-				applications: toOptions(appResults),
-				subdomains: toOptions(subResults),
-				aggregates: toOptions(aggResults),
-				codes: toOptions(codeResults),
-				statuses: toOptions(statusResults),
+				applications: toFilterOptions(appResults),
+				subdomains: toFilterOptions(subResults),
+				aggregates: toFilterOptions(aggResults),
+				codes: toFilterOptions(codeResults),
+				statuses: toFilterOptions(statusResults),
 			};
 		},
 

@@ -27,7 +27,11 @@ export type CreateServiceAccountResponse =
  * Applications resource for managing platform applications.
  */
 export class ApplicationsResource {
-	constructor(private readonly client: FlowCatalystClient) {}
+	private readonly client: FlowCatalystClient;
+
+	constructor(client: FlowCatalystClient) {
+		this.client = client;
+	}
 
 	/**
 	 * List all applications.

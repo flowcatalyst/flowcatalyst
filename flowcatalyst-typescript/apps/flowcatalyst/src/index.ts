@@ -219,19 +219,7 @@ const PLATFORM_PORT = Number(
 );
 const ROUTER_PORT = Number(process.env["ROUTER_PORT"] ?? "8080");
 const HOST = process.env["HOST"] ?? "0.0.0.0";
-const DATABASE_URL = (() => {
-	const url = process.env["DATABASE_URL"];
-	if (!url) {
-		console.error("DATABASE_URL is required");
-		process.exit(1);
-	}
-	return url;
-})();
-
-// Frontend dir override
-const FRONTEND_DIR = process.env["FRONTEND_DIR"];
-
-// Feature flags
+// Feature flags (parsed early so DATABASE_URL check can depend on them)
 const PLATFORM_ENABLED = process.env["PLATFORM_ENABLED"] !== "false";
 const MESSAGE_ROUTER_ENABLED = process.env["MESSAGE_ROUTER_ENABLED"] === "true";
 const STREAM_PROCESSOR_ENABLED =
@@ -243,6 +231,23 @@ const AUTO_MIGRATE =
 		? process.env["AUTO_MIGRATE"] === "true"
 		: isDev;
 
+// DATABASE_URL is only required when a service that uses the database is enabled
+const needsDatabase =
+	PLATFORM_ENABLED || STREAM_PROCESSOR_ENABLED || OUTBOX_PROCESSOR_ENABLED;
+const DATABASE_URL = (() => {
+	const url = process.env["DATABASE_URL"];
+	if (!url && needsDatabase) {
+		console.error(
+			"DATABASE_URL is required when Platform, Stream Processor, or Outbox Processor is enabled",
+		);
+		process.exit(1);
+	}
+	return url ?? "";
+})();
+
+// Frontend dir override
+const FRONTEND_DIR = process.env["FRONTEND_DIR"];
+
 // Set env defaults for message router when enabled
 if (MESSAGE_ROUTER_ENABLED) {
 	process.env["QUEUE_TYPE"] = process.env["QUEUE_TYPE"] ?? "EMBEDDED";
@@ -250,10 +255,13 @@ if (MESSAGE_ROUTER_ENABLED) {
 		process.env["EMBEDDED_DB_PATH"] ?? ":memory:";
 	process.env["OIDC_ISSUER_URL"] =
 		process.env["OIDC_ISSUER_URL"] ?? `http://localhost:${PLATFORM_PORT}`;
-	process.env["PLATFORM_URL"] =
-		process.env["PLATFORM_URL"] ?? `http://localhost:${PLATFORM_PORT}`;
+	process.env["ROUTER_CONFIG_URL"] =
+		process.env["ROUTER_CONFIG_URL"] ??
+		`http://localhost:${PLATFORM_PORT}/api/router/config`;
 }
-process.env["DATABASE_URL"] = DATABASE_URL;
+if (DATABASE_URL) {
+	process.env["DATABASE_URL"] = DATABASE_URL;
+}
 
 // Initialize logger
 const logger = createLogger({
@@ -270,7 +278,7 @@ const stopFns: StopFn[] = [];
 async function shutdown(signal: string) {
 	logger.info({ signal }, "Shutting down...");
 
-	for (const stop of stopFns.reverse()) {
+	for (const stop of stopFns.toReversed()) {
 		try {
 			await stop();
 		} catch (err) {
@@ -314,8 +322,8 @@ async function main() {
 
 	console.log(`\n${lines.join("\n")}\n`);
 
-	// Run migrations if enabled
-	if (AUTO_MIGRATE) {
+	// Run migrations if enabled (only when a database-backed service is active)
+	if (AUTO_MIGRATE && needsDatabase) {
 		logger.info("Running database migrations...");
 		const { runMigrations } = await import("@flowcatalyst/persistence");
 		const migrationsFolder = await resolveMigrationsFolder();
@@ -374,6 +382,7 @@ async function main() {
 			});
 		stopFns.push(async () => {
 			logger.info("Stopping Message Router...");
+			await routerServices.standby.stop();
 			routerServer.close();
 			routerServices.brokerHealth.stop();
 			routerServices.queueHealthMonitor.stop();

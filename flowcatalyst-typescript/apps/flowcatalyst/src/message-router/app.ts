@@ -23,7 +23,7 @@ export async function createApp(
 	});
 
 	// Initialize services
-	const services = createServices(logger);
+	const services = await createServices(logger);
 
 	// Register plugins
 	await app.register(servicesPlugin, { services });

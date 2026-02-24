@@ -40,8 +40,10 @@ export const useAuthStore = defineStore("auth", () => {
 		const name = displayName.value;
 		if (!name || name === "Unknown") return "?";
 		const parts = name.split(" ");
-		if (parts.length >= 2) {
-			return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+		const first = parts[0];
+		const last = parts[parts.length - 1];
+		if (parts.length >= 2 && first && last) {
+			return ((first[0] ?? "") + (last[0] ?? "")).toUpperCase();
 		}
 		return name.substring(0, 2).toUpperCase();
 	});

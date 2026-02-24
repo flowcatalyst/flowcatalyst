@@ -261,7 +261,7 @@ export class HttpMediator {
 
 			if (this.isConnectionTimeout(error)) {
 				return {
-					outcome: "ERROR_PROCESS",
+					outcome: "ERROR_CONNECTION",
 					error: `Connection timeout after ${this.config.connectTimeoutMs}ms`,
 					durationMs,
 				};
@@ -275,8 +275,9 @@ export class HttpMediator {
 				};
 			}
 
+			// General I/O errors (socket reset, connection dropped, etc.)
 			return {
-				outcome: "ERROR_PROCESS",
+				outcome: "ERROR_CONNECTION",
 				error: errorMessage,
 				durationMs,
 			};

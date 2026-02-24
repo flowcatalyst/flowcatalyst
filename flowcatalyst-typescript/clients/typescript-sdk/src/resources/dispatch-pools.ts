@@ -33,7 +33,11 @@ export interface DispatchPoolFilters {
  * Dispatch Pools resource for managing rate limiting and concurrency.
  */
 export class DispatchPoolsResource {
-	constructor(private readonly client: FlowCatalystClient) {}
+	private readonly client: FlowCatalystClient;
+
+	constructor(client: FlowCatalystClient) {
+		this.client = client;
+	}
 
 	/**
 	 * List all dispatch pools with optional filters.

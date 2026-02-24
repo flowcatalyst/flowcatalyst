@@ -185,8 +185,8 @@ export function mapHttpStatusToError(
 	const errorBody = body as Record<string, unknown> | undefined;
 	const errorMessage =
 		message ??
-		errorBody?.error?.toString() ??
-		errorBody?.message?.toString() ??
+		errorBody?.["error"]?.toString() ??
+		errorBody?.["message"]?.toString() ??
 		`HTTP ${status}`;
 
 	switch (status) {
@@ -197,14 +197,14 @@ export function mapHttpStatusToError(
 		case 404:
 			return notFoundError(errorMessage);
 		case 409:
-			return conflictError(errorMessage, errorBody?.code?.toString());
+			return conflictError(errorMessage, errorBody?.["code"]?.toString());
 		case 422:
 			return validationError(
 				errorMessage,
-				(errorBody?.errors as Record<string, string[]>) ?? {},
+				(errorBody?.["errors"] as Record<string, string[]>) ?? {},
 			);
 		case 429: {
-			const retryAfter = errorBody?.retryAfter as number | undefined;
+			const retryAfter = errorBody?.["retryAfter"] as number | undefined;
 			return rateLimitError(
 				errorMessage,
 				retryAfter ? retryAfter * 1000 : undefined,

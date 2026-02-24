@@ -240,7 +240,7 @@ export async function registerMeRoutes(
 					website: app.website,
 					logoMimeType: app.logoMimeType,
 				}))
-				.sort((a, b) =>
+				.toSorted((a, b) =>
 					a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
 				);
 

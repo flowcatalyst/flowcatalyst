@@ -5,7 +5,7 @@ import type {
 	PoolStats,
 	QueueMessage,
 } from "@flowcatalyst/shared-types";
-import { RateLimiterMemory } from "rate-limiter-flexible";
+import { RateLimiterMemory, RateLimiterQueue } from "rate-limiter-flexible";
 import type { HttpMediator } from "../mediation/http-mediator.js";
 import { DynamicSemaphore } from "./dynamic-semaphore.js";
 import { MessageGroupHandler } from "./message-group-handler.js";
@@ -32,23 +32,32 @@ export class ProcessPool {
 
 	// Concurrency control (in-place adjustable, unlike p-limit)
 	private readonly concurrencyLimiter: DynamicSemaphore;
-	// Rate limiting
-	private rateLimiter: RateLimiterMemory | null;
+	// Rate limiting — RateLimiterQueue wraps a drip-rate limiter to smooth
+	// bursts into evenly-spaced requests (leaky bucket behaviour).
+	private rateLimiterQueue: RateLimiterQueue | null;
 
 	// Statistics tracking
 	private totalProcessed = 0;
 	private totalSucceeded = 0;
 	private totalFailed = 0;
+	private totalTransient = 0;
 	private totalRateLimited = 0;
 	private totalDeferred = 0;
 	private processingTimes: number[] = [];
 
 	// Windowed stats (simplified - use sliding window in production)
-	private stats5min = { processed: 0, succeeded: 0, failed: 0, rateLimited: 0 };
+	private stats5min = {
+		processed: 0,
+		succeeded: 0,
+		failed: 0,
+		transient: 0,
+		rateLimited: 0,
+	};
 	private stats30min = {
 		processed: 0,
 		succeeded: 0,
 		failed: 0,
+		transient: 0,
 		rateLimited: 0,
 	};
 
@@ -68,21 +77,17 @@ export class ProcessPool {
 			poolCode: config.code,
 		});
 
-		// Capacity = max(concurrency * 2, 50)
-		this.maxCapacity = Math.max(config.concurrency * 2, 50);
+		// Capacity = max(concurrency * 20, 50) — matches Java QUEUE_CAPACITY_MULTIPLIER
+		this.maxCapacity = Math.max(config.concurrency * 20, 50);
 
 		// Initialize concurrency limiter
 		this.concurrencyLimiter = new DynamicSemaphore(config.concurrency);
 
 		// Initialize rate limiter
-		if (config.rateLimitPerMinute && config.rateLimitPerMinute > 0) {
-			this.rateLimiter = new RateLimiterMemory({
-				points: config.rateLimitPerMinute,
-				duration: 60, // Per minute
-			});
-		} else {
-			this.rateLimiter = null;
-		}
+		this.rateLimiterQueue = buildRateLimiterQueue(
+			config.rateLimitPerMinute,
+			this.maxCapacity,
+		);
 
 		this.state = "RUNNING";
 		this.logger.info(
@@ -165,23 +170,20 @@ export class ProcessPool {
 		}
 
 		// Step 1: Rate Limiting (Wait logic)
-		if (this.rateLimiter) {
+		// RateLimiterQueue.removeTokens() resolves when the token is available,
+		// smoothing bursts into evenly-spaced requests (leaky bucket).
+		if (this.rateLimiterQueue) {
 			try {
-				await this.rateLimiter.consume(1);
-			} catch (rej) {
-				// Rate limited
+				await this.rateLimiterQueue.removeTokens(1);
+			} catch {
+				// Queue is full (maxQueueSize exceeded) — count as rate-limited
 				this.totalRateLimited++;
 				this.stats5min.rateLimited++;
 				this.stats30min.rateLimited++;
-
-				const msBeforeNext = (rej as { msBeforeNext: number }).msBeforeNext;
-				// Wait in "Heap" (non-blocking for concurrency limiter)
-				await new Promise((resolve) => setTimeout(resolve, msBeforeNext));
-				// After waking up, we technically should try consuming again or just proceed
-				// rate-limiter-flexible strict mode would require retry, but for a simple
-				// smooth-out, proceeding is usually acceptable if we trust the wait time.
-				// For strict enforcement, we'd loop, but that risks infinite loops.
-				// Given msBeforeNext is precise, we proceed.
+				await callback.nack(10);
+				this.decrementBatchGroupCount(batchGroupKey);
+				this.queuedMessages--;
+				return;
 			}
 		}
 
@@ -216,17 +218,27 @@ export class ProcessPool {
 						break;
 
 					case "DEFERRED":
-						// Message not ready - nack with visibility
+						// Message deferred (ack=false) - nack with visibility, mark batch+group failed (FIFO)
 						this.totalDeferred++;
+						this.failedBatchGroups.add(batchGroupKey);
 						await callback.nack(result.delaySeconds || 30);
 						this.decrementBatchGroupCount(batchGroupKey);
 						break;
 
 					case "ERROR_PROCESS":
 					case "BATCH_FAILED":
+						// 5xx or timeout — transient, NOT counted as failure (matches Java)
+						this.totalTransient++;
+						this.stats5min.transient++;
+						this.stats30min.transient++;
+						this.failedBatchGroups.add(batchGroupKey);
+						await callback.nack(result.delaySeconds ?? 30);
+						this.decrementBatchGroupCount(batchGroupKey);
+						break;
+
 					case "ERROR_CONNECTION":
 					default:
-						// 5xx or timeout - nack for retry, mark batch+group as failed
+						// Connection/network errors — counted as failure (matches Java)
 						this.totalFailed++;
 						this.stats5min.failed++;
 						this.stats30min.failed++;
@@ -273,14 +285,28 @@ export class ProcessPool {
 	 */
 	getStats(): PoolStats {
 		const activeWorkers = this.concurrencyLimiter.activeCount;
-		const successRate =
-			this.totalProcessed > 0 ? this.totalSucceeded / this.totalProcessed : 1.0;
+
+		// Success rate excludes transient errors (matches Java)
+		const completed = this.totalSucceeded + this.totalFailed;
+		const successRate = completed > 0 ? this.totalSucceeded / completed : 1.0;
+
+		const completed5min = this.stats5min.succeeded + this.stats5min.failed;
+		const successRate5min =
+			completed5min > 0 ? this.stats5min.succeeded / completed5min : 1.0;
+
+		const completed30min =
+			this.stats30min.succeeded + this.stats30min.failed;
+		const successRate30min =
+			completed30min > 0
+				? this.stats30min.succeeded / completed30min
+				: 1.0;
 
 		return {
 			poolCode: this.config.code,
 			totalProcessed: this.totalProcessed,
 			totalSucceeded: this.totalSucceeded,
 			totalFailed: this.totalFailed,
+			totalTransient: this.totalTransient,
 			totalRateLimited: this.totalRateLimited,
 			successRate,
 			activeWorkers,
@@ -292,17 +318,13 @@ export class ProcessPool {
 			totalProcessed5min: this.stats5min.processed,
 			totalSucceeded5min: this.stats5min.succeeded,
 			totalFailed5min: this.stats5min.failed,
-			successRate5min:
-				this.stats5min.processed > 0
-					? this.stats5min.succeeded / this.stats5min.processed
-					: 1.0,
+			totalTransient5min: this.stats5min.transient,
+			successRate5min,
 			totalProcessed30min: this.stats30min.processed,
 			totalSucceeded30min: this.stats30min.succeeded,
 			totalFailed30min: this.stats30min.failed,
-			successRate30min:
-				this.stats30min.processed > 0
-					? this.stats30min.succeeded / this.stats30min.processed
-					: 1.0,
+			totalTransient30min: this.stats30min.transient,
+			successRate30min,
 			totalRateLimited5min: this.stats5min.rateLimited,
 			totalRateLimited30min: this.stats30min.rateLimited,
 		};
@@ -313,18 +335,16 @@ export class ProcessPool {
 	 */
 	updateConfig(newConfig: Partial<PoolConfig>): void {
 		if (newConfig.rateLimitPerMinute !== undefined) {
-			const rateLimit = newConfig.rateLimitPerMinute;
-			if (rateLimit && rateLimit > 0) {
-				this.rateLimiter = new RateLimiterMemory({
-					points: rateLimit,
-					duration: 60,
-				});
+			this.rateLimiterQueue = buildRateLimiterQueue(
+				newConfig.rateLimitPerMinute,
+				this.maxCapacity,
+			);
+			if (this.rateLimiterQueue) {
 				this.logger.info(
-					{ rateLimitPerMinute: rateLimit },
+					{ rateLimitPerMinute: newConfig.rateLimitPerMinute },
 					"Rate limit updated",
 				);
 			} else {
-				this.rateLimiter = null;
 				this.logger.info("Rate limit disabled");
 			}
 		}
@@ -395,4 +415,26 @@ export class ProcessPool {
 		const sum = this.processingTimes.reduce((a, b) => a + b, 0);
 		return sum / this.processingTimes.length;
 	}
+}
+
+/**
+ * Build a RateLimiterQueue that smooths bursts into evenly-spaced requests
+ * (leaky bucket). Returns null if rate limiting is disabled.
+ *
+ * The inner RateLimiterMemory defines the drip rate: 1 point every
+ * (60 / ratePerMinute) seconds. RateLimiterQueue queues callers and
+ * releases them one-by-one as tokens become available.
+ */
+function buildRateLimiterQueue(
+	ratePerMinute: number | null | undefined,
+	maxQueueSize: number,
+): RateLimiterQueue | null {
+	if (!ratePerMinute || ratePerMinute <= 0) return null;
+
+	const limiter = new RateLimiterMemory({
+		points: 1,
+		duration: 60 / ratePerMinute, // seconds per token
+	});
+
+	return new RateLimiterQueue(limiter, { maxQueueSize });
 }

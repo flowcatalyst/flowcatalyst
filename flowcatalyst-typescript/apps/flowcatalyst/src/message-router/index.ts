@@ -56,12 +56,12 @@ export async function startRouter(
 	return { server: app, services };
 }
 
-// Run when executed as main module
+// Run when executed as main module (this file specifically, not any index.ts)
 const isMainModule =
 	typeof process !== "undefined" &&
 	process.argv[1] &&
-	(process.argv[1].endsWith("/index.ts") ||
-		process.argv[1].endsWith("/index.js"));
+	(process.argv[1].endsWith("/message-router/index.ts") ||
+		process.argv[1].endsWith("/message-router/index.js"));
 
 if (isMainModule) {
 	const logger = createLogger({
@@ -91,12 +91,15 @@ if (isMainModule) {
 		// 1. Stop accepting HTTP requests
 		await server.close();
 
-		// 2. Stop health monitoring services
+		// 2. Release standby lock FIRST (enables instant failover)
+		await services.standby.stop();
+
+		// 3. Stop health monitoring services
 		services.brokerHealth.stop();
 		services.queueHealthMonitor.stop();
 		services.notifications.stop();
 
-		// 3. Stop queue manager (drains pools, NACKs in-flight, stops consumers)
+		// 4. Stop queue manager (drains pools, NACKs in-flight, stops consumers)
 		await services.queueManager.stop();
 
 		logger.info("Graceful shutdown complete");

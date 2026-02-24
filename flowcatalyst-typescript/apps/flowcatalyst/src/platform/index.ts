@@ -241,7 +241,7 @@ export async function startPlatform(
 		);
 	} else {
 		// No frontend — redirect root to login
-		fastify.get("/", async (request, reply) => {
+		fastify.get("/", async (_request, reply) => {
 			return reply.redirect("/auth/login");
 		});
 	}

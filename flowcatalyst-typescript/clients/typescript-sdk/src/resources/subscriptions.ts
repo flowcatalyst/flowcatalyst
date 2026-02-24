@@ -36,7 +36,11 @@ export interface SubscriptionFilters {
  * Subscriptions resource for managing event subscriptions.
  */
 export class SubscriptionsResource {
-	constructor(private readonly client: FlowCatalystClient) {}
+	private readonly client: FlowCatalystClient;
+
+	constructor(client: FlowCatalystClient) {
+		this.client = client;
+	}
 
 	/**
 	 * List all subscriptions with optional filters.

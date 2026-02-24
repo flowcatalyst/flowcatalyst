@@ -27,7 +27,11 @@ export type RoleListByApplicationResponse =
  * Roles resource for managing role-based access control.
  */
 export class RolesResource {
-	constructor(private readonly client: FlowCatalystClient) {}
+	private readonly client: FlowCatalystClient;
+
+	constructor(client: FlowCatalystClient) {
+		this.client = client;
+	}
 
 	/**
 	 * List all roles.

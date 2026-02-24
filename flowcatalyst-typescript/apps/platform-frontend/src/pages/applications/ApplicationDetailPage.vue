@@ -35,7 +35,7 @@ const showCredentialsDialog = ref(false);
 const provisionedCredentials = ref<ServiceAccountCredentials | null>(null);
 
 onMounted(async () => {
-	const id = route.params.id as string;
+	const id = route.params['id'] as string;
 	if (id) {
 		await loadApplication(id);
 	}
@@ -70,7 +70,7 @@ function cancelEditing() {
 }
 
 async function saveChanges() {
-	const id = application.value?.id || (route.params.id as string);
+	const id = application.value?.id || (route.params['id'] as string);
 	if (!id) return;
 
 	saving.value = true;
@@ -114,7 +114,7 @@ function confirmActivate() {
 }
 
 async function activateApplication() {
-	const id = application.value?.id || (route.params.id as string);
+	const id = application.value?.id || (route.params['id'] as string);
 	if (!id) return;
 	try {
 		application.value = await applicationsApi.activate(id);
@@ -147,7 +147,7 @@ function confirmDeactivate() {
 }
 
 async function deactivateApplication() {
-	const id = application.value?.id || (route.params.id as string);
+	const id = application.value?.id || (route.params['id'] as string);
 	if (!id) return;
 	try {
 		application.value = await applicationsApi.deactivate(id);
@@ -179,7 +179,7 @@ function confirmDelete() {
 }
 
 async function deleteApplication() {
-	const id = application.value?.id || (route.params.id as string);
+	const id = application.value?.id || (route.params['id'] as string);
 	if (!id) {
 		toast.add({
 			severity: "error",
@@ -209,7 +209,7 @@ async function deleteApplication() {
 }
 
 async function provisionServiceAccount() {
-	const id = application.value?.id || (route.params.id as string);
+	const id = application.value?.id || (route.params['id'] as string);
 	if (!id) {
 		toast.add({
 			severity: "error",

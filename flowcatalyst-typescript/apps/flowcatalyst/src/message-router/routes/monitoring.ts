@@ -295,19 +295,20 @@ export const monitoringRoutes: FastifyPluginAsync = async (fastify) => {
 				response: { 200: StandbyStatusResponseSchema },
 			},
 		},
-		(request) => {
-			const stats = request.services.traffic.getStats();
-			if (!stats.enabled) {
+		async (request) => {
+			const standby = request.services.standby;
+			if (!standby.isEnabled()) {
 				return { standbyEnabled: false as const };
 			}
+			const status = await standby.getStatus();
 			return {
 				standbyEnabled: true as const,
-				instanceId: process.env["INSTANCE_ID"] || "unknown",
-				role: stats.mode === "PRIMARY" ? "PRIMARY" : "STANDBY",
-				redisAvailable: false,
-				currentLockHolder: "",
-				lastSuccessfulRefresh: null,
-				hasWarning: false,
+				instanceId: status.instanceId,
+				role: status.isPrimary ? "PRIMARY" : "STANDBY",
+				redisAvailable: status.redisAvailable,
+				currentLockHolder: status.currentLockHolder,
+				lastSuccessfulRefresh: status.lastSuccessfulRefresh,
+				hasWarning: status.hasWarning,
 			};
 		},
 	);
@@ -350,11 +351,21 @@ export const monitoringRoutes: FastifyPluginAsync = async (fastify) => {
 				summary: "Switch to PRIMARY mode",
 				response: {
 					200: StatusResponseSchema,
+					409: StatusResponseSchema,
 					500: StatusResponseSchema,
 				},
 			},
 		},
 		async (request, reply) => {
+			// Block manual mode switching when standby election is active
+			if (request.services.standby.isEnabled()) {
+				return reply.code(409).send({
+					status: "error",
+					message:
+						"Cannot manually switch mode while standby election is active. The Redis lock is the sole authority.",
+				});
+			}
+
 			const result = await request.services.traffic.becomePrimary();
 			return result.match(
 				() => ({ status: "success", mode: "PRIMARY" }),
@@ -376,11 +387,21 @@ export const monitoringRoutes: FastifyPluginAsync = async (fastify) => {
 				summary: "Switch to STANDBY mode",
 				response: {
 					200: StatusResponseSchema,
+					409: StatusResponseSchema,
 					500: StatusResponseSchema,
 				},
 			},
 		},
 		async (request, reply) => {
+			// Block manual mode switching when standby election is active
+			if (request.services.standby.isEnabled()) {
+				return reply.code(409).send({
+					status: "error",
+					message:
+						"Cannot manually switch mode while standby election is active. The Redis lock is the sole authority.",
+				});
+			}
+
 			const result = await request.services.traffic.becomeStandby();
 			return result.match(
 				() => ({ status: "success", mode: "STANDBY" }),
@@ -417,8 +438,25 @@ export const monitoringRoutes: FastifyPluginAsync = async (fastify) => {
 
 			const __filename = fileURLToPath(import.meta.url);
 			const __dirname = path.dirname(__filename);
-			const dashboardPath = path.join(__dirname, "../../public/dashboard.html");
 
+			// In bundled build: dist/public/dashboard.html (via ../public/)
+			// In tsx source: src/message-router/routes/../../../public/
+			const candidates = [
+				path.join(__dirname, "../public/dashboard.html"),
+				path.join(__dirname, "../../../public/dashboard.html"),
+			];
+			let dashboardPath = "";
+			for (const candidate of candidates) {
+				try {
+					await fs.access(candidate);
+					dashboardPath = candidate;
+					break;
+				} catch { /* try next */ }
+			}
+
+			if (!dashboardPath) {
+				return reply.code(404).send("Dashboard not found");
+			}
 			const html = await fs.readFile(dashboardPath, "utf-8");
 			return reply.type("text/html").send(html);
 		} catch {

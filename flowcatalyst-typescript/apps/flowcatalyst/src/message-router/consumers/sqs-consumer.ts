@@ -51,6 +51,7 @@ export class SqsConsumer implements QueueConsumer {
 	private lastPollTimeMs = 0;
 	private pollingTasks: Promise<void>[] = [];
 	private metricsTask: Promise<void> | null = null;
+	private abortController = new AbortController();
 
 	// Track pending deletes for expired receipt handles
 	private readonly pendingDeleteSqsMessageIds = new Map<string, string>();
@@ -62,9 +63,10 @@ export class SqsConsumer implements QueueConsumer {
 	// Health check timeout (60 seconds)
 	private static readonly POLL_TIMEOUT_MS = 60_000;
 
-	// Adaptive delays
-	private static readonly EMPTY_BATCH_DELAY_MS = 1000;
-	private static readonly PARTIAL_BATCH_DELAY_MS = 50;
+	// Adaptive delays (matching Java SqsQueueConsumer)
+	// Empty batch: 0ms — the 20s long poll already waited
+	private static readonly EMPTY_BATCH_DELAY_MS = 0;
+	private static readonly PARTIAL_BATCH_DELAY_MS = 100;
 
 	constructor(
 		config: SqsConsumerConfig,
@@ -119,6 +121,7 @@ export class SqsConsumer implements QueueConsumer {
 	async stop(): Promise<void> {
 		this.logger.info("Stopping SQS consumer");
 		this.running = false;
+		this.abortController.abort();
 
 		// Wait for all polling tasks to complete
 		await Promise.allSettled(this.pollingTasks);
@@ -228,7 +231,9 @@ export class SqsConsumer implements QueueConsumer {
 					MessageAttributeNames: ["All"],
 				});
 
-				const response = await this.client.send(command);
+				const response = await this.client.send(command, {
+					abortSignal: this.abortController.signal,
+				});
 				const messages = response.Messages || [];
 
 				this.logger.debug(
@@ -243,7 +248,7 @@ export class SqsConsumer implements QueueConsumer {
 				// Adaptive delay based on batch size
 				const delay = this.getAdaptiveDelay(messages.length);
 				if (delay > 0) {
-					await sleep(delay);
+					await sleep(delay, this.abortController.signal);
 				}
 
 				// Check for thread starvation
@@ -260,7 +265,7 @@ export class SqsConsumer implements QueueConsumer {
 						{ err: error, connectionIndex },
 						"Error polling SQS",
 					);
-					await sleep(1000); // Back off on error
+					await sleep(1000, this.abortController.signal);
 				}
 			}
 		}
@@ -368,6 +373,8 @@ export class SqsConsumer implements QueueConsumer {
 				updateReceiptHandle: (newHandle: string) => {
 					currentReceiptHandle = newHandle;
 				},
+				getReceiptHandle: () => currentReceiptHandle,
+				inProgress: () => {},
 			};
 
 			messages.push(queueMessage);
@@ -497,7 +504,9 @@ export class SqsConsumer implements QueueConsumer {
 					],
 				});
 
-				const response = await this.client.send(command);
+				const response = await this.client.send(command, {
+					abortSignal: this.abortController.signal,
+				});
 				const attrs = response.Attributes || {};
 
 				this.pendingMessages = Number.parseInt(
@@ -522,13 +531,23 @@ export class SqsConsumer implements QueueConsumer {
 				}
 			}
 
-			await sleep(this.config.metricsPollIntervalMs);
+			await sleep(this.config.metricsPollIntervalMs, this.abortController.signal);
 		}
 
 		this.logger.debug("Metrics loop stopped");
 	}
 }
 
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+	return new Promise((resolve) => {
+		if (signal?.aborted) {
+			resolve();
+			return;
+		}
+		const timer = setTimeout(resolve, ms);
+		signal?.addEventListener("abort", () => {
+			clearTimeout(timer);
+			resolve();
+		}, { once: true });
+	});
 }

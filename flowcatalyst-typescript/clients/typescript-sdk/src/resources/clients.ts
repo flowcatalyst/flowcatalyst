@@ -37,7 +37,11 @@ export interface StatusResponse {
  * Clients resource for managing platform clients (tenants).
  */
 export class ClientsResource {
-	constructor(private readonly client: FlowCatalystClient) {}
+	private readonly client: FlowCatalystClient;
+
+	constructor(client: FlowCatalystClient) {
+		this.client = client;
+	}
 
 	/**
 	 * List all clients.

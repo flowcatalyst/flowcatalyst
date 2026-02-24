@@ -115,7 +115,11 @@ export function createOperationsService(): OperationsBuilder<object> {
  * Builder class for operations services.
  */
 class OperationsBuilder<T extends object> {
-	constructor(private readonly ops: T) {}
+	private readonly ops: T;
+
+	constructor(ops: T) {
+		this.ops = ops;
+	}
 
 	/**
 	 * Add a write operation backed by a use case.

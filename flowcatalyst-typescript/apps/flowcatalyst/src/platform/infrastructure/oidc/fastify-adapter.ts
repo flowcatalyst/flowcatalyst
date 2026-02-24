@@ -126,12 +126,12 @@ export function registerWellKnownRoutes(
 	jwtKeyService?: JwtKeyService,
 ): void {
 	// OpenID Configuration discovery - redirect to oidc-provider
-	fastify.get("/.well-known/openid-configuration", async (request, reply) => {
+	fastify.get("/.well-known/openid-configuration", async (_request, reply) => {
 		return reply.redirect(`${basePath}/.well-known/openid-configuration`);
 	});
 
 	// JWKS endpoint - serve directly from our key service
-	fastify.get("/.well-known/jwks.json", async (request, reply) => {
+	fastify.get("/.well-known/jwks.json", async (_request, reply) => {
 		if (jwtKeyService) {
 			return reply.send(jwtKeyService.getJwks());
 		}

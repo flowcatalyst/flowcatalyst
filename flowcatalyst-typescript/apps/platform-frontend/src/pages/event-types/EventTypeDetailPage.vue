@@ -42,7 +42,7 @@ const canDelete = computed(() => {
 });
 
 onMounted(async () => {
-	const id = route.params.id as string;
+	const id = route.params['id'] as string;
 	if (id) {
 		await loadEventType(id);
 	}

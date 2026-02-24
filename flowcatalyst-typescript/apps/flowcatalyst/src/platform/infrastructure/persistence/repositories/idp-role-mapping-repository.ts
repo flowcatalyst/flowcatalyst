@@ -29,22 +29,22 @@ export interface IdpRoleMappingRepository {
 	deleteById(id: string, tx?: TransactionContext): Promise<boolean>;
 }
 
+function hydrateRoleMapping(
+	record: typeof idpRoleMappings.$inferSelect,
+): IdpRoleMapping {
+	return {
+		id: record.id,
+		idpRoleName: record.idpRoleName,
+		internalRoleName: record.internalRoleName,
+		createdAt: record.createdAt,
+		updatedAt: record.updatedAt,
+	};
+}
+
 export function createIdpRoleMappingRepository(
 	defaultDb: AnyDb,
 ): IdpRoleMappingRepository {
 	const db = (tx?: TransactionContext): AnyDb => (tx?.db as AnyDb) ?? defaultDb;
-
-	function hydrate(
-		record: typeof idpRoleMappings.$inferSelect,
-	): IdpRoleMapping {
-		return {
-			id: record.id,
-			idpRoleName: record.idpRoleName,
-			internalRoleName: record.internalRoleName,
-			createdAt: record.createdAt,
-			updatedAt: record.updatedAt,
-		};
-	}
 
 	return {
 		async findById(
@@ -58,7 +58,7 @@ export function createIdpRoleMappingRepository(
 				.limit(1);
 
 			if (!record) return undefined;
-			return hydrate(record);
+			return hydrateRoleMapping(record);
 		},
 
 		async findByIdpRoleName(
@@ -72,7 +72,7 @@ export function createIdpRoleMappingRepository(
 				.limit(1);
 
 			if (!record) return undefined;
-			return hydrate(record);
+			return hydrateRoleMapping(record);
 		},
 
 		async findAll(tx?: TransactionContext): Promise<IdpRoleMapping[]> {
@@ -81,7 +81,7 @@ export function createIdpRoleMappingRepository(
 				.from(idpRoleMappings)
 				.orderBy(idpRoleMappings.idpRoleName);
 
-			return records.map(hydrate);
+			return records.map(hydrateRoleMapping);
 		},
 
 		async insert(

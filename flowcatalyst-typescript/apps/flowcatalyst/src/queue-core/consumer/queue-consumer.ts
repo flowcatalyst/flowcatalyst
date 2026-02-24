@@ -87,6 +87,7 @@ export type NackFn = (delaySeconds?: number) => Promise<void>;
 export interface MessageCallbackFns {
 	ack: AckFn;
 	nack: NackFn;
-	updateReceiptHandle?: ((newHandle: string) => void) | undefined;
-	inProgress?: (() => void) | undefined;
+	updateReceiptHandle: (newHandle: string) => void;
+	getReceiptHandle: () => string;
+	inProgress: () => void;
 }

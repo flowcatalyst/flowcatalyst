@@ -4,6 +4,7 @@ import type { CircuitBreakerManager } from "@flowcatalyst/queue-core";
 import type { QueueManagerService } from "./queue-manager-service.js";
 import type { WarningService } from "./warning-service.js";
 import type { BrokerHealthService } from "../health/index.js";
+import type { StandbyServiceInstance } from "../standby/index.js";
 
 /**
  * Simple health check result
@@ -21,7 +22,7 @@ export class HealthService {
 	private readonly warnings: WarningService;
 	private readonly brokerHealth: BrokerHealthService;
 	private readonly circuitBreakers: CircuitBreakerManager;
-	private readonly logger: Logger;
+	private readonly standby: StandbyServiceInstance | undefined;
 	private readonly startTime: number;
 	private started = false;
 
@@ -30,13 +31,14 @@ export class HealthService {
 		warnings: WarningService,
 		brokerHealth: BrokerHealthService,
 		circuitBreakers: CircuitBreakerManager,
-		logger: Logger,
+		_logger: Logger,
+		standby?: StandbyServiceInstance,
 	) {
 		this.queueManager = queueManager;
 		this.warnings = warnings;
 		this.brokerHealth = brokerHealth;
 		this.circuitBreakers = circuitBreakers;
-		this.logger = logger.child({ component: "HealthService" });
+		this.standby = standby;
 		this.startTime = Date.now();
 
 		// Mark as started after a short delay
@@ -69,6 +71,13 @@ export class HealthService {
 		// Check if queue manager is running
 		if (!this.queueManager.isRunning()) {
 			issues.push("Queue manager not running");
+		}
+
+		// Check standby Redis connectivity (matches Java StandbyHealthCheck)
+		if (this.standby?.isEnabled() && !this.standby.isRedisAvailable()) {
+			issues.push(
+				"Redis unavailable - standby mode broken",
+			);
 		}
 
 		// Check broker connectivity (SQS/ActiveMQ/NATS) using neverthrow

@@ -47,32 +47,32 @@ export interface OidcLoginStateRepository {
 	deleteExpired(tx?: TransactionContext): Promise<void>;
 }
 
+function hydrateLoginState(record: OidcLoginStateRecord): OidcLoginState {
+	return {
+		state: record.state,
+		emailDomain: record.emailDomain,
+		identityProviderId: record.identityProviderId,
+		emailDomainMappingId: record.emailDomainMappingId,
+		nonce: record.nonce,
+		codeVerifier: record.codeVerifier,
+		returnUrl: record.returnUrl,
+		oauthClientId: record.oauthClientId,
+		oauthRedirectUri: record.oauthRedirectUri,
+		oauthScope: record.oauthScope,
+		oauthState: record.oauthState,
+		oauthCodeChallenge: record.oauthCodeChallenge,
+		oauthCodeChallengeMethod: record.oauthCodeChallengeMethod,
+		oauthNonce: record.oauthNonce,
+		interactionUid: record.interactionUid ?? null,
+		createdAt: record.createdAt,
+		expiresAt: record.expiresAt,
+	};
+}
+
 export function createOidcLoginStateRepository(
 	defaultDb: AnyDb,
 ): OidcLoginStateRepository {
 	const db = (tx?: TransactionContext): AnyDb => (tx?.db as AnyDb) ?? defaultDb;
-
-	function hydrate(record: OidcLoginStateRecord): OidcLoginState {
-		return {
-			state: record.state,
-			emailDomain: record.emailDomain,
-			identityProviderId: record.identityProviderId,
-			emailDomainMappingId: record.emailDomainMappingId,
-			nonce: record.nonce,
-			codeVerifier: record.codeVerifier,
-			returnUrl: record.returnUrl,
-			oauthClientId: record.oauthClientId,
-			oauthRedirectUri: record.oauthRedirectUri,
-			oauthScope: record.oauthScope,
-			oauthState: record.oauthState,
-			oauthCodeChallenge: record.oauthCodeChallenge,
-			oauthCodeChallengeMethod: record.oauthCodeChallengeMethod,
-			oauthNonce: record.oauthNonce,
-			interactionUid: record.interactionUid ?? null,
-			createdAt: record.createdAt,
-			expiresAt: record.expiresAt,
-		};
-	}
 
 	return {
 		async findValidState(
@@ -92,7 +92,7 @@ export function createOidcLoginStateRepository(
 				return undefined;
 			}
 
-			return hydrate(record);
+			return hydrateLoginState(record);
 		},
 
 		async persist(

@@ -494,8 +494,6 @@ export async function registerOidcFederationRoutes(
 
 			// Determine accessible clients based on scope and mapping
 			const clients = await determineAccessibleClients(
-				principal,
-				roles,
 				mapping,
 				deps,
 			);
@@ -585,12 +583,6 @@ async function getDiscoveryConfig(
  * Determine which clients the user can access based on their scope and email domain mapping.
  */
 async function determineAccessibleClients(
-	principal: {
-		scope: string | null;
-		clientId: string | null;
-		roles: readonly { roleName: string }[];
-	},
-	roles: string[],
 	mapping: EmailDomainMapping,
 	deps: OidcFederationDeps,
 ): Promise<string[]> {
@@ -603,19 +595,6 @@ async function determineAccessibleClients(
 			return formatClientEntries(clientIds, deps);
 		}
 	}
-
-	// Fallback: check roles for platform admins
-	if (
-		roles.some((r) => r.includes("platform:admin") || r.includes("super-admin"))
-	) {
-		return ["*"];
-	}
-
-	if (principal.clientId) {
-		return formatClientEntries([principal.clientId], deps);
-	}
-
-	return [];
 }
 
 /**
@@ -693,7 +672,7 @@ function extractEmailDomain(email: string): string {
  */
 function errorRedirect(
 	reply: { redirect: (url: string) => void },
-	deps: OidcFederationDeps,
+	_deps: OidcFederationDeps,
 	message: string,
 ) {
 	return reply.redirect(`/?error=${encodeURIComponent(message)}`);

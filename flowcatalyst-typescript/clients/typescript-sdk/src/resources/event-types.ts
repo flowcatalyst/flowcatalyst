@@ -38,7 +38,11 @@ export interface EventTypeFilters {
  * Event Types resource for managing event type definitions.
  */
 export class EventTypesResource {
-	constructor(private readonly client: FlowCatalystClient) {}
+	private readonly client: FlowCatalystClient;
+
+	constructor(client: FlowCatalystClient) {
+		this.client = client;
+	}
 
 	/**
 	 * List all event types with optional filters.

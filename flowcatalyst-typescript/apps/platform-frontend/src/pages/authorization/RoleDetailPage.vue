@@ -12,7 +12,7 @@ const role = ref<Role | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
 
-const roleName = computed(() => route.params.roleName as string);
+const roleName = computed(() => route.params['roleName'] as string);
 
 const canEdit = computed(() => role.value?.source === "DATABASE");
 

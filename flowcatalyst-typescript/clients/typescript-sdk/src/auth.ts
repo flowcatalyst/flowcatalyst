@@ -36,8 +36,11 @@ interface CachedToken {
 export class OidcTokenManager {
 	private cachedToken: CachedToken | null = null;
 	private refreshPromise: Promise<string> | null = null;
+	private readonly config: TokenManagerConfig;
 
-	constructor(private readonly config: TokenManagerConfig) {}
+	constructor(config: TokenManagerConfig) {
+		this.config = config;
+	}
 
 	/**
 	 * Get a valid access token, fetching a new one if necessary.
@@ -120,8 +123,8 @@ export class OidcTokenManager {
 			if (!response.ok) {
 				const body = await response.json().catch(() => ({}));
 				const errorMsg =
-					(body as Record<string, unknown>).error_description?.toString() ??
-					(body as Record<string, unknown>).error?.toString() ??
+					(body as Record<string, unknown>)["error_description"]?.toString() ??
+					(body as Record<string, unknown>)["error"]?.toString() ??
 					"Token fetch failed";
 				throw authError.tokenFetchFailed(errorMsg);
 			}
