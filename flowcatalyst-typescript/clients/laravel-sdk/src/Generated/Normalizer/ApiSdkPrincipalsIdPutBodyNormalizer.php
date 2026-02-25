@@ -44,6 +44,20 @@ class ApiSdkPrincipalsIdPutBodyNormalizer implements DenormalizerInterface, Norm
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
         }
+        if (\array_key_exists('scope', $data) && $data['scope'] !== null) {
+            $object->setScope($data['scope']);
+            unset($data['scope']);
+        }
+        elseif (\array_key_exists('scope', $data) && $data['scope'] === null) {
+            $object->setScope(null);
+        }
+        if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
+            $object->setClientId($data['clientId']);
+            unset($data['clientId']);
+        }
+        elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
+            $object->setClientId(null);
+        }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $object[$key] = $value;
@@ -55,6 +69,12 @@ class ApiSdkPrincipalsIdPutBodyNormalizer implements DenormalizerInterface, Norm
     {
         $dataArray = [];
         $dataArray['name'] = $data->getName();
+        if ($data->isInitialized('scope') && null !== $data->getScope()) {
+            $dataArray['scope'] = $data->getScope();
+        }
+        if ($data->isInitialized('clientId') && null !== $data->getClientId()) {
+            $dataArray['clientId'] = $data->getClientId();
+        }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;

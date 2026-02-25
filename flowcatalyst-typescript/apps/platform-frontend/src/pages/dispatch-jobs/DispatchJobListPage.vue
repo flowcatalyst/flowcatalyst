@@ -108,8 +108,8 @@ async function loadDispatchJobs() {
 	try {
 		const response = await getApiBffDispatchJobs({
 			query: {
-				page: currentPage.value,
-				size: pageSize.value,
+				page: String(currentPage.value),
+				size: String(pageSize.value),
 				clientIds:
 					selectedClients.value.length > 0
 						? selectedClients.value.join(",")

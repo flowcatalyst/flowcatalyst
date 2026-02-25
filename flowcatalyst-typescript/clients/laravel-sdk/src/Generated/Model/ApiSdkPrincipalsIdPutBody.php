@@ -17,6 +17,14 @@ class ApiSdkPrincipalsIdPutBody extends \ArrayObject
      */
     protected $name;
     /**
+     * @var string|null
+     */
+    protected $scope;
+    /**
+     * @var mixed|null
+     */
+    protected $clientId;
+    /**
      * @return string|null
      */
     public function getName(): ?string
@@ -32,6 +40,42 @@ class ApiSdkPrincipalsIdPutBody extends \ArrayObject
     {
         $this->initialized['name'] = true;
         $this->name = $name;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getScope(): ?string
+    {
+        return $this->scope;
+    }
+    /**
+     * @param string|null $scope
+     *
+     * @return self
+     */
+    public function setScope(?string $scope): self
+    {
+        $this->initialized['scope'] = true;
+        $this->scope = $scope;
+        return $this;
+    }
+    /**
+     * @return mixed
+     */
+    public function getClientId()
+    {
+        return $this->clientId;
+    }
+    /**
+     * @param mixed $clientId
+     *
+     * @return self
+     */
+    public function setClientId($clientId): self
+    {
+        $this->initialized['clientId'] = true;
+        $this->clientId = $clientId;
         return $this;
     }
 }

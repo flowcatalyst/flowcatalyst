@@ -149,8 +149,8 @@ async function loadEvents() {
 	try {
 		const response = await getApiBffEvents({
 			query: {
-				page: currentPage.value,
-				size: pageSize.value,
+				page: String(currentPage.value),
+				size: String(pageSize.value),
 				clientIds: selectedClients.value.length
 					? selectedClients.value.join(",")
 					: undefined,
@@ -209,7 +209,7 @@ async function viewEventDetail(event: EventRead) {
 	try {
 		const response = await getApiBffEventsById({ path: { id: event.id } });
 		if (response.data) {
-			selectedEvent.value = response.data as EventRead;
+			selectedEvent.value = response.data as unknown as EventRead;
 		}
 	} catch (error) {
 		console.error("Failed to load event details:", error);

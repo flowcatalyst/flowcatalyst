@@ -92,7 +92,7 @@ async function viewJobDetail(job: RawDispatchJob) {
 			path: { id: job.id },
 		});
 		if (response.data) {
-			selectedJob.value = response.data as RawDispatchJob;
+			selectedJob.value = response.data as unknown as RawDispatchJob;
 		}
 	} catch (error) {
 		console.error("Failed to load job details:", error);
