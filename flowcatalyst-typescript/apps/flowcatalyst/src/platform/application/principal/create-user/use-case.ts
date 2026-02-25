@@ -28,6 +28,7 @@ import {
 	UserCreated,
 	IdpType,
 	PrincipalScope,
+	resolveScopeForEmail,
 } from "../../../domain/index.js";
 
 import type { CreateUserCommand } from "./command.js";
@@ -105,26 +106,24 @@ export function createCreateUserUseCase(
 			const emailDomain = extractEmailDomain(command.email);
 
 			// Determine scope and IDP type from email domain mapping
-			let scope: PrincipalScope = PrincipalScope.CLIENT;
-			let idpType: IdpType = IdpType.INTERNAL;
 			const mapping =
 				await emailDomainMappingRepository.findByEmailDomain(emailDomain);
-			if (mapping) {
-				// Use the scope configured on the email domain mapping
-				scope = mapping.scopeType as PrincipalScope;
+			const isAnchorDomain =
+				!mapping && (await anchorDomainRepository.existsByDomain(emailDomain));
 
+			const resolved = resolveScopeForEmail({
+				mapping,
+				isAnchorDomain,
+			});
+			const scope = resolved.scope;
+
+			let idpType: IdpType = IdpType.INTERNAL;
+			if (mapping) {
 				const idp = await identityProviderRepository.findById(
 					mapping.identityProviderId,
 				);
 				if (idp && idp.type === "OIDC") {
 					idpType = IdpType.OIDC;
-				}
-			} else {
-				// Fall back to legacy anchor domain check
-				const isAnchorDomain =
-					await anchorDomainRepository.existsByDomain(emailDomain);
-				if (isAnchorDomain) {
-					scope = PrincipalScope.ANCHOR;
 				}
 			}
 

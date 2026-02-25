@@ -99,6 +99,12 @@ export class QueueManagerService {
 	// Leak detection interval (30s, matches Java)
 	private leakDetectionInterval: ReturnType<typeof setInterval> | null = null;
 
+	// Windowed stat reset timers for queue stats
+	private queueWindowResetInterval5min: ReturnType<typeof setInterval> | null =
+		null;
+	private queueWindowResetInterval30min: ReturnType<typeof setInterval> | null =
+		null;
+
 	// Queue and pool statistics
 	private readonly queueStats = new Map<string, QueueStats>();
 
@@ -163,6 +169,9 @@ export class QueueManagerService {
 				);
 			},
 		);
+
+		// Start windowed stat reset timers for queue stats
+		this.startQueueWindowResets();
 
 		if (env.QUEUE_TYPE === "EMBEDDED") {
 			// Use embedded mode with SQLite-backed queue
@@ -329,6 +338,33 @@ export class QueueManagerService {
 	}
 
 	/**
+	 * Start windowed stat reset timers for queue stats.
+	 * Resets the 5min/30min counters on a fixed interval so the dashboard
+	 * time-period filter shows meaningful differences.
+	 */
+	private startQueueWindowResets(): void {
+		this.queueWindowResetInterval5min = setInterval(() => {
+			for (const stat of this.queueStats.values()) {
+				stat.totalMessages5min = 0;
+				stat.totalConsumed5min = 0;
+				stat.totalFailed5min = 0;
+				stat.successRate5min = 1.0;
+			}
+		}, 5 * 60 * 1000);
+
+		this.queueWindowResetInterval30min = setInterval(() => {
+			for (const stat of this.queueStats.values()) {
+				stat.totalMessages30min = 0;
+				stat.totalConsumed30min = 0;
+				stat.totalFailed30min = 0;
+				stat.successRate30min = 1.0;
+			}
+		}, 30 * 60 * 1000);
+
+		this.logger.debug("Queue stat window resets started (5min/30min)");
+	}
+
+	/**
 	 * Start leak detection (every 30s, matches Java QueueManager.checkForMapLeaks)
 	 */
 	private startLeakDetection(): void {
@@ -460,6 +496,14 @@ export class QueueManagerService {
 		if (this.leakDetectionInterval) {
 			clearInterval(this.leakDetectionInterval);
 			this.leakDetectionInterval = null;
+		}
+		if (this.queueWindowResetInterval5min) {
+			clearInterval(this.queueWindowResetInterval5min);
+			this.queueWindowResetInterval5min = null;
+		}
+		if (this.queueWindowResetInterval30min) {
+			clearInterval(this.queueWindowResetInterval30min);
+			this.queueWindowResetInterval30min = null;
 		}
 
 		// Stop traffic manager (handles ALB deregistration)

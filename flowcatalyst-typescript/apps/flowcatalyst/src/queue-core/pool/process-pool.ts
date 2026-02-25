@@ -45,7 +45,7 @@ export class ProcessPool {
 	private totalDeferred = 0;
 	private processingTimes: number[] = [];
 
-	// Windowed stats (simplified - use sliding window in production)
+	// Windowed stats — reset on a timer to approximate sliding windows
 	private stats5min = {
 		processed: 0,
 		succeeded: 0,
@@ -60,6 +60,10 @@ export class ProcessPool {
 		transient: 0,
 		rateLimited: 0,
 	};
+	private windowResetInterval5min: ReturnType<typeof setInterval> | null =
+		null;
+	private windowResetInterval30min: ReturnType<typeof setInterval> | null =
+		null;
 
 	// Batch+group failure tracking for FIFO
 	private readonly failedBatchGroups = new Set<string>();
@@ -88,6 +92,26 @@ export class ProcessPool {
 			config.rateLimitPerMinute,
 			this.maxCapacity,
 		);
+
+		// Start windowed stat reset timers
+		this.windowResetInterval5min = setInterval(() => {
+			this.stats5min = {
+				processed: 0,
+				succeeded: 0,
+				failed: 0,
+				transient: 0,
+				rateLimited: 0,
+			};
+		}, 5 * 60 * 1000);
+		this.windowResetInterval30min = setInterval(() => {
+			this.stats30min = {
+				processed: 0,
+				succeeded: 0,
+				failed: 0,
+				transient: 0,
+				rateLimited: 0,
+			};
+		}, 30 * 60 * 1000);
 
 		this.state = "RUNNING";
 		this.logger.info(
@@ -382,6 +406,14 @@ export class ProcessPool {
 	 */
 	async shutdown(): Promise<void> {
 		this.state = "STOPPED";
+		if (this.windowResetInterval5min) {
+			clearInterval(this.windowResetInterval5min);
+			this.windowResetInterval5min = null;
+		}
+		if (this.windowResetInterval30min) {
+			clearInterval(this.windowResetInterval30min);
+			this.windowResetInterval30min = null;
+		}
 		this.messageGroups.clear();
 		this.failedBatchGroups.clear();
 		this.batchGroupMessageCount.clear();

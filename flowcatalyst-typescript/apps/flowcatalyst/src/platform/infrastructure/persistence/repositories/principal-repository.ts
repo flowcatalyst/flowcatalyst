@@ -103,6 +103,11 @@ export interface PrincipalRepository extends PaginatedRepository<Principal> {
 		pageSize: number,
 		tx?: TransactionContext,
 	): Promise<PagedResult<Principal>>;
+	/** Find all USER principals with a given email domain. */
+	findUsersByEmailDomain(
+		emailDomain: string,
+		tx?: TransactionContext,
+	): Promise<Principal[]>;
 }
 
 /**
@@ -515,6 +520,35 @@ export function createPrincipalRepository(
 				),
 			);
 			return createPagedResult(items, page, pageSize, totalItems);
+		},
+
+		async findUsersByEmailDomain(
+			emailDomain: string,
+			tx?: TransactionContext,
+		): Promise<Principal[]> {
+			const records = await db(tx)
+				.select()
+				.from(principals)
+				.where(
+					and(
+						eq(principals.type, "USER"),
+						eq(principals.emailDomain, emailDomain.toLowerCase()),
+					),
+				);
+
+			const ids = records.map((r) => r.id);
+			const rolesMap = await fetchRolesForPrincipals(ids, tx);
+			const appAccessMap = await fetchApplicationAccessForPrincipals(ids, tx);
+
+			return records.map((r) =>
+				recordToPrincipal(
+					r,
+					rolesMap.get(r.id) ?? [],
+					undefined,
+					undefined,
+					appAccessMap.get(r.id),
+				),
+			);
 		},
 
 		async count(tx?: TransactionContext): Promise<number> {

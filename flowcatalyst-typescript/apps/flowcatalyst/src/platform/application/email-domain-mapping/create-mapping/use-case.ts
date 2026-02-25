@@ -1,5 +1,8 @@
 /**
  * Create Email Domain Mapping Use Case
+ *
+ * After creating the mapping, cascades scope changes to all existing
+ * USER principals with the matching email domain.
  */
 
 import type { UseCase } from "@flowcatalyst/application";
@@ -13,10 +16,14 @@ import type { ExecutionContext, UnitOfWork } from "@flowcatalyst/domain-core";
 import type {
 	IdentityProviderRepository,
 	EmailDomainMappingRepository,
+	PrincipalRepository,
+	ClientAccessGrantRepository,
 } from "../../../infrastructure/persistence/index.js";
 import {
 	createEmailDomainMapping,
 	EmailDomainMappingCreated,
+	updatePrincipal,
+	PrincipalScope,
 } from "../../../domain/index.js";
 
 import type { CreateEmailDomainMappingCommand } from "./command.js";
@@ -24,6 +31,8 @@ import type { CreateEmailDomainMappingCommand } from "./command.js";
 export interface CreateEmailDomainMappingUseCaseDeps {
 	readonly emailDomainMappingRepository: EmailDomainMappingRepository;
 	readonly identityProviderRepository: IdentityProviderRepository;
+	readonly principalRepository: PrincipalRepository;
+	readonly clientAccessGrantRepository: ClientAccessGrantRepository;
 	readonly unitOfWork: UnitOfWork;
 }
 
@@ -33,6 +42,8 @@ export function createCreateEmailDomainMappingUseCase(
 	const {
 		emailDomainMappingRepository,
 		identityProviderRepository,
+		principalRepository,
+		clientAccessGrantRepository,
 		unitOfWork,
 	} = deps;
 
@@ -121,7 +132,62 @@ export function createCreateEmailDomainMappingUseCase(
 				grantedClientIds: mapping.grantedClientIds,
 			});
 
-			return unitOfWork.commit(mapping, event, command);
+			const result = await unitOfWork.commit(mapping, event, command);
+
+			// Cascade scope changes to existing users on this domain
+			if (Result.isSuccess(result)) {
+				await cascadeScopeToUsers({
+					emailDomain: mapping.emailDomain,
+					newScope: mapping.scopeType as PrincipalScope,
+					newClientId:
+						mapping.scopeType === "CLIENT"
+							? (mapping.primaryClientId ?? null)
+							: null,
+					principalRepository,
+					clientAccessGrantRepository,
+				});
+			}
+
+			return result;
 		},
 	};
+}
+
+/**
+ * Cascade scope changes to all existing USER principals with the given email domain.
+ * Updates scope/clientId and cleans up client access grants when downgrading to CLIENT.
+ */
+async function cascadeScopeToUsers(params: {
+	emailDomain: string;
+	newScope: PrincipalScope;
+	newClientId: string | null;
+	principalRepository: PrincipalRepository;
+	clientAccessGrantRepository: ClientAccessGrantRepository;
+}): Promise<void> {
+	const {
+		emailDomain,
+		newScope,
+		newClientId,
+		principalRepository,
+		clientAccessGrantRepository,
+	} = params;
+
+	const users = await principalRepository.findUsersByEmailDomain(emailDomain);
+
+	for (const user of users) {
+		if (user.scope === newScope && user.clientId === newClientId) {
+			continue; // No change needed
+		}
+
+		const updated = updatePrincipal(user, {
+			scope: newScope,
+			clientId: newClientId,
+		});
+		await principalRepository.update(updated);
+
+		// If downgrading to CLIENT, remove all client access grants
+		if (newScope === PrincipalScope.CLIENT && user.scope === PrincipalScope.PARTNER) {
+			await clientAccessGrantRepository.deleteByPrincipalId(user.id);
+		}
+	}
 }

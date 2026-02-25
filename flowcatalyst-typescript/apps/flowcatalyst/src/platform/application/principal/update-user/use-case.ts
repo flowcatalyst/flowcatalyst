@@ -2,6 +2,8 @@
  * Update User Use Case
  *
  * Updates an existing user's information.
+ * If the user's email domain has a configured EmailDomainMapping or AnchorDomain,
+ * the scope/clientId from that configuration takes precedence over API-provided values.
  */
 
 import type { UseCase } from "@flowcatalyst/application";
@@ -13,11 +15,17 @@ import {
 } from "@flowcatalyst/application";
 import type { UnitOfWork } from "@flowcatalyst/domain-core";
 
-import type { PrincipalRepository } from "../../../infrastructure/persistence/index.js";
+import type {
+	PrincipalRepository,
+	EmailDomainMappingRepository,
+	AnchorDomainRepository,
+} from "../../../infrastructure/persistence/index.js";
 import {
 	updatePrincipal,
 	UserUpdated,
 	PrincipalType,
+	PrincipalScope,
+	resolveScopeForEmail,
 } from "../../../domain/index.js";
 
 import type { UpdateUserCommand } from "./command.js";
@@ -27,6 +35,8 @@ import type { UpdateUserCommand } from "./command.js";
  */
 export interface UpdateUserUseCaseDeps {
 	readonly principalRepository: PrincipalRepository;
+	readonly emailDomainMappingRepository: EmailDomainMappingRepository;
+	readonly anchorDomainRepository: AnchorDomainRepository;
 	readonly unitOfWork: UnitOfWork;
 }
 
@@ -36,7 +46,12 @@ export interface UpdateUserUseCaseDeps {
 export function createUpdateUserUseCase(
 	deps: UpdateUserUseCaseDeps,
 ): UseCase<UpdateUserCommand, UserUpdated> {
-	const { principalRepository, unitOfWork } = deps;
+	const {
+		principalRepository,
+		emailDomainMappingRepository,
+		anchorDomainRepository,
+		unitOfWork,
+	} = deps;
 
 	return {
 		async execute(
@@ -83,27 +98,69 @@ export function createUpdateUserUseCase(
 				);
 			}
 
-			// Check if name actually changed
-			if (principal.name === command.name) {
-				// No change, but still return success
-				const event = new UserUpdated(context, {
-					userId: principal.id,
-					name: command.name,
-					previousName: principal.name,
-				});
-				return unitOfWork.commit(principal, event, command);
+			// Validate scope if provided
+			const commandScope =
+				command.scope !== undefined
+					? (command.scope as PrincipalScope)
+					: undefined;
+			if (
+				commandScope !== undefined &&
+				!Object.values(PrincipalScope).includes(commandScope)
+			) {
+				return Result.failure(
+					UseCaseError.validation(
+						"INVALID_SCOPE",
+						`Invalid scope: ${command.scope}. Must be one of: ${Object.values(PrincipalScope).join(", ")}`,
+						{ field: "scope" },
+					),
+				);
 			}
 
-			// Update the principal
-			const updatedPrincipal = updatePrincipal(principal, {
+			// Resolve effective scope: email domain config overrides API-provided values
+			const emailDomain = principal.userIdentity?.emailDomain;
+			let effectiveScope = commandScope;
+			let effectiveClientId = command.clientId;
+
+			if (emailDomain) {
+				const mapping =
+					await emailDomainMappingRepository.findByEmailDomain(emailDomain);
+				const isAnchorDomain =
+					!mapping &&
+					(await anchorDomainRepository.existsByDomain(emailDomain));
+
+				if (mapping || isAnchorDomain) {
+					const resolved = resolveScopeForEmail({
+						mapping,
+						isAnchorDomain,
+						fallbackScope: commandScope,
+						fallbackClientId: command.clientId ?? null,
+					});
+					effectiveScope = resolved.scope;
+					effectiveClientId = resolved.clientId;
+				}
+			}
+
+			// Build updates object — only include fields that were provided or overridden
+			const updates: Parameters<typeof updatePrincipal>[1] = {
 				name: command.name,
-			});
+				...(effectiveScope !== undefined && { scope: effectiveScope }),
+				...(effectiveClientId !== undefined && {
+					clientId: effectiveClientId ?? null,
+				}),
+			};
+
+			// Update the principal
+			const updatedPrincipal = updatePrincipal(principal, updates);
 
 			// Create domain event
 			const event = new UserUpdated(context, {
 				userId: principal.id,
 				name: command.name,
 				previousName: principal.name,
+				scope: updatedPrincipal.scope,
+				previousScope: principal.scope,
+				clientId: updatedPrincipal.clientId,
+				previousClientId: principal.clientId,
 			});
 
 			// Commit atomically

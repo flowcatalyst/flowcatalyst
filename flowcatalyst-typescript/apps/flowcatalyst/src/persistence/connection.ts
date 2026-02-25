@@ -62,6 +62,9 @@ export function createDatabase(config: DatabaseConfig): Database {
 		max: config.maxConnections ?? 10,
 		idle_timeout: config.idleTimeout ?? 20,
 		connect_timeout: config.connectTimeout ?? 30,
+		// Keep TCP connections alive so AWS NAT gateways / NLBs don't silently
+		// drop idle sockets (default idle timeout is ~350s).
+		keep_alive: 60,
 	};
 
 	if (config.debug) {

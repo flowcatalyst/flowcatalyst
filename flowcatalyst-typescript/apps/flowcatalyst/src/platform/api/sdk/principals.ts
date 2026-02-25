@@ -61,6 +61,8 @@ const CreateUserSchema = Type.Object({
 
 const UpdatePrincipalSchema = Type.Object({
 	name: Type.String({ minLength: 1 }),
+	scope: Type.Optional(Type.String()),
+	clientId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 
 const AssignRolesSchema = Type.Object({
@@ -340,6 +342,8 @@ export async function registerSdkPrincipalsRoutes(
 			const command: UpdateUserCommand = {
 				userId: id,
 				name: body.name,
+				scope: body.scope,
+				clientId: body.clientId,
 			};
 
 			const result = await updateUserUseCase.execute(command, ctx);

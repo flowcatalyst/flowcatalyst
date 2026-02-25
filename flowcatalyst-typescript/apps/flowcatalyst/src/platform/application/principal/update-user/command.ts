@@ -15,4 +15,10 @@ export interface UpdateUserCommand extends Command {
 
 	/** New display name */
 	readonly name: string;
+
+	/** New user scope (ANCHOR, PARTNER, CLIENT) — optional, only updated if provided */
+	readonly scope?: string | undefined;
+
+	/** Client ID for CLIENT scope users — optional, only updated if provided */
+	readonly clientId?: string | null | undefined;
 }

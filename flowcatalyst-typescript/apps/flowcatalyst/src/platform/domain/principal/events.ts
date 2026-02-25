@@ -64,6 +64,10 @@ export interface UserUpdatedData {
 	readonly userId: string;
 	readonly name: string;
 	readonly previousName: string;
+	readonly scope: PrincipalScope | null;
+	readonly previousScope: PrincipalScope | null;
+	readonly clientId: string | null;
+	readonly previousClientId: string | null;
 	readonly [key: string]: unknown;
 }
 

@@ -63,6 +63,11 @@ export interface ClientAccessGrantRepository {
 		tx?: TransactionContext,
 	): Promise<ClientAccessGrant>;
 	delete(entity: ClientAccessGrant, tx?: TransactionContext): Promise<boolean>;
+	/** Bulk-delete all grants for a principal. */
+	deleteByPrincipalId(
+		principalId: string,
+		tx?: TransactionContext,
+	): Promise<void>;
 	/** Batch load grants for multiple principal IDs. */
 	findByPrincipalIds(
 		principalIds: string[],
@@ -211,6 +216,15 @@ export function createClientAccessGrantRepository(
 					),
 				);
 			return true;
+		},
+
+		async deleteByPrincipalId(
+			principalId: string,
+			tx?: TransactionContext,
+		): Promise<void> {
+			await db(tx)
+				.delete(clientAccessGrants)
+				.where(eq(clientAccessGrants.principalId, principalId));
 		},
 
 		async persist(

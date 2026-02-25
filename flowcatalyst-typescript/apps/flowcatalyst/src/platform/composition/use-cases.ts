@@ -106,6 +106,8 @@ export function createUseCases(deps: CreateUseCasesDeps) {
 
 	const updateUserUseCase = createUpdateUserUseCase({
 		principalRepository: repos.principalRepository,
+		emailDomainMappingRepository: repos.emailDomainMappingRepository,
+		anchorDomainRepository: repos.anchorDomainRepository,
 		unitOfWork,
 	});
 
@@ -456,6 +458,8 @@ export function createUseCases(deps: CreateUseCasesDeps) {
 		{
 			emailDomainMappingRepository: repos.emailDomainMappingRepository,
 			identityProviderRepository: repos.identityProviderRepository,
+			principalRepository: repos.principalRepository,
+			clientAccessGrantRepository: repos.clientAccessGrantRepository,
 			unitOfWork,
 		},
 	);
@@ -464,6 +468,8 @@ export function createUseCases(deps: CreateUseCasesDeps) {
 		{
 			emailDomainMappingRepository: repos.emailDomainMappingRepository,
 			identityProviderRepository: repos.identityProviderRepository,
+			principalRepository: repos.principalRepository,
+			clientAccessGrantRepository: repos.clientAccessGrantRepository,
 			unitOfWork,
 		},
 	);

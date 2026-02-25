@@ -39,6 +39,12 @@ export {
 	createClientAccessGrant,
 } from "./client-access-grant.js";
 
+// Scope resolution
+export {
+	type ResolvedScope,
+	resolveScopeForEmail,
+} from "./scope-resolution.js";
+
 // Events
 export {
 	UserCreated,

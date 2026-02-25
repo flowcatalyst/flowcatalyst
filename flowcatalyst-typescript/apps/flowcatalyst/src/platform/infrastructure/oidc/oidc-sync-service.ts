@@ -92,6 +92,10 @@ export async function createOrUpdateOidcUser(
 			userId: existing.id,
 			name: updated.name,
 			previousName: existing.name,
+			scope: updated.scope,
+			previousScope: existing.scope,
+			clientId: updated.clientId,
+			previousClientId: existing.clientId,
 		});
 
 		return deps.unitOfWork.commit(updated, event, {
