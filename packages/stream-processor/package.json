@@ -1,0 +1,14 @@
+{
+	"name": "@flowcatalyst/stream-processor",
+	"version": "0.0.1",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@flowcatalyst/logging": "workspace:*",
+		"@flowcatalyst/config": "workspace:*",
+		"pino": "^9.6.0",
+		"postgres": "^3.4.5"
+	}
+}

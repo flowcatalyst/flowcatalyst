@@ -1,0 +1,12 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"rootDir": "./src",
+		"paths": {
+			"@flowcatalyst/domain": ["../../packages/domain/src/index.ts"],
+			"@flowcatalyst/tsid": ["../../packages/tsid/src/index.ts"]
+		}
+	},
+	"include": ["src"]
+}

@@ -1,0 +1,54 @@
+{
+	"name": "@flowcatalyst/sdk",
+	"version": "0.3.2",
+	"description": "TypeScript/JavaScript SDK for FlowCatalyst platform",
+	"keywords": [
+		"event-driven",
+		"flowcatalyst",
+		"messaging",
+		"sdk",
+		"typescript"
+	],
+	"license": "Apache-2.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/yourusername/flowcatalyst.git",
+		"directory": "clients/typescript-sdk"
+	},
+	"files": [
+		"dist",
+		"migrations",
+		"README.md"
+	],
+	"type": "module",
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"generate": "openapi-ts",
+		"generate:live": "OPENAPI_LIVE=true openapi-ts",
+		"prebuild": "npm run generate",
+		"test": "echo \"Tests coming soon\" && exit 0",
+		"lint": "tsc --noEmit",
+		"clean": "rm -rf dist src/generated"
+	},
+	"dependencies": {
+		"neverthrow": "^8.1.1"
+	},
+	"devDependencies": {
+		"@hey-api/openapi-ts": "^0.91.1",
+		"@types/node": "^22.0.0",
+		"typescript": "^5.9.0"
+	},
+	"engines": {
+		"node": ">=18.0.0"
+	}
+}

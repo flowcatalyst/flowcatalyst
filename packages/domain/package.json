@@ -1,0 +1,16 @@
+{
+	"name": "@flowcatalyst/domain",
+	"version": "0.0.1",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@flowcatalyst/tsid": "workspace:*",
+		"neverthrow": "^8.2.0"
+	},
+	"devDependencies": {
+		"vite-tsconfig-paths": "^5.1.4",
+		"vitest": "^4.0.18"
+	}
+}

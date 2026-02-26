@@ -1,0 +1,5 @@
+packages:
+  - 'apps/flowcatalyst'
+  - 'apps/platform-frontend'
+  - 'clients/*'
+  - 'packages/*'

@@ -1,0 +1,9 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"rules": {
+		"no-throw-literal": "error",
+		"import/no-unused-imports": "error",
+		"typescript/no-explicit-any": "warn"
+	},
+	"ignorePatterns": ["**/dist/**", "**/node_modules/**", "**/*.gen.ts"]
+}

@@ -1,0 +1,24 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"paths": {
+			"@flowcatalyst/tsid": ["../../packages/tsid/src/index.ts"],
+			"@flowcatalyst/logging": ["../../packages/logging/src/index.ts"],
+			"@flowcatalyst/config": ["../../packages/config/src/index.ts"],
+			"@flowcatalyst/contracts": ["../../packages/contracts/src/index.ts"],
+			"@flowcatalyst/platform-crypto": ["../../packages/crypto/src/index.ts"],
+			"@flowcatalyst/domain": ["../../packages/domain/src/index.ts"],
+			"@flowcatalyst/application": ["../../packages/framework/src/index.ts"],
+			"@flowcatalyst/http": ["../../packages/http/src/index.ts"],
+			"@flowcatalyst/persistence": ["../../packages/persistence/src/index.ts"],
+			"@flowcatalyst/queue-core": ["../../packages/queue-core/src/index.ts"],
+			"@flowcatalyst/platform": ["../../packages/platform/src/index.ts"],
+			"@flowcatalyst/message-router": ["../../packages/message-router/src/index.ts"],
+			"@flowcatalyst/stream-processor": ["../../packages/stream-processor/src/index.ts"],
+			"@flowcatalyst/outbox-processor": ["../../packages/outbox-processor/src/index.ts"]
+		}
+	},
+	"include": ["src/**/*"],
+	"exclude": ["node_modules", "dist", "src/**/__tests__"]
+}

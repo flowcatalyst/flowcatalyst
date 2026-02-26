@@ -1,0 +1,17 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"rootDir": "./src",
+		"paths": {
+			"@flowcatalyst/domain": ["../../packages/domain/src/index.ts"],
+			"@flowcatalyst/http": ["../../packages/http/src/index.ts"],
+			"@flowcatalyst/persistence": ["../../packages/persistence/src/index.ts"],
+			"@flowcatalyst/platform-crypto": ["../../packages/crypto/src/index.ts"],
+			"@flowcatalyst/application": ["../../packages/framework/src/index.ts"],
+			"@flowcatalyst/queue-core": ["../../packages/queue-core/src/index.ts"],
+			"@flowcatalyst/tsid": ["../../packages/tsid/src/index.ts"]
+		}
+	},
+	"include": ["src"]
+}

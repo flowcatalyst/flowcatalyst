@@ -1,0 +1,39 @@
+{
+	"name": "@flowcatalyst/message-router",
+	"version": "0.0.1",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@flowcatalyst/queue-core": "workspace:*",
+		"@flowcatalyst/logging": "workspace:*",
+		"@flowcatalyst/config": "workspace:*",
+		"@flowcatalyst/contracts": "workspace:*",
+		"@aws-sdk/client-sqs": "^3.717.0",
+		"@fastify/type-provider-typebox": "^5.1.0",
+		"@sinclair/typebox": "^0.34.30",
+		"cockatiel": "^3.2.1",
+		"fastify": "^5.2.1",
+		"fastify-plugin": "^5.0.1",
+		"nats": "^2.29.3",
+		"pino": "^9.6.0",
+		"prom-client": "^15.1.3",
+		"sql.js": "^1.12.0",
+		"stompit": "^1.0.0",
+		"undici": "^7.3.0",
+		"zod": "^4.1.13",
+		"@fastify/swagger": "^9.4.2",
+		"@fastify/swagger-ui": "^5.2.1",
+		"@aws-sdk/client-elastic-load-balancing-v2": "^3.717.0",
+		"ioredis": "^5.9.3",
+		"jose": "^6.1.3",
+		"neverthrow": "^8.2.0",
+		"nodemailer": "^7.0.12"
+	},
+	"devDependencies": {
+		"@types/stompit": "^0.26.6",
+		"@types/sql.js": "^1.4.9",
+		"@types/nodemailer": "^7.0.5"
+	}
+}

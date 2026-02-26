@@ -1,0 +1,15 @@
+{
+	"name": "@flowcatalyst/outbox-processor",
+	"version": "0.0.1",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@flowcatalyst/logging": "workspace:*",
+		"pino": "^9.6.0",
+		"postgres": "^3.4.5",
+		"undici": "^7.3.0",
+		"zod": "^4.1.13"
+	}
+}

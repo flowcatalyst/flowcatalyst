@@ -1,0 +1,14 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"rootDir": "./src",
+		"paths": {
+			"@flowcatalyst/queue-core": ["../../packages/queue-core/src/index.ts"],
+			"@flowcatalyst/logging": ["../../packages/logging/src/index.ts"],
+			"@flowcatalyst/config": ["../../packages/config/src/index.ts"],
+			"@flowcatalyst/contracts": ["../../packages/contracts/src/index.ts"]
+		}
+	},
+	"include": ["src"]
+}

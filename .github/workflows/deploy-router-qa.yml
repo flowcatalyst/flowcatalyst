@@ -1,0 +1,131 @@
+name: Deploy Message Router (QA)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy (tag, branch, or SHA from flowcatalyst/flowcatalyst)"
+        required: true
+        default: "main"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-west-1
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+  ECS_SERVICE: svc-fc-router-qa
+  TASK_FAMILY: tsk-fc-router-qa
+  ECR_REPO: flowcatalyst/router
+
+jobs:
+  deploy:
+    name: Build & Deploy (router QA)
+    runs-on: ubuntu-latest
+    environment: nonprod
+    steps:
+      - name: Checkout deploy repo
+        uses: actions/checkout@v4
+        with:
+          path: deploy
+
+      - name: Checkout FlowCatalyst source
+        uses: actions/checkout@v4
+        with:
+          repository: flowcatalyst/flowcatalyst
+          ref: ${{ inputs.ref }}
+          path: source
+
+      - name: Determine image tag
+        id: meta
+        run: |
+          cd source
+          SHA=$(git rev-parse --short HEAD)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Image tag: $SHA (ref: ${{ inputs.ref }})"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      # ── Build & Push ──────────────────────────────────────────────
+      - name: Build and push Docker image
+        working-directory: source/flowcatalyst-typescript
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}
+          TAG: ${{ steps.meta.outputs.sha }}
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            -f apps/flowcatalyst/Dockerfile \
+            -t $IMAGE:$TAG \
+            -t $IMAGE:latest \
+            .
+          docker push $IMAGE:$TAG
+          docker push $IMAGE:latest
+
+      # ── Register New Task Definition ──────────────────────────────
+      - name: Register new task definition
+        id: taskdef
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ steps.meta.outputs.sha }}
+          NOTIFICATION_TEAMS_WEBHOOK_URL: ${{ secrets.NOTIFICATION_TEAMS_WEBHOOK_URL }}
+        run: |
+          TASK_DEF=$(aws ecs describe-task-definition --task-definition $TASK_FAMILY \
+            --query 'taskDefinition' --output json)
+
+          ROUTER_ENV=$(jq -n \
+            --arg webhook "$NOTIFICATION_TEAMS_WEBHOOK_URL" \
+            '[
+              {"name":"PLATFORM_ENABLED",              "value":"false"},
+              {"name":"MESSAGE_ROUTER_ENABLED",         "value":"true"},
+              {"name":"STREAM_PROCESSOR_ENABLED",       "value":"false"},
+              {"name":"AUTO_MIGRATE",                   "value":"false"},
+              {"name":"NODE_ENV",                       "value":"production"},
+              {"name":"LOG_LEVEL",                      "value":"info"},
+              {"name":"HOST",                           "value":"0.0.0.0"},
+              {"name":"QUEUE_TYPE",                     "value":"SQS"},
+              {"name":"AWS_REGION",                     "value":"eu-west-1"},
+              {"name":"AUTHENTICATION_ENABLED",         "value":"true"},
+              {"name":"AUTHENTICATION_MODE",            "value":"OIDC"},
+              {"name":"OIDC_ISSUER_URL",                "value":"https://login.microsoftonline.com/2e789bd9-a313-462a-b520-df9b586c00ed/v2.0"},
+              {"name":"OIDC_CLIENT_ID",                 "value":"c6dc836f-1e6d-4ce1-83ae-945a5a841392"},
+              {"name":"ROUTER_CONFIG_URL",               "value":"https://staging-integral.inhancesc.com/api/router/config"},
+              {"name":"STANDBY_ENABLED",                "value":"false"},
+              {"name":"NOTIFICATION_ENABLED",           "value":"true"},
+              {"name":"NOTIFICATION_TEAMS_ENABLED",     "value":"true"},
+              {"name":"NOTIFICATION_TEAMS_WEBHOOK_URL", "value":$webhook}
+            ]')
+
+          NEW_TASK_DEF=$(echo "$TASK_DEF" | jq \
+            --arg IMAGE "$IMAGE" \
+            --argjson ENV "$ROUTER_ENV" \
+            '.containerDefinitions[0].image = $IMAGE |
+             .containerDefinitions[0].environment = $ENV |
+             del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                 .compatibilities, .registeredAt, .registeredBy)')
+
+          NEW_REVISION=$(aws ecs register-task-definition \
+            --cli-input-json "$NEW_TASK_DEF" \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+
+          echo "revision=$NEW_REVISION" >> "$GITHUB_OUTPUT"
+          echo "New task definition: $NEW_REVISION"
+
+      # ── Deploy ────────────────────────────────────────────────────
+      - name: Update ECS service
+        env:
+          TASK_DEF_ARN: ${{ steps.taskdef.outputs.revision }}
+        run: |
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
+            --task-definition "$TASK_DEF_ARN" \
+            --query 'service.taskDefinition' --output text
+
+          echo "Deployment triggered (ref: ${{ inputs.ref }}, image: ${{ steps.meta.outputs.sha }})"

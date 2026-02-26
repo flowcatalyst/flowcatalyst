@@ -1,0 +1,85 @@
+name: Split TypeScript SDK
+
+on:
+  push:
+    tags:
+      - 'typescript-sdk/v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create on target repo (e.g., v1.0.0). Leave empty to just sync main.'
+        required: false
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install splitsh-lite
+        run: |
+          curl -L https://github.com/splitsh/lite/releases/download/v1.0.1/lite_linux_amd64.tar.gz | tar xz
+          chmod +x splitsh-lite
+          sudo mv splitsh-lite /usr/local/bin/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Split, build, and push
+        env:
+          TARGET_REPO: https://x-access-token:${{ secrets.TYPESCRIPT_SDK_TOKEN }}@github.com/flowcatalyst/typescript-sdk.git
+        run: |
+          # Extract version from tag (typescript-sdk/v1.0.0 -> v1.0.0)
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${{ github.ref_name }}"
+            VERSION="${TAG#typescript-sdk/}"
+          elif [[ -n "${{ github.event.inputs.tag }}" ]]; then
+            VERSION="${{ github.event.inputs.tag }}"
+          else
+            VERSION=""
+          fi
+
+          # Split the subtree (preserves per-file commit history)
+          SHA=$(splitsh-lite --prefix=flowcatalyst-typescript/clients/typescript-sdk)
+          echo "Split SHA: $SHA"
+
+          # Push split source to target repo
+          git remote add sdk "$TARGET_REPO" || git remote set-url sdk "$TARGET_REPO"
+          git push sdk "$SHA:refs/heads/main" --force
+
+          # Clone target repo and build dist
+          WORK_DIR=$(mktemp -d)
+          git clone "$TARGET_REPO" "$WORK_DIR"
+          cd "$WORK_DIR"
+
+          npm ci
+          npx tsc
+
+          # Commit built output (dist/ is gitignored in the monorepo but needed here)
+          git add dist/
+          if git diff --cached --quiet; then
+            echo "dist/ unchanged, nothing to commit"
+          else
+            git commit -m "chore: build dist"
+            git push origin main
+          fi
+
+          # Tag the final commit (includes dist)
+          if [[ -n "$VERSION" ]]; then
+            git tag -f "$VERSION"
+            git push origin "$VERSION" --force
+            echo "Tagged and pushed: $VERSION"
+          fi
+
+          echo "Successfully pushed to flowcatalyst/typescript-sdk"
