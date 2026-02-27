@@ -51,7 +51,7 @@ jobs:
           fi
 
           # Split the subtree (preserves per-file commit history)
-          SHA=$(splitsh-lite --prefix=flowcatalyst-typescript/clients/typescript-sdk)
+          SHA=$(splitsh-lite --prefix=clients/typescript-sdk)
           echo "Split SHA: $SHA"
 
           # Push split source to target repo

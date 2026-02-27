@@ -31,7 +31,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'pnpm'
-          cache-dependency-path: flowcatalyst-typescript/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - uses: shivammathur/setup-php@v2
         if: inputs.targets == 'all' || inputs.targets == 'laravel-sdk'
@@ -39,11 +39,9 @@ jobs:
           php-version: '8.3'
 
       - name: Install dependencies
-        working-directory: flowcatalyst-typescript
         run: pnpm install --frozen-lockfile
 
       - name: Extract OpenAPI spec
-        working-directory: flowcatalyst-typescript
         run: |
           pnpm --filter @flowcatalyst/flowcatalyst build
           cd apps/flowcatalyst && pnpm openapi:extract
@@ -51,7 +49,6 @@ jobs:
 
       - name: Generate TypeScript SDK
         if: inputs.targets == 'all' || inputs.targets == 'typescript-sdk'
-        working-directory: flowcatalyst-typescript
         run: |
           cp apps/flowcatalyst/openapi/openapi.yaml clients/typescript-sdk/openapi/
           cp apps/flowcatalyst/openapi/openapi.json clients/typescript-sdk/openapi/
@@ -59,7 +56,6 @@ jobs:
 
       - name: Generate Laravel SDK
         if: inputs.targets == 'all' || inputs.targets == 'laravel-sdk'
-        working-directory: flowcatalyst-typescript
         run: |
           cp apps/flowcatalyst/openapi/openapi.json clients/laravel-sdk/openapi/
           cd clients/laravel-sdk && php scripts/prepare-openapi.php
@@ -67,14 +63,12 @@ jobs:
 
       - name: Generate frontend API client
         if: inputs.targets == 'all' || inputs.targets == 'frontend-api'
-        working-directory: flowcatalyst-typescript
         run: |
           mkdir -p apps/platform-frontend/openapi
           cp apps/flowcatalyst/openapi/openapi.yaml apps/platform-frontend/openapi/
           cd apps/platform-frontend && pnpm api:generate
 
       - name: Commit changes
-        working-directory: flowcatalyst-typescript
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"

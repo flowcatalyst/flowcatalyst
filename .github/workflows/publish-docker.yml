@@ -4,9 +4,9 @@ on:
   push:
     branches: [main]
     paths:
-      - 'flowcatalyst-typescript/apps/flowcatalyst/**'
-      - 'flowcatalyst-typescript/apps/platform-frontend/**'
-      - 'flowcatalyst-typescript/pnpm-lock.yaml'
+      - 'apps/flowcatalyst/**'
+      - 'apps/platform-frontend/**'
+      - 'pnpm-lock.yaml'
   release:
     types: [published]
   workflow_dispatch:
@@ -41,7 +41,6 @@ jobs:
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
-        working-directory: flowcatalyst-typescript
         run: |
           IFS=',' read -ra TAG_ARGS <<< "${{ steps.tags.outputs.tags }}"
           TAG_FLAGS=""

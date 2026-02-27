@@ -46,7 +46,7 @@ jobs:
           fi
 
           # Split the subtree
-          SHA=$(splitsh-lite --prefix=flowcatalyst-typescript/clients/laravel-sdk)
+          SHA=$(splitsh-lite --prefix=clients/laravel-sdk)
           echo "Split SHA: $SHA"
 
           # Add remote

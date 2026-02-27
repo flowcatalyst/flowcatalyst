@@ -55,7 +55,7 @@ jobs:
 
       # ── Build & Push ──────────────────────────────────────────────
       - name: Build and push Docker image
-        working-directory: source/flowcatalyst-typescript
+        working-directory: source
         env:
           IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}
           TAG: ${{ steps.meta.outputs.sha }}
