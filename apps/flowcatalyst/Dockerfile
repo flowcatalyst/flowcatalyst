@@ -23,6 +23,20 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 # Copy package.json for each workspace member so pnpm can resolve
 COPY apps/flowcatalyst/package.json apps/flowcatalyst/
 COPY apps/platform-frontend/package.json apps/platform-frontend/
+COPY packages/config/package.json packages/config/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/crypto/package.json packages/crypto/
+COPY packages/domain/package.json packages/domain/
+COPY packages/framework/package.json packages/framework/
+COPY packages/http/package.json packages/http/
+COPY packages/logging/package.json packages/logging/
+COPY packages/message-router/package.json packages/message-router/
+COPY packages/outbox-processor/package.json packages/outbox-processor/
+COPY packages/persistence/package.json packages/persistence/
+COPY packages/platform/package.json packages/platform/
+COPY packages/queue-core/package.json packages/queue-core/
+COPY packages/stream-processor/package.json packages/stream-processor/
+COPY packages/tsid/package.json packages/tsid/
 
 # Install all dependencies (including devDependencies for build)
 RUN pnpm install --frozen-lockfile
@@ -30,6 +44,7 @@ RUN pnpm install --frozen-lockfile
 # Copy source
 COPY apps/flowcatalyst/ apps/flowcatalyst/
 COPY apps/platform-frontend/ apps/platform-frontend/
+COPY packages/ packages/
 
 # Build frontend + backend
 RUN pnpm --filter @flowcatalyst/flowcatalyst build:full
