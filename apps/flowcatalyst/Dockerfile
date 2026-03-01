@@ -18,7 +18,7 @@ RUN corepack enable && corepack prepare pnpm@10.30.3 --activate
 WORKDIR /app
 
 # Copy workspace config, lockfile & shared tsconfig first (layer caching)
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json .npmrc ./
 
 # Copy package.json for each workspace member so pnpm can resolve
 COPY apps/flowcatalyst/package.json apps/flowcatalyst/
