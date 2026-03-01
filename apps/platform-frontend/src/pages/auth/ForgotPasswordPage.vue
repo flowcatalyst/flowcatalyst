@@ -13,7 +13,7 @@ onMounted(async () => {
 	themeStore.applyThemeColors();
 
 	// Pre-populate email from query param (set by LoginPage)
-	const emailParam = route.query.email;
+	const emailParam = route.query["email"];
 	if (emailParam && typeof emailParam === "string") {
 		email.value = emailParam;
 	}

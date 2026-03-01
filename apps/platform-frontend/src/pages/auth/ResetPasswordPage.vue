@@ -24,7 +24,7 @@ const pageState = ref<PageState>("loading");
 const invalidReason = ref<"expired" | "not_found" | "unknown">("not_found");
 const submitError = ref<string | null>(null);
 
-const token = (route.query.token as string | undefined) ?? "";
+const token = (route.query["token"] as string | undefined) ?? "";
 
 async function checkToken() {
 	if (!token) {

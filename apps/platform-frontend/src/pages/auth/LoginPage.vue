@@ -18,7 +18,7 @@ const themeStore = useLoginThemeStore();
 const toast = useToast();
 
 // Show a success banner when redirected here after a successful password reset
-const showResetSuccess = computed(() => route.query.reset === "success");
+const showResetSuccess = computed(() => route.query["reset"] === "success");
 
 // Load theme on mount
 onMounted(async () => {
