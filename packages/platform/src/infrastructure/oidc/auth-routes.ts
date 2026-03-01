@@ -10,17 +10,23 @@
  * authentication solution that matches the Java platform API.
  */
 
+import { randomBytes, createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import type { PrincipalRepository } from "../persistence/repositories/principal-repository.js";
 import type { EmailDomainMappingRepository } from "../persistence/repositories/email-domain-mapping-repository.js";
 import type { IdentityProviderRepository } from "../persistence/repositories/identity-provider-repository.js";
 import type { ClientRepository } from "../persistence/repositories/client-repository.js";
 import type { LoginAttemptRepository } from "../persistence/repositories/login-attempt-repository.js";
+import type { PasswordResetTokenRepository } from "../persistence/repositories/password-reset-token-repository.js";
 import type { PasswordService } from "@flowcatalyst/platform-crypto";
 import { ExecutionContext, type UnitOfWork } from "@flowcatalyst/domain";
 import { getMappingAccessibleClientIds } from "../../domain/email-domain-mapping/email-domain-mapping.js";
 import { getEffectiveIssuerPattern } from "../../domain/identity-provider/identity-provider.js";
-import { UserLoggedIn } from "../../domain/principal/events.js";
+import {
+	UserLoggedIn,
+	PasswordResetRequested,
+	PasswordReset,
+} from "../../domain/principal/events.js";
 import { extractApplicationCodes } from "./jwt-key-service.js";
 
 /**
@@ -47,6 +53,11 @@ export interface AuthRoutesDeps {
 	clientRepository: ClientRepository;
 	passwordService: PasswordService;
 	loginAttemptRepository?: LoginAttemptRepository;
+	passwordResetTokenRepository: PasswordResetTokenRepository;
+	/** Called to deliver a reset link to the user. null = SMTP not configured (silent no-op). */
+	sendPasswordResetEmail: ((to: string, resetUrl: string) => Promise<void>) | null;
+	/** Base URL used to construct the password reset link (e.g. "https://auth.company.com"). */
+	baseUrl: string;
 	unitOfWork: UnitOfWork;
 	issueSessionToken: (
 		principalId: string,
@@ -424,8 +435,181 @@ export async function registerAuthRoutes(
 		},
 	);
 
+	/**
+	 * POST /auth/password-reset/request
+	 * Issue a password reset email for an internal user.
+	 * Always returns 200 to prevent email enumeration.
+	 */
+	fastify.post<{ Body: { email?: string } }>(
+		"/auth/password-reset/request",
+		async (request, reply) => {
+			const rawEmail = request.body?.email;
+			if (!rawEmail || typeof rawEmail !== "string" || rawEmail.trim() === "") {
+				return reply.status(400).send({ error: "Email is required" });
+			}
+
+			const email = rawEmail.toLowerCase().trim();
+			const silentOk = { message: "If an account exists, a reset email has been sent." };
+
+			// Look up user — silently succeed if not found or not internal
+			const principal = await principalRepository.findByEmail(email);
+			if (
+				!principal ||
+				principal.type !== "USER" ||
+				!principal.active ||
+				principal.userIdentity?.idpType !== "INTERNAL"
+			) {
+				return reply.send(silentOk);
+			}
+
+			// Delete any existing tokens for this principal (one active token at a time)
+			await deps.passwordResetTokenRepository.deleteByPrincipalId(principal.id);
+
+			// Generate a cryptographically-random URL token and its SHA-256 hash for storage
+			const token = randomBytes(32).toString("hex");
+			const tokenHash = createHash("sha256").update(token).digest("hex");
+			const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+			await deps.passwordResetTokenRepository.insert({
+				principalId: principal.id,
+				tokenHash,
+				expiresAt,
+			});
+
+			// Send reset email if SMTP is configured
+			const resetUrl = `${deps.baseUrl}/auth/reset-password?token=${token}`;
+			if (deps.sendPasswordResetEmail) {
+				deps.sendPasswordResetEmail(principal.userIdentity!.email, resetUrl).catch((err) => {
+					fastify.log.warn({ err, email }, "Failed to send password reset email");
+				});
+			}
+
+			// Emit event (fire-and-forget)
+			const ctx = ExecutionContext.create(principal.id);
+			deps.unitOfWork
+				.commitOperations(
+					new PasswordResetRequested(ctx, {
+						userId: principal.id,
+						email: principal.userIdentity!.email,
+					}),
+					{ _type: "PasswordResetRequested" },
+					async () => {},
+				)
+				.catch((err) => {
+					fastify.log.warn({ err }, "Failed to emit PasswordResetRequested event");
+				});
+
+			return reply.send(silentOk);
+		},
+	);
+
+	/**
+	 * GET /auth/password-reset/validate?token=
+	 * Validate a reset token before showing the reset form.
+	 */
+	fastify.get<{ Querystring: { token?: string } }>(
+		"/auth/password-reset/validate",
+		async (request, reply) => {
+			const token = request.query?.token;
+			if (!token || typeof token !== "string" || token.trim() === "") {
+				return reply.send({ valid: false, reason: "not_found" });
+			}
+
+			const tokenHash = createHash("sha256").update(token).digest("hex");
+			const record = await deps.passwordResetTokenRepository.findByTokenHash(tokenHash);
+
+			if (!record) {
+				return reply.send({ valid: false, reason: "not_found" });
+			}
+
+			if (record.expiresAt <= new Date()) {
+				// Clean up expired token
+				await deps.passwordResetTokenRepository.deleteById(record.id);
+				return reply.send({ valid: false, reason: "expired" });
+			}
+
+			return reply.send({ valid: true });
+		},
+	);
+
+	/**
+	 * POST /auth/password-reset/confirm
+	 * Complete a password reset using a valid token.
+	 */
+	fastify.post<{ Body: { token?: string; password?: string } }>(
+		"/auth/password-reset/confirm",
+		async (request, reply) => {
+			const { token, password } = request.body ?? {};
+
+			if (!token || typeof token !== "string" || token.trim() === "") {
+				return reply.status(400).send({ error: "Token is required" });
+			}
+			if (!password || typeof password !== "string" || password.trim() === "") {
+				return reply.status(400).send({ error: "Password is required" });
+			}
+
+			// Hash and look up token
+			const tokenHash = createHash("sha256").update(token).digest("hex");
+			const tokenRecord = await deps.passwordResetTokenRepository.findByTokenHash(tokenHash);
+
+			if (!tokenRecord) {
+				return reply.status(400).send({ error: "Invalid or expired reset token" });
+			}
+
+			if (tokenRecord.expiresAt <= new Date()) {
+				await deps.passwordResetTokenRepository.deleteById(tokenRecord.id);
+				return reply.status(400).send({ error: "Invalid or expired reset token" });
+			}
+
+			// Hash the new password (also validates complexity)
+			const hashResult = await passwordService.validateAndHash(password);
+			if (!hashResult.isOk()) {
+				return reply.status(400).send({ error: "Password does not meet complexity requirements" });
+			}
+			const newHash = hashResult.value;
+
+			// Load the principal
+			const principal = await principalRepository.findById(tokenRecord.principalId);
+			if (!principal || !principal.userIdentity) {
+				// Token references an unknown principal — delete the stale token
+				await deps.passwordResetTokenRepository.deleteById(tokenRecord.id);
+				return reply.status(400).send({ error: "Invalid or expired reset token" });
+			}
+
+			// Update password hash
+			const updated = {
+				...principal,
+				userIdentity: {
+					...principal.userIdentity,
+					passwordHash: newHash,
+				},
+			};
+			await principalRepository.update(updated);
+
+			// Consume the token (single-use)
+			await deps.passwordResetTokenRepository.deleteById(tokenRecord.id);
+
+			// Emit event (fire-and-forget)
+			const ctx = ExecutionContext.create(principal.id);
+			deps.unitOfWork
+				.commitOperations(
+					new PasswordReset(ctx, {
+						userId: principal.id,
+						email: principal.userIdentity.email,
+					}),
+					{ _type: "PasswordReset" },
+					async () => {},
+				)
+				.catch((err) => {
+					fastify.log.warn({ err }, "Failed to emit PasswordReset event");
+				});
+
+			return reply.send({ message: "Password reset successfully." });
+		},
+	);
+
 	fastify.log.info(
-		"Auth routes registered (/auth/login, /auth/logout, /auth/me, /auth/check-domain)",
+		"Auth routes registered (/auth/login, /auth/logout, /auth/me, /auth/check-domain, /auth/password-reset/*)",
 	);
 }
 

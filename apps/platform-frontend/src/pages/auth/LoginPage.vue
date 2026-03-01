@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
+import { useRoute } from "vue-router";
 import { useForm, useField } from "vee-validate";
 import { toTypedSchema } from "@vee-validate/zod";
 import { z } from "zod";
@@ -11,9 +12,13 @@ import { getErrorMessage } from "@/utils/errors";
 
 type LoginStep = "email" | "password" | "redirecting";
 
+const route = useRoute();
 const authStore = useAuthStore();
 const themeStore = useLoginThemeStore();
 const toast = useToast();
+
+// Show a success banner when redirected here after a successful password reset
+const showResetSuccess = computed(() => route.query.reset === "success");
 
 // Load theme on mount
 onMounted(async () => {
@@ -189,6 +194,11 @@ async function onSubmitPassword() {
           }}
         </h2>
 
+        <!-- Password reset success banner -->
+        <div v-if="showResetSuccess" class="success-banner">
+          <p>Your password has been reset. You can now sign in with your new password.</p>
+        </div>
+
         <!-- Error message -->
         <div v-if="authStore.error" class="error-message">
           <p>{{ authStore.error }}</p>
@@ -261,7 +271,10 @@ async function onSubmitPassword() {
               <Checkbox v-model="rememberMe" :binary="true" />
               <span>Remember me</span>
             </label>
-            <a href="#" class="forgot-password">Forgot password?</a>
+            <RouterLink
+              :to="{ name: 'forgot-password', query: currentEmail ? { email: currentEmail } : {} }"
+              class="forgot-password"
+            >Forgot password?</RouterLink>
           </div>
 
           <Button
@@ -360,6 +373,20 @@ async function onSubmitPassword() {
   font-weight: 600;
   color: #102a43;
   margin: 0 0 24px;
+}
+
+.success-banner {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 24px;
+}
+
+.success-banner p {
+  margin: 0;
+  color: #166534;
+  font-size: 14px;
 }
 
 .error-message {

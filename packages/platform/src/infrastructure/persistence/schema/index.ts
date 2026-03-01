@@ -247,6 +247,13 @@ export {
 	type NewLoginAttemptRecord,
 } from "./login-attempts.js";
 
+// Password reset token tables
+export {
+	passwordResetTokens,
+	type PasswordResetTokenRecord,
+	type NewPasswordResetTokenRecord,
+} from "./password-reset-tokens.js";
+
 // Projection feed tables (CQRS read model projection)
 export {
 	dispatchJobProjectionFeed,

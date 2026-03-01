@@ -387,6 +387,74 @@ export class UserLoggedIn extends BaseDomainEvent<UserLoggedInData> {
 }
 
 // -----------------------------------------------------------------------------
+// PasswordResetRequested
+// -----------------------------------------------------------------------------
+
+export interface PasswordResetRequestedData {
+	readonly userId: string;
+	readonly email: string;
+	readonly [key: string]: unknown;
+}
+
+export class PasswordResetRequested extends BaseDomainEvent<PasswordResetRequestedData> {
+	static readonly EVENT_TYPE = DomainEvent.eventType(
+		APP,
+		DOMAIN,
+		"user",
+		"password-reset-requested",
+	);
+	static readonly SPEC_VERSION = "1.0";
+
+	constructor(ctx: ExecutionContext, data: PasswordResetRequestedData) {
+		super(
+			{
+				eventType: PasswordResetRequested.EVENT_TYPE,
+				specVersion: PasswordResetRequested.SPEC_VERSION,
+				source: SOURCE,
+				subject: DomainEvent.subject(APP, "user", data.userId),
+				messageGroup: DomainEvent.messageGroup(APP, "user", data.userId),
+			},
+			ctx,
+			data,
+		);
+	}
+}
+
+// -----------------------------------------------------------------------------
+// PasswordReset
+// -----------------------------------------------------------------------------
+
+export interface PasswordResetData {
+	readonly userId: string;
+	readonly email: string;
+	readonly [key: string]: unknown;
+}
+
+export class PasswordReset extends BaseDomainEvent<PasswordResetData> {
+	static readonly EVENT_TYPE = DomainEvent.eventType(
+		APP,
+		DOMAIN,
+		"user",
+		"password-reset",
+	);
+	static readonly SPEC_VERSION = "1.0";
+
+	constructor(ctx: ExecutionContext, data: PasswordResetData) {
+		super(
+			{
+				eventType: PasswordReset.EVENT_TYPE,
+				specVersion: PasswordReset.SPEC_VERSION,
+				source: SOURCE,
+				subject: DomainEvent.subject(APP, "user", data.userId),
+				messageGroup: DomainEvent.messageGroup(APP, "user", data.userId),
+			},
+			ctx,
+			data,
+		);
+	}
+}
+
+// -----------------------------------------------------------------------------
 // PrincipalsSynced
 // -----------------------------------------------------------------------------
 

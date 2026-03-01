@@ -67,6 +67,9 @@ export const EntityType = {
 	// Platform configuration
 	PLATFORM_CONFIG: "pcf",
 	CONFIG_ACCESS: "cfa",
+
+	// Auth
+	PASSWORD_RESET_TOKEN: "prt",
 } as const;
 
 /**

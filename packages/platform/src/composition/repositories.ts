@@ -27,6 +27,7 @@ import {
 	createPlatformConfigRepository,
 	createPlatformConfigAccessRepository,
 	createLoginAttemptRepository,
+	createPasswordResetTokenRepository,
 } from "../infrastructure/persistence/index.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -57,6 +58,7 @@ export function createRepositories(db: any, schemaDb: any) {
 		platformConfigRepository: createPlatformConfigRepository(db),
 		platformConfigAccessRepository: createPlatformConfigAccessRepository(db),
 		loginAttemptRepository: createLoginAttemptRepository(db),
+		passwordResetTokenRepository: createPasswordResetTokenRepository(db),
 	};
 }
 

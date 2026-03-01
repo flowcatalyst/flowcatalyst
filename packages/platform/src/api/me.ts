@@ -207,26 +207,21 @@ export async function registerMeRoutes(
 				return notFound(reply, `Client not found: ${clientId}`);
 			}
 
-			// Get enabled application configs for this client
-			const configs =
-				await applicationClientConfigRepository.findByClient(clientId);
-			const enabledConfigsByAppId = new Map(
-				configs.filter((c) => c.enabled).map((c) => [c.applicationId, c]),
-			);
-
-			if (enabledConfigsByAppId.size === 0) {
-				return jsonSuccess(reply, {
-					applications: [],
-					total: 0,
-					clientId,
-				});
-			}
-
-			// Get all applications and filter to enabled+active ones
+			// Anchor users have global access — skip per-client config filtering
+			// and return all active applications directly.
 			const allApps = await applicationRepository.findAll();
-			const enabledApps = allApps.filter(
-				(app) => app.active && enabledConfigsByAppId.has(app.id),
-			);
+			let enabledApps = allApps.filter((app) => app.active);
+
+			if (principal.scope !== "ANCHOR") {
+				// For non-anchor users, restrict to applications that are
+				// explicitly enabled for this client via ApplicationClientConfig.
+				const configs =
+					await applicationClientConfigRepository.findByClient(clientId);
+				const enabledAppIds = new Set(
+					configs.filter((c) => c.enabled).map((c) => c.applicationId),
+				);
+				enabledApps = enabledApps.filter((app) => enabledAppIds.has(app.id));
+			}
 
 			// Build response with effective URLs
 			const dtos: MyApplicationResponse[] = enabledApps

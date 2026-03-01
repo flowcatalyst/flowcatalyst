@@ -15,6 +15,20 @@ const router = createRouter({
 					beforeEnter: guestGuard,
 				},
 				{
+					path: "forgot-password",
+					name: "forgot-password",
+					component: () =>
+						import("@/pages/auth/ForgotPasswordPage.vue"),
+					beforeEnter: guestGuard,
+				},
+				{
+					path: "reset-password",
+					name: "reset-password",
+					component: () =>
+						import("@/pages/auth/ResetPasswordPage.vue"),
+					beforeEnter: guestGuard,
+				},
+				{
 					path: "",
 					redirect: "/auth/login",
 				},

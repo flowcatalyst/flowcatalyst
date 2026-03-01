@@ -3,6 +3,7 @@
  * OIDC mount, auth routes, interaction routes, federation routes, client selection.
  */
 
+import nodemailer from "nodemailer";
 import type { FastifyInstance } from "fastify";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
@@ -232,7 +233,37 @@ export async function registerPlatformPlugins(
 	// These forward to oidc-provider because the discovery doc advertises root-level URLs
 	registerOidcEndpointRoutes(fastify, oidcProvider);
 
-	// Register auth routes (/auth/login, /auth/logout, /auth/me, /auth/check-domain)
+	// Compute external base URL (used for OIDC federation callbacks and password reset links)
+	const externalBaseUrl = env.EXTERNAL_BASE_URL ?? `http://localhost:${port}`;
+
+	// Build a nodemailer transporter for password reset emails if SMTP is configured.
+	const smtpTransporter = env.SMTP_HOST
+		? nodemailer.createTransport({
+				host: env.SMTP_HOST,
+				port: env.SMTP_PORT,
+				secure: env.SMTP_SECURE,
+				auth:
+					env.SMTP_USERNAME && env.SMTP_PASSWORD
+						? { user: env.SMTP_USERNAME, pass: env.SMTP_PASSWORD }
+						: undefined,
+		  })
+		: null;
+
+	const sendPasswordResetEmail = smtpTransporter
+		? async (to: string, resetUrl: string) => {
+				const from =
+					env.SMTP_FROM ?? `noreply@${new URL(externalBaseUrl).hostname}`;
+				await smtpTransporter.sendMail({
+					from,
+					to,
+					subject: "Reset your password",
+					text: `You requested a password reset.\n\nClick the link below to set a new password (valid for 15 minutes):\n${resetUrl}\n\nIf you did not request this, you can ignore this email.`,
+					html: `<p>You requested a password reset.</p><p><a href="${resetUrl}">Reset your password</a> (valid for 15 minutes)</p><p>If you did not request this, you can ignore this email.</p>`,
+				});
+		  }
+		: null;
+
+	// Register auth routes (/auth/login, /auth/logout, /auth/me, /auth/check-domain, /auth/password-reset/*)
 	await registerAuthRoutes(fastify, {
 		principalRepository: repos.principalRepository,
 		emailDomainMappingRepository: repos.emailDomainMappingRepository,
@@ -240,6 +271,9 @@ export async function registerPlatformPlugins(
 		clientRepository: repos.clientRepository,
 		passwordService,
 		loginAttemptRepository: repos.loginAttemptRepository,
+		passwordResetTokenRepository: repos.passwordResetTokenRepository,
+		sendPasswordResetEmail,
+		baseUrl: externalBaseUrl,
 		unitOfWork,
 		issueSessionToken: (principalId, email, roles, clients) => {
 			return jwtKeyService.issueSessionToken(
@@ -259,9 +293,6 @@ export async function registerPlatformPlugins(
 			maxAge: env.OIDC_SESSION_TTL ?? 86400,
 		},
 	});
-
-	// Compute external base URL for OIDC federation callbacks
-	const externalBaseUrl = env.EXTERNAL_BASE_URL ?? `http://localhost:${port}`;
 
 	// Register OIDC federation routes (/auth/oidc/login, /auth/oidc/callback)
 	await registerOidcFederationRoutes(fastify, {

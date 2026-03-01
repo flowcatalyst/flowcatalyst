@@ -145,3 +145,8 @@ export {
 	type LoginAttemptPaginationOptions,
 	createLoginAttemptRepository,
 } from "./login-attempt-repository.js";
+
+export {
+	type PasswordResetTokenRepository,
+	createPasswordResetTokenRepository,
+} from "./password-reset-token-repository.js";

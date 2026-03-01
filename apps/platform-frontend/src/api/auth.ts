@@ -154,6 +154,56 @@ export async function logout(): Promise<void> {
 	await router.replace("/auth/login");
 }
 
+export async function requestPasswordReset(email: string): Promise<void> {
+	const response = await fetch(`${AUTH_URL}/password-reset/request`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ email }),
+		credentials: "include",
+	});
+
+	if (!response.ok) {
+		const errorData = await response.json().catch(() => ({}));
+		throw new Error(
+			errorData.error || "Failed to request password reset.",
+		);
+	}
+}
+
+export async function validateResetToken(
+	token: string,
+): Promise<{ valid: boolean; reason?: string }> {
+	const response = await fetch(
+		`${AUTH_URL}/password-reset/validate?token=${encodeURIComponent(token)}`,
+		{ credentials: "include" },
+	);
+
+	if (!response.ok) {
+		return { valid: false, reason: "not_found" };
+	}
+
+	return response.json();
+}
+
+export async function confirmPasswordReset(
+	token: string,
+	password: string,
+): Promise<void> {
+	const response = await fetch(`${AUTH_URL}/password-reset/confirm`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ token, password }),
+		credentials: "include",
+	});
+
+	if (!response.ok) {
+		const errorData = await response.json().catch(() => ({}));
+		throw new Error(
+			errorData.error || "Failed to reset password.",
+		);
+	}
+}
+
 export async function switchClient(clientId: string): Promise<void> {
 	const authStore = useAuthStore();
 

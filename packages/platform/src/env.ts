@@ -76,6 +76,18 @@ const envSchema = z.object({
 	DISPATCH_QUEUE_REGION: z.string().default("eu-west-1"),
 	SQS_ENDPOINT: z.string().optional(), // For LocalStack
 
+	// SMTP — for transactional emails (password reset, etc.)
+	// All fields are optional; if SMTP_HOST is absent, email sending is disabled.
+	SMTP_HOST: z.string().optional(),
+	SMTP_PORT: z.coerce.number().default(587),
+	SMTP_SECURE: z
+		.string()
+		.transform((v) => v === "true")
+		.prefault("false"),
+	SMTP_USERNAME: z.string().optional(),
+	SMTP_PASSWORD: z.string().optional(),
+	SMTP_FROM: z.string().optional(),
+
 	// Dispatch Scheduler (polls PENDING dispatch jobs → queue)
 	// Auto-enabled when messaging is enabled (platform config: messagingEnabled)
 	DISPATCH_SCHEDULER_POLL_INTERVAL_MS: z.coerce.number().default(5000),
