@@ -13,7 +13,7 @@ FROM node:24-alpine AS build
 RUN apk add --no-cache python3 make g++
 
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
-RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+RUN corepack enable && corepack prepare pnpm@10.30.3 --activate
 
 WORKDIR /app
 
