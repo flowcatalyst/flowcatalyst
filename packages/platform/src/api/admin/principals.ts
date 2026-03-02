@@ -71,6 +71,7 @@ const CreateUserSchema = Type.Object({
 
 const UpdatePrincipalSchema = Type.Object({
 	name: Type.String({ minLength: 1 }),
+	scope: Type.Optional(Type.Union([Type.Literal("ANCHOR"), Type.Literal("PARTNER"), Type.Literal("CLIENT")])),
 	clientId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 
@@ -476,6 +477,7 @@ export async function registerPrincipalsRoutes(
 			const command: UpdateUserCommand = {
 				userId: id,
 				name: body.name,
+				scope: body.scope,
 				clientId: body.clientId,
 			};
 

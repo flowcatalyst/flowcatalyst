@@ -31,7 +31,14 @@ const saving = ref(false);
 // Edit mode
 const editMode = ref(false);
 const editName = ref("");
+const editScope = ref<"ANCHOR" | "PARTNER" | "CLIENT" | null>(null);
 const editClientId = ref<string | null>(null);
+
+const scopeOptions = [
+	{ label: "Anchor", value: "ANCHOR" },
+	{ label: "Partner", value: "PARTNER" },
+	{ label: "Client", value: "CLIENT" },
+];
 
 // Add client access dialog
 const showAddClientDialog = ref(false);
@@ -247,12 +254,14 @@ async function loadAvailableApplications() {
 
 function startEdit() {
 	editName.value = user.value?.name || "";
+	editScope.value = user.value?.scope ?? null;
 	editClientId.value = user.value?.clientId ?? null;
 	editMode.value = true;
 }
 
 function cancelEdit() {
 	editName.value = user.value?.name || "";
+	editScope.value = user.value?.scope ?? null;
 	editClientId.value = user.value?.clientId ?? null;
 	editMode.value = false;
 }
@@ -270,12 +279,16 @@ async function saveUser() {
 
 	saving.value = true;
 	try {
-		const updatePayload: { name: string; clientId?: string | null } = { name: editName.value };
-		if (user.value?.scope === "CLIENT") {
+		const updatePayload: { name: string; scope?: "ANCHOR" | "PARTNER" | "CLIENT"; clientId?: string | null } = {
+			name: editName.value,
+			scope: editScope.value ?? undefined,
+		};
+		if (editScope.value === "CLIENT") {
 			updatePayload.clientId = editClientId.value;
 		}
 		const updated = await usersApi.update(userId, updatePayload);
 		user.value!.name = updated.name;
+		user.value!.scope = updated.scope;
 		user.value!.clientId = updated.clientId;
 		editMode.value = false;
 		toast.add({
@@ -680,7 +693,26 @@ function goBack() {
             <span>{{ user.idpType === 'INTERNAL' ? 'Internal' : user.idpType || '—' }}</span>
           </div>
 
-          <div v-if="user.scope === 'CLIENT'" class="info-item">
+          <div class="info-item">
+            <label>Type</label>
+            <Select
+              v-if="editMode"
+              v-model="editScope"
+              :options="scopeOptions"
+              optionLabel="label"
+              optionValue="value"
+              class="w-full"
+            />
+            <Tag
+              v-else-if="userType"
+              :value="userType.label"
+              :severity="userType.severity"
+              :icon="userType.icon"
+            />
+            <span v-else>—</span>
+          </div>
+
+          <div v-if="editMode ? editScope === 'CLIENT' : user.scope === 'CLIENT'" class="info-item">
             <label>Client</label>
             <Dropdown
               v-if="editMode"
