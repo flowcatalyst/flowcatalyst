@@ -646,7 +646,7 @@ async function determineAccessibleClients(
 				}
 				// Fallback to just the home client
 				if (principal.clientId) {
-					return [principal.clientId];
+					return formatClientEntries([principal.clientId], deps.clientRepository);
 				}
 				return [];
 			}
@@ -665,7 +665,7 @@ async function determineAccessibleClients(
 
 	// User is bound to a specific client
 	if (principal.clientId) {
-		return [principal.clientId];
+		return formatClientEntries([principal.clientId], deps.clientRepository);
 	}
 
 	return [];
