@@ -13,7 +13,7 @@ export interface Client {
 
 export interface ClientListResponse {
 	clients: Client[];
-	total: number;
+	total?: number;
 }
 
 export interface CreateClientRequest {
@@ -50,9 +50,17 @@ export interface ClientSearchParams {
 }
 
 export const clientsApi = {
-	list(status?: string): Promise<ClientListResponse> {
-		const params = status ? `?status=${status}` : "";
-		return apiFetch(`/admin/clients${params}`);
+	list(params?: { page?: number; pageSize?: number; status?: string } | string): Promise<ClientListResponse> {
+		const searchParams = new URLSearchParams();
+		if (typeof params === "string") {
+			if (params) searchParams.set("status", params);
+		} else if (params) {
+			if (params.page !== undefined) searchParams.set("page", String(params.page));
+			if (params.pageSize !== undefined) searchParams.set("pageSize", String(params.pageSize));
+			if (params.status) searchParams.set("status", params.status);
+		}
+		const query = searchParams.toString();
+		return apiFetch(`/admin/clients${query ? `?${query}` : ""}`);
 	},
 
 	search(params: ClientSearchParams = {}): Promise<ClientListResponse> {

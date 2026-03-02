@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { clientsApi, type Client } from "@/api/clients";
+
+const PAGE_SIZE = 100;
 
 const router = useRouter();
 const clients = ref<Client[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const searchQuery = ref("");
+const page = ref(0);
+const hasMore = ref(false);
 
 const filteredClients = computed(() => {
 	if (!searchQuery.value) return clients.value;
@@ -23,17 +27,33 @@ onMounted(async () => {
 	await loadClients();
 });
 
+watch(searchQuery, () => {
+	page.value = 0;
+	loadClients();
+});
+
 async function loadClients() {
 	loading.value = true;
 	error.value = null;
 	try {
-		const response = await clientsApi.list();
+		const response = await clientsApi.list({ page: page.value, pageSize: PAGE_SIZE });
 		clients.value = response.clients;
+		hasMore.value = response.clients.length > 0;
 	} catch (e) {
 		error.value = e instanceof Error ? e.message : "Failed to load clients";
 	} finally {
 		loading.value = false;
 	}
+}
+
+async function prevPage() {
+	page.value--;
+	await loadClients();
+}
+
+async function nextPage() {
+	page.value++;
+	await loadClients();
 }
 
 function getStatusSeverity(status: string) {
@@ -81,9 +101,6 @@ function formatDate(dateString: string) {
       <DataTable
         v-else
         :value="filteredClients"
-        paginator
-        :rows="100"
-        :rowsPerPageOptions="[50, 100, 250, 500]"
         stripedRows
         emptyMessage="No clients found"
       >
@@ -122,6 +139,24 @@ function formatDate(dateString: string) {
           </template>
         </Column>
       </DataTable>
+
+      <div v-if="!loading" class="pagination">
+        <Button
+          v-if="page > 0"
+          label="Previous"
+          icon="pi pi-chevron-left"
+          text
+          @click="prevPage"
+        />
+        <Button
+          v-if="hasMore"
+          label="Next"
+          icon="pi pi-chevron-right"
+          iconPos="right"
+          text
+          @click="nextPage"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -150,5 +185,12 @@ function formatDate(dateString: string) {
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 13px;
+}
+
+.pagination {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
 }
 </style>

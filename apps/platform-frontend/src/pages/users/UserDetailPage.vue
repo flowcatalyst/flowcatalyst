@@ -31,6 +31,7 @@ const saving = ref(false);
 // Edit mode
 const editMode = ref(false);
 const editName = ref("");
+const editClientId = ref<string | null>(null);
 
 // Add client access dialog
 const showAddClientDialog = ref(false);
@@ -238,11 +239,13 @@ async function loadAvailableApplications() {
 
 function startEdit() {
 	editName.value = user.value?.name || "";
+	editClientId.value = user.value?.clientId ?? null;
 	editMode.value = true;
 }
 
 function cancelEdit() {
 	editName.value = user.value?.name || "";
+	editClientId.value = user.value?.clientId ?? null;
 	editMode.value = false;
 }
 
@@ -259,8 +262,13 @@ async function saveUser() {
 
 	saving.value = true;
 	try {
-		await usersApi.update(userId, { name: editName.value });
-		user.value!.name = editName.value;
+		const updatePayload: { name: string; clientId?: string | null } = { name: editName.value };
+		if (user.value?.scope === "CLIENT") {
+			updatePayload.clientId = editClientId.value;
+		}
+		const updated = await usersApi.update(userId, updatePayload);
+		user.value!.name = updated.name;
+		user.value!.clientId = updated.clientId;
 		editMode.value = false;
 		toast.add({
 			severity: "success",
@@ -662,6 +670,21 @@ function goBack() {
           <div class="info-item">
             <label>Authentication</label>
             <span>{{ user.idpType === 'INTERNAL' ? 'Internal' : user.idpType || '—' }}</span>
+          </div>
+
+          <div v-if="user.scope === 'CLIENT'" class="info-item">
+            <label>Client</label>
+            <Dropdown
+              v-if="editMode"
+              v-model="editClientId"
+              :options="clients"
+              optionLabel="name"
+              optionValue="id"
+              placeholder="Select client"
+              class="w-full"
+              filter
+            />
+            <span v-else>{{ homeClient?.name || '—' }}</span>
           </div>
 
           <div class="info-item">

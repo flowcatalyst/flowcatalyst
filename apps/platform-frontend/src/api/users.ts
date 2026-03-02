@@ -41,6 +41,7 @@ export interface ClientAccessGrant {
 
 export interface UpdateUserRequest {
 	name: string;
+	clientId?: string | null;
 }
 
 export interface RoleAssignment {
