@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import {
-	getApiAdminDispatchJobs,
-	getApiAdminDispatchJobsById,
-} from "@/api/generated";
+import { apiFetch } from "@/api/client";
 
 interface RawDispatchJob {
 	id: string;
@@ -48,7 +45,6 @@ const pageSize = ref(20);
 // Detail dialog
 const selectedJob = ref<RawDispatchJob | null>(null);
 const showDetailDialog = ref(false);
-const loadingDetail = ref(false);
 
 onMounted(async () => {
 	await loadDispatchJobs();
@@ -57,20 +53,13 @@ onMounted(async () => {
 async function loadDispatchJobs() {
 	loading.value = true;
 	try {
-		const response = await getApiAdminDispatchJobs({
-			query: {
-				page: String(currentPage.value),
-				size: String(pageSize.value),
-			},
-		});
-		if (response.data) {
-			const data = response.data as {
-				items?: RawDispatchJob[];
-				totalItems?: number;
-			};
-			dispatchJobs.value = data.items || [];
-			totalRecords.value = data.totalItems || 0;
-		}
+		const data = await apiFetch<{ items: RawDispatchJob[]; page: number; size: number }>(
+			`/admin/dispatch-jobs/raw?page=${currentPage.value}&size=${pageSize.value}`,
+		);
+		dispatchJobs.value = data.items || [];
+		totalRecords.value = data.items.length < pageSize.value
+			? currentPage.value * pageSize.value + data.items.length
+			: (currentPage.value + 2) * pageSize.value;
 	} catch (error) {
 		console.error("Failed to load raw dispatch jobs:", error);
 	} finally {
@@ -85,20 +74,8 @@ async function onPage(event: { page: number; rows: number }) {
 }
 
 async function viewJobDetail(job: RawDispatchJob) {
-	loadingDetail.value = true;
+	selectedJob.value = job;
 	showDetailDialog.value = true;
-	try {
-		const response = await getApiAdminDispatchJobsById({
-			path: { id: job.id },
-		});
-		if (response.data) {
-			selectedJob.value = response.data as unknown as RawDispatchJob;
-		}
-	} catch (error) {
-		console.error("Failed to load job details:", error);
-	} finally {
-		loadingDetail.value = false;
-	}
 }
 
 function getSeverity(
@@ -242,10 +219,7 @@ function formatAttempts(job: RawDispatchJob): string {
       :style="{ width: '700px' }"
       modal
     >
-      <div v-if="loadingDetail" class="flex justify-center p-4">
-        <i class="pi pi-spin pi-spinner" style="font-size: 2rem"></i>
-      </div>
-      <div v-else-if="selectedJob" class="job-detail">
+      <div v-if="selectedJob" class="job-detail">
         <div class="detail-row">
           <label>ID</label>
           <span class="font-mono">{{ selectedJob.id }}</span>

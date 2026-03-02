@@ -6,8 +6,10 @@
 
 import type { FastifyInstance } from "fastify";
 import { Type, type Static } from "@sinclair/typebox";
+import { desc } from "drizzle-orm";
 import { jsonSuccess, notFound, ErrorResponseSchema } from "@flowcatalyst/http";
 import type { EventReadRecord } from "@flowcatalyst/persistence";
+import { events as eventsTable } from "@flowcatalyst/persistence";
 
 import type { EventReadRepository } from "../../infrastructure/persistence/index.js";
 import {
@@ -91,6 +93,8 @@ type EventReadResponse = Static<typeof EventReadResponseSchema>;
  */
 export interface EventsRoutesDeps {
 	readonly eventReadRepository: EventReadRepository;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	readonly db: any;
 }
 
 function toResponse(record: EventReadRecord): EventReadResponse {
@@ -262,6 +266,34 @@ export async function registerEventsRoutes(
 			}
 
 			return jsonSuccess(reply, toResponse(record));
+		},
+	);
+
+	// GET /api/admin/events/raw - Raw events directly from msg_events (no stream processor needed)
+	fastify.get(
+		"/events/raw",
+		{
+			preHandler: requirePermission(EVENT_PERMISSIONS.READ),
+			schema: {
+				querystring: Type.Object({
+					page: Type.Optional(Type.String()),
+					size: Type.Optional(Type.String()),
+				}),
+			},
+		},
+		async (request, reply) => {
+			const query = request.query as { page?: string; size?: string };
+			const page = Math.max(0, parseInt(query.page ?? "0", 10) || 0);
+			const size = Math.min(500, parseInt(query.size ?? "100", 10) || 100);
+
+			const rows = await deps.db
+				.select()
+				.from(eventsTable)
+				.orderBy(desc(eventsTable.time))
+				.limit(size)
+				.offset(page * size);
+
+			return jsonSuccess(reply, { items: rows, page, size });
 		},
 	);
 }

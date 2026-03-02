@@ -6,11 +6,13 @@
 
 import type { FastifyInstance } from "fastify";
 import { Type, type Static } from "@sinclair/typebox";
+import { desc } from "drizzle-orm";
 import { jsonSuccess, notFound, ErrorResponseSchema } from "@flowcatalyst/http";
 import type {
 	DispatchJobReadRecord,
 	DispatchJobAttemptRecord,
 } from "@flowcatalyst/persistence";
+import { dispatchJobs as dispatchJobsTable } from "@flowcatalyst/persistence";
 
 import type { DispatchJobReadRepository } from "../../infrastructure/persistence/index.js";
 import {
@@ -144,6 +146,8 @@ type DispatchJobAttemptResponse = Static<
  */
 export interface DispatchJobsRoutesDeps {
 	readonly dispatchJobReadRepository: DispatchJobReadRepository;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	readonly db: any;
 }
 
 function toResponse(record: DispatchJobReadRecord): DispatchJobReadResponse {
@@ -391,6 +395,34 @@ export async function registerDispatchJobsRoutes(
 				attempts: attempts.map(toAttemptResponse),
 				total: attempts.length,
 			});
+		},
+	);
+
+	// GET /api/admin/dispatch-jobs/raw - Raw jobs directly from msg_dispatch_jobs (no stream processor needed)
+	fastify.get(
+		"/dispatch-jobs/raw",
+		{
+			preHandler: requirePermission(DISPATCH_JOB_PERMISSIONS.READ),
+			schema: {
+				querystring: Type.Object({
+					page: Type.Optional(Type.String()),
+					size: Type.Optional(Type.String()),
+				}),
+			},
+		},
+		async (request, reply) => {
+			const query = request.query as { page?: string; size?: string };
+			const page = Math.max(0, parseInt(query.page ?? "0", 10) || 0);
+			const size = Math.min(500, parseInt(query.size ?? "100", 10) || 100);
+
+			const rows = await deps.db
+				.select()
+				.from(dispatchJobsTable)
+				.orderBy(desc(dispatchJobsTable.createdAt))
+				.limit(size)
+				.offset(page * size);
+
+			return jsonSuccess(reply, { items: rows, page, size });
 		},
 	);
 }

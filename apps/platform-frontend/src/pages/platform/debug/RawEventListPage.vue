@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import {
-	getApiAdminEvents,
-	getApiAdminEventsById,
-} from "@/api/generated";
+import { apiFetch } from "@/api/client";
 
 interface RawEvent {
 	id: string;
@@ -30,7 +27,6 @@ const pageSize = ref(20);
 // Detail dialog
 const selectedEvent = ref<RawEvent | null>(null);
 const showDetailDialog = ref(false);
-const loadingDetail = ref(false);
 
 onMounted(async () => {
 	await loadEvents();
@@ -39,17 +35,13 @@ onMounted(async () => {
 async function loadEvents() {
 	loading.value = true;
 	try {
-		const response = await getApiAdminEvents({
-			query: {
-				page: String(currentPage.value),
-				size: String(pageSize.value),
-			},
-		});
-		if (response.data) {
-			const data = response.data as { items?: RawEvent[]; totalItems?: number };
-			events.value = data.items || [];
-			totalRecords.value = data.totalItems || 0;
-		}
+		const data = await apiFetch<{ items: RawEvent[]; page: number; size: number }>(
+			`/admin/events/raw?page=${currentPage.value}&size=${pageSize.value}`,
+		);
+		events.value = data.items || [];
+		totalRecords.value = data.items.length < pageSize.value
+			? currentPage.value * pageSize.value + data.items.length
+			: (currentPage.value + 2) * pageSize.value;
 	} catch (error) {
 		console.error("Failed to load raw events:", error);
 	} finally {
@@ -64,18 +56,8 @@ async function onPage(event: { page: number; rows: number }) {
 }
 
 async function viewEventDetail(event: RawEvent) {
-	loadingDetail.value = true;
+	selectedEvent.value = event;
 	showDetailDialog.value = true;
-	try {
-		const response = await getApiAdminEventsById({ path: { id: event.id } });
-		if (response.data) {
-			selectedEvent.value = response.data as unknown as RawEvent;
-		}
-	} catch (error) {
-		console.error("Failed to load event details:", error);
-	} finally {
-		loadingDetail.value = false;
-	}
 }
 
 function formatDate(dateStr: string | undefined): string {
@@ -182,10 +164,7 @@ function truncateId(id: string): string {
       :style="{ width: '700px' }"
       modal
     >
-      <div v-if="loadingDetail" class="flex justify-center p-4">
-        <i class="pi pi-spin pi-spinner" style="font-size: 2rem"></i>
-      </div>
-      <div v-else-if="selectedEvent" class="event-detail">
+      <div v-if="selectedEvent" class="event-detail">
         <div class="detail-row">
           <label>ID</label>
           <span class="font-mono">{{ selectedEvent.id }}</span>
