@@ -174,6 +174,7 @@ export async function startPlatform(
 		issuer: oidcIssuer,
 		db: db,
 		principalRepository: repos.principalRepository,
+		clientRepository: repos.clientRepository,
 		oauthClientRepository: repos.oauthClientRepository,
 		encryptionService,
 		cookieKeys: env.OIDC_COOKIES_KEYS,

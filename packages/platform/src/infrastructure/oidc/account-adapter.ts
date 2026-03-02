@@ -13,13 +13,31 @@ import type {
 	ClaimsParameterMember,
 } from "oidc-provider";
 import type { PrincipalRepository } from "../persistence/repositories/principal-repository.js";
+import type { ClientRepository } from "../persistence/repositories/client-repository.js";
 import type { Principal } from "../../domain/principal/principal.js";
 import { extractApplicationCodes } from "./jwt-key-service.js";
 
 /**
+ * Resolve a client ID to "id:identifier" format, falling back to raw ID if not found.
+ */
+export export async function resolveClientEntry(
+	clientId: string,
+	clientRepository: ClientRepository,
+): Promise<string> {
+	const client = await clientRepository.findById(clientId);
+	if (client && "identifier" in client && client.identifier) {
+		return `${clientId}:${client.identifier}`;
+	}
+	return clientId;
+}
+
+/**
  * Maps a Principal to OIDC standard claims.
  */
-function principalToClaims(principal: Principal): AccountClaims {
+async function principalToClaims(
+	principal: Principal,
+	clientRepository: ClientRepository,
+): Promise<AccountClaims> {
 	const claims: AccountClaims = {
 		sub: principal.id,
 		name: principal.name,
@@ -42,11 +60,11 @@ function principalToClaims(principal: Principal): AccountClaims {
 
 	// For ANCHOR users, clients = ["*"] (all clients)
 	// For PARTNER users, clients would be loaded from grants (not in scope here)
-	// For CLIENT users, clients = [clientId]
+	// For CLIENT users, clients = ["id:identifier"]
 	if (principal.scope === "ANCHOR") {
 		claims["clients"] = ["*"];
 	} else if (principal.scope === "CLIENT" && principal.clientId) {
-		claims["clients"] = [principal.clientId];
+		claims["clients"] = [await resolveClientEntry(principal.clientId, clientRepository)];
 	}
 
 	return claims;
@@ -60,6 +78,7 @@ function principalToClaims(principal: Principal): AccountClaims {
  */
 export function createFindAccount(
 	principalRepository: PrincipalRepository,
+	clientRepository: ClientRepository,
 ): FindAccount {
 	return async function findAccount(
 		_ctx: KoaContextWithOIDC,
@@ -96,7 +115,7 @@ export function createFindAccount(
 				_claims: { [key: string]: ClaimsParameterMember | null },
 				rejected: string[],
 			): Promise<AccountClaims> {
-				const allClaims = principalToClaims(principal);
+				const allClaims = await principalToClaims(principal, clientRepository);
 
 				// Filter claims based on requested scopes
 				const requestedScopes = scope.split(" ");

@@ -18,11 +18,12 @@ import Provider, {
 import type { JSONWebKeySet } from "jose";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { PrincipalRepository } from "../persistence/repositories/principal-repository.js";
+import type { ClientRepository } from "../persistence/repositories/client-repository.js";
 import type { OAuthClientRepository } from "../persistence/repositories/oauth-client-repository.js";
 import type { LoginAttemptRepository } from "../persistence/repositories/login-attempt-repository.js";
 import type { EncryptionService } from "@flowcatalyst/platform-crypto";
 import { createDrizzleAdapterFactory } from "./drizzle-adapter.js";
-import { createFindAccount } from "./account-adapter.js";
+import { createFindAccount, resolveClientEntry } from "./account-adapter.js";
 import { createClientLoader } from "./client-adapter.js";
 import { extractApplicationCodes } from "./jwt-key-service.js";
 import { isRedirectUriAllowed } from "../../domain/cors/origin-matcher.js";
@@ -39,6 +40,9 @@ export interface OidcProviderConfig {
 
 	/** Principal repository for account lookup */
 	principalRepository: PrincipalRepository;
+
+	/** Client repository for resolving client identifiers in claims */
+	clientRepository: ClientRepository;
 
 	/** OAuth client repository for client lookup */
 	oauthClientRepository: OAuthClientRepository;
@@ -97,6 +101,7 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
 		issuer,
 		db,
 		principalRepository,
+		clientRepository,
 		oauthClientRepository,
 		encryptionService,
 		cookieKeys,
@@ -126,7 +131,7 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
 	);
 
 	// Create find account function
-	const findAccount = createFindAccount(principalRepository);
+	const findAccount = createFindAccount(principalRepository, clientRepository);
 
 	// Build configuration
 	const providerConfig: Configuration = {
@@ -285,7 +290,7 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
 							principal.scope === "ANCHOR"
 								? ["*"]
 								: principal.clientId
-									? [principal.clientId]
+									? [await resolveClientEntry(principal.clientId, clientRepository)]
 									: [],
 					};
 				}
@@ -315,7 +320,7 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
 								principal.scope === "ANCHOR"
 									? ["*"]
 									: principal.clientId
-										? [principal.clientId]
+										? [await resolveClientEntry(principal.clientId, clientRepository)]
 										: [],
 						};
 					}
