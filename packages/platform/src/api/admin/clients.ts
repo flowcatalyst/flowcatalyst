@@ -226,7 +226,7 @@ export async function registerClientsRoutes(
 		async (request, reply) => {
 			const query = request.query as Static<typeof ListClientsQuery>;
 			const page = parseInt(query.page ?? "0", 10);
-			const pageSize = Math.min(parseInt(query.pageSize ?? "20", 10), 100);
+			const pageSize = Math.min(parseInt(query.pageSize ?? "100", 10), 500);
 			const accessibleClientIds = getAccessibleClientIds(
 				request.audit?.principal,
 			);
@@ -277,7 +277,7 @@ export async function registerClientsRoutes(
 		async (request, reply) => {
 			const query = request.query as Static<typeof SearchClientsQuery>;
 			const q = query.q ?? "";
-			const limit = Math.min(parseInt(query.limit ?? "20", 10), 100);
+			const limit = Math.min(parseInt(query.limit ?? "100", 10), 500);
 			const accessibleClientIds = getAccessibleClientIds(
 				request.audit?.principal,
 			);

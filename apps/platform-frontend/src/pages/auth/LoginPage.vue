@@ -28,7 +28,6 @@ onMounted(async () => {
 
 const step = ref<LoginStep>("email");
 const isSubmitting = ref(false);
-const rememberMe = ref(false);
 
 // Email step schema
 const emailSchema = toTypedSchema(
@@ -267,10 +266,6 @@ async function onSubmitPassword() {
           </div>
 
           <div class="form-options">
-            <label class="remember-me">
-              <Checkbox v-model="rememberMe" :binary="true" />
-              <span>Remember me</span>
-            </label>
             <RouterLink
               :to="{ name: 'forgot-password', query: currentEmail ? { email: currentEmail } : {} }"
               class="forgot-password"
@@ -504,20 +499,7 @@ async function onSubmitPassword() {
 
 .form-options {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.remember-me {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-
-.remember-me span {
-  font-size: 14px;
-  color: #475569;
+  justify-content: flex-end;
 }
 
 .forgot-password {
