@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { createLogger, setDefaultLogger } from "@flowcatalyst/logging";
 import type { PlatformResult } from "@flowcatalyst/platform";
+import { createStandbyManager, type StandbyManager } from "@flowcatalyst/standby";
 
 const VERSION = "0.0.1";
 
@@ -226,6 +227,17 @@ const STREAM_PROCESSOR_ENABLED =
 	process.env["STREAM_PROCESSOR_ENABLED"] !== "false";
 const OUTBOX_PROCESSOR_ENABLED =
 	process.env["OUTBOX_PROCESSOR_ENABLED"] === "true";
+const STANDBY_ENABLED = process.env["STANDBY_ENABLED"] === "true";
+const STANDBY_REDIS_URL = process.env["REDIS_URL"];
+const STANDBY_INSTANCE_ID =
+	process.env["STANDBY_INSTANCE_ID"] ??
+	process.env["HOSTNAME"] ??
+	`instance-${Date.now()}`;
+const STANDBY_LOCK_KEY =
+	process.env["STANDBY_LOCK_KEY"] ?? "flowcatalyst-primary-lock";
+const STANDBY_LOCK_TTL_SECONDS = Number(
+	process.env["STANDBY_LOCK_TTL_SECONDS"] ?? "30",
+);
 const AUTO_MIGRATE =
 	process.env["AUTO_MIGRATE"] !== undefined
 		? process.env["AUTO_MIGRATE"] === "true"
@@ -275,8 +287,16 @@ setDefaultLogger(logger);
 type StopFn = () => Promise<void>;
 const stopFns: StopFn[] = [];
 
+// Holds the standby manager when STANDBY_ENABLED=true — released first on shutdown
+let standbyMgr: StandbyManager | null = null;
+
 async function shutdown(signal: string) {
 	logger.info({ signal }, "Shutting down...");
+
+	// Release standby lock first — allows standby instance to take over immediately
+	if (standbyMgr) {
+		await standbyMgr.stop();
+	}
 
 	for (const stop of stopFns.toReversed()) {
 		try {
@@ -290,6 +310,27 @@ async function shutdown(signal: string) {
 }
 
 async function main() {
+	// Hot standby — acquire Redis lock before starting any services.
+	// Blocks here until this instance wins the lock.
+	if (STANDBY_ENABLED) {
+		standbyMgr = await createStandbyManager(
+			{
+				enabled: true,
+				instanceId: STANDBY_INSTANCE_ID,
+				lockKey: STANDBY_LOCK_KEY,
+				lockTtlSeconds: STANDBY_LOCK_TTL_SECONDS,
+				redisUrl: STANDBY_REDIS_URL,
+			},
+			logger,
+		);
+		if (standbyMgr) {
+			await standbyMgr.waitUntilPrimary();
+			standbyMgr.startRefreshing();
+			// Suppress the message router's own internal standby — root app owns it now
+			process.env["STANDBY_ENABLED"] = "false";
+		}
+	}
+
 	const enabledServices = [
 		PLATFORM_ENABLED && "Platform",
 		STREAM_PROCESSOR_ENABLED && "Stream Processor",

@@ -1,0 +1,12 @@
+{
+	"name": "@flowcatalyst/standby",
+	"version": "0.0.1",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@flowcatalyst/logging": "workspace:*",
+		"ioredis": "^5.9.3"
+	}
+}

@@ -51,6 +51,7 @@
 		"zod": "^4.1.13"
 	},
 	"devDependencies": {
+		"@flowcatalyst/standby": "workspace:*",
 		"@flowcatalyst/tsid": "workspace:*",
 		"@flowcatalyst/logging": "workspace:*",
 		"@flowcatalyst/config": "workspace:*",

@@ -22,8 +22,8 @@ export interface DispatchSchedulerConfig {
 
 export const DEFAULT_DISPATCH_SCHEDULER_CONFIG: DispatchSchedulerConfig = {
 	pollIntervalMs: 5000,
-	batchSize: 20,
-	maxConcurrentGroups: 10,
+	batchSize: 200,
+	maxConcurrentGroups: 50,
 	processingEndpoint: "http://localhost:8080/api/dispatch/process",
 	defaultDispatchPoolCode: "DISPATCH-POOL",
 	staleQueuedThresholdMinutes: 15,

@@ -156,6 +156,9 @@ importers:
       '@flowcatalyst/queue-core':
         specifier: workspace:*
         version: link:../../packages/queue-core
+      '@flowcatalyst/standby':
+        specifier: workspace:*
+        version: link:../../packages/standby
       '@flowcatalyst/stream-processor':
         specifier: workspace:*
         version: link:../../packages/stream-processor
@@ -645,6 +648,15 @@ importers:
       undici:
         specifier: ^7.3.0
         version: 7.21.0
+
+  packages/standby:
+    dependencies:
+      '@flowcatalyst/logging':
+        specifier: workspace:*
+        version: link:../logging
+      ioredis:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/stream-processor:
     dependencies:
