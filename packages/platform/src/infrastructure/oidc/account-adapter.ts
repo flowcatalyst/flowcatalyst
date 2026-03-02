@@ -20,7 +20,7 @@ import { extractApplicationCodes } from "./jwt-key-service.js";
 /**
  * Resolve a client ID to "id:identifier" format, falling back to raw ID if not found.
  */
-export export async function resolveClientEntry(
+export async function resolveClientEntry(
 	clientId: string,
 	clientRepository: ClientRepository,
 ): Promise<string> {
