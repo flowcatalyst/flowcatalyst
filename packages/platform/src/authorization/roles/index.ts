@@ -8,6 +8,7 @@ export * from "./platform-super-admin.js";
 export * from "./platform-iam-admin.js";
 export * from "./platform-admin.js";
 export * from "./platform-auth-admin.js";
+export * from "./platform-ai-agent.js";
 
 import { PLATFORM_SUPER_ADMIN } from "./platform-super-admin.js";
 import {
@@ -19,6 +20,7 @@ import {
 	PLATFORM_AUTH_ADMIN,
 	PLATFORM_AUTH_READONLY,
 } from "./platform-auth-admin.js";
+import { PLATFORM_AI_AGENT_READONLY } from "./platform-ai-agent.js";
 import type { RoleDefinition } from "../role-definition.js";
 
 /**
@@ -32,4 +34,5 @@ export const ALL_PLATFORM_ROLES: readonly RoleDefinition[] = [
 	PLATFORM_ADMIN_READONLY,
 	PLATFORM_AUTH_ADMIN,
 	PLATFORM_AUTH_READONLY,
+	PLATFORM_AI_AGENT_READONLY,
 ];

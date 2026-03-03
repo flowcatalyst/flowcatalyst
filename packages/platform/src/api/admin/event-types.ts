@@ -49,6 +49,10 @@ import type {
 } from "../../infrastructure/persistence/index.js";
 import { requirePermission } from "../../authorization/index.js";
 import { EVENT_TYPE_PERMISSIONS } from "../../authorization/permissions/platform-admin.js";
+import {
+	generateCode,
+	type SupportedLanguage,
+} from "@flowcatalyst/schema-codegen";
 
 // ─── Request Schemas ────────────────────────────────────────────────────────
 
@@ -95,6 +99,24 @@ const SyncEventTypesSchema = Type.Object({
 		}),
 	),
 	removeUnlisted: Type.Optional(Type.Boolean()),
+});
+
+const CodegenBodySchema = Type.Object({
+	language: Type.Union([
+		Type.Literal("typescript"),
+		Type.Literal("php"),
+		Type.Literal("python"),
+		Type.Literal("java"),
+	]),
+	version: Type.Optional(Type.String()),
+});
+
+const CodegenResponseSchema = Type.Object({
+	code: Type.String(),
+	language: Type.String(),
+	eventTypeId: Type.String(),
+	eventCode: Type.String(),
+	schemaVersion: Type.String(),
 });
 
 type CreateEventTypeBody = Static<typeof CreateEventTypeSchema>;
@@ -290,6 +312,69 @@ export async function registerEventTypesRoutes(
 			}
 
 			return jsonSuccess(reply, toEventTypeResponse(eventType));
+		},
+	);
+
+	// POST /api/admin/event-types/:id/codegen - Generate code from schema
+	fastify.post(
+		"/event-types/:id/codegen",
+		{
+			preHandler: requirePermission(EVENT_TYPE_PERMISSIONS.READ),
+			schema: {
+				params: IdParam,
+				body: CodegenBodySchema,
+				response: {
+					200: CodegenResponseSchema,
+					400: ErrorResponseSchema,
+					404: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const { id } = request.params as Static<typeof IdParam>;
+			const body = request.body as Static<typeof CodegenBodySchema>;
+
+			const eventType = await eventTypeRepository.findById(id);
+			if (!eventType) {
+				return notFound(reply, `Event type not found: ${id}`);
+			}
+
+			// Find the requested version or CURRENT
+			const specVersion = body.version
+				? eventType.specVersions.find((sv) => sv.version === body.version)
+				: eventType.specVersions.find((sv) => sv.status === "CURRENT");
+
+			if (!specVersion) {
+				return reply.status(400).send({
+					error: "Bad Request",
+					message: body.version
+						? `Schema version not found: ${body.version}`
+						: "No CURRENT schema version available",
+				});
+			}
+
+			if (!specVersion.schemaContent) {
+				return reply.status(400).send({
+					error: "Bad Request",
+					message: "Schema version has no content",
+				});
+			}
+
+			const parsed =
+				typeof specVersion.schemaContent === "string"
+					? (JSON.parse(specVersion.schemaContent) as Record<string, unknown>)
+					: (specVersion.schemaContent as Record<string, unknown>);
+
+			const language = body.language as SupportedLanguage;
+			const code = generateCode(parsed, eventType.code, language);
+
+			return jsonSuccess(reply, {
+				code,
+				language,
+				eventTypeId: eventType.id,
+				eventCode: eventType.code,
+				schemaVersion: specVersion.version,
+			});
 		},
 	);
 

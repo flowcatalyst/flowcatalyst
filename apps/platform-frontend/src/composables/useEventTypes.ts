@@ -1,4 +1,5 @@
 import { ref, computed, watch } from "vue";
+import { useRouter, useRoute } from "vue-router";
 import {
 	eventTypesApi,
 	type EventType,
@@ -6,17 +7,39 @@ import {
 	type EventTypeStatus,
 } from "@/api/event-types";
 
+const QUERY_KEYS = {
+	applications: "app",
+	subdomains: "sub",
+	aggregates: "agg",
+	status: "status",
+} as const;
+
+function parseQueryArray(value: unknown): string[] {
+	if (!value) return [];
+	if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
+	if (typeof value === "string") return value.split(",").filter(Boolean);
+	return [];
+}
+
+function parseQueryString(value: unknown): string | null {
+	if (typeof value === "string" && value.length > 0) return value;
+	return null;
+}
+
 export function useEventTypes() {
+	const router = useRouter();
+	const route = useRoute();
+
 	const eventTypes = ref<EventType[]>([]);
-	const initialLoading = ref(true); // For first load - shows spinner
-	const loading = ref(false); // For subsequent loads - uses DataTable loading
+	const initialLoading = ref(true);
+	const loading = ref(false);
 	const error = ref<string | null>(null);
 
-	// Filter state
-	const selectedApplications = ref<string[]>([]);
-	const selectedSubdomains = ref<string[]>([]);
-	const selectedAggregates = ref<string[]>([]);
-	const selectedStatus = ref<string | null>(null);
+	// Filter state — seeded from URL query on creation
+	const selectedApplications = ref<string[]>(parseQueryArray(route.query[QUERY_KEYS.applications]));
+	const selectedSubdomains = ref<string[]>(parseQueryArray(route.query[QUERY_KEYS.subdomains]));
+	const selectedAggregates = ref<string[]>(parseQueryArray(route.query[QUERY_KEYS.aggregates]));
+	const selectedStatus = ref<string | null>(parseQueryString(route.query[QUERY_KEYS.status]));
 
 	// Filter options
 	const applicationOptions = ref<string[]>([]);
@@ -36,6 +59,28 @@ export function useEventTypes() {
 			selectedStatus.value !== null
 		);
 	});
+
+	// ---- URL sync ----
+
+	let suppressUrlSync = false;
+
+	function syncFiltersToUrl() {
+		if (suppressUrlSync) return;
+
+		const query: Record<string, string | undefined> = {};
+		if (selectedApplications.value.length > 0)
+			query[QUERY_KEYS.applications] = selectedApplications.value.join(",");
+		if (selectedSubdomains.value.length > 0)
+			query[QUERY_KEYS.subdomains] = selectedSubdomains.value.join(",");
+		if (selectedAggregates.value.length > 0)
+			query[QUERY_KEYS.aggregates] = selectedAggregates.value.join(",");
+		if (selectedStatus.value)
+			query[QUERY_KEYS.status] = selectedStatus.value;
+
+		router.replace({ query });
+	}
+
+	// ---- Data loading ----
 
 	async function loadEventTypes() {
 		loading.value = true;
@@ -64,6 +109,15 @@ export function useEventTypes() {
 	async function loadApplications() {
 		const response = await eventTypesApi.getApplications();
 		applicationOptions.value = response.options;
+
+		// Prune selections that no longer exist
+		const valid = new Set(response.options);
+		const pruned = selectedApplications.value.filter((s) => valid.has(s));
+		if (pruned.length !== selectedApplications.value.length) {
+			suppressUrlSync = true;
+			selectedApplications.value = pruned;
+			suppressUrlSync = false;
+		}
 	}
 
 	async function loadSubdomains() {
@@ -73,10 +127,15 @@ export function useEventTypes() {
 		const response = await eventTypesApi.getSubdomains(apps);
 		subdomainOptions.value = response.options;
 
-		// Filter out invalid selections
-		selectedSubdomains.value = selectedSubdomains.value.filter((s) =>
+		// Prune invalid selections
+		const pruned = selectedSubdomains.value.filter((s) =>
 			response.options.includes(s),
 		);
+		if (pruned.length !== selectedSubdomains.value.length) {
+			suppressUrlSync = true;
+			selectedSubdomains.value = pruned;
+			suppressUrlSync = false;
+		}
 	}
 
 	async function loadAggregates() {
@@ -89,10 +148,15 @@ export function useEventTypes() {
 		const response = await eventTypesApi.getAggregates(apps, subs);
 		aggregateOptions.value = response.options;
 
-		// Filter out invalid selections
-		selectedAggregates.value = selectedAggregates.value.filter((a) =>
+		// Prune invalid selections
+		const pruned = selectedAggregates.value.filter((a) =>
 			response.options.includes(a),
 		);
+		if (pruned.length !== selectedAggregates.value.length) {
+			suppressUrlSync = true;
+			selectedAggregates.value = pruned;
+			suppressUrlSync = false;
+		}
 	}
 
 	function clearFilters() {
@@ -102,24 +166,34 @@ export function useEventTypes() {
 		selectedStatus.value = null;
 	}
 
-	// Watch for filter changes
+	// Watch for filter changes — sync URL + reload data
 	watch(selectedApplications, () => {
+		syncFiltersToUrl();
 		loadSubdomains();
 		loadAggregates();
 		loadEventTypes();
 	});
 
 	watch(selectedSubdomains, () => {
+		syncFiltersToUrl();
 		loadAggregates();
 		loadEventTypes();
 	});
 
-	watch([selectedAggregates, selectedStatus], () => {
+	watch(selectedAggregates, () => {
+		syncFiltersToUrl();
+		loadEventTypes();
+	});
+
+	watch(selectedStatus, () => {
+		syncFiltersToUrl();
 		loadEventTypes();
 	});
 
 	async function initialize() {
 		await Promise.all([loadApplications(), loadSubdomains(), loadAggregates()]);
+		// After pruning, sync the (possibly cleaned) state back to URL
+		syncFiltersToUrl();
 		await loadEventTypes();
 		initialLoading.value = false;
 	}

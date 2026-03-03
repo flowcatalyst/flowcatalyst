@@ -8,6 +8,7 @@
 	},
 	"dependencies": {
 		"@flowcatalyst/domain": "workspace:*",
+		"@flowcatalyst/schema-codegen": "workspace:*",
 		"@flowcatalyst/http": "workspace:*",
 		"@flowcatalyst/persistence": "workspace:*",
 		"@flowcatalyst/platform-crypto": "workspace:*",

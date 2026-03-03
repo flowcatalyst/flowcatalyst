@@ -9,7 +9,8 @@
 			"@flowcatalyst/platform-crypto": ["../../packages/crypto/src/index.ts"],
 			"@flowcatalyst/application": ["../../packages/framework/src/index.ts"],
 			"@flowcatalyst/queue-core": ["../../packages/queue-core/src/index.ts"],
-			"@flowcatalyst/tsid": ["../../packages/tsid/src/index.ts"]
+			"@flowcatalyst/tsid": ["../../packages/tsid/src/index.ts"],
+			"@flowcatalyst/schema-codegen": ["../../packages/schema-codegen/src/index.ts"]
 		}
 	},
 	"include": ["src"]

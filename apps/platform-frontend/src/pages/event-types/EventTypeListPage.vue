@@ -81,13 +81,33 @@ const hasSchemas = computed(() =>
 );
 
 function exportSchemas() {
-	exportSchemasAsZip(eventTypes.value);
+	const result = exportSchemasAsZip(eventTypes.value);
+
+	if (result.exported === 0) {
+		toast.add({
+			severity: "warn",
+			summary: "Nothing to Export",
+			detail: "No event types with a CURRENT schema in the current view",
+			life: 4000,
+		});
+		return;
+	}
+
 	toast.add({
-		severity: "info",
-		summary: "Export Started",
-		detail: "Downloading event-schemas.zip",
+		severity: "success",
+		summary: "Export Complete",
+		detail: `Exported ${result.exported} schema${result.exported !== 1 ? "s" : ""} to event-schemas.zip`,
 		life: 3000,
 	});
+
+	if (result.errors.length > 0) {
+		toast.add({
+			severity: "warn",
+			summary: `${result.errors.length} Generation Error${result.errors.length !== 1 ? "s" : ""}`,
+			detail: result.errors.join("\n"),
+			life: 8000,
+		});
+	}
 }
 
 function getSchemaStatusSeverity(status: string) {

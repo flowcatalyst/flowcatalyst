@@ -338,6 +338,38 @@ try {
 }
 ```
 
+## AI Agent Access (MCP Server)
+
+If you're using an AI coding agent (Claude Code, Cursor, Windsurf, etc.), you can give it read-only access to your FlowCatalyst event types, schemas, and subscriptions via the MCP server. This lets the agent explore your event catalog and generate typed code (including PHP DTOs) for you.
+
+### Quick setup (Claude Code)
+
+```bash
+claude mcp add flowcatalyst -- npx @flowcatalyst/mcp-server
+```
+
+### Quick setup (Cursor / Windsurf / Claude Desktop)
+
+Add to your MCP config file (`.cursor/mcp.json`, Claude Desktop config, etc.):
+
+```json
+{
+  "mcpServers": {
+    "flowcatalyst": {
+      "command": "npx",
+      "args": ["@flowcatalyst/mcp-server"],
+      "env": {
+        "FLOWCATALYST_URL": "https://your-instance.flowcatalyst.io",
+        "FLOWCATALYST_CLIENT_ID": "svc_abc123",
+        "FLOWCATALYST_CLIENT_SECRET": "your_secret"
+      }
+    }
+  }
+}
+```
+
+You need a service account with the `AI Agent Read-Only` role. The agent can then generate PHP DTOs, TypeScript interfaces, Python dataclasses, or Java records from your event schemas. See the [MCP server README](../mcp-server/README.md) for full details.
+
 ## Testing
 
 For testing, you can mock the facades:

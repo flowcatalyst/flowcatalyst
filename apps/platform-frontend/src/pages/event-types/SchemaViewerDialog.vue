@@ -2,7 +2,20 @@
 import { ref, computed, watch } from "vue";
 import { useToast } from "primevue/usetoast";
 import type { SpecVersion } from "@/api/event-types";
-import { generateExample } from "@/utils/schema-example";
+import {
+	generateExample,
+	generateTypeScriptInterface,
+	generatePhpDto,
+	generatePythonDataclass,
+	generateJavaRecord,
+} from "@flowcatalyst/schema-codegen";
+import {
+	highlightJson,
+	highlightTypeScript,
+	highlightPhp,
+	highlightPython,
+	highlightJava,
+} from "@/utils/schema-highlight";
 
 const props = defineProps<{
 	visible: boolean;
@@ -15,7 +28,16 @@ const emit = defineEmits<{
 }>();
 
 const toast = useToast();
-const activeTab = ref<"schema" | "example">("schema");
+const activeTab = ref<"schema" | "example" | "typescript" | "php" | "python" | "java">("schema");
+
+const tabLabels: Record<typeof activeTab.value, string> = {
+	schema: "Schema",
+	example: "Example",
+	typescript: "TypeScript",
+	php: "PHP",
+	python: "Python",
+	java: "Java",
+};
 
 const parsedSchema = computed(() => {
 	if (!props.specVersion?.schema) return null;
@@ -40,24 +62,74 @@ const formattedExample = computed(() => {
 	}
 });
 
-const displayContent = computed(() =>
-	activeTab.value === "schema" ? formattedSchema.value : formattedExample.value,
-);
+const generatedTypeScript = computed(() => {
+	if (!parsedSchema.value) return "// No schema available";
+	try {
+		return generateTypeScriptInterface(parsedSchema.value, props.eventCode);
+	} catch {
+		return "// Unable to generate TypeScript interface";
+	}
+});
 
-function highlightJson(json: string): string {
-	return json.replace(
-		/("(?:\\.|[^"\\])*")\s*(:)|("(?:\\.|[^"\\])*")|(true|false|null)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
-		(match, key, colon, str, keyword, num) => {
-			if (key) return `<span class="json-key">${key}</span>${colon}`;
-			if (str) return `<span class="json-str">${str}</span>`;
-			if (keyword) return `<span class="json-kw">${keyword}</span>`;
-			if (num) return `<span class="json-num">${num}</span>`;
-			return match;
-		},
-	);
-}
+const generatedPhp = computed(() => {
+	if (!parsedSchema.value) return "// No schema available";
+	try {
+		return generatePhpDto(parsedSchema.value, props.eventCode);
+	} catch {
+		return "// Unable to generate PHP DTO";
+	}
+});
 
-const highlightedContent = computed(() => highlightJson(displayContent.value));
+const generatedPython = computed(() => {
+	if (!parsedSchema.value) return "# No schema available";
+	try {
+		return generatePythonDataclass(parsedSchema.value, props.eventCode);
+	} catch {
+		return "# Unable to generate Python dataclass";
+	}
+});
+
+const generatedJava = computed(() => {
+	if (!parsedSchema.value) return "// No schema available";
+	try {
+		return generateJavaRecord(parsedSchema.value, props.eventCode);
+	} catch {
+		return "// Unable to generate Java record";
+	}
+});
+
+const displayContent = computed(() => {
+	switch (activeTab.value) {
+		case "schema":
+			return formattedSchema.value;
+		case "example":
+			return formattedExample.value;
+		case "typescript":
+			return generatedTypeScript.value;
+		case "php":
+			return generatedPhp.value;
+		case "python":
+			return generatedPython.value;
+		case "java":
+			return generatedJava.value;
+	}
+});
+
+const highlightedContent = computed(() => {
+	switch (activeTab.value) {
+		case "schema":
+		case "example":
+			return highlightJson(displayContent.value);
+		case "typescript":
+			return highlightTypeScript(displayContent.value);
+		case "php":
+			return highlightPhp(displayContent.value);
+		case "python":
+			return highlightPython(displayContent.value);
+		case "java":
+			return highlightJava(displayContent.value);
+	}
+});
 
 watch(
 	() => props.visible,
@@ -76,7 +148,7 @@ async function copyToClipboard() {
 		toast.add({
 			severity: "success",
 			summary: "Copied",
-			detail: `${activeTab.value === "schema" ? "Schema" : "Example"} copied to clipboard`,
+			detail: `${tabLabels[activeTab.value]} copied to clipboard`,
 			life: 2000,
 		});
 	} catch {
@@ -114,6 +186,34 @@ async function copyToClipboard() {
           @click="activeTab = 'example'"
         >
           Example
+        </button>
+        <button
+          class="tab-btn"
+          :class="{ active: activeTab === 'typescript' }"
+          @click="activeTab = 'typescript'"
+        >
+          TypeScript
+        </button>
+        <button
+          class="tab-btn"
+          :class="{ active: activeTab === 'php' }"
+          @click="activeTab = 'php'"
+        >
+          PHP
+        </button>
+        <button
+          class="tab-btn"
+          :class="{ active: activeTab === 'python' }"
+          @click="activeTab = 'python'"
+        >
+          Python
+        </button>
+        <button
+          class="tab-btn"
+          :class="{ active: activeTab === 'java' }"
+          @click="activeTab = 'java'"
+        >
+          Java
         </button>
       </div>
       <div class="toolbar-actions">
@@ -209,8 +309,18 @@ async function copyToClipboard() {
   color: inherit;
 }
 
+/* JSON highlighting (legacy class names kept for compat) */
 .code-block :deep(.json-key) { color: #7dd3fc; }
 .code-block :deep(.json-str) { color: #86efac; }
 .code-block :deep(.json-num) { color: #fde68a; }
 .code-block :deep(.json-kw)  { color: #c4b5fd; }
+
+/* Shared highlighting classes */
+.code-block :deep(.hl-key)     { color: #7dd3fc; }
+.code-block :deep(.hl-str)     { color: #86efac; }
+.code-block :deep(.hl-num)     { color: #fde68a; }
+.code-block :deep(.hl-kw)      { color: #c4b5fd; }
+.code-block :deep(.hl-type)    { color: #67e8f9; }
+.code-block :deep(.hl-var)     { color: #fca5a5; }
+.code-block :deep(.hl-comment) { color: #94a3b8; font-style: italic; }
 </style>

@@ -24,7 +24,8 @@
 		"forceConsistentCasingInFileNames": true,
 		"erasableSyntaxOnly": true,
 		"paths": {
-			"@/*": ["./src/*"]
+			"@/*": ["./src/*"],
+			"@flowcatalyst/schema-codegen": ["../../packages/schema-codegen/src/index.ts"]
 		}
 	},
 	"include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"],
