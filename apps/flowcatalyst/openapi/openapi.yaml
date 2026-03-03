@@ -244,6 +244,21 @@ paths:
                 name:
                   minLength: 1
                   type: string
+                scope:
+                  anyOf:
+                    - type: string
+                      enum:
+                        - ANCHOR
+                    - type: string
+                      enum:
+                        - PARTNER
+                    - type: string
+                      enum:
+                        - CLIENT
+                clientId:
+                  anyOf:
+                    - type: string
+                    - type: "null"
       parameters:
         - schema:
             type: string
@@ -8370,6 +8385,103 @@ paths:
                     description: Additional error details
                     type: object
                     additionalProperties: {}
+  "/api/admin/event-types/{id}/codegen":
+    post:
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: object
+              required:
+                - language
+              properties:
+                language:
+                  anyOf:
+                    - type: string
+                      enum:
+                        - typescript
+                    - type: string
+                      enum:
+                        - php
+                    - type: string
+                      enum:
+                        - python
+                    - type: string
+                      enum:
+                        - java
+                version:
+                  type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - code
+                  - language
+                  - eventTypeId
+                  - eventCode
+                  - schemaVersion
+                properties:
+                  code:
+                    type: string
+                  language:
+                    type: string
+                  eventTypeId:
+                    type: string
+                  eventCode:
+                    type: string
+                  schemaVersion:
+                    type: string
+        "400":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - message
+                  - code
+                properties:
+                  message:
+                    description: Human-readable error message
+                    type: string
+                  code:
+                    description: Machine-readable error code
+                    type: string
+                  details:
+                    description: Additional error details
+                    type: object
+                    additionalProperties: {}
+        "404":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - message
+                  - code
+                properties:
+                  message:
+                    description: Human-readable error message
+                    type: string
+                  code:
+                    description: Machine-readable error code
+                    type: string
+                  details:
+                    description: Additional error details
+                    type: object
+                    additionalProperties: {}
   "/api/admin/event-types/{id}/archive":
     post:
       parameters:
@@ -9773,6 +9885,661 @@ paths:
                     description: Additional error details
                     type: object
                     additionalProperties: {}
+  "/api/admin/connections":
+    get:
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: clientId
+          required: false
+        - schema:
+            type: string
+          in: query
+          name: status
+          required: false
+        - schema:
+            type: string
+          in: query
+          name: serviceAccountId
+          required: false
+      responses:
+        "200":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - connections
+                  - total
+                properties:
+                  connections:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - id
+                        - code
+                        - name
+                        - description
+                        - endpoint
+                        - externalId
+                        - status
+                        - serviceAccountId
+                        - clientId
+                        - clientIdentifier
+                        - createdAt
+                        - updatedAt
+                      properties:
+                        id:
+                          type: string
+                        code:
+                          type: string
+                        name:
+                          type: string
+                        description:
+                          anyOf:
+                            - type: string
+                            - type: "null"
+                        endpoint:
+                          type: string
+                        externalId:
+                          anyOf:
+                            - type: string
+                            - type: "null"
+                        status:
+                          type: string
+                        serviceAccountId:
+                          type: string
+                        clientId:
+                          anyOf:
+                            - type: string
+                            - type: "null"
+                        clientIdentifier:
+                          anyOf:
+                            - type: string
+                            - type: "null"
+                        createdAt:
+                          format: date-time
+                          type: string
+                        updatedAt:
+                          format: date-time
+                          type: string
+                  total:
+                    type: integer
+    post:
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: object
+              required:
+                - code
+                - name
+                - endpoint
+                - serviceAccountId
+              properties:
+                code:
+                  minLength: 2
+                  maxLength: 100
+                  pattern: ^[a-z][a-z0-9-]*$
+                  type: string
+                name:
+                  minLength: 1
+                  maxLength: 255
+                  type: string
+                description:
+                  anyOf:
+                    - maxLength: 500
+                      type: string
+                    - type: "null"
+                endpoint:
+                  minLength: 1
+                  maxLength: 500
+                  type: string
+                externalId:
+                  anyOf:
+                    - maxLength: 100
+                      type: string
+                    - type: "null"
+                serviceAccountId:
+                  minLength: 1
+                  type: string
+                clientId:
+                  anyOf:
+                    - type: string
+                    - type: "null"
+      responses:
+        "201":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - id
+                  - code
+                  - name
+                  - description
+                  - endpoint
+                  - externalId
+                  - status
+                  - serviceAccountId
+                  - clientId
+                  - clientIdentifier
+                  - createdAt
+                  - updatedAt
+                properties:
+                  id:
+                    type: string
+                  code:
+                    type: string
+                  name:
+                    type: string
+                  description:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  endpoint:
+                    type: string
+                  externalId:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  status:
+                    type: string
+                  serviceAccountId:
+                    type: string
+                  clientId:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  clientIdentifier:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  createdAt:
+                    format: date-time
+                    type: string
+                  updatedAt:
+                    format: date-time
+                    type: string
+        "400":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - message
+                  - code
+                properties:
+                  message:
+                    description: Human-readable error message
+                    type: string
+                  code:
+                    description: Machine-readable error code
+                    type: string
+                  details:
+                    description: Additional error details
+                    type: object
+                    additionalProperties: {}
+        "409":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - message
+                  - code
+                properties:
+                  message:
+                    description: Human-readable error message
+                    type: string
+                  code:
+                    description: Machine-readable error code
+                    type: string
+                  details:
+                    description: Additional error details
+                    type: object
+                    additionalProperties: {}
+  "/api/admin/connections/{id}":
+    get:
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - id
+                  - code
+                  - name
+                  - description
+                  - endpoint
+                  - externalId
+                  - status
+                  - serviceAccountId
+                  - clientId
+                  - clientIdentifier
+                  - createdAt
+                  - updatedAt
+                properties:
+                  id:
+                    type: string
+                  code:
+                    type: string
+                  name:
+                    type: string
+                  description:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  endpoint:
+                    type: string
+                  externalId:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  status:
+                    type: string
+                  serviceAccountId:
+                    type: string
+                  clientId:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  clientIdentifier:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  createdAt:
+                    format: date-time
+                    type: string
+                  updatedAt:
+                    format: date-time
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - message
+                  - code
+                properties:
+                  message:
+                    description: Human-readable error message
+                    type: string
+                  code:
+                    description: Machine-readable error code
+                    type: string
+                  details:
+                    description: Additional error details
+                    type: object
+                    additionalProperties: {}
+    put:
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: object
+              properties:
+                name:
+                  minLength: 1
+                  maxLength: 255
+                  type: string
+                description:
+                  anyOf:
+                    - maxLength: 500
+                      type: string
+                    - type: "null"
+                endpoint:
+                  minLength: 1
+                  maxLength: 500
+                  type: string
+                externalId:
+                  anyOf:
+                    - maxLength: 100
+                      type: string
+                    - type: "null"
+                status:
+                  anyOf:
+                    - type: string
+                      enum:
+                        - ACTIVE
+                    - type: string
+                      enum:
+                        - PAUSED
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - id
+                  - code
+                  - name
+                  - description
+                  - endpoint
+                  - externalId
+                  - status
+                  - serviceAccountId
+                  - clientId
+                  - clientIdentifier
+                  - createdAt
+                  - updatedAt
+                properties:
+                  id:
+                    type: string
+                  code:
+                    type: string
+                  name:
+                    type: string
+                  description:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  endpoint:
+                    type: string
+                  externalId:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  status:
+                    type: string
+                  serviceAccountId:
+                    type: string
+                  clientId:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  clientIdentifier:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  createdAt:
+                    format: date-time
+                    type: string
+                  updatedAt:
+                    format: date-time
+                    type: string
+        "400":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - message
+                  - code
+                properties:
+                  message:
+                    description: Human-readable error message
+                    type: string
+                  code:
+                    description: Machine-readable error code
+                    type: string
+                  details:
+                    description: Additional error details
+                    type: object
+                    additionalProperties: {}
+        "404":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - message
+                  - code
+                properties:
+                  message:
+                    description: Human-readable error message
+                    type: string
+                  code:
+                    description: Machine-readable error code
+                    type: string
+                  details:
+                    description: Additional error details
+                    type: object
+                    additionalProperties: {}
+    delete:
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "204":
+          description: Default Response
+        "400":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - message
+                  - code
+                properties:
+                  message:
+                    description: Human-readable error message
+                    type: string
+                  code:
+                    description: Machine-readable error code
+                    type: string
+                  details:
+                    description: Additional error details
+                    type: object
+                    additionalProperties: {}
+        "404":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - message
+                  - code
+                properties:
+                  message:
+                    description: Human-readable error message
+                    type: string
+                  code:
+                    description: Machine-readable error code
+                    type: string
+                  details:
+                    description: Additional error details
+                    type: object
+                    additionalProperties: {}
+  "/api/admin/connections/{id}/pause":
+    post:
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - id
+                  - code
+                  - name
+                  - description
+                  - endpoint
+                  - externalId
+                  - status
+                  - serviceAccountId
+                  - clientId
+                  - clientIdentifier
+                  - createdAt
+                  - updatedAt
+                properties:
+                  id:
+                    type: string
+                  code:
+                    type: string
+                  name:
+                    type: string
+                  description:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  endpoint:
+                    type: string
+                  externalId:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  status:
+                    type: string
+                  serviceAccountId:
+                    type: string
+                  clientId:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  clientIdentifier:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  createdAt:
+                    format: date-time
+                    type: string
+                  updatedAt:
+                    format: date-time
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - message
+                  - code
+                properties:
+                  message:
+                    description: Human-readable error message
+                    type: string
+                  code:
+                    description: Machine-readable error code
+                    type: string
+                  details:
+                    description: Additional error details
+                    type: object
+                    additionalProperties: {}
+  "/api/admin/connections/{id}/activate":
+    post:
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - id
+                  - code
+                  - name
+                  - description
+                  - endpoint
+                  - externalId
+                  - status
+                  - serviceAccountId
+                  - clientId
+                  - clientIdentifier
+                  - createdAt
+                  - updatedAt
+                properties:
+                  id:
+                    type: string
+                  code:
+                    type: string
+                  name:
+                    type: string
+                  description:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  endpoint:
+                    type: string
+                  externalId:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  status:
+                    type: string
+                  serviceAccountId:
+                    type: string
+                  clientId:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  clientIdentifier:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                  createdAt:
+                    format: date-time
+                    type: string
+                  updatedAt:
+                    format: date-time
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            "application/json":
+              schema:
+                type: object
+                required:
+                  - message
+                  - code
+                properties:
+                  message:
+                    description: Human-readable error message
+                    type: string
+                  code:
+                    description: Machine-readable error code
+                    type: string
+                  details:
+                    description: Additional error details
+                    type: object
+                    additionalProperties: {}
   "/api/admin/subscriptions":
     get:
       parameters:
@@ -9826,7 +10593,7 @@ paths:
                         - clientIdentifier
                         - clientScoped
                         - eventTypes
-                        - target
+                        - connectionId
                         - queue
                         - customConfig
                         - source
@@ -9839,7 +10606,6 @@ paths:
                         - mode
                         - timeoutSeconds
                         - maxRetries
-                        - serviceAccountId
                         - dataOnly
                         - createdAt
                         - updatedAt
@@ -9887,7 +10653,7 @@ paths:
                                 anyOf:
                                   - type: string
                                   - type: "null"
-                        target:
+                        connectionId:
                           type: string
                         queue:
                           anyOf:
@@ -9929,10 +10695,6 @@ paths:
                           type: integer
                         maxRetries:
                           type: integer
-                        serviceAccountId:
-                          anyOf:
-                            - type: string
-                            - type: "null"
                         dataOnly:
                           type: boolean
                         createdAt:
@@ -9954,7 +10716,7 @@ paths:
                 - code
                 - name
                 - eventTypes
-                - target
+                - connectionId
               properties:
                 code:
                   minLength: 2
@@ -9998,9 +10760,8 @@ paths:
                         anyOf:
                           - type: string
                           - type: "null"
-                target:
+                connectionId:
                   minLength: 1
-                  maxLength: 500
                   type: string
                 queue:
                   anyOf:
@@ -10053,10 +10814,6 @@ paths:
                 maxRetries:
                   minimum: 0
                   type: integer
-                serviceAccountId:
-                  anyOf:
-                    - type: string
-                    - type: "null"
                 dataOnly:
                   type: boolean
       responses:
@@ -10076,7 +10833,7 @@ paths:
                   - clientIdentifier
                   - clientScoped
                   - eventTypes
-                  - target
+                  - connectionId
                   - queue
                   - customConfig
                   - source
@@ -10089,7 +10846,6 @@ paths:
                   - mode
                   - timeoutSeconds
                   - maxRetries
-                  - serviceAccountId
                   - dataOnly
                   - createdAt
                   - updatedAt
@@ -10137,7 +10893,7 @@ paths:
                           anyOf:
                             - type: string
                             - type: "null"
-                  target:
+                  connectionId:
                     type: string
                   queue:
                     anyOf:
@@ -10179,10 +10935,6 @@ paths:
                     type: integer
                   maxRetries:
                     type: integer
-                  serviceAccountId:
-                    anyOf:
-                      - type: string
-                      - type: "null"
                   dataOnly:
                     type: boolean
                   createdAt:
@@ -10256,7 +11008,7 @@ paths:
                   - clientIdentifier
                   - clientScoped
                   - eventTypes
-                  - target
+                  - connectionId
                   - queue
                   - customConfig
                   - source
@@ -10269,7 +11021,6 @@ paths:
                   - mode
                   - timeoutSeconds
                   - maxRetries
-                  - serviceAccountId
                   - dataOnly
                   - createdAt
                   - updatedAt
@@ -10317,7 +11068,7 @@ paths:
                           anyOf:
                             - type: string
                             - type: "null"
-                  target:
+                  connectionId:
                     type: string
                   queue:
                     anyOf:
@@ -10359,10 +11110,6 @@ paths:
                     type: integer
                   maxRetries:
                     type: integer
-                  serviceAccountId:
-                    anyOf:
-                      - type: string
-                      - type: "null"
                   dataOnly:
                     type: boolean
                   createdAt:
@@ -10426,9 +11173,8 @@ paths:
                         anyOf:
                           - type: string
                           - type: "null"
-                target:
+                connectionId:
                   minLength: 1
-                  maxLength: 500
                   type: string
                 queue:
                   anyOf:
@@ -10489,10 +11235,6 @@ paths:
                 maxRetries:
                   minimum: 0
                   type: integer
-                serviceAccountId:
-                  anyOf:
-                    - type: string
-                    - type: "null"
                 dataOnly:
                   type: boolean
       parameters:
@@ -10518,7 +11260,7 @@ paths:
                   - clientIdentifier
                   - clientScoped
                   - eventTypes
-                  - target
+                  - connectionId
                   - queue
                   - customConfig
                   - source
@@ -10531,7 +11273,6 @@ paths:
                   - mode
                   - timeoutSeconds
                   - maxRetries
-                  - serviceAccountId
                   - dataOnly
                   - createdAt
                   - updatedAt
@@ -10579,7 +11320,7 @@ paths:
                           anyOf:
                             - type: string
                             - type: "null"
-                  target:
+                  connectionId:
                     type: string
                   queue:
                     anyOf:
@@ -10621,10 +11362,6 @@ paths:
                     type: integer
                   maxRetries:
                     type: integer
-                  serviceAccountId:
-                    anyOf:
-                      - type: string
-                      - type: "null"
                   dataOnly:
                     type: boolean
                   createdAt:
@@ -10728,7 +11465,7 @@ paths:
                   - clientIdentifier
                   - clientScoped
                   - eventTypes
-                  - target
+                  - connectionId
                   - queue
                   - customConfig
                   - source
@@ -10741,7 +11478,6 @@ paths:
                   - mode
                   - timeoutSeconds
                   - maxRetries
-                  - serviceAccountId
                   - dataOnly
                   - createdAt
                   - updatedAt
@@ -10789,7 +11525,7 @@ paths:
                           anyOf:
                             - type: string
                             - type: "null"
-                  target:
+                  connectionId:
                     type: string
                   queue:
                     anyOf:
@@ -10831,10 +11567,6 @@ paths:
                     type: integer
                   maxRetries:
                     type: integer
-                  serviceAccountId:
-                    anyOf:
-                      - type: string
-                      - type: "null"
                   dataOnly:
                     type: boolean
                   createdAt:
@@ -10888,7 +11620,7 @@ paths:
                   - clientIdentifier
                   - clientScoped
                   - eventTypes
-                  - target
+                  - connectionId
                   - queue
                   - customConfig
                   - source
@@ -10901,7 +11633,6 @@ paths:
                   - mode
                   - timeoutSeconds
                   - maxRetries
-                  - serviceAccountId
                   - dataOnly
                   - createdAt
                   - updatedAt
@@ -10949,7 +11680,7 @@ paths:
                           anyOf:
                             - type: string
                             - type: "null"
-                  target:
+                  connectionId:
                     type: string
                   queue:
                     anyOf:
@@ -10991,10 +11722,6 @@ paths:
                     type: integer
                   maxRetries:
                     type: integer
-                  serviceAccountId:
-                    anyOf:
-                      - type: string
-                      - type: "null"
                   dataOnly:
                     type: boolean
                   createdAt:
@@ -11046,7 +11773,7 @@ paths:
                       - code
                       - name
                       - eventTypes
-                      - target
+                      - connectionId
                     properties:
                       code:
                         minLength: 1
@@ -11079,7 +11806,7 @@ paths:
                               anyOf:
                                 - type: string
                                 - type: "null"
-                      target:
+                      connectionId:
                         minLength: 1
                         type: string
                       queue:
@@ -11518,6 +12245,22 @@ paths:
                     description: Additional error details
                     type: object
                     additionalProperties: {}
+  "/api/admin/events/raw":
+    get:
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: page
+          required: false
+        - schema:
+            type: string
+          in: query
+          name: size
+          required: false
+      responses:
+        "200":
+          description: Default Response
   "/api/admin/dispatch-jobs":
     get:
       parameters:
@@ -12174,6 +12917,22 @@ paths:
                     description: Additional error details
                     type: object
                     additionalProperties: {}
+  "/api/admin/dispatch-jobs/raw":
+    get:
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: page
+          required: false
+        - schema:
+            type: string
+          in: query
+          name: size
+          required: false
+      responses:
+        "200":
+          description: Default Response
   "/api/admin/identity-providers":
     get:
       responses:

@@ -82,12 +82,12 @@ class ApiAdminSubscriptionsSyncPostBodySubscriptionsItemNormalizer implements De
         elseif (\array_key_exists('eventTypes', $data) && $data['eventTypes'] === null) {
             $object->setEventTypes(null);
         }
-        if (\array_key_exists('target', $data) && $data['target'] !== null) {
-            $object->setTarget($data['target']);
-            unset($data['target']);
+        if (\array_key_exists('connectionId', $data) && $data['connectionId'] !== null) {
+            $object->setConnectionId($data['connectionId']);
+            unset($data['connectionId']);
         }
-        elseif (\array_key_exists('target', $data) && $data['target'] === null) {
-            $object->setTarget(null);
+        elseif (\array_key_exists('connectionId', $data) && $data['connectionId'] === null) {
+            $object->setConnectionId(null);
         }
         if (\array_key_exists('queue', $data) && $data['queue'] !== null) {
             $object->setQueue($data['queue']);
@@ -186,7 +186,7 @@ class ApiAdminSubscriptionsSyncPostBodySubscriptionsItemNormalizer implements De
             $values[] = $this->normalizer->normalize($value, 'json', $context);
         }
         $dataArray['eventTypes'] = $values;
-        $dataArray['target'] = $data->getTarget();
+        $dataArray['connectionId'] = $data->getConnectionId();
         if ($data->isInitialized('queue') && null !== $data->getQueue()) {
             $dataArray['queue'] = $data->getQueue();
         }

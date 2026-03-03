@@ -31,7 +31,7 @@ export const subscriptions = pgTable(
 		clientId: tsidColumn("client_id"),
 		clientIdentifier: varchar("client_identifier", { length: 100 }),
 		clientScoped: boolean("client_scoped").notNull().default(false),
-		target: varchar("target", { length: 500 }).notNull(),
+		connectionId: tsidColumn("connection_id").notNull(),
 		queue: varchar("queue", { length: 255 }),
 		source: varchar("source", { length: 20 }).notNull().default("UI"),
 		status: varchar("status", { length: 20 }).notNull().default("ACTIVE"),
@@ -43,7 +43,6 @@ export const subscriptions = pgTable(
 		mode: varchar("mode", { length: 20 }).notNull().default("IMMEDIATE"),
 		timeoutSeconds: integer("timeout_seconds").notNull().default(30),
 		maxRetries: integer("max_retries").notNull().default(3),
-		serviceAccountId: tsidColumn("service_account_id"),
 		dataOnly: boolean("data_only").notNull().default(true),
 	},
 	(table) => ({
@@ -54,6 +53,9 @@ export const subscriptions = pgTable(
 		statusIdx: index("idx_msg_subscriptions_status").on(table.status),
 		clientIdIdx: index("idx_msg_subscriptions_client_id").on(table.clientId),
 		sourceIdx: index("idx_msg_subscriptions_source").on(table.source),
+		connectionIdx: index("idx_msg_subscriptions_connection_id").on(
+			table.connectionId,
+		),
 		dispatchPoolIdx: index("idx_msg_subscriptions_dispatch_pool").on(
 			table.dispatchPoolId,
 		),

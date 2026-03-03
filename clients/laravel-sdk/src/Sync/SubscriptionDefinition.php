@@ -14,7 +14,7 @@ final class SubscriptionDefinition
     /**
      * @param string $code Unique subscription code
      * @param string $name Human-readable name
-     * @param string $target Target URL for webhook delivery
+     * @param string $connectionId Connection ID for dispatch routing
      * @param string $queue Queue name for delivery
      * @param string $dispatchPoolCode Code of the dispatch pool to use
      * @param string|null $applicationCode Application code this subscription belongs to
@@ -29,7 +29,7 @@ final class SubscriptionDefinition
     public function __construct(
         public readonly string $code,
         public readonly string $name,
-        public readonly string $target,
+        public readonly string $connectionId,
         public readonly string $queue,
         public readonly string $dispatchPoolCode,
         public readonly ?string $applicationCode = null,
@@ -48,11 +48,11 @@ final class SubscriptionDefinition
     public static function make(
         string $code,
         string $name,
-        string $target,
+        string $connectionId,
         string $queue,
         string $dispatchPoolCode
     ): self {
-        return new self($code, $name, $target, $queue, $dispatchPoolCode);
+        return new self($code, $name, $connectionId, $queue, $dispatchPoolCode);
     }
 
     /**
@@ -63,7 +63,7 @@ final class SubscriptionDefinition
         return new self(
             code: $this->code,
             name: $this->name,
-            target: $this->target,
+            connectionId: $this->connectionId,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             applicationCode: $this->applicationCode,
@@ -85,7 +85,7 @@ final class SubscriptionDefinition
         return new self(
             code: $this->code,
             name: $this->name,
-            target: $this->target,
+            connectionId: $this->connectionId,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             applicationCode: $this->applicationCode,
@@ -107,7 +107,7 @@ final class SubscriptionDefinition
         return new self(
             code: $this->code,
             name: $this->name,
-            target: $this->target,
+            connectionId: $this->connectionId,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             applicationCode: $this->applicationCode,
@@ -129,7 +129,7 @@ final class SubscriptionDefinition
         return new self(
             code: $this->code,
             name: $this->name,
-            target: $this->target,
+            connectionId: $this->connectionId,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             applicationCode: $this->applicationCode,
@@ -151,7 +151,7 @@ final class SubscriptionDefinition
         return new self(
             code: $this->code,
             name: $this->name,
-            target: $this->target,
+            connectionId: $this->connectionId,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             applicationCode: $this->applicationCode,
@@ -173,7 +173,7 @@ final class SubscriptionDefinition
         return new self(
             code: $this->code,
             name: $this->name,
-            target: $this->target,
+            connectionId: $this->connectionId,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             applicationCode: $this->applicationCode,
@@ -197,7 +197,7 @@ final class SubscriptionDefinition
         $data = [
             'code' => $this->code,
             'name' => $this->name,
-            'target' => $this->target,
+            'connectionId' => $this->connectionId,
             'queue' => $this->queue,
             'dispatchPoolCode' => $this->dispatchPoolCode,
             'clientScoped' => $this->clientScoped,
@@ -232,7 +232,7 @@ final class SubscriptionDefinition
         return new self(
             code: $data['code'],
             name: $data['name'],
-            target: $data['target'],
+            connectionId: $data['connectionId'],
             queue: $data['queue'],
             dispatchPoolCode: $data['dispatchPoolCode'],
             applicationCode: $data['applicationCode'] ?? null,

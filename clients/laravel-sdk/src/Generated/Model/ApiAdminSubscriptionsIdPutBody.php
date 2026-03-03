@@ -27,7 +27,7 @@ class ApiAdminSubscriptionsIdPutBody extends \ArrayObject
     /**
      * @var string|null
      */
-    protected $target;
+    protected $connectionId;
     /**
      * @var mixed|null
      */
@@ -72,10 +72,6 @@ class ApiAdminSubscriptionsIdPutBody extends \ArrayObject
      * @var int|null
      */
     protected $maxRetries;
-    /**
-     * @var mixed|null
-     */
-    protected $serviceAccountId;
     /**
      * @var bool|null
      */
@@ -137,19 +133,19 @@ class ApiAdminSubscriptionsIdPutBody extends \ArrayObject
     /**
      * @return string|null
      */
-    public function getTarget(): ?string
+    public function getConnectionId(): ?string
     {
-        return $this->target;
+        return $this->connectionId;
     }
     /**
-     * @param string|null $target
+     * @param string|null $connectionId
      *
      * @return self
      */
-    public function setTarget(?string $target): self
+    public function setConnectionId(?string $connectionId): self
     {
-        $this->initialized['target'] = true;
-        $this->target = $target;
+        $this->initialized['connectionId'] = true;
+        $this->connectionId = $connectionId;
         return $this;
     }
     /**
@@ -348,24 +344,6 @@ class ApiAdminSubscriptionsIdPutBody extends \ArrayObject
     {
         $this->initialized['maxRetries'] = true;
         $this->maxRetries = $maxRetries;
-        return $this;
-    }
-    /**
-     * @return mixed
-     */
-    public function getServiceAccountId()
-    {
-        return $this->serviceAccountId;
-    }
-    /**
-     * @param mixed $serviceAccountId
-     *
-     * @return self
-     */
-    public function setServiceAccountId($serviceAccountId): self
-    {
-        $this->initialized['serviceAccountId'] = true;
-        $this->serviceAccountId = $serviceAccountId;
         return $this;
     }
     /**

@@ -33,6 +33,7 @@ export class CreateDispatchJobDto {
 	readonly expiresAt: Date | null;
 	readonly idempotencyKey: string | null;
 	readonly externalId: string | null;
+	readonly connectionId: string | null;
 
 	private constructor(params: {
 		source: string;
@@ -56,6 +57,7 @@ export class CreateDispatchJobDto {
 		expiresAt?: Date | null;
 		idempotencyKey?: string | null;
 		externalId?: string | null;
+		connectionId?: string | null;
 	}) {
 		this.source = params.source;
 		this.code = params.code;
@@ -78,6 +80,7 @@ export class CreateDispatchJobDto {
 		this.expiresAt = params.expiresAt ?? null;
 		this.idempotencyKey = params.idempotencyKey ?? null;
 		this.externalId = params.externalId ?? null;
+		this.connectionId = params.connectionId ?? null;
 	}
 
 	/**
@@ -171,6 +174,10 @@ export class CreateDispatchJobDto {
 		return new CreateDispatchJobDto({ ...this.toParams(), externalId });
 	}
 
+	withConnectionId(connectionId: string): CreateDispatchJobDto {
+		return new CreateDispatchJobDto({ ...this.toParams(), connectionId });
+	}
+
 	/** Build the dispatch job payload for the outbox. Filters out null values. */
 	toPayload(): Record<string, unknown> {
 		return filterNulls({
@@ -195,6 +202,7 @@ export class CreateDispatchJobDto {
 			expiresAt: this.expiresAt?.toISOString() ?? null,
 			idempotencyKey: this.idempotencyKey,
 			externalId: this.externalId,
+			connectionId: this.connectionId,
 		});
 	}
 
@@ -221,6 +229,7 @@ export class CreateDispatchJobDto {
 			expiresAt: this.expiresAt,
 			idempotencyKey: this.idempotencyKey,
 			externalId: this.externalId,
+			connectionId: this.connectionId,
 		};
 	}
 }

@@ -26,6 +26,7 @@ import {
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { requirePermission } from "../../authorization/index.js";
 import { BATCH_PERMISSIONS } from "../../authorization/permissions/platform-admin.js";
+import type { ConnectionRepository } from "../../infrastructure/persistence/index.js";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -41,7 +42,8 @@ const MetadataEntrySchema = Type.Object({
 const DispatchJobItemSchema = Type.Object({
 	source: Type.String({ minLength: 1 }),
 	code: Type.String({ minLength: 1 }),
-	targetUrl: Type.String({ minLength: 1 }),
+	targetUrl: Type.Optional(Type.String({ minLength: 1 })),
+	connectionId: Type.Optional(Type.String()),
 	payload: Type.Optional(Type.String()),
 	dispatchPoolId: Type.Optional(Type.String()),
 	subject: Type.Optional(Type.String()),
@@ -79,6 +81,7 @@ const BatchDispatchJobsRequestSchema = Type.Object({
 export interface DispatchJobsBatchDeps {
 	readonly db: PostgresJsDatabase;
 	readonly getPostCommitDispatcher: () => PostCommitDispatcher | undefined;
+	readonly connectionRepository?: ConnectionRepository | undefined;
 }
 
 // ─── Route Registration ─────────────────────────────────────────────────────
@@ -87,7 +90,7 @@ export async function registerDispatchJobsBatchRoutes(
 	fastify: FastifyInstance,
 	deps: DispatchJobsBatchDeps,
 ): Promise<void> {
-	const { db, getPostCommitDispatcher } = deps;
+	const { db, getPostCommitDispatcher, connectionRepository } = deps;
 
 	fastify.post(
 		"/dispatch/jobs/batch",
@@ -112,6 +115,30 @@ export async function registerDispatchJobsBatchRoutes(
 
 			const now = new Date();
 
+			// Pre-load connections if any items reference connectionId
+			const connectionIds = [
+				...new Set(
+					items
+						.map((i) => (i as { connectionId?: string }).connectionId)
+						.filter((id): id is string => !!id),
+				),
+			];
+			const connectionMap = new Map<
+				string,
+				{ endpoint: string; serviceAccountId: string; status: string }
+			>();
+			if (connectionIds.length > 0 && connectionRepository) {
+				const conns =
+					await connectionRepository.findByIds(connectionIds);
+				for (const c of conns) {
+					connectionMap.set(c.id, {
+						endpoint: c.endpoint,
+						serviceAccountId: c.serviceAccountId,
+						status: c.status,
+					});
+				}
+			}
+
 			// Build all records in memory
 			const jobRows: NewDispatchJobRecord[] = [];
 			const feedRows: NewDispatchJobProjectionFeedRecord[] = [];
@@ -123,6 +150,31 @@ export async function registerDispatchJobsBatchRoutes(
 
 				const metadata = normalizeMetadata(item.metadata);
 
+				// Resolve target URL and service account from connection or direct
+				const itemConnectionId =
+					(item as { connectionId?: string }).connectionId ?? null;
+				let resolvedTargetUrl = item.targetUrl ?? null;
+				let resolvedServiceAccountId: string | null = null;
+				let resolvedStatus: "QUEUED" | "PENDING" = "QUEUED";
+
+				if (itemConnectionId) {
+					const conn = connectionMap.get(itemConnectionId);
+					if (conn) {
+						resolvedTargetUrl = conn.endpoint;
+						resolvedServiceAccountId = conn.serviceAccountId;
+						if (conn.status === "PAUSED") {
+							resolvedStatus = "PENDING";
+						}
+					}
+				}
+
+				if (!resolvedTargetUrl) {
+					return badRequest(
+						reply,
+						"Either targetUrl or a valid connectionId is required",
+					);
+				}
+
 				const jobRecord: NewDispatchJobRecord = {
 					id,
 					externalId: item.externalId ?? null,
@@ -133,18 +185,20 @@ export async function registerDispatchJobsBatchRoutes(
 					eventId: item.eventId ?? null,
 					correlationId: item.correlationId ?? null,
 					metadata: metadata.length > 0 ? metadata : [],
-					targetUrl: item.targetUrl,
+					targetUrl: resolvedTargetUrl,
 					protocol: "HTTP_WEBHOOK",
 					payload: item.payload ?? null,
 					payloadContentType: item.payloadContentType ?? "application/json",
 					dataOnly: item.dataOnly ?? true,
+					serviceAccountId: resolvedServiceAccountId,
 					clientId: item.clientId ?? null,
+					connectionId: itemConnectionId,
 					mode: "IMMEDIATE",
 					dispatchPoolId: item.dispatchPoolId ?? null,
 					messageGroup: item.messageGroup ?? null,
 					sequence: item.sequence ?? 99,
 					timeoutSeconds: item.timeoutSeconds ?? 30,
-					status: "QUEUED",
+					status: resolvedStatus,
 					maxRetries: item.maxRetries ?? 3,
 					retryStrategy: item.retryStrategy ?? "exponential",
 					scheduledFor: item.scheduledFor ? new Date(item.scheduledFor) : null,
@@ -170,15 +224,19 @@ export async function registerDispatchJobsBatchRoutes(
 				await tx.insert(dispatchJobProjectionFeed).values(feedRows);
 			});
 
-			// Post-commit: publish MessagePointers to the queue
+			// Post-commit: publish MessagePointers to the queue (only QUEUED jobs)
 			const dispatcher = getPostCommitDispatcher();
 			if (dispatcher) {
-				const notifications = jobRows.map((job) => ({
-					id: job.id,
-					dispatchPoolId: job.dispatchPoolId ?? null,
-					messageGroup: job.messageGroup ?? "default",
-				}));
-				await dispatcher.dispatch(notifications);
+				const notifications = jobRows
+					.filter((job) => job.status === "QUEUED")
+					.map((job) => ({
+						id: job.id,
+						dispatchPoolId: job.dispatchPoolId ?? null,
+						messageGroup: job.messageGroup ?? "default",
+					}));
+				if (notifications.length > 0) {
+					await dispatcher.dispatch(notifications);
+				}
 			}
 
 			return jsonSuccess(reply, {

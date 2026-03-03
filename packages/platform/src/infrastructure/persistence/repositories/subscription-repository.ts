@@ -79,6 +79,14 @@ export interface SubscriptionRepository extends Repository<Subscription> {
 		dispatchPoolId: string,
 		tx?: TransactionContext,
 	): Promise<boolean>;
+	findByConnectionId(
+		connectionId: string,
+		tx?: TransactionContext,
+	): Promise<Subscription[]>;
+	existsByConnectionId(
+		connectionId: string,
+		tx?: TransactionContext,
+	): Promise<boolean>;
 	findWithFilters(
 		filters: SubscriptionFilters,
 		tx?: TransactionContext,
@@ -391,6 +399,29 @@ export function createSubscriptionRepository(
 			return Number(result?.count ?? 0) > 0;
 		},
 
+		async findByConnectionId(
+			connectionId: string,
+			tx?: TransactionContext,
+		): Promise<Subscription[]> {
+			const records = await db(tx)
+				.select()
+				.from(subscriptions)
+				.where(eq(subscriptions.connectionId, connectionId))
+				.orderBy(subscriptions.code);
+			return batchHydrate(records, tx);
+		},
+
+		async existsByConnectionId(
+			connectionId: string,
+			tx?: TransactionContext,
+		): Promise<boolean> {
+			const [result] = await db(tx)
+				.select({ count: sql<number>`count(*)` })
+				.from(subscriptions)
+				.where(eq(subscriptions.connectionId, connectionId));
+			return Number(result?.count ?? 0) > 0;
+		},
+
 		async findWithFilters(
 			filters: SubscriptionFilters,
 			tx?: TransactionContext,
@@ -478,7 +509,7 @@ export function createSubscriptionRepository(
 				clientId: entity.clientId,
 				clientIdentifier: entity.clientIdentifier,
 				clientScoped: entity.clientScoped,
-				target: entity.target,
+				connectionId: entity.connectionId,
 				queue: entity.queue,
 				source: entity.source,
 				status: entity.status,
@@ -490,7 +521,6 @@ export function createSubscriptionRepository(
 				mode: entity.mode,
 				timeoutSeconds: entity.timeoutSeconds,
 				maxRetries: entity.maxRetries,
-				serviceAccountId: entity.serviceAccountId,
 				dataOnly: entity.dataOnly,
 				createdAt: entity.createdAt ?? now,
 				updatedAt: entity.updatedAt ?? now,
@@ -516,7 +546,7 @@ export function createSubscriptionRepository(
 				.set({
 					name: entity.name,
 					description: entity.description,
-					target: entity.target,
+					connectionId: entity.connectionId,
 					queue: entity.queue,
 					status: entity.status,
 					maxAgeSeconds: entity.maxAgeSeconds,
@@ -527,7 +557,6 @@ export function createSubscriptionRepository(
 					mode: entity.mode,
 					timeoutSeconds: entity.timeoutSeconds,
 					maxRetries: entity.maxRetries,
-					serviceAccountId: entity.serviceAccountId,
 					dataOnly: entity.dataOnly,
 					updatedAt: now,
 				})
@@ -587,7 +616,7 @@ interface SubscriptionRelationalResult {
 	clientId: string | null;
 	clientIdentifier: string | null;
 	clientScoped: boolean;
-	target: string;
+	connectionId: string;
 	queue: string | null;
 	source: string;
 	status: string;
@@ -599,7 +628,6 @@ interface SubscriptionRelationalResult {
 	mode: string;
 	timeoutSeconds: number;
 	maxRetries: number;
-	serviceAccountId: string | null;
 	dataOnly: boolean;
 	createdAt: Date;
 	updatedAt: Date;
@@ -637,7 +665,7 @@ function resultToSubscription(
 			eventTypeCode: et.eventTypeCode,
 			specVersion: et.specVersion,
 		})),
-		target: result.target,
+		connectionId: result.connectionId,
 		queue: result.queue,
 		customConfig: result.customConfigs.map((c) => ({
 			key: c.configKey,
@@ -653,7 +681,6 @@ function resultToSubscription(
 		mode: result.mode as DispatchMode,
 		timeoutSeconds: result.timeoutSeconds,
 		maxRetries: result.maxRetries,
-		serviceAccountId: result.serviceAccountId,
 		dataOnly: result.dataOnly,
 		createdAt: result.createdAt,
 		updatedAt: result.updatedAt,
@@ -679,7 +706,7 @@ function recordToSubscription(
 		clientIdentifier: record.clientIdentifier,
 		clientScoped: record.clientScoped,
 		eventTypes,
-		target: record.target,
+		connectionId: record.connectionId,
 		queue: record.queue,
 		customConfig,
 		source: record.source as SubscriptionSource,
@@ -692,7 +719,6 @@ function recordToSubscription(
 		mode: record.mode as DispatchMode,
 		timeoutSeconds: record.timeoutSeconds,
 		maxRetries: record.maxRetries,
-		serviceAccountId: record.serviceAccountId,
 		dataOnly: record.dataOnly,
 		createdAt: record.createdAt,
 		updatedAt: record.updatedAt,

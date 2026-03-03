@@ -18,7 +18,7 @@ use FlowCatalyst\Enums\DispatchMode;
  *     description: 'Processes new orders',
  *     clientScoped: true,  // Set to true for client-scoped subscriptions
  *     eventTypes: ['myapp:orders:order:created', 'myapp:orders:order:updated'],
- *     target: 'https://myapp.com/webhooks/orders',
+ *     connectionId: 'conn_abc123',
  *     queue: 'orders',
  *     dispatchPoolCode: 'default',
  *     mode: DispatchMode::BLOCK_ON_ERROR
@@ -32,7 +32,7 @@ final class AsSubscription
     /**
      * @param string $code Unique subscription code
      * @param string $name Human-friendly name
-     * @param string $target Target URL for webhook delivery
+     * @param string $connectionId Connection ID for dispatch routing
      * @param string $queue Queue name for message routing
      * @param string $dispatchPoolCode Dispatch pool code for rate limiting
      * @param string|null $description Subscription description
@@ -50,7 +50,7 @@ final class AsSubscription
     public function __construct(
         public readonly string $code,
         public readonly string $name,
-        public readonly string $target,
+        public readonly string $connectionId,
         public readonly string $queue,
         public readonly string $dispatchPoolCode,
         public readonly ?string $description = null,
@@ -87,7 +87,7 @@ final class AsSubscription
             'name' => $this->name,
             'clientScoped' => $this->clientScoped,
             'eventTypes' => $eventTypeBindings ?: null,
-            'target' => $this->target,
+            'connectionId' => $this->connectionId,
             'queue' => $this->queue,
             'dispatchPoolCode' => $this->dispatchPoolCode,
         ];

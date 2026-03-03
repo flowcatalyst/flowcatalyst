@@ -19,3 +19,4 @@ export {
 	type MyApplication,
 	type MyApplicationsResponse,
 } from "./me";
+export { ConnectionsResource } from "./connections";

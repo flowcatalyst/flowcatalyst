@@ -96,12 +96,12 @@ class ApiAdminSubscriptionsPostBodyNormalizer implements DenormalizerInterface, 
         elseif (\array_key_exists('eventTypes', $data) && $data['eventTypes'] === null) {
             $object->setEventTypes(null);
         }
-        if (\array_key_exists('target', $data) && $data['target'] !== null) {
-            $object->setTarget($data['target']);
-            unset($data['target']);
+        if (\array_key_exists('connectionId', $data) && $data['connectionId'] !== null) {
+            $object->setConnectionId($data['connectionId']);
+            unset($data['connectionId']);
         }
-        elseif (\array_key_exists('target', $data) && $data['target'] === null) {
-            $object->setTarget(null);
+        elseif (\array_key_exists('connectionId', $data) && $data['connectionId'] === null) {
+            $object->setConnectionId(null);
         }
         if (\array_key_exists('queue', $data) && $data['queue'] !== null) {
             $object->setQueue($data['queue']);
@@ -177,13 +177,6 @@ class ApiAdminSubscriptionsPostBodyNormalizer implements DenormalizerInterface, 
         elseif (\array_key_exists('maxRetries', $data) && $data['maxRetries'] === null) {
             $object->setMaxRetries(null);
         }
-        if (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] !== null) {
-            $object->setServiceAccountId($data['serviceAccountId']);
-            unset($data['serviceAccountId']);
-        }
-        elseif (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] === null) {
-            $object->setServiceAccountId(null);
-        }
         if (\array_key_exists('dataOnly', $data) && $data['dataOnly'] !== null) {
             $object->setDataOnly($data['dataOnly']);
             unset($data['dataOnly']);
@@ -220,7 +213,7 @@ class ApiAdminSubscriptionsPostBodyNormalizer implements DenormalizerInterface, 
             $values[] = $this->normalizer->normalize($value, 'json', $context);
         }
         $dataArray['eventTypes'] = $values;
-        $dataArray['target'] = $data->getTarget();
+        $dataArray['connectionId'] = $data->getConnectionId();
         if ($data->isInitialized('queue') && null !== $data->getQueue()) {
             $dataArray['queue'] = $data->getQueue();
         }
@@ -254,9 +247,6 @@ class ApiAdminSubscriptionsPostBodyNormalizer implements DenormalizerInterface, 
         }
         if ($data->isInitialized('maxRetries') && null !== $data->getMaxRetries()) {
             $dataArray['maxRetries'] = $data->getMaxRetries();
-        }
-        if ($data->isInitialized('serviceAccountId') && null !== $data->getServiceAccountId()) {
-            $dataArray['serviceAccountId'] = $data->getServiceAccountId();
         }
         if ($data->isInitialized('dataOnly') && null !== $data->getDataOnly()) {
             $dataArray['dataOnly'] = $data->getDataOnly();

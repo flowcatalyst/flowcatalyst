@@ -81,6 +81,7 @@ export {
 	EventTypesResource,
 	SubscriptionsResource,
 	DispatchPoolsResource,
+	ConnectionsResource,
 	RolesResource,
 	PermissionsResource,
 	ApplicationsResource,

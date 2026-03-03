@@ -17,7 +17,7 @@ export interface CreateSubscriptionCommand extends Command {
 	readonly clientId?: string | null | undefined;
 	readonly clientScoped?: boolean | undefined;
 	readonly eventTypes: EventTypeBinding[];
-	readonly target: string;
+	readonly connectionId: string;
 	readonly queue?: string | null | undefined;
 	readonly customConfig?: ConfigEntry[] | undefined;
 	readonly source?: string | undefined;
@@ -29,6 +29,5 @@ export interface CreateSubscriptionCommand extends Command {
 	readonly mode?: DispatchMode | undefined;
 	readonly timeoutSeconds?: number | undefined;
 	readonly maxRetries?: number | undefined;
-	readonly serviceAccountId?: string | null | undefined;
 	readonly dataOnly?: boolean | undefined;
 }

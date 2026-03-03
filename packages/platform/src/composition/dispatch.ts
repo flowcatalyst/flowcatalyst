@@ -1,6 +1,6 @@
 /**
  * Dispatch infrastructure — event dispatch service, SQS publisher,
- * dispatch scheduler, and unit-of-work creation.
+ * dispatch scheduler, connection cache, and unit-of-work creation.
  */
 
 import type { FastifyBaseLogger } from "fastify";
@@ -16,6 +16,10 @@ import type { Env } from "../env.js";
 import type { Repositories } from "./repositories.js";
 import type { PlatformConfigService } from "../domain/index.js";
 import { createEventDispatchService } from "../infrastructure/dispatch/event-dispatch-service.js";
+import {
+	createConnectionCache,
+	type ConnectionCache,
+} from "../infrastructure/dispatch/connection-cache.js";
 
 /**
  * Build a PostCommitDispatcher from a QueuePublisher.
@@ -48,6 +52,7 @@ export interface DispatchInfrastructure {
 	uowConfig: DrizzleUnitOfWorkConfig;
 	unitOfWork: ReturnType<typeof createDrizzleUnitOfWork>;
 	dispatchSchedulerHandle: { stop(): void } | null;
+	connectionCache: ConnectionCache;
 }
 
 export interface CreateDispatchInfrastructureDeps {
@@ -77,9 +82,17 @@ export async function createDispatchInfrastructure(
 
 	const transactionManager = createTransactionManager(schemaDb);
 
+	// Connection cache — eliminates per-event DB queries on the hot path
+	const connectionCache = createConnectionCache(
+		repos.connectionRepository,
+		{ logger },
+	);
+	await connectionCache.start();
+
 	// Event dispatch service (builds dispatch jobs inside UoW transaction)
 	const eventDispatchService = createEventDispatchService({
 		subscriptionRepository: repos.subscriptionRepository,
+		connectionCache,
 	});
 
 	// Create queue publisher for post-commit dispatch (if configured)
@@ -134,6 +147,7 @@ export async function createDispatchInfrastructure(
 			db,
 			publisher: schedulerPublisher,
 			logger,
+			connectionCache,
 			config: {
 				pollIntervalMs: env.DISPATCH_SCHEDULER_POLL_INTERVAL_MS,
 				batchSize: env.DISPATCH_SCHEDULER_BATCH_SIZE,
@@ -182,5 +196,5 @@ export async function createDispatchInfrastructure(
 
 	const unitOfWork = createDrizzleUnitOfWork(uowConfig);
 
-	return { uowConfig, unitOfWork, dispatchSchedulerHandle };
+	return { uowConfig, unitOfWork, dispatchSchedulerHandle, connectionCache };
 }

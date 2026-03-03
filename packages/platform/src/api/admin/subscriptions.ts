@@ -70,7 +70,7 @@ const CreateSubscriptionSchema = Type.Object({
 	clientId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 	clientScoped: Type.Optional(Type.Boolean()),
 	eventTypes: Type.Array(EventTypeBindingSchema, { minItems: 1 }),
-	target: Type.String({ minLength: 1, maxLength: 500 }),
+	connectionId: Type.String({ minLength: 1 }),
 	queue: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 	customConfig: Type.Optional(Type.Array(ConfigEntrySchema)),
 	maxAgeSeconds: Type.Optional(Type.Integer({ minimum: 1 })),
@@ -83,7 +83,6 @@ const CreateSubscriptionSchema = Type.Object({
 	),
 	timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1 })),
 	maxRetries: Type.Optional(Type.Integer({ minimum: 0 })),
-	serviceAccountId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 	dataOnly: Type.Optional(Type.Boolean()),
 });
 
@@ -93,7 +92,7 @@ const UpdateSubscriptionSchema = Type.Object({
 	eventTypes: Type.Optional(
 		Type.Array(EventTypeBindingSchema, { minItems: 1 }),
 	),
-	target: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
+	connectionId: Type.Optional(Type.String({ minLength: 1 })),
 	queue: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 	customConfig: Type.Optional(Type.Array(ConfigEntrySchema)),
 	status: Type.Optional(
@@ -109,7 +108,6 @@ const UpdateSubscriptionSchema = Type.Object({
 	),
 	timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1 })),
 	maxRetries: Type.Optional(Type.Integer({ minimum: 0 })),
-	serviceAccountId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 	dataOnly: Type.Optional(Type.Boolean()),
 });
 
@@ -122,7 +120,7 @@ const SyncSubscriptionsSchema = Type.Object({
 			description: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 			clientScoped: Type.Optional(Type.Boolean()),
 			eventTypes: Type.Array(EventTypeBindingSchema, { minItems: 1 }),
-			target: Type.String({ minLength: 1 }),
+			connectionId: Type.String({ minLength: 1 }),
 			queue: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 			customConfig: Type.Optional(Type.Array(ConfigEntrySchema)),
 			maxAgeSeconds: Type.Optional(Type.Integer({ minimum: 1 })),
@@ -181,7 +179,7 @@ const SubscriptionResponseSchema = Type.Object({
 	clientIdentifier: Type.Union([Type.String(), Type.Null()]),
 	clientScoped: Type.Boolean(),
 	eventTypes: Type.Array(EventTypeBindingResponseSchema),
-	target: Type.String(),
+	connectionId: Type.String(),
 	queue: Type.Union([Type.String(), Type.Null()]),
 	customConfig: Type.Array(ConfigEntryResponseSchema),
 	source: Type.String(),
@@ -194,7 +192,6 @@ const SubscriptionResponseSchema = Type.Object({
 	mode: Type.String(),
 	timeoutSeconds: Type.Integer(),
 	maxRetries: Type.Integer(),
-	serviceAccountId: Type.Union([Type.String(), Type.Null()]),
 	dataOnly: Type.Boolean(),
 	createdAt: Type.String({ format: "date-time" }),
 	updatedAt: Type.String({ format: "date-time" }),
@@ -337,7 +334,7 @@ export async function registerSubscriptionsRoutes(
 					eventTypeCode: et.eventTypeCode,
 					specVersion: et.specVersion ?? null,
 				})),
-				target: body.target,
+				connectionId: body.connectionId,
 				queue: body.queue ?? null,
 				customConfig: body.customConfig ?? [],
 				maxAgeSeconds: body.maxAgeSeconds,
@@ -348,7 +345,6 @@ export async function registerSubscriptionsRoutes(
 				mode: body.mode as DispatchMode | undefined,
 				timeoutSeconds: body.timeoutSeconds,
 				maxRetries: body.maxRetries,
-				serviceAccountId: body.serviceAccountId ?? null,
 				dataOnly: body.dataOnly,
 			};
 
@@ -402,7 +398,9 @@ export async function registerSubscriptionsRoutes(
 							})),
 						}
 					: {}),
-				...(body.target !== undefined ? { target: body.target } : {}),
+				...(body.connectionId !== undefined
+					? { connectionId: body.connectionId }
+					: {}),
 				...(body.queue !== undefined ? { queue: body.queue } : {}),
 				...(body.customConfig !== undefined
 					? { customConfig: body.customConfig }
@@ -429,9 +427,6 @@ export async function registerSubscriptionsRoutes(
 					: {}),
 				...(body.maxRetries !== undefined
 					? { maxRetries: body.maxRetries }
-					: {}),
-				...(body.serviceAccountId !== undefined
-					? { serviceAccountId: body.serviceAccountId }
 					: {}),
 				...(body.dataOnly !== undefined ? { dataOnly: body.dataOnly } : {}),
 			};
@@ -574,7 +569,7 @@ export async function registerSubscriptionsRoutes(
 						eventTypeCode: et.eventTypeCode,
 						specVersion: et.specVersion ?? null,
 					})),
-					target: s.target,
+					connectionId: s.connectionId,
 					queue: s.queue ?? null,
 					customConfig: s.customConfig ?? [],
 					maxAgeSeconds: s.maxAgeSeconds,
@@ -624,7 +619,7 @@ function toSubscriptionResponse(sub: Subscription): SubscriptionResponse {
 			eventTypeCode: et.eventTypeCode,
 			specVersion: et.specVersion,
 		})),
-		target: sub.target,
+		connectionId: sub.connectionId,
 		queue: sub.queue,
 		customConfig: sub.customConfig.map((c) => ({
 			key: c.key,
@@ -640,7 +635,6 @@ function toSubscriptionResponse(sub: Subscription): SubscriptionResponse {
 		mode: sub.mode,
 		timeoutSeconds: sub.timeoutSeconds,
 		maxRetries: sub.maxRetries,
-		serviceAccountId: sub.serviceAccountId,
 		dataOnly: sub.dataOnly,
 		createdAt: sub.createdAt.toISOString(),
 		updatedAt: sub.updatedAt.toISOString(),

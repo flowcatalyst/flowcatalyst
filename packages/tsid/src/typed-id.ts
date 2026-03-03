@@ -55,6 +55,7 @@ export const EntityType = {
 	EVENT_TYPE: "evt",
 	EVENT: "evn",
 	EVENT_READ: "evr",
+	CONNECTION: "con",
 	SUBSCRIPTION: "sub",
 	DISPATCH_POOL: "dpl",
 	DISPATCH_JOB: "djb",

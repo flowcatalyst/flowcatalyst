@@ -13,6 +13,7 @@ import type { ExecutionContext, UnitOfWork } from "@flowcatalyst/domain";
 import type {
 	SubscriptionRepository,
 	DispatchPoolRepository,
+	ConnectionRepository,
 } from "../../../infrastructure/persistence/index.js";
 import {
 	createSubscription,
@@ -25,6 +26,7 @@ import type { CreateSubscriptionCommand } from "./command.js";
 export interface CreateSubscriptionUseCaseDeps {
 	readonly subscriptionRepository: SubscriptionRepository;
 	readonly dispatchPoolRepository: DispatchPoolRepository;
+	readonly connectionRepository: ConnectionRepository;
 	readonly unitOfWork: UnitOfWork;
 }
 
@@ -33,7 +35,7 @@ const CODE_PATTERN = /^[a-z][a-z0-9-]*$/;
 export function createCreateSubscriptionUseCase(
 	deps: CreateSubscriptionUseCaseDeps,
 ): UseCase<CreateSubscriptionCommand, SubscriptionCreated> {
-	const { subscriptionRepository, dispatchPoolRepository, unitOfWork } = deps;
+	const { subscriptionRepository, dispatchPoolRepository, connectionRepository, unitOfWork } = deps;
 
 	return {
 		async execute(
@@ -55,12 +57,12 @@ export function createCreateSubscriptionUseCase(
 			);
 			if (Result.isFailure(nameResult)) return nameResult;
 
-			const targetResult = validateRequired(
-				command.target,
-				"target",
-				"TARGET_REQUIRED",
+			const connectionIdResult = validateRequired(
+				command.connectionId,
+				"connectionId",
+				"CONNECTION_ID_REQUIRED",
 			);
-			if (Result.isFailure(targetResult)) return targetResult;
+			if (Result.isFailure(connectionIdResult)) return connectionIdResult;
 
 			// Validate code format
 			if (!CODE_PATTERN.test(command.code)) {
@@ -111,6 +113,20 @@ export function createCreateSubscriptionUseCase(
 				}
 			}
 
+			// Validate connection exists
+			const connectionExists = await connectionRepository.exists(
+				command.connectionId,
+			);
+			if (!connectionExists) {
+				return Result.failure(
+					UseCaseError.notFound(
+						"CONNECTION_NOT_FOUND",
+						"Connection not found",
+						{ connectionId: command.connectionId },
+					),
+				);
+			}
+
 			// Check code uniqueness within client scope
 			const clientId = command.clientId ?? null;
 			const codeExists = await subscriptionRepository.existsByCodeAndClient(
@@ -137,7 +153,7 @@ export function createCreateSubscriptionUseCase(
 				clientId,
 				clientScoped,
 				eventTypes: command.eventTypes,
-				target: command.target,
+				connectionId: command.connectionId,
 				queue: command.queue ?? null,
 				customConfig: command.customConfig ?? [],
 				source: (command.source as SubscriptionSource) ?? "UI",
@@ -159,7 +175,6 @@ export function createCreateSubscriptionUseCase(
 				...(command.maxRetries !== undefined
 					? { maxRetries: command.maxRetries }
 					: {}),
-				serviceAccountId: command.serviceAccountId ?? null,
 				...(command.dataOnly !== undefined
 					? { dataOnly: command.dataOnly }
 					: {}),
@@ -173,7 +188,7 @@ export function createCreateSubscriptionUseCase(
 				clientId: subscription.clientId,
 				clientScoped: subscription.clientScoped,
 				eventTypes: subscription.eventTypes,
-				target: subscription.target,
+				connectionId: subscription.connectionId,
 			});
 
 			return unitOfWork.commit(subscription, event, command);

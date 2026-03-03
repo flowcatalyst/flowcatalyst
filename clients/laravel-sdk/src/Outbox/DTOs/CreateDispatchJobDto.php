@@ -35,6 +35,7 @@ class CreateDispatchJobDto
         public readonly ?\DateTimeInterface $expiresAt = null,
         public readonly ?string $idempotencyKey = null,
         public readonly ?string $externalId = null,
+        public readonly ?string $connectionId = null,
     ) {}
 
     /**
@@ -85,6 +86,7 @@ class CreateDispatchJobDto
             expiresAt: $this->expiresAt,
             idempotencyKey: $this->idempotencyKey,
             externalId: $this->externalId,
+            connectionId: $this->connectionId,
         );
     }
 
@@ -115,6 +117,7 @@ class CreateDispatchJobDto
             expiresAt: $this->expiresAt,
             idempotencyKey: $this->idempotencyKey,
             externalId: $this->externalId,
+            connectionId: $this->connectionId,
         );
     }
 
@@ -145,6 +148,7 @@ class CreateDispatchJobDto
             expiresAt: $this->expiresAt,
             idempotencyKey: $this->idempotencyKey,
             externalId: $this->externalId,
+            connectionId: $this->connectionId,
         );
     }
 
@@ -175,6 +179,7 @@ class CreateDispatchJobDto
             expiresAt: $this->expiresAt,
             idempotencyKey: $this->idempotencyKey,
             externalId: $this->externalId,
+            connectionId: $this->connectionId,
         );
     }
 
@@ -205,6 +210,7 @@ class CreateDispatchJobDto
             expiresAt: $this->expiresAt,
             idempotencyKey: $this->idempotencyKey,
             externalId: $this->externalId,
+            connectionId: $this->connectionId,
         );
     }
 
@@ -235,6 +241,7 @@ class CreateDispatchJobDto
             expiresAt: $expiresAt,
             idempotencyKey: $this->idempotencyKey,
             externalId: $this->externalId,
+            connectionId: $this->connectionId,
         );
     }
 
@@ -265,6 +272,38 @@ class CreateDispatchJobDto
             expiresAt: $this->expiresAt,
             idempotencyKey: $idempotencyKey,
             externalId: $this->externalId,
+            connectionId: $this->connectionId,
+        );
+    }
+
+    /**
+     * Set the connection ID.
+     */
+    public function withConnectionId(string $connectionId): self
+    {
+        return new self(
+            source: $this->source,
+            code: $this->code,
+            targetUrl: $this->targetUrl,
+            payload: $this->payload,
+            dispatchPoolId: $this->dispatchPoolId,
+            subject: $this->subject,
+            correlationId: $this->correlationId,
+            eventId: $this->eventId,
+            metadata: $this->metadata,
+            headers: $this->headers,
+            payloadContentType: $this->payloadContentType,
+            dataOnly: $this->dataOnly,
+            messageGroup: $this->messageGroup,
+            sequence: $this->sequence,
+            timeoutSeconds: $this->timeoutSeconds,
+            maxRetries: $this->maxRetries,
+            retryStrategy: $this->retryStrategy,
+            scheduledFor: $this->scheduledFor,
+            expiresAt: $this->expiresAt,
+            idempotencyKey: $this->idempotencyKey,
+            externalId: $this->externalId,
+            connectionId: $connectionId,
         );
     }
 
@@ -295,6 +334,7 @@ class CreateDispatchJobDto
             'expiresAt' => $this->expiresAt?->format('c'),
             'idempotencyKey' => $this->idempotencyKey,
             'externalId' => $this->externalId,
+            'connectionId' => $this->connectionId,
         ], fn($v) => $v !== null);
     }
 }

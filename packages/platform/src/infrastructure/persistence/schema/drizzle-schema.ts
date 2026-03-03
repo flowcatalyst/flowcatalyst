@@ -21,6 +21,9 @@ export {
 	oauthClientApplicationIds,
 } from "./oauth-client-collections.js";
 
+// Connections
+export { connections } from "./connections.js";
+
 // Subscriptions
 export {
 	subscriptions,

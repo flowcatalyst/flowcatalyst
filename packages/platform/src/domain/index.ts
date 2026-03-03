@@ -31,6 +31,9 @@ export * from "./event-type/index.js";
 // Dispatch Pool domain
 export * from "./dispatch-pool/index.js";
 
+// Connection domain
+export * from "./connection/index.js";
+
 // Subscription domain
 export * from "./subscription/index.js";
 

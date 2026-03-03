@@ -267,6 +267,25 @@ const router = createRouter({
 					component: () =>
 						import("@/pages/subscriptions/SubscriptionDetailPage.vue"),
 				},
+				// Connections
+				{
+					path: "connections",
+					name: "connections",
+					component: () =>
+						import("@/pages/connections/ConnectionListPage.vue"),
+				},
+				{
+					path: "connections/new",
+					name: "connection-create",
+					component: () =>
+						import("@/pages/connections/ConnectionCreatePage.vue"),
+				},
+				{
+					path: "connections/:id",
+					name: "connection-detail",
+					component: () =>
+						import("@/pages/connections/ConnectionDetailPage.vue"),
+				},
 				// Dispatch Pools
 				{
 					path: "dispatch-pools",

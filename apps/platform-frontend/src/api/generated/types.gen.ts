@@ -149,6 +149,8 @@ export type GetApiAdminPrincipalsByIdResponse = GetApiAdminPrincipalsByIdRespons
 export type PutApiAdminPrincipalsByIdData = {
     body: {
         name: string;
+        scope?: 'ANCHOR' | 'PARTNER' | 'CLIENT';
+        clientId?: string | null;
     };
     path: {
         id: string;
@@ -5571,6 +5573,76 @@ export type PatchApiAdminEventTypesByIdResponses = {
 
 export type PatchApiAdminEventTypesByIdResponse = PatchApiAdminEventTypesByIdResponses[keyof PatchApiAdminEventTypesByIdResponses];
 
+export type PostApiAdminEventTypesByIdCodegenData = {
+    body: {
+        language: 'typescript' | 'php' | 'python' | 'java';
+        version?: string;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/event-types/{id}/codegen';
+};
+
+export type PostApiAdminEventTypesByIdCodegenErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        /**
+         * Human-readable error message
+         */
+        message: string;
+        /**
+         * Machine-readable error code
+         */
+        code: string;
+        /**
+         * Additional error details
+         */
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        /**
+         * Human-readable error message
+         */
+        message: string;
+        /**
+         * Machine-readable error code
+         */
+        code: string;
+        /**
+         * Additional error details
+         */
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+};
+
+export type PostApiAdminEventTypesByIdCodegenError = PostApiAdminEventTypesByIdCodegenErrors[keyof PostApiAdminEventTypesByIdCodegenErrors];
+
+export type PostApiAdminEventTypesByIdCodegenResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        code: string;
+        language: string;
+        eventTypeId: string;
+        eventCode: string;
+        schemaVersion: string;
+    };
+};
+
+export type PostApiAdminEventTypesByIdCodegenResponse = PostApiAdminEventTypesByIdCodegenResponses[keyof PostApiAdminEventTypesByIdCodegenResponses];
+
 export type PostApiAdminEventTypesByIdArchiveData = {
     body?: never;
     path: {
@@ -6429,6 +6501,428 @@ export type PostApiAdminDispatchPoolsSyncResponses = {
 
 export type PostApiAdminDispatchPoolsSyncResponse = PostApiAdminDispatchPoolsSyncResponses[keyof PostApiAdminDispatchPoolsSyncResponses];
 
+export type GetApiAdminConnectionsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        clientId?: string;
+        status?: string;
+        serviceAccountId?: string;
+    };
+    url: '/api/admin/connections';
+};
+
+export type GetApiAdminConnectionsResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        connections: Array<{
+            id: string;
+            code: string;
+            name: string;
+            description: string | null;
+            endpoint: string;
+            externalId: string | null;
+            status: string;
+            serviceAccountId: string;
+            clientId: string | null;
+            clientIdentifier: string | null;
+            createdAt: string;
+            updatedAt: string;
+        }>;
+        total: number;
+    };
+};
+
+export type GetApiAdminConnectionsResponse = GetApiAdminConnectionsResponses[keyof GetApiAdminConnectionsResponses];
+
+export type PostApiAdminConnectionsData = {
+    body: {
+        code: string;
+        name: string;
+        description?: string | null;
+        endpoint: string;
+        externalId?: string | null;
+        serviceAccountId: string;
+        clientId?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/connections';
+};
+
+export type PostApiAdminConnectionsErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        /**
+         * Human-readable error message
+         */
+        message: string;
+        /**
+         * Machine-readable error code
+         */
+        code: string;
+        /**
+         * Additional error details
+         */
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        /**
+         * Human-readable error message
+         */
+        message: string;
+        /**
+         * Machine-readable error code
+         */
+        code: string;
+        /**
+         * Additional error details
+         */
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+};
+
+export type PostApiAdminConnectionsError = PostApiAdminConnectionsErrors[keyof PostApiAdminConnectionsErrors];
+
+export type PostApiAdminConnectionsResponses = {
+    /**
+     * Default Response
+     */
+    201: {
+        id: string;
+        code: string;
+        name: string;
+        description: string | null;
+        endpoint: string;
+        externalId: string | null;
+        status: string;
+        serviceAccountId: string;
+        clientId: string | null;
+        clientIdentifier: string | null;
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PostApiAdminConnectionsResponse = PostApiAdminConnectionsResponses[keyof PostApiAdminConnectionsResponses];
+
+export type DeleteApiAdminConnectionsByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/connections/{id}';
+};
+
+export type DeleteApiAdminConnectionsByIdErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        /**
+         * Human-readable error message
+         */
+        message: string;
+        /**
+         * Machine-readable error code
+         */
+        code: string;
+        /**
+         * Additional error details
+         */
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        /**
+         * Human-readable error message
+         */
+        message: string;
+        /**
+         * Machine-readable error code
+         */
+        code: string;
+        /**
+         * Additional error details
+         */
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+};
+
+export type DeleteApiAdminConnectionsByIdError = DeleteApiAdminConnectionsByIdErrors[keyof DeleteApiAdminConnectionsByIdErrors];
+
+export type DeleteApiAdminConnectionsByIdResponses = {
+    /**
+     * Default Response
+     */
+    204: void;
+};
+
+export type DeleteApiAdminConnectionsByIdResponse = DeleteApiAdminConnectionsByIdResponses[keyof DeleteApiAdminConnectionsByIdResponses];
+
+export type GetApiAdminConnectionsByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/connections/{id}';
+};
+
+export type GetApiAdminConnectionsByIdErrors = {
+    /**
+     * Default Response
+     */
+    404: {
+        /**
+         * Human-readable error message
+         */
+        message: string;
+        /**
+         * Machine-readable error code
+         */
+        code: string;
+        /**
+         * Additional error details
+         */
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+};
+
+export type GetApiAdminConnectionsByIdError = GetApiAdminConnectionsByIdErrors[keyof GetApiAdminConnectionsByIdErrors];
+
+export type GetApiAdminConnectionsByIdResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        id: string;
+        code: string;
+        name: string;
+        description: string | null;
+        endpoint: string;
+        externalId: string | null;
+        status: string;
+        serviceAccountId: string;
+        clientId: string | null;
+        clientIdentifier: string | null;
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type GetApiAdminConnectionsByIdResponse = GetApiAdminConnectionsByIdResponses[keyof GetApiAdminConnectionsByIdResponses];
+
+export type PutApiAdminConnectionsByIdData = {
+    body: {
+        name?: string;
+        description?: string | null;
+        endpoint?: string;
+        externalId?: string | null;
+        status?: 'ACTIVE' | 'PAUSED';
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/connections/{id}';
+};
+
+export type PutApiAdminConnectionsByIdErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        /**
+         * Human-readable error message
+         */
+        message: string;
+        /**
+         * Machine-readable error code
+         */
+        code: string;
+        /**
+         * Additional error details
+         */
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        /**
+         * Human-readable error message
+         */
+        message: string;
+        /**
+         * Machine-readable error code
+         */
+        code: string;
+        /**
+         * Additional error details
+         */
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+};
+
+export type PutApiAdminConnectionsByIdError = PutApiAdminConnectionsByIdErrors[keyof PutApiAdminConnectionsByIdErrors];
+
+export type PutApiAdminConnectionsByIdResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        id: string;
+        code: string;
+        name: string;
+        description: string | null;
+        endpoint: string;
+        externalId: string | null;
+        status: string;
+        serviceAccountId: string;
+        clientId: string | null;
+        clientIdentifier: string | null;
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PutApiAdminConnectionsByIdResponse = PutApiAdminConnectionsByIdResponses[keyof PutApiAdminConnectionsByIdResponses];
+
+export type PostApiAdminConnectionsByIdPauseData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/connections/{id}/pause';
+};
+
+export type PostApiAdminConnectionsByIdPauseErrors = {
+    /**
+     * Default Response
+     */
+    404: {
+        /**
+         * Human-readable error message
+         */
+        message: string;
+        /**
+         * Machine-readable error code
+         */
+        code: string;
+        /**
+         * Additional error details
+         */
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+};
+
+export type PostApiAdminConnectionsByIdPauseError = PostApiAdminConnectionsByIdPauseErrors[keyof PostApiAdminConnectionsByIdPauseErrors];
+
+export type PostApiAdminConnectionsByIdPauseResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        id: string;
+        code: string;
+        name: string;
+        description: string | null;
+        endpoint: string;
+        externalId: string | null;
+        status: string;
+        serviceAccountId: string;
+        clientId: string | null;
+        clientIdentifier: string | null;
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PostApiAdminConnectionsByIdPauseResponse = PostApiAdminConnectionsByIdPauseResponses[keyof PostApiAdminConnectionsByIdPauseResponses];
+
+export type PostApiAdminConnectionsByIdActivateData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/connections/{id}/activate';
+};
+
+export type PostApiAdminConnectionsByIdActivateErrors = {
+    /**
+     * Default Response
+     */
+    404: {
+        /**
+         * Human-readable error message
+         */
+        message: string;
+        /**
+         * Machine-readable error code
+         */
+        code: string;
+        /**
+         * Additional error details
+         */
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+};
+
+export type PostApiAdminConnectionsByIdActivateError = PostApiAdminConnectionsByIdActivateErrors[keyof PostApiAdminConnectionsByIdActivateErrors];
+
+export type PostApiAdminConnectionsByIdActivateResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        id: string;
+        code: string;
+        name: string;
+        description: string | null;
+        endpoint: string;
+        externalId: string | null;
+        status: string;
+        serviceAccountId: string;
+        clientId: string | null;
+        clientIdentifier: string | null;
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PostApiAdminConnectionsByIdActivateResponse = PostApiAdminConnectionsByIdActivateResponses[keyof PostApiAdminConnectionsByIdActivateResponses];
+
 export type GetApiAdminSubscriptionsData = {
     body?: never;
     path?: never;
@@ -6461,7 +6955,7 @@ export type GetApiAdminSubscriptionsResponses = {
                 eventTypeCode: string;
                 specVersion: string | null;
             }>;
-            target: string;
+            connectionId: string;
             queue: string | null;
             customConfig: Array<{
                 key: string;
@@ -6477,7 +6971,6 @@ export type GetApiAdminSubscriptionsResponses = {
             mode: string;
             timeoutSeconds: number;
             maxRetries: number;
-            serviceAccountId: string | null;
             dataOnly: boolean;
             createdAt: string;
             updatedAt: string;
@@ -6501,7 +6994,7 @@ export type PostApiAdminSubscriptionsData = {
             eventTypeCode: string;
             specVersion?: string | null;
         }>;
-        target: string;
+        connectionId: string;
         queue?: string | null;
         customConfig?: Array<{
             key: string;
@@ -6515,7 +7008,6 @@ export type PostApiAdminSubscriptionsData = {
         mode?: 'IMMEDIATE' | 'BLOCK_ON_ERROR';
         timeoutSeconds?: number;
         maxRetries?: number;
-        serviceAccountId?: string | null;
         dataOnly?: boolean;
     };
     path?: never;
@@ -6584,7 +7076,7 @@ export type PostApiAdminSubscriptionsResponses = {
             eventTypeCode: string;
             specVersion: string | null;
         }>;
-        target: string;
+        connectionId: string;
         queue: string | null;
         customConfig: Array<{
             key: string;
@@ -6600,7 +7092,6 @@ export type PostApiAdminSubscriptionsResponses = {
         mode: string;
         timeoutSeconds: number;
         maxRetries: number;
-        serviceAccountId: string | null;
         dataOnly: boolean;
         createdAt: string;
         updatedAt: string;
@@ -6702,7 +7193,7 @@ export type GetApiAdminSubscriptionsByIdResponses = {
             eventTypeCode: string;
             specVersion: string | null;
         }>;
-        target: string;
+        connectionId: string;
         queue: string | null;
         customConfig: Array<{
             key: string;
@@ -6718,7 +7209,6 @@ export type GetApiAdminSubscriptionsByIdResponses = {
         mode: string;
         timeoutSeconds: number;
         maxRetries: number;
-        serviceAccountId: string | null;
         dataOnly: boolean;
         createdAt: string;
         updatedAt: string;
@@ -6736,7 +7226,7 @@ export type PutApiAdminSubscriptionsByIdData = {
             eventTypeCode: string;
             specVersion?: string | null;
         }>;
-        target?: string;
+        connectionId?: string;
         queue?: string | null;
         customConfig?: Array<{
             key: string;
@@ -6751,7 +7241,6 @@ export type PutApiAdminSubscriptionsByIdData = {
         mode?: 'IMMEDIATE' | 'BLOCK_ON_ERROR';
         timeoutSeconds?: number;
         maxRetries?: number;
-        serviceAccountId?: string | null;
         dataOnly?: boolean;
     };
     path: {
@@ -6822,7 +7311,7 @@ export type PutApiAdminSubscriptionsByIdResponses = {
             eventTypeCode: string;
             specVersion: string | null;
         }>;
-        target: string;
+        connectionId: string;
         queue: string | null;
         customConfig: Array<{
             key: string;
@@ -6838,7 +7327,6 @@ export type PutApiAdminSubscriptionsByIdResponses = {
         mode: string;
         timeoutSeconds: number;
         maxRetries: number;
-        serviceAccountId: string | null;
         dataOnly: boolean;
         createdAt: string;
         updatedAt: string;
@@ -6898,7 +7386,7 @@ export type PostApiAdminSubscriptionsByIdPauseResponses = {
             eventTypeCode: string;
             specVersion: string | null;
         }>;
-        target: string;
+        connectionId: string;
         queue: string | null;
         customConfig: Array<{
             key: string;
@@ -6914,7 +7402,6 @@ export type PostApiAdminSubscriptionsByIdPauseResponses = {
         mode: string;
         timeoutSeconds: number;
         maxRetries: number;
-        serviceAccountId: string | null;
         dataOnly: boolean;
         createdAt: string;
         updatedAt: string;
@@ -6974,7 +7461,7 @@ export type PostApiAdminSubscriptionsByIdResumeResponses = {
             eventTypeCode: string;
             specVersion: string | null;
         }>;
-        target: string;
+        connectionId: string;
         queue: string | null;
         customConfig: Array<{
             key: string;
@@ -6990,7 +7477,6 @@ export type PostApiAdminSubscriptionsByIdResumeResponses = {
         mode: string;
         timeoutSeconds: number;
         maxRetries: number;
-        serviceAccountId: string | null;
         dataOnly: boolean;
         createdAt: string;
         updatedAt: string;
@@ -7012,7 +7498,7 @@ export type PostApiAdminSubscriptionsSyncData = {
                 eventTypeCode: string;
                 specVersion?: string | null;
             }>;
-            target: string;
+            connectionId: string;
             queue?: string | null;
             customConfig?: Array<{
                 key: string;
@@ -7212,6 +7698,23 @@ export type GetApiAdminEventsByIdResponses = {
 };
 
 export type GetApiAdminEventsByIdResponse = GetApiAdminEventsByIdResponses[keyof GetApiAdminEventsByIdResponses];
+
+export type GetApiAdminEventsRawData = {
+    body?: never;
+    path?: never;
+    query?: {
+        page?: string;
+        size?: string;
+    };
+    url: '/api/admin/events/raw';
+};
+
+export type GetApiAdminEventsRawResponses = {
+    /**
+     * Default Response
+     */
+    200: unknown;
+};
 
 export type GetApiAdminDispatchJobsData = {
     body?: never;
@@ -7455,6 +7958,23 @@ export type GetApiAdminDispatchJobsByIdAttemptsResponses = {
 };
 
 export type GetApiAdminDispatchJobsByIdAttemptsResponse = GetApiAdminDispatchJobsByIdAttemptsResponses[keyof GetApiAdminDispatchJobsByIdAttemptsResponses];
+
+export type GetApiAdminDispatchJobsRawData = {
+    body?: never;
+    path?: never;
+    query?: {
+        page?: string;
+        size?: string;
+    };
+    url: '/api/admin/dispatch-jobs/raw';
+};
+
+export type GetApiAdminDispatchJobsRawResponses = {
+    /**
+     * Default Response
+     */
+    200: unknown;
+};
 
 export type GetApiAdminIdentityProvidersData = {
     body?: never;

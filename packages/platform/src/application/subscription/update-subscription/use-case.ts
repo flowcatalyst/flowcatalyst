@@ -9,6 +9,7 @@ import type { ExecutionContext, UnitOfWork } from "@flowcatalyst/domain";
 import type {
 	SubscriptionRepository,
 	DispatchPoolRepository,
+	ConnectionRepository,
 } from "../../../infrastructure/persistence/index.js";
 import {
 	updateSubscription,
@@ -20,13 +21,14 @@ import type { UpdateSubscriptionCommand } from "./command.js";
 export interface UpdateSubscriptionUseCaseDeps {
 	readonly subscriptionRepository: SubscriptionRepository;
 	readonly dispatchPoolRepository: DispatchPoolRepository;
+	readonly connectionRepository: ConnectionRepository;
 	readonly unitOfWork: UnitOfWork;
 }
 
 export function createUpdateSubscriptionUseCase(
 	deps: UpdateSubscriptionUseCaseDeps,
 ): UseCase<UpdateSubscriptionCommand, SubscriptionUpdated> {
-	const { subscriptionRepository, dispatchPoolRepository, unitOfWork } = deps;
+	const { subscriptionRepository, dispatchPoolRepository, connectionRepository, unitOfWork } = deps;
 
 	return {
 		async execute(
@@ -79,6 +81,22 @@ export function createUpdateSubscriptionUseCase(
 				}
 			}
 
+			// Validate connection if changing
+			if (command.connectionId !== undefined) {
+				const connectionExists = await connectionRepository.exists(
+					command.connectionId,
+				);
+				if (!connectionExists) {
+					return Result.failure(
+						UseCaseError.notFound(
+							"CONNECTION_NOT_FOUND",
+							"Connection not found",
+							{ connectionId: command.connectionId },
+						),
+					);
+				}
+			}
+
 			const updated = updateSubscription(subscription, {
 				...(command.name !== undefined ? { name: command.name } : {}),
 				...(command.description !== undefined
@@ -87,7 +105,9 @@ export function createUpdateSubscriptionUseCase(
 				...(command.eventTypes !== undefined
 					? { eventTypes: command.eventTypes }
 					: {}),
-				...(command.target !== undefined ? { target: command.target } : {}),
+				...(command.connectionId !== undefined
+					? { connectionId: command.connectionId }
+					: {}),
 				...(command.queue !== undefined ? { queue: command.queue } : {}),
 				...(command.customConfig !== undefined
 					? { customConfig: command.customConfig }
@@ -115,9 +135,6 @@ export function createUpdateSubscriptionUseCase(
 				...(command.maxRetries !== undefined
 					? { maxRetries: command.maxRetries }
 					: {}),
-				...(command.serviceAccountId !== undefined
-					? { serviceAccountId: command.serviceAccountId }
-					: {}),
 				...(command.dataOnly !== undefined
 					? { dataOnly: command.dataOnly }
 					: {}),
@@ -130,7 +147,7 @@ export function createUpdateSubscriptionUseCase(
 				name: updated.name,
 				clientId: updated.clientId,
 				eventTypes: updated.eventTypes,
-				target: updated.target,
+				connectionId: updated.connectionId,
 			});
 
 			return unitOfWork.commit(updated, event, command);

@@ -118,7 +118,7 @@ export async function startPlatform(
 	const aggregateRegistry = createPlatformAggregateRegistry(repos);
 
 	// 3. Dispatch infrastructure (event dispatch service, SQS, dispatch scheduler, UoW)
-	const { uowConfig, unitOfWork, dispatchSchedulerHandle } =
+	const { uowConfig, unitOfWork, dispatchSchedulerHandle, connectionCache } =
 		await createDispatchInfrastructure({
 			repos,
 			aggregateRegistry,
@@ -219,6 +219,7 @@ export async function startPlatform(
 		platformConfigService,
 		passwordService,
 		encryptionService,
+		connectionCache,
 	});
 
 	// Serve frontend static files if configured
@@ -267,12 +268,11 @@ export async function startPlatform(
 		console.log(`  Health check:     http://localhost:${PORT}/health\n`);
 	}
 
-	// Register dispatch scheduler shutdown hook
-	if (dispatchSchedulerHandle) {
-		fastify.addHook("onClose", async () => {
-			dispatchSchedulerHandle?.stop();
-		});
-	}
+	// Register dispatch scheduler + connection cache shutdown hooks
+	fastify.addHook("onClose", async () => {
+		dispatchSchedulerHandle?.stop();
+		connectionCache.stop();
+	});
 
 	return {
 		server: fastify,

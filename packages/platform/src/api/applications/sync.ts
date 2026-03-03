@@ -101,7 +101,7 @@ const SyncSubscriptionsBodySchema = Type.Object({
 		Type.Object({
 			code: Type.String({ minLength: 1 }),
 			name: Type.String({ minLength: 1 }),
-			target: Type.String({ minLength: 1 }),
+			connectionId: Type.String({ minLength: 1 }),
 			queue: Type.String(),
 			dispatchPoolCode: Type.String(),
 			clientScoped: Type.Optional(Type.Boolean()),
@@ -345,7 +345,7 @@ export async function registerApplicationSyncRoutes(
 								},
 							]
 						: [],
-					target: s.target,
+					connectionId: s.connectionId,
 					queue: s.queue ?? null,
 					dispatchPoolCode: s.dispatchPoolCode ?? null,
 					delaySeconds: s.retryDelaySeconds,

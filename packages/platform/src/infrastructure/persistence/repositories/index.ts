@@ -64,6 +64,12 @@ export {
 } from "./dispatch-pool-repository.js";
 
 export {
+	type ConnectionRepository,
+	type ConnectionFilters,
+	createConnectionRepository,
+} from "./connection-repository.js";
+
+export {
 	type SubscriptionRepository,
 	type SubscriptionFilters,
 	createSubscriptionRepository,

@@ -12,6 +12,9 @@ import {
 	createUpdateDispatchPoolUseCase,
 	createDeleteDispatchPoolUseCase,
 	createSyncDispatchPoolsUseCase,
+	createCreateConnectionUseCase,
+	createUpdateConnectionUseCase,
+	createDeleteConnectionUseCase,
 	createCreateSubscriptionUseCase,
 	createUpdateSubscriptionUseCase,
 	createDeleteSubscriptionUseCase,
@@ -46,10 +49,33 @@ export function createMessagingUseCases(deps: CreateUseCasesDeps) {
 		unitOfWork,
 	});
 
+	// --- Connection use cases ---
+	const createConnectionUseCase = createGuardedUseCase(
+		createCreateConnectionUseCase({
+			connectionRepository: repos.connectionRepository,
+			serviceAccountRepository: repos.serviceAccountRepository,
+			clientRepository: repos.clientRepository,
+			unitOfWork,
+		}),
+		clientScopedGuard(),
+	);
+
+	const updateConnectionUseCase = createUpdateConnectionUseCase({
+		connectionRepository: repos.connectionRepository,
+		unitOfWork,
+	});
+
+	const deleteConnectionUseCase = createDeleteConnectionUseCase({
+		connectionRepository: repos.connectionRepository,
+		subscriptionRepository: repos.subscriptionRepository,
+		unitOfWork,
+	});
+
 	// --- Subscription use cases (with client-scope guard for client-scoped subs) ---
 	const createSubscriptionUseCase = createGuardedUseCase(
 		createCreateSubscriptionUseCase({
 			subscriptionRepository: repos.subscriptionRepository,
+			connectionRepository: repos.connectionRepository,
 			dispatchPoolRepository: repos.dispatchPoolRepository,
 			unitOfWork,
 		}),
@@ -58,6 +84,7 @@ export function createMessagingUseCases(deps: CreateUseCasesDeps) {
 
 	const updateSubscriptionUseCase = createUpdateSubscriptionUseCase({
 		subscriptionRepository: repos.subscriptionRepository,
+		connectionRepository: repos.connectionRepository,
 		dispatchPoolRepository: repos.dispatchPoolRepository,
 		unitOfWork,
 	});
@@ -69,6 +96,7 @@ export function createMessagingUseCases(deps: CreateUseCasesDeps) {
 
 	const syncSubscriptionsUseCase = createSyncSubscriptionsUseCase({
 		subscriptionRepository: repos.subscriptionRepository,
+		connectionRepository: repos.connectionRepository,
 		dispatchPoolRepository: repos.dispatchPoolRepository,
 		unitOfWork,
 	});
@@ -78,6 +106,9 @@ export function createMessagingUseCases(deps: CreateUseCasesDeps) {
 		updateDispatchPoolUseCase,
 		deleteDispatchPoolUseCase,
 		syncDispatchPoolsUseCase,
+		createConnectionUseCase,
+		updateConnectionUseCase,
+		deleteConnectionUseCase,
 		createSubscriptionUseCase,
 		updateSubscriptionUseCase,
 		deleteSubscriptionUseCase,

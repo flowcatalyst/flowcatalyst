@@ -7,6 +7,9 @@
  *
  * Returns DispatchJobNotification[] so the UnitOfWork can push
  * MessagePointers to a queue after the transaction commits.
+ *
+ * Connection lookups go through ConnectionCache (in-memory) to avoid
+ * per-event DB queries on the hot path (targeting 10k events/sec).
  */
 
 import type { DomainEvent } from "@flowcatalyst/domain";
@@ -18,6 +21,7 @@ import {
 } from "@flowcatalyst/persistence";
 
 import type { SubscriptionRepository } from "../persistence/repositories/subscription-repository.js";
+import type { ConnectionCache } from "./connection-cache.js";
 
 /**
  * Info about a dispatch job created inside the transaction,
@@ -45,6 +49,7 @@ export interface EventDispatchService {
  */
 export interface EventDispatchServiceDeps {
 	readonly subscriptionRepository: SubscriptionRepository;
+	readonly connectionCache: ConnectionCache;
 }
 
 /**
@@ -53,7 +58,7 @@ export interface EventDispatchServiceDeps {
 export function createEventDispatchService(
 	deps: EventDispatchServiceDeps,
 ): EventDispatchService {
-	const { subscriptionRepository } = deps;
+	const { subscriptionRepository, connectionCache } = deps;
 
 	return {
 		async buildDispatchJobsForEvent(
@@ -70,13 +75,29 @@ export function createEventDispatchService(
 
 			if (matchingSubs.length === 0) return [];
 
+			// Resolve connections from in-memory cache (DB fallback only on miss)
+			const connectionIds = [
+				...new Set(matchingSubs.map((s) => s.connectionId)),
+			];
+			const connectionMap =
+				await connectionCache.resolveMany(connectionIds);
+
 			const now = new Date();
 			const notifications: DispatchJobNotification[] = [];
 
 			for (const sub of matchingSubs) {
+				const connection = connectionMap.get(sub.connectionId);
+				if (!connection) continue;
+
 				const jobId = generateRaw();
 				const idempotencyKey = `${event.eventId}:${sub.id}`;
 				const messageGroup = `${sub.code}:${event.messageGroup}`;
+
+				// If connection is PAUSED, create as PENDING (held); otherwise QUEUED
+				const status =
+					connection.status === "PAUSED"
+						? ("PENDING" as const)
+						: ("QUEUED" as const);
 
 				const jobRecord = {
 					id: jobId,
@@ -86,18 +107,19 @@ export function createEventDispatchService(
 					subject: event.subject,
 					eventId: event.eventId,
 					correlationId: event.correlationId,
-					targetUrl: sub.target,
+					targetUrl: connection.endpoint,
 					protocol: "HTTP_WEBHOOK" as const,
 					dataOnly: sub.dataOnly,
-					serviceAccountId: sub.serviceAccountId,
+					serviceAccountId: connection.serviceAccountId,
 					clientId: clientId,
 					subscriptionId: sub.id,
+					connectionId: sub.connectionId,
 					mode: sub.mode,
 					dispatchPoolId: sub.dispatchPoolId,
 					messageGroup,
 					sequence: sub.sequence,
 					timeoutSeconds: sub.timeoutSeconds,
-					status: "QUEUED" as const,
+					status,
 					maxRetries: sub.maxRetries,
 					attemptCount: 0,
 					idempotencyKey,
@@ -115,11 +137,14 @@ export function createEventDispatchService(
 					payload: jobRecord,
 				});
 
-				notifications.push({
-					id: jobId,
-					dispatchPoolId: sub.dispatchPoolId,
-					messageGroup,
-				});
+				// Only add QUEUED jobs to notifications (PENDING jobs are held)
+				if (status === "QUEUED") {
+					notifications.push({
+						id: jobId,
+						dispatchPoolId: sub.dispatchPoolId,
+						messageGroup,
+					});
+				}
 			}
 
 			return notifications;

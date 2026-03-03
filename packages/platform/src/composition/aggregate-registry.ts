@@ -21,6 +21,7 @@ export function createPlatformAggregateRegistry(repos: Repositories) {
 		oac: "OAuthClient",
 		evt: "EventType",
 		dpl: "DispatchPool",
+		con: "Connection",
 		sub: "Subscription",
 		idp: "IdentityProvider",
 		edm: "EmailDomainMapping",
@@ -68,6 +69,9 @@ export function createPlatformAggregateRegistry(repos: Repositories) {
 	);
 	aggregateRegistry.register(
 		createAggregateHandler("DispatchPool", repos.dispatchPoolRepository),
+	);
+	aggregateRegistry.register(
+		createAggregateHandler("Connection", repos.connectionRepository),
 	);
 	aggregateRegistry.register(
 		createAggregateHandler("Subscription", repos.subscriptionRepository),

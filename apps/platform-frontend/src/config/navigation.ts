@@ -140,6 +140,11 @@ export const NAVIGATION_CONFIG: NavGroup[] = [
 				route: "/subscriptions",
 			},
 			{
+				label: "Connections",
+				icon: "pi pi-link",
+				route: "/connections",
+			},
+			{
 				label: "Dispatch Pools",
 				icon: "pi pi-database",
 				route: "/dispatch-pools",

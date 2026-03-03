@@ -13,6 +13,7 @@ export * from "./auth-config/index.js";
 export * from "./oauth/index.js";
 export * from "./event-type/index.js";
 export * from "./dispatch-pool/index.js";
+export * from "./connection/index.js";
 export * from "./subscription/index.js";
 export * from "./identity-provider/index.js";
 export * from "./email-domain-mapping/index.js";

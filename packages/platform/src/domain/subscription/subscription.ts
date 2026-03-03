@@ -21,7 +21,7 @@ export interface Subscription {
 	readonly clientIdentifier: string | null;
 	readonly clientScoped: boolean;
 	readonly eventTypes: readonly EventTypeBinding[];
-	readonly target: string;
+	readonly connectionId: string;
 	readonly queue: string | null;
 	readonly customConfig: readonly ConfigEntry[];
 	readonly source: SubscriptionSource;
@@ -34,7 +34,6 @@ export interface Subscription {
 	readonly mode: DispatchMode;
 	readonly timeoutSeconds: number;
 	readonly maxRetries: number;
-	readonly serviceAccountId: string | null;
 	readonly dataOnly: boolean;
 	readonly createdAt: Date;
 	readonly updatedAt: Date;
@@ -57,7 +56,7 @@ export function createSubscription(params: {
 	clientIdentifier?: string | null;
 	clientScoped?: boolean;
 	eventTypes: EventTypeBinding[];
-	target: string;
+	connectionId: string;
 	queue?: string | null;
 	customConfig?: ConfigEntry[];
 	source?: SubscriptionSource;
@@ -69,7 +68,6 @@ export function createSubscription(params: {
 	mode?: DispatchMode;
 	timeoutSeconds?: number;
 	maxRetries?: number;
-	serviceAccountId?: string | null;
 	dataOnly?: boolean;
 }): NewSubscription {
 	return {
@@ -82,7 +80,7 @@ export function createSubscription(params: {
 		clientIdentifier: params.clientIdentifier ?? null,
 		clientScoped: params.clientScoped ?? false,
 		eventTypes: params.eventTypes,
-		target: params.target,
+		connectionId: params.connectionId,
 		queue: params.queue ?? null,
 		customConfig: params.customConfig ?? [],
 		source: params.source ?? "UI",
@@ -95,7 +93,6 @@ export function createSubscription(params: {
 		mode: params.mode ?? "IMMEDIATE",
 		timeoutSeconds: params.timeoutSeconds ?? 30,
 		maxRetries: params.maxRetries ?? 3,
-		serviceAccountId: params.serviceAccountId ?? null,
 		dataOnly: params.dataOnly ?? true,
 	};
 }
@@ -110,7 +107,7 @@ export function updateSubscription(
 		name?: string | undefined;
 		description?: string | null | undefined;
 		eventTypes?: EventTypeBinding[] | undefined;
-		target?: string | undefined;
+		connectionId?: string | undefined;
 		queue?: string | null | undefined;
 		customConfig?: ConfigEntry[] | undefined;
 		status?: SubscriptionStatus | undefined;
@@ -122,7 +119,6 @@ export function updateSubscription(
 		mode?: DispatchMode | undefined;
 		timeoutSeconds?: number | undefined;
 		maxRetries?: number | undefined;
-		serviceAccountId?: string | null | undefined;
 		dataOnly?: boolean | undefined;
 	},
 ): Subscription {
@@ -135,7 +131,9 @@ export function updateSubscription(
 		...(updates.eventTypes !== undefined
 			? { eventTypes: updates.eventTypes }
 			: {}),
-		...(updates.target !== undefined ? { target: updates.target } : {}),
+		...(updates.connectionId !== undefined
+			? { connectionId: updates.connectionId }
+			: {}),
 		...(updates.queue !== undefined ? { queue: updates.queue } : {}),
 		...(updates.customConfig !== undefined
 			? { customConfig: updates.customConfig }
@@ -160,9 +158,6 @@ export function updateSubscription(
 			: {}),
 		...(updates.maxRetries !== undefined
 			? { maxRetries: updates.maxRetries }
-			: {}),
-		...(updates.serviceAccountId !== undefined
-			? { serviceAccountId: updates.serviceAccountId }
 			: {}),
 		...(updates.dataOnly !== undefined ? { dataOnly: updates.dataOnly } : {}),
 	};

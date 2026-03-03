@@ -584,6 +584,14 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdPatchResponse404::class => \FlowCatalyst\Generated\Normalizer\ApiAdminEventTypesIdPatchResponse404Normalizer::class,
         
+        \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdCodegenPostBody::class => \FlowCatalyst\Generated\Normalizer\ApiAdminEventTypesIdCodegenPostBodyNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdCodegenPostResponse200::class => \FlowCatalyst\Generated\Normalizer\ApiAdminEventTypesIdCodegenPostResponse200Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdCodegenPostResponse400::class => \FlowCatalyst\Generated\Normalizer\ApiAdminEventTypesIdCodegenPostResponse400Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdCodegenPostResponse404::class => \FlowCatalyst\Generated\Normalizer\ApiAdminEventTypesIdCodegenPostResponse404Normalizer::class,
+        
         \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdArchivePostResponse200::class => \FlowCatalyst\Generated\Normalizer\ApiAdminEventTypesIdArchivePostResponse200Normalizer::class,
         
         \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdArchivePostResponse200SpecVersionsItem::class => \FlowCatalyst\Generated\Normalizer\ApiAdminEventTypesIdArchivePostResponse200SpecVersionsItemNormalizer::class,
@@ -667,6 +675,42 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\ApiAdminDispatchPoolsSyncPostResponse200::class => \FlowCatalyst\Generated\Normalizer\ApiAdminDispatchPoolsSyncPostResponse200Normalizer::class,
         
         \FlowCatalyst\Generated\Model\ApiAdminDispatchPoolsSyncPostResponse400::class => \FlowCatalyst\Generated\Normalizer\ApiAdminDispatchPoolsSyncPostResponse400Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsGetResponse200::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsGetResponse200Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsGetResponse200ConnectionsItem::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsGetResponse200ConnectionsItemNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsPostBody::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsPostBodyNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsPostResponse201::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsPostResponse201Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsPostResponse400::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsPostResponse400Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsPostResponse409::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsPostResponse409Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdDeleteResponse400::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsIdDeleteResponse400Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdDeleteResponse404::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsIdDeleteResponse404Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdGetResponse200::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsIdGetResponse200Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdGetResponse404::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsIdGetResponse404Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdPutBody::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsIdPutBodyNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdPutResponse200::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsIdPutResponse200Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdPutResponse400::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsIdPutResponse400Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdPutResponse404::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsIdPutResponse404Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdPausePostResponse200::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsIdPausePostResponse200Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdPausePostResponse404::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsIdPausePostResponse404Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdActivatePostResponse200::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsIdActivatePostResponse200Normalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdActivatePostResponse404::class => \FlowCatalyst\Generated\Normalizer\ApiAdminConnectionsIdActivatePostResponse404Normalizer::class,
         
         \FlowCatalyst\Generated\Model\ApiAdminSubscriptionsGetResponse200::class => \FlowCatalyst\Generated\Normalizer\ApiAdminSubscriptionsGetResponse200Normalizer::class,
         
@@ -1473,6 +1517,10 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdPatchResponse200SpecVersionsItem::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdPatchResponse400::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdPatchResponse404::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdCodegenPostBody::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdCodegenPostResponse200::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdCodegenPostResponse400::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdCodegenPostResponse404::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdArchivePostResponse200::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdArchivePostResponse200SpecVersionsItem::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminEventTypesIdArchivePostResponse404::class => false,
@@ -1515,6 +1563,24 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\ApiAdminDispatchPoolsSyncPostBodyPoolsItem::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminDispatchPoolsSyncPostResponse200::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminDispatchPoolsSyncPostResponse400::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsGetResponse200::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsGetResponse200ConnectionsItem::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsPostBody::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsPostResponse201::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsPostResponse400::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsPostResponse409::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdDeleteResponse400::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdDeleteResponse404::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdGetResponse200::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdGetResponse404::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdPutBody::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdPutResponse200::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdPutResponse400::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdPutResponse404::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdPausePostResponse200::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdPausePostResponse404::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdActivatePostResponse200::class => false,
+            \FlowCatalyst\Generated\Model\ApiAdminConnectionsIdActivatePostResponse404::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminSubscriptionsGetResponse200::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminSubscriptionsGetResponse200SubscriptionsItem::class => false,
             \FlowCatalyst\Generated\Model\ApiAdminSubscriptionsGetResponse200SubscriptionsItemEventTypesItem::class => false,

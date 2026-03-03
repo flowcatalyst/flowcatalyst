@@ -60,6 +60,7 @@ export const dispatchJobsRead = pgTable(
 		serviceAccountId: tsidColumn("service_account_id"),
 		clientId: tsidColumn("client_id"),
 		subscriptionId: tsidColumn("subscription_id"),
+		connectionId: tsidColumn("connection_id"),
 		dispatchPoolId: tsidColumn("dispatch_pool_id"),
 
 		// Behavior

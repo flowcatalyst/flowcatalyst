@@ -25,7 +25,7 @@ export interface Subscription {
 	clientId?: string;
 	clientIdentifier?: string;
 	eventTypes: EventTypeBinding[];
-	target: string;
+	connectionId: string;
 	queue: string;
 	customConfig?: ConfigEntry[];
 	source: SubscriptionSource;
@@ -54,7 +54,7 @@ export interface CreateSubscriptionRequest {
 	clientScoped: boolean;
 	clientId?: string;
 	eventTypes: EventTypeBinding[];
-	target: string;
+	connectionId: string;
 	queue: string;
 	customConfig?: ConfigEntry[];
 	source?: SubscriptionSource;
@@ -70,7 +70,7 @@ export interface UpdateSubscriptionRequest {
 	name?: string;
 	description?: string;
 	eventTypes?: EventTypeBinding[];
-	target?: string;
+	connectionId?: string;
 	queue?: string;
 	customConfig?: ConfigEntry[];
 	status?: SubscriptionStatus;

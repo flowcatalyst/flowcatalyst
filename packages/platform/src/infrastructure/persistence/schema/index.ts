@@ -166,6 +166,13 @@ export {
 	type NewDispatchPoolRecord,
 } from "./dispatch-pools.js";
 
+// Connection tables
+export {
+	connections,
+	type ConnectionRecord,
+	type NewConnectionRecord,
+} from "./connections.js";
+
 // Subscription tables
 export {
 	subscriptions,

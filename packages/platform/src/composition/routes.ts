@@ -30,6 +30,7 @@ import {
 import type { PlatformConfigService } from "../domain/index.js";
 import type { Repositories } from "./repositories.js";
 import type { UseCases } from "./use-cases/index.js";
+import type { ConnectionCache } from "../infrastructure/dispatch/connection-cache.js";
 
 export interface RegisterRoutesDeps {
 	repos: Repositories;
@@ -40,6 +41,7 @@ export interface RegisterRoutesDeps {
 	platformConfigService: PlatformConfigService;
 	passwordService: PasswordService;
 	encryptionService: EncryptionService;
+	connectionCache?: ConnectionCache | undefined;
 }
 
 export async function registerPlatformRoutes(
@@ -54,6 +56,7 @@ export async function registerPlatformRoutes(
 		platformConfigService,
 		passwordService,
 		encryptionService,
+		connectionCache,
 	} = deps;
 
 	// Health check
@@ -92,6 +95,9 @@ export async function registerPlatformRoutes(
 		eventTypeRepository: repos.eventTypeRepository,
 		// Dispatch Pool management
 		dispatchPoolRepository: repos.dispatchPoolRepository,
+		// Connection management
+		connectionRepository: repos.connectionRepository,
+		connectionCache,
 		// Subscription management
 		subscriptionRepository: repos.subscriptionRepository,
 		// Event & Dispatch Job read models
@@ -191,6 +197,7 @@ export async function registerPlatformRoutes(
 		getPostCommitDispatcher: () => uowConfig.postCommitDispatch,
 		applicationRepository: repos.applicationRepository,
 		clientRepository: repos.clientRepository,
+		connectionRepository: repos.connectionRepository,
 	};
 
 	await registerBatchRoutes(fastify, batchDeps);

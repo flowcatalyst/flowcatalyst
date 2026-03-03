@@ -295,6 +295,47 @@ export const DISPATCH_POOL_PERMISSIONS = {
 } as const;
 
 /**
+ * Connection permissions.
+ */
+export const CONNECTION_PERMISSIONS = {
+	CREATE: makePermission(
+		SUBDOMAIN,
+		CONTEXT,
+		"connection",
+		"create",
+		"Create connections",
+	),
+	READ: makePermission(
+		SUBDOMAIN,
+		CONTEXT,
+		"connection",
+		"read",
+		"Read connection details",
+	),
+	UPDATE: makePermission(
+		SUBDOMAIN,
+		CONTEXT,
+		"connection",
+		"update",
+		"Update connection details",
+	),
+	DELETE: makePermission(
+		SUBDOMAIN,
+		CONTEXT,
+		"connection",
+		"delete",
+		"Delete connections",
+	),
+	MANAGE: makePermission(
+		SUBDOMAIN,
+		CONTEXT,
+		"connection",
+		"manage",
+		"Full connection management",
+	),
+} as const;
+
+/**
  * Subscription permissions.
  */
 export const SUBSCRIPTION_PERMISSIONS = {
@@ -602,6 +643,7 @@ export const ADMIN_PERMISSIONS: readonly PermissionDefinition[] = [
 	...Object.values(APPLICATION_PERMISSIONS),
 	...Object.values(EVENT_TYPE_PERMISSIONS),
 	...Object.values(DISPATCH_POOL_PERMISSIONS),
+	...Object.values(CONNECTION_PERMISSIONS),
 	...Object.values(SUBSCRIPTION_PERMISSIONS),
 	...Object.values(EVENT_PERMISSIONS),
 	...Object.values(DISPATCH_JOB_PERMISSIONS),

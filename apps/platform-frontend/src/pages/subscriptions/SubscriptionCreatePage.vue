@@ -8,6 +8,7 @@ import {
 	type EventTypeBinding,
 } from "@/api/subscriptions";
 import { dispatchPoolsApi, type DispatchPool } from "@/api/dispatch-pools";
+import { connectionsApi, type Connection } from "@/api/connections";
 import { eventTypesApi, type EventType } from "@/api/event-types";
 
 const router = useRouter();
@@ -17,7 +18,7 @@ const toast = useToast();
 const code = ref("");
 const name = ref("");
 const description = ref("");
-const target = ref("");
+const connectionId = ref<string | null>(null);
 const queue = ref("");
 const maxAgeSeconds = ref<number>(86400);
 const delaySeconds = ref<number>(0);
@@ -31,6 +32,8 @@ const selectedEventTypes = ref<string[]>([]);
 
 // Lookup data
 const dispatchPools = ref<DispatchPool[]>([]);
+const connections = ref<Connection[]>([]);
+const loadingConnections = ref(true);
 const eventTypes = ref<EventType[]>([]);
 const loadingPools = ref(true);
 const loadingEventTypes = ref(true);
@@ -49,16 +52,6 @@ const isCodeValid = computed(() => {
 	return !code.value || CODE_PATTERN.test(code.value);
 });
 
-const isTargetValid = computed(() => {
-	if (!target.value) return true;
-	try {
-		const url = new URL(target.value);
-		return url.protocol === "http:" || url.protocol === "https:";
-	} catch {
-		return false;
-	}
-});
-
 const isFormValid = computed(() => {
 	return (
 		code.value.length >= 2 &&
@@ -66,8 +59,7 @@ const isFormValid = computed(() => {
 		CODE_PATTERN.test(code.value) &&
 		name.value.trim().length > 0 &&
 		name.value.length <= 255 &&
-		target.value.length > 0 &&
-		isTargetValid.value &&
+		connectionId.value !== null &&
 		queue.value.trim().length > 0 &&
 		dispatchPoolId.value !== null &&
 		selectedEventTypes.value.length > 0 &&
@@ -101,7 +93,7 @@ watch(clientScoped, () => {
 });
 
 onMounted(async () => {
-	await Promise.all([loadDispatchPools(), loadEventTypes()]);
+	await Promise.all([loadDispatchPools(), loadEventTypes(), loadConnections()]);
 });
 
 async function loadDispatchPools() {
@@ -128,6 +120,18 @@ async function loadEventTypes() {
 	}
 }
 
+async function loadConnections() {
+	loadingConnections.value = true;
+	try {
+		const response = await connectionsApi.list({ status: "ACTIVE" });
+		connections.value = response.connections;
+	} catch (e) {
+		console.error("Failed to load connections:", e);
+	} finally {
+		loadingConnections.value = false;
+	}
+}
+
 function buildEventTypeBindings(): EventTypeBinding[] {
 	return selectedEventTypes.value.map((etId) => {
 		const et = eventTypeOptions.value.find((e) => e.id === etId);
@@ -151,7 +155,7 @@ async function onSubmit() {
 			name: name.value,
 			description: description.value || undefined,
 			clientScoped: clientScoped.value,
-			target: target.value,
+			connectionId: connectionId.value!,
 			queue: queue.value,
 			eventTypes: buildEventTypeBindings(),
 			dispatchPoolId: dispatchPoolId.value!,
@@ -266,17 +270,26 @@ async function onSubmit() {
           <h3>Delivery Configuration</h3>
 
           <div class="form-field">
-            <label>Target URL <span class="required">*</span></label>
-            <InputText
-              v-model="target"
-              placeholder="https://example.com/webhook"
+            <label>Connection <span class="required">*</span></label>
+            <Select
+              v-model="connectionId"
+              :options="connections"
+              optionLabel="name"
+              optionValue="id"
+              placeholder="Select a connection"
               class="full-width"
-              :invalid="!!(target && !isTargetValid)"
-            />
-            <small v-if="target && !isTargetValid" class="p-error">
-              Must be a valid HTTP or HTTPS URL
-            </small>
-            <small v-else class="hint"> The webhook URL where events will be delivered </small>
+              :loading="loadingConnections"
+              :disabled="loadingConnections"
+              filter
+            >
+              <template #option="{ option }">
+                <div class="dropdown-option">
+                  <span class="option-name">{{ option.name }}</span>
+                  <span class="option-code">{{ option.code }} &mdash; {{ option.endpoint }}</span>
+                </div>
+              </template>
+            </Select>
+            <small class="hint"> The connection used for delivering events </small>
           </div>
 
           <div class="form-field">

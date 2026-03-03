@@ -13,6 +13,7 @@ import type { TransactionContext } from "@flowcatalyst/persistence";
 import type {
 	SubscriptionRepository,
 	DispatchPoolRepository,
+	ConnectionRepository,
 } from "../../../infrastructure/persistence/index.js";
 import {
 	createSubscription,
@@ -25,13 +26,14 @@ import type { SyncSubscriptionsCommand } from "./command.js";
 export interface SyncSubscriptionsUseCaseDeps {
 	readonly subscriptionRepository: SubscriptionRepository;
 	readonly dispatchPoolRepository: DispatchPoolRepository;
+	readonly connectionRepository: ConnectionRepository;
 	readonly unitOfWork: UnitOfWork;
 }
 
 export function createSyncSubscriptionsUseCase(
 	deps: SyncSubscriptionsUseCaseDeps,
 ): UseCase<SyncSubscriptionsCommand, SubscriptionsSynced> {
-	const { subscriptionRepository, dispatchPoolRepository, unitOfWork } = deps;
+	const { subscriptionRepository, dispatchPoolRepository, connectionRepository, unitOfWork } = deps;
 
 	return {
 		async execute(
@@ -69,11 +71,11 @@ export function createSyncSubscriptionsUseCase(
 						),
 					);
 				}
-				if (!item.target || !item.target.trim()) {
+				if (!item.connectionId || !item.connectionId.trim()) {
 					return Result.failure(
 						UseCaseError.validation(
-							"TARGET_REQUIRED",
-							"Subscription target is required",
+							"CONNECTION_ID_REQUIRED",
+							"Subscription connectionId is required",
 							{
 								code: item.code,
 							},
@@ -103,6 +105,27 @@ export function createSyncSubscriptionsUseCase(
 					);
 				}
 				seenCodes.add(item.code);
+			}
+
+			// Validate all referenced connections exist
+			const uniqueConnectionIds = [
+				...new Set(command.subscriptions.map((s) => s.connectionId)),
+			];
+			const existingConnections =
+				await connectionRepository.findByIds(uniqueConnectionIds);
+			const existingConnectionIds = new Set(
+				existingConnections.map((c) => c.id),
+			);
+			for (const connId of uniqueConnectionIds) {
+				if (!existingConnectionIds.has(connId)) {
+					return Result.failure(
+						UseCaseError.notFound(
+							"CONNECTION_NOT_FOUND",
+							`Connection not found: ${connId}`,
+							{ connectionId: connId },
+						),
+					);
+				}
 			}
 
 			let created = 0;
@@ -156,7 +179,7 @@ export function createSyncSubscriptionsUseCase(
 							name: item.name,
 							description: item.description ?? null,
 							eventTypes: item.eventTypes,
-							target: item.target,
+							connectionId: item.connectionId,
 							queue: item.queue ?? null,
 							customConfig: item.customConfig ?? [],
 							maxAgeSeconds: item.maxAgeSeconds ?? 86400,
@@ -182,7 +205,7 @@ export function createSyncSubscriptionsUseCase(
 							description: item.description ?? null,
 							clientScoped: item.clientScoped ?? false,
 							eventTypes: item.eventTypes,
-							target: item.target,
+							connectionId: item.connectionId,
 							queue: item.queue ?? null,
 							customConfig: item.customConfig ?? [],
 							source: "API",

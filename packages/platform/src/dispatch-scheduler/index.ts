@@ -16,6 +16,7 @@
 
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { QueuePublisher } from "@flowcatalyst/queue-core";
+import type { ConnectionCache } from "../infrastructure/dispatch/connection-cache.js";
 import {
 	type DispatchSchedulerConfig,
 	type SchedulerLogger,
@@ -36,6 +37,7 @@ export interface DispatchSchedulerDeps {
 	readonly publisher: QueuePublisher;
 	readonly logger: SchedulerLogger;
 	readonly config?: Partial<DispatchSchedulerConfig> | undefined;
+	readonly connectionCache?: ConnectionCache | undefined;
 }
 
 export function startDispatchScheduler(
@@ -46,7 +48,7 @@ export function startDispatchScheduler(
 		...deps.config,
 	};
 
-	const { db, publisher, logger } = deps;
+	const { db, publisher, logger, connectionCache } = deps;
 
 	// Create components
 	const blockOnErrorChecker = createBlockOnErrorChecker(db);
@@ -62,6 +64,7 @@ export function startDispatchScheduler(
 		blockOnErrorChecker,
 		groupDispatcher,
 		logger,
+		connectionCache,
 	);
 	const staleQueuedJobPoller = createStaleQueuedJobPoller(config, db, logger);
 

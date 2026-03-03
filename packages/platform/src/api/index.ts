@@ -44,6 +44,10 @@ import {
 	type DispatchPoolsRoutesDeps,
 } from "./admin/dispatch-pools.js";
 import {
+	registerConnectionsRoutes,
+	type ConnectionsRoutesDeps,
+} from "./admin/connections.js";
+import {
 	registerSubscriptionsRoutes,
 	type SubscriptionsRoutesDeps,
 } from "./admin/subscriptions.js";
@@ -140,6 +144,7 @@ export interface AdminRoutesDeps
 		AuditLogsRoutesDeps,
 		EventTypesRoutesDeps,
 		DispatchPoolsRoutesDeps,
+		ConnectionsRoutesDeps,
 		SubscriptionsRoutesDeps,
 		EventsRoutesDeps,
 		DispatchJobsRoutesDeps,
@@ -170,6 +175,7 @@ export async function registerAdminRoutes(
 			await registerAuditLogsRoutes(adminRouter, deps);
 			await registerEventTypesRoutes(adminRouter, deps);
 			await registerDispatchPoolsRoutes(adminRouter, deps);
+			await registerConnectionsRoutes(adminRouter, deps);
 			await registerSubscriptionsRoutes(adminRouter, deps);
 			await registerEventsRoutes(adminRouter, deps);
 			await registerDispatchJobsRoutes(adminRouter, deps);
@@ -355,6 +361,7 @@ export { type OAuthClientsRoutesDeps } from "./admin/oauth-clients.js";
 export { type AuditLogsRoutesDeps } from "./admin/audit-logs.js";
 export { type EventTypesRoutesDeps } from "./admin/event-types.js";
 export { type DispatchPoolsRoutesDeps } from "./admin/dispatch-pools.js";
+export { type ConnectionsRoutesDeps } from "./admin/connections.js";
 export { type SubscriptionsRoutesDeps } from "./admin/subscriptions.js";
 export { type EventsRoutesDeps } from "./admin/events.js";
 export { type DispatchJobsRoutesDeps } from "./admin/dispatch-jobs.js";

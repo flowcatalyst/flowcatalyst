@@ -6,10 +6,11 @@
  *
  * Flow:
  * 1. Query PENDING jobs (batch size)
- * 2. Group by messageGroup
- * 3. Check for blocked groups (BlockOnErrorChecker)
- * 4. Filter by DispatchMode
- * 5. Submit to MessageGroupDispatcher
+ * 2. Filter out jobs whose connection is PAUSED (via in-memory cache)
+ * 3. Group by messageGroup
+ * 4. Check for blocked groups (BlockOnErrorChecker)
+ * 5. Filter by DispatchMode
+ * 6. Submit to MessageGroupDispatcher
  */
 
 import { eq, asc } from "drizzle-orm";
@@ -22,6 +23,7 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { BlockOnErrorChecker } from "./block-on-error-checker.js";
 import type { MessageGroupDispatcher } from "./message-group-dispatcher.js";
 import type { DispatchSchedulerConfig, SchedulerLogger } from "./config.js";
+import type { ConnectionCache } from "../infrastructure/dispatch/connection-cache.js";
 
 const DEFAULT_MESSAGE_GROUP = "default";
 
@@ -36,6 +38,7 @@ export function createPendingJobPoller(
 	blockOnErrorChecker: BlockOnErrorChecker,
 	groupDispatcher: MessageGroupDispatcher,
 	logger: SchedulerLogger,
+	connectionCache?: ConnectionCache,
 ): PendingJobPoller {
 	let pollTimer: ReturnType<typeof setInterval> | null = null;
 	let polling = false;
@@ -59,14 +62,43 @@ export function createPendingJobPoller(
 
 			if (pendingJobs.length === 0) return;
 
+			// Filter out jobs whose connection is still PAUSED (via cache — no DB hit)
+			let filteredJobs = pendingJobs;
+			if (connectionCache) {
+				const connectionIds = [
+					...new Set(
+						pendingJobs
+							.map((j) => j.connectionId)
+							.filter((id): id is string => id !== null),
+					),
+				];
+				if (connectionIds.length > 0) {
+					const connMap =
+						await connectionCache.resolveMany(connectionIds);
+					const pausedIds = new Set<string>();
+					for (const [id, conn] of connMap) {
+						if (conn.status === "PAUSED") {
+							pausedIds.add(id);
+						}
+					}
+					if (pausedIds.size > 0) {
+						filteredJobs = pendingJobs.filter(
+							(j) => !j.connectionId || !pausedIds.has(j.connectionId),
+						);
+					}
+				}
+			}
+
+			if (filteredJobs.length === 0) return;
+
 			logger.debug(
-				{ count: pendingJobs.length },
+				{ count: filteredJobs.length },
 				"Found pending jobs to process",
 			);
 
 			// 2. Group by messageGroup
 			const jobsByGroup = new Map<string, DispatchJobRecord[]>();
-			for (const job of pendingJobs) {
+			for (const job of filteredJobs) {
 				const group = job.messageGroup ?? DEFAULT_MESSAGE_GROUP;
 				const existing = jobsByGroup.get(group) ?? [];
 				existing.push(job);

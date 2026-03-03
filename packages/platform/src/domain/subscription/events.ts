@@ -27,7 +27,7 @@ export interface SubscriptionCreatedData {
 	readonly clientId: string | null;
 	readonly clientScoped: boolean;
 	readonly eventTypes: readonly EventTypeBinding[];
-	readonly target: string;
+	readonly connectionId: string;
 	readonly [key: string]: unknown;
 }
 
@@ -70,7 +70,7 @@ export interface SubscriptionUpdatedData {
 	readonly name: string;
 	readonly clientId: string | null;
 	readonly eventTypes: readonly EventTypeBinding[];
-	readonly target: string;
+	readonly connectionId: string;
 	readonly [key: string]: unknown;
 }
 

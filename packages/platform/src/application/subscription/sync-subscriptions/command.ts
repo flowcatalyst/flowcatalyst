@@ -15,7 +15,7 @@ export interface SyncSubscriptionItem {
 	readonly description?: string | null | undefined;
 	readonly clientScoped?: boolean | undefined;
 	readonly eventTypes: EventTypeBinding[];
-	readonly target: string;
+	readonly connectionId: string;
 	readonly queue?: string | null | undefined;
 	readonly customConfig?: ConfigEntry[] | undefined;
 	readonly maxAgeSeconds?: number | undefined;

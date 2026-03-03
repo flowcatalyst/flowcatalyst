@@ -23,7 +23,7 @@ const saving = ref(false);
 // Edit form
 const editName = ref("");
 const editDescription = ref("");
-const editTarget = ref("");
+const editConnectionId = ref("");
 const editQueue = ref("");
 const editMaxAgeSeconds = ref<number | null>(null);
 const editDelaySeconds = ref<number | null>(null);
@@ -59,7 +59,7 @@ function startEditing() {
 	if (subscription.value) {
 		editName.value = subscription.value.name;
 		editDescription.value = subscription.value.description || "";
-		editTarget.value = subscription.value.target;
+		editConnectionId.value = subscription.value.connectionId;
 		editQueue.value = subscription.value.queue;
 		editMaxAgeSeconds.value = subscription.value.maxAgeSeconds;
 		editDelaySeconds.value = subscription.value.delaySeconds;
@@ -82,7 +82,7 @@ async function saveChanges() {
 		subscription.value = await subscriptionsApi.update(subscription.value.id, {
 			name: editName.value,
 			description: editDescription.value || undefined,
-			target: editTarget.value,
+			connectionId: editConnectionId.value,
 			queue: editQueue.value,
 			maxAgeSeconds: editMaxAgeSeconds.value || undefined,
 			delaySeconds: editDelaySeconds.value || undefined,
@@ -282,8 +282,8 @@ function getScopeLabel(sub: Subscription) {
               <Textarea v-model="editDescription" class="full-width" rows="3" />
             </div>
             <div class="form-field">
-              <label>Target URL</label>
-              <InputText v-model="editTarget" class="full-width" />
+              <label>Connection ID</label>
+              <InputText v-model="editConnectionId" class="full-width" />
             </div>
             <div class="form-field">
               <label>Queue</label>
@@ -348,8 +348,8 @@ function getScopeLabel(sub: Subscription) {
                 <span>{{ subscription.source }}</span>
               </div>
               <div class="detail-item full-width">
-                <label>Target URL</label>
-                <code class="target-url">{{ subscription.target }}</code>
+                <label>Connection</label>
+                <code>{{ subscription.connectionId }}</code>
               </div>
               <div class="detail-item">
                 <label>Queue</label>
@@ -551,11 +551,6 @@ function getScopeLabel(sub: Subscription) {
   font-weight: 500;
   color: #64748b;
   text-transform: uppercase;
-}
-
-.target-url {
-  font-size: 13px;
-  word-break: break-all;
 }
 
 .form-field {

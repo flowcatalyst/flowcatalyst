@@ -100,6 +100,7 @@ export const dispatchJobs = pgTable(
 		// Multi-tenant context
 		clientId: tsidColumn("client_id"),
 		subscriptionId: tsidColumn("subscription_id"),
+		connectionId: tsidColumn("connection_id"),
 
 		// Dispatch behavior
 		mode: varchar("mode", { length: 30 })
@@ -145,6 +146,7 @@ export const dispatchJobs = pgTable(
 		index("idx_msg_dispatch_jobs_client_id").on(table.clientId),
 		index("idx_msg_dispatch_jobs_message_group").on(table.messageGroup),
 		index("idx_msg_dispatch_jobs_subscription_id").on(table.subscriptionId),
+		index("idx_msg_dispatch_jobs_connection_id").on(table.connectionId),
 		index("idx_msg_dispatch_jobs_created_at").on(table.createdAt),
 		index("idx_msg_dispatch_jobs_scheduled_for").on(table.scheduledFor),
 	],

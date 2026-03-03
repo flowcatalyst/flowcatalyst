@@ -35,7 +35,7 @@ class ApiAdminSubscriptionsSyncPostBodySubscriptionsItem extends \ArrayObject
     /**
      * @var string|null
      */
-    protected $target;
+    protected $connectionId;
     /**
      * @var mixed|null
      */
@@ -169,19 +169,19 @@ class ApiAdminSubscriptionsSyncPostBodySubscriptionsItem extends \ArrayObject
     /**
      * @return string|null
      */
-    public function getTarget(): ?string
+    public function getConnectionId(): ?string
     {
-        return $this->target;
+        return $this->connectionId;
     }
     /**
-     * @param string|null $target
+     * @param string|null $connectionId
      *
      * @return self
      */
-    public function setTarget(?string $target): self
+    public function setConnectionId(?string $connectionId): self
     {
-        $this->initialized['target'] = true;
-        $this->target = $target;
+        $this->initialized['connectionId'] = true;
+        $this->connectionId = $connectionId;
         return $this;
     }
     /**

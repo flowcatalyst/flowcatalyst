@@ -15,6 +15,7 @@ use FlowCatalyst\Client\Resources\Me;
 use FlowCatalyst\Client\Resources\Permissions;
 use FlowCatalyst\Client\Resources\Principals;
 use FlowCatalyst\Client\Resources\Roles;
+use FlowCatalyst\Client\Resources\Connections;
 use FlowCatalyst\Client\Resources\Subscriptions;
 use FlowCatalyst\Exceptions\AuthenticationException;
 use FlowCatalyst\Exceptions\FlowCatalystException;
@@ -37,6 +38,7 @@ class FlowCatalystClient
     private ?Applications $applications = null;
     private ?Clients $clients = null;
     private ?Principals $principals = null;
+    private ?Connections $connections = null;
     private ?Me $me = null;
 
     /**
@@ -105,6 +107,14 @@ class FlowCatalystClient
     public function subscriptions(): Subscriptions
     {
         return $this->subscriptions ??= new Subscriptions($this);
+    }
+
+    /**
+     * Get the Connections resource.
+     */
+    public function connections(): Connections
+    {
+        return $this->connections ??= new Connections($this);
     }
 
     /**

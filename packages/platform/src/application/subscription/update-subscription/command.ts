@@ -15,7 +15,7 @@ export interface UpdateSubscriptionCommand extends Command {
 	readonly name?: string | undefined;
 	readonly description?: string | null | undefined;
 	readonly eventTypes?: EventTypeBinding[] | undefined;
-	readonly target?: string | undefined;
+	readonly connectionId?: string | undefined;
 	readonly queue?: string | null | undefined;
 	readonly customConfig?: ConfigEntry[] | undefined;
 	readonly status?: SubscriptionStatus | undefined;
@@ -27,6 +27,5 @@ export interface UpdateSubscriptionCommand extends Command {
 	readonly mode?: DispatchMode | undefined;
 	readonly timeoutSeconds?: number | undefined;
 	readonly maxRetries?: number | undefined;
-	readonly serviceAccountId?: string | null | undefined;
 	readonly dataOnly?: boolean | undefined;
 }
