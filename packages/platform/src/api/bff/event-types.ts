@@ -26,6 +26,7 @@ import type {
 	AddSchemaCommand,
 	FinaliseSchemaCommand,
 	DeprecateSchemaCommand,
+	SyncEventTypesCommand,
 } from "../../application/index.js";
 import {
 	parseCodeSegments,
@@ -33,6 +34,7 @@ import {
 	type EventTypeUpdated,
 	type EventTypeDeleted,
 	type EventTypeArchived,
+	type EventTypesSynced,
 	type SchemaAdded,
 	type SchemaFinalised,
 	type SchemaDeprecated,
@@ -41,6 +43,9 @@ import {
 	type SchemaType,
 	type EventTypeStatus,
 } from "../../domain/index.js";
+import { PLATFORM_EVENT_DEFINITIONS } from "../../domain/platform-event-registry.js";
+import { PLATFORM_EVENT_SCHEMAS } from "../../domain/platform-event-schema-registry.js";
+import { syncPlatformSchemas } from "../../application/event-type/sync-event-types/sync-platform-schemas.js";
 import type {
 	EventTypeRepository,
 	EventTypeFilters,
@@ -150,6 +155,18 @@ const BffFilterOptionsResponseSchema = Type.Object({
 	options: Type.Array(Type.String()),
 });
 
+const BffSyncPlatformResponseSchema = Type.Object({
+	created: Type.Integer(),
+	updated: Type.Integer(),
+	deleted: Type.Integer(),
+	total: Type.Integer(),
+	schemas: Type.Object({
+		created: Type.Integer(),
+		updated: Type.Integer(),
+		unchanged: Type.Integer(),
+	}),
+});
+
 export type BffEventType = Static<typeof BffEventTypeSchema>;
 export type BffSpecVersion = Static<typeof BffSpecVersionSchema>;
 export type BffEventTypeListResponse = Static<
@@ -192,6 +209,10 @@ export interface EventTypesBffDeps {
 		DeprecateSchemaCommand,
 		SchemaDeprecated
 	>;
+	readonly syncEventTypesUseCase: UseCase<
+		SyncEventTypesCommand,
+		EventTypesSynced
+	>;
 }
 
 /**
@@ -210,6 +231,7 @@ export async function registerEventTypesBffRoutes(
 		addSchemaUseCase,
 		finaliseSchemaUseCase,
 		deprecateSchemaUseCase,
+		syncEventTypesUseCase,
 	} = deps;
 
 	// GET /bff/event-types - List with filters
@@ -527,6 +549,61 @@ export async function registerEventTypesBffRoutes(
 				if (eventType) {
 					return jsonSuccess(reply, toBffEventType(eventType));
 				}
+			}
+
+			return sendResult(reply, result);
+		},
+	);
+
+	// POST /bff/event-types/sync-platform — sync platform's own event types
+	fastify.post(
+		"/event-types/sync-platform",
+		{
+			preHandler: requirePermission(EVENT_TYPE_PERMISSIONS.CREATE),
+			schema: {
+				response: {
+					200: BffSyncPlatformResponseSchema,
+					400: ErrorResponseSchema,
+				},
+			},
+		},
+		async (request, reply) => {
+			const ctx = request.executionContext;
+
+			const command: SyncEventTypesCommand = {
+				applicationCode: "platform",
+				eventTypes: PLATFORM_EVENT_DEFINITIONS.map((def) => ({
+					subdomain: def.subdomain,
+					aggregate: def.aggregate,
+					event: def.event,
+					name: def.name,
+					clientScoped: false,
+				})),
+				removeUnlisted: true,
+			};
+
+			const result = await syncEventTypesUseCase.execute(command, ctx);
+
+			if (Result.isSuccess(result)) {
+				const data = result.value.getData();
+
+				// Sync schemas after event types are created/updated
+				const schemaResult = await syncPlatformSchemas(
+					PLATFORM_EVENT_SCHEMAS,
+					eventTypeRepository,
+				);
+
+				return jsonSuccess(reply, {
+					created: data.eventTypesCreated,
+					updated: data.eventTypesUpdated,
+					deleted: data.eventTypesDeleted,
+					total: command.eventTypes.length,
+					schemas: {
+						created: schemaResult.schemasCreated,
+						updated: schemaResult.schemasUpdated,
+						unchanged: schemaResult.schemasUnchanged,
+					},
+				});
 			}
 
 			return sendResult(reply, result);

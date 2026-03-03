@@ -61,3 +61,4 @@ export {
 	type EventTypesSyncedData,
 	EventTypesSynced,
 } from "./events.js";
+export { computeSchemaHash } from "./schema-hash.js";

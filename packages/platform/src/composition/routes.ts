@@ -128,6 +128,7 @@ export async function registerPlatformRoutes(
 			"addSchemaUseCase",
 			"finaliseSchemaUseCase",
 			"deprecateSchemaUseCase",
+			"syncEventTypesUseCase",
 			"createRoleUseCase",
 			"updateRoleUseCase",
 			"deleteRoleUseCase",

@@ -34,6 +34,18 @@ export interface EventTypeFilters {
 	status?: EventTypeStatus;
 }
 
+export interface SyncPlatformResponse {
+	created: number;
+	updated: number;
+	deleted: number;
+	total: number;
+	schemas: {
+		created: number;
+		updated: number;
+		unchanged: number;
+	};
+}
+
 // API functions - using BFF endpoints for JavaScript-safe string IDs
 export const eventTypesApi = {
 	list(filters: EventTypeFilters = {}): Promise<EventTypeListResponse> {
@@ -117,5 +129,9 @@ export const eventTypesApi = {
 		return bffFetch(
 			`/event-types/filters/aggregates${query ? `?${query}` : ""}`,
 		);
+	},
+
+	syncPlatform(): Promise<SyncPlatformResponse> {
+		return bffFetch("/event-types/sync-platform", { method: "POST" });
 	},
 };

@@ -84,7 +84,7 @@ async function loadFilterOptions() {
 						: undefined,
 			},
 		});
-		const data = response.data as {
+		const data = response.data as unknown as {
 			clients?: FilterOption[];
 			applications?: FilterOption[];
 			subdomains?: FilterOption[];

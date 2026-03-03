@@ -4,7 +4,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite",
-		"build": "npm run api:generate && vue-tsc -b && vite build",
+		"build": "openapi-ts && vue-tsc -b && vite build",
 		"preview": "vite preview",
 		"api:generate": "openapi-ts",
 		"api:generate:live": "OPENAPI_LIVE=true openapi-ts",
@@ -16,6 +16,7 @@
 	"dependencies": {
 		"@primeuix/themes": "^2.0.3",
 		"@vee-validate/zod": "^4.15.1",
+		"fflate": "^0.8.2",
 		"pinia": "^3.0.0",
 		"primeicons": "^7.0.0",
 		"primevue": "^4.5.4",
@@ -26,8 +27,7 @@
 	},
 	"devDependencies": {
 		"@flowcatalyst/platform": "workspace:*",
-		"@hey-api/client-fetch": "^0.13.1",
-		"@hey-api/openapi-ts": "^0.66.1",
+		"@hey-api/openapi-ts": "^0.93.1",
 		"@primevue/auto-import-resolver": "^4.5.4",
 		"@types/node": "^22.0.0",
 		"@vitejs/plugin-vue": "^5.2.3",

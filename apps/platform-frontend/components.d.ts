@@ -23,6 +23,7 @@ declare module 'vue' {
     ConfirmDialog: typeof import('primevue/confirmdialog')['default']
     DataTable: typeof import('primevue/datatable')['default']
     Dialog: typeof import('primevue/dialog')['default']
+    Dropdown: typeof import('primevue/dropdown')['default']
     FcButton: typeof import('./src/components/form/FcButton.vue')['default']
     FcInput: typeof import('./src/components/form/FcInput.vue')['default']
     GlobalToast: typeof import('./src/components/GlobalToast.vue')['default']

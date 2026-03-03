@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
 import { useEventTypes } from "@/composables/useEventTypes";
+import { eventTypesApi } from "@/api/event-types";
 import type { EventType } from "@/api/event-types";
+import { exportSchemasAsZip } from "@/utils/schema-export";
 
 const router = useRouter();
+const toast = useToast();
+const syncing = ref(false);
+
 const {
 	eventTypes,
 	initialLoading,
@@ -19,6 +25,7 @@ const {
 	aggregateOptions,
 	statusOptions,
 	clearFilters,
+	loadEventTypes,
 	initialize,
 } = useEventTypes();
 
@@ -26,6 +33,61 @@ onMounted(() => initialize());
 
 function viewEventType(eventType: EventType) {
 	router.push(`/event-types/${eventType.id}`);
+}
+
+async function syncPlatformEvents() {
+	syncing.value = true;
+	try {
+		const result = await eventTypesApi.syncPlatform();
+		const parts: string[] = [];
+		if (result.created > 0) parts.push(`${result.created} created`);
+		if (result.updated > 0) parts.push(`${result.updated} updated`);
+		if (result.deleted > 0) parts.push(`${result.deleted} deleted`);
+
+		const schemaParts: string[] = [];
+		if (result.schemas.created > 0) schemaParts.push(`${result.schemas.created} created`);
+		if (result.schemas.updated > 0) schemaParts.push(`${result.schemas.updated} updated`);
+		if (result.schemas.unchanged > 0) schemaParts.push(`${result.schemas.unchanged} unchanged`);
+		const schemaTotal = result.schemas.created + result.schemas.updated + result.schemas.unchanged;
+		const schemaDetail = schemaTotal > 0
+			? `\nSchemas: ${schemaParts.join(", ")} (${schemaTotal} total)`
+			: "";
+
+		toast.add({
+			severity: "success",
+			summary: "Platform Events Synced",
+			detail: (parts.length > 0
+				? `${parts.join(", ")} (${result.total} total)`
+				: `${result.total} event types up to date`) + schemaDetail,
+			life: 5000,
+		});
+		await loadEventTypes();
+	} catch (e) {
+		toast.add({
+			severity: "error",
+			summary: "Sync Failed",
+			detail: e instanceof Error ? e.message : "Failed to sync platform events",
+			life: 5000,
+		});
+	} finally {
+		syncing.value = false;
+	}
+}
+
+const hasSchemas = computed(() =>
+	eventTypes.value.some((et) =>
+		et.specVersions.some((sv) => sv.status === "CURRENT" && sv.schema),
+	),
+);
+
+function exportSchemas() {
+	exportSchemasAsZip(eventTypes.value);
+	toast.add({
+		severity: "info",
+		summary: "Export Started",
+		detail: "Downloading event-schemas.zip",
+		life: 3000,
+	});
 }
 
 function getSchemaStatusSeverity(status: string) {
@@ -49,11 +111,28 @@ function getSchemaStatusSeverity(status: string) {
         <h1 class="page-title">Event Types</h1>
         <p class="page-subtitle">Manage event type definitions and schemas</p>
       </div>
-      <Button
-        label="Create Event Type"
-        icon="pi pi-plus"
-        @click="router.push('/event-types/create')"
-      />
+      <div class="header-actions">
+        <Button
+          v-if="hasSchemas"
+          label="Export Schemas"
+          icon="pi pi-download"
+          severity="secondary"
+          outlined
+          @click="exportSchemas"
+        />
+        <Button
+          label="Sync Platform Events"
+          icon="pi pi-sync"
+          severity="secondary"
+          :loading="syncing"
+          @click="syncPlatformEvents"
+        />
+        <Button
+          label="Create Event Type"
+          icon="pi pi-plus"
+          @click="router.push('/event-types/create')"
+        />
+      </div>
     </header>
 
     <!-- Filters -->
@@ -221,6 +300,11 @@ function getSchemaStatusSeverity(status: string) {
 </template>
 
 <style scoped>
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .filter-card {
   margin-bottom: 24px;
 }

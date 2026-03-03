@@ -8,6 +8,7 @@ import {
 	type EventType,
 	type SpecVersion,
 } from "@/api/event-types";
+import SchemaViewerDialog from "./SchemaViewerDialog.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -18,6 +19,15 @@ const loading = ref(true);
 const eventType = ref<EventType | null>(null);
 const editing = ref(false);
 const saving = ref(false);
+
+// Schema viewer
+const viewerVisible = ref(false);
+const viewerSpecVersion = ref<SpecVersion | null>(null);
+
+function viewSchema(sv: SpecVersion) {
+	viewerSpecVersion.value = sv;
+	viewerVisible.value = true;
+}
 
 // Edit form
 const editName = ref("");
@@ -394,6 +404,14 @@ async function deleteEventType() {
               <template #body="{ data }">
                 <div class="action-buttons">
                   <Button
+                    v-if="data.schema"
+                    icon="pi pi-eye"
+                    rounded
+                    text
+                    v-tooltip="'View Schema'"
+                    @click="viewSchema(data)"
+                  />
+                  <Button
                     v-if="data.status === 'FINALISING'"
                     icon="pi pi-check"
                     rounded
@@ -455,6 +473,12 @@ async function deleteEventType() {
           </div>
         </div>
       </div>
+      <!-- Schema Viewer Dialog -->
+      <SchemaViewerDialog
+        v-model:visible="viewerVisible"
+        :specVersion="viewerSpecVersion"
+        :eventCode="eventType.code"
+      />
     </template>
 
     <Message v-else severity="error">Event type not found</Message>
