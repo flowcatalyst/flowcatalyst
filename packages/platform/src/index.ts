@@ -249,6 +249,12 @@ export async function startPlatform(
 		});
 	}
 
+	// Register dispatch scheduler + connection cache shutdown hooks
+	fastify.addHook("onClose", async () => {
+		dispatchSchedulerHandle?.stop();
+		connectionCache.stop();
+	});
+
 	fastify.log.info({ port: PORT, host: HOST }, "Starting HTTP server");
 
 	await fastify.listen({ port: PORT, host: HOST });
@@ -267,12 +273,6 @@ export async function startPlatform(
 		);
 		console.log(`  Health check:     http://localhost:${PORT}/health\n`);
 	}
-
-	// Register dispatch scheduler + connection cache shutdown hooks
-	fastify.addHook("onClose", async () => {
-		dispatchSchedulerHandle?.stop();
-		connectionCache.stop();
-	});
 
 	return {
 		server: fastify,
