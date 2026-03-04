@@ -21,6 +21,7 @@ declare module 'vue' {
     ColorPicker: typeof import('primevue/colorpicker')['default']
     Column: typeof import('primevue/column')['default']
     ConfirmDialog: typeof import('primevue/confirmdialog')['default']
+    ConnectionCreateDialog: typeof import('./src/components/ConnectionCreateDialog.vue')['default']
     DataTable: typeof import('primevue/datatable')['default']
     Dialog: typeof import('primevue/dialog')['default']
     Dropdown: typeof import('primevue/dropdown')['default']
