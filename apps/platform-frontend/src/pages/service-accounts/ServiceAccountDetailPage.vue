@@ -2,12 +2,14 @@
 import { ref, computed, onMounted } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useToast } from "primevue/usetoast";
+import { useConfirm } from "primevue/useconfirm";
 import {
 	serviceAccountsApi,
 	type ServiceAccount,
 	type RoleAssignment,
 	type RolesAssignedResponse,
 } from "@/api/service-accounts";
+import { connectionsApi, type Connection } from "@/api/connections";
 import type { PrincipalScope } from "@/api/users";
 import { rolesApi, type Role } from "@/api/roles";
 import { clientsApi, type Client } from "@/api/clients";
@@ -16,6 +18,7 @@ import { getErrorMessage } from "@/utils/errors";
 const router = useRouter();
 const route = useRoute();
 const toast = useToast();
+const confirm = useConfirm();
 
 const serviceAccountId = route.params['id'] as string;
 
@@ -58,6 +61,11 @@ const roleSearchQuery = ref("");
 const selectedRoleNames = ref<Set<string>>(new Set());
 const savingRoles = ref(false);
 
+// Connections
+const connections = ref<Connection[]>([]);
+const loadingConnections = ref(false);
+const showCreateConnectionDialog = ref(false);
+
 // Delete dialog
 const showDeleteDialog = ref(false);
 const deleting = ref(false);
@@ -87,7 +95,7 @@ onMounted(async () => {
 		loadAvailableRoles(),
 	]);
 	if (serviceAccount.value) {
-		await loadRoleAssignments();
+		await Promise.all([loadRoleAssignments(), loadConnections()]);
 		if (route.query['edit'] === "true") {
 			startEdit();
 		}
@@ -138,6 +146,77 @@ async function loadRoleAssignments() {
 		roleAssignments.value = response.roles;
 	} catch (error) {
 		console.error("Failed to fetch role assignments:", error);
+	}
+}
+
+async function loadConnections() {
+	loadingConnections.value = true;
+	try {
+		const clientScope = serviceAccount.value?.clientIds?.[0];
+		const response = await connectionsApi.list(
+			clientScope ? { clientId: clientScope } : {},
+		);
+		connections.value = response.connections.filter(
+			(c) => c.serviceAccountId === serviceAccountId,
+		);
+	} catch (error) {
+		console.error("Failed to fetch connections:", error);
+	} finally {
+		loadingConnections.value = false;
+	}
+}
+
+function onConnectionCreated(_connection: Connection) {
+	loadConnections();
+}
+
+function confirmPauseConnection(connection: Connection) {
+	confirm.require({
+		message: `Are you sure you want to pause connection "${connection.name}"?`,
+		header: "Pause Connection",
+		icon: "pi pi-pause-circle",
+		acceptClass: "p-button-warning",
+		accept: () => pauseConnection(connection.id),
+	});
+}
+
+async function pauseConnection(id: string) {
+	try {
+		await connectionsApi.pause(id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Connection paused",
+			life: 3000,
+		});
+		await loadConnections();
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to pause connection"),
+			life: 5000,
+		});
+	}
+}
+
+async function activateConnection(id: string) {
+	try {
+		await connectionsApi.activate(id);
+		toast.add({
+			severity: "success",
+			summary: "Success",
+			detail: "Connection activated",
+			life: 3000,
+		});
+		await loadConnections();
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Error",
+			detail: getErrorMessage(e, "Failed to activate connection"),
+			life: 5000,
+		});
 	}
 }
 
@@ -574,6 +653,82 @@ async function deleteServiceAccount() {
           </Column>
         </DataTable>
       </div>
+
+      <!-- Connections Card -->
+      <div class="fc-card">
+        <div class="card-header">
+          <h2 class="card-title">Connections</h2>
+          <Button
+            label="New Connection"
+            icon="pi pi-plus"
+            text
+            @click="showCreateConnectionDialog = true"
+          />
+        </div>
+
+        <ProgressSpinner v-if="loadingConnections" strokeWidth="3" style="width: 32px; height: 32px" />
+
+        <div v-else-if="connections.length === 0" class="no-connections-notice">
+          <p>No connections for this service account.</p>
+          <Button label="Create Connection" icon="pi pi-plus" text @click="showCreateConnectionDialog = true" />
+        </div>
+
+        <DataTable v-else :value="connections" size="small">
+          <Column field="code" header="Code">
+            <template #body="{ data }">
+              <router-link :to="`/connections/${data.id}`" class="code-link">
+                {{ data.code }}
+              </router-link>
+            </template>
+          </Column>
+          <Column field="endpoint" header="Endpoint">
+            <template #body="{ data }">
+              <span class="endpoint-text" :title="data.endpoint">{{ data.endpoint }}</span>
+            </template>
+          </Column>
+          <Column field="status" header="Status">
+            <template #body="{ data }">
+              <Tag
+                :value="data.status"
+                :severity="data.status === 'ACTIVE' ? 'success' : 'warn'"
+              />
+            </template>
+          </Column>
+          <Column header="Actions" style="width: 80px">
+            <template #body="{ data }">
+              <Button
+                v-if="data.status === 'ACTIVE'"
+                icon="pi pi-pause"
+                text
+                rounded
+                severity="warn"
+                size="small"
+                v-tooltip.top="'Pause'"
+                @click="confirmPauseConnection(data)"
+              />
+              <Button
+                v-else
+                icon="pi pi-play"
+                text
+                rounded
+                severity="success"
+                size="small"
+                v-tooltip.top="'Activate'"
+                @click="activateConnection(data.id)"
+              />
+            </template>
+          </Column>
+        </DataTable>
+      </div>
+
+      <ConnectionCreateDialog
+        v-model:visible="showCreateConnectionDialog"
+        :service-account-id="serviceAccountId"
+        :client-id="serviceAccount?.clientIds?.[0]"
+        @created="onConnectionCreated"
+      />
+
+      <ConfirmDialog />
     </template>
 
     <!-- Regenerate Token Dialog -->
@@ -914,6 +1069,37 @@ async function deleteServiceAccount() {
 
 .w-full {
   width: 100%;
+}
+
+.no-connections-notice {
+  text-align: center;
+  padding: 24px;
+  color: #64748b;
+}
+
+.no-connections-notice p {
+  margin: 0 0 12px 0;
+}
+
+.code-link {
+  font-family: monospace;
+  font-size: 13px;
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.code-link:hover {
+  text-decoration: underline;
+}
+
+.endpoint-text {
+  font-size: 13px;
+  color: #64748b;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
 }
 
 /* Dual-pane role picker styles */

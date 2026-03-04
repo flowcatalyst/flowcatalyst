@@ -10,6 +10,7 @@ import {
 import { dispatchPoolsApi, type DispatchPool } from "@/api/dispatch-pools";
 import { connectionsApi, type Connection } from "@/api/connections";
 import { eventTypesApi, type EventType } from "@/api/event-types";
+import ConnectionCreateDialog from "@/components/ConnectionCreateDialog.vue";
 
 const router = useRouter();
 const toast = useToast();
@@ -39,6 +40,7 @@ const loadingPools = ref(true);
 const loadingEventTypes = ref(true);
 const submitting = ref(false);
 const errorMessage = ref<string | null>(null);
+const showCreateConnectionDialog = ref(false);
 
 const CODE_PATTERN = /^[a-z][a-z0-9-]*$/;
 
@@ -130,6 +132,11 @@ async function loadConnections() {
 	} finally {
 		loadingConnections.value = false;
 	}
+}
+
+function onConnectionCreated(connection: Connection) {
+	connections.value.push(connection);
+	connectionId.value = connection.id;
 }
 
 function buildEventTypeBindings(): EventTypeBinding[] {
@@ -271,24 +278,33 @@ async function onSubmit() {
 
           <div class="form-field">
             <label>Connection <span class="required">*</span></label>
-            <Select
-              v-model="connectionId"
-              :options="connections"
-              optionLabel="name"
-              optionValue="id"
-              placeholder="Select a connection"
-              class="full-width"
-              :loading="loadingConnections"
-              :disabled="loadingConnections"
-              filter
-            >
-              <template #option="{ option }">
-                <div class="dropdown-option">
-                  <span class="option-name">{{ option.name }}</span>
-                  <span class="option-code">{{ option.code }} &mdash; {{ option.endpoint }}</span>
-                </div>
-              </template>
-            </Select>
+            <div class="field-with-action">
+              <Select
+                v-model="connectionId"
+                :options="connections"
+                optionLabel="name"
+                optionValue="id"
+                placeholder="Select a connection"
+                class="flex-grow"
+                :loading="loadingConnections"
+                :disabled="loadingConnections"
+                filter
+              >
+                <template #option="{ option }">
+                  <div class="dropdown-option">
+                    <span class="option-name">{{ option.name }}</span>
+                    <span class="option-code">{{ option.code }} &mdash; {{ option.endpoint }}</span>
+                  </div>
+                </template>
+              </Select>
+              <Button
+                icon="pi pi-plus"
+                outlined
+                size="small"
+                v-tooltip.top="'Create connection'"
+                @click="showCreateConnectionDialog = true"
+              />
+            </div>
             <small class="hint"> The connection used for delivering events </small>
           </div>
 
@@ -416,6 +432,11 @@ async function onSubmit() {
         </div>
       </div>
     </form>
+
+    <ConnectionCreateDialog
+      v-model:visible="showCreateConnectionDialog"
+      @created="onConnectionCreated"
+    />
   </div>
 </template>
 
@@ -466,6 +487,16 @@ async function onSubmit() {
 
 .full-width {
   width: 100%;
+}
+
+.field-with-action {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.flex-grow {
+  flex: 1;
 }
 
 .char-count {
