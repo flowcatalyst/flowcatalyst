@@ -315,10 +315,11 @@ export async function registerAuthRoutes(
 	 * Logout and clear session cookie.
 	 */
 	fastify.post("/auth/logout", async (_request, reply) => {
-		// Clear session cookie by setting expired cookie
-		reply.setCookie(cookieConfig.name, "", {
+		// Clear session cookie — clearCookie sets Expires in the past, which is
+		// the correct and reliable way to delete a cookie across all browsers.
+		// (maxAge: 0 is not reliably honoured by all browsers/clients.)
+		reply.clearCookie(cookieConfig.name, {
 			path: "/",
-			maxAge: 0,
 			httpOnly: true,
 			secure: cookieConfig.secure,
 			sameSite: cookieConfig.sameSite,

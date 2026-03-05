@@ -218,10 +218,11 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
 			rpInitiatedLogout: {
 				enabled: true,
 				logoutSource: async (ctx: KoaContextWithOIDC, form: string) => {
-					// Clear the platform session cookie so the user isn't auto-logged back in
+					// Clear the platform session cookie so the user isn't auto-logged back in.
+					// Use Expires in the past rather than Max-Age=0 for reliable deletion.
 					ctx.res.setHeader(
 						"Set-Cookie",
-						"fc_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
+						"fc_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax",
 					);
 					// Auto-submit the confirmation form for seamless logout
 					ctx.body = `<!DOCTYPE html><html><head><title>Logging out...</title></head><body>${form}<script>document.forms[0].submit();</script></body></html>`;
