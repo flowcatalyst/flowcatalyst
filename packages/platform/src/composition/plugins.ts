@@ -275,6 +275,7 @@ export async function registerPlatformPlugins(
 		sendPasswordResetEmail,
 		baseUrl: externalBaseUrl,
 		unitOfWork,
+		oidcProvider,
 		issueSessionToken: (principalId, email, roles, clients) => {
 			return jwtKeyService.issueSessionToken(
 				principalId,

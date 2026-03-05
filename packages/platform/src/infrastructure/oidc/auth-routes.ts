@@ -12,6 +12,7 @@
 
 import { randomBytes, createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
+import type Provider from "oidc-provider";
 import type { PrincipalRepository } from "../persistence/repositories/principal-repository.js";
 import type { EmailDomainMappingRepository } from "../persistence/repositories/email-domain-mapping-repository.js";
 import type { IdentityProviderRepository } from "../persistence/repositories/identity-provider-repository.js";
@@ -67,6 +68,8 @@ export interface AuthRoutesDeps {
 	) => Promise<string>;
 	validateSessionToken: (token: string) => Promise<string | null>;
 	cookieConfig: SessionCookieConfig;
+	/** oidc-provider instance — used to derive session cookie names for proper logout. */
+	oidcProvider: Provider;
 }
 
 /**
@@ -315,15 +318,20 @@ export async function registerAuthRoutes(
 	 * Logout and clear session cookie.
 	 */
 	fastify.post("/auth/logout", async (_request, reply) => {
-		// Clear session cookie — clearCookie sets Expires in the past, which is
-		// the correct and reliable way to delete a cookie across all browsers.
-		// (maxAge: 0 is not reliably honoured by all browsers/clients.)
+		// Clear the FlowCatalyst session cookie.
 		reply.clearCookie(cookieConfig.name, {
 			path: "/",
 			httpOnly: true,
 			secure: cookieConfig.secure,
 			sameSite: cookieConfig.sameSite,
 		});
+
+		// Also clear the oidc-provider's own session cookies (_session + _session.sig).
+		// Without this they persist in the browser and oidc-provider will silently
+		// re-authenticate on the next OAuth authorize request, bypassing the login prompt.
+		const oidcSessionCookieName = deps.oidcProvider.cookieName("session");
+		reply.clearCookie(oidcSessionCookieName, { path: "/" });
+		reply.clearCookie(`${oidcSessionCookieName}.sig`, { path: "/" });
 
 		return reply.send({ message: "Logged out successfully" });
 	});

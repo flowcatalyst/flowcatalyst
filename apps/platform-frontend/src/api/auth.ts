@@ -150,12 +150,8 @@ export async function logout(): Promise<void> {
 	}
 
 	authStore.clearAuth();
-
-	// Navigate to the OIDC session end endpoint so oidc-provider destroys its own
-	// _session cookie and all associated grants. Without this, the provider session
-	// persists and OAuth flows from other apps will auto-complete without a login prompt.
-	// post_logout_redirect_uri sends the user to the login page after the session is cleared.
-	window.location.href = `/oidc/session/end?post_logout_redirect_uri=${encodeURIComponent(window.location.origin + "/auth/login")}`;
+	// Use replace to clear navigation history on logout
+	await router.replace("/auth/login");
 }
 
 export async function requestPasswordReset(email: string): Promise<void> {
