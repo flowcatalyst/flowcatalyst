@@ -240,10 +240,14 @@ export function createOidcProvider(config: OidcProviderConfig): Provider {
 		// Scopes configuration
 		scopes: ["openid", "profile", "email", "offline_access"],
 
-		// Custom route paths — use /authorize instead of /auth to avoid
-		// conflicts with the platform's /auth/* SPA & API routes.
+		// Custom route paths.
+		// - /authorize instead of /auth: avoids conflict with the platform's /auth/* routes.
+		// - /userinfo instead of /me (oidc-provider default): /me is served by the SPA catch-all
+		//   when the frontend is embedded, so the discovery document would advertise a URL that
+		//   returns index.html instead of the userinfo JSON.
 		routes: {
 			authorization: "/authorize",
+			userinfo: "/userinfo",
 		},
 
 		// Use our RSA signing keys if provided

@@ -24,7 +24,7 @@ All OIDC endpoints live under the `/oidc` prefix:
 |---|---|
 | Authorization | `{issuer}/oidc/authorize` |
 | Token | `{issuer}/oidc/token` |
-| Userinfo | `{issuer}/oidc/me` |
+| Userinfo | `{issuer}/oidc/userinfo` |
 | JWKS | `{issuer}/oidc/jwks` |
 | Introspection | `{issuer}/oidc/token/introspection` |
 | Revocation | `{issuer}/oidc/token/revocation` |
