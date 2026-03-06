@@ -31,6 +31,7 @@ const newAllowedOrigin = ref("");
 // Secret dialog state
 const showSecretDialog = ref(false);
 const clientSecret = ref<string | null>(null);
+const createdClientId = ref<string | null>(null);
 
 const clientTypeOptions = [
 	{
@@ -175,10 +176,18 @@ async function createClient() {
 		toast.add({
 			severity: "success",
 			summary: "Success",
-			detail: `OAuth client "${response.clientName}" created successfully`,
+			detail: `OAuth client "${response.client.clientName}" created successfully`,
 			life: 3000,
 		});
-		router.push(`/authentication/oauth-clients/${response.id}`);
+
+		if (response.clientSecret) {
+			// Show the one-time secret dialog before navigating away
+			createdClientId.value = response.client.id;
+			clientSecret.value = response.clientSecret;
+			showSecretDialog.value = true;
+		} else {
+			router.push(`/authentication/oauth-clients/${response.client.id}`);
+		}
 	} catch (e: unknown) {
 		error.value = getErrorMessage(e, "Failed to create OAuth client");
 	} finally {
@@ -200,7 +209,11 @@ function copySecret() {
 
 function closeSecretDialog() {
 	showSecretDialog.value = false;
-	router.push("/authentication/oauth-clients");
+	router.push(
+		createdClientId.value
+			? `/authentication/oauth-clients/${createdClientId.value}`
+			: "/authentication/oauth-clients",
+	);
 }
 </script>
 

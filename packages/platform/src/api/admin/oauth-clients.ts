@@ -143,6 +143,16 @@ const RegenerateSecretResponseSchema = Type.Object({
 	}),
 });
 
+const CreateOAuthClientResponseSchema = Type.Object({
+	client: OAuthClientResponseSchema,
+	clientSecret: Type.Optional(
+		Type.String({
+			description:
+				"Auto-generated plaintext client secret for CONFIDENTIAL clients (shown only once)",
+		}),
+	),
+});
+
 type OAuthClientResponse = Static<typeof OAuthClientResponseSchema>;
 
 /**
@@ -321,7 +331,7 @@ export async function registerOAuthClientsRoutes(
 			schema: {
 				body: CreateOAuthClientSchema,
 				response: {
-					201: OAuthClientResponseSchema,
+					201: CreateOAuthClientResponseSchema,
 					400: ErrorResponseSchema,
 					409: ErrorResponseSchema,
 				},
@@ -331,10 +341,24 @@ export async function registerOAuthClientsRoutes(
 			const body = request.body as CreateOAuthClientBody;
 			const ctx = request.executionContext;
 
+			// For CONFIDENTIAL clients, auto-generate a secret if one isn't provided.
+			// The plaintext is returned once in the response; only the encrypted ref is stored.
+			let clientSecretRef: string | null | undefined = body.clientSecretRef;
+			let generatedSecret: string | undefined;
+			if (body.clientType === "CONFIDENTIAL" && !clientSecretRef) {
+				const plainSecret = randomBytes(32).toString("base64url");
+				const encryptResult = encryptionService.encrypt(plainSecret);
+				if (encryptResult.isErr()) {
+					throw new Error("Failed to encrypt client secret");
+				}
+				clientSecretRef = encryptResult.value;
+				generatedSecret = plainSecret;
+			}
+
 			const command: CreateOAuthClientCommand = {
 				clientName: body.clientName,
 				clientType: body.clientType,
-				clientSecretRef: body.clientSecretRef,
+				clientSecretRef,
 				redirectUris: body.redirectUris,
 				allowedOrigins: body.allowedOrigins,
 				grantTypes: body.grantTypes,
@@ -351,7 +375,10 @@ export async function registerOAuthClientsRoutes(
 				);
 				if (client) {
 					const appMap = await buildAppMap();
-					return jsonCreated(reply, toResponse(client, appMap));
+					return jsonCreated(reply, {
+						client: toResponse(client, appMap),
+						...(generatedSecret ? { clientSecret: generatedSecret } : {}),
+					});
 				}
 			}
 

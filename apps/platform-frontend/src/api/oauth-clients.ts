@@ -49,6 +49,12 @@ export interface UpdateOAuthClientRequest {
 	applicationIds?: string[];
 }
 
+export interface CreateOAuthClientResponse {
+	client: OAuthClient;
+	/** Plaintext secret for CONFIDENTIAL clients — shown only once at creation time */
+	clientSecret?: string;
+}
+
 export interface RotateSecretResponse {
 	clientId: string;
 	clientSecret: string;
@@ -76,7 +82,7 @@ export const oauthClientsApi = {
 		return apiFetch(`/admin/oauth-clients/by-client-id/${clientId}`);
 	},
 
-	create(data: CreateOAuthClientRequest): Promise<OAuthClient> {
+	create(data: CreateOAuthClientRequest): Promise<CreateOAuthClientResponse> {
 		return apiFetch("/admin/oauth-clients", {
 			method: "POST",
 			body: JSON.stringify(data),
