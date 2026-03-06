@@ -5,6 +5,7 @@
  * using a Node.js http.RequestListener adapter.
  */
 
+import * as jose from "jose";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { OidcProvider } from "./provider.js";
 import type { JwtKeyService } from "./jwt-key-service.js";
@@ -299,14 +300,6 @@ export function registerOidcEndpointRoutes(
 			await forwardToOidc(request, reply, "/token");
 		});
 
-		// GET/POST /userinfo -> userinfo endpoint
-		instance.get("/userinfo", async (request, reply) => {
-			await forwardToOidc(request, reply, "/userinfo");
-		});
-		instance.post("/userinfo", async (request, reply) => {
-			await forwardToOidc(request, reply, "/userinfo");
-		});
-
 		// GET/POST /session/end -> RP-initiated logout
 		instance.get("/session/end", async (request, reply) => {
 			const queryString = request.raw.url?.split("?")[1] ?? "";
@@ -341,6 +334,83 @@ export function registerOidcEndpointRoutes(
 	});
 
 	fastify.log.info(
-		"OIDC endpoint forwarding routes registered (/authorize, /token, /userinfo, /session/end)",
+		"OIDC endpoint forwarding routes registered (/authorize, /token, /session/end)",
 	);
+}
+
+/**
+ * Register a custom userinfo endpoint that accepts resource-bound JWTs.
+ *
+ * oidc-provider's built-in userinfo handler rejects access tokens that were
+ * issued with a resource indicator (RFC 8707) because the spec says these
+ * audience-restricted tokens are not valid "UserInfo tokens". All our tokens
+ * are resource-bound JWTs (accessTokenFormat: "jwt"), so the built-in handler
+ * always returns 401.
+ *
+ * This handler bypasses oidc-provider entirely: it verifies the Bearer JWT
+ * signature using our JWKS and returns the token payload claims directly.
+ * The response is identical to what a standard userinfo endpoint returns —
+ * the only difference is we accept our own JWTs rather than opaque tokens.
+ *
+ * The Laravel SDK and any well-behaved OIDC client that reads the ID token
+ * directly are unaffected by this change.
+ */
+export function registerCustomUserInfoRoute(
+	fastify: FastifyInstance,
+	jwtKeyService: JwtKeyService,
+	basePath = "/oidc",
+): void {
+	const localJwks = jose.createLocalJWKSet(jwtKeyService.getJwks());
+
+	const handler = async (
+		request: FastifyRequest,
+		reply: FastifyReply,
+	): Promise<void> => {
+		const authHeader = request.headers.authorization;
+		if (!authHeader?.startsWith("Bearer ")) {
+			reply
+				.status(401)
+				.header("WWW-Authenticate", "Bearer")
+				.send({
+					error: "unauthorized",
+					error_description: "Bearer token required",
+				});
+			return;
+		}
+
+		const token = authHeader.slice(7);
+		try {
+			const { payload } = await jose.jwtVerify(token, localJwks);
+			// Omit JWT protocol metadata, return user-facing claims only
+			const {
+				iss: _iss,
+				aud: _aud,
+				iat: _iat,
+				exp: _exp,
+				jti: _jti,
+				nbf: _nbf,
+				...claims
+			} = payload;
+			reply.send(claims);
+		} catch {
+			reply
+				.status(401)
+				.header("WWW-Authenticate", 'Bearer error="invalid_token"')
+				.send({
+					error: "invalid_token",
+					error_description: "Token verification failed",
+				});
+		}
+	};
+
+	// Register at /oidc/userinfo (direct) — beats the /oidc/* wildcard because
+	// static paths always take priority over wildcards in Fastify.
+	fastify.get(`${basePath}/userinfo`, handler);
+	fastify.post(`${basePath}/userinfo`, handler);
+
+	// Register at root /userinfo — this is the URL advertised in the discovery doc.
+	fastify.get("/userinfo", handler);
+	fastify.post("/userinfo", handler);
+
+	fastify.log.info({ basePath }, "Custom userinfo route registered");
 }

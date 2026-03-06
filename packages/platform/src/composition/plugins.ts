@@ -31,6 +31,7 @@ import {
 	registerWellKnownRoutes,
 	registerOAuthCompatibilityRoutes,
 	registerOidcEndpointRoutes,
+	registerCustomUserInfoRoute,
 	registerAuthRoutes,
 	registerOidcFederationRoutes,
 	registerClientSelectionRoutes,
@@ -220,6 +221,12 @@ export async function registerPlatformPlugins(
 		loginPageUrl: "/auth/login",
 	});
 
+	// Register custom userinfo endpoint BEFORE the /oidc/* wildcard.
+	// oidc-provider rejects our resource-bound JWTs at its built-in userinfo handler
+	// (RFC 8707 audience-restricted tokens are not valid "UserInfo tokens").
+	// This handler verifies the JWT directly with our JWKS and returns the claims.
+	registerCustomUserInfoRoute(fastify, jwtKeyService, "/oidc");
+
 	// Mount OIDC provider at /oidc
 	await mountOidcProvider(fastify, oidcProvider, "/oidc");
 
@@ -229,8 +236,9 @@ export async function registerPlatformPlugins(
 	// Register OAuth compatibility routes (/oauth/* -> /oidc/*)
 	registerOAuthCompatibilityRoutes(fastify, oidcProvider, "/oidc");
 
-	// Register root-level OIDC endpoint forwarding routes (/authorize, /token, /userinfo)
-	// These forward to oidc-provider because the discovery doc advertises root-level URLs
+	// Register root-level OIDC endpoint forwarding routes (/authorize, /token, /session/end)
+	// These forward to oidc-provider because the discovery doc advertises root-level URLs.
+	// /userinfo is handled separately by registerCustomUserInfoRoute above.
 	registerOidcEndpointRoutes(fastify, oidcProvider);
 
 	// Compute external base URL (used for OIDC federation callbacks and password reset links)
