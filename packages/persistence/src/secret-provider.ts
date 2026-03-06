@@ -46,7 +46,7 @@ export function parseSecretToDbUrl(raw: string): string {
 				"Secret JSON is missing required fields: username, password, host, dbname",
 			);
 		}
-		return `postgres://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
+		return `postgres://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}/${database}?ssl=true`;
 	}
 	// Plain URL — return as-is
 	return trimmed;
