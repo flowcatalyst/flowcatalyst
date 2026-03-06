@@ -87,6 +87,100 @@ export function createDatabase(config: DatabaseConfig): Database {
 }
 
 /**
+ * A Database whose underlying connection pool can be swapped out live without
+ * restarting the process. Consumers hold references to `db` and `client` —
+ * both are transparent JS Proxies that delegate every access to the current
+ * real instances. Call `refresh(newUrl)` to swap in a new pool.
+ */
+export interface RefreshableDatabase extends Database {
+	/**
+	 * Replace the connection pool with one using the new URL.
+	 * In-flight queries on the old pool are drained gracefully before it closes.
+	 */
+	refresh(newUrl: string): Promise<void>;
+}
+
+/**
+ * Create a refreshable database whose `db` and `client` properties are proxy
+ * objects that always delegate to the current underlying connection. When
+ * `refresh(newUrl)` is called, a new pool is created and the proxies start
+ * routing to it; the old pool is then drained and closed.
+ */
+export function createRefreshableDatabase(
+	config: DatabaseConfig,
+): RefreshableDatabase {
+	const poolOptions: postgres.Options<Record<string, never>> = {
+		max: config.maxConnections ?? 10,
+		idle_timeout: config.idleTimeout ?? 20,
+		connect_timeout: config.connectTimeout ?? 30,
+		keep_alive: 60,
+	};
+
+	if (config.debug) {
+		poolOptions.debug = (_connection, query, params) => {
+			console.log("[SQL]", query, params);
+		};
+	}
+
+	// Mutable holder — swapped on refresh
+	const holder: {
+		client: postgres.Sql;
+		db: ReturnType<typeof drizzle>;
+	} = (() => {
+		const client = postgres(config.url, poolOptions);
+		return { client, db: drizzle({ client }) };
+	})();
+
+	// Proxy for the postgres.js client (callable tagged-template + methods)
+	const clientProxy = new Proxy(function () {} as unknown as postgres.Sql, {
+		apply(_target, _thisArg, args) {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			return (holder.client as any)(...args);
+		},
+		get(_target, prop) {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const val = (holder.client as any)[prop];
+			return typeof val === "function" ? val.bind(holder.client) : val;
+		},
+	});
+
+	// Proxy for the drizzle db instance
+	const dbProxy = new Proxy(
+		{} as ReturnType<typeof drizzle>,
+		{
+			get(_target, prop) {
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				const val = (holder.db as any)[prop];
+				return typeof val === "function" ? val.bind(holder.db) : val;
+			},
+		},
+	);
+
+	async function refresh(newUrl: string): Promise<void> {
+		const newClient = postgres(newUrl, poolOptions);
+		const newDb = drizzle({ client: newClient });
+
+		const oldClient = holder.client;
+
+		// Swap so new queries immediately route to the new pool
+		holder.client = newClient;
+		holder.db = newDb;
+
+		// Drain and close the old pool (won't interrupt in-flight queries)
+		await oldClient.end();
+	}
+
+	return {
+		db: dbProxy,
+		client: clientProxy,
+		async close() {
+			await holder.client.end();
+		},
+		refresh,
+	};
+}
+
+/**
  * Create a database for migrations (single connection, not pooled).
  *
  * @param config - Database configuration

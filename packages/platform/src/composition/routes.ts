@@ -146,6 +146,7 @@ export async function registerPlatformRoutes(
 		// Events & Dispatch Jobs BFF
 		eventReadRepository: repos.eventReadRepository,
 		dispatchJobReadRepository: repos.dispatchJobReadRepository,
+		db,
 	};
 
 	await registerBffRoutes(fastify, bffDeps);

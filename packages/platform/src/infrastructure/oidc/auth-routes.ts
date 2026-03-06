@@ -329,7 +329,8 @@ export async function registerAuthRoutes(
 		// Also clear the oidc-provider's own session cookies (_session + _session.sig).
 		// Without this they persist in the browser and oidc-provider will silently
 		// re-authenticate on the next OAuth authorize request, bypassing the login prompt.
-		const oidcSessionCookieName = deps.oidcProvider.cookieName("session");
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const oidcSessionCookieName = (deps.oidcProvider as any).cookieName("session") as string;
 		reply.clearCookie(oidcSessionCookieName, { path: "/" });
 		reply.clearCookie(`${oidcSessionCookieName}.sig`, { path: "/" });
 

@@ -16,8 +16,14 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { createLogger, setDefaultLogger } from "@flowcatalyst/logging";
+import {
+	createRefreshableDatabase,
+	startSecretRefresh,
+} from "@flowcatalyst/persistence";
+import type { RefreshableDatabase } from "@flowcatalyst/persistence";
 import type { PlatformResult } from "@flowcatalyst/platform";
 import { createStandbyManager, type StandbyManager } from "@flowcatalyst/standby";
+import { createSecretProviderFromEnv } from "./secret-providers.js";
 
 const VERSION = "0.0.1";
 
@@ -163,9 +169,13 @@ async function runRotateKeysCommand(): Promise<void> {
 }
 
 async function runMigrateCommand(): Promise<void> {
-	const url = process.env["DATABASE_URL"];
-	if (!url) {
-		console.error("DATABASE_URL is required");
+	const databaseUrl = process.env["DATABASE_URL"] ?? "";
+	let url: string;
+	try {
+		const provider = createSecretProviderFromEnv({ databaseUrl });
+		url = await provider.getDbUrl();
+	} catch (err) {
+		console.error("Failed to resolve database URL:", err);
 		process.exit(1);
 	}
 	const migrationsFolder = await resolveMigrationsFolder();
@@ -246,16 +256,6 @@ const AUTO_MIGRATE =
 // DATABASE_URL is only required when a service that uses the database is enabled
 const needsDatabase =
 	PLATFORM_ENABLED || STREAM_PROCESSOR_ENABLED || OUTBOX_PROCESSOR_ENABLED;
-const DATABASE_URL = (() => {
-	const url = process.env["DATABASE_URL"];
-	if (!url && needsDatabase) {
-		console.error(
-			"DATABASE_URL is required when Platform, Stream Processor, or Outbox Processor is enabled",
-		);
-		process.exit(1);
-	}
-	return url ?? "";
-})();
 
 // Frontend dir override
 const FRONTEND_DIR = process.env["FRONTEND_DIR"];
@@ -271,10 +271,6 @@ if (MESSAGE_ROUTER_ENABLED) {
 		process.env["ROUTER_CONFIG_URL"] ??
 		`http://localhost:${PLATFORM_PORT}/api/router/config`;
 }
-if (DATABASE_URL) {
-	process.env["DATABASE_URL"] = DATABASE_URL;
-}
-
 // Initialize logger
 const logger = createLogger({
 	level: LOG_LEVEL,
@@ -310,6 +306,51 @@ async function shutdown(signal: string) {
 }
 
 async function main() {
+	// --- Database credential resolution ---
+	// DB_SECRET_PROVIDER controls how credentials are obtained (default: env).
+	// When a cloud provider is configured, credentials are fetched at startup and
+	// polled every DB_SECRET_REFRESH_INTERVAL_MS ms for rotation.
+	const DB_SECRET_REFRESH_INTERVAL_MS = Number(
+		process.env["DB_SECRET_REFRESH_INTERVAL_MS"] ?? "300000",
+	);
+
+	let DATABASE_URL = "";
+	let refreshableDatabase: RefreshableDatabase | null = null;
+
+	if (needsDatabase) {
+		const databaseUrl = process.env["DATABASE_URL"] ?? "";
+		let secretProvider;
+		try {
+			secretProvider = createSecretProviderFromEnv({ databaseUrl });
+			DATABASE_URL = await secretProvider.getDbUrl();
+		} catch (err) {
+			logger.fatal(
+				{ err },
+				"Failed to resolve database credentials — check DB_SECRET_PROVIDER / DB_SECRET_ARN / DB_SECRET_NAME / DATABASE_URL",
+			);
+			process.exit(1);
+		}
+
+		// Create a refreshable database that all services share.
+		// Its db and client properties are proxies — when refresh() is called,
+		// new queries transparently route to the new connection pool.
+		refreshableDatabase = createRefreshableDatabase({ url: DATABASE_URL });
+
+		// Start polling if a secret provider (not plain env) is configured and
+		// a refresh interval is set.
+		if (secretProvider.name !== "env" && DB_SECRET_REFRESH_INTERVAL_MS > 0) {
+			startSecretRefresh({
+				provider: secretProvider,
+				currentUrl: DATABASE_URL,
+				intervalMs: DB_SECRET_REFRESH_INTERVAL_MS,
+				async onChanged(newUrl) {
+					await refreshableDatabase!.refresh(newUrl);
+				},
+				logger,
+			});
+		}
+	}
+
 	// Hot standby — acquire Redis lock before starting any services.
 	// Blocks here until this instance wins the lock.
 	if (STANDBY_ENABLED) {
@@ -385,6 +426,10 @@ async function main() {
 		platformResult = await startPlatform({
 			port: PLATFORM_PORT,
 			host: HOST,
+			// Pass the refreshable database when available so the platform uses
+			// the proxy connection — queries automatically route to the new pool
+			// after a credential rotation without any restart.
+			...(refreshableDatabase ? { database: refreshableDatabase } : {}),
 			databaseUrl: DATABASE_URL,
 			logLevel: LOG_LEVEL,
 			frontendDir,

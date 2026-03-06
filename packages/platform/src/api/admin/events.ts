@@ -7,6 +7,7 @@
 import type { FastifyInstance } from "fastify";
 import { Type, type Static } from "@sinclair/typebox";
 import { desc } from "drizzle-orm";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { jsonSuccess, notFound, ErrorResponseSchema } from "@flowcatalyst/http";
 import type { EventReadRecord } from "@flowcatalyst/persistence";
 import { events as eventsTable } from "@flowcatalyst/persistence";
@@ -93,8 +94,7 @@ type EventReadResponse = Static<typeof EventReadResponseSchema>;
  */
 export interface EventsRoutesDeps {
 	readonly eventReadRepository: EventReadRepository;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	readonly db: any;
+	readonly db: PostgresJsDatabase;
 }
 
 function toResponse(record: EventReadRecord): EventReadResponse {

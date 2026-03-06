@@ -45,9 +45,24 @@
 export {
 	createDatabase,
 	createMigrationDatabase,
+	createRefreshableDatabase,
 	type Database,
 	type DatabaseConfig,
+	type RefreshableDatabase,
 } from "./connection.js";
+
+// Secret provider interface (cloud implementations live in the app layer)
+export {
+	type SecretProvider,
+	parseSecretToDbUrl,
+} from "./secret-provider.js";
+
+// Secret refresh polling
+export {
+	startSecretRefresh,
+	type SecretRefreshOptions,
+	type SecretRefreshHandle,
+} from "./secret-refresh.js";
 
 // Migration runner
 export { runMigrations } from "./migrate.js";

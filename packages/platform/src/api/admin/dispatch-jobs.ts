@@ -7,6 +7,7 @@
 import type { FastifyInstance } from "fastify";
 import { Type, type Static } from "@sinclair/typebox";
 import { desc } from "drizzle-orm";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { jsonSuccess, notFound, ErrorResponseSchema } from "@flowcatalyst/http";
 import type {
 	DispatchJobReadRecord,
@@ -146,8 +147,7 @@ type DispatchJobAttemptResponse = Static<
  */
 export interface DispatchJobsRoutesDeps {
 	readonly dispatchJobReadRepository: DispatchJobReadRepository;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	readonly db: any;
+	readonly db: PostgresJsDatabase;
 }
 
 function toResponse(record: DispatchJobReadRecord): DispatchJobReadResponse {

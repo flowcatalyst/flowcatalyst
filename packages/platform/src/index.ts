@@ -9,7 +9,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { createFastifyLoggerOptions } from "@flowcatalyst/http";
 import type { PostCommitDispatcher } from "@flowcatalyst/persistence";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { createDatabase } from "@flowcatalyst/persistence";
+import { createDatabase, type Database } from "@flowcatalyst/persistence";
 import {
 	getPasswordService,
 	createEncryptionServiceFromEnv,
@@ -39,6 +39,12 @@ export interface PlatformConfig {
 	port?: number;
 	host?: string;
 	databaseUrl?: string;
+	/**
+	 * Pre-built database instance to use instead of creating one from databaseUrl.
+	 * Pass a RefreshableDatabase here to support live credential rotation without
+	 * a process restart. When provided, databaseUrl is ignored.
+	 */
+	database?: Database;
 	logLevel?: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
 	frontendDir?: string | undefined;
 }
@@ -93,11 +99,16 @@ export async function startPlatform(
 		"Starting FlowCatalyst Platform service",
 	);
 
-	// Create database connection
-	const database = createDatabase({ url: DATABASE_URL });
+	// Create (or reuse) database connection.
+	// When config.database is provided (e.g. a RefreshableDatabase from the app layer),
+	// we use it directly so credential rotation is transparent to repositories.
+	const database: Database =
+		config?.database ?? createDatabase({ url: DATABASE_URL });
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const db = database.db as any;
-	// Schema-aware db instance for repositories that use relational queries (db.query.*)
+	// Schema-aware db instance for repositories that use relational queries (db.query.*).
+	// Built from database.client so it automatically uses a refreshed connection when
+	// the client proxy is swapped by RefreshableDatabase.refresh().
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const schemaDb: any = drizzle({
 		client: database.client,
