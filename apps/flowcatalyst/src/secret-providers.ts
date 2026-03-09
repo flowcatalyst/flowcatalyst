@@ -46,6 +46,7 @@ export function createAwsSecretProvider(
 	return {
 		name: "aws-secrets-manager",
 		async getDbUrl() {
+			console.log("[aws-secret] fetching secret", secretArn);
 			const { SecretsManagerClient, GetSecretValueCommand } = await import(
 				"@aws-sdk/client-secrets-manager"
 			);
