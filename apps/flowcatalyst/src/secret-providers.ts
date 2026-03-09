@@ -80,7 +80,9 @@ export function createAwsSecretProvider(
 					`AWS secret missing required fields. Present: ${Object.keys(obj).join(",")}. DB_HOST=${process.env["DB_HOST"] ?? "not set"}, DB_NAME=${process.env["DB_NAME"] ?? "not set"}`,
 				);
 			}
-			return `postgres://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${hostValue}:${port}/${database}?ssl=true`;
+			// hostValue may already include :port (e.g. from Pulumi RDS endpoint output)
+			const hostPort = hostValue.includes(":") ? hostValue : `${hostValue}:${port}`;
+			return `postgres://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${hostPort}/${database}?ssl=true`;
 		},
 	};
 }
