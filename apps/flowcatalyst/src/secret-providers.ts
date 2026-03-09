@@ -73,13 +73,14 @@ export function createAwsSecretProvider(
 				db?: string;
 			};
 			const { username, password, host, port = 5432, dbname, db } = obj;
+			const hostValue = host ?? process.env["DB_HOST"];
 			const database = dbname ?? db ?? process.env["DB_NAME"];
-			if (!username || !password || !host || !database) {
+			if (!username || !password || !hostValue || !database) {
 				throw new Error(
-					`AWS secret missing required fields. Present: ${Object.keys(obj).join(",")}. DB_NAME=${process.env["DB_NAME"] ?? "not set"}`,
+					`AWS secret missing required fields. Present: ${Object.keys(obj).join(",")}. DB_HOST=${process.env["DB_HOST"] ?? "not set"}, DB_NAME=${process.env["DB_NAME"] ?? "not set"}`,
 				);
 			}
-			return `postgres://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}/${database}?ssl=true`;
+			return `postgres://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${hostValue}:${port}/${database}?ssl=true`;
 		},
 	};
 }
