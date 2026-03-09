@@ -46,7 +46,6 @@ export function createAwsSecretProvider(
 	return {
 		name: "aws-secrets-manager",
 		async getDbUrl() {
-			console.log("[aws-secret] fetching secret", secretArn);
 			const { SecretsManagerClient, GetSecretValueCommand } = await import(
 				"@aws-sdk/client-secrets-manager"
 			);
@@ -59,11 +58,21 @@ export function createAwsSecretProvider(
 					`AWS Secrets Manager secret ${secretArn} has no SecretString value`,
 				);
 			}
-			// AWS RDS managed secrets omit dbname — fall back to DB_NAME env var.
-			return parseSecretToDbUrl(
-				response.SecretString,
-				process.env["DB_NAME"],
-			);
+			// AWS RDS managed secrets omit dbname — inject DB_NAME before parsing.
+			let secretString = response.SecretString;
+			const trimmed = secretString.trim();
+			if (trimmed.startsWith("{") && process.env["DB_NAME"]) {
+				try {
+					const obj = JSON.parse(trimmed) as Record<string, unknown>;
+					if (!obj["dbname"] && !obj["db"]) {
+						obj["dbname"] = process.env["DB_NAME"];
+						secretString = JSON.stringify(obj);
+					}
+				} catch {
+					// not valid JSON — fall through to parseSecretToDbUrl as-is
+				}
+			}
+			return parseSecretToDbUrl(secretString);
 		},
 	};
 }
