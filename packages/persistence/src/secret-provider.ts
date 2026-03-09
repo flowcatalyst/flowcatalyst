@@ -26,8 +26,15 @@ export interface SecretProvider {
 /**
  * Parse a secret value that may be either a plain connection URL or an AWS
  * RDS-style JSON object ({ username, password, host, port, dbname }).
+ *
+ * AWS RDS managed master-user secrets do not include a dbname field — only
+ * connection credentials. Pass fallbackDbName (e.g. from DB_NAME env var) so
+ * the URL can still be constructed when the secret omits it.
  */
-export function parseSecretToDbUrl(raw: string): string {
+export function parseSecretToDbUrl(
+	raw: string,
+	fallbackDbName?: string,
+): string {
 	const trimmed = raw.trim();
 	if (trimmed.startsWith("{")) {
 		const obj = JSON.parse(trimmed) as {
@@ -40,7 +47,7 @@ export function parseSecretToDbUrl(raw: string): string {
 			db?: string;
 		};
 		const { username, password, host, port = 5432, dbname, db } = obj;
-		const database = dbname ?? db;
+		const database = dbname ?? db ?? fallbackDbName;
 		if (!username || !password || !host || !database) {
 			throw new Error(
 				"Secret JSON is missing required fields: username, password, host, dbname",

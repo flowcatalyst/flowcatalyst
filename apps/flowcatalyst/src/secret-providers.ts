@@ -58,7 +58,11 @@ export function createAwsSecretProvider(
 					`AWS Secrets Manager secret ${secretArn} has no SecretString value`,
 				);
 			}
-			return parseSecretToDbUrl(response.SecretString);
+			// AWS RDS managed secrets omit dbname — fall back to DB_NAME env var.
+			return parseSecretToDbUrl(
+				response.SecretString,
+				process.env["DB_NAME"],
+			);
 		},
 	};
 }
