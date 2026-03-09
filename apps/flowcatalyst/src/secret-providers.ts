@@ -58,22 +58,28 @@ export function createAwsSecretProvider(
 					`AWS Secrets Manager secret ${secretArn} has no SecretString value`,
 				);
 			}
-			// AWS RDS managed secrets omit dbname — inject DB_NAME before parsing.
-			let secretString = response.SecretString;
-			const trimmed = secretString.trim();
-			console.log("[aws-secret] DB_NAME env:", process.env["DB_NAME"], "secret keys:", trimmed.startsWith("{") ? Object.keys(JSON.parse(trimmed)).join(",") : "not-json");
-			if (trimmed.startsWith("{") && process.env["DB_NAME"]) {
-				try {
-					const obj = JSON.parse(trimmed) as Record<string, unknown>;
-					if (!obj["dbname"] && !obj["db"]) {
-						obj["dbname"] = process.env["DB_NAME"];
-						secretString = JSON.stringify(obj);
-					}
-				} catch {
-					// not valid JSON — fall through to parseSecretToDbUrl as-is
-				}
+			const raw = response.SecretString.trim();
+			// Plain connection URL — return as-is
+			if (!raw.startsWith("{")) {
+				return raw;
 			}
-			return parseSecretToDbUrl(secretString);
+			// JSON secret (AWS RDS managed secrets omit dbname — fall back to DB_NAME)
+			const obj = JSON.parse(raw) as {
+				username?: string;
+				password?: string;
+				host?: string;
+				port?: number | string;
+				dbname?: string;
+				db?: string;
+			};
+			const { username, password, host, port = 5432, dbname, db } = obj;
+			const database = dbname ?? db ?? process.env["DB_NAME"];
+			if (!username || !password || !host || !database) {
+				throw new Error(
+					`AWS secret missing required fields. Present: ${Object.keys(obj).join(",")}. DB_NAME=${process.env["DB_NAME"] ?? "not set"}`,
+				);
+			}
+			return `postgres://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}/${database}?ssl=true`;
 		},
 	};
 }
