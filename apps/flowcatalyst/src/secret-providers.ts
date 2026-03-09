@@ -61,6 +61,7 @@ export function createAwsSecretProvider(
 			// AWS RDS managed secrets omit dbname — inject DB_NAME before parsing.
 			let secretString = response.SecretString;
 			const trimmed = secretString.trim();
+			console.log("[aws-secret] DB_NAME env:", process.env["DB_NAME"], "secret keys:", trimmed.startsWith("{") ? Object.keys(JSON.parse(trimmed)).join(",") : "not-json");
 			if (trimmed.startsWith("{") && process.env["DB_NAME"]) {
 				try {
 					const obj = JSON.parse(trimmed) as Record<string, unknown>;
