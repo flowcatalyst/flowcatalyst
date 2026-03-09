@@ -4,12 +4,14 @@ import { useRouter } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import { usersApi, type User } from "@/api/users";
 import { clientsApi, type Client } from "@/api/clients";
+import { rolesApi, type Role } from "@/api/roles";
 
 const router = useRouter();
 const toast = useToast();
 
 const users = ref<User[]>([]);
 const clients = ref<Client[]>([]);
+const availableRoles = ref<Role[]>([]);
 const loading = ref(false);
 const initialLoading = ref(true);
 const totalRecords = ref(0);
@@ -18,6 +20,7 @@ const totalRecords = ref(0);
 const searchQuery = ref("");
 const selectedClientId = ref<string | null>(null);
 const selectedStatus = ref<string | null>(null);
+const selectedRoles = ref<string[]>([]);
 
 // Pagination
 const page = ref(0);
@@ -40,15 +43,19 @@ const clientOptions = computed(() => {
 });
 
 const hasActiveFilters = computed(() => {
-	return searchQuery.value || selectedClientId.value || selectedStatus.value;
+	return searchQuery.value || selectedClientId.value || selectedStatus.value || selectedRoles.value.length > 0;
 });
 
+const roleOptions = computed(() =>
+	availableRoles.value.map((r) => ({ label: r.displayName, value: r.name })),
+);
+
 onMounted(async () => {
-	await Promise.all([loadUsers(), loadClients()]);
+	await Promise.all([loadUsers(), loadClients(), loadRoles()]);
 });
 
 // Reload users when filters change (server-side filters)
-watch([selectedClientId, selectedStatus], () => {
+watch([selectedClientId, selectedStatus, selectedRoles], () => {
 	page.value = 0;
 	loadUsers();
 });
@@ -76,6 +83,7 @@ async function loadUsers() {
 						? false
 						: undefined,
 			q: searchQuery.value || undefined,
+			roles: selectedRoles.value.length > 0 ? selectedRoles.value : undefined,
 			page: page.value,
 			pageSize: pageSize.value,
 			sortField: sortField.value,
@@ -110,6 +118,15 @@ function onSort(event: { sortField?: string | ((item: unknown) => string); sortO
 	loadUsers();
 }
 
+async function loadRoles() {
+	try {
+		const response = await rolesApi.list();
+		availableRoles.value = response.items;
+	} catch (error) {
+		console.error("Failed to fetch roles:", error);
+	}
+}
+
 async function loadClients() {
 	try {
 		const allClients: typeof clients.value = [];
@@ -131,6 +148,7 @@ function clearFilters() {
 	searchQuery.value = "";
 	selectedClientId.value = null;
 	selectedStatus.value = null;
+	selectedRoles.value = [];
 	page.value = 0;
 	loadUsers();
 }
@@ -241,6 +259,20 @@ function formatDate(dateStr: string | undefined | null) {
             optionValue="value"
             placeholder="All Statuses"
             :showClear="true"
+            class="filter-input"
+          />
+        </div>
+
+        <div class="filter-group">
+          <label>Roles</label>
+          <MultiSelect
+            v-model="selectedRoles"
+            :options="roleOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="All Roles"
+            :showClear="true"
+            display="chip"
             class="filter-input"
           />
         </div>

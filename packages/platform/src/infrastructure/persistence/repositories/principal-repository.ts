@@ -55,6 +55,7 @@ export interface PrincipalFilters {
 	active?: boolean | undefined;
 	email?: string | undefined;
 	search?: string | undefined;
+	roles?: string[] | undefined;
 }
 
 export interface PrincipalRepository extends PaginatedRepository<Principal> {
@@ -487,6 +488,13 @@ export function createPrincipalRepository(
 						ilike(principals.email, pattern),
 					)!,
 				);
+			}
+			if (filters.roles && filters.roles.length > 0) {
+				const subquery = db(tx)
+					.select({ principalId: principalRoles.principalId })
+					.from(principalRoles)
+					.where(inArray(principalRoles.roleName, filters.roles));
+				conditions.push(inArray(principals.id, subquery));
 			}
 
 			const whereClause =

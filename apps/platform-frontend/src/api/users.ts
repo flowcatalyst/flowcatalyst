@@ -100,6 +100,7 @@ export interface UserFilters {
 	type?: PrincipalType;
 	active?: boolean;
 	q?: string;
+	roles?: string[];
 	page?: number;
 	pageSize?: number;
 	sortField?: string;
@@ -114,6 +115,7 @@ export const usersApi = {
 		if (filters?.active !== undefined)
 			params.append("active", String(filters.active));
 		if (filters?.q) params.append("q", filters.q);
+		if (filters?.roles?.length) params.append("roles", filters.roles.join(","));
 		if (filters?.page !== undefined)
 			params.append("page", String(filters.page));
 		if (filters?.pageSize !== undefined)
