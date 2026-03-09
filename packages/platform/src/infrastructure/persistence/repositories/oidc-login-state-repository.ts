@@ -5,7 +5,7 @@
  * States are single-use and expire after 10 minutes.
  */
 
-import { eq, lt } from "drizzle-orm";
+import { eq, lt, and, gte, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { TransactionContext } from "@flowcatalyst/persistence";
 
@@ -38,7 +38,13 @@ export interface OidcLoginState {
 }
 
 export interface OidcLoginStateRepository {
-	findValidState(
+	/**
+	 * Atomically consume a login state: deletes and returns it in one query.
+	 * Returns undefined if the state does not exist or has expired.
+	 * This prevents race conditions when multiple callbacks arrive simultaneously
+	 * (e.g. Entra retrying the redirect) — only the first caller gets the state.
+	 */
+	consumeValidState(
 		state: string,
 		tx?: TransactionContext,
 	): Promise<OidcLoginState | undefined>;
@@ -75,23 +81,23 @@ export function createOidcLoginStateRepository(
 	const db = (tx?: TransactionContext): AnyDb => (tx?.db as AnyDb) ?? defaultDb;
 
 	return {
-		async findValidState(
+		async consumeValidState(
 			state: string,
 			tx?: TransactionContext,
 		): Promise<OidcLoginState | undefined> {
+			// Atomic DELETE ... RETURNING: finds, validates expiry, and deletes in one
+			// round-trip. If two callbacks race (e.g. Entra retry), only one gets the row.
 			const [record] = await db(tx)
-				.select()
-				.from(oidcLoginStates)
-				.where(eq(oidcLoginStates.state, state))
-				.limit(1);
+				.delete(oidcLoginStates)
+				.where(
+					and(
+						eq(oidcLoginStates.state, state),
+						gte(oidcLoginStates.expiresAt, sql`NOW()`),
+					),
+				)
+				.returning();
 
 			if (!record) return undefined;
-
-			// Check expiry
-			if (record.expiresAt < new Date()) {
-				return undefined;
-			}
-
 			return hydrateLoginState(record);
 		},
 

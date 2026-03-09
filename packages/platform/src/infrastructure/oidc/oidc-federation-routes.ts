@@ -232,9 +232,10 @@ export async function registerOidcFederationRoutes(
 			return errorRedirect(reply, deps, "No state parameter received");
 		}
 
-		// Validate state
+		// Atomically consume state — deletes and returns in one query so concurrent
+		// callbacks (e.g. Entra retrying the redirect) can't both succeed.
 		const loginState =
-			await deps.oidcLoginStateRepository.findValidState(state);
+			await deps.oidcLoginStateRepository.consumeValidState(state);
 		if (!loginState) {
 			fastify.log.warn({ state }, "Invalid or expired OIDC state");
 			return errorRedirect(
@@ -243,9 +244,6 @@ export async function registerOidcFederationRoutes(
 				"Invalid or expired login session. Please try again.",
 			);
 		}
-
-		// Delete state immediately (single-use)
-		await deps.oidcLoginStateRepository.deleteByState(state);
 
 		// Load identity provider and mapping
 		const idp = await deps.identityProviderRepository.findById(
