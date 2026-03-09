@@ -10,6 +10,7 @@ import {
 	ANCHOR_DOMAIN_PERMISSIONS,
 	APPLICATION_PERMISSIONS,
 	AUDIT_LOG_PERMISSIONS,
+	LOGIN_ATTEMPT_PERMISSIONS,
 } from "../permissions/platform-admin.js";
 
 /**
@@ -46,6 +47,9 @@ export const PLATFORM_ADMIN: RoleDefinition = makeRole(
 		// Audit log access
 		AUDIT_LOG_PERMISSIONS.READ,
 		AUDIT_LOG_PERMISSIONS.EXPORT,
+
+		// Login attempt access
+		LOGIN_ATTEMPT_PERMISSIONS.READ,
 	],
 );
 
@@ -62,5 +66,6 @@ export const PLATFORM_ADMIN_READONLY: RoleDefinition = makeRole(
 		ANCHOR_DOMAIN_PERMISSIONS.READ,
 		APPLICATION_PERMISSIONS.READ,
 		AUDIT_LOG_PERMISSIONS.READ,
+		LOGIN_ATTEMPT_PERMISSIONS.READ,
 	],
 );
