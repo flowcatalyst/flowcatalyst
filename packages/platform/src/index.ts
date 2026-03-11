@@ -65,6 +65,8 @@ export interface PlatformResult {
 
 // Re-export for external consumers (e.g. src/index.ts embedded publisher)
 export { createPostCommitDispatcherFromPublisher } from "./composition/dispatch.js";
+export { startDispatchScheduler } from "./dispatch-scheduler/index.js";
+export type { DispatchSchedulerDeps, DispatchSchedulerHandle } from "./dispatch-scheduler/index.js";
 
 /**
  * Start the FlowCatalyst Platform service.

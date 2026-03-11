@@ -66,14 +66,14 @@ async function resolveMigrationsFolder(): Promise<string> {
 		if (sea.isSea()) {
 			const raw = sea.getAsset("migrations", "utf8");
 			const data = JSON.parse(raw) as {
-				journal: string;
 				files: Record<string, string>;
 			};
 			const dir = join(tmpdir(), "flowcatalyst-migrations");
-			mkdirSync(join(dir, "meta"), { recursive: true });
-			writeFileSync(join(dir, "meta", "_journal.json"), data.journal);
+			mkdirSync(dir, { recursive: true });
 			for (const [name, content] of Object.entries(data.files)) {
-				writeFileSync(join(dir, name), content);
+				const fullPath = join(dir, name);
+				mkdirSync(dirname(fullPath), { recursive: true });
+				writeFileSync(fullPath, content);
 			}
 			return dir;
 		}
@@ -237,6 +237,8 @@ const STREAM_PROCESSOR_ENABLED =
 	process.env["STREAM_PROCESSOR_ENABLED"] !== "false";
 const OUTBOX_PROCESSOR_ENABLED =
 	process.env["OUTBOX_PROCESSOR_ENABLED"] === "true";
+const DISPATCH_SCHEDULER_ENABLED =
+	process.env["DISPATCH_SCHEDULER_ENABLED"] === "true";
 const STANDBY_ENABLED = process.env["STANDBY_ENABLED"] === "true";
 const STANDBY_REDIS_URL = process.env["REDIS_URL"];
 const STANDBY_INSTANCE_ID =
@@ -255,7 +257,7 @@ const AUTO_MIGRATE =
 
 // DATABASE_URL is only required when a service that uses the database is enabled
 const needsDatabase =
-	PLATFORM_ENABLED || STREAM_PROCESSOR_ENABLED || OUTBOX_PROCESSOR_ENABLED;
+	PLATFORM_ENABLED || STREAM_PROCESSOR_ENABLED || OUTBOX_PROCESSOR_ENABLED || DISPATCH_SCHEDULER_ENABLED;
 
 // Frontend dir override
 const FRONTEND_DIR = process.env["FRONTEND_DIR"];
@@ -377,6 +379,7 @@ async function main() {
 		STREAM_PROCESSOR_ENABLED && "Stream Processor",
 		MESSAGE_ROUTER_ENABLED && "Message Router",
 		OUTBOX_PROCESSOR_ENABLED && "Outbox Processor",
+		DISPATCH_SCHEDULER_ENABLED && !PLATFORM_ENABLED && "Dispatch Scheduler",
 	].filter(Boolean);
 
 	logger.info(
@@ -516,6 +519,37 @@ async function main() {
 		stopFns.push(async () => {
 			logger.info("Stopping Outbox Processor...");
 			await outboxHandle.stop();
+		});
+	}
+
+	// 5. Start Dispatch Scheduler (standalone — only when Platform is not running)
+	// When Platform IS enabled, the scheduler starts inside createDispatchInfrastructure.
+	if (DISPATCH_SCHEDULER_ENABLED && !PLATFORM_ENABLED) {
+		logger.info("Starting Dispatch Scheduler (standalone)...");
+		const { createDatabase } = await import("@flowcatalyst/persistence");
+		const { createSqsPublisher } = await import("@flowcatalyst/queue-core");
+		const { startDispatchScheduler } = await import("@flowcatalyst/platform");
+
+		const schedulerDb = createDatabase({ url: DATABASE_URL });
+		const schedulerPublisher = createSqsPublisher({
+			queueUrl: process.env["DISPATCH_QUEUE_URL"] ?? "",
+			region: process.env["DISPATCH_QUEUE_REGION"] ?? "eu-west-1",
+			endpoint: process.env["SQS_ENDPOINT"],
+		});
+		const schedulerHandle = startDispatchScheduler({
+			db: schedulerDb.db,
+			publisher: schedulerPublisher,
+			logger,
+			config: {
+				processingEndpoint:
+					process.env["DISPATCH_SCHEDULER_PROCESSING_ENDPOINT"] ??
+					"http://localhost:8080/api/dispatch/process",
+			},
+		});
+		stopFns.push(async () => {
+			logger.info("Stopping Dispatch Scheduler...");
+			schedulerHandle.stop();
+			await schedulerDb.close();
 		});
 	}
 

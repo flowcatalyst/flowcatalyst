@@ -3,7 +3,7 @@
 	"output": "dist/sea-prep.blob",
 	"disableExperimentalSEAWarning": true,
 	"useSnapshot": false,
-	"useCodeCache": true,
+	"useCodeCache": false,
 	"assets": {
 		"migrations": "dist/migrations.json",
 		"frontend": "dist/frontend.json"

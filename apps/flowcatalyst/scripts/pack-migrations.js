@@ -3,20 +3,20 @@
  *
  * Reads the drizzle/ directory and produces dist/migrations.json containing:
  * {
- *   "journal": "<contents of meta/_journal.json>",
- *   "files": { "0000_xxx.sql": "CREATE TABLE...", ... }
+ *   "files": { "<timestamp>_<name>/migration.sql": "CREATE TABLE...", ... }
  * }
  *
- * Usage: node scripts/pack-migrations.js
+ * Supports drizzle-kit v1 subdirectory format (each migration is a folder
+ * containing migration.sql). Compatible with drizzle-orm's readMigrationFiles().
  *
- * Prerequisites:
- * - Run `drizzle-kit generate` first to populate the drizzle/ directory
+ * Usage: node scripts/pack-migrations.js
  */
 
 import {
 	readFileSync,
 	writeFileSync,
 	readdirSync,
+	statSync,
 	existsSync,
 	mkdirSync,
 } from "node:fs";
@@ -30,33 +30,33 @@ const outputPath = resolve(distDir, "migrations.json");
 
 if (!existsSync(drizzleDir)) {
 	console.error(`Drizzle migrations directory not found: ${drizzleDir}`);
-	console.error("Run `pnpm db:generate` first to generate migrations.");
 	process.exit(1);
 }
 
-const journalPath = resolve(drizzleDir, "meta", "_journal.json");
-if (!existsSync(journalPath)) {
-	console.error(`Journal file not found: ${journalPath}`);
-	console.error("Run `pnpm db:generate` first to generate migrations.");
+// Scan for migration subdirectories (each contains migration.sql)
+const migrationDirs = readdirSync(drizzleDir)
+	.filter((entry) => {
+		const fullPath = resolve(drizzleDir, entry);
+		return (
+			statSync(fullPath).isDirectory() &&
+			existsSync(resolve(fullPath, "migration.sql"))
+		);
+	})
+	.sort();
+
+if (migrationDirs.length === 0) {
+	console.error("No migration subdirectories found in drizzle/ directory.");
+	console.error("Expected folders like: drizzle/<timestamp>_<name>/migration.sql");
 	process.exit(1);
 }
-
-const journal = readFileSync(journalPath, "utf8");
 
 const files = {};
-for (const entry of readdirSync(drizzleDir)) {
-	if (entry.endsWith(".sql")) {
-		files[entry] = readFileSync(resolve(drizzleDir, entry), "utf8");
-	}
-}
-
-const sqlCount = Object.keys(files).length;
-if (sqlCount === 0) {
-	console.error("No .sql migration files found in drizzle/ directory.");
-	process.exit(1);
+for (const dir of migrationDirs) {
+	const sqlPath = resolve(drizzleDir, dir, "migration.sql");
+	files[`${dir}/migration.sql`] = readFileSync(sqlPath, "utf8");
 }
 
 mkdirSync(distDir, { recursive: true });
-writeFileSync(outputPath, JSON.stringify({ journal, files }, null, 2));
+writeFileSync(outputPath, JSON.stringify({ files }, null, 2));
 
-console.log(`Packed ${sqlCount} migration(s) into ${outputPath}`);
+console.log(`Packed ${migrationDirs.length} migration(s) into ${outputPath}`);
