@@ -4,13 +4,14 @@
 //! Computes delta (added/removed) and persists via UnitOfWork.
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::PrincipalRepository;
 use crate::ApplicationRepository;
 use crate::principal::entity::PrincipalType;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ApplicationAccessAssigned;
 
@@ -36,18 +37,32 @@ impl<U: UnitOfWork> AssignApplicationAccessUseCase<U> {
     ) -> Self {
         Self { principal_repo, application_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: AssignApplicationAccessCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<ApplicationAccessAssigned> {
+#[async_trait]
+impl<U: UnitOfWork> UseCase for AssignApplicationAccessUseCase<U> {
+    type Command = AssignApplicationAccessCommand;
+    type Event = ApplicationAccessAssigned;
+
+    async fn validate(&self, command: &AssignApplicationAccessCommand) -> Result<(), UseCaseError> {
         if command.user_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "USER_ID_REQUIRED", "User ID is required",
             ));
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &AssignApplicationAccessCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: AssignApplicationAccessCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<ApplicationAccessAssigned> {
         // Find the principal
         let mut principal = match self.principal_repo.find_by_id(&command.user_id).await {
             Ok(Some(p)) => p,

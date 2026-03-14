@@ -14,6 +14,12 @@ use std::sync::Arc;
 
 use crate::role::entity::{AuthRole, RoleSource};
 use crate::role::repository::RoleRepository;
+use crate::role::operations::{
+    CreateRoleCommand, CreateRoleUseCase,
+    UpdateRoleCommand, UpdateRoleUseCase,
+    DeleteRoleCommand, DeleteRoleUseCase,
+};
+use crate::usecase::{ExecutionContext, PgUnitOfWork, UseCase};
 use crate::application::repository::ApplicationRepository;
 use crate::shared::error::PlatformError;
 use crate::shared::api_common::CreatedResponse;
@@ -66,7 +72,7 @@ impl From<AuthRole> for BffRoleResponse {
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BffRoleListResponse {
-    pub roles: Vec<BffRoleResponse>,
+    pub items: Vec<BffRoleResponse>,
     pub total: usize,
 }
 
@@ -102,7 +108,7 @@ pub struct BffPermissionResponse {
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BffPermissionListResponse {
-    pub permissions: Vec<BffPermissionResponse>,
+    pub items: Vec<BffPermissionResponse>,
     pub total: usize,
 }
 
@@ -159,6 +165,7 @@ pub struct BffRolesQuery {
 pub struct BffRolesState {
     pub role_repo: Arc<RoleRepository>,
     pub application_repo: Option<Arc<ApplicationRepository>>,
+    pub unit_of_work: Arc<PgUnitOfWork>,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -202,7 +209,7 @@ pub async fn list_roles(
 
     let roles: Vec<BffRoleResponse> = roles.into_iter().map(|r| r.into()).collect();
     let total = roles.len();
-    Ok(Json(BffRoleListResponse { roles, total }))
+    Ok(Json(BffRoleListResponse { items: roles, total }))
 }
 
 /// Get applications for role filter dropdown
@@ -252,7 +259,7 @@ pub async fn list_permissions(
 ) -> Result<Json<BffPermissionListResponse>, PlatformError> {
     let permissions = get_builtin_permissions();
     let total = permissions.len();
-    Ok(Json(BffPermissionListResponse { permissions, total }))
+    Ok(Json(BffPermissionListResponse { items: permissions, total }))
 }
 
 /// Get single permission by string
@@ -334,26 +341,20 @@ pub async fn create_role(
 ) -> Result<(axum::http::StatusCode, Json<CreatedResponse>), PlatformError> {
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    let role_name = format!("{}:{}", req.application_code, req.role_name);
+    let cmd = CreateRoleCommand {
+        application_code: req.application_code,
+        role_name: req.role_name,
+        display_name: req.display_name,
+        description: req.description,
+        permissions: req.permissions,
+        client_managed: req.client_managed,
+    };
 
-    // Check for duplicate name
-    if let Some(_) = state.role_repo.find_by_name(&role_name).await? {
-        return Err(PlatformError::duplicate("Role", "name", &role_name));
-    }
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let use_case = CreateRoleUseCase::new(state.role_repo.clone(), state.unit_of_work.clone());
+    let event = use_case.run(cmd, ctx).await.into_result()?;
 
-    let mut role = AuthRole::new(&req.application_code, &req.role_name, &req.display_name);
-
-    if let Some(desc) = req.description {
-        role = role.with_description(desc);
-    }
-
-    role = role.with_permissions(req.permissions);
-    role = role.with_client_managed(req.client_managed);
-
-    let id = role.id.clone();
-    state.role_repo.insert(&role).await?;
-
-    Ok((axum::http::StatusCode::CREATED, Json(CreatedResponse::new(id))))
+    Ok((axum::http::StatusCode::CREATED, Json(CreatedResponse::new(event.role_id))))
 }
 
 /// Update role
@@ -380,38 +381,33 @@ pub async fn update_role(
 ) -> Result<Json<BffRoleResponse>, PlatformError> {
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    let mut role = if role_name.contains(':') {
+    // Resolve role name to ID
+    let role = if role_name.contains(':') {
         state.role_repo.find_by_name(&role_name).await?
     } else {
         state.role_repo.find_by_id(&role_name).await?
     }
     .ok_or_else(|| PlatformError::not_found("Role", &role_name))?;
 
-    if !role.can_modify() {
-        return Err(PlatformError::validation(format!(
-            "Role {} is from source {} and cannot be modified",
-            role.name,
-            role.source.as_str()
-        )));
-    }
+    let role_id = role.id.clone();
 
-    if let Some(display_name) = req.display_name {
-        role.display_name = display_name;
-    }
-    if let Some(desc) = req.description {
-        role.description = Some(desc);
-    }
-    if let Some(client_managed) = req.client_managed {
-        role.client_managed = client_managed;
-    }
-    if let Some(permissions) = req.permissions {
-        role.permissions = permissions.into_iter().collect();
-    }
+    let cmd = UpdateRoleCommand {
+        role_id: role_id.clone(),
+        display_name: req.display_name,
+        description: req.description,
+        permissions: req.permissions,
+        client_managed: req.client_managed,
+    };
 
-    role.updated_at = chrono::Utc::now();
-    state.role_repo.update(&role).await?;
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let use_case = UpdateRoleUseCase::new(state.role_repo.clone(), state.unit_of_work.clone());
+    use_case.run(cmd, ctx).await.into_result()?;
 
-    Ok(Json(role.into()))
+    // Re-fetch the updated role for the response
+    let updated_role = state.role_repo.find_by_id(&role_id).await?
+        .ok_or_else(|| PlatformError::not_found("Role", &role_id))?;
+
+    Ok(Json(updated_role.into()))
 }
 
 /// Delete role
@@ -436,6 +432,7 @@ pub async fn delete_role(
 ) -> Result<axum::http::StatusCode, PlatformError> {
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
+    // Resolve role name to ID
     let role = if role_name.contains(':') {
         state.role_repo.find_by_name(&role_name).await?
     } else {
@@ -443,11 +440,13 @@ pub async fn delete_role(
     }
     .ok_or_else(|| PlatformError::not_found("Role", &role_name))?;
 
-    if !role.can_modify() {
-        return Err(PlatformError::validation("This role cannot be deleted"));
-    }
+    let cmd = DeleteRoleCommand {
+        role_id: role.id.clone(),
+    };
 
-    state.role_repo.delete(&role.id).await?;
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let use_case = DeleteRoleUseCase::new(state.role_repo.clone(), state.unit_of_work.clone());
+    use_case.run(cmd, ctx).await.into_result()?;
 
     Ok(axum::http::StatusCode::NO_CONTENT)
 }

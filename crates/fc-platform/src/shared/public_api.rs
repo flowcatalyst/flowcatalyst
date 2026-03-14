@@ -1,11 +1,15 @@
 //! /api/public Routes — Unauthenticated public endpoints
 
 use axum::{
+    extract::State,
     routing::get,
     Json, Router,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use utoipa::ToSchema;
+
+use crate::platform_config::repository::PlatformConfigRepository;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -19,7 +23,7 @@ pub struct PlatformInfoResponse {
     pub features: FeaturesResponse,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct LoginThemeResponse {
     pub brand_name: Option<String>,
@@ -33,6 +37,11 @@ pub struct LoginThemeResponse {
     pub background_gradient: Option<String>,
     pub footer_text: Option<String>,
     pub custom_css: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct PublicApiState {
+    pub config_repo: Arc<PlatformConfigRepository>,
 }
 
 /// Get platform feature flags
@@ -63,24 +72,36 @@ async fn get_platform_info() -> Json<PlatformInfoResponse> {
         (status = 200, description = "Login theme configuration", body = LoginThemeResponse)
     )
 )]
-async fn get_login_theme() -> Json<LoginThemeResponse> {
-    Json(LoginThemeResponse {
-        brand_name: None,
-        brand_subtitle: None,
-        logo_url: None,
-        logo_svg: None,
-        logo_height: None,
-        primary_color: None,
-        accent_color: None,
-        background_color: None,
-        background_gradient: None,
-        footer_text: None,
-        custom_css: None,
-    })
+async fn get_login_theme(
+    State(state): State<PublicApiState>,
+) -> Json<LoginThemeResponse> {
+    // Read from app_platform_configs: app_code="platform", section="login", property="theme", scope="GLOBAL"
+    let theme = match state.config_repo.find_by_key("platform", "login", "theme", "GLOBAL", None).await {
+        Ok(Some(config)) => {
+            tracing::debug!(value_len = config.value.len(), "Found login theme config");
+            match serde_json::from_str::<LoginThemeResponse>(&config.value) {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::warn!(error = %e, value = %config.value, "Failed to parse login theme JSON");
+                    LoginThemeResponse::default()
+                }
+            }
+        }
+        Ok(None) => {
+            tracing::debug!("No login theme config found in DB");
+            LoginThemeResponse::default()
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to query login theme config");
+            LoginThemeResponse::default()
+        }
+    };
+    Json(theme)
 }
 
-pub fn public_router() -> Router {
+pub fn public_router(state: PublicApiState) -> Router {
     Router::new()
         .route("/platform", get(get_platform_info))
         .route("/login-theme", get(get_login_theme))
+        .with_state(state)
 }

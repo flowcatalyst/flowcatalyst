@@ -44,16 +44,25 @@ async fn main() -> anyhow::Result<()> {
     let db = Database::connect(opts).await?;
     info!(url = %database_url, "Connected to PostgreSQL");
 
+    let max_concurrent_groups: usize = std::env::var("FC_SCHEDULER_MAX_CONCURRENT_GROUPS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10);
+    let default_pool_code = std::env::var("FC_SCHEDULER_DEFAULT_POOL_CODE")
+        .unwrap_or_else(|_| "DISPATCH-POOL".to_string());
+    let processing_endpoint = std::env::var("FC_SCHEDULER_PROCESSING_ENDPOINT")
+        .unwrap_or_else(|_| format!("http://localhost:{}/api/dispatch/process", config.http.port));
+
     let scheduler_config = SchedulerConfig {
         enabled: config.scheduler.enabled,
         poll_interval: std::time::Duration::from_millis(config.scheduler.poll_interval_ms),
         batch_size: config.scheduler.batch_size,
         stale_threshold: std::time::Duration::from_secs(config.scheduler.stale_threshold_minutes * 60),
         default_dispatch_mode: config.scheduler.default_dispatch_mode.as_str().into(),
-        default_pool_code: "default".to_string(),
-        processing_endpoint: format!("http://localhost:{}/api/router/process", config.http.port),
+        default_pool_code,
+        processing_endpoint,
         app_key: if config.scheduler.app_key.is_empty() { None } else { Some(config.scheduler.app_key.clone()) },
-        max_concurrent_groups: 50,
+        max_concurrent_groups,
         connection_filter_enabled: true,
     };
 

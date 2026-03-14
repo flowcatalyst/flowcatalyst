@@ -19,7 +19,7 @@ use crate::{ApplicationRepository, ServiceAccountRepository, RoleRepository, App
 use crate::shared::error::PlatformError;
 use crate::shared::api_common::PaginationParams;
 use crate::shared::middleware::Authenticated;
-use crate::usecase::{ExecutionContext, UnitOfWork, UseCaseResult};
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseResult};
 use crate::application::operations::{
     CreateApplicationCommand, CreateApplicationUseCase,
     UpdateApplicationCommand, UpdateApplicationUseCase,
@@ -220,7 +220,7 @@ pub async fn create_application<U: UnitOfWork>(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.create_use_case.execute(command, ctx).await {
+    match state.create_use_case.run(command, ctx).await {
         UseCaseResult::Success(event) => {
             let app = state.application_repo.find_by_id(&event.application_id).await?
                 .ok_or_else(|| PlatformError::internal("Application not found after create"))?;
@@ -330,7 +330,7 @@ pub async fn update_application<U: UnitOfWork>(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.update_use_case.execute(command, ctx).await {
+    match state.update_use_case.run(command, ctx).await {
         UseCaseResult::Success(_event) => {
             // Fetch the updated entity for response
             let app = state.application_repo.find_by_id(&id).await?
@@ -366,7 +366,7 @@ pub async fn delete_application<U: UnitOfWork>(
     let command = DeactivateApplicationCommand { id };
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.deactivate_use_case.execute(command, ctx).await {
+    match state.deactivate_use_case.run(command, ctx).await {
         UseCaseResult::Success(_event) => Ok(StatusCode::NO_CONTENT),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
@@ -397,7 +397,7 @@ pub async fn activate_application<U: UnitOfWork>(
     let command = ActivateApplicationCommand { id: id.clone() };
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.activate_use_case.execute(command, ctx).await {
+    match state.activate_use_case.run(command, ctx).await {
         UseCaseResult::Success(_event) => {
             let app = state.application_repo.find_by_id(&id).await?
                 .ok_or_else(|| PlatformError::not_found("Application", &id))?;
@@ -432,7 +432,7 @@ pub async fn deactivate_application<U: UnitOfWork>(
     let command = DeactivateApplicationCommand { id: id.clone() };
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.deactivate_use_case.execute(command, ctx).await {
+    match state.deactivate_use_case.run(command, ctx).await {
         UseCaseResult::Success(_event) => {
             let app = state.application_repo.find_by_id(&id).await?
                 .ok_or_else(|| PlatformError::not_found("Application", &id))?;

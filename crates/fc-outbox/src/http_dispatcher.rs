@@ -6,7 +6,7 @@
 //! Routes items to the correct endpoint based on type:
 //! - `/api/events/batch` for EVENT items
 //! - `/api/dispatch/jobs/batch` for DISPATCH_JOB items
-//! - `/api/audit/logs/batch` for AUDIT_LOG items
+//! - `/api/audit-logs/batch` for AUDIT_LOG items
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -44,21 +44,12 @@ impl Default for HttpDispatcherConfig {
     }
 }
 
-/// Batch request payload (matches Java structure)
+/// Batch request payload (matches TypeScript structure)
+/// Each item in the array is the raw payload value — no wrapper object.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BatchRequest {
-    pub items: Vec<BatchItem>,
-}
-
-/// Single item in a batch request
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BatchItem {
-    pub id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message_group: Option<String>,
-    pub payload: serde_json::Value,
+    pub items: Vec<serde_json::Value>,
 }
 
 /// Batch response from the API
@@ -157,12 +148,9 @@ impl HttpDispatcher {
         let item_type = items[0].item_type;
         let url = self.endpoint_for_type(item_type);
 
+        // TypeScript sends raw payloads: { items: [payload1, payload2, ...] }
         let batch_request = BatchRequest {
-            items: items.iter().map(|item| BatchItem {
-                id: item.id.clone(),
-                message_group: item.message_group.clone(),
-                payload: item.payload.clone(),
-            }).collect(),
+            items: items.iter().map(|item| item.payload.clone()).collect(),
         };
 
         debug!("Sending batch of {} {} items to {}", items.len(), item_type, url);
@@ -316,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn test_batch_item_from_outbox_item() {
+    fn test_batch_request_serialization() {
         let item = OutboxItem {
             id: "test-1".to_string(),
             item_type: OutboxItemType::EVENT,
@@ -332,14 +320,12 @@ mod tests {
             headers: None,
         };
 
-        let batch_item = BatchItem {
-            id: item.id.clone(),
-            message_group: item.message_group.clone(),
-            payload: item.payload.clone(),
+        // TypeScript sends raw payloads in the items array
+        let batch = BatchRequest {
+            items: vec![item.payload.clone()],
         };
 
-        assert_eq!(batch_item.id, "test-1");
-        assert_eq!(batch_item.message_group, Some("group-1".to_string()));
-        assert_eq!(batch_item.payload, serde_json::json!({"key": "value"}));
+        let json = serde_json::to_value(&batch).unwrap();
+        assert_eq!(json["items"][0], serde_json::json!({"key": "value"}));
     }
 }

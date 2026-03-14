@@ -2,11 +2,13 @@
 #
 # Quick start:
 #   just setup     — first time: up + migrate + dev
-#   just dev       — start fc-dev with hot reload
+#   just dev       — start fc-dev with hot reload (backend only)
+#   just dev-full  — start both backend + frontend with hot reload
 #
 # Prerequisites:
 #   cargo install cargo-watch
 #   docker / docker compose
+#   pnpm (for frontend)
 
 set dotenv-filename := ".env.development"
 
@@ -96,7 +98,7 @@ seed:
 
 # Run fc-dev with auto-restart on source changes
 dev:
-    FC_DATABASE_URL={{ FC_DATABASE_URL }} cargo watch -w crates -w bin -x 'run --bin fc-dev'
+    FC_API_PORT={{ FC_API_PORT }} FC_DATABASE_URL={{ FC_DATABASE_URL }} cargo watch -w crates -w bin -x 'run --bin fc-dev'
 
 # Run fc-dev with debug logging
 dev-debug:
@@ -105,6 +107,28 @@ dev-debug:
 # Run fc-dev once (no watch)
 run:
     FC_DATABASE_URL={{ FC_DATABASE_URL }} cargo run --bin fc-dev
+
+# ─── Frontend ─────────────────────────────────────────────────────────────
+
+# Install frontend dependencies
+frontend-install:
+    cd frontend && pnpm install
+
+# Run Vite dev server (hot-reload, proxies API to Rust backend)
+frontend-dev:
+    cd frontend && VITE_BACKEND_PORT={{ FC_API_PORT }} pnpm dev
+
+# Build frontend for production
+frontend-build:
+    cd frontend && pnpm build
+
+# Run both Rust backend + Vite frontend concurrently (full dev experience)
+dev-full:
+    cd frontend && FC_API_PORT={{ FC_API_PORT }} FC_DATABASE_URL={{ FC_DATABASE_URL }} pnpm dev:full
+
+# Run fc-dev serving the built frontend (production-like)
+dev-static: frontend-build
+    FC_STATIC_DIR=frontend/dist FC_DATABASE_URL={{ FC_DATABASE_URL }} cargo run --bin fc-dev
 
 # Watch and run tests on file changes
 watch-test:
@@ -143,6 +167,13 @@ build-outbox:
 
 build-stream:
     cargo build --bin fc-stream-processor
+
+build-server:
+    cargo build --bin fc-server
+
+# Run unified server (all subsystems via env vars)
+run-server:
+    FC_DATABASE_URL={{ FC_DATABASE_URL }} cargo run --bin fc-server
 
 # ─── Testing ───────────────────────────────────────────────────────────────
 

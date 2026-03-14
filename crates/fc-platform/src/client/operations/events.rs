@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use crate::usecase::ExecutionContext;
 use crate::usecase::domain_event::EventMetadata;
 use crate::TsidGenerator;
-use crate::EntityType;
 use crate::impl_domain_event;
 use crate::client::entity::ClientStatus;
 
@@ -36,7 +35,7 @@ impl ClientCreated {
         identifier: &str,
         description: Option<&str>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.client.{}", client_id);
         let message_group = format!("platform:client:{}", client_id);
 
@@ -88,7 +87,7 @@ impl ClientUpdated {
         name: Option<&str>,
         description: Option<&str>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.client.{}", client_id);
         let message_group = format!("platform:client:{}", client_id);
 
@@ -131,7 +130,7 @@ impl ClientActivated {
     const SOURCE: &'static str = "platform:iam";
 
     pub fn new(ctx: &ExecutionContext, client_id: &str, previous_status: ClientStatus) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.client.{}", client_id);
         let message_group = format!("platform:client:{}", client_id);
 
@@ -173,7 +172,7 @@ impl ClientSuspended {
     const SOURCE: &'static str = "platform:iam";
 
     pub fn new(ctx: &ExecutionContext, client_id: &str, reason: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.client.{}", client_id);
         let message_group = format!("platform:client:{}", client_id);
 
@@ -216,7 +215,7 @@ impl ClientDeleted {
     const SOURCE: &'static str = "platform:iam";
 
     pub fn new(ctx: &ExecutionContext, client_id: &str, name: &str, identifier: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.client.{}", client_id);
         let message_group = format!("platform:client:{}", client_id);
 
@@ -261,7 +260,7 @@ impl ClientNoteAdded {
     const SOURCE: &'static str = "platform:iam";
 
     pub fn new(ctx: &ExecutionContext, client_id: &str, category: &str, text: &str, author: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.client.{}", client_id);
         let message_group = format!("platform:client:{}", client_id);
 

@@ -1,12 +1,13 @@
 //! Delete Role Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::role::entity::RoleSource;
 use crate::role::repository::RoleRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::RoleDeleted;
 
@@ -31,20 +32,32 @@ impl<U: UnitOfWork> DeleteRoleUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: DeleteRoleCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<RoleDeleted> {
-        // Validation: role_id is required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for DeleteRoleUseCase<U> {
+    type Command = DeleteRoleCommand;
+    type Event = RoleDeleted;
+
+    async fn validate(&self, command: &DeleteRoleCommand) -> Result<(), UseCaseError> {
         if command.role_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "ROLE_ID_REQUIRED",
                 "Role ID is required",
             ));
         }
+        Ok(())
+    }
 
+    async fn authorize(&self, _command: &DeleteRoleCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: DeleteRoleCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<RoleDeleted> {
         // Fetch existing role
         let role = match self.role_repo.find_by_id(&command.role_id).await {
             Ok(Some(r)) => r,

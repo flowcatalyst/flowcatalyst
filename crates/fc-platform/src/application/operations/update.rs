@@ -1,12 +1,13 @@
 //! Update Application Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use chrono::Utc;
 
 use crate::ApplicationRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
 };
 use super::events::ApplicationUpdated;
 
@@ -50,8 +51,32 @@ impl<U: UnitOfWork> UpdateApplicationUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl<U: UnitOfWork> UseCase for UpdateApplicationUseCase<U> {
+    type Command = UpdateApplicationCommand;
+    type Event = ApplicationUpdated;
+
+    async fn validate(&self, command: &UpdateApplicationCommand) -> Result<(), UseCaseError> {
+        // Validate name if provided
+        if let Some(ref name) = command.name {
+            if name.trim().is_empty() {
+                return Err(UseCaseError::validation(
+                    "INVALID_NAME",
+                    "Name cannot be empty",
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &UpdateApplicationCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: UpdateApplicationCommand,
         ctx: ExecutionContext,
@@ -79,12 +104,6 @@ impl<U: UnitOfWork> UpdateApplicationUseCase<U> {
         // Apply name update
         if let Some(ref name) = command.name {
             let name = name.trim();
-            if name.is_empty() {
-                return UseCaseResult::failure(UseCaseError::validation(
-                    "INVALID_NAME",
-                    "Name cannot be empty",
-                ));
-            }
             if application.name != name {
                 application.name = name.to_string();
                 updated_name = Some(name.to_string());

@@ -384,6 +384,16 @@ pub struct AuthState {
 
 impl AuthState {
     pub fn new(config: AuthConfig) -> Self {
+        // Java: OidcDiagnostics — log auth/OIDC configuration at startup
+        info!(
+            mode = ?config.mode,
+            oidc_issuer = config.oidc_issuer.as_deref().unwrap_or("<not set>"),
+            oidc_client_id = config.oidc_client_id.as_deref().unwrap_or("<not set>"),
+            oidc_client_secret = if config.oidc_client_secret.is_some() { "****" } else { "<not set>" },
+            oidc_audience = config.oidc_audience.as_deref().unwrap_or("<not set>"),
+            "OIDC diagnostics: authentication configuration"
+        );
+
         let oidc_validator = if config.mode == AuthMode::Oidc || config.mode == AuthMode::OidcFlow {
             if let (Some(issuer), Some(audience)) = (&config.oidc_issuer, &config.oidc_audience) {
                 Some(Arc::new(OidcValidator::new(issuer.clone(), audience.clone())))

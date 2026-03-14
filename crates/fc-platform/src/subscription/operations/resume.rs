@@ -1,12 +1,13 @@
 //! Resume Subscription Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::SubscriptionStatus;
 use crate::SubscriptionRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::SubscriptionResumed;
 
@@ -31,20 +32,32 @@ impl<U: UnitOfWork> ResumeSubscriptionUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: ResumeSubscriptionCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<SubscriptionResumed> {
-        // Validation: subscription_id is required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for ResumeSubscriptionUseCase<U> {
+    type Command = ResumeSubscriptionCommand;
+    type Event = SubscriptionResumed;
+
+    async fn validate(&self, command: &ResumeSubscriptionCommand) -> Result<(), UseCaseError> {
         if command.subscription_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "SUBSCRIPTION_ID_REQUIRED",
                 "Subscription ID is required",
             ));
         }
+        Ok(())
+    }
 
+    async fn authorize(&self, _command: &ResumeSubscriptionCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: ResumeSubscriptionCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<SubscriptionResumed> {
         // Fetch existing subscription
         let mut subscription = match self.subscription_repo.find_by_id(&command.subscription_id).await {
             Ok(Some(s)) => s,

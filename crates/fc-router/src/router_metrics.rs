@@ -115,3 +115,25 @@ pub fn record_consumer_error(consumer: &str, error_type: &str) {
     )
     .increment(1);
 }
+
+// --- Broker connectivity metrics (Java: BrokerHealthService) ---
+
+/// Record a broker connectivity check attempt
+pub fn record_broker_connection_attempt() {
+    counter!("flowcatalyst_broker_connection_attempts").increment(1);
+}
+
+/// Record a successful broker connectivity check
+pub fn record_broker_connection_success() {
+    counter!("flowcatalyst_broker_connection_successes").increment(1);
+}
+
+/// Record a failed broker connectivity check
+pub fn record_broker_connection_failure() {
+    counter!("flowcatalyst_broker_connection_failures").increment(1);
+}
+
+/// Update the broker availability gauge (1.0 = available, 0.0 = unavailable)
+pub fn set_broker_available(available: bool) {
+    gauge!("flowcatalyst_broker_available").set(if available { 1.0 } else { 0.0 });
+}

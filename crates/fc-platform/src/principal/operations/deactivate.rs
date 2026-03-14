@@ -1,11 +1,12 @@
 //! Deactivate User Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::principal::repository::PrincipalRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::UserDeactivated;
 
@@ -34,20 +35,33 @@ impl<U: UnitOfWork> DeactivateUserUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: DeactivateUserCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<UserDeactivated> {
-        // Validation: principal_id is required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for DeactivateUserUseCase<U> {
+    type Command = DeactivateUserCommand;
+    type Event = UserDeactivated;
+
+    async fn validate(&self, command: &DeactivateUserCommand) -> Result<(), UseCaseError> {
         if command.principal_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "PRINCIPAL_ID_REQUIRED",
                 "Principal ID is required",
             ));
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &DeactivateUserCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: DeactivateUserCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<UserDeactivated> {
         // Fetch existing principal
         let mut principal = match self.principal_repo.find_by_id(&command.principal_id).await {
             Ok(Some(p)) => p,

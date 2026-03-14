@@ -68,17 +68,20 @@ impl OidcSyncService {
         // Try to find existing user by email
         let existing = self.principal_repo.find_by_email(email).await?;
 
+        // TS stores idpType as "OIDC", not the full issuer URL
+        let idp_type = "OIDC";
+
         let mut principal = if let Some(mut existing_principal) = existing {
             // Update existing user
             existing_principal.name = name.to_string();
 
             if let Some(ref mut identity) = existing_principal.user_identity {
                 identity.external_id = Some(external_idp_id.to_string());
-                identity.provider = Some(provider_id.to_string());
+                identity.provider = Some(idp_type.to_string());
             }
 
             existing_principal.external_identity = Some(ExternalIdentity {
-                provider_id: provider_id.to_string(),
+                provider_id: idp_type.to_string(),
                 external_id: external_idp_id.to_string(),
             });
 
@@ -93,11 +96,11 @@ impl OidcSyncService {
 
             if let Some(ref mut identity) = new_principal.user_identity {
                 identity.external_id = Some(external_idp_id.to_string());
-                identity.provider = Some(provider_id.to_string());
+                identity.provider = Some(idp_type.to_string());
             }
 
             new_principal.external_identity = Some(ExternalIdentity {
-                provider_id: provider_id.to_string(),
+                provider_id: idp_type.to_string(),
                 external_id: external_idp_id.to_string(),
             });
 

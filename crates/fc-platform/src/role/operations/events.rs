@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use crate::usecase::ExecutionContext;
 use crate::usecase::domain_event::EventMetadata;
 use crate::TsidGenerator;
-use crate::EntityType;
 use crate::impl_domain_event;
 
 /// Event emitted when a new role is created.
@@ -36,7 +35,7 @@ impl RoleCreated {
         application_code: &str,
         permissions: Vec<String>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.role.{}", role_id);
         let message_group = format!("platform:role:{}", role_id);
 
@@ -93,7 +92,7 @@ impl RoleUpdated {
         permissions_added: Vec<String>,
         permissions_removed: Vec<String>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.role.{}", role_id);
         let message_group = format!("platform:role:{}", role_id);
 
@@ -138,7 +137,7 @@ impl RoleDeleted {
     const SOURCE: &'static str = "platform:iam";
 
     pub fn new(ctx: &ExecutionContext, role_id: &str, code: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.role.{}", role_id);
         let message_group = format!("platform:role:{}", role_id);
 
@@ -190,7 +189,7 @@ impl RolesSynced {
         deleted: u32,
         synced_names: Vec<String>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.application.{}", application_code);
         let message_group = format!("platform:application:{}", application_code);
 

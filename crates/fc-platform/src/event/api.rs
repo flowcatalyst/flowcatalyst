@@ -521,11 +521,90 @@ pub async fn batch_create_events(
     }))
 }
 
+/// Event summary for list endpoints (no payload data)
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct EventSummaryResponse {
+    pub id: String,
+    pub spec_version: String,
+    pub event_type: String,
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
+    pub time: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_group: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    pub created_at: String,
+}
+
+impl From<Event> for EventSummaryResponse {
+    fn from(e: Event) -> Self {
+        Self {
+            id: e.id,
+            spec_version: e.spec_version,
+            event_type: e.event_type,
+            source: e.source,
+            subject: e.subject,
+            time: e.time.to_rfc3339(),
+            message_group: e.message_group,
+            correlation_id: e.correlation_id,
+            client_id: e.client_id,
+            created_at: e.created_at.to_rfc3339(),
+        }
+    }
+}
+
+/// Paginated response (matches TS: { items, page, size })
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginatedEventsResponse {
+    pub items: Vec<EventSummaryResponse>,
+    pub page: u32,
+    pub size: u32,
+}
+
+/// List raw events (from msg_events, not read projection)
+#[utoipa::path(
+    get,
+    path = "/raw",
+    tag = "events",
+    operation_id = "getApiAdminEventsRaw",
+    params(PaginationParams),
+    responses(
+        (status = 200, description = "Raw events page", body = PaginatedEventsResponse)
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn list_events_raw(
+    State(state): State<EventsState>,
+    auth: Authenticated,
+    Query(pagination): Query<PaginationParams>,
+) -> Result<Json<PaginatedEventsResponse>, PlatformError> {
+    crate::shared::authorization_service::checks::can_read_events(&auth.0)?;
+
+    let page = pagination.page();
+    let size = pagination.size().min(500);
+    let events = state.event_repo
+        .find_recent_paged(page as u64, size as u64)
+        .await?;
+
+    Ok(Json(PaginatedEventsResponse {
+        items: events.into_iter().map(Into::into).collect(),
+        page,
+        size,
+    }))
+}
+
 /// Create events router
 pub fn events_router(state: EventsState) -> OpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(create_event, list_events))
         .routes(routes!(batch_create_events))
+        .routes(routes!(list_events_raw))
         .routes(routes!(get_event))
         .with_state(state)
 }

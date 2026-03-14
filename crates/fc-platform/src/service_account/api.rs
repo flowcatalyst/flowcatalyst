@@ -18,7 +18,7 @@ use crate::ServiceAccount;
 use crate::ServiceAccountRepository;
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
-use crate::usecase::{ExecutionContext, UnitOfWork, UseCaseResult};
+use crate::usecase::{ExecutionContext, UseCase, UnitOfWork, UseCaseResult};
 use crate::service_account::operations::{
     CreateServiceAccountCommand, CreateServiceAccountUseCase,
     UpdateServiceAccountCommand, UpdateServiceAccountUseCase,
@@ -110,6 +110,7 @@ pub struct ServiceAccountResponse {
     pub code: String,
     pub name: String,
     pub description: Option<String>,
+    pub scope: Option<String>,
     pub client_ids: Vec<String>,
     pub application_id: Option<String>,
     pub active: bool,
@@ -127,10 +128,11 @@ impl From<ServiceAccount> for ServiceAccountResponse {
             code: sa.code,
             name: sa.name,
             description: sa.description,
+            scope: sa.scope,
             client_ids: sa.client_ids,
             application_id: sa.application_id,
             active: sa.active,
-            auth_type: format!("{:?}", sa.webhook_credentials.auth_type).to_uppercase(),
+            auth_type: sa.webhook_credentials.auth_type.as_str().to_string(),
             roles: sa.roles.iter().map(|r| r.role.clone()).collect(),
             last_used_at: sa.last_used_at.map(|t| t.to_rfc3339()),
             created_at: sa.created_at.to_rfc3339(),
@@ -338,7 +340,7 @@ pub async fn create_service_account<U: UnitOfWork>(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.create_use_case.execute(command, ctx).await {
+    match state.create_use_case.run(command, ctx).await {
         UseCaseResult::Success(result) => {
             // Fetch the created service account to return
             let account = state.repo.find_by_id(&result.event.service_account_id).await?
@@ -385,7 +387,7 @@ pub async fn update_service_account<U: UnitOfWork>(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.update_use_case.execute(command, ctx).await {
+    match state.update_use_case.run(command, ctx).await {
         UseCaseResult::Success(event) => {
             let account = state.repo.find_by_id(&event.service_account_id).await?
                 .ok_or_else(|| PlatformError::ServiceAccountNotFound { id })?;
@@ -420,7 +422,7 @@ pub async fn delete_service_account<U: UnitOfWork>(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.delete_use_case.execute(command, ctx).await {
+    match state.delete_use_case.run(command, ctx).await {
         UseCaseResult::Success(_) => Ok(StatusCode::NO_CONTENT),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
@@ -450,7 +452,7 @@ pub async fn update_auth_token<U: UnitOfWork>(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.regenerate_token_use_case.execute(command, ctx).await {
+    match state.regenerate_token_use_case.run(command, ctx).await {
         UseCaseResult::Success(result) => {
             Ok(Json(RegenerateTokenResponse {
                 auth_token: result.auth_token,
@@ -484,7 +486,7 @@ pub async fn regenerate_auth_token<U: UnitOfWork>(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.regenerate_token_use_case.execute(command, ctx).await {
+    match state.regenerate_token_use_case.run(command, ctx).await {
         UseCaseResult::Success(result) => {
             Ok(Json(RegenerateTokenResponse {
                 auth_token: result.auth_token,
@@ -518,7 +520,7 @@ pub async fn regenerate_signing_secret<U: UnitOfWork>(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.regenerate_secret_use_case.execute(command, ctx).await {
+    match state.regenerate_secret_use_case.run(command, ctx).await {
         UseCaseResult::Success(result) => {
             Ok(Json(RegenerateSecretResponse {
                 signing_secret: result.signing_secret,
@@ -591,7 +593,7 @@ pub async fn assign_roles<U: UnitOfWork>(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.assign_roles_use_case.execute(command, ctx).await {
+    match state.assign_roles_use_case.run(command, ctx).await {
         UseCaseResult::Success(event) => {
             // Fetch updated account to get role details
             let account = state.repo.find_by_id(&id).await?

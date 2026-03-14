@@ -19,7 +19,7 @@ use crate::subscription::operations::{
     SyncSubscriptionsCommand, SyncSubscriptionsUseCase, SyncSubscriptionInput,
     EventTypeBindingInput,
 };
-use crate::usecase::{ExecutionContext, UseCaseResult};
+use crate::usecase::{ExecutionContext, UseCase, UseCaseResult};
 use crate::shared::error::PlatformError;
 use crate::shared::api_common::PaginationParams;
 use crate::shared::middleware::Authenticated;
@@ -677,7 +677,7 @@ pub async fn sync_subscriptions(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.sync_use_case.execute(command, ctx).await {
+    match state.sync_use_case.run(command, ctx).await {
         UseCaseResult::Success(event) => {
             Ok(Json(SyncResultResponse {
                 created: event.created,

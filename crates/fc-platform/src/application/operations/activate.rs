@@ -1,11 +1,12 @@
 //! Activate Application Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::ApplicationRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
 };
 use super::events::ApplicationActivated;
 
@@ -33,8 +34,22 @@ impl<U: UnitOfWork> ActivateApplicationUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl<U: UnitOfWork> UseCase for ActivateApplicationUseCase<U> {
+    type Command = ActivateApplicationCommand;
+    type Event = ApplicationActivated;
+
+    async fn validate(&self, _command: &ActivateApplicationCommand) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &ActivateApplicationCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: ActivateApplicationCommand,
         ctx: ExecutionContext,

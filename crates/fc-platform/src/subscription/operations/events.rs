@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use crate::usecase::ExecutionContext;
 use crate::usecase::domain_event::EventMetadata;
 use crate::TsidGenerator;
-use crate::EntityType;
 use crate::impl_domain_event;
 
 /// Event emitted when a new subscription is created.
@@ -26,9 +25,9 @@ pub struct SubscriptionCreated {
 impl_domain_event!(SubscriptionCreated);
 
 impl SubscriptionCreated {
-    const EVENT_TYPE: &'static str = "platform:subscription:created";
+    const EVENT_TYPE: &'static str = "platform:admin:subscription:created";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:subscription";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(
         ctx: &ExecutionContext,
@@ -39,9 +38,9 @@ impl SubscriptionCreated {
         event_types: Vec<String>,
         client_id: Option<&str>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.subscription.{}", subscription_id);
-        let message_group = format!("platform:subscription:{}", subscription_id);
+        let message_group = format!("platform:admin:subscription:{}", subscription_id);
 
         Self {
             metadata: EventMetadata::new(
@@ -83,9 +82,9 @@ pub struct SubscriptionUpdated {
 impl_domain_event!(SubscriptionUpdated);
 
 impl SubscriptionUpdated {
-    const EVENT_TYPE: &'static str = "platform:subscription:updated";
+    const EVENT_TYPE: &'static str = "platform:admin:subscription:updated";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:subscription";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(
         ctx: &ExecutionContext,
@@ -94,9 +93,9 @@ impl SubscriptionUpdated {
         event_types_added: Vec<String>,
         event_types_removed: Vec<String>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.subscription.{}", subscription_id);
-        let message_group = format!("platform:subscription:{}", subscription_id);
+        let message_group = format!("platform:admin:subscription:{}", subscription_id);
 
         Self {
             metadata: EventMetadata::new(
@@ -133,14 +132,14 @@ pub struct SubscriptionPaused {
 impl_domain_event!(SubscriptionPaused);
 
 impl SubscriptionPaused {
-    const EVENT_TYPE: &'static str = "platform:subscription:paused";
+    const EVENT_TYPE: &'static str = "platform:admin:subscription:paused";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:subscription";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, subscription_id: &str, code: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.subscription.{}", subscription_id);
-        let message_group = format!("platform:subscription:{}", subscription_id);
+        let message_group = format!("platform:admin:subscription:{}", subscription_id);
 
         Self {
             metadata: EventMetadata::new(
@@ -175,14 +174,14 @@ pub struct SubscriptionResumed {
 impl_domain_event!(SubscriptionResumed);
 
 impl SubscriptionResumed {
-    const EVENT_TYPE: &'static str = "platform:subscription:resumed";
+    const EVENT_TYPE: &'static str = "platform:admin:subscription:resumed";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:subscription";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, subscription_id: &str, code: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.subscription.{}", subscription_id);
-        let message_group = format!("platform:subscription:{}", subscription_id);
+        let message_group = format!("platform:admin:subscription:{}", subscription_id);
 
         Self {
             metadata: EventMetadata::new(
@@ -217,14 +216,14 @@ pub struct SubscriptionDeleted {
 impl_domain_event!(SubscriptionDeleted);
 
 impl SubscriptionDeleted {
-    const EVENT_TYPE: &'static str = "platform:subscription:deleted";
+    const EVENT_TYPE: &'static str = "platform:admin:subscription:deleted";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:subscription";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, subscription_id: &str, code: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.subscription.{}", subscription_id);
-        let message_group = format!("platform:subscription:{}", subscription_id);
+        let message_group = format!("platform:admin:subscription:{}", subscription_id);
 
         Self {
             metadata: EventMetadata::new(
@@ -262,9 +261,9 @@ pub struct SubscriptionsSynced {
 impl_domain_event!(SubscriptionsSynced);
 
 impl SubscriptionsSynced {
-    const EVENT_TYPE: &'static str = "platform:subscription:synced";
+    const EVENT_TYPE: &'static str = "platform:admin:subscription:synced";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:subscription";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(
         ctx: &ExecutionContext,
@@ -274,7 +273,7 @@ impl SubscriptionsSynced {
         deleted: u32,
         synced_codes: Vec<String>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.application.{}", application_code);
         let message_group = format!("platform:application:{}", application_code);
 
@@ -312,7 +311,7 @@ mod tests {
             Some("client-1"),
         );
 
-        assert_eq!(event.event_type(), "platform:subscription:created");
+        assert_eq!(event.event_type(), "platform:admin:subscription:created");
         assert_eq!(event.subscription_id, "sub-1");
         assert_eq!(event.code, "order-webhook");
     }
@@ -322,7 +321,7 @@ mod tests {
         let ctx = ExecutionContext::create("admin-123");
         let event = SubscriptionPaused::new(&ctx, "sub-1", "order-webhook");
 
-        assert_eq!(event.event_type(), "platform:subscription:paused");
+        assert_eq!(event.event_type(), "platform:admin:subscription:paused");
         assert_eq!(event.code, "order-webhook");
     }
 
@@ -331,7 +330,7 @@ mod tests {
         let ctx = ExecutionContext::create("admin-123");
         let event = SubscriptionDeleted::new(&ctx, "sub-1", "order-webhook");
 
-        assert_eq!(event.event_type(), "platform:subscription:deleted");
+        assert_eq!(event.event_type(), "platform:admin:subscription:deleted");
         assert_eq!(event.code, "order-webhook");
     }
 }

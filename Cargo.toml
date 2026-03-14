@@ -17,6 +17,7 @@ members = [
     "bin/fc-outbox-processor",
     "bin/fc-stream-processor",
     "bin/fc-scheduler-server",
+    "bin/fc-server",
 ]
 resolver = "2"
 

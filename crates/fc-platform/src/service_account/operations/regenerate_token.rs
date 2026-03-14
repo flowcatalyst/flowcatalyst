@@ -1,6 +1,7 @@
 //! Regenerate Auth Token Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use chrono::Utc;
 use rand::Rng;
@@ -8,7 +9,7 @@ use rand::Rng;
 use crate::WebhookAuthType;
 use crate::ServiceAccountRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ServiceAccountTokenRegenerated;
 
@@ -37,9 +38,26 @@ pub struct RegenerateAuthTokenCommand {
 
 /// Result returned from regenerate auth token use case.
 /// Contains the event plus one-time token that needs to be returned to caller.
+#[derive(Serialize)]
 pub struct RegenerateAuthTokenResult {
+    #[serde(flatten)]
     pub event: ServiceAccountTokenRegenerated,
     pub auth_token: String,
+}
+
+impl crate::usecase::DomainEvent for RegenerateAuthTokenResult {
+    fn event_id(&self) -> &str { self.event.event_id() }
+    fn event_type(&self) -> &str { self.event.event_type() }
+    fn spec_version(&self) -> &str { self.event.spec_version() }
+    fn source(&self) -> &str { self.event.source() }
+    fn subject(&self) -> &str { self.event.subject() }
+    fn time(&self) -> chrono::DateTime<chrono::Utc> { self.event.time() }
+    fn execution_id(&self) -> &str { self.event.execution_id() }
+    fn correlation_id(&self) -> &str { self.event.correlation_id() }
+    fn causation_id(&self) -> Option<&str> { self.event.causation_id() }
+    fn principal_id(&self) -> &str { self.event.principal_id() }
+    fn message_group(&self) -> &str { self.event.message_group() }
+    fn to_data_json(&self) -> String { self.event.to_data_json() }
 }
 
 /// Use case for regenerating a service account's auth token.
@@ -58,8 +76,22 @@ impl<U: UnitOfWork> RegenerateAuthTokenUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl<U: UnitOfWork> UseCase for RegenerateAuthTokenUseCase<U> {
+    type Command = RegenerateAuthTokenCommand;
+    type Event = RegenerateAuthTokenResult;
+
+    async fn validate(&self, _command: &RegenerateAuthTokenCommand) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &RegenerateAuthTokenCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: RegenerateAuthTokenCommand,
         ctx: ExecutionContext,

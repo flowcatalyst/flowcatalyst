@@ -316,6 +316,17 @@ impl ConfigSyncService {
             Ok(true) => {
                 // Update the hash after successful reload
                 *self.last_config_hash.lock() = Some(new_hash);
+
+                // Java: QueueValidationService — validate consumer connectivity after config sync
+                if !self.queue_manager.check_broker_connectivity().await {
+                    self.warning_service.add_warning(
+                        fc_common::WarningCategory::Configuration,
+                        fc_common::WarningSeverity::Warn,
+                        "Queue validation: one or more consumers report unhealthy after config sync".to_string(),
+                        "ConfigSyncService".to_string(),
+                    );
+                }
+
                 info!("Configuration sync completed successfully");
                 ConfigSyncResult {
                     success: true,

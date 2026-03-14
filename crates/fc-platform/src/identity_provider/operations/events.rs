@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use crate::usecase::ExecutionContext;
 use crate::usecase::domain_event::EventMetadata;
 use crate::TsidGenerator;
-use crate::EntityType;
 use crate::impl_domain_event;
 
 /// Event emitted when a new identity provider is created.
@@ -34,7 +33,7 @@ impl IdentityProviderCreated {
         name: &str,
         idp_type: &str,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.idp.{}", idp_id);
         let message_group = format!("platform:idp:{}", idp_id);
 
@@ -77,7 +76,7 @@ impl IdentityProviderUpdated {
         idp_id: &str,
         name: Option<&str>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.idp.{}", idp_id);
         let message_group = format!("platform:idp:{}", idp_id);
 
@@ -113,7 +112,7 @@ impl IdentityProviderDeleted {
     const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, idp_id: &str, code: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.idp.{}", idp_id);
         let message_group = format!("platform:idp:{}", idp_id);
 

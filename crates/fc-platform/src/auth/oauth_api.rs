@@ -27,6 +27,8 @@ use crate::AuthService;
 use crate::auth::auth_service::{AccessTokenClaims, extract_bearer_token};
 use crate::auth::password_service::PasswordService;
 use crate::OidcService;
+use crate::login_attempt::entity::{LoginAttempt, AttemptType, LoginOutcome};
+use crate::login_attempt::repository::LoginAttemptRepository;
 use crate::shared::error::PlatformError;
 
 /// Authorization request parameters
@@ -162,6 +164,8 @@ pub struct OAuthState {
     pub pending_auth_repo: Arc<PendingAuthRepository>,
     /// Password service for verifying client secrets
     pub password_service: Arc<PasswordService>,
+    /// Login attempt logging
+    pub login_attempt_repo: Arc<LoginAttemptRepository>,
 }
 
 impl OAuthState {
@@ -174,6 +178,7 @@ impl OAuthState {
         refresh_token_repo: Arc<RefreshTokenRepository>,
         pending_auth_repo: Arc<PendingAuthRepository>,
         password_service: Arc<PasswordService>,
+        login_attempt_repo: Arc<LoginAttemptRepository>,
     ) -> Self {
         Self {
             oauth_client_repo,
@@ -184,6 +189,7 @@ impl OAuthState {
             refresh_token_repo,
             pending_auth_repo,
             password_service,
+            login_attempt_repo,
         }
     }
 }
@@ -712,6 +718,13 @@ async fn handle_client_credentials_grant(state: OAuthState, req: TokenRequest) -
         Ok(true) => { /* secret verified */ }
         Ok(false) => {
             warn!(client_id = %client_id, "Client secret verification failed");
+            // Log failed service account login attempt
+            let mut attempt = LoginAttempt::new(AttemptType::ServiceAccountToken, LoginOutcome::Failure);
+            attempt.identifier = Some(client_id.clone());
+            attempt.failure_reason = Some("Invalid client secret".to_string());
+            if let Err(e) = state.login_attempt_repo.create(&attempt).await {
+                warn!(error = %e, "Failed to log service account login attempt");
+            }
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(ErrorResponse {
@@ -794,6 +807,14 @@ async fn handle_client_credentials_grant(state: OAuthState, req: TokenRequest) -
             ).into_response();
         }
     };
+
+    // Log successful service account login attempt
+    let mut attempt = LoginAttempt::new(AttemptType::ServiceAccountToken, LoginOutcome::Success);
+    attempt.identifier = Some(client_id.clone());
+    attempt.principal_id = Some(principal.id.clone());
+    if let Err(e) = state.login_attempt_repo.create(&attempt).await {
+        warn!(error = %e, "Failed to log service account login attempt");
+    }
 
     info!(client_id = %client_id, "Token issued via client credentials grant");
 

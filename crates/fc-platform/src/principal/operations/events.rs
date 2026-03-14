@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use crate::usecase::ExecutionContext;
 use crate::usecase::domain_event::EventMetadata;
 use crate::TsidGenerator;
-use crate::EntityType;
 use crate::impl_domain_event;
 use crate::principal::entity::UserScope;
 
@@ -43,7 +42,7 @@ impl UserCreated {
         scope: UserScope,
         client_id: Option<&str>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.user.{}", principal_id);
         let message_group = format!("platform:user:{}", principal_id);
         let email_domain = extract_email_domain(email);
@@ -216,7 +215,7 @@ impl UserUpdated {
         name: Option<&str>,
         email: Option<&str>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.user.{}", principal_id);
         let message_group = format!("platform:user:{}", principal_id);
 
@@ -258,7 +257,7 @@ impl UserActivated {
     const SOURCE: &'static str = "platform:iam";
 
     pub fn new(ctx: &ExecutionContext, principal_id: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.user.{}", principal_id);
         let message_group = format!("platform:user:{}", principal_id);
 
@@ -300,7 +299,7 @@ impl UserDeactivated {
     const SOURCE: &'static str = "platform:iam";
 
     pub fn new(ctx: &ExecutionContext, principal_id: &str, reason: Option<&str>) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.user.{}", principal_id);
         let message_group = format!("platform:user:{}", principal_id);
 
@@ -341,7 +340,7 @@ impl UserDeleted {
     const SOURCE: &'static str = "platform:iam";
 
     pub fn new(ctx: &ExecutionContext, principal_id: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.user.{}", principal_id);
         let message_group = format!("platform:user:{}", principal_id);
 
@@ -390,7 +389,7 @@ impl RolesAssigned {
         added: Vec<String>,
         removed: Vec<String>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.user.{}", principal_id);
         let message_group = format!("platform:user:{}", principal_id);
 
@@ -434,7 +433,7 @@ impl ClientAccessGranted {
     const SOURCE: &'static str = "platform:iam";
 
     pub fn new(ctx: &ExecutionContext, principal_id: &str, client_id: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.user.{}", principal_id);
         let message_group = format!("platform:user:{}", principal_id);
 
@@ -470,7 +469,7 @@ impl ClientAccessRevoked {
     const SOURCE: &'static str = "platform:iam";
 
     pub fn new(ctx: &ExecutionContext, principal_id: &str, client_id: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.user.{}", principal_id);
         let message_group = format!("platform:user:{}", principal_id);
 
@@ -519,7 +518,7 @@ impl UserLoggedIn {
         identity_provider_id: &str,
         client_id: Option<&str>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.user.{}", principal_id);
         let message_group = format!("platform:user:{}", principal_id);
         let email_domain = extract_email_domain(email);
@@ -577,7 +576,7 @@ impl PrincipalsSynced {
         deactivated: u32,
         synced_emails: Vec<String>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.application.{}", application_code);
         let message_group = format!("platform:application:{}", application_code);
 
@@ -624,7 +623,7 @@ impl ApplicationAccessAssigned {
         added: Vec<String>,
         removed: Vec<String>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.user.{}", user_id);
         let message_group = format!("platform:user:{}", user_id);
 
@@ -639,6 +638,46 @@ impl ApplicationAccessAssigned {
             application_ids,
             added,
             removed,
+        }
+    }
+}
+
+/// Event emitted when a password reset is requested.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordResetRequested {
+    #[serde(flatten)]
+    pub metadata: EventMetadata,
+
+    pub principal_id: String,
+    pub email: String,
+}
+
+impl_domain_event!(PasswordResetRequested);
+
+impl PasswordResetRequested {
+    const EVENT_TYPE: &'static str = "platform:iam:user:password-reset-requested";
+    const SPEC_VERSION: &'static str = "1.0";
+    const SOURCE: &'static str = "platform:iam";
+
+    pub fn new(
+        principal_id: &str,
+        email: &str,
+    ) -> Self {
+        let event_id = TsidGenerator::generate_untyped();
+        let subject = format!("platform.user.{}", principal_id);
+        let message_group = format!("platform:user:{}", principal_id);
+        let ctx = ExecutionContext::create("system");
+
+        Self {
+            metadata: EventMetadata::new(
+                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
+                subject, message_group,
+                ctx.execution_id, ctx.correlation_id,
+                ctx.causation_id, "system".to_string(),
+            ),
+            principal_id: principal_id.to_string(),
+            email: email.to_string(),
         }
     }
 }
@@ -665,7 +704,7 @@ impl PasswordResetCompleted {
         principal_id: &str,
         email: &str,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.user.{}", principal_id);
         let message_group = format!("platform:user:{}", principal_id);
         // Password reset is unauthenticated — use "system" as execution context

@@ -1,12 +1,13 @@
 //! Add CORS Origin Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::CorsOriginRepository;
 use crate::cors::entity::CorsAllowedOrigin;
-use crate::usecase::{ExecutionContext, UseCaseError, UseCaseResult};
+use crate::usecase::{ExecutionContext, UseCase, UseCaseError, UseCaseResult};
 use super::events::CorsOriginAdded;
 
 fn origin_pattern() -> &'static Regex {
@@ -33,25 +34,41 @@ impl AddCorsOriginUseCase {
     pub fn new(cors_repo: Arc<CorsOriginRepository>) -> Self {
         Self { cors_repo }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: AddCorsOriginCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<CorsOriginAdded> {
+#[async_trait]
+impl UseCase for AddCorsOriginUseCase {
+    type Command = AddCorsOriginCommand;
+    type Event = CorsOriginAdded;
+
+    async fn validate(&self, command: &AddCorsOriginCommand) -> Result<(), UseCaseError> {
         let origin = command.origin.trim();
         if origin.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "ORIGIN_REQUIRED", "Origin is required",
             ));
         }
 
         if !origin_pattern().is_match(origin) {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "INVALID_ORIGIN_FORMAT",
                 "Origin must be a valid URL (e.g. https://example.com or http://localhost:3000)",
             ));
         }
+
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &AddCorsOriginCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: AddCorsOriginCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<CorsOriginAdded> {
+        let origin = command.origin.trim();
 
         // Check for duplicate origin
         match self.cors_repo.find_by_origin(origin).await {

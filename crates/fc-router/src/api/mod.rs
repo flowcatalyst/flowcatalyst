@@ -33,7 +33,7 @@ use crate::{
 };
 use fc_stream::StreamHealthService;
 use uuid::Uuid;
-use chrono::Utc;
+use chrono::{Duration as ChronoDuration, Utc};
 use tracing::{debug, info, warn, error};
 
 pub mod model;
@@ -59,6 +59,8 @@ pub struct AppState {
     pub stream_health_service: Option<Arc<StreamHealthService>>,
     /// Traffic strategy for ALB target group management (optional)
     pub traffic_strategy: Option<Arc<dyn crate::traffic::TrafficStrategy>>,
+    /// Prometheus metrics handle for rendering /metrics endpoint
+    pub metrics_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
 }
 
 /// Simple health response for basic health check
@@ -279,6 +281,7 @@ pub fn create_router(
         "default".to_string(),
         None,
         None,
+        None,
     )
 }
 
@@ -293,6 +296,7 @@ pub fn create_router_with_options(
     instance_id: String,
     stream_health_service: Option<Arc<StreamHealthService>>,
     traffic_strategy: Option<Arc<dyn crate::traffic::TrafficStrategy>>,
+    metrics_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
 ) -> Router {
     let state = AppState {
         publisher,
@@ -304,6 +308,7 @@ pub fn create_router_with_options(
         instance_id,
         stream_health_service,
         traffic_strategy,
+        metrics_handle,
     };
 
     Router::new()
@@ -340,8 +345,11 @@ pub fn create_router_with_options(
         .route("/monitoring/circuit-breakers/reset-all", post(reset_all_circuit_breakers))
         .route("/monitoring/in-flight-messages", get(dashboard_in_flight_messages_handler))
         .route("/monitoring/dashboard", get(dashboard_html_handler))
+        .route("/monitoring/consumer-health", get(consumer_health_handler))
         .route("/monitoring/standby-status", get(get_standby_status))
         .route("/monitoring/traffic-status", get(get_traffic_status))
+        // Java-compatible dashboard path alias
+        .route("/dashboard.html", get(dashboard_html_handler))
         // Stream processor health endpoints
         .route("/monitoring/stream-health", get(stream_health_handler))
         .route("/monitoring/stream-health/live", get(stream_liveness_handler))
@@ -368,6 +376,12 @@ pub fn create_router_with_options(
         .route("/api/test/client-error", post(test_client_error))
         .route("/api/test/server-error", post(test_server_error))
         .route("/api/test/stats", get(test_stats).post(reset_test_stats))
+        .route("/api/test/stats/reset", post(reset_test_stats))
+        // Java-compatible benchmark endpoints (aliases for test endpoints)
+        .route("/api/benchmark/process", post(test_fast))
+        .route("/api/benchmark/process-slow", post(test_slow))
+        .route("/api/benchmark/stats", get(test_stats))
+        .route("/api/benchmark/reset", post(reset_test_stats))
         // Message publishing
         .route("/messages", post(publish_message))
         .with_state(state)
@@ -450,6 +464,17 @@ async fn liveness_probe() -> Json<ProbeResponse> {
     )
 )]
 async fn readiness_probe(State(state): State<AppState>) -> Response {
+    // Java: check broker connectivity via consumer is_healthy() before health report
+    crate::router_metrics::record_broker_connection_attempt();
+    let broker_healthy = state.queue_manager.check_broker_connectivity().await;
+    crate::router_metrics::set_broker_available(broker_healthy);
+    if broker_healthy {
+        crate::router_metrics::record_broker_connection_success();
+    } else {
+        crate::router_metrics::record_broker_connection_failure();
+        return (StatusCode::SERVICE_UNAVAILABLE, Json(ProbeResponse { status: "NOT_READY".to_string() })).into_response();
+    }
+
     let pool_stats = state.queue_manager.get_pool_stats();
     let report = state.health_service.get_health_report(&pool_stats);
 
@@ -472,14 +497,14 @@ async fn readiness_probe(State(state): State<AppState>) -> Response {
         (status = 200, description = "Prometheus metrics", content_type = "text/plain")
     )
 )]
-async fn metrics_handler() -> Response {
-    let output = "# HELP fc_requests_total Total number of requests
-# TYPE fc_requests_total counter
-fc_requests_total 0
-# HELP fc_active_pools Number of active processing pools
-# TYPE fc_active_pools gauge
-fc_active_pools 1
-";
+async fn metrics_handler(State(state): State<AppState>) -> Response {
+    let output = match &state.metrics_handle {
+        Some(handle) => handle.render(),
+        None => {
+            // Fallback when no Prometheus recorder is installed
+            "# No Prometheus recorder configured\n".to_string()
+        }
+    };
     (
         StatusCode::OK,
         [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
@@ -825,6 +850,7 @@ async fn get_critical_warnings(State(state): State<AppState>) -> Json<Vec<Warnin
 #[derive(Serialize, ToSchema)]
 struct DashboardHealthResponse {
     status: String,
+    timestamp: String,
     #[serde(rename = "uptimeMillis")]
     uptime_millis: u64,
     details: Option<DashboardHealthDetails>,
@@ -881,8 +907,15 @@ async fn dashboard_health_handler(State(state): State<AppState>) -> Json<Dashboa
         None
     };
 
+    // Count open circuit breakers from the registry
+    let circuit_breakers_open = state.circuit_breaker_registry.get_all_stats()
+        .values()
+        .filter(|s| s.state == CircuitBreakerState::Open)
+        .count() as u32;
+
     Json(DashboardHealthResponse {
         status: status.to_string(),
+        timestamp: Utc::now().to_rfc3339(),
         uptime_millis: get_uptime_millis(),
         details: Some(DashboardHealthDetails {
             total_queues: (health_report.consumers_healthy + health_report.consumers_unhealthy) as u32,
@@ -891,7 +924,7 @@ async fn dashboard_health_handler(State(state): State<AppState>) -> Json<Dashboa
             healthy_pools: health_report.pools_healthy,
             active_warnings: health_report.active_warnings,
             critical_warnings: health_report.critical_warnings,
-            circuit_breakers_open: 0,
+            circuit_breakers_open,
             degradation_reason,
         }),
     })
@@ -1247,6 +1280,60 @@ async fn dashboard_in_flight_messages_handler(
 async fn dashboard_html_handler() -> impl IntoResponse {
     const DASHBOARD_HTML: &str = include_str!("../../resources/dashboard.html");
     Html(DASHBOARD_HTML)
+}
+
+/// Consumer health endpoint (matches Java /monitoring/consumer-health)
+async fn consumer_health_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let now = Utc::now();
+    let now_ms = now.timestamp_millis();
+
+    // Get all consumer IDs from the health service
+    let pool_stats = state.queue_manager.get_pool_stats();
+    let _report = state.health_service.get_health_report(&pool_stats);
+
+    // Build consumer health map from queue manager's consumer list
+    let consumer_ids = state.queue_manager.consumer_ids().await;
+    let mut consumers = serde_json::Map::new();
+
+    for consumer_id in &consumer_ids {
+        let health = state.health_service.get_consumer_health(consumer_id);
+        let last_poll_time_ms = health.last_poll_time_ms.unwrap_or(0);
+        let time_since_last_poll_ms = health.time_since_last_poll_ms.unwrap_or(-1);
+
+        let last_poll_time_str = if last_poll_time_ms > 0 {
+            // Convert elapsed ms back to an approximate absolute time
+            let poll_time = now - ChronoDuration::milliseconds(time_since_last_poll_ms);
+            poll_time.to_rfc3339()
+        } else {
+            "never".to_string()
+        };
+
+        let time_since_last_poll_seconds = if time_since_last_poll_ms > 0 {
+            time_since_last_poll_ms / 1000
+        } else {
+            -1
+        };
+
+        let details = serde_json::json!({
+            "mapKey": consumer_id,
+            "queueIdentifier": consumer_id,
+            "consumerQueueIdentifier": consumer_id,
+            "instanceId": state.instance_id,
+            "isHealthy": health.is_healthy,
+            "lastPollTimeMs": last_poll_time_ms,
+            "lastPollTime": last_poll_time_str,
+            "timeSinceLastPollMs": time_since_last_poll_ms,
+            "timeSinceLastPollSeconds": time_since_last_poll_seconds,
+            "isRunning": health.is_running,
+        });
+        consumers.insert(consumer_id.clone(), details);
+    }
+
+    Json(serde_json::json!({
+        "currentTimeMs": now_ms,
+        "currentTime": now.to_rfc3339(),
+        "consumers": consumers,
+    }))
 }
 
 // ============================================================================
@@ -1817,20 +1904,20 @@ async fn get_local_config(State(state): State<AppState>) -> Json<serde_json::Val
 
         vec![
             serde_json::json!({
-                "name": "fc-high-priority.fifo",
-                "uri": format!("{}/000000000000/fc-high-priority.fifo", sqs_host),
+                "queueName": "fc-high-priority.fifo",
+                "queueUri": format!("{}/000000000000/fc-high-priority.fifo", sqs_host),
                 "connections": 2,
                 "visibilityTimeout": 120,
             }),
             serde_json::json!({
-                "name": "fc-default.fifo",
-                "uri": format!("{}/000000000000/fc-default.fifo", sqs_host),
+                "queueName": "fc-default.fifo",
+                "queueUri": format!("{}/000000000000/fc-default.fifo", sqs_host),
                 "connections": 2,
                 "visibilityTimeout": 120,
             }),
             serde_json::json!({
-                "name": "fc-low-priority.fifo",
-                "uri": format!("{}/000000000000/fc-low-priority.fifo", sqs_host),
+                "queueName": "fc-low-priority.fifo",
+                "queueUri": format!("{}/000000000000/fc-low-priority.fifo", sqs_host),
                 "connections": 1,
                 "visibilityTimeout": 120,
             }),
@@ -1889,7 +1976,7 @@ async fn seed_messages(
     let count = req.count.unwrap_or(10).min(1000);
     let endpoint = req.endpoint.unwrap_or_else(|| "fast".to_string());
     let _queue = req.queue.unwrap_or_else(|| "high".to_string());
-    let message_group_mode = req.message_group_mode.unwrap_or_else(|| "unique".to_string());
+    let message_group_mode = req.message_group_mode.unwrap_or_else(|| "1of8".to_string()); // Java default
 
     // Resolve endpoint
     let target = match endpoint.as_str() {

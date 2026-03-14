@@ -854,12 +854,54 @@ pub async fn get_dispatch_job_raw(
     Ok(Json(job))
 }
 
+/// Paginated dispatch jobs response
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginatedDispatchJobsResponse {
+    pub items: Vec<DispatchJobResponse>,
+    pub page: u32,
+    pub size: u32,
+}
+
+/// List raw dispatch jobs (from msg_dispatch_jobs, not read projection)
+#[utoipa::path(
+    get,
+    path = "/raw",
+    tag = "dispatch-jobs",
+    operation_id = "getApiAdminDispatchJobsRaw",
+    params(PaginationParams),
+    responses(
+        (status = 200, description = "Raw dispatch jobs page", body = PaginatedDispatchJobsResponse)
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn list_dispatch_jobs_raw(
+    State(state): State<DispatchJobsState>,
+    auth: Authenticated,
+    Query(pagination): Query<PaginationParams>,
+) -> Result<Json<PaginatedDispatchJobsResponse>, PlatformError> {
+    crate::shared::authorization_service::checks::can_read_dispatch_jobs(&auth.0)?;
+
+    let page = pagination.page();
+    let size = pagination.size().min(500);
+    let jobs = state.dispatch_job_repo
+        .find_recent_paged(page, size)
+        .await?;
+
+    Ok(Json(PaginatedDispatchJobsResponse {
+        items: jobs.into_iter().map(Into::into).collect(),
+        page,
+        size,
+    }))
+}
+
 /// Create dispatch jobs router
 pub fn dispatch_jobs_router(state: DispatchJobsState) -> OpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(list_dispatch_jobs, create_dispatch_job))
         .routes(routes!(batch_create_dispatch_jobs))
         .routes(routes!(get_filter_options))
+        .routes(routes!(list_dispatch_jobs_raw))
         .routes(routes!(get_dispatch_job))
         .routes(routes!(get_dispatch_job_raw))
         .routes(routes!(get_dispatch_job_attempts))

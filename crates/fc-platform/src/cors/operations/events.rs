@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use crate::usecase::ExecutionContext;
 use crate::usecase::domain_event::EventMetadata;
 use crate::TsidGenerator;
-use crate::EntityType;
 use crate::impl_domain_event;
 
 /// Event emitted when a CORS origin is added.
@@ -26,7 +25,7 @@ impl CorsOriginAdded {
     const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, origin_id: &str, origin: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.cors.{}", origin_id);
         let message_group = format!("platform:cors:{}", origin_id);
 
@@ -62,7 +61,7 @@ impl CorsOriginDeleted {
     const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, origin_id: &str, origin: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.cors.{}", origin_id);
         let message_group = format!("platform:cors:{}", origin_id);
 

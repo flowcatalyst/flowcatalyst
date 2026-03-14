@@ -8,6 +8,7 @@
 //! not in the sync list (principals are not deleted).
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::principal::entity::{Principal, UserScope};
@@ -15,7 +16,7 @@ use crate::service_account::entity::RoleAssignment;
 use crate::PrincipalRepository;
 use crate::ApplicationRepository;
 use crate::usecase::{
-    ExecutionContext, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UseCaseError, UseCaseResult,
 };
 use super::events::PrincipalsSynced;
 
@@ -59,24 +60,38 @@ impl SyncPrincipalsUseCase {
     ) -> Self {
         Self { principal_repo, application_repo }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: SyncPrincipalsCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<PrincipalsSynced> {
+#[async_trait]
+impl UseCase for SyncPrincipalsUseCase {
+    type Command = SyncPrincipalsCommand;
+    type Event = PrincipalsSynced;
+
+    async fn validate(&self, command: &SyncPrincipalsCommand) -> Result<(), UseCaseError> {
         if command.application_code.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "APPLICATION_CODE_REQUIRED", "Application code is required",
             ));
         }
 
         if command.principals.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "PRINCIPALS_REQUIRED", "At least one principal must be provided",
             ));
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &SyncPrincipalsCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: SyncPrincipalsCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<PrincipalsSynced> {
         // Verify the application exists
         match self.application_repo.find_by_code(&command.application_code).await {
             Ok(Some(_)) => {}

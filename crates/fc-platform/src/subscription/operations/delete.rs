@@ -1,11 +1,12 @@
 //! Delete Subscription Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::SubscriptionRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::SubscriptionDeleted;
 
@@ -30,20 +31,32 @@ impl<U: UnitOfWork> DeleteSubscriptionUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: DeleteSubscriptionCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<SubscriptionDeleted> {
-        // Validation: subscription_id is required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for DeleteSubscriptionUseCase<U> {
+    type Command = DeleteSubscriptionCommand;
+    type Event = SubscriptionDeleted;
+
+    async fn validate(&self, command: &DeleteSubscriptionCommand) -> Result<(), UseCaseError> {
         if command.subscription_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "SUBSCRIPTION_ID_REQUIRED",
                 "Subscription ID is required",
             ));
         }
+        Ok(())
+    }
 
+    async fn authorize(&self, _command: &DeleteSubscriptionCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: DeleteSubscriptionCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<SubscriptionDeleted> {
         // Fetch existing subscription
         let subscription = match self.subscription_repo.find_by_id(&command.subscription_id).await {
             Ok(Some(s)) => s,

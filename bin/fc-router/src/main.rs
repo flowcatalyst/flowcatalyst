@@ -28,7 +28,7 @@ use fc_router::{
     ConfigSyncService, ConfigSyncConfig,
     StandbyProcessor, StandbyRouterConfig,
     NotificationConfig, create_notification_service_with_scheduler,
-    api::create_router,
+    api::create_router_with_options,
 };
 use fc_common::{RouterConfig, PoolConfig, QueueConfig, WarningSeverity};
 use fc_queue::sqs::SqsQueueConsumer;
@@ -44,6 +44,9 @@ async fn main() -> Result<()> {
     let _ = dotenvy::dotenv();
 
     fc_common::logging::init_logging("fc-router");
+
+    // Initialize Prometheus metrics recorder (must be before any metrics are recorded)
+    let metrics_handle = fc_router::init_prometheus_recorder();
 
     info!("Starting FlowCatalyst Message Router (Production)");
 
@@ -93,7 +96,9 @@ async fn main() -> Result<()> {
     let mediator = Arc::new(HttpMediator::production());
 
     // 4. Create QueueManager
-    let queue_manager = Arc::new(QueueManager::new(mediator.clone()));
+    let mut queue_manager_inner = QueueManager::new(mediator.clone());
+    queue_manager_inner.set_health_service(health_service.clone());
+    let queue_manager = Arc::new(queue_manager_inner);
 
     // 5. Initialize Standby Processor (Active/Passive HA)
     let standby_config = load_standby_config();
@@ -231,12 +236,17 @@ async fn main() -> Result<()> {
     // Create circuit breaker registry for endpoint tracking
     let circuit_breaker_registry = Arc::new(CircuitBreakerRegistry::default());
 
-    let app = create_router(
+    let app = create_router_with_options(
         publisher,
         queue_manager.clone(),
         warning_service.clone(),
         health_service.clone(),
         circuit_breaker_registry,
+        standby.is_some(),
+        standby.as_ref().map(|s| s.instance_id().to_string()).unwrap_or_else(|| "default".to_string()),
+        None, // stream_health_service
+        None, // traffic_strategy
+        Some(metrics_handle),
     )
     .layer(TraceLayer::new_for_http())
     .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any));

@@ -16,16 +16,27 @@ use crate::principal::api::{
     BatchAssignRolesRequest, BatchAssignRolesResponse, RoleAssignmentDto,
     ClientAccessGrantResponse, ClientAccessListResponse, StatusChangeResponse,
 };
-use crate::principal::entity::{Principal, UserScope};
+use crate::principal::entity::UserScope;
+use crate::principal::operations::{
+    CreateUserCommand, CreateUserUseCase,
+    UpdateUserCommand, UpdateUserUseCase,
+    ActivateUserCommand, ActivateUserUseCase,
+    DeactivateUserCommand, DeactivateUserUseCase,
+    AssignUserRolesCommand, AssignUserRolesUseCase,
+};
 use crate::principal::repository::PrincipalRepository;
+use crate::role::repository::RoleRepository;
 use crate::shared::api_common::CreatedResponse;
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
+use crate::usecase::{ExecutionContext, PgUnitOfWork, UseCase};
 
 /// SDK Principals service state
 #[derive(Clone)]
 pub struct SdkPrincipalsState {
     pub principal_repo: Arc<PrincipalRepository>,
+    pub role_repo: Arc<RoleRepository>,
+    pub unit_of_work: Arc<PgUnitOfWork>,
 }
 
 /// Query parameters for SDK principals list
@@ -157,32 +168,31 @@ pub async fn get_sdk_principal(
 )]
 pub async fn create_sdk_user(
     State(state): State<SdkPrincipalsState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Json(req): Json<CreateUserRequest>,
 ) -> Result<Json<CreatedResponse>, PlatformError> {
-    // Check for duplicate email
-    if state.principal_repo.find_by_email(&req.email).await?.is_some() {
-        return Err(PlatformError::duplicate("Principal", "email", &req.email));
-    }
-
-    // Determine scope based on client_id
     let scope = if req.client_id.is_some() {
         UserScope::Client
     } else {
         UserScope::Anchor
     };
 
-    let mut principal = Principal::new_user(&req.email, scope);
-    principal.name = req.name.clone();
+    let cmd = CreateUserCommand {
+        email: req.email.clone(),
+        name: Some(req.name.clone()),
+        scope,
+        client_id: req.client_id.clone(),
+        password: None,
+    };
 
-    if let Some(cid) = req.client_id.clone() {
-        principal = principal.with_client_id(cid);
-    }
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let use_case = CreateUserUseCase::new(
+        state.principal_repo.clone(),
+        state.unit_of_work.clone(),
+    );
+    let event = use_case.run(cmd, ctx).await.into_result()?;
 
-    let id = principal.id.clone();
-    state.principal_repo.insert(&principal).await?;
-
-    Ok(Json(CreatedResponse::new(id)))
+    Ok(Json(CreatedResponse::new(event.principal_id)))
 }
 
 /// Update principal (SDK)
@@ -203,22 +213,28 @@ pub async fn create_sdk_user(
 )]
 pub async fn update_sdk_principal(
     State(state): State<SdkPrincipalsState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdatePrincipalRequest>,
 ) -> Result<Json<PrincipalResponse>, PlatformError> {
-    let mut principal = state
+    let cmd = UpdateUserCommand {
+        principal_id: id.clone(),
+        name: req.name,
+    };
+
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let use_case = UpdateUserUseCase::new(
+        state.principal_repo.clone(),
+        state.unit_of_work.clone(),
+    );
+    use_case.run(cmd, ctx).await.into_result()?;
+
+    // Re-fetch the updated principal for the response
+    let principal = state
         .principal_repo
         .find_by_id(&id)
         .await?
         .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
-
-    if let Some(name) = req.name {
-        principal.name = name;
-    }
-
-    principal.updated_at = chrono::Utc::now();
-    state.principal_repo.update(&principal).await?;
 
     Ok(Json(principal.into()))
 }
@@ -240,17 +256,19 @@ pub async fn update_sdk_principal(
 )]
 pub async fn activate_sdk_principal(
     State(state): State<SdkPrincipalsState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<StatusChangeResponse>, PlatformError> {
-    let mut principal = state
-        .principal_repo
-        .find_by_id(&id)
-        .await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+    let cmd = ActivateUserCommand {
+        principal_id: id.clone(),
+    };
 
-    principal.activate();
-    state.principal_repo.update(&principal).await?;
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let use_case = ActivateUserUseCase::new(
+        state.principal_repo.clone(),
+        state.unit_of_work.clone(),
+    );
+    use_case.run(cmd, ctx).await.into_result()?;
 
     Ok(Json(StatusChangeResponse {
         message: "Principal activated".to_string(),
@@ -274,17 +292,20 @@ pub async fn activate_sdk_principal(
 )]
 pub async fn deactivate_sdk_principal(
     State(state): State<SdkPrincipalsState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<StatusChangeResponse>, PlatformError> {
-    let mut principal = state
-        .principal_repo
-        .find_by_id(&id)
-        .await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+    let cmd = DeactivateUserCommand {
+        principal_id: id.clone(),
+        reason: None,
+    };
 
-    principal.deactivate();
-    state.principal_repo.update(&principal).await?;
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let use_case = DeactivateUserUseCase::new(
+        state.principal_repo.clone(),
+        state.unit_of_work.clone(),
+    );
+    use_case.run(cmd, ctx).await.into_result()?;
 
     Ok(Json(StatusChangeResponse {
         message: "Principal deactivated".to_string(),
@@ -350,32 +371,44 @@ pub async fn get_sdk_principal_roles(
 )]
 pub async fn assign_sdk_principal_roles(
     State(state): State<SdkPrincipalsState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<BatchAssignRolesRequest>,
 ) -> Result<Json<BatchAssignRolesResponse>, PlatformError> {
-    let mut principal = state
+    // Snapshot old roles before the use case mutates the principal
+    let old_principal = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+    let old_roles: std::collections::HashSet<String> =
+        old_principal.roles.iter().map(|r| r.role.clone()).collect();
+
+    let cmd = AssignUserRolesCommand {
+        user_id: id.clone(),
+        roles: req.roles.clone(),
+    };
+
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let use_case = AssignUserRolesUseCase::new(
+        state.principal_repo.clone(),
+        state.role_repo.clone(),
+        state.unit_of_work.clone(),
+    );
+    use_case.run(cmd, ctx).await.into_result()?;
+
+    // Re-fetch the updated principal
+    let principal = state
         .principal_repo
         .find_by_id(&id)
         .await?
         .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
 
-    // Track what was added/removed
-    let old_roles: std::collections::HashSet<String> =
+    // Compute added/removed from old vs new
+    let new_roles: std::collections::HashSet<String> =
         principal.roles.iter().map(|r| r.role.clone()).collect();
-    let new_roles: std::collections::HashSet<String> = req.roles.iter().cloned().collect();
-
     let added: Vec<String> = new_roles.difference(&old_roles).cloned().collect();
     let removed: Vec<String> = old_roles.difference(&new_roles).cloned().collect();
-
-    // Clear existing roles and assign new ones
-    principal.roles.clear();
-    for role in req.roles {
-        principal.assign_role(role);
-    }
-    principal.updated_at = chrono::Utc::now();
-
-    state.principal_repo.update(&principal).await?;
 
     // Build response with role DTOs
     let roles: Vec<RoleAssignmentDto> = principal
@@ -438,6 +471,8 @@ pub async fn get_sdk_principal_clients(
     Ok(Json(ClientAccessListResponse { grants }))
 }
 
+// TODO: Migrate grant_sdk_client_access to use GrantClientAccessUseCase once
+// ClientRepository and ClientAccessGrantRepository are added to SdkPrincipalsState.
 /// Grant client access to a principal (SDK)
 #[utoipa::path(
     post,
@@ -477,6 +512,8 @@ pub async fn grant_sdk_client_access(
     }))
 }
 
+// TODO: Migrate revoke_sdk_client_access to use RevokeClientAccessUseCase once
+// ClientRepository and ClientAccessGrantRepository are added to SdkPrincipalsState.
 /// Revoke client access from a principal (SDK)
 #[utoipa::path(
     delete,

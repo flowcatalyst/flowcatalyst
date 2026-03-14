@@ -1,13 +1,14 @@
 //! Create Service Account Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use rand::Rng;
 
 use crate::{ServiceAccount, WebhookCredentials};
 use crate::ServiceAccountRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ServiceAccountCreated;
 
@@ -57,10 +58,27 @@ pub struct CreateServiceAccountCommand {
 
 /// Result returned from create service account use case.
 /// Contains the event plus one-time secrets that need to be returned to caller.
+#[derive(Serialize)]
 pub struct CreateServiceAccountResult {
+    #[serde(flatten)]
     pub event: ServiceAccountCreated,
     pub auth_token: String,
     pub signing_secret: String,
+}
+
+impl crate::usecase::DomainEvent for CreateServiceAccountResult {
+    fn event_id(&self) -> &str { self.event.event_id() }
+    fn event_type(&self) -> &str { self.event.event_type() }
+    fn spec_version(&self) -> &str { self.event.spec_version() }
+    fn source(&self) -> &str { self.event.source() }
+    fn subject(&self) -> &str { self.event.subject() }
+    fn time(&self) -> chrono::DateTime<chrono::Utc> { self.event.time() }
+    fn execution_id(&self) -> &str { self.event.execution_id() }
+    fn correlation_id(&self) -> &str { self.event.correlation_id() }
+    fn causation_id(&self) -> Option<&str> { self.event.causation_id() }
+    fn principal_id(&self) -> &str { self.event.principal_id() }
+    fn message_group(&self) -> &str { self.event.message_group() }
+    fn to_data_json(&self) -> String { self.event.to_data_json() }
 }
 
 /// Use case for creating a new service account.
@@ -79,39 +97,53 @@ impl<U: UnitOfWork> CreateServiceAccountUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: CreateServiceAccountCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<CreateServiceAccountResult> {
-        // Validation: code is required and within bounds
+#[async_trait]
+impl<U: UnitOfWork> UseCase for CreateServiceAccountUseCase<U> {
+    type Command = CreateServiceAccountCommand;
+    type Event = CreateServiceAccountResult;
+
+    async fn validate(&self, command: &CreateServiceAccountCommand) -> Result<(), UseCaseError> {
         let code = command.code.trim();
         if code.is_empty() || code.len() > 50 {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "INVALID_CODE",
                 "Code must be 1-50 characters",
             ));
         }
 
-        // Validation: name is required and within bounds
         let name = command.name.trim();
         if name.is_empty() || name.len() > 100 {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "INVALID_NAME",
                 "Name must be 1-100 characters",
             ));
         }
 
-        // Validation: description length
         if let Some(ref desc) = command.description {
             if desc.len() > 500 {
-                return UseCaseResult::failure(UseCaseError::validation(
+                return Err(UseCaseError::validation(
                     "INVALID_DESCRIPTION",
                     "Description must be max 500 characters",
                 ));
             }
         }
+
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &CreateServiceAccountCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: CreateServiceAccountCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<CreateServiceAccountResult> {
+        let code = command.code.trim();
+        let name = command.name.trim();
 
         // Business rule: code must be unique
         let existing = self.service_account_repo.find_by_code(code).await;

@@ -29,6 +29,9 @@ pub enum PlatformError {
     #[error("Database error: {0}")]
     Database(#[from] sea_orm::DbErr),
 
+    #[error("SQL error: {0}")]
+    Sqlx(#[from] sqlx::Error),
+
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 
@@ -143,8 +146,13 @@ impl IntoResponse for PlatformError {
             PlatformError::ClientNotFound { .. } => (StatusCode::NOT_FOUND, "CLIENT_NOT_FOUND"),
             PlatformError::PrincipalNotFound { .. } => (StatusCode::NOT_FOUND, "PRINCIPAL_NOT_FOUND"),
             PlatformError::ServiceAccountNotFound { .. } => (StatusCode::NOT_FOUND, "SERVICE_ACCOUNT_NOT_FOUND"),
+            PlatformError::Sqlx(_) => (StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
             _ => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
         };
+
+        if status == StatusCode::INTERNAL_SERVER_ERROR {
+            tracing::error!(error = %self, "Internal server error");
+        }
 
         let body = ErrorResponse {
             error: error_type.to_string(),

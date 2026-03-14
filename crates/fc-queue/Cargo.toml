@@ -15,6 +15,7 @@ chrono = { workspace = true }
 sqlx = { workspace = true, optional = true }
 aws-sdk-sqs = { workspace = true, optional = true }
 aws-config = { workspace = true, optional = true }
+parking_lot = { workspace = true, optional = true }
 lapin = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
 dashmap = { workspace = true, optional = true }
@@ -25,7 +26,7 @@ tracing = { workspace = true }
 [features]
 default = []
 sqlite = ["dep:sqlx"]
-sqs = ["dep:aws-sdk-sqs", "dep:aws-config"]
+sqs = ["dep:aws-sdk-sqs", "dep:aws-config", "dep:parking_lot"]
 activemq = ["dep:lapin", "dep:futures", "dep:dashmap"]
 nats = ["dep:async-nats", "dep:dashmap", "dep:futures"]
 

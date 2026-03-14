@@ -1,10 +1,11 @@
 //! Update Identity Provider Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::IdentityProviderRepository;
-use crate::usecase::{ExecutionContext, UseCaseError, UseCaseResult};
+use crate::usecase::{ExecutionContext, UseCase, UseCaseError, UseCaseResult};
 use super::events::IdentityProviderUpdated;
 
 /// Command for updating an existing identity provider.
@@ -31,8 +32,22 @@ impl UpdateIdentityProviderUseCase {
     pub fn new(idp_repo: Arc<IdentityProviderRepository>) -> Self {
         Self { idp_repo }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl UseCase for UpdateIdentityProviderUseCase {
+    type Command = UpdateIdentityProviderCommand;
+    type Event = IdentityProviderUpdated;
+
+    async fn validate(&self, _command: &UpdateIdentityProviderCommand) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &UpdateIdentityProviderCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: UpdateIdentityProviderCommand,
         ctx: ExecutionContext,

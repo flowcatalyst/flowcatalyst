@@ -1,11 +1,12 @@
 //! Delete User Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::principal::repository::PrincipalRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::UserDeleted;
 
@@ -30,20 +31,33 @@ impl<U: UnitOfWork> DeleteUserUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: DeleteUserCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<UserDeleted> {
-        // Validation: principal_id is required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for DeleteUserUseCase<U> {
+    type Command = DeleteUserCommand;
+    type Event = UserDeleted;
+
+    async fn validate(&self, command: &DeleteUserCommand) -> Result<(), UseCaseError> {
         if command.principal_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "PRINCIPAL_ID_REQUIRED",
                 "Principal ID is required",
             ));
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &DeleteUserCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: DeleteUserCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<UserDeleted> {
         // Business rule: cannot delete yourself
         if command.principal_id == ctx.principal_id {
             return UseCaseResult::failure(UseCaseError::business_rule(

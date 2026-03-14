@@ -1,6 +1,7 @@
 //! Grant Client Access Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::principal::entity::{PrincipalType, UserScope, ClientAccessGrant};
@@ -8,7 +9,7 @@ use crate::PrincipalRepository;
 use crate::ClientRepository;
 use crate::ClientAccessGrantRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ClientAccessGranted;
 
@@ -36,23 +37,37 @@ impl<U: UnitOfWork> GrantClientAccessUseCase<U> {
     ) -> Self {
         Self { principal_repo, client_repo, grant_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: GrantClientAccessCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<ClientAccessGranted> {
+#[async_trait]
+impl<U: UnitOfWork> UseCase for GrantClientAccessUseCase<U> {
+    type Command = GrantClientAccessCommand;
+    type Event = ClientAccessGranted;
+
+    async fn validate(&self, command: &GrantClientAccessCommand) -> Result<(), UseCaseError> {
         if command.user_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "USER_ID_REQUIRED", "User ID is required",
             ));
         }
         if command.client_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "CLIENT_ID_REQUIRED", "Client ID is required",
             ));
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &GrantClientAccessCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: GrantClientAccessCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<ClientAccessGranted> {
         let principal = match self.principal_repo.find_by_id(&command.user_id).await {
             Ok(Some(p)) => p,
             Ok(None) => {

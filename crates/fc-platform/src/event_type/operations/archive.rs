@@ -1,12 +1,13 @@
 //! Archive Event Type Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::EventTypeStatus;
 use crate::EventTypeRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::EventTypeArchived;
 
@@ -31,20 +32,32 @@ impl<U: UnitOfWork> ArchiveEventTypeUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: ArchiveEventTypeCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<EventTypeArchived> {
-        // Validation: event_type_id is required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for ArchiveEventTypeUseCase<U> {
+    type Command = ArchiveEventTypeCommand;
+    type Event = EventTypeArchived;
+
+    async fn validate(&self, command: &ArchiveEventTypeCommand) -> Result<(), UseCaseError> {
         if command.event_type_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "EVENT_TYPE_ID_REQUIRED",
                 "Event type ID is required",
             ));
         }
+        Ok(())
+    }
 
+    async fn authorize(&self, _command: &ArchiveEventTypeCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: ArchiveEventTypeCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<EventTypeArchived> {
         // Fetch existing event type
         let mut event_type = match self.event_type_repo.find_by_id(&command.event_type_id).await {
             Ok(Some(et)) => et,

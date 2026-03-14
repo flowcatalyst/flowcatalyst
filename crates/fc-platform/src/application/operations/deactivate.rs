@@ -1,11 +1,12 @@
 //! Deactivate Application Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::ApplicationRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
 };
 use super::events::ApplicationDeactivated;
 
@@ -33,8 +34,22 @@ impl<U: UnitOfWork> DeactivateApplicationUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl<U: UnitOfWork> UseCase for DeactivateApplicationUseCase<U> {
+    type Command = DeactivateApplicationCommand;
+    type Event = ApplicationDeactivated;
+
+    async fn validate(&self, _command: &DeactivateApplicationCommand) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &DeactivateApplicationCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: DeactivateApplicationCommand,
         ctx: ExecutionContext,

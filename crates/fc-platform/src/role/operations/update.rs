@@ -2,12 +2,13 @@
 
 use std::sync::Arc;
 use std::collections::HashSet;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::role::entity::RoleSource;
 use crate::role::repository::RoleRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::RoleUpdated;
 
@@ -29,6 +30,10 @@ pub struct UpdateRoleCommand {
     /// New permissions (replaces existing if provided)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub permissions: Option<Vec<String>>,
+
+    /// Whether clients can manage this role
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_managed: Option<bool>,
 }
 
 /// Use case for updating an existing role.
@@ -44,31 +49,44 @@ impl<U: UnitOfWork> UpdateRoleUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: UpdateRoleCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<RoleUpdated> {
-        // Validation: role_id is required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for UpdateRoleUseCase<U> {
+    type Command = UpdateRoleCommand;
+    type Event = RoleUpdated;
+
+    async fn validate(&self, command: &UpdateRoleCommand) -> Result<(), UseCaseError> {
         if command.role_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "ROLE_ID_REQUIRED",
                 "Role ID is required",
             ));
         }
 
-        // Validation: at least one field to update
         if command.display_name.is_none()
             && command.description.is_none()
             && command.permissions.is_none()
+            && command.client_managed.is_none()
         {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "NO_UPDATES",
                 "At least one field must be provided for update",
             ));
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &UpdateRoleCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: UpdateRoleCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<RoleUpdated> {
         // Fetch existing role
         let mut role = match self.role_repo.find_by_id(&command.role_id).await {
             Ok(Some(r)) => r,
@@ -99,6 +117,7 @@ impl<U: UnitOfWork> UpdateRoleUseCase<U> {
         let mut updated_description: Option<&str> = None;
         let mut permissions_added: Vec<String> = Vec::new();
         let mut permissions_removed: Vec<String> = Vec::new();
+        let mut client_managed_changed = false;
 
         // Apply updates
         if let Some(ref name) = command.display_name {
@@ -114,6 +133,13 @@ impl<U: UnitOfWork> UpdateRoleUseCase<U> {
             if changed {
                 role.description = Some(desc.clone());
                 updated_description = Some(desc.as_str());
+            }
+        }
+
+        if let Some(cm) = command.client_managed {
+            if cm != role.client_managed {
+                role.client_managed = cm;
+                client_managed_changed = true;
             }
         }
 
@@ -133,6 +159,7 @@ impl<U: UnitOfWork> UpdateRoleUseCase<U> {
         // Check if anything actually changed
         if updated_display_name.is_none()
             && updated_description.is_none()
+            && !client_managed_changed
             && permissions_added.is_empty()
             && permissions_removed.is_empty()
         {
@@ -170,6 +197,7 @@ mod tests {
             display_name: Some("New Name".to_string()),
             description: None,
             permissions: Some(vec!["orders:read".to_string()]),
+            client_managed: None,
         };
 
         let json = serde_json::to_string(&cmd).unwrap();

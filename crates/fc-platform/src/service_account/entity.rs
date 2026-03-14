@@ -230,6 +230,10 @@ pub struct ServiceAccount {
     #[serde(default)]
     pub client_ids: Vec<String>,
 
+    /// Scope (ANCHOR, PARTNER, CLIENT)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+
     /// Application ID (if created for an application)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub application_id: Option<String>,
@@ -237,6 +241,10 @@ pub struct ServiceAccount {
     /// Webhook credentials for outbound calls
     #[serde(default)]
     pub webhook_credentials: WebhookCredentials,
+
+    /// The iam_service_accounts.id (separate from the principal ID which is self.id)
+    #[serde(skip)]
+    pub service_account_table_id: Option<String>,
 
     /// Assigned roles (loaded from iam_principal_roles via the linked principal)
     #[serde(default)]
@@ -265,8 +273,10 @@ impl ServiceAccount {
             description: None,
             active: true,
             client_ids: vec![],
+            scope: None,
             application_id: None,
             webhook_credentials: WebhookCredentials::none(),
+            service_account_table_id: None,
             roles: vec![],
             last_used_at: None,
             created_at: now,
@@ -343,15 +353,17 @@ impl From<crate::entities::iam_service_accounts::Model> for ServiceAccount {
         };
 
         Self {
-            id: m.id,
+            id: m.id.clone(),
             code: m.code,
             name: m.name,
             description: m.description,
             active: m.active,
-            client_ids: vec![], // Loaded via principal's client access grants
+            client_ids: vec![],
+            scope: None,
             application_id: m.application_id,
             webhook_credentials,
-            roles: vec![], // Loaded via principal's role assignments
+            service_account_table_id: Some(m.id),
+            roles: vec![],
             last_used_at: m.last_used_at.map(|dt| dt.naive_utc().and_utc()),
             created_at: m.created_at.naive_utc().and_utc(),
             updated_at: m.updated_at.naive_utc().and_utc(),

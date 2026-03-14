@@ -1,12 +1,13 @@
 //! Update Dispatch Pool Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use chrono::Utc;
 
 use crate::DispatchPoolRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::DispatchPoolUpdated;
 
@@ -50,8 +51,22 @@ impl<U: UnitOfWork> UpdateDispatchPoolUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl<U: UnitOfWork> UseCase for UpdateDispatchPoolUseCase<U> {
+    type Command = UpdateDispatchPoolCommand;
+    type Event = DispatchPoolUpdated;
+
+    async fn validate(&self, _command: &UpdateDispatchPoolCommand) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &UpdateDispatchPoolCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: UpdateDispatchPoolCommand,
         ctx: ExecutionContext,

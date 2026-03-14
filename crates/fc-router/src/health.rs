@@ -28,6 +28,10 @@ pub struct HealthServiceConfig {
     pub warning_age_minutes: i64,
     /// Consumer stall threshold (seconds since last poll)
     pub consumer_stall_threshold_secs: u64,
+    /// Max active warnings before status degrades from Healthy to Warning (Java: 5)
+    pub max_warnings_healthy: u32,
+    /// Max active warnings before status degrades from Warning to Degraded (Java: 20)
+    pub max_warnings_warning: u32,
 }
 
 impl Default for HealthServiceConfig {
@@ -38,6 +42,8 @@ impl Default for HealthServiceConfig {
             rolling_window: Duration::from_secs(30 * 60),  // 30 minutes
             warning_age_minutes: 30,
             consumer_stall_threshold_secs: 60,
+            max_warnings_healthy: 5,   // Java: maxWarningsForHealthy = 5
+            max_warnings_warning: 20,  // Java: maxWarningsForWarning = 20
         }
     }
 }
@@ -260,13 +266,17 @@ impl HealthService {
             issues.push(format!("{} critical warnings", critical_warnings));
         }
 
-        // Determine overall status
+        // Determine overall status (matches Java warning-count thresholds)
         let status = if critical_warnings > 0
             || (pools_unhealthy > 0 && pools_healthy == 0)
             || (consumers_unhealthy > 0 && consumers_healthy == 0)
+            || active_warnings_count > self.config.max_warnings_warning
         {
             HealthStatus::Degraded
-        } else if pools_unhealthy > 0 || consumers_unhealthy > 0 || active_warnings_count > 0 {
+        } else if pools_unhealthy > 0
+            || consumers_unhealthy > 0
+            || active_warnings_count > self.config.max_warnings_healthy
+        {
             HealthStatus::Warning
         } else {
             HealthStatus::Healthy
@@ -373,5 +383,46 @@ mod tests {
 
         let report = service.get_health_report(&stats);
         assert_eq!(report.status, HealthStatus::Healthy);
+    }
+
+    #[test]
+    fn test_warning_count_thresholds() {
+        use fc_common::{WarningCategory, WarningSeverity};
+
+        let warning_service = Arc::new(WarningService::default());
+        let service = HealthService::new(HealthServiceConfig::default(), warning_service.clone());
+
+        service.set_consumer_running("consumer-1", true);
+        service.record_consumer_poll("consumer-1");
+
+        let stats: Vec<PoolStats> = vec![];
+
+        // 0 warnings → Healthy
+        let report = service.get_health_report(&stats);
+        assert_eq!(report.status, HealthStatus::Healthy);
+
+        // 6 warnings (> 5 threshold) → Warning
+        for i in 0..6 {
+            warning_service.add_warning(
+                WarningCategory::Processing,
+                WarningSeverity::Warn,
+                format!("test warning {}", i),
+                "test".to_string(),
+            );
+        }
+        let report = service.get_health_report(&stats);
+        assert_eq!(report.status, HealthStatus::Warning);
+
+        // 21 warnings (> 20 threshold) → Degraded
+        for i in 6..21 {
+            warning_service.add_warning(
+                WarningCategory::Processing,
+                WarningSeverity::Warn,
+                format!("test warning {}", i),
+                "test".to_string(),
+            );
+        }
+        let report = service.get_health_report(&stats);
+        assert_eq!(report.status, HealthStatus::Degraded);
     }
 }

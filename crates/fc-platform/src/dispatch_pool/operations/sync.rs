@@ -3,13 +3,14 @@
 //! Bulk creates/updates/archives dispatch pools from an application SDK.
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::DispatchPool;
 use crate::DispatchPoolRepository;
 use crate::usecase::{
-    ExecutionContext, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UseCaseError, UseCaseResult,
 };
 use super::events::DispatchPoolsSynced;
 
@@ -53,44 +54,57 @@ impl SyncDispatchPoolsUseCase {
     pub fn new(dispatch_pool_repo: Arc<DispatchPoolRepository>) -> Self {
         Self { dispatch_pool_repo }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: SyncDispatchPoolsCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<DispatchPoolsSynced> {
+#[async_trait]
+impl UseCase for SyncDispatchPoolsUseCase {
+    type Command = SyncDispatchPoolsCommand;
+    type Event = DispatchPoolsSynced;
+
+    async fn validate(&self, command: &SyncDispatchPoolsCommand) -> Result<(), UseCaseError> {
         if command.application_code.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "APPLICATION_CODE_REQUIRED", "Application code is required",
             ));
         }
 
-        // Validate inputs
         let pattern = pool_code_pattern();
         for input in &command.pools {
             if input.code.trim().is_empty() || !pattern.is_match(&input.code) {
-                return UseCaseResult::failure(UseCaseError::validation(
+                return Err(UseCaseError::validation(
                     "INVALID_POOL_CODE",
                     format!("Pool code '{}' is invalid. Must start with lowercase letter, contain only lowercase alphanumeric, hyphens, underscores.", input.code),
                 ));
             }
             if input.name.trim().is_empty() {
-                return UseCaseResult::failure(UseCaseError::validation(
+                return Err(UseCaseError::validation(
                     "NAME_REQUIRED", "Pool name is required",
                 ));
             }
             if input.rate_limit < 1 {
-                return UseCaseResult::failure(UseCaseError::validation(
+                return Err(UseCaseError::validation(
                     "INVALID_RATE_LIMIT", "Rate limit must be at least 1",
                 ));
             }
             if input.concurrency < 1 {
-                return UseCaseResult::failure(UseCaseError::validation(
+                return Err(UseCaseError::validation(
                     "INVALID_CONCURRENCY", "Concurrency must be at least 1",
                 ));
             }
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &SyncDispatchPoolsCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: SyncDispatchPoolsCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<DispatchPoolsSynced> {
         // Fetch existing pools
         let existing = match self.dispatch_pool_repo.find_all().await {
             Ok(list) => list,

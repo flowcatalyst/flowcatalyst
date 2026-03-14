@@ -1,13 +1,14 @@
 //! Create User Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use regex::Regex;
 
 use crate::principal::entity::{Principal, UserScope};
 use crate::principal::repository::PrincipalRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use crate::details;
 use super::events::UserCreated;
@@ -57,36 +58,50 @@ impl<U: UnitOfWork> CreateUserUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: CreateUserCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<UserCreated> {
-        // Validation: email is required and must be valid
+#[async_trait]
+impl<U: UnitOfWork> UseCase for CreateUserUseCase<U> {
+    type Command = CreateUserCommand;
+    type Event = UserCreated;
+
+    async fn validate(&self, command: &CreateUserCommand) -> Result<(), UseCaseError> {
         let email = command.email.trim().to_lowercase();
         if email.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "EMAIL_REQUIRED",
                 "Email address is required",
             ));
         }
         if !email_pattern().is_match(&email) {
-            return UseCaseResult::failure(UseCaseError::validation_with_details(
+            return Err(UseCaseError::validation_with_details(
                 "INVALID_EMAIL_FORMAT",
                 "Invalid email address format",
                 details! { "email" => &command.email },
             ));
         }
 
-        // Validation: CLIENT scope requires client_id
         if command.scope == UserScope::Client && command.client_id.is_none() {
-            return UseCaseResult::failure(UseCaseError::validation_with_details(
+            return Err(UseCaseError::validation_with_details(
                 "CLIENT_ID_REQUIRED",
                 "Client ID is required for CLIENT scope users",
                 details! { "scope" => "CLIENT" },
             ));
         }
+
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &CreateUserCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: CreateUserCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<UserCreated> {
+        let email = command.email.trim().to_lowercase();
 
         // Business rule: email must be unique
         if let Ok(Some(_)) = self.principal_repo.find_by_email(&email).await {

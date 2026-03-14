@@ -1,6 +1,7 @@
 //! Create Connection Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +9,7 @@ use crate::Connection;
 use crate::ConnectionRepository;
 use crate::ServiceAccountRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ConnectionCreated;
 
@@ -47,43 +48,61 @@ impl<U: UnitOfWork> CreateConnectionUseCase<U> {
     ) -> Self {
         Self { connection_repo, service_account_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: CreateConnectionCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<ConnectionCreated> {
+#[async_trait]
+impl<U: UnitOfWork> UseCase for CreateConnectionUseCase<U> {
+    type Command = CreateConnectionCommand;
+    type Event = ConnectionCreated;
+
+    async fn validate(&self, command: &CreateConnectionCommand) -> Result<(), UseCaseError> {
         let code = command.code.trim().to_lowercase();
         if code.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "CODE_REQUIRED", "Connection code is required",
             ));
         }
         if !code_pattern().is_match(&code) {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "INVALID_CODE_FORMAT", "Code must start with lowercase letter, contain only lowercase alphanumeric and hyphens",
             ));
         }
 
         let name = command.name.trim();
         if name.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "NAME_REQUIRED", "Connection name is required",
             ));
         }
 
         let endpoint = command.endpoint.trim();
         if endpoint.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "ENDPOINT_REQUIRED", "Endpoint is required",
             ));
         }
 
         if command.service_account_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "SERVICE_ACCOUNT_ID_REQUIRED", "Service account ID is required",
             ));
         }
+
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &CreateConnectionCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: CreateConnectionCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<ConnectionCreated> {
+        let code = command.code.trim().to_lowercase();
+        let name = command.name.trim();
+        let endpoint = command.endpoint.trim();
 
         // Validate service account exists
         match self.service_account_repo.find_by_id(&command.service_account_id).await {

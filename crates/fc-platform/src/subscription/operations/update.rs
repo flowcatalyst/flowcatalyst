@@ -2,13 +2,14 @@
 
 use std::sync::Arc;
 use std::collections::HashSet;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::EventTypeBinding;
 use crate::subscription::entity::DispatchMode;
 use crate::SubscriptionRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::SubscriptionUpdated;
 use super::create::EventTypeBindingInput;
@@ -70,21 +71,21 @@ impl<U: UnitOfWork> UpdateSubscriptionUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: UpdateSubscriptionCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<SubscriptionUpdated> {
-        // Validation: subscription_id is required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for UpdateSubscriptionUseCase<U> {
+    type Command = UpdateSubscriptionCommand;
+    type Event = SubscriptionUpdated;
+
+    async fn validate(&self, command: &UpdateSubscriptionCommand) -> Result<(), UseCaseError> {
         if command.subscription_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "SUBSCRIPTION_ID_REQUIRED",
                 "Subscription ID is required",
             ));
         }
 
-        // Validation: at least one field to update
         if command.name.is_none()
             && command.description.is_none()
             && command.event_types.is_none()
@@ -95,12 +96,24 @@ impl<U: UnitOfWork> UpdateSubscriptionUseCase<U> {
             && command.timeout_seconds.is_none()
             && command.data_only.is_none()
         {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "NO_UPDATES",
                 "At least one field must be provided for update",
             ));
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &UpdateSubscriptionCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: UpdateSubscriptionCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<SubscriptionUpdated> {
         // Fetch existing subscription
         let mut subscription = match self.subscription_repo.find_by_id(&command.subscription_id).await {
             Ok(Some(s)) => s,

@@ -2,12 +2,13 @@
 
 use std::sync::Arc;
 use std::collections::HashSet;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use chrono::Utc;
 
 use crate::ServiceAccountRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ServiceAccountUpdated;
 
@@ -47,8 +48,22 @@ impl<U: UnitOfWork> UpdateServiceAccountUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl<U: UnitOfWork> UseCase for UpdateServiceAccountUseCase<U> {
+    type Command = UpdateServiceAccountCommand;
+    type Event = ServiceAccountUpdated;
+
+    async fn validate(&self, _command: &UpdateServiceAccountCommand) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &UpdateServiceAccountCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: UpdateServiceAccountCommand,
         ctx: ExecutionContext,

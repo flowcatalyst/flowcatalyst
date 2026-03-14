@@ -117,9 +117,12 @@ impl EncryptionService {
     }
 
     /// Decrypt a value. Tries current key first, then falls back to previous keys.
-    /// Supports both versioned (v1) and legacy (v0) formats.
+    /// Supports both versioned (v1), legacy (v0), and TypeScript `encrypted:` prefix formats.
     pub fn decrypt(&self, encrypted: &str) -> Result<String, String> {
-        let data = BASE64.decode(encrypted)
+        // Handle TypeScript encryption format: "encrypted:BASE64(iv || ciphertext || tag)"
+        let raw = encrypted.strip_prefix("encrypted:").unwrap_or(encrypted);
+
+        let data = BASE64.decode(raw)
             .map_err(|e| format!("Invalid base64: {}", e))?;
 
         if data.is_empty() {

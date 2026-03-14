@@ -212,6 +212,10 @@ pub struct Principal {
     #[serde(default)]
     pub assigned_clients: Vec<String>,
 
+    /// Client ID → identifier mapping (for JWT "id:identifier" claims)
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub client_identifier_map: std::collections::HashMap<String, String>,
+
     /// Accessible application IDs (loaded from iam_principal_application_access)
     #[serde(default)]
     pub accessible_application_ids: Vec<String>,
@@ -258,6 +262,7 @@ impl Principal {
             service_account_id: None,
             roles: vec![],
             assigned_clients: vec![],
+            client_identifier_map: std::collections::HashMap::new(),
             accessible_application_ids: vec![],
             created_at: now,
             updated_at: now,
@@ -280,6 +285,7 @@ impl Principal {
             service_account_id: Some(service_account_id.into()),
             roles: vec![],
             assigned_clients: vec![],
+            client_identifier_map: std::collections::HashMap::new(),
             accessible_application_ids: vec![],
             created_at: now,
             updated_at: now,
@@ -469,6 +475,7 @@ impl From<crate::entities::iam_principals::Model> for Principal {
             service_account_id: m.service_account_id,
             roles: vec![], // Must be loaded from iam_principal_roles
             assigned_clients: vec![], // Must be loaded from iam_client_access_grants
+            client_identifier_map: std::collections::HashMap::new(), // Populated during hydration
             accessible_application_ids: vec![], // Must be loaded from junction table
             created_at: m.created_at.naive_utc().and_utc(),
             updated_at: m.updated_at.naive_utc().and_utc(),

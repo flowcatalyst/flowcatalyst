@@ -1,13 +1,14 @@
 //! Create Client Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use regex::Regex;
 
 use crate::client::entity::Client;
 use crate::client::repository::ClientRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ClientCreated;
 
@@ -42,47 +43,62 @@ impl<U: UnitOfWork> CreateClientUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: CreateClientCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<ClientCreated> {
-        // Validation: name is required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for CreateClientUseCase<U> {
+    type Command = CreateClientCommand;
+    type Event = ClientCreated;
+
+    async fn validate(&self, command: &CreateClientCommand) -> Result<(), UseCaseError> {
         let name = command.name.trim();
         if name.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "NAME_REQUIRED",
                 "Client name is required",
             ));
         }
         if name.len() > 100 {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "NAME_TOO_LONG",
                 "Client name must be at most 100 characters",
             ));
         }
 
-        // Validation: identifier is required and must match pattern
         let identifier = command.identifier.trim().to_lowercase();
         if identifier.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "IDENTIFIER_REQUIRED",
                 "Client identifier is required",
             ));
         }
         if identifier.len() < 2 || identifier.len() > 50 {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "INVALID_IDENTIFIER_LENGTH",
                 "Client identifier must be between 2 and 50 characters",
             ));
         }
         if !identifier_pattern().is_match(&identifier) {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "INVALID_IDENTIFIER_FORMAT",
                 "Client identifier must be lowercase alphanumeric with hyphens, starting with a letter",
             ));
         }
+
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &CreateClientCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        // Authorization handled in handler via require_anchor
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: CreateClientCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<ClientCreated> {
+        let identifier = command.identifier.trim().to_lowercase();
 
         // Business rule: identifier must be unique
         if let Ok(Some(_)) = self.client_repo.find_by_identifier(&identifier).await {
@@ -92,10 +108,8 @@ impl<U: UnitOfWork> CreateClientUseCase<U> {
             ));
         }
 
-        // Create the client entity
-        let client = Client::new(name, &identifier);
+        let client = Client::new(command.name.trim(), &identifier);
 
-        // Create domain event
         let event = ClientCreated::new(
             &ctx,
             &client.id,
@@ -104,7 +118,6 @@ impl<U: UnitOfWork> CreateClientUseCase<U> {
             None,
         );
 
-        // Atomic commit: entity + event + audit log
         self.unit_of_work.commit(&client, event, &command).await
     }
 }

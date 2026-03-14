@@ -12,16 +12,23 @@ use crate::client::api::{
     CreateClientRequest, UpdateClientRequest,
     StatusChangeRequest, StatusChangeResponse,
 };
-use crate::client::entity::Client;
 use crate::client::repository::ClientRepository;
+use crate::client::operations::{
+    CreateClientCommand, CreateClientUseCase,
+    UpdateClientCommand, UpdateClientUseCase,
+    ActivateClientCommand, ActivateClientUseCase,
+    SuspendClientCommand, SuspendClientUseCase,
+};
 use crate::shared::api_common::CreatedResponse;
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
+use crate::usecase::{ExecutionContext, PgUnitOfWork, UseCase};
 
 /// SDK Clients service state
 #[derive(Clone)]
 pub struct SdkClientsState {
     pub client_repo: Arc<ClientRepository>,
+    pub unit_of_work: Arc<PgUnitOfWork>,
 }
 
 /// List accessible clients
@@ -103,15 +110,15 @@ async fn create_sdk_client(
 ) -> Result<Json<CreatedResponse>, PlatformError> {
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    if let Some(_) = state.client_repo.find_by_identifier(&req.identifier).await? {
-        return Err(PlatformError::duplicate("Client", "identifier", &req.identifier));
-    }
+    let cmd = CreateClientCommand {
+        name: req.name.clone(),
+        identifier: req.identifier.clone(),
+    };
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let use_case = CreateClientUseCase::new(state.client_repo.clone(), state.unit_of_work.clone());
+    let event = use_case.run(cmd, ctx).await.into_result()?;
 
-    let client = Client::new(&req.name, &req.identifier);
-    let id = client.id.clone();
-    state.client_repo.insert(&client).await?;
-
-    Ok(Json(CreatedResponse::new(id)))
+    Ok(Json(CreatedResponse::new(event.client_id)))
 }
 
 /// Update client
@@ -139,15 +146,17 @@ async fn update_sdk_client(
 ) -> Result<Json<ClientResponse>, PlatformError> {
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    let mut client = state.client_repo.find_by_id(&id).await?
+    let cmd = UpdateClientCommand {
+        client_id: id.clone(),
+        name: req.name,
+    };
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let use_case = UpdateClientUseCase::new(state.client_repo.clone(), state.unit_of_work.clone());
+    use_case.run(cmd, ctx).await.into_result()?;
+
+    // Re-fetch updated entity for response
+    let client = state.client_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("Client", &id))?;
-
-    if let Some(name) = req.name {
-        client.name = name;
-    }
-    client.updated_at = chrono::Utc::now();
-
-    state.client_repo.update(&client).await?;
 
     Ok(Json(client.into()))
 }
@@ -175,11 +184,12 @@ async fn activate_sdk_client(
 ) -> Result<Json<StatusChangeResponse>, PlatformError> {
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    let mut client = state.client_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Client", &id))?;
-
-    client.activate();
-    state.client_repo.update(&client).await?;
+    let cmd = ActivateClientCommand {
+        client_id: id.clone(),
+    };
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let use_case = ActivateClientUseCase::new(state.client_repo.clone(), state.unit_of_work.clone());
+    use_case.run(cmd, ctx).await.into_result()?;
 
     tracing::info!(client_id = %id, principal_id = %auth.0.principal_id, "SDK: Client activated");
 
@@ -213,11 +223,13 @@ async fn suspend_sdk_client(
 ) -> Result<Json<StatusChangeResponse>, PlatformError> {
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    let mut client = state.client_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Client", &id))?;
-
-    client.suspend(&req.reason);
-    state.client_repo.update(&client).await?;
+    let cmd = SuspendClientCommand {
+        client_id: id.clone(),
+        reason: req.reason.clone(),
+    };
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let use_case = SuspendClientUseCase::new(state.client_repo.clone(), state.unit_of_work.clone());
+    use_case.run(cmd, ctx).await.into_result()?;
 
     tracing::info!(
         client_id = %id,
@@ -231,6 +243,8 @@ async fn suspend_sdk_client(
     }))
 }
 
+// TODO: Rewrite to use DeactivateClientUseCase once it exists in the operations layer.
+// Currently only Activate, Suspend, and Delete use cases are available.
 /// Deactivate a client
 #[utoipa::path(
     post,

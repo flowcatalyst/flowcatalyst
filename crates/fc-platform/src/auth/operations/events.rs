@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use crate::usecase::ExecutionContext;
 use crate::usecase::domain_event::EventMetadata;
 use crate::TsidGenerator;
-use crate::EntityType;
 use crate::impl_domain_event;
 
 // ── AnchorDomain Events ──────────────────────────────────────────────────────
@@ -27,7 +26,7 @@ impl AnchorDomainCreated {
     const SOURCE: &'static str = "platform:iam";
 
     pub fn new(ctx: &ExecutionContext, id: &str, domain: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.anchordomain.{}", id);
         let message_group = format!("platform:anchordomain:{}", id);
 
@@ -62,7 +61,7 @@ impl AnchorDomainDeleted {
     const SOURCE: &'static str = "platform:iam";
 
     pub fn new(ctx: &ExecutionContext, id: &str, domain: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.anchordomain.{}", id);
         let message_group = format!("platform:anchordomain:{}", id);
 
@@ -100,7 +99,7 @@ impl AuthConfigCreated {
     const SOURCE: &'static str = "platform:iam";
 
     pub fn new(ctx: &ExecutionContext, id: &str, email_domain: &str, config_type: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.authconfig.{}", id);
         let message_group = format!("platform:authconfig:{}", id);
 
@@ -136,7 +135,7 @@ impl AuthConfigUpdated {
     const SOURCE: &'static str = "platform:iam";
 
     pub fn new(ctx: &ExecutionContext, id: &str, email_domain: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.authconfig.{}", id);
         let message_group = format!("platform:authconfig:{}", id);
 
@@ -171,7 +170,7 @@ impl AuthConfigDeleted {
     const SOURCE: &'static str = "platform:iam";
 
     pub fn new(ctx: &ExecutionContext, id: &str, email_domain: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.authconfig.{}", id);
         let message_group = format!("platform:authconfig:{}", id);
 

@@ -1,12 +1,13 @@
 //! Create Email Domain Mapping Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::EmailDomainMappingRepository;
 use crate::IdentityProviderRepository;
 use crate::email_domain_mapping::entity::{EmailDomainMapping, ScopeType};
-use crate::usecase::{ExecutionContext, UseCaseError, UseCaseResult};
+use crate::usecase::{ExecutionContext, UseCase, UseCaseError, UseCaseResult};
 use super::events::EmailDomainMappingCreated;
 
 /// Command for creating a new email domain mapping.
@@ -34,24 +35,40 @@ impl CreateEmailDomainMappingUseCase {
     ) -> Self {
         Self { edm_repo, idp_repo }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: CreateEmailDomainMappingCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<EmailDomainMappingCreated> {
+#[async_trait]
+impl UseCase for CreateEmailDomainMappingUseCase {
+    type Command = CreateEmailDomainMappingCommand;
+    type Event = EmailDomainMappingCreated;
+
+    async fn validate(&self, command: &CreateEmailDomainMappingCommand) -> Result<(), UseCaseError> {
         let email_domain = command.email_domain.trim().to_lowercase();
         if email_domain.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "EMAIL_DOMAIN_REQUIRED", "Email domain is required",
             ));
         }
 
         if command.identity_provider_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "IDENTITY_PROVIDER_ID_REQUIRED", "Identity provider ID is required",
             ));
         }
+
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &CreateEmailDomainMappingCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: CreateEmailDomainMappingCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<EmailDomainMappingCreated> {
+        let email_domain = command.email_domain.trim().to_lowercase();
 
         // Verify identity provider exists
         match self.idp_repo.find_by_id(&command.identity_provider_id).await {

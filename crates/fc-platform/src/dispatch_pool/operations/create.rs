@@ -1,12 +1,13 @@
 //! Create Dispatch Pool Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::DispatchPool;
 use crate::DispatchPoolRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::DispatchPoolCreated;
 
@@ -54,29 +55,44 @@ impl<U: UnitOfWork> CreateDispatchPoolUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: CreateDispatchPoolCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<DispatchPoolCreated> {
-        // Validation: code is required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for CreateDispatchPoolUseCase<U> {
+    type Command = CreateDispatchPoolCommand;
+    type Event = DispatchPoolCreated;
+
+    async fn validate(&self, command: &CreateDispatchPoolCommand) -> Result<(), UseCaseError> {
         let code = command.code.trim();
         if code.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "CODE_REQUIRED",
                 "Dispatch pool code is required",
             ));
         }
 
-        // Validation: name is required
         let name = command.name.trim();
         if name.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "NAME_REQUIRED",
                 "Dispatch pool name is required",
             ));
         }
+
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &CreateDispatchPoolCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: CreateDispatchPoolCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<DispatchPoolCreated> {
+        let code = command.code.trim();
+        let name = command.name.trim();
 
         // Business rule: code must be unique
         let existing = self.dispatch_pool_repo.find_by_code(code, command.client_id.as_deref()).await;

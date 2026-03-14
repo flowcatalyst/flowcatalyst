@@ -11,7 +11,7 @@ use chrono::Utc;
 
 use super::entity::{Principal, UserScope};
 use crate::service_account::entity::RoleAssignment;
-use crate::entities::{iam_principals, iam_principal_roles, iam_client_access_grants};
+use crate::entities::{iam_principals, iam_principal_roles, iam_client_access_grants, iam_principal_application_access, tnt_clients};
 use crate::shared::error::Result;
 use crate::usecase::unit_of_work::{HasId, PgPersist};
 
@@ -246,6 +246,23 @@ impl PrincipalRepository {
 
         self.insert_roles(&principal.id, &principal.roles).await?;
 
+        // Sync application access: delete all then re-insert
+        iam_principal_application_access::Entity::delete_many()
+            .filter(iam_principal_application_access::Column::PrincipalId.eq(&principal.id))
+            .exec(&self.db)
+            .await?;
+
+        for app_id in &principal.accessible_application_ids {
+            let model = iam_principal_application_access::ActiveModel {
+                principal_id: Set(principal.id.clone()),
+                application_id: Set(app_id.clone()),
+                granted_at: Set(Utc::now().into()),
+            };
+            iam_principal_application_access::Entity::insert(model)
+                .exec(&self.db)
+                .await?;
+        }
+
         Ok(())
     }
 
@@ -358,22 +375,46 @@ impl PrincipalRepository {
         }).collect())
     }
 
-    /// Load assigned client IDs from iam_client_access_grants
-    async fn load_assigned_clients(&self, principal_id: &str) -> Result<Vec<String>> {
+    /// Load assigned client IDs and identifiers from iam_client_access_grants + tnt_clients
+    async fn load_assigned_clients(&self, principal_id: &str) -> Result<(Vec<String>, std::collections::HashMap<String, String>)> {
         let grants = iam_client_access_grants::Entity::find()
             .filter(iam_client_access_grants::Column::PrincipalId.eq(principal_id))
             .all(&self.db)
             .await?;
 
-        Ok(grants.into_iter().map(|g| g.client_id).collect())
+        let client_ids: Vec<String> = grants.iter().map(|g| g.client_id.clone()).collect();
+
+        // Batch-load client identifiers for JWT "id:identifier" claim format
+        let mut identifier_map = std::collections::HashMap::new();
+        if !client_ids.is_empty() {
+            let clients = tnt_clients::Entity::find()
+                .filter(tnt_clients::Column::Id.is_in(client_ids.clone()))
+                .all(&self.db)
+                .await?;
+            for c in clients {
+                identifier_map.insert(c.id, c.identifier);
+            }
+        }
+
+        Ok((client_ids, identifier_map))
     }
 
-    /// Hydrate a single principal with roles and client grants
+    /// Hydrate a single principal with roles, client grants, and application access
     async fn hydrate_principal(&self, model: iam_principals::Model) -> Result<Principal> {
         let id = model.id.clone();
         let mut principal = Principal::from(model);
         principal.roles = self.load_roles(&id).await?;
-        principal.assigned_clients = self.load_assigned_clients(&id).await?;
+        let (clients, identifier_map) = self.load_assigned_clients(&id).await?;
+        principal.assigned_clients = clients;
+        principal.client_identifier_map = identifier_map;
+
+        // Load application access
+        let app_access = iam_principal_application_access::Entity::find()
+            .filter(iam_principal_application_access::Column::PrincipalId.eq(&id))
+            .all(&self.db)
+            .await?;
+        principal.accessible_application_ids = app_access.into_iter().map(|a| a.application_id).collect();
+
         Ok(principal)
     }
 
@@ -405,14 +446,43 @@ impl PrincipalRepository {
 
         // Batch-load client access grants
         let all_grants = iam_client_access_grants::Entity::find()
-            .filter(iam_client_access_grants::Column::PrincipalId.is_in(principal_ids))
+            .filter(iam_client_access_grants::Column::PrincipalId.is_in(principal_ids.clone()))
             .all(&self.db)
             .await?;
 
         let mut grant_map: std::collections::HashMap<String, Vec<String>> =
             std::collections::HashMap::new();
+        let mut all_client_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for g in &all_grants {
+            all_client_ids.insert(g.client_id.clone());
+        }
         for g in all_grants {
             grant_map.entry(g.principal_id).or_default().push(g.client_id);
+        }
+
+        // Batch-load client identifiers for JWT claims
+        let mut client_id_to_identifier: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        if !all_client_ids.is_empty() {
+            let clients = tnt_clients::Entity::find()
+                .filter(tnt_clients::Column::Id.is_in(all_client_ids.into_iter().collect::<Vec<_>>()))
+                .all(&self.db)
+                .await?;
+            for c in clients {
+                client_id_to_identifier.insert(c.id, c.identifier);
+            }
+        }
+
+        // Batch-load application access
+        let all_app_access = iam_principal_application_access::Entity::find()
+            .filter(iam_principal_application_access::Column::PrincipalId.is_in(principal_ids))
+            .all(&self.db)
+            .await?;
+
+        let mut app_access_map: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for a in all_app_access {
+            app_access_map.entry(a.principal_id).or_default().push(a.application_id);
         }
 
         // Build domain entities
@@ -425,7 +495,18 @@ impl PrincipalRepository {
                     principal.roles = roles;
                 }
                 if let Some(clients) = grant_map.remove(&id) {
+                    // Build client identifier map for this principal's clients
+                    let mut id_map = std::collections::HashMap::new();
+                    for cid in &clients {
+                        if let Some(ident) = client_id_to_identifier.get(cid) {
+                            id_map.insert(cid.clone(), ident.clone());
+                        }
+                    }
                     principal.assigned_clients = clients;
+                    principal.client_identifier_map = id_map;
+                }
+                if let Some(apps) = app_access_map.remove(&id) {
+                    principal.accessible_application_ids = apps;
                 }
                 principal
             })

@@ -92,9 +92,13 @@ pub mod client;
 #[cfg(feature = "auth")]
 pub mod auth;
 
+#[cfg(feature = "webhook")]
+pub mod webhook;
+
 // Re-export key types at crate root
 pub use tsid::{TsidGenerator, EntityType};
 pub use usecase::{
+    UseCase,
     UseCaseResult, UseCaseError,
     DomainEvent, EventMetadata, EventMetadataBuilder,
     ExecutionContext, TracingContext,

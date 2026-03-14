@@ -4,13 +4,24 @@
 //! Supports both RS256 (RSA) for production and HS256 (HMAC) for development.
 
 use chrono::{Duration, Utc};
+use dashmap::DashMap;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation, Algorithm};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+use std::time::Instant;
 use tracing::{info, warn};
 use crate::{Principal, UserScope};
 use crate::shared::error::{PlatformError, Result};
+
+/// Cached token validation result
+struct CachedClaims {
+    claims: AccessTokenClaims,
+    cached_at: Instant,
+}
+
+/// Cache TTL for validated tokens (30 seconds — short enough to respect expiry changes)
+const TOKEN_CACHE_TTL_SECS: u64 = 30;
 
 /// JWT Claims for access tokens
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +68,10 @@ pub struct AccessTokenClaims {
     /// Roles assigned to this principal
     #[serde(default)]
     pub roles: Vec<String>,
+
+    /// Application codes extracted from role names (e.g., "operant:admin" → "operant")
+    #[serde(default)]
+    pub applications: Vec<String>,
 }
 
 /// Configuration for the auth service
@@ -101,7 +116,7 @@ impl Default for AuthConfig {
             issuer: "flowcatalyst".to_string(),
             audience: "flowcatalyst".to_string(),
             access_token_expiry_secs: 3600,      // 1 hour (PT1H)
-            session_token_expiry_secs: 28800,    // 8 hours (PT8H)
+            session_token_expiry_secs: 86400,    // 24 hours (PT24H)
             refresh_token_expiry_secs: 86400 * 30, // 30 days (P30D)
         }
     }
@@ -268,6 +283,8 @@ pub struct AuthService {
     rsa_components: Option<RsaPublicKeyComponents>,
     /// Previous keys — used for validation only (not signing), exposed in JWKS
     previous_keys: Vec<KeyEntry>,
+    /// Cache of validated tokens: token string → claims (avoids repeated RSA verification)
+    token_cache: DashMap<String, CachedClaims>,
 }
 
 impl AuthService {
@@ -299,6 +316,7 @@ impl AuthService {
             key_id: Some(key_id),
             rsa_components: Some(rsa_components),
             previous_keys: Vec::new(),
+            token_cache: DashMap::new(),
         })
     }
 
@@ -358,6 +376,7 @@ impl AuthService {
             key_id: None,
             rsa_components: None,
             previous_keys: Vec::new(),
+            token_cache: DashMap::new(),
         }
     }
 
@@ -440,11 +459,35 @@ impl AuthService {
         let now = Utc::now();
         let exp = now + Duration::seconds(expiry_secs);
 
-        // Determine client access
+        // Determine client access — TS format: "id:identifier" pairs
         let clients = match principal.scope {
             UserScope::Anchor => vec!["*".to_string()],
-            UserScope::Partner => principal.assigned_clients.clone(),
-            UserScope::Client => principal.client_id.clone().into_iter().collect(),
+            UserScope::Partner => principal.assigned_clients.iter().map(|id| {
+                match principal.client_identifier_map.get(id) {
+                    Some(identifier) => format!("{}:{}", id, identifier),
+                    None => id.clone(),
+                }
+            }).collect(),
+            UserScope::Client => principal.client_id.clone().into_iter().map(|id| {
+                match principal.client_identifier_map.get(&id) {
+                    Some(identifier) => format!("{}:{}", id, identifier),
+                    None => id,
+                }
+            }).collect(),
+        };
+
+        // Extract application codes from role names (e.g., "operant:admin" → "operant")
+        let role_names: Vec<String> = principal.roles.iter().map(|r| r.role.clone()).collect();
+        let applications: Vec<String> = {
+            let mut apps: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for role in &role_names {
+                if let Some(app_code) = role.split(':').next() {
+                    if role.contains(':') {
+                        apps.insert(app_code.to_string());
+                    }
+                }
+            }
+            apps.into_iter().collect()
         };
 
         let claims = AccessTokenClaims {
@@ -460,7 +503,8 @@ impl AuthService {
             email: principal.email().map(String::from),
             name: principal.name.clone(),
             clients,
-            roles: principal.roles.iter().map(|r| r.role.clone()).collect(),
+            roles: role_names,
+            applications,
         };
 
         let mut header = Header::new(self.algorithm);
@@ -470,8 +514,42 @@ impl AuthService {
     }
 
     /// Validate an access token and extract claims.
+    /// Uses an in-memory cache to avoid repeated RSA signature verification.
     /// Tries the current key first, then falls back to previous keys (for key rotation).
     pub fn validate_token(&self, token: &str) -> Result<AccessTokenClaims> {
+        // Check cache first
+        if let Some(entry) = self.token_cache.get(token) {
+            if entry.cached_at.elapsed().as_secs() < TOKEN_CACHE_TTL_SECS {
+                // Still need to check expiry even for cached tokens
+                let now = Utc::now().timestamp();
+                if entry.claims.exp > now {
+                    return Ok(entry.claims.clone());
+                } else {
+                    // Token expired since caching — remove and return error
+                    drop(entry);
+                    self.token_cache.remove(token);
+                    return Err(PlatformError::TokenExpired);
+                }
+            }
+            // Cache entry expired — remove it
+            drop(entry);
+            self.token_cache.remove(token);
+        }
+
+        // Cache miss — do full validation
+        let claims = self.validate_token_uncached(token)?;
+
+        // Store in cache
+        self.token_cache.insert(token.to_string(), CachedClaims {
+            claims: claims.clone(),
+            cached_at: Instant::now(),
+        });
+
+        Ok(claims)
+    }
+
+    /// Perform full JWT validation without cache
+    fn validate_token_uncached(&self, token: &str) -> Result<AccessTokenClaims> {
         let mut validation = Validation::new(self.algorithm);
         validation.set_issuer(&[&self.config.issuer]);
         validation.set_audience(&[&self.config.audience]);
@@ -503,9 +581,12 @@ impl AuthService {
         })
     }
 
-    /// Check if claims grant access to a specific client
+    /// Check if claims grant access to a specific client.
+    /// Handles both plain IDs and "id:identifier" format.
     pub fn has_client_access(&self, claims: &AccessTokenClaims, client_id: &str) -> bool {
-        claims.clients.contains(&"*".to_string()) || claims.clients.contains(&client_id.to_string())
+        claims.clients.iter().any(|c| {
+            c == "*" || c == client_id || c.starts_with(&format!("{}:", client_id))
+        })
     }
 
     /// Check if claims have a specific role

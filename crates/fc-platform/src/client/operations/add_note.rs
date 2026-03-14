@@ -1,12 +1,13 @@
 //! Add Client Note Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::client::entity::ClientNote;
 use crate::ClientRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ClientNoteAdded;
 
@@ -28,31 +29,47 @@ impl<U: UnitOfWork> AddClientNoteUseCase<U> {
     pub fn new(client_repo: Arc<ClientRepository>, unit_of_work: Arc<U>) -> Self {
         Self { client_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: AddClientNoteCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<ClientNoteAdded> {
+#[async_trait]
+impl<U: UnitOfWork> UseCase for AddClientNoteUseCase<U> {
+    type Command = AddClientNoteCommand;
+    type Event = ClientNoteAdded;
+
+    async fn validate(&self, command: &AddClientNoteCommand) -> Result<(), UseCaseError> {
         if command.client_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "CLIENT_ID_REQUIRED", "Client ID is required",
             ));
         }
 
-        let category = command.category.trim();
-        if category.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+        if command.category.trim().is_empty() {
+            return Err(UseCaseError::validation(
                 "CATEGORY_REQUIRED", "Note category is required",
             ));
         }
 
-        let text = command.text.trim();
-        if text.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+        if command.text.trim().is_empty() {
+            return Err(UseCaseError::validation(
                 "TEXT_REQUIRED", "Note text is required",
             ));
         }
+
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &AddClientNoteCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        // Authorization handled in handler
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: AddClientNoteCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<ClientNoteAdded> {
+        let category = command.category.trim();
+        let text = command.text.trim();
 
         let mut client = match self.client_repo.find_by_id(&command.client_id).await {
             Ok(Some(c)) => c,

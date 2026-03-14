@@ -5,6 +5,7 @@
 
 use chrono::{DateTime, Utc};
 use crate::shared::tsid::TsidGenerator;
+use crate::shared::authorization_service::AuthContext;
 use super::tracing_context::TracingContext;
 use super::domain_event::DomainEvent;
 
@@ -122,6 +123,14 @@ impl ExecutionContext {
             principal_id: self.principal_id.clone(),
             initiated_at: Utc::now(),
         }
+    }
+
+    /// Create an execution context from an authenticated request context.
+    ///
+    /// Bridges the auth layer to the use case layer by extracting the
+    /// principal_id from the AuthContext.
+    pub fn from_auth(auth: &AuthContext) -> Self {
+        Self::create(&auth.principal_id)
     }
 
     /// Create a new context with a different principal.

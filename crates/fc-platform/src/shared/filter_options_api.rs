@@ -123,7 +123,7 @@ pub async fn get_event_type_options(
     State(state): State<FilterOptionsState>,
     _auth: Authenticated,
 ) -> Result<Json<EventTypeFilterOptions>, PlatformError> {
-    let event_types = state.event_type_repo.find_active().await?;
+    let event_types = state.event_type_repo.find_active_shallow().await?;
 
     // Build event type options
     let event_type_options: Vec<FilterOption> = event_types.iter()
@@ -247,8 +247,15 @@ pub async fn get_all_options(
     State(state): State<FilterOptionsState>,
     auth: Authenticated,
 ) -> Result<Json<AllFilterOptions>, PlatformError> {
-    // Get clients
-    let clients = state.client_repo.find_active().await?;
+    // Run all queries concurrently
+    let (clients, event_types, apps, subscriptions, pools) = tokio::try_join!(
+        state.client_repo.find_active(),
+        state.event_type_repo.find_active_shallow(),
+        state.application_repo.find_active(),
+        state.subscription_repo.find_active(),
+        state.dispatch_pool_repo.find_active(),
+    )?;
+
     let client_options: Vec<FilterOption> = clients.into_iter()
         .filter(|c| auth.0.is_anchor() || auth.0.can_access_client(&c.id))
         .map(|c| FilterOption {
@@ -257,8 +264,6 @@ pub async fn get_all_options(
         })
         .collect();
 
-    // Get event types
-    let event_types = state.event_type_repo.find_active().await?;
     let event_type_options: Vec<FilterOption> = event_types.iter()
         .map(|et| FilterOption {
             value: et.code.clone(),
@@ -266,8 +271,6 @@ pub async fn get_all_options(
         })
         .collect();
 
-    // Get applications
-    let apps = state.application_repo.find_active().await?;
     let app_options: Vec<FilterOption> = apps.into_iter()
         .map(|a| FilterOption {
             value: a.code,
@@ -275,8 +278,6 @@ pub async fn get_all_options(
         })
         .collect();
 
-    // Get subscriptions
-    let subscriptions = state.subscription_repo.find_active().await?;
     let subscription_options: Vec<FilterOption> = subscriptions.into_iter()
         .filter(|s| {
             match &s.client_id {
@@ -289,9 +290,6 @@ pub async fn get_all_options(
             label: s.name,
         })
         .collect();
-
-    // Get dispatch pools
-    let pools = state.dispatch_pool_repo.find_active().await?;
     let pool_options: Vec<FilterOption> = pools.into_iter()
         .filter(|p| {
             match &p.client_id {
@@ -372,7 +370,7 @@ pub async fn get_events_filter_options(
         .collect();
 
     // Get event types
-    let event_types = state.event_type_repo.find_active().await?;
+    let event_types = state.event_type_repo.find_active_shallow().await?;
 
     let event_type_options: Vec<FilterOption> = event_types.iter()
         .map(|et| FilterOption {
@@ -449,7 +447,7 @@ pub async fn get_dispatch_jobs_filter_options(
         .collect();
 
     // Get event types
-    let event_types = state.event_type_repo.find_active().await?;
+    let event_types = state.event_type_repo.find_active_shallow().await?;
     let event_type_options: Vec<FilterOption> = event_types.iter()
         .map(|et| FilterOption {
             value: et.code.clone(),
@@ -524,7 +522,7 @@ pub async fn get_event_type_applications(
     State(state): State<FilterOptionsState>,
     _auth: Authenticated,
 ) -> Result<Json<ApplicationsResponse>, PlatformError> {
-    let event_types = state.event_type_repo.find_active().await?;
+    let event_types = state.event_type_repo.find_active_shallow().await?;
 
     let mut applications: Vec<FilterOption> = event_types.iter()
         .map(|et| et.application.clone())
@@ -557,7 +555,7 @@ pub async fn get_event_type_subdomains(
     Query(query): Query<CascadingFilterQuery>,
     _auth: Authenticated,
 ) -> Result<Json<SubdomainsResponse>, PlatformError> {
-    let event_types = state.event_type_repo.find_active().await?;
+    let event_types = state.event_type_repo.find_active_shallow().await?;
 
     // Filter by applications if specified
     let filtered = if query.applications.is_empty() {
@@ -599,7 +597,7 @@ pub async fn get_event_type_aggregates(
     Query(query): Query<CascadingFilterQuery>,
     _auth: Authenticated,
 ) -> Result<Json<AggregatesResponse>, PlatformError> {
-    let event_types = state.event_type_repo.find_active().await?;
+    let event_types = state.event_type_repo.find_active_shallow().await?;
 
     // Filter by applications and subdomains if specified
     let filtered: Vec<_> = event_types.into_iter()

@@ -1,0 +1,44 @@
+[package]
+name = "fc-server"
+version.workspace = true
+edition.workspace = true
+description = "FlowCatalyst Unified Production Server - all subsystems in one binary"
+
+[[bin]]
+name = "fc-server"
+path = "src/main.rs"
+
+[dependencies]
+fc-common = { path = "../../crates/fc-common" }
+fc-platform = { path = "../../crates/fc-platform" }
+fc-router = { path = "../../crates/fc-router" }
+fc-queue = { path = "../../crates/fc-queue", features = ["sqs"] }
+fc-standby = { path = "../../crates/fc-standby" }
+fc-scheduler = { path = "../../crates/fc-scheduler" }
+fc-stream = { path = "../../crates/fc-stream" }
+fc-outbox = { path = "../../crates/fc-outbox", features = ["sqlite", "postgres"] }
+fc-config = { path = "../../crates/fc-config" }
+
+tokio = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+sea-orm = { workspace = true }
+sqlx = { workspace = true }
+async-trait = { workspace = true }
+aws-config = { workspace = true }
+aws-sdk-sqs = { workspace = true }
+regex = { workspace = true }
+utoipa = { workspace = true }
+utoipa-swagger-ui = { workspace = true }
+utoipa-axum = { workspace = true }
+
+[features]
+default = []
+alb = ["fc-router/alb"]

@@ -1,11 +1,12 @@
 //! Delete Client Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::ClientRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ClientDeleted;
 
@@ -25,18 +26,32 @@ impl<U: UnitOfWork> DeleteClientUseCase<U> {
     pub fn new(client_repo: Arc<ClientRepository>, unit_of_work: Arc<U>) -> Self {
         Self { client_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl<U: UnitOfWork> UseCase for DeleteClientUseCase<U> {
+    type Command = DeleteClientCommand;
+    type Event = ClientDeleted;
+
+    async fn validate(&self, command: &DeleteClientCommand) -> Result<(), UseCaseError> {
+        if command.client_id.trim().is_empty() {
+            return Err(UseCaseError::validation(
+                "CLIENT_ID_REQUIRED", "Client ID is required",
+            ));
+        }
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &DeleteClientCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        // Authorization handled in handler
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: DeleteClientCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<ClientDeleted> {
-        if command.client_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
-                "CLIENT_ID_REQUIRED", "Client ID is required",
-            ));
-        }
-
         let client = match self.client_repo.find_by_id(&command.client_id).await {
             Ok(Some(c)) => c,
             Ok(None) => {

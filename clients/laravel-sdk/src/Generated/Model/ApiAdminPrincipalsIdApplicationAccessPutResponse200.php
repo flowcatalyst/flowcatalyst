@@ -1,0 +1,81 @@
+<?php
+
+namespace FlowCatalyst\Generated\Model;
+
+class ApiAdminPrincipalsIdApplicationAccessPutResponse200 extends \ArrayObject
+{
+    /**
+     * @var array
+     */
+    protected $initialized = [];
+    public function isInitialized($property): bool
+    {
+        return array_key_exists($property, $this->initialized);
+    }
+    /**
+     * @var list<ApiAdminPrincipalsIdApplicationAccessPutResponse200ApplicationsItem>|null
+     */
+    protected $applications;
+    /**
+     * @var list<string>|null
+     */
+    protected $added;
+    /**
+     * @var list<string>|null
+     */
+    protected $removed;
+    /**
+     * @return list<ApiAdminPrincipalsIdApplicationAccessPutResponse200ApplicationsItem>|null
+     */
+    public function getApplications(): ?array
+    {
+        return $this->applications;
+    }
+    /**
+     * @param list<ApiAdminPrincipalsIdApplicationAccessPutResponse200ApplicationsItem>|null $applications
+     *
+     * @return self
+     */
+    public function setApplications(?array $applications): self
+    {
+        $this->initialized['applications'] = true;
+        $this->applications = $applications;
+        return $this;
+    }
+    /**
+     * @return list<string>|null
+     */
+    public function getAdded(): ?array
+    {
+        return $this->added;
+    }
+    /**
+     * @param list<string>|null $added
+     *
+     * @return self
+     */
+    public function setAdded(?array $added): self
+    {
+        $this->initialized['added'] = true;
+        $this->added = $added;
+        return $this;
+    }
+    /**
+     * @return list<string>|null
+     */
+    public function getRemoved(): ?array
+    {
+        return $this->removed;
+    }
+    /**
+     * @param list<string>|null $removed
+     *
+     * @return self
+     */
+    public function setRemoved(?array $removed): self
+    {
+        $this->initialized['removed'] = true;
+        $this->removed = $removed;
+        return $this;
+    }
+}

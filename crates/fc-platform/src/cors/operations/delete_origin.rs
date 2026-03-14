@@ -1,10 +1,11 @@
 //! Delete CORS Origin Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::CorsOriginRepository;
-use crate::usecase::{ExecutionContext, UseCaseError, UseCaseResult};
+use crate::usecase::{ExecutionContext, UseCase, UseCaseError, UseCaseResult};
 use super::events::CorsOriginDeleted;
 
 /// Command for deleting a CORS allowed origin.
@@ -22,8 +23,22 @@ impl DeleteCorsOriginUseCase {
     pub fn new(cors_repo: Arc<CorsOriginRepository>) -> Self {
         Self { cors_repo }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl UseCase for DeleteCorsOriginUseCase {
+    type Command = DeleteCorsOriginCommand;
+    type Event = CorsOriginDeleted;
+
+    async fn validate(&self, _command: &DeleteCorsOriginCommand) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &DeleteCorsOriginCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: DeleteCorsOriginCommand,
         ctx: ExecutionContext,

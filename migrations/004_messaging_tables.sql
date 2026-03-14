@@ -5,7 +5,7 @@
 -- msg_events - Events (write model)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS msg_events (
-    id VARCHAR(17) PRIMARY KEY,
+    id VARCHAR(13) PRIMARY KEY,
     spec_version VARCHAR(20) DEFAULT '1.0',
     type VARCHAR(200) NOT NULL,
     source VARCHAR(500) NOT NULL,
@@ -31,7 +31,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_msg_events_deduplication ON msg_events (de
 -- msg_events_read - Events read projection (CQRS)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS msg_events_read (
-    id VARCHAR(17) PRIMARY KEY,
+    id VARCHAR(13) PRIMARY KEY,
     spec_version VARCHAR(20),
     type VARCHAR(200) NOT NULL,
     source VARCHAR(500) NOT NULL,
@@ -61,13 +61,13 @@ CREATE INDEX IF NOT EXISTS idx_msg_events_read_correlation_id ON msg_events_read
 -- msg_dispatch_jobs - Dispatch jobs (write model)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS msg_dispatch_jobs (
-    id VARCHAR(17) PRIMARY KEY,
+    id VARCHAR(13) PRIMARY KEY,
     external_id VARCHAR(100),
     source VARCHAR(500),
     kind VARCHAR(20) NOT NULL DEFAULT 'EVENT',
     code VARCHAR(200) NOT NULL,
     subject VARCHAR(500),
-    event_id VARCHAR(17),
+    event_id VARCHAR(13),
     correlation_id VARCHAR(100),
     metadata JSONB DEFAULT '[]'::jsonb,
     target_url VARCHAR(500) NOT NULL,
@@ -110,13 +110,13 @@ CREATE INDEX IF NOT EXISTS idx_msg_dispatch_jobs_scheduled_for ON msg_dispatch_j
 -- msg_dispatch_jobs_read - Dispatch jobs read projection (CQRS)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS msg_dispatch_jobs_read (
-    id VARCHAR(17) PRIMARY KEY,
+    id VARCHAR(13) PRIMARY KEY,
     external_id VARCHAR(100),
     source VARCHAR(500),
     kind VARCHAR(20) NOT NULL,
     code VARCHAR(200) NOT NULL,
     subject VARCHAR(500),
-    event_id VARCHAR(17),
+    event_id VARCHAR(13),
     correlation_id VARCHAR(100),
     target_url VARCHAR(500) NOT NULL,
     protocol VARCHAR(30) NOT NULL,
@@ -160,8 +160,8 @@ CREATE INDEX IF NOT EXISTS idx_msg_dispatch_jobs_read_created_at ON msg_dispatch
 -- msg_dispatch_job_attempts - Delivery attempt history
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS msg_dispatch_job_attempts (
-    id VARCHAR(17) PRIMARY KEY,
-    dispatch_job_id VARCHAR(17) NOT NULL,
+    id VARCHAR(13) PRIMARY KEY,
+    dispatch_job_id VARCHAR(13) NOT NULL,
     attempt_number INTEGER,
     status VARCHAR(20),
     response_code INTEGER,

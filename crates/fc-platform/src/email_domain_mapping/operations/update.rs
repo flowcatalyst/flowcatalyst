@@ -1,11 +1,12 @@
 //! Update Email Domain Mapping Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::EmailDomainMappingRepository;
 use crate::email_domain_mapping::entity::ScopeType;
-use crate::usecase::{ExecutionContext, UseCaseError, UseCaseResult};
+use crate::usecase::{ExecutionContext, UseCase, UseCaseError, UseCaseResult};
 use super::events::EmailDomainMappingUpdated;
 
 /// Command for updating an email domain mapping.
@@ -35,18 +36,31 @@ impl UpdateEmailDomainMappingUseCase {
     pub fn new(edm_repo: Arc<EmailDomainMappingRepository>) -> Self {
         Self { edm_repo }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl UseCase for UpdateEmailDomainMappingUseCase {
+    type Command = UpdateEmailDomainMappingCommand;
+    type Event = EmailDomainMappingUpdated;
+
+    async fn validate(&self, command: &UpdateEmailDomainMappingCommand) -> Result<(), UseCaseError> {
+        if command.mapping_id.trim().is_empty() {
+            return Err(UseCaseError::validation(
+                "MAPPING_ID_REQUIRED", "Mapping ID is required",
+            ));
+        }
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &UpdateEmailDomainMappingCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: UpdateEmailDomainMappingCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<EmailDomainMappingUpdated> {
-        if command.mapping_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
-                "MAPPING_ID_REQUIRED", "Mapping ID is required",
-            ));
-        }
-
         let mut mapping = match self.edm_repo.find_by_id(&command.mapping_id).await {
             Ok(Some(m)) => m,
             Ok(None) => {

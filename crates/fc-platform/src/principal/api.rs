@@ -360,6 +360,21 @@ pub struct PrincipalsQuery {
 
     /// Filter by client ID
     pub client_id: Option<String>,
+
+    /// Search by name or email
+    pub q: Option<String>,
+
+    /// Filter by active status
+    pub active: Option<bool>,
+
+    /// Filter by roles (comma-separated)
+    pub roles: Option<String>,
+
+    /// Sort field
+    pub sort_field: Option<String>,
+
+    /// Sort order (asc/desc)
+    pub sort_order: Option<String>,
 }
 
 /// Principals service state
@@ -509,8 +524,9 @@ pub async fn list_principals(
         state.principal_repo.find_active().await?
     };
 
-    // Filter by access
-    let filtered: Vec<PrincipalResponse> = principals.into_iter()
+    // Convert to response DTOs and apply filters
+    let mut filtered: Vec<PrincipalResponse> = principals.into_iter()
+        // Access control
         .filter(|p| {
             if auth.0.is_anchor() {
                 return true;
@@ -521,7 +537,52 @@ pub async fn list_principals(
             }
         })
         .map(|p| p.into())
+        // Active status filter
+        .filter(|p: &PrincipalResponse| {
+            match query.active {
+                Some(active) => p.active == active,
+                None => true,
+            }
+        })
+        // Search filter (name or email)
+        .filter(|p: &PrincipalResponse| {
+            match &query.q {
+                Some(q) if !q.is_empty() => {
+                    let q = q.to_lowercase();
+                    p.name.to_lowercase().contains(&q)
+                        || p.email.as_ref().map_or(false, |e| e.to_lowercase().contains(&q))
+                }
+                _ => true,
+            }
+        })
+        // Roles filter
+        .filter(|p: &PrincipalResponse| {
+            match &query.roles {
+                Some(roles_str) if !roles_str.is_empty() => {
+                    let required: Vec<&str> = roles_str.split(',').collect();
+                    required.iter().any(|r| p.roles.contains(&r.to_string()))
+                }
+                _ => true,
+            }
+        })
         .collect();
+
+    // Sort
+    let sort_desc = query.sort_order.as_deref() == Some("desc");
+    match query.sort_field.as_deref() {
+        Some("name") => filtered.sort_by(|a, b| {
+            let cmp = a.name.to_lowercase().cmp(&b.name.to_lowercase());
+            if sort_desc { cmp.reverse() } else { cmp }
+        }),
+        Some("email") => filtered.sort_by(|a, b| {
+            let cmp = a.email.cmp(&b.email);
+            if sort_desc { cmp.reverse() } else { cmp }
+        }),
+        _ => filtered.sort_by(|a, b| {
+            let cmp = a.created_at.cmp(&b.created_at);
+            if sort_desc { cmp.reverse() } else { cmp }
+        }),
+    }
 
     let total = filtered.len();
     Ok(Json(PrincipalListResponse { principals: filtered, total }))

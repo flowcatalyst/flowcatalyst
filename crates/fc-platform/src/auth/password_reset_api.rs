@@ -15,7 +15,7 @@ use tracing::{info, warn};
 use crate::password_reset::entity::PasswordResetToken;
 use crate::password_reset::repository::PasswordResetTokenRepository;
 use crate::principal::repository::PrincipalRepository;
-use crate::principal::operations::events::PasswordResetCompleted;
+use crate::principal::operations::events::{PasswordResetCompleted, PasswordResetRequested};
 use crate::auth::password_service::PasswordService;
 use crate::shared::error::PlatformError;
 use crate::shared::email_service::{EmailService, EmailMessage};
@@ -136,6 +136,13 @@ async fn request_reset(
             };
             if let Err(e) = state.email_service.send(&email).await {
                 warn!(principal_id = %principal.id, error = %e, "Failed to send password reset email");
+            }
+
+            // Emit domain event (best-effort)
+            let event = PasswordResetRequested::new(&principal.id, &body.email);
+            let command = serde_json::json!({ "principalId": principal.id, "email": body.email });
+            if let Err(e) = state.unit_of_work.emit_event(event, &command).await.into_result() {
+                warn!("Failed to emit PasswordResetRequested event: {}", e);
             }
         } else {
             // Principal not found — do nothing (silent success)

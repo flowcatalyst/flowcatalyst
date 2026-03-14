@@ -1,10 +1,11 @@
 //! Delete Identity Provider Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::IdentityProviderRepository;
-use crate::usecase::{ExecutionContext, UseCaseError, UseCaseResult};
+use crate::usecase::{ExecutionContext, UseCase, UseCaseError, UseCaseResult};
 use super::events::IdentityProviderDeleted;
 
 /// Command for deleting an identity provider.
@@ -23,8 +24,22 @@ impl DeleteIdentityProviderUseCase {
     pub fn new(idp_repo: Arc<IdentityProviderRepository>) -> Self {
         Self { idp_repo }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl UseCase for DeleteIdentityProviderUseCase {
+    type Command = DeleteIdentityProviderCommand;
+    type Event = IdentityProviderDeleted;
+
+    async fn validate(&self, _command: &DeleteIdentityProviderCommand) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &DeleteIdentityProviderCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: DeleteIdentityProviderCommand,
         ctx: ExecutionContext,

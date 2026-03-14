@@ -23,20 +23,30 @@
 //! ```
 
 pub mod applications;
+pub mod audit_logs;
 pub mod clients;
-pub mod event_types;
-pub mod subscriptions;
 pub mod connections;
+pub mod dispatch_pools;
+pub mod event_types;
+pub mod me;
+pub mod principals;
+pub mod roles;
+pub mod subscriptions;
 pub mod sync;
 
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 
 pub use applications::*;
+pub use audit_logs::*;
 pub use clients::*;
-pub use event_types::*;
-pub use subscriptions::*;
 pub use connections::*;
+pub use dispatch_pools::*;
+pub use event_types::*;
+pub use me::*;
+pub use principals::*;
+pub use roles::*;
+pub use subscriptions::*;
 pub use sync::*;
 
 /// HTTP client for the FlowCatalyst platform API.

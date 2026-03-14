@@ -28,7 +28,7 @@ use crate::dispatch_pool::operations::{
 use crate::principal::operations::{
     SyncPrincipalsCommand, SyncPrincipalsUseCase, SyncPrincipalInput,
 };
-use crate::usecase::{ExecutionContext, UseCaseResult};
+use crate::usecase::{ExecutionContext, UseCase, UseCaseResult};
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
 
@@ -260,7 +260,7 @@ async fn sync_roles(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.sync_roles_use_case.execute(command, ctx).await {
+    match state.sync_roles_use_case.run(command, ctx).await {
         UseCaseResult::Success(event) => {
             Ok(Json(SyncResultResponse {
                 application_code: event.application_code,
@@ -304,13 +304,14 @@ async fn sync_event_types(
             code: et.code,
             name: et.name,
             description: et.description,
+            schema: None,
         }).collect(),
         remove_unlisted: query.remove_unlisted,
     };
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.sync_event_types_use_case.execute(command, ctx).await {
+    match state.sync_event_types_use_case.run(command, ctx).await {
         UseCaseResult::Success(event) => {
             Ok(Json(SyncResultResponse {
                 application_code: event.application_code,
@@ -371,7 +372,7 @@ async fn sync_subscriptions(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.sync_subscriptions_use_case.execute(command, ctx).await {
+    match state.sync_subscriptions_use_case.run(command, ctx).await {
         UseCaseResult::Success(event) => {
             Ok(Json(SyncResultResponse {
                 application_code: event.application_code,
@@ -423,7 +424,7 @@ async fn sync_dispatch_pools(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.sync_dispatch_pools_use_case.execute(command, ctx).await {
+    match state.sync_dispatch_pools_use_case.run(command, ctx).await {
         UseCaseResult::Success(event) => {
             Ok(Json(SyncResultResponse {
                 application_code: event.application_code,
@@ -475,7 +476,7 @@ async fn sync_principals(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.sync_principals_use_case.execute(command, ctx).await {
+    match state.sync_principals_use_case.run(command, ctx).await {
         UseCaseResult::Success(event) => {
             Ok(Json(SyncResultResponse {
                 application_code: event.application_code,

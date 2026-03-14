@@ -1,11 +1,12 @@
 //! Delete ClientAuthConfig Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::config_repository::ClientAuthConfigRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::AuthConfigDeleted;
 
@@ -24,19 +25,32 @@ impl<U: UnitOfWork> DeleteAuthConfigUseCase<U> {
     pub fn new(auth_config_repo: Arc<ClientAuthConfigRepository>, unit_of_work: Arc<U>) -> Self {
         Self { auth_config_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: DeleteAuthConfigCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<AuthConfigDeleted> {
+#[async_trait]
+impl<U: UnitOfWork> UseCase for DeleteAuthConfigUseCase<U> {
+    type Command = DeleteAuthConfigCommand;
+    type Event = AuthConfigDeleted;
+
+    async fn validate(&self, command: &DeleteAuthConfigCommand) -> Result<(), UseCaseError> {
         if command.auth_config_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "ID_REQUIRED",
                 "Auth config ID is required",
             ));
         }
+        Ok(())
+    }
 
+    async fn authorize(&self, _command: &DeleteAuthConfigCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: DeleteAuthConfigCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<AuthConfigDeleted> {
         let config = match self.auth_config_repo.find_by_id(&command.auth_config_id).await {
             Ok(Some(c)) => c,
             Ok(None) => {

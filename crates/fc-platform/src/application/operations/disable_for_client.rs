@@ -1,11 +1,12 @@
 //! Disable Application for Client Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::ApplicationClientConfigRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
 };
 use super::events::ApplicationDisabledForClient;
 
@@ -29,23 +30,37 @@ impl<U: UnitOfWork> DisableApplicationForClientUseCase<U> {
     ) -> Self {
         Self { config_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: DisableApplicationForClientCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<ApplicationDisabledForClient> {
+#[async_trait]
+impl<U: UnitOfWork> UseCase for DisableApplicationForClientUseCase<U> {
+    type Command = DisableApplicationForClientCommand;
+    type Event = ApplicationDisabledForClient;
+
+    async fn validate(&self, command: &DisableApplicationForClientCommand) -> Result<(), UseCaseError> {
         if command.application_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "APPLICATION_ID_REQUIRED", "Application ID is required",
             ));
         }
         if command.client_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "CLIENT_ID_REQUIRED", "Client ID is required",
             ));
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &DisableApplicationForClientCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: DisableApplicationForClientCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<ApplicationDisabledForClient> {
         // Find existing config
         let mut config = match self.config_repo
             .find_by_application_and_client(&command.application_id, &command.client_id)

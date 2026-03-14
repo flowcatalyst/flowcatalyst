@@ -80,27 +80,14 @@ impl PendingJobPoller {
     }
 
     /// Query PENDING jobs with proper ordering: message_group, sequence, created_at.
-    /// Optionally filters out jobs for paused connections.
+    /// Connection filtering is applied post-query (matching TS ConnectionCache pattern).
     async fn find_pending_jobs(&self) -> Result<Vec<DispatchJob>, SchedulerError> {
-        let sql = if self.config.connection_filter_enabled {
-            // LEFT JOIN through subscription → connection, exclude jobs where connection is PAUSED
-            "SELECT j.id, j.message_group, j.dispatch_pool_id, j.status, j.mode, j.target_url, \
-                    j.payload, j.sequence, j.created_at, j.updated_at, j.queued_at, j.last_error \
-             FROM msg_dispatch_jobs j \
-             LEFT JOIN msg_subscriptions s ON j.subscription_id = s.id \
-             LEFT JOIN msg_connections c ON s.connection_id = c.id \
-             WHERE j.status = 'PENDING' \
-               AND (c.id IS NULL OR c.status != 'PAUSED') \
-             ORDER BY j.message_group ASC NULLS LAST, j.sequence ASC, j.created_at ASC \
-             LIMIT $1"
-        } else {
-            "SELECT id, message_group, dispatch_pool_id, status, mode, target_url, \
-                    payload, sequence, created_at, updated_at, queued_at, last_error \
+        let sql = "SELECT id, message_group, dispatch_pool_id, status, mode, target_url, \
+                    payload, sequence, created_at, updated_at, queued_at, last_error, subscription_id \
              FROM msg_dispatch_jobs \
              WHERE status = 'PENDING' \
              ORDER BY message_group ASC NULLS LAST, sequence ASC, created_at ASC \
-             LIMIT $1"
-        };
+             LIMIT $1";
 
         let jobs = DispatchJob::find_by_statement(
             Statement::from_sql_and_values(
@@ -112,7 +99,66 @@ impl PendingJobPoller {
         .all(&self.db)
         .await?;
 
-        Ok(jobs)
+        if !self.config.connection_filter_enabled || jobs.is_empty() {
+            return Ok(jobs);
+        }
+
+        // Post-query connection filter: batch-resolve connection statuses via subscription IDs
+        let sub_ids: Vec<String> = jobs.iter()
+            .filter_map(|j| j.subscription_id.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        if sub_ids.is_empty() {
+            return Ok(jobs);
+        }
+
+        let paused_sub_ids = self.find_paused_subscription_ids(&sub_ids).await?;
+        if paused_sub_ids.is_empty() {
+            return Ok(jobs);
+        }
+
+        let filtered: Vec<DispatchJob> = jobs.into_iter()
+            .filter(|j| {
+                match &j.subscription_id {
+                    Some(sid) => !paused_sub_ids.contains(sid),
+                    None => true,
+                }
+            })
+            .collect();
+
+        Ok(filtered)
+    }
+
+    /// Batch-query subscription IDs whose connections are PAUSED.
+    async fn find_paused_subscription_ids(&self, sub_ids: &[String]) -> Result<HashSet<String>, SchedulerError> {
+        if sub_ids.is_empty() {
+            return Ok(HashSet::new());
+        }
+
+        let placeholders: Vec<String> = (1..=sub_ids.len()).map(|i| format!("${}", i)).collect();
+        let sql = format!(
+            "SELECT s.id FROM msg_subscriptions s \
+             JOIN msg_connections c ON c.id = s.connection_id \
+             WHERE s.id IN ({}) AND c.status = 'PAUSED'",
+            placeholders.join(", ")
+        );
+
+        #[derive(FromQueryResult)]
+        struct SubIdRow { id: String }
+
+        let values: Vec<sea_orm::Value> = sub_ids.iter()
+            .map(|s| sea_orm::Value::from(s.clone()))
+            .collect();
+
+        let rows = SubIdRow::find_by_statement(
+            Statement::from_sql_and_values(DatabaseBackend::Postgres, &sql, values),
+        )
+        .all(&self.db)
+        .await?;
+
+        Ok(rows.into_iter().map(|r| r.id).collect())
     }
 
     fn group_by_message_group(jobs: Vec<DispatchJob>) -> HashMap<String, Vec<DispatchJob>> {

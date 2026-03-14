@@ -1,12 +1,13 @@
 //! Create Application Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::{Application, ApplicationType};
 use crate::ApplicationRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
 };
 use super::events::ApplicationCreated;
 
@@ -55,29 +56,44 @@ impl<U: UnitOfWork> CreateApplicationUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: CreateApplicationCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<ApplicationCreated> {
+#[async_trait]
+impl<U: UnitOfWork> UseCase for CreateApplicationUseCase<U> {
+    type Command = CreateApplicationCommand;
+    type Event = ApplicationCreated;
+
+    async fn validate(&self, command: &CreateApplicationCommand) -> Result<(), UseCaseError> {
         // Validation: code is required
-        let code = command.code.trim();
-        if code.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+        if command.code.trim().is_empty() {
+            return Err(UseCaseError::validation(
                 "CODE_REQUIRED",
                 "Application code is required",
             ));
         }
 
         // Validation: name is required
-        let name = command.name.trim();
-        if name.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+        if command.name.trim().is_empty() {
+            return Err(UseCaseError::validation(
                 "NAME_REQUIRED",
                 "Application name is required",
             ));
         }
+
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &CreateApplicationCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: CreateApplicationCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<ApplicationCreated> {
+        let code = command.code.trim();
+        let name = command.name.trim();
 
         // Business rule: code must be unique
         let existing = self.application_repo.find_by_code(code).await;

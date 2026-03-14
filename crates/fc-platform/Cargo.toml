@@ -18,9 +18,10 @@ futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# Database (PostgreSQL - new)
+# Database (PostgreSQL)
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
+sqlx = { workspace = true }
 
 # Web framework
 axum = { workspace = true }
@@ -60,6 +61,9 @@ time = "0.3"
 
 # Regex for pattern matching
 regex = { workspace = true }
+
+# Concurrent cache
+dashmap = { workspace = true }
 
 [dev-dependencies]
 tokio-test = { workspace = true }

@@ -4,7 +4,7 @@
 //! Used by application SDKs to sync role definitions.
 
 use axum::{
-    routing::{get, post, delete},
+    routing::{get, delete},
     extract::{State, Path, Query},
     Json, Router,
 };
@@ -383,7 +383,6 @@ pub async fn delete_role(
 pub fn application_roles_sdk_router(state: ApplicationRolesSdkState) -> Router {
     Router::new()
         .route("/{app_code}/roles", get(list_roles).post(create_role))
-        .route("/{app_code}/roles/sync", post(sync_roles))
         .route("/{app_code}/roles/{role_name}", delete(delete_role))
         .with_state(state)
 }

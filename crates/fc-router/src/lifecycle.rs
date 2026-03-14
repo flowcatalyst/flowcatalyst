@@ -12,7 +12,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
-use tracing::{info, warn, debug, error};
+use tracing::{info, warn, debug};
 
 use fc_common::{WarningCategory, WarningSeverity};
 use crate::manager::QueueManager;
@@ -156,7 +156,6 @@ impl LifecycleManager {
             tokio::spawn(async move {
                 let mut ticker = tokio::time::interval(interval);
                 let mut restart_attempts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
-                const MAX_RESTART_ATTEMPTS: u32 = 3;
 
                 loop {
                     tokio::select! {
@@ -165,43 +164,34 @@ impl LifecycleManager {
                             for consumer_id in stalled {
                                 let attempts = restart_attempts.entry(consumer_id.clone()).or_insert(0);
 
-                                if *attempts < MAX_RESTART_ATTEMPTS {
-                                    warn!(
-                                        consumer_id = %consumer_id,
-                                        attempt = *attempts + 1,
-                                        max_attempts = MAX_RESTART_ATTEMPTS,
-                                        "Stalled consumer detected, attempting restart"
-                                    );
-
-                                    warning_service.add_warning(
-                                        WarningCategory::ConsumerHealth,
-                                        WarningSeverity::Warn,
-                                        format!("Consumer {} is stalled, restart attempt {}", consumer_id, *attempts + 1),
-                                        "LifecycleManager".to_string(),
-                                    );
-
-                                    // Wait before restart
-                                    tokio::time::sleep(restart_delay).await;
-
-                                    // Attempt restart
-                                    if manager.restart_consumer(&consumer_id).await {
-                                        *attempts += 1;
-                                        info!(consumer_id = %consumer_id, "Consumer restart initiated");
-                                    }
+                                // Java: retries indefinitely (no max attempts).
+                                // Escalate severity after many failed attempts.
+                                let severity = if *attempts >= 10 {
+                                    WarningSeverity::Critical
                                 } else {
-                                    // Max attempts reached - critical warning
-                                    error!(
-                                        consumer_id = %consumer_id,
-                                        attempts = *attempts,
-                                        "Consumer restart attempts exhausted"
-                                    );
+                                    WarningSeverity::Warn
+                                };
 
-                                    warning_service.add_warning(
-                                        WarningCategory::ConsumerHealth,
-                                        WarningSeverity::Critical,
-                                        format!("Consumer {} restart failed after {} attempts", consumer_id, *attempts),
-                                        "LifecycleManager".to_string(),
-                                    );
+                                warn!(
+                                    consumer_id = %consumer_id,
+                                    attempt = *attempts + 1,
+                                    "Stalled consumer detected, attempting restart"
+                                );
+
+                                warning_service.add_warning(
+                                    WarningCategory::ConsumerHealth,
+                                    severity,
+                                    format!("Consumer {} is stalled, restart attempt {}", consumer_id, *attempts + 1),
+                                    "LifecycleManager".to_string(),
+                                );
+
+                                // Wait before restart
+                                tokio::time::sleep(restart_delay).await;
+
+                                // Attempt restart
+                                if manager.restart_consumer(&consumer_id).await {
+                                    *attempts += 1;
+                                    info!(consumer_id = %consumer_id, "Consumer restart initiated");
                                 }
                             }
 

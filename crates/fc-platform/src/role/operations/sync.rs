@@ -5,13 +5,14 @@
 //! SDK-sourced roles. CODE and DATABASE-sourced roles are never modified.
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::role::entity::{AuthRole, RoleSource};
 use crate::RoleRepository;
 use crate::ApplicationRepository;
 use crate::usecase::{
-    ExecutionContext, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UseCaseError, UseCaseResult,
 };
 use super::events::RolesSynced;
 
@@ -52,24 +53,38 @@ impl SyncRolesUseCase {
     ) -> Self {
         Self { role_repo, application_repo }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: SyncRolesCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<RolesSynced> {
+#[async_trait]
+impl UseCase for SyncRolesUseCase {
+    type Command = SyncRolesCommand;
+    type Event = RolesSynced;
+
+    async fn validate(&self, command: &SyncRolesCommand) -> Result<(), UseCaseError> {
         if command.application_code.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "APPLICATION_CODE_REQUIRED", "Application code is required",
             ));
         }
 
         if command.roles.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "ROLES_REQUIRED", "At least one role must be provided",
             ));
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &SyncRolesCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: SyncRolesCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<RolesSynced> {
         // Verify the application exists
         let application = match self.application_repo.find_by_code(&command.application_code).await {
             Ok(Some(app)) => app,

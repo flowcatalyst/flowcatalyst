@@ -144,30 +144,6 @@ impl Event {
     pub fn event_name(&self) -> Option<&str> { self.event_type.split(':').nth(3) }
 }
 
-impl From<crate::entities::msg_events::Model> for Event {
-    fn from(m: crate::entities::msg_events::Model) -> Self {
-        let context_data: Vec<ContextData> = m.context_data
-            .and_then(|v| serde_json::from_value(v.into()).ok())
-            .unwrap_or_default();
-
-        Self {
-            id: m.id,
-            event_type: m.event_type,
-            source: m.source,
-            subject: m.subject,
-            time: m.time.with_timezone(&Utc),
-            data: m.data.map(Into::into).unwrap_or(serde_json::Value::Null),
-            spec_version: m.spec_version.unwrap_or_else(|| CLOUDEVENTS_SPEC_VERSION.to_string()),
-            message_group: m.message_group,
-            correlation_id: m.correlation_id,
-            causation_id: m.causation_id,
-            deduplication_id: m.deduplication_id,
-            client_id: m.client_id,
-            context_data,
-            created_at: m.created_at.with_timezone(&Utc),
-        }
-    }
-}
 
 /// Event read projection — CQRS read model, matches msg_events_read table
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,25 +166,6 @@ pub struct EventRead {
     pub projected_at: DateTime<Utc>,
 }
 
-impl From<crate::entities::msg_events_read::Model> for EventRead {
-    fn from(m: crate::entities::msg_events_read::Model) -> Self {
-        Self {
-            id: m.id,
-            event_type: m.event_type,
-            source: m.source,
-            subject: m.subject,
-            time: m.time.with_timezone(&Utc),
-            application: m.application,
-            subdomain: m.subdomain,
-            aggregate: m.aggregate,
-            message_group: m.message_group,
-            correlation_id: m.correlation_id,
-            client_id: m.client_id,
-            client_name: None,
-            projected_at: m.projected_at.with_timezone(&Utc),
-        }
-    }
-}
 
 impl From<&Event> for EventRead {
     fn from(event: &Event) -> Self {

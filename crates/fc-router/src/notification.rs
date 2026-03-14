@@ -841,10 +841,15 @@ impl NotificationService for BatchingNotificationService {
     }
 
     async fn notify_system_event(&self, event_type: &str, message: &str) {
-        // System events bypass batching
-        for delegate in &self.delegates {
-            delegate.notify_system_event(event_type, message).await;
-        }
+        // Java: system events go through batching (filtered by meetsMinSeverity("INFO"))
+        use fc_common::{WarningCategory, WarningSeverity};
+        let warning = Warning::new(
+            WarningCategory::Configuration, // closest match for system events
+            WarningSeverity::Info,
+            format!("[{}] {}", event_type, message),
+            "system".to_string(),
+        );
+        self.notify_warning(&warning).await;
     }
 
     fn is_enabled(&self) -> bool {

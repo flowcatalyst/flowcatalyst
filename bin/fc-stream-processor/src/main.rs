@@ -64,6 +64,7 @@ async fn main() -> Result<()> {
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(4)
         .idle_timeout(Duration::from_secs(20))
+        .acquire_timeout(Duration::from_secs(30))
         .connect(&database_url)
         .await
         .map_err(|e| anyhow::anyhow!("PostgreSQL connection failed: {}", e))?;

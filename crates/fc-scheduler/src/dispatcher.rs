@@ -7,14 +7,12 @@ use sea_orm::{
 use tracing::{debug, error, warn};
 
 use crate::{DispatchJob, MessagePointer, QueueMessage, QueuePublisher, SchedulerConfig, SchedulerError};
-use crate::auth::DispatchAuthService;
 
 /// Job dispatcher that sends dispatch jobs to the message queue
 pub struct JobDispatcher {
     config: SchedulerConfig,
     db: DatabaseConnection,
     queue_publisher: Arc<dyn QueuePublisher>,
-    auth_service: DispatchAuthService,
 }
 
 impl JobDispatcher {
@@ -23,30 +21,18 @@ impl JobDispatcher {
         config: SchedulerConfig,
         db: DatabaseConnection,
         queue_publisher: Arc<dyn QueuePublisher>,
-        auth_service: DispatchAuthService,
     ) -> Self {
         Self {
             config,
             db,
             queue_publisher,
-            auth_service,
         }
-    }
-
-    /// Create dispatcher with default auth service (for backward compatibility)
-    pub fn new_with_app_key(
-        config: SchedulerConfig,
-        db: DatabaseConnection,
-        queue_publisher: Arc<dyn QueuePublisher>,
-        app_key: Option<String>,
-    ) -> Self {
-        Self::new(config, db, queue_publisher, DispatchAuthService::new(app_key))
     }
 
     /// Dispatch a job to the message queue
     pub async fn dispatch(&self, job_id: &str) -> Result<bool, SchedulerError> {
         let sql = "SELECT id, message_group, dispatch_pool_id, status, mode, target_url, \
-                    payload, sequence, created_at, updated_at, queued_at, last_error \
+                    payload, sequence, created_at, updated_at, queued_at, last_error, subscription_id \
                     FROM msg_dispatch_jobs WHERE id = $1";
 
         let jobs = DispatchJob::find_by_statement(
@@ -64,23 +50,12 @@ impl JobDispatcher {
             return Ok(false);
         };
 
-        // Generate HMAC auth token
-        let auth_token = match self.auth_service.generate_auth_token(job_id) {
-            Ok(token) => token,
-            Err(e) => {
-                warn!(job_id = %job_id, error = %e, "Failed to generate auth token, using fallback");
-                format!("dev_{}", job_id)
-            }
-        };
-
         let pointer = MessagePointer {
-            job_id: job_id.to_string(),
-            dispatch_pool_id: job.dispatch_pool_id.unwrap_or_else(|| self.config.default_pool_code.clone()),
-            auth_token,
+            id: job_id.to_string(),
+            pool_code: job.dispatch_pool_id.unwrap_or_else(|| self.config.default_pool_code.clone()),
+            message_group_id: job.message_group.clone().unwrap_or_else(|| "default".to_string()),
             mediation_type: "HTTP".to_string(),
-            processing_endpoint: self.config.processing_endpoint.clone(),
-            message_group: job.message_group.clone(),
-            batch_id: None,
+            mediation_target: self.config.processing_endpoint.clone(),
         };
 
         let message = QueueMessage {
@@ -129,21 +104,5 @@ impl JobDispatcher {
     /// Check if the queue publisher is healthy
     pub fn is_healthy(&self) -> bool {
         self.queue_publisher.is_healthy()
-    }
-
-    /// Check if auth service is configured
-    pub fn is_auth_configured(&self) -> bool {
-        self.auth_service.is_configured()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_dispatcher_auth_configured() {
-        let auth = DispatchAuthService::new(Some("test-key".to_string()));
-        assert!(auth.is_configured());
     }
 }

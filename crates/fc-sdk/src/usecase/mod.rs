@@ -2,6 +2,7 @@
 //!
 //! Foundational patterns for implementing domain-driven use cases:
 //!
+//! - [`UseCase`] — trait enforcing validate → authorize → execute pipeline
 //! - [`UseCaseResult`] — sealed result type for use case outcomes
 //! - [`UseCaseError`] — categorized error types (validation, not found, etc.)
 //! - [`DomainEvent`] — trait for domain events with CloudEvents structure
@@ -12,12 +13,14 @@
 //! The [`UnitOfWork`](crate::outbox::UnitOfWork) trait and implementations
 //! are in the [`outbox`](crate::outbox) module.
 
+pub mod use_case;
 pub mod result;
 pub mod error;
 pub mod domain_event;
 pub mod execution_context;
 pub mod tracing_context;
 
+pub use use_case::UseCase;
 pub use result::UseCaseResult;
 pub use error::UseCaseError;
 pub use domain_event::{DomainEvent, EventMetadata, EventMetadataBuilder};

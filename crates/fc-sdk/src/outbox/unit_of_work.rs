@@ -1,12 +1,66 @@
-//! Outbox-backed Unit of Work
+//! Unit of Work
 //!
-//! Instead of writing directly to `msg_events` and `aud_logs` (platform-owned tables),
-//! this UnitOfWork writes outbox items to the `outbox_messages` table in the
-//! consumer's database. The outbox poller (fc-outbox-processor) then forwards
-//! these to the FlowCatalyst platform API.
+//! Atomic commit of entity state changes + domain events (+ optional audit logs)
+//! within a single PostgreSQL transaction.
 //!
-//! Entity persistence and outbox writes happen in the **same transaction**,
-//! ensuring exactly-once semantics.
+//! The `OutboxUnitOfWork` writes events to the `outbox_messages` table in the
+//! consumer's database. The fc-outbox-processor then forwards these to the
+//! FlowCatalyst platform API.
+//!
+//! # Use Case Pattern
+//!
+//! Consumer apps build use cases that follow the same pattern as the platform:
+//!
+//! ```ignore
+//! pub struct ShipOrderUseCase<U: UnitOfWork> {
+//!     order_repo: Arc<OrderRepository>,
+//!     unit_of_work: Arc<U>,
+//! }
+//!
+//! impl<U: UnitOfWork> ShipOrderUseCase<U> {
+//!     pub async fn execute(
+//!         &self,
+//!         command: ShipOrderCommand,
+//!         ctx: ExecutionContext,
+//!     ) -> UseCaseResult<OrderShipped> {
+//!         // 1. Validate
+//!         if command.tracking_number.is_empty() {
+//!             return UseCaseResult::failure(
+//!                 UseCaseError::validation("TRACKING_REQUIRED", "Tracking number is required"),
+//!             );
+//!         }
+//!
+//!         // 2. Load & check business rules
+//!         let order = self.order_repo.find_by_id(&command.order_id).await
+//!             .ok_or_else(|| UseCaseError::not_found("ORDER_NOT_FOUND", "Order not found"))?;
+//!         if order.status != "confirmed" {
+//!             return UseCaseResult::failure(
+//!                 UseCaseError::business_rule("NOT_CONFIRMED", "Order must be confirmed to ship"),
+//!             );
+//!         }
+//!
+//!         // 3. Build domain event
+//!         let event = OrderShipped {
+//!             metadata: EventMetadata::builder()
+//!                 .from(&ctx)
+//!                 .event_type("shop:orders:order:shipped")
+//!                 .spec_version("1.0")
+//!                 .source("shop:orders")
+//!                 .subject(format!("orders.order.{}", order.id))
+//!                 .message_group(format!("orders:order:{}", order.id))
+//!                 .build(),
+//!             order_id: order.id.clone(),
+//!             tracking_number: command.tracking_number.clone(),
+//!         };
+//!
+//!         // 4. Atomic commit: entity + event (+ audit log if configured)
+//!         self.unit_of_work.commit(&order, event, &command).await
+//!     }
+//! }
+//! ```
+//!
+//! The handler checks authorization, builds the command, creates an
+//! `ExecutionContext`, and calls `use_case.execute(cmd, ctx).await.into_result()?`.
 
 use async_trait::async_trait;
 use serde::Serialize;
@@ -23,16 +77,20 @@ use crate::usecase::result::UseCaseResult;
 /// Trait for entities that have a unique string ID.
 pub trait HasId {
     fn id(&self) -> &str;
+    /// Legacy collection name. Unused in PostgreSQL implementation.
+    fn collection_name() -> &'static str where Self: Sized { "" }
 }
 
-/// Trait for domain entities that can be persisted within a PostgreSQL transaction.
+/// Trait for domain entities that can be upserted/deleted within a PostgreSQL transaction.
 ///
-/// Implement this for every aggregate passed to `UnitOfWork::commit`.
+/// Implement this for every aggregate that is passed to `UnitOfWork::commit`.
+/// This matches the platform's `PgPersist` trait so that SDK consumers follow
+/// the same conventions as the platform codebase.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use fc_sdk::outbox::{Persist, HasId};
+/// use fc_sdk::outbox::{PgPersist, HasId};
 /// use sqlx::{Postgres, Transaction};
 ///
 /// struct Order { id: String, customer_id: String, total: f64 }
@@ -42,8 +100,8 @@ pub trait HasId {
 /// }
 ///
 /// #[async_trait::async_trait]
-/// impl Persist for Order {
-///     async fn upsert(&self, txn: &mut Transaction<'_, Postgres>) -> anyhow::Result<()> {
+/// impl PgPersist for Order {
+///     async fn pg_upsert(&self, txn: &mut Transaction<'_, Postgres>) -> anyhow::Result<()> {
 ///         sqlx::query("INSERT INTO orders (id, customer_id, total) VALUES ($1, $2, $3)
 ///                      ON CONFLICT (id) DO UPDATE SET customer_id = $2, total = $3")
 ///             .bind(&self.id)
@@ -54,7 +112,7 @@ pub trait HasId {
 ///         Ok(())
 ///     }
 ///
-///     async fn delete(&self, txn: &mut Transaction<'_, Postgres>) -> anyhow::Result<()> {
+///     async fn pg_delete(&self, txn: &mut Transaction<'_, Postgres>) -> anyhow::Result<()> {
 ///         sqlx::query("DELETE FROM orders WHERE id = $1")
 ///             .bind(&self.id)
 ///             .execute(&mut **txn)
@@ -64,31 +122,34 @@ pub trait HasId {
 /// }
 /// ```
 #[async_trait]
-pub trait Persist: HasId + Send + Sync {
-    /// Upsert the entity within the given transaction.
-    async fn upsert(&self, txn: &mut Transaction<'_, Postgres>) -> anyhow::Result<()>;
+pub trait PgPersist: HasId + Send + Sync {
+    /// Upsert the entity into the database within the given transaction.
+    async fn pg_upsert(&self, txn: &mut Transaction<'_, Postgres>) -> anyhow::Result<()>;
 
-    /// Delete the entity within the given transaction.
-    async fn delete(&self, txn: &mut Transaction<'_, Postgres>) -> anyhow::Result<()>;
+    /// Delete the entity from the database within the given transaction.
+    async fn pg_delete(&self, txn: &mut Transaction<'_, Postgres>) -> anyhow::Result<()>;
 }
 
 /// Trait for aggregates passed by value to `commit_all`.
+/// Same as `PgPersist` but object-safe via `async_trait`.
 #[async_trait]
-pub trait Aggregate: Send + Sync {
+pub trait PgAggregate: Send + Sync {
     fn id(&self) -> &str;
-    async fn upsert(&self, txn: &mut Transaction<'_, Postgres>) -> anyhow::Result<()>;
+    async fn pg_upsert(&self, txn: &mut Transaction<'_, Postgres>) -> anyhow::Result<()>;
 }
 
 // ─── UnitOfWork trait ────────────────────────────────────────────────────────
 
 /// Unit of Work for atomic domain operations.
 ///
-/// Ensures entity state changes, domain events, and audit logs are committed
-/// atomically. Events and audit logs are written as outbox items for
-/// asynchronous delivery to the FlowCatalyst platform.
+/// Ensures entity state changes and domain events are committed atomically.
+/// Audit logs are written when enabled (see [`OutboxConfig::audit_enabled`]).
+///
+/// Consumer apps use this the same way the platform does:
+/// validate → build event → `uow.commit(entity, event, &cmd)`.
 #[async_trait]
 pub trait UnitOfWork: Send + Sync {
-    /// Commit an entity upsert with its domain event and audit log.
+    /// Commit an entity upsert with its domain event (and optional audit log).
     async fn commit<E, T, C>(
         &self,
         aggregate: &T,
@@ -97,10 +158,10 @@ pub trait UnitOfWork: Send + Sync {
     ) -> UseCaseResult<E>
     where
         E: DomainEvent + Serialize + Send + 'static,
-        T: Serialize + Persist + Send + Sync,
+        T: Serialize + HasId + PgPersist + Send + Sync,
         C: Serialize + Send + Sync;
 
-    /// Commit an entity delete with its domain event and audit log.
+    /// Commit an entity delete with its domain event (and optional audit log).
     async fn commit_delete<E, T, C>(
         &self,
         aggregate: &T,
@@ -109,10 +170,10 @@ pub trait UnitOfWork: Send + Sync {
     ) -> UseCaseResult<E>
     where
         E: DomainEvent + Serialize + Send + 'static,
-        T: Serialize + Persist + Send + Sync,
+        T: Serialize + HasId + PgPersist + Send + Sync,
         C: Serialize + Send + Sync;
 
-    /// Emit a domain event and audit log without an entity change.
+    /// Emit a domain event without an entity change (e.g., UserLoggedIn).
     async fn emit_event<E, C>(
         &self,
         event: E,
@@ -122,10 +183,10 @@ pub trait UnitOfWork: Send + Sync {
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync;
 
-    /// Commit multiple entity upserts with a single domain event and audit log.
+    /// Commit multiple entity upserts with a single domain event.
     async fn commit_all<E, C>(
         &self,
-        aggregates: Vec<Box<dyn Aggregate>>,
+        aggregates: Vec<Box<dyn PgAggregate>>,
         event: E,
         command: &C,
     ) -> UseCaseResult<E>
@@ -134,7 +195,7 @@ pub trait UnitOfWork: Send + Sync {
         C: Serialize + Send + Sync;
 }
 
-// ─── OutboxUnitOfWork ────────────────────────────────────────────────────────
+// ─── OutboxConfig ────────────────────────────────────────────────────────────
 
 /// Configuration for the outbox unit of work.
 #[derive(Debug, Clone)]
@@ -143,6 +204,12 @@ pub struct OutboxConfig {
     pub table_name: String,
     /// Optional client_id for multi-tenant scoping
     pub client_id: Option<String>,
+    /// Whether to write audit log entries alongside events (default: false).
+    ///
+    /// The platform always audits (control plane operations). Consumer apps
+    /// should enable this only for admin/human-initiated operations, not for
+    /// every transactional event.
+    pub audit_enabled: bool,
 }
 
 impl Default for OutboxConfig {
@@ -150,26 +217,32 @@ impl Default for OutboxConfig {
         Self {
             table_name: "outbox_messages".to_string(),
             client_id: None,
+            audit_enabled: false,
         }
     }
 }
 
+// ─── OutboxUnitOfWork ────────────────────────────────────────────────────────
+
 /// Outbox-backed implementation of [`UnitOfWork`].
 ///
-/// Writes domain events and audit logs as outbox items to the `outbox_messages`
-/// table, which the fc-outbox-processor polls and forwards to the FlowCatalyst
-/// platform API.
+/// Atomically persists entity changes and domain events to the `outbox_messages`
+/// table. The fc-outbox-processor polls this table and forwards items to the
+/// FlowCatalyst platform API.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use fc_sdk::outbox::OutboxUnitOfWork;
+/// use fc_sdk::outbox::{OutboxUnitOfWork, OutboxConfig};
 ///
-/// let pool = sqlx::PgPool::connect("postgresql://localhost/myapp").await?;
-/// let uow = OutboxUnitOfWork::new(pool);
+/// // Events only (default for transactional operations)
+/// let uow = OutboxUnitOfWork::new(pool.clone());
 ///
-/// // Use in a use case
-/// let result = uow.commit(&order, order_created_event, &create_command).await;
+/// // Events + audit logs (for admin operations)
+/// let uow = OutboxUnitOfWork::with_config(pool, OutboxConfig {
+///     audit_enabled: true,
+///     ..Default::default()
+/// });
 /// ```
 #[derive(Clone)]
 pub struct OutboxUnitOfWork {
@@ -178,7 +251,7 @@ pub struct OutboxUnitOfWork {
 }
 
 impl OutboxUnitOfWork {
-    /// Create a new OutboxUnitOfWork with default configuration.
+    /// Create a new OutboxUnitOfWork with default configuration (events only, no audit).
     pub fn new(pool: PgPool) -> Self {
         Self {
             pool,
@@ -218,7 +291,7 @@ impl OutboxUnitOfWork {
         event: &E,
         client_id: &Option<String>,
     ) -> Result<(), UseCaseError> {
-        let id = TsidGenerator::generate(EntityType::Event);
+        let id = TsidGenerator::generate_untyped();
         let data_json: serde_json::Value = serde_json::from_str(&event.to_data_json())
             .unwrap_or(serde_json::json!({}));
 
@@ -326,9 +399,12 @@ impl OutboxUnitOfWork {
         event: &E,
         command: &C,
         client_id: &Option<String>,
+        audit_enabled: bool,
     ) -> Result<(), UseCaseError> {
         Self::write_event_outbox(txn, table, event, client_id).await?;
-        Self::write_audit_outbox(txn, table, event, command, client_id).await?;
+        if audit_enabled {
+            Self::write_audit_outbox(txn, table, event, command, client_id).await?;
+        }
         Ok(())
     }
 }
@@ -343,7 +419,7 @@ impl UnitOfWork for OutboxUnitOfWork {
     ) -> UseCaseResult<E>
     where
         E: DomainEvent + Serialize + Send + 'static,
-        T: Serialize + Persist + Send + Sync,
+        T: Serialize + HasId + PgPersist + Send + Sync,
         C: Serialize + Send + Sync,
     {
         let mut txn = match self.pool.begin().await {
@@ -357,7 +433,7 @@ impl UnitOfWork for OutboxUnitOfWork {
             }
         };
 
-        if let Err(e) = aggregate.upsert(&mut txn).await {
+        if let Err(e) = aggregate.pg_upsert(&mut txn).await {
             error!("Failed to persist aggregate: {}", e);
             return UseCaseResult::failure(UseCaseError::commit(format!(
                 "Failed to persist aggregate: {}",
@@ -371,6 +447,7 @@ impl UnitOfWork for OutboxUnitOfWork {
             &event,
             command,
             &self.config.client_id,
+            self.config.audit_enabled,
         )
         .await
         {
@@ -388,7 +465,7 @@ impl UnitOfWork for OutboxUnitOfWork {
         debug!(
             event_id = event.event_id(),
             event_type = event.event_type(),
-            "Committed entity + outbox items"
+            "Committed entity + outbox event"
         );
 
         UseCaseResult::success(event)
@@ -402,7 +479,7 @@ impl UnitOfWork for OutboxUnitOfWork {
     ) -> UseCaseResult<E>
     where
         E: DomainEvent + Serialize + Send + 'static,
-        T: Serialize + Persist + Send + Sync,
+        T: Serialize + HasId + PgPersist + Send + Sync,
         C: Serialize + Send + Sync,
     {
         let mut txn = match self.pool.begin().await {
@@ -416,7 +493,7 @@ impl UnitOfWork for OutboxUnitOfWork {
             }
         };
 
-        if let Err(e) = aggregate.delete(&mut txn).await {
+        if let Err(e) = aggregate.pg_delete(&mut txn).await {
             error!("Failed to delete aggregate: {}", e);
             return UseCaseResult::failure(UseCaseError::commit(format!(
                 "Failed to delete aggregate: {}",
@@ -430,6 +507,7 @@ impl UnitOfWork for OutboxUnitOfWork {
             &event,
             command,
             &self.config.client_id,
+            self.config.audit_enabled,
         )
         .await
         {
@@ -447,7 +525,7 @@ impl UnitOfWork for OutboxUnitOfWork {
         debug!(
             event_id = event.event_id(),
             event_type = event.event_type(),
-            "Committed delete + outbox items"
+            "Committed delete + outbox event"
         );
 
         UseCaseResult::success(event)
@@ -479,6 +557,7 @@ impl UnitOfWork for OutboxUnitOfWork {
             &event,
             command,
             &self.config.client_id,
+            self.config.audit_enabled,
         )
         .await
         {
@@ -504,7 +583,7 @@ impl UnitOfWork for OutboxUnitOfWork {
 
     async fn commit_all<E, C>(
         &self,
-        aggregates: Vec<Box<dyn Aggregate>>,
+        aggregates: Vec<Box<dyn PgAggregate>>,
         event: E,
         command: &C,
     ) -> UseCaseResult<E>
@@ -524,7 +603,7 @@ impl UnitOfWork for OutboxUnitOfWork {
         };
 
         for aggregate in &aggregates {
-            if let Err(e) = aggregate.upsert(&mut txn).await {
+            if let Err(e) = aggregate.pg_upsert(&mut txn).await {
                 error!("Failed to persist aggregate: {}", e);
                 return UseCaseResult::failure(UseCaseError::commit(format!(
                     "Failed to persist aggregate: {}",
@@ -539,6 +618,7 @@ impl UnitOfWork for OutboxUnitOfWork {
             &event,
             command,
             &self.config.client_id,
+            self.config.audit_enabled,
         )
         .await
         {
@@ -557,9 +637,134 @@ impl UnitOfWork for OutboxUnitOfWork {
             event_id = event.event_id(),
             event_type = event.event_type(),
             aggregate_count = aggregates.len(),
-            "Committed multi-aggregate + outbox items"
+            "Committed multi-aggregate + outbox event"
         );
 
+        UseCaseResult::success(event)
+    }
+}
+
+// ─── InMemoryUnitOfWork (tests) ──────────────────────────────────────────────
+
+/// In-memory implementation of [`UnitOfWork`] for unit testing use cases.
+///
+/// Records committed event IDs so tests can assert which events were emitted
+/// without needing a database.
+///
+/// # Example
+///
+/// ```ignore
+/// use fc_sdk::outbox::InMemoryUnitOfWork;
+/// use std::sync::Arc;
+///
+/// let uow = Arc::new(InMemoryUnitOfWork::new());
+/// let use_case = ShipOrderUseCase::new(mock_repo, uow.clone());
+///
+/// let result = use_case.execute(cmd, ctx).await;
+/// assert!(result.is_success());
+/// assert_eq!(uow.committed_events().len(), 1);
+/// ```
+pub struct InMemoryUnitOfWork {
+    committed_events: std::sync::Mutex<Vec<String>>,
+}
+
+impl InMemoryUnitOfWork {
+    pub fn new() -> Self {
+        Self {
+            committed_events: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Get the list of committed event IDs.
+    pub fn committed_events(&self) -> Vec<String> {
+        self.committed_events.lock().unwrap().clone()
+    }
+
+    /// Check if any events were committed.
+    pub fn has_commits(&self) -> bool {
+        !self.committed_events.lock().unwrap().is_empty()
+    }
+
+    /// Clear all recorded events.
+    pub fn clear(&self) {
+        self.committed_events.lock().unwrap().clear();
+    }
+}
+
+impl Default for InMemoryUnitOfWork {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl UnitOfWork for InMemoryUnitOfWork {
+    async fn commit<E, T, C>(
+        &self,
+        _aggregate: &T,
+        event: E,
+        _command: &C,
+    ) -> UseCaseResult<E>
+    where
+        E: DomainEvent + Serialize + Send + 'static,
+        T: Serialize + HasId + PgPersist + Send + Sync,
+        C: Serialize + Send + Sync,
+    {
+        self.committed_events
+            .lock()
+            .unwrap()
+            .push(event.event_id().to_string());
+        UseCaseResult::success(event)
+    }
+
+    async fn commit_delete<E, T, C>(
+        &self,
+        _aggregate: &T,
+        event: E,
+        _command: &C,
+    ) -> UseCaseResult<E>
+    where
+        E: DomainEvent + Serialize + Send + 'static,
+        T: Serialize + HasId + PgPersist + Send + Sync,
+        C: Serialize + Send + Sync,
+    {
+        self.committed_events
+            .lock()
+            .unwrap()
+            .push(event.event_id().to_string());
+        UseCaseResult::success(event)
+    }
+
+    async fn emit_event<E, C>(
+        &self,
+        event: E,
+        _command: &C,
+    ) -> UseCaseResult<E>
+    where
+        E: DomainEvent + Serialize + Send + 'static,
+        C: Serialize + Send + Sync,
+    {
+        self.committed_events
+            .lock()
+            .unwrap()
+            .push(event.event_id().to_string());
+        UseCaseResult::success(event)
+    }
+
+    async fn commit_all<E, C>(
+        &self,
+        _aggregates: Vec<Box<dyn PgAggregate>>,
+        event: E,
+        _command: &C,
+    ) -> UseCaseResult<E>
+    where
+        E: DomainEvent + Serialize + Send + 'static,
+        C: Serialize + Send + Sync,
+    {
+        self.committed_events
+            .lock()
+            .unwrap()
+            .push(event.event_id().to_string());
         UseCaseResult::success(event)
     }
 }

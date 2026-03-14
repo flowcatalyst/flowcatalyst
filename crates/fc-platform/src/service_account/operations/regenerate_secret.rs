@@ -1,13 +1,14 @@
 //! Regenerate Signing Secret Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use chrono::Utc;
 use rand::Rng;
 
 use crate::ServiceAccountRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ServiceAccountSecretRegenerated;
 
@@ -27,9 +28,26 @@ pub struct RegenerateSigningSecretCommand {
 
 /// Result returned from regenerate signing secret use case.
 /// Contains the event plus one-time secret that needs to be returned to caller.
+#[derive(Serialize)]
 pub struct RegenerateSigningSecretResult {
+    #[serde(flatten)]
     pub event: ServiceAccountSecretRegenerated,
     pub signing_secret: String,
+}
+
+impl crate::usecase::DomainEvent for RegenerateSigningSecretResult {
+    fn event_id(&self) -> &str { self.event.event_id() }
+    fn event_type(&self) -> &str { self.event.event_type() }
+    fn spec_version(&self) -> &str { self.event.spec_version() }
+    fn source(&self) -> &str { self.event.source() }
+    fn subject(&self) -> &str { self.event.subject() }
+    fn time(&self) -> chrono::DateTime<chrono::Utc> { self.event.time() }
+    fn execution_id(&self) -> &str { self.event.execution_id() }
+    fn correlation_id(&self) -> &str { self.event.correlation_id() }
+    fn causation_id(&self) -> Option<&str> { self.event.causation_id() }
+    fn principal_id(&self) -> &str { self.event.principal_id() }
+    fn message_group(&self) -> &str { self.event.message_group() }
+    fn to_data_json(&self) -> String { self.event.to_data_json() }
 }
 
 /// Use case for regenerating a service account's signing secret.
@@ -48,8 +66,22 @@ impl<U: UnitOfWork> RegenerateSigningSecretUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl<U: UnitOfWork> UseCase for RegenerateSigningSecretUseCase<U> {
+    type Command = RegenerateSigningSecretCommand;
+    type Event = RegenerateSigningSecretResult;
+
+    async fn validate(&self, _command: &RegenerateSigningSecretCommand) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &RegenerateSigningSecretCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: RegenerateSigningSecretCommand,
         ctx: ExecutionContext,

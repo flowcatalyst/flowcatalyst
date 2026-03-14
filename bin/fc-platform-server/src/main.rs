@@ -27,11 +27,13 @@ use axum::{
 };
 use utoipa_axum::router::OpenApiRouter;
 use tower_http::cors::{CorsLayer, AllowOrigin};
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
+use axum::http::header::CACHE_CONTROL;
 use tower_http::services::{ServeDir, ServeFile};
 use axum::http::{Method, HeaderValue, header as http_header};
 use anyhow::Result;
-use tracing::info;
+use tracing::{info, warn};
 use tokio::{signal, net::TcpListener};
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -73,7 +75,7 @@ use fc_platform::api::{
     WellKnownState, well_known_router,
     ClientSelectionState, client_selection_router,
     ApplicationRolesSdkState, application_roles_sdk_router,
-    public_router,
+    public_router, PublicApiState,
     PasswordResetApiState, password_reset_router,
     SdkSyncState, sdk_sync_router,
     SdkAuditBatchState, sdk_audit_batch_router,
@@ -95,6 +97,7 @@ use fc_platform::repository::{
     PasswordResetTokenRepository,
 };
 use fc_platform::usecase::PgUnitOfWork;
+use fc_platform::shared::encryption_service::EncryptionService;
 use fc_platform::operations::{
     // Service Account use cases
     CreateServiceAccountUseCase, UpdateServiceAccountUseCase, DeleteServiceAccountUseCase,
@@ -156,8 +159,12 @@ async fn main() -> Result<()> {
         }
     }
 
+    // Create SQLx pool (for migrated repositories)
+    let pg_pool = fc_platform::shared::database::create_pool(&database_url).await
+        .map_err(|e| anyhow::anyhow!("SQLx pool creation failed: {}", e))?;
+
     // Initialize repositories
-    let event_repo = Arc::new(EventRepository::new(&pg_db));
+    let event_repo = Arc::new(EventRepository::new(&pg_pool));
     let event_type_repo = Arc::new(EventTypeRepository::new(&pg_db));
     let dispatch_job_repo = Arc::new(DispatchJobRepository::new(&pg_db));
     let dispatch_pool_repo = Arc::new(DispatchPoolRepository::new(&pg_db));
@@ -284,12 +291,15 @@ async fn main() -> Result<()> {
 
     // Build API states
     let events_state = EventsState { event_repo: event_repo.clone() };
+    // Create UnitOfWork for atomic commits with events and audit logs
+    let unit_of_work = Arc::new(PgUnitOfWork::new(pg_db.clone()));
+
     let sync_event_types_use_case = Arc::new(fc_platform::event_type::operations::SyncEventTypesUseCase::new(event_type_repo.clone()));
     let event_types_state = EventTypesState { event_type_repo: event_type_repo.clone(), sync_use_case: sync_event_types_use_case.clone() };
     let dispatch_jobs_state = DispatchJobsState { dispatch_job_repo: dispatch_job_repo.clone() };
     let sdk_events_state = SdkEventsState { event_repo: event_repo.clone() };
-    let sdk_clients_state = SdkClientsState { client_repo: client_repo.clone() };
-    let sdk_principals_state = SdkPrincipalsState { principal_repo: principal_repo.clone() };
+    let sdk_clients_state = SdkClientsState { client_repo: client_repo.clone(), unit_of_work: unit_of_work.clone() };
+    let sdk_principals_state = SdkPrincipalsState { principal_repo: principal_repo.clone(), role_repo: role_repo.clone(), unit_of_work: unit_of_work.clone() };
     let sdk_roles_state = SdkRolesState {
         role_repo: role_repo.clone(),
         application_repo: application_repo.clone(),
@@ -333,8 +343,6 @@ async fn main() -> Result<()> {
         idp_role_mapping_repo: idp_role_mapping_repo.clone(),
         principal_repo: Some(principal_repo.clone()),
     };
-    // Create UnitOfWork for atomic commits with events and audit logs
-    let unit_of_work = Arc::new(PgUnitOfWork::new(pg_db.clone()));
 
     let external_base_url = std::env::var("FC_EXTERNAL_BASE_URL").ok();
     let oidc_login_state = OidcLoginApiState::new(
@@ -346,6 +354,13 @@ async fn main() -> Result<()> {
         auth_service.clone(),
         unit_of_work.clone(),
     ).with_session_cookie_settings("fc_session", false, "Lax", 86400);
+    let encryption_service = EncryptionService::from_env().map(Arc::new);
+    let oidc_login_state = if let Some(enc_svc) = encryption_service {
+        oidc_login_state.with_encryption_service(enc_svc)
+    } else {
+        warn!("FLOWCATALYST_APP_KEY not set — OIDC client secrets cannot be decrypted");
+        oidc_login_state
+    };
     let oidc_login_state = if let Some(url) = external_base_url {
         oidc_login_state.with_external_base_url(url)
     } else {
@@ -369,6 +384,7 @@ async fn main() -> Result<()> {
         refresh_token_repo,
         pending_auth_repo,
         password_service.clone(),
+        login_attempt_repo.clone(),
     );
     let audit_logs_state = AuditLogsState { audit_log_repo: audit_log_repo.clone(), principal_repo: principal_repo.clone() };
 
@@ -439,6 +455,7 @@ async fn main() -> Result<()> {
     let cors_state = CorsState { cors_repo };
     let idp_state = IdentityProvidersState { idp_repo: idp_repo.clone() };
     let edm_state = EmailDomainMappingsState { edm_repo, idp_repo };
+    let public_api_state = PublicApiState { config_repo: platform_config_repo.clone() };
     let platform_config_state = PlatformConfigState { config_repo: platform_config_repo };
     let config_access_state = ConfigAccessState { access_repo: platform_config_access_repo };
     let login_attempts_state = LoginAttemptsState { login_attempt_repo };
@@ -533,11 +550,13 @@ async fn main() -> Result<()> {
     let bff_roles_state = BffRolesState {
         role_repo: role_repo.clone(),
         application_repo: Some(application_repo.clone()),
+        unit_of_work: unit_of_work.clone(),
     };
     let bff_event_types_state = BffEventTypesState {
         event_type_repo: event_type_repo.clone(),
         application_repo: Some(application_repo.clone()),
         sync_use_case: sync_event_types_use_case.clone(),
+        unit_of_work: unit_of_work.clone(),
     };
 
     let monitoring_state = MonitoringState {
@@ -624,7 +643,7 @@ async fn main() -> Result<()> {
         .nest("/api/audit-logs", sdk_audit_batch_router(sdk_audit_batch_state))
         .nest("/api/config", platform_config_router())
         // Public routes (no auth required)
-        .nest("/api/public", public_router())
+        .nest("/api/public", public_router(public_api_state))
         .nest("/auth/password-reset", password_reset_router(password_reset_state))
         // Health check on API port (for load balancers / K8s probes)
         .route("/health", get(health_handler))
@@ -681,10 +700,28 @@ async fn main() -> Result<()> {
     // Static frontend serving (SPA fallback)
     let app = if let Ok(static_dir) = std::env::var("FC_STATIC_DIR") {
         let index_path = std::path::PathBuf::from(&static_dir).join("index.html");
-        info!(dir = %static_dir, "Serving static frontend files");
-        app.fallback_service(
-            ServeDir::new(&static_dir).not_found_service(ServeFile::new(index_path))
-        )
+        if index_path.exists() {
+            info!(dir = %static_dir, "Serving static frontend files with SPA fallback");
+
+            // Hashed assets (Vite: /assets/*.js, /assets/*.css) — immutable cache
+            let assets_dir = std::path::PathBuf::from(&static_dir).join("assets");
+            let assets_service = tower::ServiceBuilder::new()
+                .layer(SetResponseHeaderLayer::overriding(
+                    CACHE_CONTROL,
+                    HeaderValue::from_static("public, max-age=31536000, immutable"),
+                ))
+                .service(ServeDir::new(&assets_dir));
+
+            app
+                .nest_service("/assets", assets_service)
+                .fallback_service(
+                    ServeDir::new(&static_dir)
+                        .fallback(ServeFile::new(index_path))
+                )
+        } else {
+            warn!(dir = %static_dir, "FC_STATIC_DIR set but index.html not found");
+            app
+        }
     } else {
         app
     };

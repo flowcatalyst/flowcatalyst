@@ -1,11 +1,12 @@
 //! Delete Service Account Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::ServiceAccountRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ServiceAccountDeleted;
 
@@ -33,8 +34,22 @@ impl<U: UnitOfWork> DeleteServiceAccountUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl<U: UnitOfWork> UseCase for DeleteServiceAccountUseCase<U> {
+    type Command = DeleteServiceAccountCommand;
+    type Event = ServiceAccountDeleted;
+
+    async fn validate(&self, _command: &DeleteServiceAccountCommand) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &DeleteServiceAccountCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: DeleteServiceAccountCommand,
         ctx: ExecutionContext,

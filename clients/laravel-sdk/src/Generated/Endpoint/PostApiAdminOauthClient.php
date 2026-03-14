@@ -1,0 +1,60 @@
+<?php
+
+namespace FlowCatalyst\Generated\Endpoint;
+
+class PostApiAdminOauthClient extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
+{
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\ApiAdminOauthClientsPostBody $requestBody
+     */
+    public function __construct(?\FlowCatalyst\Generated\Model\ApiAdminOauthClientsPostBody $requestBody = null)
+    {
+        $this->body = $requestBody;
+    }
+    use \FlowCatalyst\Generated\Runtime\Client\EndpointTrait;
+    public function getMethod(): string
+    {
+        return 'POST';
+    }
+    public function getUri(): string
+    {
+        return '/api/admin/oauth-clients';
+    }
+    public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
+    {
+        if ($this->body instanceof \FlowCatalyst\Generated\Model\ApiAdminOauthClientsPostBody) {
+            return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
+        }
+        return [[], null];
+    }
+    public function getExtraHeaders(): array
+    {
+        return ['Accept' => ['application/json']];
+    }
+    /**
+     * {@inheritdoc}
+     *
+     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminOauthClientBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminOauthClientConflictException
+     *
+     * @return null|\FlowCatalyst\Generated\Model\ApiAdminOauthClientsPostResponse201
+     */
+    protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
+    {
+        $status = $response->getStatusCode();
+        $body = (string) $response->getBody();
+        if (is_null($contentType) === false && (201 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminOauthClientsPostResponse201', 'json');
+        }
+        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PostApiAdminOauthClientBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminOauthClientsPostResponse400', 'json'), $response);
+        }
+        if (is_null($contentType) === false && (409 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\PostApiAdminOauthClientConflictException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminOauthClientsPostResponse409', 'json'), $response);
+        }
+    }
+    public function getAuthenticationScopes(): array
+    {
+        return ['bearerAuth'];
+    }
+}

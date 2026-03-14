@@ -13,14 +13,23 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::collections::HashSet;
 
-use crate::event_type::entity::{EventType, EventTypeStatus, SpecVersion, SpecVersionStatus};
+use crate::event_type::entity::{EventType, EventTypeStatus, SpecVersion};
 use crate::event_type::repository::EventTypeRepository;
-use crate::event_type::operations::{SyncEventTypesUseCase, SyncEventTypesCommand};
+use crate::event_type::operations::{
+    SyncEventTypesUseCase,
+    CreateEventTypeCommand, CreateEventTypeUseCase,
+    UpdateEventTypeCommand, UpdateEventTypeUseCase,
+    DeleteEventTypeCommand, DeleteEventTypeUseCase,
+    ArchiveEventTypeCommand, ArchiveEventTypeUseCase,
+    AddSchemaCommand, AddSchemaUseCase,
+    FinaliseSchemaCommand, FinaliseSchemaUseCase,
+    DeprecateSchemaCommand, DeprecateSchemaUseCase,
+};
 use crate::application::repository::ApplicationRepository;
-use crate::usecase::ExecutionContext;
 use crate::shared::error::PlatformError;
 use crate::shared::api_common::CreatedResponse;
 use crate::shared::middleware::Authenticated;
+use crate::usecase::{ExecutionContext, PgUnitOfWork, UseCase};
 
 // ── Response DTOs ──────────────────────────────────────────────────────────
 
@@ -34,7 +43,7 @@ pub struct BffSpecVersionResponse {
     pub schema_type: String,
     pub mime_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub schema: Option<serde_json::Value>,
+    pub schema: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -47,7 +56,7 @@ impl From<SpecVersion> for BffSpecVersionResponse {
             status: v.status.as_str().to_string(),
             schema_type: v.schema_type.as_str().to_string(),
             mime_type: v.mime_type,
-            schema: v.schema_content,
+            schema: v.schema_content.map(|v| serde_json::to_string(&v).unwrap_or_default()),
             created_at: v.created_at.to_rfc3339(),
             updated_at: v.updated_at.to_rfc3339(),
         }
@@ -105,33 +114,11 @@ pub struct BffEventTypeListResponse {
     pub total: usize,
 }
 
-/// Filter option for dropdowns
+/// Filter options response (matches frontend FilterOptionsResponse)
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct BffFilterOption {
-    pub value: String,
-    pub label: String,
-}
-
-/// Application filter options response
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct BffApplicationsResponse {
-    pub applications: Vec<BffFilterOption>,
-}
-
-/// Subdomain filter options response
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct BffSubdomainsResponse {
-    pub subdomains: Vec<BffFilterOption>,
-}
-
-/// Aggregate filter options response
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct BffAggregatesResponse {
-    pub aggregates: Vec<BffFilterOption>,
+pub struct BffFilterOptionsResponse {
+    pub options: Vec<String>,
 }
 
 // ── Request DTOs ──────────────────────────────────────────────────────────
@@ -225,6 +212,7 @@ pub struct BffEventTypesState {
     pub event_type_repo: Arc<EventTypeRepository>,
     pub application_repo: Option<Arc<ApplicationRepository>>,
     pub sync_use_case: Arc<SyncEventTypesUseCase>,
+    pub unit_of_work: Arc<PgUnitOfWork>,
 }
 
 // ── Sync request DTO ──────────────────────────────────────────────────────
@@ -240,12 +228,20 @@ pub struct BffSyncPlatformRequest {
 /// Response for sync-platform endpoint
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
+pub struct BffSyncSchemasResponse {
+    pub created: u32,
+    pub updated: u32,
+    pub unchanged: u32,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct BffSyncPlatformResponse {
-    pub application_code: String,
     pub created: u32,
     pub updated: u32,
     pub deleted: u32,
-    pub synced_codes: Vec<String>,
+    pub total: u32,
+    pub schemas: BffSyncSchemasResponse,
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────
@@ -389,27 +385,37 @@ pub async fn create_event_type(
         ));
     }
 
-    // Check for duplicate code
-    if let Some(_) = state.event_type_repo.find_by_code(&req.code).await? {
-        return Err(PlatformError::duplicate("EventType", "code", &req.code));
-    }
+    let ctx = ExecutionContext::from_auth(&auth.0);
 
-    let mut event_type =
-        EventType::new(&req.code, &req.name).map_err(|e| PlatformError::validation(e))?;
+    let cmd = CreateEventTypeCommand {
+        code: req.code,
+        name: req.name,
+        description: req.description,
+        client_id: req.client_id,
+    };
 
-    if let Some(desc) = req.description {
-        event_type = event_type.with_description(desc);
-    }
-    if let Some(cid) = req.client_id {
-        event_type = event_type.with_client_id(cid);
-    }
+    let use_case = CreateEventTypeUseCase::new(
+        state.event_type_repo.clone(),
+        state.unit_of_work.clone(),
+    );
+    let event = use_case.run(cmd, ctx.clone()).await.into_result()?;
+    let id = event.event_type_id.clone();
+
+    // If an initial schema was provided, add it as a separate use case call
     if let Some(schema) = req.schema {
-        let spec = SpecVersion::new(&event_type.id, "1.0", Some(schema));
-        event_type.add_schema_version(spec);
+        let schema_cmd = AddSchemaCommand {
+            event_type_id: id.clone(),
+            version: "1.0".to_string(),
+            mime_type: "application/schema+json".to_string(),
+            schema_content: Some(schema),
+            schema_type: None,
+        };
+        let schema_use_case = AddSchemaUseCase::new(
+            state.event_type_repo.clone(),
+            state.unit_of_work.clone(),
+        );
+        schema_use_case.run(schema_cmd, ctx).await.into_result()?;
     }
-
-    let id = event_type.id.clone();
-    state.event_type_repo.insert(&event_type).await?;
 
     Ok((
         axum::http::StatusCode::CREATED,
@@ -441,13 +447,13 @@ pub async fn update_event_type(
 ) -> Result<Json<BffEventTypeResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
-    let mut event_type = state
+    // Fetch to check client access before calling the use case
+    let event_type = state
         .event_type_repo
         .find_by_id(&id)
         .await?
         .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
 
-    // Check client access
     if let Some(ref cid) = event_type.client_id {
         if !auth.0.can_access_client(cid) {
             return Err(PlatformError::forbidden("No access to this event type"));
@@ -458,17 +464,27 @@ pub async fn update_event_type(
         ));
     }
 
-    if let Some(name) = req.name {
-        event_type.name = name;
-    }
-    if let Some(desc) = req.description {
-        event_type.description = Some(desc);
-    }
-    event_type.updated_at = chrono::Utc::now();
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let cmd = UpdateEventTypeCommand {
+        event_type_id: id.clone(),
+        name: req.name,
+        description: req.description,
+    };
 
-    state.event_type_repo.update(&event_type).await?;
+    let use_case = UpdateEventTypeUseCase::new(
+        state.event_type_repo.clone(),
+        state.unit_of_work.clone(),
+    );
+    use_case.run(cmd, ctx).await.into_result()?;
 
-    Ok(Json(event_type.into()))
+    // Re-fetch for the response
+    let updated = state
+        .event_type_repo
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
+
+    Ok(Json(updated.into()))
 }
 
 /// Delete event type
@@ -493,13 +509,13 @@ pub async fn delete_event_type(
 ) -> Result<axum::http::StatusCode, PlatformError> {
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
+    // Fetch to check client access before calling the use case
     let event_type = state
         .event_type_repo
         .find_by_id(&id)
         .await?
         .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
 
-    // Check client access
     if let Some(ref cid) = event_type.client_id {
         if !auth.0.can_access_client(cid) {
             return Err(PlatformError::forbidden("No access to this event type"));
@@ -510,7 +526,16 @@ pub async fn delete_event_type(
         ));
     }
 
-    state.event_type_repo.delete(&id).await?;
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let cmd = DeleteEventTypeCommand {
+        event_type_id: id,
+    };
+
+    let use_case = DeleteEventTypeUseCase::new(
+        state.event_type_repo.clone(),
+        state.unit_of_work.clone(),
+    );
+    use_case.run(cmd, ctx).await.into_result()?;
 
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
@@ -537,13 +562,13 @@ pub async fn archive_event_type(
 ) -> Result<Json<BffEventTypeResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
-    let mut event_type = state
+    // Fetch to check client access before calling the use case
+    let event_type = state
         .event_type_repo
         .find_by_id(&id)
         .await?
         .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
 
-    // Check client access
     if let Some(ref cid) = event_type.client_id {
         if !auth.0.can_access_client(cid) {
             return Err(PlatformError::forbidden("No access to this event type"));
@@ -554,10 +579,25 @@ pub async fn archive_event_type(
         ));
     }
 
-    event_type.archive();
-    state.event_type_repo.update(&event_type).await?;
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let cmd = ArchiveEventTypeCommand {
+        event_type_id: id.clone(),
+    };
 
-    Ok(Json(event_type.into()))
+    let use_case = ArchiveEventTypeUseCase::new(
+        state.event_type_repo.clone(),
+        state.unit_of_work.clone(),
+    );
+    use_case.run(cmd, ctx).await.into_result()?;
+
+    // Re-fetch for the response
+    let archived = state
+        .event_type_repo
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
+
+    Ok(Json(archived.into()))
 }
 
 /// Add a schema version to an event type
@@ -585,42 +625,45 @@ pub async fn add_schema(
 ) -> Result<Json<BffEventTypeResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
-    let mut event_type = state
+    // Fetch to check client access before calling the use case
+    let event_type = state
         .event_type_repo
         .find_by_id(&id)
         .await?
         .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
 
-    // Check client access
     if let Some(ref cid) = event_type.client_id {
         if !auth.0.can_access_client(cid) {
             return Err(PlatformError::forbidden("No access to this event type"));
         }
     }
 
-    // Business rule: cannot add schema to archived event type
-    if event_type.status == EventTypeStatus::Archived {
-        return Err(PlatformError::validation(
-            "Cannot add schema to an archived event type",
-        ));
-    }
-
     // Calculate next version
     let next_version = format!("{}.0", event_type.spec_versions.len() + 1);
-    let mut spec = SpecVersion::new(&event_type.id, &next_version, Some(req.schema));
-    spec.mime_type = req.mime_type;
-    if let Some(ref st) = req.schema_type {
-        spec.schema_type = crate::event_type::entity::SchemaType::from_str(st);
-    }
 
-    // Persist the new spec version
-    state.event_type_repo.insert_spec_version(&spec).await?;
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let cmd = AddSchemaCommand {
+        event_type_id: id.clone(),
+        version: next_version,
+        mime_type: req.mime_type,
+        schema_content: Some(req.schema),
+        schema_type: req.schema_type,
+    };
 
-    // Add to in-memory event type and update
-    event_type.add_schema_version(spec);
-    state.event_type_repo.update(&event_type).await?;
+    let use_case = AddSchemaUseCase::new(
+        state.event_type_repo.clone(),
+        state.unit_of_work.clone(),
+    );
+    use_case.run(cmd, ctx).await.into_result()?;
 
-    Ok(Json(event_type.into()))
+    // Re-fetch for the response
+    let updated = state
+        .event_type_repo
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
+
+    Ok(Json(updated.into()))
 }
 
 /// Finalise a schema version (FINALISING -> CURRENT)
@@ -647,66 +690,39 @@ pub async fn finalise_schema(
 ) -> Result<Json<BffEventTypeResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
-    let mut event_type = state
+    // Fetch to check client access before calling the use case
+    let event_type = state
         .event_type_repo
         .find_by_id(&id)
         .await?
         .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
 
-    // Check client access
     if let Some(ref cid) = event_type.client_id {
         if !auth.0.can_access_client(cid) {
             return Err(PlatformError::forbidden("No access to this event type"));
         }
     }
 
-    // Find the target version
-    let target_idx = event_type
-        .spec_versions
-        .iter()
-        .position(|sv| sv.version == version)
-        .ok_or_else(|| {
-            PlatformError::not_found("SchemaVersion", &format!("{}:{}", id, version))
-        })?;
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let cmd = FinaliseSchemaCommand {
+        event_type_id: id.clone(),
+        version,
+    };
 
-    // Must be FINALISING
-    if event_type.spec_versions[target_idx].status != SpecVersionStatus::Finalising {
-        return Err(PlatformError::validation(format!(
-            "Schema version '{}' is not in FINALISING status",
-            version
-        )));
-    }
+    let use_case = FinaliseSchemaUseCase::new(
+        state.event_type_repo.clone(),
+        state.unit_of_work.clone(),
+    );
+    use_case.run(cmd, ctx).await.into_result()?;
 
-    // Extract major version for auto-deprecation
-    let target_major: Option<u32> = version.split('.').next().and_then(|s| s.parse().ok());
-
-    // Auto-deprecate existing CURRENT versions with same major
-    if let Some(major) = target_major {
-        for sv in &mut event_type.spec_versions {
-            if sv.status == SpecVersionStatus::Current {
-                let sv_major: Option<u32> =
-                    sv.version.split('.').next().and_then(|s| s.parse().ok());
-                if sv_major == Some(major) {
-                    sv.status = SpecVersionStatus::Deprecated;
-                    sv.updated_at = chrono::Utc::now();
-                    state.event_type_repo.update_spec_version(sv).await?;
-                }
-            }
-        }
-    }
-
-    // Finalise target version
-    event_type.spec_versions[target_idx].status = SpecVersionStatus::Current;
-    event_type.spec_versions[target_idx].updated_at = chrono::Utc::now();
-    event_type.updated_at = chrono::Utc::now();
-
-    state
+    // Re-fetch for the response
+    let updated = state
         .event_type_repo
-        .update_spec_version(&event_type.spec_versions[target_idx])
-        .await?;
-    state.event_type_repo.update(&event_type).await?;
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
 
-    Ok(Json(event_type.into()))
+    Ok(Json(updated.into()))
 }
 
 /// Deprecate a schema version (CURRENT -> DEPRECATED)
@@ -733,54 +749,39 @@ pub async fn deprecate_schema(
 ) -> Result<Json<BffEventTypeResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
-    let mut event_type = state
+    // Fetch to check client access before calling the use case
+    let event_type = state
         .event_type_repo
         .find_by_id(&id)
         .await?
         .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
 
-    // Check client access
     if let Some(ref cid) = event_type.client_id {
         if !auth.0.can_access_client(cid) {
             return Err(PlatformError::forbidden("No access to this event type"));
         }
     }
 
-    // Find target version
-    let target_idx = event_type
-        .spec_versions
-        .iter()
-        .position(|sv| sv.version == version)
-        .ok_or_else(|| {
-            PlatformError::not_found("SchemaVersion", &format!("{}:{}", id, version))
-        })?;
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    let cmd = DeprecateSchemaCommand {
+        event_type_id: id.clone(),
+        version,
+    };
 
-    // Cannot deprecate FINALISING schemas
-    if event_type.spec_versions[target_idx].status == SpecVersionStatus::Finalising {
-        return Err(PlatformError::validation(
-            "Cannot deprecate a schema that is still in FINALISING status",
-        ));
-    }
+    let use_case = DeprecateSchemaUseCase::new(
+        state.event_type_repo.clone(),
+        state.unit_of_work.clone(),
+    );
+    use_case.run(cmd, ctx).await.into_result()?;
 
-    // Cannot deprecate already deprecated
-    if event_type.spec_versions[target_idx].status == SpecVersionStatus::Deprecated {
-        return Err(PlatformError::validation(
-            "Schema version is already deprecated",
-        ));
-    }
-
-    // Deprecate
-    event_type.spec_versions[target_idx].status = SpecVersionStatus::Deprecated;
-    event_type.spec_versions[target_idx].updated_at = chrono::Utc::now();
-    event_type.updated_at = chrono::Utc::now();
-
-    state
+    // Re-fetch for the response
+    let updated = state
         .event_type_repo
-        .update_spec_version(&event_type.spec_versions[target_idx])
-        .await?;
-    state.event_type_repo.update(&event_type).await?;
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
 
-    Ok(Json(event_type.into()))
+    Ok(Json(updated.into()))
 }
 
 // ── Sync endpoint ─────────────────────────────────────────────────────────
@@ -801,30 +802,89 @@ pub async fn deprecate_schema(
 pub async fn sync_platform(
     State(state): State<BffEventTypesState>,
     auth: Authenticated,
-    Json(req): Json<BffSyncPlatformRequest>,
+    body: Option<Json<BffSyncPlatformRequest>>,
 ) -> Result<Json<BffSyncPlatformResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
-    let command = SyncEventTypesCommand {
-        application_code: req.application_code,
-        event_types: vec![],
-        remove_unlisted: true,
-    };
+    let _application_code = body.map(|b| b.0.application_code).unwrap_or_else(|| "platform".to_string());
 
-    let ctx = ExecutionContext::create(auth.0.principal_id.clone());
+    let definitions = crate::seed::platform_event_types::definitions();
+    let mut created = 0u32;
+    let mut updated = 0u32;
+    let mut synced_codes = Vec::new();
+    let mut schemas_created = 0u32;
+    let mut schemas_updated = 0u32;
+    let mut schemas_unchanged = 0u32;
 
-    match state.sync_use_case.execute(command, ctx).await {
-        crate::usecase::UseCaseResult::Success(event) => {
-            Ok(Json(BffSyncPlatformResponse {
-                application_code: event.application_code,
-                created: event.created,
-                updated: event.updated,
-                deleted: event.deleted,
-                synced_codes: event.synced_codes,
-            }))
+    for def in &definitions {
+        synced_codes.push(def.code.clone());
+
+        let event_type = match state.event_type_repo.find_by_code(&def.code).await? {
+            Some(existing) => {
+                // Update if name or description changed
+                if existing.name != def.name || existing.description != def.description {
+                    let mut et = existing;
+                    et.name = def.name.clone();
+                    et.description = def.description.clone();
+                    et.updated_at = chrono::Utc::now();
+                    state.event_type_repo.update(&et).await?;
+                    updated += 1;
+                    // Re-fetch to get spec_versions
+                    state.event_type_repo.find_by_code(&def.code).await?.unwrap()
+                } else {
+                    existing
+                }
+            }
+            None => {
+                let mut et = EventType::new(&def.code, &def.name)
+                    .map_err(|e| PlatformError::validation(e))?;
+                et.description = def.description.clone();
+                state.event_type_repo.insert(&et).await?;
+                created += 1;
+                state.event_type_repo.find_by_code(&def.code).await?.unwrap()
+            }
+        };
+
+        // Sync schema as SpecVersion "1.0" if a schema is provided
+        if let Some(ref schema) = def.schema {
+            let has_v1 = event_type.spec_versions.iter().any(|sv| sv.version == "1.0");
+            if has_v1 {
+                // Check if schema content differs
+                let existing_sv = event_type.spec_versions.iter().find(|sv| sv.version == "1.0").unwrap();
+                if existing_sv.schema_content.as_ref() != Some(schema) {
+                    // Update existing spec version with new schema content
+                    let mut updated_sv = existing_sv.clone();
+                    updated_sv.schema_content = Some(schema.clone());
+                    updated_sv.updated_at = chrono::Utc::now();
+                    state.event_type_repo.update_spec_version(&updated_sv).await?;
+                    schemas_updated += 1;
+                } else {
+                    schemas_unchanged += 1;
+                }
+            } else {
+                // Create new SpecVersion 1.0 with the schema
+                let sv = SpecVersion::new(&event_type.id, "1.0", Some(schema.clone()));
+                state.event_type_repo.insert_spec_version(&sv).await?;
+                schemas_created += 1;
+            }
+        } else {
+            schemas_unchanged += 1;
         }
-        crate::usecase::UseCaseResult::Failure(err) => Err(err.into()),
     }
+
+    let total = synced_codes.len() as u32;
+
+    Ok(Json(BffSyncPlatformResponse {
+        created,
+        updated,
+        deleted: 0,
+        total,
+        schemas: BffSyncSchemasResponse {
+            created: schemas_created,
+            updated: schemas_updated,
+            unchanged: schemas_unchanged,
+        },
+    }))
 }
 
 // ── Filter endpoints ──────────────────────────────────────────────────────
@@ -836,29 +896,25 @@ pub async fn sync_platform(
     tag = "bff-event-types",
     operation_id = "getBffEventTypesFiltersApplications",
     responses(
-        (status = 200, description = "Application filter options", body = BffApplicationsResponse)
+        (status = 200, description = "Application filter options", body = BffFilterOptionsResponse)
     ),
     security(("bearer_auth" = []))
 )]
 pub async fn get_filter_applications(
     State(state): State<BffEventTypesState>,
     _auth: Authenticated,
-) -> Result<Json<BffApplicationsResponse>, PlatformError> {
+) -> Result<Json<BffFilterOptionsResponse>, PlatformError> {
     let event_types = state.event_type_repo.find_active().await?;
 
-    let mut applications: Vec<BffFilterOption> = event_types
+    let mut options: Vec<String> = event_types
         .iter()
         .map(|et| et.application.clone())
         .collect::<HashSet<_>>()
         .into_iter()
-        .map(|app| BffFilterOption {
-            value: app.clone(),
-            label: app,
-        })
         .collect();
-    applications.sort_by(|a, b| a.label.cmp(&b.label));
+    options.sort();
 
-    Ok(Json(BffApplicationsResponse { applications }))
+    Ok(Json(BffFilterOptionsResponse { options }))
 }
 
 /// Get distinct subdomains (with optional application filter)
@@ -869,7 +925,7 @@ pub async fn get_filter_applications(
     operation_id = "getBffEventTypesFiltersSubdomains",
     params(BffSubdomainFilterQuery),
     responses(
-        (status = 200, description = "Subdomain filter options", body = BffSubdomainsResponse)
+        (status = 200, description = "Subdomain filter options", body = BffFilterOptionsResponse)
     ),
     security(("bearer_auth" = []))
 )]
@@ -877,7 +933,7 @@ pub async fn get_filter_subdomains(
     State(state): State<BffEventTypesState>,
     _auth: Authenticated,
     Query(query): Query<BffSubdomainFilterQuery>,
-) -> Result<Json<BffSubdomainsResponse>, PlatformError> {
+) -> Result<Json<BffFilterOptionsResponse>, PlatformError> {
     let event_types = state.event_type_repo.find_active().await?;
 
     let filtered: Vec<_> = if let Some(ref app) = query.application {
@@ -889,19 +945,15 @@ pub async fn get_filter_subdomains(
         event_types
     };
 
-    let mut subdomains: Vec<BffFilterOption> = filtered
+    let mut options: Vec<String> = filtered
         .iter()
         .map(|et| et.subdomain.clone())
         .collect::<HashSet<_>>()
         .into_iter()
-        .map(|sub| BffFilterOption {
-            value: sub.clone(),
-            label: sub,
-        })
         .collect();
-    subdomains.sort_by(|a, b| a.label.cmp(&b.label));
+    options.sort();
 
-    Ok(Json(BffSubdomainsResponse { subdomains }))
+    Ok(Json(BffFilterOptionsResponse { options }))
 }
 
 /// Get distinct aggregates (with optional application and subdomain filters)
@@ -912,7 +964,7 @@ pub async fn get_filter_subdomains(
     operation_id = "getBffEventTypesFiltersAggregates",
     params(BffAggregateFilterQuery),
     responses(
-        (status = 200, description = "Aggregate filter options", body = BffAggregatesResponse)
+        (status = 200, description = "Aggregate filter options", body = BffFilterOptionsResponse)
     ),
     security(("bearer_auth" = []))
 )]
@@ -920,7 +972,7 @@ pub async fn get_filter_aggregates(
     State(state): State<BffEventTypesState>,
     _auth: Authenticated,
     Query(query): Query<BffAggregateFilterQuery>,
-) -> Result<Json<BffAggregatesResponse>, PlatformError> {
+) -> Result<Json<BffFilterOptionsResponse>, PlatformError> {
     let event_types = state.event_type_repo.find_active().await?;
 
     let filtered: Vec<_> = event_types
@@ -938,19 +990,15 @@ pub async fn get_filter_aggregates(
         })
         .collect();
 
-    let mut aggregates: Vec<BffFilterOption> = filtered
+    let mut options: Vec<String> = filtered
         .iter()
         .map(|et| et.aggregate.clone())
         .collect::<HashSet<_>>()
         .into_iter()
-        .map(|agg| BffFilterOption {
-            value: agg.clone(),
-            label: agg,
-        })
         .collect();
-    aggregates.sort_by(|a, b| a.label.cmp(&b.label));
+    options.sort();
 
-    Ok(Json(BffAggregatesResponse { aggregates }))
+    Ok(Json(BffFilterOptionsResponse { options }))
 }
 
 // ── Router ────────────────────────────────────────────────────────────────

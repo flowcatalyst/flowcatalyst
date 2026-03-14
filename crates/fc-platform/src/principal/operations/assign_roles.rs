@@ -1,6 +1,7 @@
 //! Assign Roles Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::principal::entity::PrincipalType;
@@ -8,7 +9,7 @@ use crate::PrincipalRepository;
 use crate::RoleRepository;
 use crate::service_account::entity::RoleAssignment;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::RolesAssigned;
 
@@ -34,18 +35,32 @@ impl<U: UnitOfWork> AssignUserRolesUseCase<U> {
     ) -> Self {
         Self { principal_repo, role_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: AssignUserRolesCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<RolesAssigned> {
+#[async_trait]
+impl<U: UnitOfWork> UseCase for AssignUserRolesUseCase<U> {
+    type Command = AssignUserRolesCommand;
+    type Event = RolesAssigned;
+
+    async fn validate(&self, command: &AssignUserRolesCommand) -> Result<(), UseCaseError> {
         if command.user_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "USER_ID_REQUIRED", "User ID is required",
             ));
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &AssignUserRolesCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: AssignUserRolesCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<RolesAssigned> {
         let mut principal = match self.principal_repo.find_by_id(&command.user_id).await {
             Ok(Some(p)) => p,
             Ok(None) => {

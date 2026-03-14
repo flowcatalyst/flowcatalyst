@@ -80,6 +80,7 @@ fn test_auth_service() -> AuthService {
         refresh_token_expiry_secs: 86400,
         rsa_private_key: None,
         rsa_public_key: None,
+        rsa_public_key_previous: None,
     })
 }
 

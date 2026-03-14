@@ -41,7 +41,7 @@ pub async fn write_dispatch_job(
     job: &DispatchJobPayload,
     client_id: Option<&str>,
 ) -> anyhow::Result<()> {
-    let id = TsidGenerator::generate(EntityType::DispatchJob);
+    let id = TsidGenerator::generate_untyped();
     let payload = serde_json::to_value(job)?;
     let payload_size = payload.to_string().len() as i32;
 
@@ -72,7 +72,7 @@ pub async fn write_event<E: DomainEvent + Serialize>(
     event: &E,
     client_id: Option<&str>,
 ) -> anyhow::Result<()> {
-    let id = TsidGenerator::generate(EntityType::Event);
+    let id = TsidGenerator::generate_untyped();
     let data_json: serde_json::Value = serde_json::from_str(&event.to_data_json())
         .unwrap_or(serde_json::json!({}));
 

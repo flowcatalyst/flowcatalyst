@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use crate::usecase::ExecutionContext;
 use crate::usecase::domain_event::EventMetadata;
 use crate::TsidGenerator;
-use crate::EntityType;
 use crate::impl_domain_event;
 
 /// Event emitted when a new dispatch pool is created.
@@ -24,9 +23,9 @@ pub struct DispatchPoolCreated {
 impl_domain_event!(DispatchPoolCreated);
 
 impl DispatchPoolCreated {
-    const EVENT_TYPE: &'static str = "platform:dispatch:pool:created";
+    const EVENT_TYPE: &'static str = "platform:admin:dispatch-pool:created";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:dispatchpool";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(
         ctx: &ExecutionContext,
@@ -35,7 +34,7 @@ impl DispatchPoolCreated {
         name: &str,
         client_id: Option<&str>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.dispatchpool.{}", dispatch_pool_id);
         let message_group = format!("platform:dispatchpool:{}", dispatch_pool_id);
 
@@ -79,9 +78,9 @@ pub struct DispatchPoolUpdated {
 impl_domain_event!(DispatchPoolUpdated);
 
 impl DispatchPoolUpdated {
-    const EVENT_TYPE: &'static str = "platform:dispatch:pool:updated";
+    const EVENT_TYPE: &'static str = "platform:admin:dispatch-pool:updated";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:dispatchpool";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(
         ctx: &ExecutionContext,
@@ -90,7 +89,7 @@ impl DispatchPoolUpdated {
         rate_limit: Option<u32>,
         concurrency: Option<u32>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.dispatchpool.{}", dispatch_pool_id);
         let message_group = format!("platform:dispatchpool:{}", dispatch_pool_id);
 
@@ -129,12 +128,12 @@ pub struct DispatchPoolArchived {
 impl_domain_event!(DispatchPoolArchived);
 
 impl DispatchPoolArchived {
-    const EVENT_TYPE: &'static str = "platform:dispatch:pool:archived";
+    const EVENT_TYPE: &'static str = "platform:admin:dispatch-pool:archived";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:dispatchpool";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, dispatch_pool_id: &str, code: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.dispatchpool.{}", dispatch_pool_id);
         let message_group = format!("platform:dispatchpool:{}", dispatch_pool_id);
 
@@ -171,12 +170,12 @@ pub struct DispatchPoolDeleted {
 impl_domain_event!(DispatchPoolDeleted);
 
 impl DispatchPoolDeleted {
-    const EVENT_TYPE: &'static str = "platform:dispatch:pool:deleted";
+    const EVENT_TYPE: &'static str = "platform:admin:dispatch-pool:deleted";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:dispatchpool";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, dispatch_pool_id: &str, code: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.dispatchpool.{}", dispatch_pool_id);
         let message_group = format!("platform:dispatchpool:{}", dispatch_pool_id);
 
@@ -216,9 +215,9 @@ pub struct DispatchPoolsSynced {
 impl_domain_event!(DispatchPoolsSynced);
 
 impl DispatchPoolsSynced {
-    const EVENT_TYPE: &'static str = "platform:dispatch:pools:synced";
+    const EVENT_TYPE: &'static str = "platform:admin:dispatch-pools:synced";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:dispatchpool";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(
         ctx: &ExecutionContext,
@@ -228,7 +227,7 @@ impl DispatchPoolsSynced {
         deleted: u32,
         synced_codes: Vec<String>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.application.{}", application_code);
         let message_group = format!("platform:application:{}", application_code);
 
@@ -264,7 +263,7 @@ mod tests {
             Some("client-1"),
         );
 
-        assert_eq!(event.event_type(), "platform:dispatch:pool:created");
+        assert_eq!(event.event_type(), "platform:admin:dispatch-pool:created");
         assert_eq!(event.dispatch_pool_id, "dp-1");
         assert_eq!(event.code, "main-pool");
     }
@@ -274,6 +273,6 @@ mod tests {
         let ctx = ExecutionContext::create("admin-123");
         let event = DispatchPoolArchived::new(&ctx, "dp-1", "main-pool");
 
-        assert_eq!(event.event_type(), "platform:dispatch:pool:archived");
+        assert_eq!(event.event_type(), "platform:admin:dispatch-pool:archived");
     }
 }

@@ -3,12 +3,13 @@
 //! Bulk creates/updates/deletes event types from an application SDK.
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::event_type::entity::{EventType, EventTypeSource};
 use crate::EventTypeRepository;
 use crate::usecase::{
-    ExecutionContext, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UseCaseError, UseCaseResult,
 };
 use super::events::EventTypesSynced;
 
@@ -21,6 +22,9 @@ pub struct SyncEventTypeInput {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// JSON Schema for the event payload (non-metadata fields)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schema: Option<serde_json::Value>,
 }
 
 /// Command for syncing event types from an application.
@@ -55,18 +59,31 @@ impl SyncEventTypesUseCase {
     pub fn new(event_type_repo: Arc<EventTypeRepository>) -> Self {
         Self { event_type_repo }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl UseCase for SyncEventTypesUseCase {
+    type Command = SyncEventTypesCommand;
+    type Event = EventTypesSynced;
+
+    async fn validate(&self, command: &SyncEventTypesCommand) -> Result<(), UseCaseError> {
+        if command.application_code.trim().is_empty() {
+            return Err(UseCaseError::validation(
+                "APPLICATION_CODE_REQUIRED", "Application code is required",
+            ));
+        }
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &SyncEventTypesCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: SyncEventTypesCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<EventTypesSynced> {
-        if command.application_code.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
-                "APPLICATION_CODE_REQUIRED", "Application code is required",
-            ));
-        }
-
         // Fetch existing event types for this application
         let existing = match self.event_type_repo.find_by_application(&command.application_code).await {
             Ok(list) => list,
@@ -167,6 +184,7 @@ mod tests {
                     code: "orders:fulfillment:shipment:shipped".to_string(),
                     name: "Shipment Shipped".to_string(),
                     description: None,
+                    schema: None,
                 },
             ],
             remove_unlisted: false,

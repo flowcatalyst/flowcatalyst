@@ -1,6 +1,7 @@
 //! Create Subscription Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +9,7 @@ use crate::{Subscription, EventTypeBinding};
 use crate::subscription::entity::DispatchMode;
 use crate::SubscriptionRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::SubscriptionCreated;
 
@@ -93,54 +94,67 @@ impl<U: UnitOfWork> CreateSubscriptionUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: CreateSubscriptionCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<SubscriptionCreated> {
-        // Validation: code is required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for CreateSubscriptionUseCase<U> {
+    type Command = CreateSubscriptionCommand;
+    type Event = SubscriptionCreated;
+
+    async fn validate(&self, command: &CreateSubscriptionCommand) -> Result<(), UseCaseError> {
         let code = command.code.trim().to_lowercase();
         if code.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "CODE_REQUIRED",
                 "Subscription code is required",
             ));
         }
 
-        // Validation: code format
         if code.len() < 2 || !code_pattern().is_match(&code) {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "INVALID_CODE_FORMAT",
                 "Subscription code must be lowercase alphanumeric with hyphens (min 2 chars)",
             ));
         }
 
-        // Validation: name is required
         let name = command.name.trim();
         if name.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "NAME_REQUIRED",
                 "Subscription name is required",
             ));
         }
 
-        // Validation: connection_id is required
         let connection_id = command.connection_id.trim();
         if connection_id.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "CONNECTION_ID_REQUIRED",
                 "Connection ID is required",
             ));
         }
 
-        // Validation: at least one event type
         if command.event_types.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "EVENT_TYPES_REQUIRED",
                 "At least one event type is required",
             ));
         }
+
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &CreateSubscriptionCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: CreateSubscriptionCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<SubscriptionCreated> {
+        let code = command.code.trim().to_lowercase();
+        let name = command.name.trim();
+        let connection_id = command.connection_id.trim();
 
         // Business rule: code must be unique within client scope
         let existing = self.subscription_repo

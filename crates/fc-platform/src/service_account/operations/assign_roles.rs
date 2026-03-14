@@ -2,13 +2,14 @@
 
 use std::sync::Arc;
 use std::collections::HashSet;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use chrono::Utc;
 
 use crate::service_account::RoleAssignment;
 use crate::ServiceAccountRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ServiceAccountRolesAssigned;
 
@@ -39,8 +40,22 @@ impl<U: UnitOfWork> AssignRolesUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl<U: UnitOfWork> UseCase for AssignRolesUseCase<U> {
+    type Command = AssignRolesCommand;
+    type Event = ServiceAccountRolesAssigned;
+
+    async fn validate(&self, _command: &AssignRolesCommand) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &AssignRolesCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: AssignRolesCommand,
         ctx: ExecutionContext,

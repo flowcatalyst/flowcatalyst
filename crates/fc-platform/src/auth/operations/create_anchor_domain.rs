@@ -1,12 +1,13 @@
 //! Create Anchor Domain Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::config_entity::AnchorDomain;
 use crate::auth::config_repository::AnchorDomainRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::AnchorDomainCreated;
 
@@ -25,19 +26,34 @@ impl<U: UnitOfWork> CreateAnchorDomainUseCase<U> {
     pub fn new(anchor_domain_repo: Arc<AnchorDomainRepository>, unit_of_work: Arc<U>) -> Self {
         Self { anchor_domain_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl<U: UnitOfWork> UseCase for CreateAnchorDomainUseCase<U> {
+    type Command = CreateAnchorDomainCommand;
+    type Event = AnchorDomainCreated;
+
+    async fn validate(&self, command: &CreateAnchorDomainCommand) -> Result<(), UseCaseError> {
+        let domain = command.domain.trim().to_lowercase();
+        if domain.is_empty() {
+            return Err(UseCaseError::validation(
+                "DOMAIN_REQUIRED",
+                "Anchor domain is required",
+            ));
+        }
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &CreateAnchorDomainCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: CreateAnchorDomainCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<AnchorDomainCreated> {
         let domain = command.domain.trim().to_lowercase();
-        if domain.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
-                "DOMAIN_REQUIRED",
-                "Anchor domain is required",
-            ));
-        }
 
         // Business rule: domain must be unique
         if let Ok(Some(_)) = self.anchor_domain_repo.find_by_domain(&domain).await {

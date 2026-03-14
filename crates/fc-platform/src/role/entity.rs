@@ -259,12 +259,14 @@ pub fn matches_pattern(permission: &str, pattern: &str) -> bool {
 }
 
 /// Platform permissions - 4-level format: platform:{context}:{aggregate}:{action}
-/// Matches TypeScript PermissionRegistry for cross-platform compatibility
+/// Must match the values stored in the database by the TypeScript app.
+/// Context mapping: admin = admin, messaging = messaging, iam = iam
+/// Action mapping: view (not read), create, update, delete
 pub mod permissions {
-    /// Platform Admin context — clients, applications, events, subscriptions, dispatch, etc.
+    /// Platform Admin context — clients, applications, config
     pub mod admin {
         // Client management
-        pub const CLIENT_READ: &str = "platform:admin:client:read";
+        pub const CLIENT_READ: &str = "platform:admin:client:view";
         pub const CLIENT_CREATE: &str = "platform:admin:client:create";
         pub const CLIENT_UPDATE: &str = "platform:admin:client:update";
         pub const CLIENT_DELETE: &str = "platform:admin:client:delete";
@@ -274,14 +276,14 @@ pub mod permissions {
         pub const CLIENT_DEACTIVATE: &str = "platform:admin:client:deactivate";
 
         // Anchor domain management
-        pub const ANCHOR_DOMAIN_READ: &str = "platform:admin:anchor-domain:read";
+        pub const ANCHOR_DOMAIN_READ: &str = "platform:admin:anchor-domain:view";
         pub const ANCHOR_DOMAIN_CREATE: &str = "platform:admin:anchor-domain:create";
         pub const ANCHOR_DOMAIN_UPDATE: &str = "platform:admin:anchor-domain:update";
         pub const ANCHOR_DOMAIN_DELETE: &str = "platform:admin:anchor-domain:delete";
         pub const ANCHOR_DOMAIN_MANAGE: &str = "platform:admin:anchor-domain:manage";
 
         // Application management
-        pub const APPLICATION_READ: &str = "platform:admin:application:read";
+        pub const APPLICATION_READ: &str = "platform:admin:application:view";
         pub const APPLICATION_CREATE: &str = "platform:admin:application:create";
         pub const APPLICATION_UPDATE: &str = "platform:admin:application:update";
         pub const APPLICATION_DELETE: &str = "platform:admin:application:delete";
@@ -291,82 +293,86 @@ pub mod permissions {
         pub const APPLICATION_ENABLE_CLIENT: &str = "platform:admin:application:enable-client";
         pub const APPLICATION_DISABLE_CLIENT: &str = "platform:admin:application:disable-client";
 
-        // Event type management
-        pub const EVENT_TYPE_READ: &str = "platform:admin:event-type:read";
-        pub const EVENT_TYPE_CREATE: &str = "platform:admin:event-type:create";
-        pub const EVENT_TYPE_UPDATE: &str = "platform:admin:event-type:update";
-        pub const EVENT_TYPE_DELETE: &str = "platform:admin:event-type:delete";
-        pub const EVENT_TYPE_MANAGE: &str = "platform:admin:event-type:manage";
-        pub const EVENT_TYPE_ARCHIVE: &str = "platform:admin:event-type:archive";
-        pub const EVENT_TYPE_MANAGE_SCHEMA: &str = "platform:admin:event-type:manage-schema";
-        pub const EVENT_TYPE_SYNC: &str = "platform:admin:event-type:sync";
+        // Event type management (messaging context in DB)
+        pub const EVENT_TYPE_READ: &str = "platform:messaging:event-type:view";
+        pub const EVENT_TYPE_CREATE: &str = "platform:messaging:event-type:create";
+        pub const EVENT_TYPE_UPDATE: &str = "platform:messaging:event-type:update";
+        pub const EVENT_TYPE_DELETE: &str = "platform:messaging:event-type:delete";
+        pub const EVENT_TYPE_MANAGE: &str = "platform:messaging:event-type:manage";
+        pub const EVENT_TYPE_ARCHIVE: &str = "platform:messaging:event-type:archive";
+        pub const EVENT_TYPE_MANAGE_SCHEMA: &str = "platform:messaging:event-type:manage-schema";
+        pub const EVENT_TYPE_SYNC: &str = "platform:messaging:event-type:sync";
 
-        // Dispatch pool management
-        pub const DISPATCH_POOL_READ: &str = "platform:admin:dispatch-pool:read";
-        pub const DISPATCH_POOL_CREATE: &str = "platform:admin:dispatch-pool:create";
-        pub const DISPATCH_POOL_UPDATE: &str = "platform:admin:dispatch-pool:update";
-        pub const DISPATCH_POOL_DELETE: &str = "platform:admin:dispatch-pool:delete";
-        pub const DISPATCH_POOL_MANAGE: &str = "platform:admin:dispatch-pool:manage";
-        pub const DISPATCH_POOL_SYNC: &str = "platform:admin:dispatch-pool:sync";
+        // Dispatch pool management (messaging context in DB)
+        pub const DISPATCH_POOL_READ: &str = "platform:messaging:dispatch-pool:view";
+        pub const DISPATCH_POOL_CREATE: &str = "platform:messaging:dispatch-pool:create";
+        pub const DISPATCH_POOL_UPDATE: &str = "platform:messaging:dispatch-pool:update";
+        pub const DISPATCH_POOL_DELETE: &str = "platform:messaging:dispatch-pool:delete";
+        pub const DISPATCH_POOL_MANAGE: &str = "platform:messaging:dispatch-pool:manage";
+        pub const DISPATCH_POOL_SYNC: &str = "platform:messaging:dispatch-pool:sync";
 
-        // Connection management
-        pub const CONNECTION_READ: &str = "platform:admin:connection:read";
-        pub const CONNECTION_CREATE: &str = "platform:admin:connection:create";
-        pub const CONNECTION_UPDATE: &str = "platform:admin:connection:update";
-        pub const CONNECTION_DELETE: &str = "platform:admin:connection:delete";
-        pub const CONNECTION_MANAGE: &str = "platform:admin:connection:manage";
+        // Connection management (messaging context in DB)
+        pub const CONNECTION_READ: &str = "platform:messaging:connection:view";
+        pub const CONNECTION_CREATE: &str = "platform:messaging:connection:create";
+        pub const CONNECTION_UPDATE: &str = "platform:messaging:connection:update";
+        pub const CONNECTION_DELETE: &str = "platform:messaging:connection:delete";
+        pub const CONNECTION_MANAGE: &str = "platform:messaging:connection:manage";
 
-        // Subscription management
-        pub const SUBSCRIPTION_READ: &str = "platform:admin:subscription:read";
-        pub const SUBSCRIPTION_CREATE: &str = "platform:admin:subscription:create";
-        pub const SUBSCRIPTION_UPDATE: &str = "platform:admin:subscription:update";
-        pub const SUBSCRIPTION_DELETE: &str = "platform:admin:subscription:delete";
-        pub const SUBSCRIPTION_MANAGE: &str = "platform:admin:subscription:manage";
-        pub const SUBSCRIPTION_SYNC: &str = "platform:admin:subscription:sync";
+        // Subscription management (messaging context in DB)
+        pub const SUBSCRIPTION_READ: &str = "platform:messaging:subscription:view";
+        pub const SUBSCRIPTION_CREATE: &str = "platform:messaging:subscription:create";
+        pub const SUBSCRIPTION_UPDATE: &str = "platform:messaging:subscription:update";
+        pub const SUBSCRIPTION_DELETE: &str = "platform:messaging:subscription:delete";
+        pub const SUBSCRIPTION_MANAGE: &str = "platform:messaging:subscription:manage";
+        pub const SUBSCRIPTION_SYNC: &str = "platform:messaging:subscription:sync";
 
-        // Event read access
-        pub const EVENT_READ: &str = "platform:admin:event:read";
-        pub const EVENT_VIEW_RAW: &str = "platform:admin:event:view-raw";
+        // Event read access (messaging context in DB)
+        pub const EVENT_READ: &str = "platform:messaging:event:view";
+        pub const EVENT_VIEW_RAW: &str = "platform:messaging:event:view-raw";
 
-        // Dispatch job read access
-        pub const DISPATCH_JOB_READ: &str = "platform:admin:dispatch-job:read";
-        pub const DISPATCH_JOB_VIEW_RAW: &str = "platform:admin:dispatch-job:view-raw";
+        // Dispatch job access (messaging context in DB)
+        pub const DISPATCH_JOB_READ: &str = "platform:messaging:dispatch-job:view";
+        pub const DISPATCH_JOB_VIEW_RAW: &str = "platform:messaging:dispatch-job:view-raw";
 
-        // Identity provider management
-        pub const IDENTITY_PROVIDER_READ: &str = "platform:admin:identity-provider:read";
-        pub const IDENTITY_PROVIDER_CREATE: &str = "platform:admin:identity-provider:create";
-        pub const IDENTITY_PROVIDER_UPDATE: &str = "platform:admin:identity-provider:update";
-        pub const IDENTITY_PROVIDER_DELETE: &str = "platform:admin:identity-provider:delete";
-        pub const IDENTITY_PROVIDER_MANAGE: &str = "platform:admin:identity-provider:manage";
+        // Identity provider management (iam context in DB)
+        pub const IDENTITY_PROVIDER_READ: &str = "platform:iam:idp:view";
+        pub const IDENTITY_PROVIDER_CREATE: &str = "platform:iam:idp:create";
+        pub const IDENTITY_PROVIDER_UPDATE: &str = "platform:iam:idp:update";
+        pub const IDENTITY_PROVIDER_DELETE: &str = "platform:iam:idp:delete";
+        pub const IDENTITY_PROVIDER_MANAGE: &str = "platform:iam:idp:manage";
 
-        // Email domain mapping management
-        pub const EMAIL_DOMAIN_MAPPING_READ: &str = "platform:admin:email-domain-mapping:read";
-        pub const EMAIL_DOMAIN_MAPPING_CREATE: &str = "platform:admin:email-domain-mapping:create";
-        pub const EMAIL_DOMAIN_MAPPING_UPDATE: &str = "platform:admin:email-domain-mapping:update";
-        pub const EMAIL_DOMAIN_MAPPING_DELETE: &str = "platform:admin:email-domain-mapping:delete";
-        pub const EMAIL_DOMAIN_MAPPING_MANAGE: &str = "platform:admin:email-domain-mapping:manage";
+        // Email domain mapping management (iam context in DB)
+        pub const EMAIL_DOMAIN_MAPPING_READ: &str = "platform:iam:email-domain-mapping:view";
+        pub const EMAIL_DOMAIN_MAPPING_CREATE: &str = "platform:iam:email-domain-mapping:create";
+        pub const EMAIL_DOMAIN_MAPPING_UPDATE: &str = "platform:iam:email-domain-mapping:update";
+        pub const EMAIL_DOMAIN_MAPPING_DELETE: &str = "platform:iam:email-domain-mapping:delete";
+        pub const EMAIL_DOMAIN_MAPPING_MANAGE: &str = "platform:iam:email-domain-mapping:manage";
 
-        // Service account management
-        pub const SERVICE_ACCOUNT_READ: &str = "platform:admin:service-account:read";
-        pub const SERVICE_ACCOUNT_CREATE: &str = "platform:admin:service-account:create";
-        pub const SERVICE_ACCOUNT_UPDATE: &str = "platform:admin:service-account:update";
-        pub const SERVICE_ACCOUNT_DELETE: &str = "platform:admin:service-account:delete";
-        pub const SERVICE_ACCOUNT_MANAGE: &str = "platform:admin:service-account:manage";
+        // Service account management (iam context in DB)
+        pub const SERVICE_ACCOUNT_READ: &str = "platform:iam:service-account:view";
+        pub const SERVICE_ACCOUNT_CREATE: &str = "platform:iam:service-account:create";
+        pub const SERVICE_ACCOUNT_UPDATE: &str = "platform:iam:service-account:update";
+        pub const SERVICE_ACCOUNT_DELETE: &str = "platform:iam:service-account:delete";
+        pub const SERVICE_ACCOUNT_MANAGE: &str = "platform:iam:service-account:manage";
 
         // CORS origin management
-        pub const CORS_ORIGIN_READ: &str = "platform:admin:cors-origin:read";
+        pub const CORS_ORIGIN_READ: &str = "platform:admin:cors-origin:view";
         pub const CORS_ORIGIN_CREATE: &str = "platform:admin:cors-origin:create";
         pub const CORS_ORIGIN_DELETE: &str = "platform:admin:cors-origin:delete";
         pub const CORS_ORIGIN_MANAGE: &str = "platform:admin:cors-origin:manage";
 
         // Login attempt & audit
-        pub const LOGIN_ATTEMPT_READ: &str = "platform:admin:login-attempt:read";
-        pub const AUDIT_LOG_READ: &str = "platform:admin:audit-log:read";
+        pub const LOGIN_ATTEMPT_READ: &str = "platform:admin:login-attempt:view";
+        pub const AUDIT_LOG_READ: &str = "platform:admin:audit-log:view";
         pub const AUDIT_LOG_EXPORT: &str = "platform:admin:audit-log:export";
 
+        // Config management
+        pub const CONFIG_READ: &str = "platform:admin:config:view";
+        pub const CONFIG_UPDATE: &str = "platform:admin:config:update";
+
         // Batch operations
-        pub const BATCH_EVENTS_WRITE: &str = "platform:admin:batch:events-write";
-        pub const BATCH_DISPATCH_JOBS_WRITE: &str = "platform:admin:batch:dispatch-jobs-write";
+        pub const BATCH_EVENTS_WRITE: &str = "platform:messaging:batch:events-write";
+        pub const BATCH_DISPATCH_JOBS_WRITE: &str = "platform:messaging:batch:dispatch-jobs-write";
         pub const BATCH_AUDIT_LOGS_WRITE: &str = "platform:admin:batch:audit-logs-write";
 
         /// All admin permissions
@@ -396,7 +402,7 @@ pub mod permissions {
     /// IAM context — users, roles, access control
     pub mod iam {
         // User management
-        pub const USER_READ: &str = "platform:iam:user:read";
+        pub const USER_READ: &str = "platform:iam:user:view";
         pub const USER_CREATE: &str = "platform:iam:user:create";
         pub const USER_UPDATE: &str = "platform:iam:user:update";
         pub const USER_DELETE: &str = "platform:iam:user:delete";
@@ -406,7 +412,7 @@ pub mod permissions {
         pub const USER_ASSIGN_ROLES: &str = "platform:iam:user:assign-roles";
 
         // Role management
-        pub const ROLE_READ: &str = "platform:iam:role:read";
+        pub const ROLE_READ: &str = "platform:iam:role:view";
         pub const ROLE_CREATE: &str = "platform:iam:role:create";
         pub const ROLE_UPDATE: &str = "platform:iam:role:update";
         pub const ROLE_DELETE: &str = "platform:iam:role:delete";
@@ -415,13 +421,13 @@ pub mod permissions {
         // Client access grants
         pub const CLIENT_ACCESS_GRANT: &str = "platform:iam:client-access:grant";
         pub const CLIENT_ACCESS_REVOKE: &str = "platform:iam:client-access:revoke";
-        pub const CLIENT_ACCESS_READ: &str = "platform:iam:client-access:read";
+        pub const CLIENT_ACCESS_READ: &str = "platform:iam:client-access:view";
 
         // Permission read
-        pub const PERMISSION_READ: &str = "platform:iam:permission:read";
+        pub const PERMISSION_READ: &str = "platform:iam:permission:view";
 
         // Auth config
-        pub const AUTH_CONFIG_READ: &str = "platform:iam:auth-config:read";
+        pub const AUTH_CONFIG_READ: &str = "platform:iam:auth-config:view";
         pub const AUTH_CONFIG_CREATE: &str = "platform:iam:auth-config:create";
         pub const AUTH_CONFIG_UPDATE: &str = "platform:iam:auth-config:update";
         pub const AUTH_CONFIG_DELETE: &str = "platform:iam:auth-config:delete";
@@ -441,14 +447,14 @@ pub mod permissions {
     /// Auth context — OAuth clients, client auth configs
     pub mod auth {
         // Client auth config
-        pub const CLIENT_AUTH_CONFIG_READ: &str = "platform:auth:client-auth-config:read";
+        pub const CLIENT_AUTH_CONFIG_READ: &str = "platform:auth:client-auth-config:view";
         pub const CLIENT_AUTH_CONFIG_CREATE: &str = "platform:auth:client-auth-config:create";
         pub const CLIENT_AUTH_CONFIG_UPDATE: &str = "platform:auth:client-auth-config:update";
         pub const CLIENT_AUTH_CONFIG_DELETE: &str = "platform:auth:client-auth-config:delete";
         pub const CLIENT_AUTH_CONFIG_MANAGE: &str = "platform:auth:client-auth-config:manage";
 
         // OAuth client management
-        pub const OAUTH_CLIENT_READ: &str = "platform:auth:oauth-client:read";
+        pub const OAUTH_CLIENT_READ: &str = "platform:auth:oauth-client:view";
         pub const OAUTH_CLIENT_CREATE: &str = "platform:auth:oauth-client:create";
         pub const OAUTH_CLIENT_UPDATE: &str = "platform:auth:oauth-client:update";
         pub const OAUTH_CLIENT_DELETE: &str = "platform:auth:oauth-client:delete";
@@ -468,22 +474,22 @@ pub mod permissions {
     pub mod application_service {
         pub const EVENT_CREATE: &str = "platform:application-service:event:create";
 
-        pub const EVENT_TYPE_READ: &str = "platform:application-service:event-type:read";
+        pub const EVENT_TYPE_READ: &str = "platform:application-service:event-type:view";
         pub const EVENT_TYPE_CREATE: &str = "platform:application-service:event-type:create";
         pub const EVENT_TYPE_UPDATE: &str = "platform:application-service:event-type:update";
         pub const EVENT_TYPE_DELETE: &str = "platform:application-service:event-type:delete";
 
-        pub const SUBSCRIPTION_READ: &str = "platform:application-service:subscription:read";
+        pub const SUBSCRIPTION_READ: &str = "platform:application-service:subscription:view";
         pub const SUBSCRIPTION_CREATE: &str = "platform:application-service:subscription:create";
         pub const SUBSCRIPTION_UPDATE: &str = "platform:application-service:subscription:update";
         pub const SUBSCRIPTION_DELETE: &str = "platform:application-service:subscription:delete";
 
-        pub const ROLE_READ: &str = "platform:application-service:role:read";
+        pub const ROLE_READ: &str = "platform:application-service:role:view";
         pub const ROLE_CREATE: &str = "platform:application-service:role:create";
         pub const ROLE_UPDATE: &str = "platform:application-service:role:update";
         pub const ROLE_DELETE: &str = "platform:application-service:role:delete";
 
-        pub const PERMISSION_READ: &str = "platform:application-service:permission:read";
+        pub const PERMISSION_READ: &str = "platform:application-service:permission:view";
         pub const PERMISSION_SYNC: &str = "platform:application-service:permission:sync";
 
         /// All application service permissions
@@ -521,9 +527,9 @@ pub mod permissions {
         pub use super::admin::DISPATCH_POOL_UPDATE;
         pub use super::admin::DISPATCH_POOL_DELETE;
         // These don't have direct equivalents in admin — provide stubs
-        pub const EVENT_CREATE: &str = "platform:admin:event:create";
-        pub const DISPATCH_JOB_CREATE: &str = "platform:admin:dispatch-job:create";
-        pub const DISPATCH_JOB_RETRY: &str = "platform:admin:dispatch-job:retry";
+        pub const EVENT_CREATE: &str = "platform:messaging:event:create";
+        pub const DISPATCH_JOB_CREATE: &str = "platform:messaging:dispatch-job:create";
+        pub const DISPATCH_JOB_RETRY: &str = "platform:messaging:dispatch-job:retry";
     }
 }
 

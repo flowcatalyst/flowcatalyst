@@ -3,6 +3,7 @@
 //! Bulk creates/updates/deletes anchor-level subscriptions from an application SDK.
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::{Subscription, EventTypeBinding};
@@ -11,7 +12,7 @@ use crate::SubscriptionRepository;
 use crate::ConnectionRepository;
 use crate::DispatchPoolRepository;
 use crate::usecase::{
-    ExecutionContext, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UseCaseError, UseCaseResult,
 };
 use super::events::SubscriptionsSynced;
 use super::create::EventTypeBindingInput;
@@ -62,41 +63,57 @@ impl SyncSubscriptionsUseCase {
     ) -> Self {
         Self { subscription_repo, connection_repo, dispatch_pool_repo }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: SyncSubscriptionsCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<SubscriptionsSynced> {
+#[async_trait]
+impl UseCase for SyncSubscriptionsUseCase {
+    type Command = SyncSubscriptionsCommand;
+    type Event = SubscriptionsSynced;
+
+    async fn validate(&self, command: &SyncSubscriptionsCommand) -> Result<(), UseCaseError> {
         if command.application_code.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "APPLICATION_CODE_REQUIRED", "Application code is required",
             ));
         }
 
-        // Validate inputs
         for input in &command.subscriptions {
             if input.code.trim().is_empty() {
-                return UseCaseResult::failure(UseCaseError::validation(
+                return Err(UseCaseError::validation(
                     "CODE_REQUIRED", "Subscription code is required",
                 ));
             }
             if input.name.trim().is_empty() {
-                return UseCaseResult::failure(UseCaseError::validation(
+                return Err(UseCaseError::validation(
                     "NAME_REQUIRED", "Subscription name is required",
                 ));
             }
             if input.connection_id.trim().is_empty() {
-                return UseCaseResult::failure(UseCaseError::validation(
+                return Err(UseCaseError::validation(
                     "CONNECTION_ID_REQUIRED", "Connection ID is required",
                 ));
             }
             if input.event_types.is_empty() {
-                return UseCaseResult::failure(UseCaseError::validation(
+                return Err(UseCaseError::validation(
                     "EVENT_TYPES_REQUIRED", "At least one event type is required",
                 ));
             }
-            // Validate connection exists
+        }
+
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &SyncSubscriptionsCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: SyncSubscriptionsCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<SubscriptionsSynced> {
+        // Validate connections exist
+        for input in &command.subscriptions {
             match self.connection_repo.find_by_id(&input.connection_id).await {
                 Ok(Some(_)) => {}
                 Ok(None) => {

@@ -1,12 +1,13 @@
 //! Deprecate Schema Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::event_type::entity::SpecVersionStatus;
 use crate::EventTypeRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::SchemaDeprecated;
 
@@ -31,25 +32,38 @@ impl<U: UnitOfWork> DeprecateSchemaUseCase<U> {
     pub fn new(event_type_repo: Arc<EventTypeRepository>, unit_of_work: Arc<U>) -> Self {
         Self { event_type_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: DeprecateSchemaCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<SchemaDeprecated> {
+#[async_trait]
+impl<U: UnitOfWork> UseCase for DeprecateSchemaUseCase<U> {
+    type Command = DeprecateSchemaCommand;
+    type Event = SchemaDeprecated;
+
+    async fn validate(&self, command: &DeprecateSchemaCommand) -> Result<(), UseCaseError> {
         if command.event_type_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "EVENT_TYPE_ID_REQUIRED",
                 "Event type ID is required",
             ));
         }
         if command.version.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "VERSION_REQUIRED",
                 "Schema version is required",
             ));
         }
+        Ok(())
+    }
 
+    async fn authorize(&self, _command: &DeprecateSchemaCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: DeprecateSchemaCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<SchemaDeprecated> {
         let mut event_type = match self.event_type_repo.find_by_id(&command.event_type_id).await {
             Ok(Some(et)) => et,
             Ok(None) => {

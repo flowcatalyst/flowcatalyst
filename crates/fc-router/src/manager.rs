@@ -105,6 +105,9 @@ pub struct QueueManager {
 
     /// Warning service for generating operational warnings
     warning_service: Option<Arc<WarningService>>,
+
+    /// Health service for recording consumer poll times
+    health_service: Option<Arc<crate::health::HealthService>>,
 }
 
 impl QueueManager {
@@ -145,6 +148,7 @@ impl QueueManager {
             pool_warning_threshold,
             stall_config,
             warning_service: None,
+            health_service: None,
         }
     }
 
@@ -156,6 +160,11 @@ impl QueueManager {
     /// Set the warning service
     pub fn set_warning_service(&mut self, warning_service: Arc<WarningService>) {
         self.warning_service = Some(warning_service);
+    }
+
+    /// Set the health service (for recording consumer poll times)
+    pub fn set_health_service(&mut self, health_service: Arc<crate::health::HealthService>) {
+        self.health_service = Some(health_service);
     }
 
     /// Get warning service reference
@@ -875,13 +884,35 @@ impl QueueManager {
             let mut shutdown_rx = self.shutdown_tx.subscribe();
 
             let handle = tokio::spawn(async move {
+                let mut last_poll_end = Instant::now();
+                const STARVATION_THRESHOLD: Duration = Duration::from_secs(30);
+
                 loop {
+                    // Detect thread/task starvation: warn if >30s between poll loops (Java: 30s)
+                    let loop_gap = last_poll_end.elapsed();
+                    if loop_gap > STARVATION_THRESHOLD {
+                        warn!(
+                            consumer = %consumer.identifier(),
+                            gap_seconds = loop_gap.as_secs(),
+                            "Task starvation detected: {}s between poll loops (threshold: {}s)",
+                            loop_gap.as_secs(),
+                            STARVATION_THRESHOLD.as_secs()
+                        );
+                    }
+
                     tokio::select! {
                         _ = shutdown_rx.recv() => {
                             info!(consumer = %consumer.identifier(), "Consumer shutting down");
                             break;
                         }
                         result = consumer.poll(10) => {
+                            last_poll_end = Instant::now();
+
+                            // Record consumer poll with health service
+                            if let Some(ref health_service) = manager.health_service {
+                                health_service.record_consumer_poll(consumer.identifier());
+                            }
+
                             match result {
                                 Ok(messages) if !messages.is_empty() => {
                                     if let Err(e) = manager.route_batch(messages, consumer.clone()).await {
@@ -1247,6 +1278,27 @@ impl QueueManager {
     /// Get list of all consumer identifiers
     pub async fn consumer_ids(&self) -> Vec<String> {
         self.consumers.read().await.keys().cloned().collect()
+    }
+
+    /// Check broker connectivity by verifying all consumers report healthy.
+    /// Java: BrokerHealthService.checkBrokerConnectivity() pings the broker (SQS listQueues,
+    /// NATS connection state, ActiveMQ test connection). Returns false if any consumer
+    /// reports unhealthy, indicating the broker is unreachable.
+    pub async fn check_broker_connectivity(&self) -> bool {
+        let consumers = self.consumers.read().await;
+        if consumers.is_empty() {
+            return true; // No consumers configured — nothing to check
+        }
+        for consumer in consumers.values() {
+            if !consumer.is_healthy() {
+                warn!(
+                    consumer = %consumer.identifier(),
+                    "Broker connectivity check failed: consumer unhealthy"
+                );
+                return false;
+            }
+        }
+        true
     }
 
     /// Restart a specific consumer by ID

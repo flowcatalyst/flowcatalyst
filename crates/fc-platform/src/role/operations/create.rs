@@ -1,12 +1,13 @@
 //! Create Role Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::role::entity::AuthRole;
 use crate::role::repository::RoleRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::RoleCreated;
 
@@ -50,38 +51,53 @@ impl<U: UnitOfWork> CreateRoleUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: CreateRoleCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<RoleCreated> {
-        // Validation: application_code is required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for CreateRoleUseCase<U> {
+    type Command = CreateRoleCommand;
+    type Event = RoleCreated;
+
+    async fn validate(&self, command: &CreateRoleCommand) -> Result<(), UseCaseError> {
         let app_code = command.application_code.trim().to_lowercase();
         if app_code.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "APPLICATION_CODE_REQUIRED",
                 "Application code is required",
             ));
         }
 
-        // Validation: role_name is required
         let role_name = command.role_name.trim().to_lowercase();
         if role_name.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "ROLE_NAME_REQUIRED",
                 "Role name is required",
             ));
         }
 
-        // Validation: display_name is required
         let display_name = command.display_name.trim();
         if display_name.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "DISPLAY_NAME_REQUIRED",
                 "Display name is required",
             ));
         }
+
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &CreateRoleCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: CreateRoleCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<RoleCreated> {
+        let app_code = command.application_code.trim().to_lowercase();
+        let role_name = command.role_name.trim().to_lowercase();
+        let display_name = command.display_name.trim();
 
         // Build role code
         let code = format!("{}:{}", app_code, role_name);

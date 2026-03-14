@@ -1,11 +1,12 @@
 //! Delete Anchor Domain Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::config_repository::AnchorDomainRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::AnchorDomainDeleted;
 
@@ -24,19 +25,32 @@ impl<U: UnitOfWork> DeleteAnchorDomainUseCase<U> {
     pub fn new(anchor_domain_repo: Arc<AnchorDomainRepository>, unit_of_work: Arc<U>) -> Self {
         Self { anchor_domain_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: DeleteAnchorDomainCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<AnchorDomainDeleted> {
+#[async_trait]
+impl<U: UnitOfWork> UseCase for DeleteAnchorDomainUseCase<U> {
+    type Command = DeleteAnchorDomainCommand;
+    type Event = AnchorDomainDeleted;
+
+    async fn validate(&self, command: &DeleteAnchorDomainCommand) -> Result<(), UseCaseError> {
         if command.anchor_domain_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "ID_REQUIRED",
                 "Anchor domain ID is required",
             ));
         }
+        Ok(())
+    }
 
+    async fn authorize(&self, _command: &DeleteAnchorDomainCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: DeleteAnchorDomainCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<AnchorDomainDeleted> {
         let anchor_domain = match self.anchor_domain_repo.find_by_id(&command.anchor_domain_id).await {
             Ok(Some(ad)) => ad,
             Ok(None) => {

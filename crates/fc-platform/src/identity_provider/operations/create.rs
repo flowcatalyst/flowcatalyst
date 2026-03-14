@@ -1,11 +1,12 @@
 //! Create Identity Provider Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::IdentityProviderRepository;
 use crate::identity_provider::entity::IdentityProviderType;
-use crate::usecase::{ExecutionContext, UseCaseError, UseCaseResult};
+use crate::usecase::{ExecutionContext, UseCase, UseCaseError, UseCaseResult};
 use super::events::IdentityProviderCreated;
 
 /// Command for creating a new identity provider.
@@ -32,28 +33,40 @@ impl CreateIdentityProviderUseCase {
     pub fn new(idp_repo: Arc<IdentityProviderRepository>) -> Self {
         Self { idp_repo }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: CreateIdentityProviderCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<IdentityProviderCreated> {
-        // Validation: code is required
+#[async_trait]
+impl UseCase for CreateIdentityProviderUseCase {
+    type Command = CreateIdentityProviderCommand;
+    type Event = IdentityProviderCreated;
+
+    async fn validate(&self, command: &CreateIdentityProviderCommand) -> Result<(), UseCaseError> {
         if command.code.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "CODE_REQUIRED",
                 "Identity provider code is required",
             ));
         }
 
-        // Validation: name is required
         if command.name.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "NAME_REQUIRED",
                 "Identity provider name is required",
             ));
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &CreateIdentityProviderCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: CreateIdentityProviderCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<IdentityProviderCreated> {
         // Business rule: code must be unique
         match self.idp_repo.find_by_code(&command.code).await {
             Ok(Some(_)) => {

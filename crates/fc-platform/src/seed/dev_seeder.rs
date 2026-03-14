@@ -431,55 +431,41 @@ impl DevDataSeeder {
         self.create_event_type(&repo, "yard:yard:trailer:sealed", "Trailer Sealed",
             "Trailer has been sealed").await?;
 
-        // Platform - Infrastructure Events
-        self.create_event_type(&repo, "platform:integration:webhook:delivered", "Webhook Delivered",
-            "Outbound webhook has been successfully delivered").await?;
-        self.create_event_type(&repo, "platform:integration:webhook:failed", "Webhook Failed",
-            "Outbound webhook delivery has failed").await?;
-        self.create_event_type(&repo, "platform:integration:sync:completed", "Sync Completed",
-            "Data synchronization has been completed").await?;
-
-        self.create_event_type(&repo, "platform:audit:login:success", "Login Success",
-            "User has successfully logged in").await?;
-        self.create_event_type(&repo, "platform:audit:login:failed", "Login Failed",
-            "User login attempt has failed").await?;
-        self.create_event_type(&repo, "platform:audit:permission:changed", "Permission Changed",
-            "User permissions have been modified").await?;
-
-        // Platform - Control Plane Events
-        self.create_event_type(&repo, "platform:control-plane:event-type:created", "Event Type Created",
+        // Platform - Admin Events (event types, connections, dispatch pools, subscriptions)
+        self.create_event_type(&repo, "platform:admin:eventtype:created", "Event Type Created",
             "A new event type has been registered in the platform").await?;
-        self.create_event_type(&repo, "platform:control-plane:event-type:updated", "Event Type Updated",
+        self.create_event_type(&repo, "platform:admin:eventtype:updated", "Event Type Updated",
             "Event type metadata has been updated").await?;
-        self.create_event_type(&repo, "platform:control-plane:event-type:archived", "Event Type Archived",
+        self.create_event_type(&repo, "platform:admin:eventtype:archived", "Event Type Archived",
             "Event type has been archived").await?;
-        self.create_event_type(&repo, "platform:control-plane:event-type:deleted", "Event Type Deleted",
+        self.create_event_type(&repo, "platform:admin:eventtype:deleted", "Event Type Deleted",
             "Event type has been deleted from the platform").await?;
-        self.create_event_type(&repo, "platform:control-plane:event-type:schema-added", "Event Type Schema Added",
+        self.create_event_type(&repo, "platform:admin:eventtype:schema-added", "Event Type Schema Added",
             "A new schema version has been added to an event type").await?;
-        self.create_event_type(&repo, "platform:control-plane:event-type:schema-deprecated", "Event Type Schema Deprecated",
+        self.create_event_type(&repo, "platform:admin:eventtype:schema-deprecated", "Event Type Schema Deprecated",
             "A schema version has been marked as deprecated").await?;
-        self.create_event_type(&repo, "platform:control-plane:event-type:schema-activated", "Event Type Schema Activated",
-            "A schema version has been activated as current").await?;
+        self.create_event_type(&repo, "platform:admin:eventtype:schema-finalised", "Event Type Schema Finalised",
+            "A schema version has been finalised as current").await?;
 
-        self.create_event_type(&repo, "platform:control-plane:application:created", "Application Created",
+        // Platform - IAM Events (applications, roles)
+        self.create_event_type(&repo, "platform:iam:application:created", "Application Created",
             "A new application has been registered in the platform").await?;
-        self.create_event_type(&repo, "platform:control-plane:application:updated", "Application Updated",
+        self.create_event_type(&repo, "platform:iam:application:updated", "Application Updated",
             "Application details have been updated").await?;
-        self.create_event_type(&repo, "platform:control-plane:application:activated", "Application Activated",
+        self.create_event_type(&repo, "platform:iam:application:activated", "Application Activated",
             "Application has been activated").await?;
-        self.create_event_type(&repo, "platform:control-plane:application:deactivated", "Application Deactivated",
+        self.create_event_type(&repo, "platform:iam:application:deactivated", "Application Deactivated",
             "Application has been deactivated").await?;
-        self.create_event_type(&repo, "platform:control-plane:application:deleted", "Application Deleted",
+        self.create_event_type(&repo, "platform:iam:application:deleted", "Application Deleted",
             "Application has been deleted from the platform").await?;
 
-        self.create_event_type(&repo, "platform:control-plane:role:created", "Role Created",
+        self.create_event_type(&repo, "platform:iam:role:created", "Role Created",
             "A new role has been created").await?;
-        self.create_event_type(&repo, "platform:control-plane:role:updated", "Role Updated",
+        self.create_event_type(&repo, "platform:iam:role:updated", "Role Updated",
             "Role details or permissions have been updated").await?;
-        self.create_event_type(&repo, "platform:control-plane:role:deleted", "Role Deleted",
+        self.create_event_type(&repo, "platform:iam:role:deleted", "Role Deleted",
             "Role has been deleted").await?;
-        self.create_event_type(&repo, "platform:control-plane:role:synced", "Roles Synced",
+        self.create_event_type(&repo, "platform:iam:roles:synced", "Roles Synced",
             "Roles have been bulk synced from an external application").await?;
 
         info!("Event types seeded successfully");

@@ -1,11 +1,12 @@
 //! Update Client Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::client::repository::ClientRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ClientUpdated;
 
@@ -34,45 +35,60 @@ impl<U: UnitOfWork> UpdateClientUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: UpdateClientCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<ClientUpdated> {
-        // Validation: client_id is required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for UpdateClientUseCase<U> {
+    type Command = UpdateClientCommand;
+    type Event = ClientUpdated;
+
+    async fn validate(&self, command: &UpdateClientCommand) -> Result<(), UseCaseError> {
+        // client_id is required
         if command.client_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "CLIENT_ID_REQUIRED",
                 "Client ID is required",
             ));
         }
 
-        // Validation: at least one field to update
+        // At least one field to update
         if command.name.is_none() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "NO_UPDATES",
                 "At least one field must be provided for update",
             ));
         }
 
-        // Validation: name if provided
+        // Name if provided
         if let Some(ref name) = command.name {
             let name = name.trim();
             if name.is_empty() {
-                return UseCaseResult::failure(UseCaseError::validation(
+                return Err(UseCaseError::validation(
                     "NAME_REQUIRED",
                     "Client name cannot be empty",
                 ));
             }
             if name.len() > 100 {
-                return UseCaseResult::failure(UseCaseError::validation(
+                return Err(UseCaseError::validation(
                     "NAME_TOO_LONG",
                     "Client name must be at most 100 characters",
                 ));
             }
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &UpdateClientCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        // Authorization handled in handler
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: UpdateClientCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<ClientUpdated> {
         // Fetch existing client
         let mut client = match self.client_repo.find_by_id(&command.client_id).await {
             Ok(Some(c)) => c,

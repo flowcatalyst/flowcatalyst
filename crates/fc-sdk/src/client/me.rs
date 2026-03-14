@@ -1,0 +1,83 @@
+//! User-scoped resource operations (current user context).
+
+use serde::{Deserialize, Serialize};
+use super::{FlowCatalystClient, ClientError};
+
+/// A client accessible to the current user.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MyClient {
+    pub id: String,
+    pub name: String,
+    pub identifier: String,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+/// Response for listing the current user's accessible clients.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MyClientsResponse {
+    pub clients: Vec<MyClient>,
+    #[serde(default)]
+    pub total: Option<u64>,
+}
+
+/// An application accessible to the current user within a client.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MyApplication {
+    pub id: String,
+    pub code: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub icon_url: Option<String>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub website: Option<String>,
+    #[serde(default)]
+    pub logo_mime_type: Option<String>,
+}
+
+/// Response for listing applications for a client.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MyApplicationsResponse {
+    pub applications: Vec<MyApplication>,
+    #[serde(default)]
+    pub total: Option<u64>,
+    #[serde(default)]
+    pub client_id: Option<String>,
+}
+
+impl FlowCatalystClient {
+    /// Get all clients accessible to the current user.
+    ///
+    /// Access is determined by user scope:
+    /// - ANCHOR: all active clients
+    /// - PARTNER: IDP-granted + explicit grants
+    /// - CLIENT: home client + IDP + explicit grants
+    pub async fn me_get_clients(&self) -> Result<MyClientsResponse, ClientError> {
+        self.get("/api/me/clients").await
+    }
+
+    /// Get a specific client accessible to the current user.
+    pub async fn me_get_client(&self, client_id: &str) -> Result<MyClient, ClientError> {
+        self.get(&format!("/api/me/clients/{}", client_id)).await
+    }
+
+    /// Get applications available to the current user within a client.
+    pub async fn me_get_client_applications(
+        &self,
+        client_id: &str,
+    ) -> Result<MyApplicationsResponse, ClientError> {
+        self.get(&format!("/api/me/clients/{}/applications", client_id))
+            .await
+    }
+}

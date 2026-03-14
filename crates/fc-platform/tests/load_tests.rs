@@ -306,6 +306,7 @@ async fn test_api_batch_events_throughput() {
         refresh_token_expiry_secs: 86400,
         rsa_private_key: None,
         rsa_public_key: None,
+        rsa_public_key_previous: None,
     }));
 
     let role_repo = Arc::new(RoleRepository::new(&db));

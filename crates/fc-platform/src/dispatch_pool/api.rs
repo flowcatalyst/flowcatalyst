@@ -17,7 +17,7 @@ use crate::DispatchPoolRepository;
 use crate::shared::error::PlatformError;
 use crate::shared::api_common::PaginationParams;
 use crate::shared::middleware::Authenticated;
-use crate::usecase::{ExecutionContext, UnitOfWork, UseCaseResult};
+use crate::usecase::{ExecutionContext, UseCase, UnitOfWork, UseCaseResult};
 use crate::dispatch_pool::operations::{
     CreateDispatchPoolCommand, CreateDispatchPoolUseCase,
     UpdateDispatchPoolCommand, UpdateDispatchPoolUseCase,
@@ -219,7 +219,7 @@ pub async fn create_dispatch_pool<U: UnitOfWork>(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.create_use_case.execute(command, ctx).await {
+    match state.create_use_case.run(command, ctx).await {
         UseCaseResult::Success(event) => {
             let pool = state.dispatch_pool_repo.find_by_id(&event.dispatch_pool_id).await?
                 .ok_or_else(|| PlatformError::internal("Dispatch pool not found after create"))?;
@@ -366,7 +366,7 @@ pub async fn update_dispatch_pool<U: UnitOfWork>(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.update_use_case.execute(command, ctx).await {
+    match state.update_use_case.run(command, ctx).await {
         UseCaseResult::Success(_event) => {
             // Fetch updated pool for response
             let pool = state.dispatch_pool_repo.find_by_id(&id).await?
@@ -414,7 +414,7 @@ pub async fn archive_dispatch_pool<U: UnitOfWork>(
     let command = ArchiveDispatchPoolCommand { id: id.clone() };
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.archive_use_case.execute(command, ctx).await {
+    match state.archive_use_case.run(command, ctx).await {
         UseCaseResult::Success(_event) => {
             let pool = state.dispatch_pool_repo.find_by_id(&id).await?
                 .ok_or_else(|| PlatformError::not_found("DispatchPool", &id))?;
@@ -462,7 +462,7 @@ pub async fn suspend_dispatch_pool<U: UnitOfWork>(
     let command = ArchiveDispatchPoolCommand { id: id.clone() };
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.archive_use_case.execute(command, ctx).await {
+    match state.archive_use_case.run(command, ctx).await {
         UseCaseResult::Success(_event) => {
             let pool = state.dispatch_pool_repo.find_by_id(&id).await?
                 .ok_or_else(|| PlatformError::not_found("DispatchPool", &id))?;
@@ -517,7 +517,7 @@ pub async fn activate_dispatch_pool<U: UnitOfWork>(
     };
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.update_use_case.execute(command, ctx).await {
+    match state.update_use_case.run(command, ctx).await {
         UseCaseResult::Success(_event) => {
             let pool = state.dispatch_pool_repo.find_by_id(&id).await?
                 .ok_or_else(|| PlatformError::not_found("DispatchPool", &id))?;
@@ -552,7 +552,7 @@ pub async fn delete_dispatch_pool<U: UnitOfWork>(
     let command = DeleteDispatchPoolCommand { id };
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.delete_use_case.execute(command, ctx).await {
+    match state.delete_use_case.run(command, ctx).await {
         UseCaseResult::Success(_event) => Ok(StatusCode::NO_CONTENT),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
@@ -593,7 +593,7 @@ pub async fn sync_dispatch_pools<U: UnitOfWork>(
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
-    match state.sync_use_case.execute(command, ctx).await {
+    match state.sync_use_case.run(command, ctx).await {
         UseCaseResult::Success(event) => {
             Ok(Json(SyncResultResponse {
                 created: event.created,

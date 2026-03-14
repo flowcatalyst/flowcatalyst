@@ -1,12 +1,13 @@
 //! Suspend Client Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::client::entity::ClientStatus;
 use crate::client::repository::ClientRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ClientSuspended;
 
@@ -34,34 +35,49 @@ impl<U: UnitOfWork> SuspendClientUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: SuspendClientCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<ClientSuspended> {
-        // Validation: client_id is required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for SuspendClientUseCase<U> {
+    type Command = SuspendClientCommand;
+    type Event = ClientSuspended;
+
+    async fn validate(&self, command: &SuspendClientCommand) -> Result<(), UseCaseError> {
         if command.client_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "CLIENT_ID_REQUIRED",
                 "Client ID is required",
             ));
         }
 
-        // Validation: reason is required
         let reason = command.reason.trim();
         if reason.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "REASON_REQUIRED",
                 "Suspension reason is required",
             ));
         }
         if reason.len() > 500 {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "REASON_TOO_LONG",
                 "Suspension reason must be at most 500 characters",
             ));
         }
+
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &SuspendClientCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        // Authorization handled in handler
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: SuspendClientCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<ClientSuspended> {
+        let reason = command.reason.trim();
 
         // Fetch existing client
         let mut client = match self.client_repo.find_by_id(&command.client_id).await {

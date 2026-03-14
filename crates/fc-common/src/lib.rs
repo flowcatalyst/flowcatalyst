@@ -259,7 +259,7 @@ impl MediationOutcome {
     pub fn error_connection(message: String) -> Self {
         Self {
             result: MediationResult::ErrorConnection,
-            delay_seconds: Some(5),
+            delay_seconds: Some(30), // Java default: 30 seconds
             status_code: None,
             error_message: Some(message),
         }
@@ -393,7 +393,7 @@ impl OutboxItemType {
         match self {
             OutboxItemType::EVENT => "/api/events/batch",
             OutboxItemType::DISPATCH_JOB => "/api/dispatch/jobs/batch",
-            OutboxItemType::AUDIT_LOG => "/api/audit/logs/batch",
+            OutboxItemType::AUDIT_LOG => "/api/audit-logs/batch",
         }
     }
 

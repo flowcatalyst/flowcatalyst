@@ -1,12 +1,13 @@
 //! Add Schema (Spec Version) Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::event_type::entity::{SpecVersion, SchemaType};
 use crate::EventTypeRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::SchemaAdded;
 
@@ -47,35 +48,49 @@ impl<U: UnitOfWork> AddSchemaUseCase<U> {
     pub fn new(event_type_repo: Arc<EventTypeRepository>, unit_of_work: Arc<U>) -> Self {
         Self { event_type_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: AddSchemaCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<SchemaAdded> {
-        // Validation: event_type_id required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for AddSchemaUseCase<U> {
+    type Command = AddSchemaCommand;
+    type Event = SchemaAdded;
+
+    async fn validate(&self, command: &AddSchemaCommand) -> Result<(), UseCaseError> {
         if command.event_type_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "EVENT_TYPE_ID_REQUIRED",
                 "Event type ID is required",
             ));
         }
 
-        // Validation: version format (MAJOR.MINOR)
         let version = command.version.trim();
         if version.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "VERSION_REQUIRED",
                 "Schema version is required",
             ));
         }
         let parts: Vec<&str> = version.split('.').collect();
         if parts.len() != 2 || parts.iter().any(|p| p.parse::<u32>().is_err()) {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "INVALID_VERSION_FORMAT",
                 "Version must be in MAJOR.MINOR format (e.g. 1.0)",
             ));
         }
+
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &AddSchemaCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: AddSchemaCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<SchemaAdded> {
+        let version = command.version.trim();
 
         // Fetch event type
         let mut event_type = match self.event_type_repo.find_by_id(&command.event_type_id).await {

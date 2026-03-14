@@ -1,11 +1,12 @@
 //! Delete Application Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::ApplicationRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
 };
 use super::events::ApplicationDeleted;
 
@@ -25,18 +26,32 @@ impl<U: UnitOfWork> DeleteApplicationUseCase<U> {
     pub fn new(application_repo: Arc<ApplicationRepository>, unit_of_work: Arc<U>) -> Self {
         Self { application_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: DeleteApplicationCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<ApplicationDeleted> {
+#[async_trait]
+impl<U: UnitOfWork> UseCase for DeleteApplicationUseCase<U> {
+    type Command = DeleteApplicationCommand;
+    type Event = ApplicationDeleted;
+
+    async fn validate(&self, command: &DeleteApplicationCommand) -> Result<(), UseCaseError> {
         if command.application_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "APPLICATION_ID_REQUIRED", "Application ID is required",
             ));
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &DeleteApplicationCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: DeleteApplicationCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<ApplicationDeleted> {
         let application = match self.application_repo.find_by_id(&command.application_id).await {
             Ok(Some(a)) => a,
             Ok(None) => {

@@ -501,6 +501,29 @@ pub async fn regenerate_oauth_client_secret(
     }))
 }
 
+/// Rotate OAuth client secret (alias for regenerate-secret, matches TS API)
+#[utoipa::path(
+    post,
+    path = "/{id}/rotate-secret",
+    tag = "oauth-clients",
+    operation_id = "postApiAdminOauthClientsRotateSecret",
+    params(
+        ("id" = String, Path, description = "OAuth client ID")
+    ),
+    responses(
+        (status = 200, description = "New client secret generated", body = RegenerateSecretResponse),
+        (status = 404, description = "OAuth client not found")
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn rotate_oauth_client_secret(
+    state: State<OAuthClientsState>,
+    auth: Authenticated,
+    path: Path<String>,
+) -> Result<Json<RegenerateSecretResponse>, PlatformError> {
+    regenerate_oauth_client_secret(state, auth, path).await
+}
+
 /// Create OAuth clients router
 pub fn oauth_clients_router(state: OAuthClientsState) -> OpenApiRouter {
     OpenApiRouter::new()
@@ -510,5 +533,6 @@ pub fn oauth_clients_router(state: OAuthClientsState) -> OpenApiRouter {
         .routes(routes!(activate_oauth_client))
         .routes(routes!(deactivate_oauth_client))
         .routes(routes!(regenerate_oauth_client_secret))
+        .routes(routes!(rotate_oauth_client_secret))
         .with_state(state)
 }

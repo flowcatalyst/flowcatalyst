@@ -46,6 +46,55 @@ impl SubscriptionRepository {
         Ok(sub)
     }
 
+    /// Batch-hydrate event types and custom config for multiple subscriptions (avoids N+1)
+    async fn hydrate_all(&self, models: Vec<msg_subscriptions::Model>) -> Result<Vec<Subscription>> {
+        if models.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let ids: Vec<String> = models.iter().map(|m| m.id.clone()).collect();
+
+        // Batch-load event type bindings
+        let all_et = msg_subscription_event_types::Entity::find()
+            .filter(msg_subscription_event_types::Column::SubscriptionId.is_in(ids.clone()))
+            .all(&self.db)
+            .await?;
+        let mut et_map: std::collections::HashMap<String, Vec<EventTypeBinding>> = std::collections::HashMap::new();
+        for r in all_et {
+            et_map.entry(r.subscription_id.clone()).or_default().push(EventTypeBinding {
+                event_type_id: r.event_type_id,
+                event_type_code: r.event_type_code,
+                spec_version: r.spec_version,
+                filter: None,
+            });
+        }
+
+        // Batch-load custom configs
+        let all_cfg = msg_subscription_custom_configs::Entity::find()
+            .filter(msg_subscription_custom_configs::Column::SubscriptionId.is_in(ids))
+            .all(&self.db)
+            .await?;
+        let mut cfg_map: std::collections::HashMap<String, Vec<ConfigEntry>> = std::collections::HashMap::new();
+        for r in all_cfg {
+            cfg_map.entry(r.subscription_id.clone()).or_default().push(ConfigEntry {
+                key: r.config_key,
+                value: r.config_value,
+            });
+        }
+
+        Ok(models.into_iter().map(|m| {
+            let id = m.id.clone();
+            let mut sub = Subscription::from(m);
+            if let Some(ets) = et_map.remove(&id) {
+                sub.event_types = ets;
+            }
+            if let Some(cfgs) = cfg_map.remove(&id) {
+                sub.custom_config = cfgs;
+            }
+            sub
+        }).collect())
+    }
+
     pub async fn insert(&self, sub: &Subscription) -> Result<()> {
         let model = msg_subscriptions::ActiveModel {
             id: Set(sub.id.clone()),
@@ -129,11 +178,7 @@ impl SubscriptionRepository {
             .order_by_asc(msg_subscriptions::Column::Code)
             .all(&self.db)
             .await?;
-        let mut results = Vec::with_capacity(rows.len());
-        for m in rows {
-            results.push(self.hydrate(Subscription::from(m)).await?);
-        }
-        Ok(results)
+        self.hydrate_all(rows).await
     }
 
     pub async fn find_by_client(&self, client_id: Option<&str>) -> Result<Vec<Subscription>> {
@@ -152,11 +197,7 @@ impl SubscriptionRepository {
                 .all(&self.db)
                 .await?
         };
-        let mut results = Vec::with_capacity(rows.len());
-        for m in rows {
-            results.push(self.hydrate(Subscription::from(m)).await?);
-        }
-        Ok(results)
+        self.hydrate_all(rows).await
     }
 
     pub async fn find_active_for_event_type(&self, event_type_code: &str, client_id: Option<&str>) -> Result<Vec<Subscription>> {
@@ -181,11 +222,7 @@ impl SubscriptionRepository {
             );
         }
         let rows = q.all(&self.db).await?;
-        let mut results = Vec::with_capacity(rows.len());
-        for m in rows {
-            results.push(self.hydrate(Subscription::from(m)).await?);
-        }
-        Ok(results)
+        self.hydrate_all(rows).await
     }
 
     pub async fn update(&self, sub: &Subscription) -> Result<()> {
@@ -263,11 +300,7 @@ impl SubscriptionRepository {
             .order_by_asc(msg_subscriptions::Column::Code)
             .all(&self.db)
             .await?;
-        let mut results = Vec::with_capacity(rows.len());
-        for m in rows {
-            results.push(self.hydrate(Subscription::from(m)).await?);
-        }
-        Ok(results)
+        self.hydrate_all(rows).await
     }
 
     pub async fn find_by_connection_id(&self, connection_id: &str) -> Result<Vec<Subscription>> {
@@ -276,11 +309,7 @@ impl SubscriptionRepository {
             .order_by_asc(msg_subscriptions::Column::Code)
             .all(&self.db)
             .await?;
-        let mut results = Vec::with_capacity(rows.len());
-        for m in rows {
-            results.push(self.hydrate(Subscription::from(m)).await?);
-        }
-        Ok(results)
+        self.hydrate_all(rows).await
     }
 
     pub async fn find_by_status(&self, status: &str) -> Result<Vec<Subscription>> {
@@ -289,11 +318,7 @@ impl SubscriptionRepository {
             .order_by_asc(msg_subscriptions::Column::Code)
             .all(&self.db)
             .await?;
-        let mut results = Vec::with_capacity(rows.len());
-        for m in rows {
-            results.push(self.hydrate(Subscription::from(m)).await?);
-        }
-        Ok(results)
+        self.hydrate_all(rows).await
     }
 
     pub async fn find_active(&self) -> Result<Vec<Subscription>> {
@@ -302,11 +327,7 @@ impl SubscriptionRepository {
             .order_by_asc(msg_subscriptions::Column::Code)
             .all(&self.db)
             .await?;
-        let mut results = Vec::with_capacity(rows.len());
-        for m in rows {
-            results.push(self.hydrate(Subscription::from(m)).await?);
-        }
-        Ok(results)
+        self.hydrate_all(rows).await
     }
 
     pub async fn delete(&self, id: &str) -> Result<bool> {

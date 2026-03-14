@@ -58,9 +58,9 @@ impl Default for NatsConfig {
             consumer_name: "fc-router".to_string(),
             subject: "flowcatalyst.>".to_string(),
             max_messages_per_poll: 10,
-            poll_timeout_ms: 5000,
-            ack_wait_secs: 30,
-            max_deliver: 5,
+            poll_timeout_ms: 20_000,   // Java default: 20 seconds
+            ack_wait_secs: 120,        // Java default: 120 seconds
+            max_deliver: 10,           // Java default: 10 redeliveries
             max_ack_pending: 1000,
             storage: "file".to_string(),
             replicas: 1,
@@ -72,10 +72,12 @@ impl Default for NatsConfig {
 /// NATS JetStream pull-based queue consumer
 pub struct NatsQueueConsumer {
     config: NatsConfig,
+    /// Cached queue identifier in Java format: `streamName/consumerName`
+    queue_id: String,
     client: async_nats::Client,
     consumer: Arc<RwLock<PullConsumer>>,
     running: AtomicBool,
-    /// Maps receipt handle (stream sequence as string) -> JetStream message for ack/nack
+    /// Maps receipt handle (`streamName:streamSequence`) -> JetStream message for ack/nack
     pending_messages: Arc<DashMap<String, async_nats::jetstream::Message>>,
     /// Total messages polled from queue
     total_polled: AtomicU64,
@@ -101,8 +103,12 @@ impl NatsQueueConsumer {
             "Connecting to NATS JetStream"
         );
 
-        // Connect to NATS
-        let client = async_nats::connect(&config.servers)
+        // Connect to NATS with reconnect settings matching Java:
+        // unlimited reconnects, 2s reconnect wait, 10s connection timeout
+        let client = async_nats::ConnectOptions::new()
+            .connection_timeout(Duration::from_secs(10))
+            .reconnect_delay_callback(|_attempts| Duration::from_secs(2))
+            .connect(&config.servers)
             .await
             .map_err(|e| QueueError::Nats(format!("Failed to connect to NATS: {}", e)))?;
 
@@ -125,10 +131,12 @@ impl NatsQueueConsumer {
         };
 
         // Ensure stream exists (create or get)
+        // WorkQueue retention: messages are removed once consumed (Java default)
         let stream = jetstream
             .get_or_create_stream(stream::Config {
                 name: config.stream_name.clone(),
                 subjects: vec![config.subject.clone()],
+                retention: stream::RetentionPolicy::WorkQueue,
                 storage: storage_type,
                 num_replicas: config.replicas,
                 max_age,
@@ -168,8 +176,11 @@ impl NatsQueueConsumer {
             "JetStream consumer ready"
         );
 
+        let queue_id = format!("{}/{}", config.stream_name, config.consumer_name);
+
         Ok(Self {
             config,
+            queue_id,
             client,
             consumer: Arc::new(RwLock::new(consumer)),
             running: AtomicBool::new(true),
@@ -181,18 +192,20 @@ impl NatsQueueConsumer {
         })
     }
 
-    /// Extract stream sequence number from a JetStream message to use as receipt handle.
-    fn receipt_handle_from_message(msg: &async_nats::jetstream::Message) -> Option<String> {
+    /// Extract receipt handle from a JetStream message.
+    /// Format matches Java: `streamName:streamSequence`
+    fn receipt_handle_from_message(msg: &async_nats::jetstream::Message, stream_name: &str) -> Option<String> {
         msg.info()
             .ok()
-            .map(|info| info.stream_sequence.to_string())
+            .map(|info| format!("{}:{}", stream_name, info.stream_sequence))
     }
+
 }
 
 #[async_trait]
 impl QueueConsumer for NatsQueueConsumer {
     fn identifier(&self) -> &str {
-        &self.config.consumer_name
+        &self.queue_id
     }
 
     async fn poll(&self, max_messages: u32) -> Result<Vec<QueuedMessage>> {
@@ -218,8 +231,8 @@ impl QueueConsumer for NatsQueueConsumer {
         while let Some(msg_result) = batch.next().await {
             match msg_result {
                 Ok(js_msg) => {
-                    // Extract receipt handle from stream sequence
-                    let receipt_handle = match Self::receipt_handle_from_message(&js_msg) {
+                    // Extract receipt handle: streamName:streamSequence
+                    let receipt_handle = match Self::receipt_handle_from_message(&js_msg, &self.config.stream_name) {
                         Some(handle) => handle,
                         None => {
                             warn!(
@@ -247,7 +260,7 @@ impl QueueConsumer for NatsQueueConsumer {
                                 message,
                                 receipt_handle,
                                 broker_message_id,
-                                queue_identifier: self.config.consumer_name.clone(),
+                                queue_identifier: self.queue_id.clone(),
                             });
                         }
                         Err(e) => {
@@ -438,7 +451,7 @@ impl QueueConsumer for NatsQueueConsumer {
         Ok(Some(QueueMetrics {
             pending_messages,
             in_flight_messages,
-            queue_identifier: self.config.consumer_name.clone(),
+            queue_identifier: self.queue_id.clone(),
             total_polled: self.total_polled.load(Ordering::Relaxed),
             total_acked: self.total_acked.load(Ordering::Relaxed),
             total_nacked: self.total_nacked.load(Ordering::Relaxed),
@@ -459,9 +472,9 @@ mod tests {
         assert_eq!(config.consumer_name, "fc-router");
         assert_eq!(config.subject, "flowcatalyst.>");
         assert_eq!(config.max_messages_per_poll, 10);
-        assert_eq!(config.poll_timeout_ms, 5000);
-        assert_eq!(config.ack_wait_secs, 30);
-        assert_eq!(config.max_deliver, 5);
+        assert_eq!(config.poll_timeout_ms, 20_000);  // Java: 20 seconds
+        assert_eq!(config.ack_wait_secs, 120);       // Java: 120 seconds
+        assert_eq!(config.max_deliver, 10);           // Java: 10 redeliveries
         assert_eq!(config.max_ack_pending, 1000);
         assert_eq!(config.storage, "file");
         assert_eq!(config.replicas, 1);

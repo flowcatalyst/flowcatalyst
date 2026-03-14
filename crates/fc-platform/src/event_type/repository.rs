@@ -33,6 +33,35 @@ impl EventTypeRepository {
         Ok(et)
     }
 
+    /// Batch-hydrate spec versions for multiple event types (avoids N+1)
+    async fn hydrate_all(&self, models: Vec<msg_event_types::Model>) -> Result<Vec<EventType>> {
+        if models.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let ids: Vec<String> = models.iter().map(|m| m.id.clone()).collect();
+        let all_specs = msg_event_type_spec_versions::Entity::find()
+            .filter(msg_event_type_spec_versions::Column::EventTypeId.is_in(ids))
+            .order_by_asc(msg_event_type_spec_versions::Column::Version)
+            .all(&self.db)
+            .await?;
+
+        let mut spec_map: std::collections::HashMap<String, Vec<SpecVersion>> = std::collections::HashMap::new();
+        for row in all_specs {
+            let event_type_id = row.event_type_id.clone();
+            spec_map.entry(event_type_id).or_default().push(SpecVersion::from(row));
+        }
+
+        Ok(models.into_iter().map(|m| {
+            let id = m.id.clone();
+            let mut et = EventType::from(m);
+            if let Some(specs) = spec_map.remove(&id) {
+                et.spec_versions = specs;
+            }
+            et
+        }).collect())
+    }
+
     pub async fn insert(&self, et: &EventType) -> Result<()> {
         let model = msg_event_types::ActiveModel {
             id: Set(et.id.clone()),
@@ -97,11 +126,7 @@ impl EventTypeRepository {
             .order_by_asc(msg_event_types::Column::Code)
             .all(&self.db)
             .await?;
-        let mut results = Vec::with_capacity(rows.len());
-        for m in rows {
-            results.push(self.hydrate(EventType::from(m)).await?);
-        }
-        Ok(results)
+        self.hydrate_all(rows).await
     }
 
     pub async fn find_by_application(&self, application: &str) -> Result<Vec<EventType>> {
@@ -109,11 +134,7 @@ impl EventTypeRepository {
             .filter(msg_event_types::Column::Application.eq(application))
             .all(&self.db)
             .await?;
-        let mut results = Vec::with_capacity(rows.len());
-        for m in rows {
-            results.push(self.hydrate(EventType::from(m)).await?);
-        }
-        Ok(results)
+        self.hydrate_all(rows).await
     }
 
     pub async fn find_by_status(&self, status: EventTypeStatus) -> Result<Vec<EventType>> {
@@ -122,11 +143,7 @@ impl EventTypeRepository {
             .order_by_asc(msg_event_types::Column::Code)
             .all(&self.db)
             .await?;
-        let mut results = Vec::with_capacity(rows.len());
-        for m in rows {
-            results.push(self.hydrate(EventType::from(m)).await?);
-        }
-        Ok(results)
+        self.hydrate_all(rows).await
     }
 
     /// Search event types by code or name (case-insensitive partial match)
@@ -140,11 +157,7 @@ impl EventTypeRepository {
             )
             .all(&self.db)
             .await?;
-        let mut results = Vec::with_capacity(rows.len());
-        for m in rows {
-            results.push(self.hydrate(EventType::from(m)).await?);
-        }
-        Ok(results)
+        self.hydrate_all(rows).await
     }
 
     pub async fn find_active(&self) -> Result<Vec<EventType>> {
@@ -153,11 +166,17 @@ impl EventTypeRepository {
             .order_by_asc(msg_event_types::Column::Code)
             .all(&self.db)
             .await?;
-        let mut results = Vec::with_capacity(rows.len());
-        for m in rows {
-            results.push(self.hydrate(EventType::from(m)).await?);
-        }
-        Ok(results)
+        self.hydrate_all(rows).await
+    }
+
+    /// Find active event types without loading spec versions (for filter endpoints)
+    pub async fn find_active_shallow(&self) -> Result<Vec<EventType>> {
+        let rows = msg_event_types::Entity::find()
+            .filter(msg_event_types::Column::Status.eq("CURRENT"))
+            .order_by_asc(msg_event_types::Column::Code)
+            .all(&self.db)
+            .await?;
+        Ok(rows.into_iter().map(EventType::from).collect())
     }
 
     pub async fn exists_by_code(&self, code: &str) -> Result<bool> {

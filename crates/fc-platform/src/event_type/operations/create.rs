@@ -3,12 +3,13 @@
 //! Use case for creating a new event type.
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::EventType;
 use crate::EventTypeRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::EventTypeCreated;
 
@@ -66,25 +67,17 @@ impl<U: UnitOfWork> CreateEventTypeUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    /// Execute the use case.
-    ///
-    /// # Validation
-    /// - Code must follow format: {application}:{subdomain}:{aggregate}:{event}
-    /// - Code must be unique
-    /// - Name is required
-    ///
-    /// # Returns
-    /// - `UseCaseResult::Success(EventTypeCreated)` on success
-    /// - `UseCaseResult::Failure(UseCaseError)` on validation or business rule violation
-    pub async fn execute(
-        &self,
-        command: CreateEventTypeCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<EventTypeCreated> {
+#[async_trait]
+impl<U: UnitOfWork> UseCase for CreateEventTypeUseCase<U> {
+    type Command = CreateEventTypeCommand;
+    type Event = EventTypeCreated;
+
+    async fn validate(&self, command: &CreateEventTypeCommand) -> Result<(), UseCaseError> {
         // Validation: code is required
         if command.code.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "CODE_REQUIRED",
                 "Event type code is required",
             ));
@@ -92,7 +85,7 @@ impl<U: UnitOfWork> CreateEventTypeUseCase<U> {
 
         // Validation: name is required
         if command.name.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "NAME_REQUIRED",
                 "Event type name is required",
             ));
@@ -101,7 +94,7 @@ impl<U: UnitOfWork> CreateEventTypeUseCase<U> {
         // Validation: code format
         let parts: Vec<&str> = command.code.split(':').collect();
         if parts.len() != 4 {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "INVALID_CODE_FORMAT",
                 "Event type code must follow format: application:subdomain:aggregate:event",
             ));
@@ -117,13 +110,25 @@ impl<U: UnitOfWork> CreateEventTypeUseCase<U> {
                     3 => "event",
                     _ => "unknown",
                 };
-                return UseCaseResult::failure(UseCaseError::validation(
+                return Err(UseCaseError::validation(
                     "INVALID_CODE_FORMAT",
                     format!("Event type code part '{}' cannot be empty", part_name),
                 ));
             }
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &CreateEventTypeCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: CreateEventTypeCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<EventTypeCreated> {
         // Business rule: code must be unique
         if let Ok(Some(_)) = self.event_type_repo.find_by_code(&command.code).await {
             return UseCaseResult::failure(UseCaseError::business_rule(

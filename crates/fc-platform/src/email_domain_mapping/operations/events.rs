@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use crate::usecase::ExecutionContext;
 use crate::usecase::domain_event::EventMetadata;
 use crate::TsidGenerator;
-use crate::EntityType;
 use crate::impl_domain_event;
 
 /// Event emitted when a new email domain mapping is created.
@@ -34,7 +33,7 @@ impl EmailDomainMappingCreated {
         identity_provider_id: &str,
         scope_type: &str,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.edm.{}", mapping_id);
         let message_group = format!("platform:edm:{}", mapping_id);
 
@@ -72,7 +71,7 @@ impl EmailDomainMappingUpdated {
     const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, mapping_id: &str, email_domain: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.edm.{}", mapping_id);
         let message_group = format!("platform:edm:{}", mapping_id);
 
@@ -108,7 +107,7 @@ impl EmailDomainMappingDeleted {
     const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, mapping_id: &str, email_domain: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.edm.{}", mapping_id);
         let message_group = format!("platform:edm:{}", mapping_id);
 

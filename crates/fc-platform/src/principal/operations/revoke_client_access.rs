@@ -1,13 +1,14 @@
 //! Revoke Client Access Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::principal::entity::PrincipalType;
 use crate::PrincipalRepository;
 use crate::ClientAccessGrantRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ClientAccessRevoked;
 
@@ -33,23 +34,37 @@ impl<U: UnitOfWork> RevokeClientAccessUseCase<U> {
     ) -> Self {
         Self { principal_repo, grant_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: RevokeClientAccessCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<ClientAccessRevoked> {
+#[async_trait]
+impl<U: UnitOfWork> UseCase for RevokeClientAccessUseCase<U> {
+    type Command = RevokeClientAccessCommand;
+    type Event = ClientAccessRevoked;
+
+    async fn validate(&self, command: &RevokeClientAccessCommand) -> Result<(), UseCaseError> {
         if command.user_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "USER_ID_REQUIRED", "User ID is required",
             ));
         }
         if command.client_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "CLIENT_ID_REQUIRED", "Client ID is required",
             ));
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &RevokeClientAccessCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: RevokeClientAccessCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<ClientAccessRevoked> {
         // Validate user exists and is a USER type
         let _principal = match self.principal_repo.find_by_id(&command.user_id).await {
             Ok(Some(p)) => {

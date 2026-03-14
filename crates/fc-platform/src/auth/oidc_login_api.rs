@@ -40,6 +40,7 @@ use crate::{
     PgUnitOfWork, UnitOfWork,
 };
 use crate::{AuthService, OidcSyncService};
+use crate::shared::encryption_service::EncryptionService;
 
 /// OIDC Login API State
 #[derive(Clone)]
@@ -59,6 +60,8 @@ pub struct OidcLoginApiState {
     pub session_cookie_secure: bool,
     pub session_cookie_same_site: String,
     pub session_token_expiry_secs: i64,
+    /// Encryption service for decrypting stored secrets (OIDC client secrets, etc.)
+    pub encryption_service: Option<Arc<EncryptionService>>,
 }
 
 impl OidcLoginApiState {
@@ -85,7 +88,13 @@ impl OidcLoginApiState {
             session_cookie_secure: true,
             session_cookie_same_site: "Lax".to_string(),
             session_token_expiry_secs: 86400, // 24 hours
+            encryption_service: None,
         }
+    }
+
+    pub fn with_encryption_service(mut self, svc: Arc<EncryptionService>) -> Self {
+        self.encryption_service = Some(svc);
+        self
     }
 
     pub fn with_external_base_url(mut self, url: impl Into<String>) -> Self {
@@ -526,7 +535,7 @@ pub async fn oidc_callback(
 
     // Exchange code for tokens
     let callback_url = get_callback_url(&state, &host, &uri);
-    let tokens = match exchange_code_for_tokens_from_idp(&idp, code, &login_state.code_verifier, &callback_url).await {
+    let tokens = match exchange_code_for_tokens_from_idp(&idp, code, &login_state.code_verifier, &callback_url, state.encryption_service.as_deref()).await {
         Ok(t) => t,
         Err(e) => {
             error!(error = %e, "Token exchange failed");
@@ -755,6 +764,7 @@ async fn exchange_code_for_tokens_from_idp(
     code: &str,
     code_verifier: &str,
     callback_url: &str,
+    encryption_service: Option<&EncryptionService>,
 ) -> Result<TokenExchangeResponse, String> {
     let issuer = idp.oidc_issuer_url.as_deref().ok_or("Missing issuer URL")?;
     let token_endpoint = get_token_endpoint(issuer);
@@ -768,8 +778,23 @@ async fn exchange_code_for_tokens_from_idp(
         ("code_verifier", code_verifier),
     ];
 
-    // Add client secret if present
-    let client_secret = idp.oidc_client_secret_ref.clone();
+    // Decrypt and add client secret if present
+    let client_secret = if let Some(ref encrypted_secret) = idp.oidc_client_secret_ref {
+        if let Some(enc_svc) = encryption_service {
+            match enc_svc.decrypt(encrypted_secret) {
+                Ok(decrypted) => Some(decrypted),
+                Err(e) => {
+                    warn!(error = %e, "Failed to decrypt OIDC client secret, using raw value");
+                    Some(encrypted_secret.clone())
+                }
+            }
+        } else {
+            warn!("No encryption service configured, using raw client secret value");
+            Some(encrypted_secret.clone())
+        }
+    } else {
+        None
+    };
     if let Some(ref secret) = client_secret {
         params.push(("client_secret", secret));
     }

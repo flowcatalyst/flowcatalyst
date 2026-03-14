@@ -1,12 +1,13 @@
 //! Activate Client Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::client::entity::ClientStatus;
 use crate::client::repository::ClientRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::ClientActivated;
 
@@ -31,20 +32,33 @@ impl<U: UnitOfWork> ActivateClientUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: ActivateClientCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<ClientActivated> {
-        // Validation: client_id is required
+#[async_trait]
+impl<U: UnitOfWork> UseCase for ActivateClientUseCase<U> {
+    type Command = ActivateClientCommand;
+    type Event = ClientActivated;
+
+    async fn validate(&self, command: &ActivateClientCommand) -> Result<(), UseCaseError> {
         if command.client_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "CLIENT_ID_REQUIRED",
                 "Client ID is required",
             ));
         }
+        Ok(())
+    }
 
+    async fn authorize(&self, _command: &ActivateClientCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        // Authorization handled in handler
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: ActivateClientCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<ClientActivated> {
         // Fetch existing client
         let mut client = match self.client_repo.find_by_id(&command.client_id).await {
             Ok(Some(c)) => c,
@@ -61,8 +75,6 @@ impl<U: UnitOfWork> ActivateClientUseCase<U> {
                 )));
             }
         };
-
-        // Client can be activated from any non-active state
 
         // Business rule: client must not already be active
         if client.status == ClientStatus::Active {

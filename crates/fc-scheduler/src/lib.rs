@@ -88,6 +88,7 @@ pub struct DispatchJob {
     pub updated_at: DateTime<Utc>,
     pub queued_at: Option<DateTime<Utc>>,
     pub last_error: Option<String>,
+    pub subscription_id: Option<String>,
 }
 
 impl DispatchJob {
@@ -217,7 +218,6 @@ pub struct MessageGroupDispatcher {
     inner: Arc<Mutex<HashMap<String, MessageGroupQueue>>>,
     db: DatabaseConnection,
     queue_publisher: Arc<dyn QueuePublisher>,
-    auth_service: DispatchAuthService,
     config: SchedulerConfig,
     semaphore: Arc<Semaphore>,
 }
@@ -227,14 +227,12 @@ impl MessageGroupDispatcher {
         config: SchedulerConfig,
         db: DatabaseConnection,
         queue_publisher: Arc<dyn QueuePublisher>,
-        auth_service: DispatchAuthService,
     ) -> Self {
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_groups));
         Self {
             inner: Arc::new(Mutex::new(HashMap::new())),
             db,
             queue_publisher,
-            auth_service,
             config,
             semaphore,
         }
@@ -296,24 +294,13 @@ impl MessageGroupDispatcher {
 
     /// Dispatch a single job to the queue. Returns true on success.
     async fn dispatch_single_job(&self, job: &DispatchJob) -> bool {
-        // Generate HMAC auth token
-        let auth_token = match self.auth_service.generate_auth_token(&job.id) {
-            Ok(token) => token,
-            Err(e) => {
-                warn!(job_id = %job.id, error = %e, "Failed to generate auth token, using fallback");
-                format!("dev_{}", job.id)
-            }
-        };
-
         let pointer = MessagePointer {
-            job_id: job.id.clone(),
-            dispatch_pool_id: job.dispatch_pool_id.clone()
+            id: job.id.clone(),
+            pool_code: job.dispatch_pool_id.clone()
                 .unwrap_or_else(|| self.config.default_pool_code.clone()),
-            auth_token,
+            message_group_id: job.message_group.clone().unwrap_or_else(|| "default".to_string()),
             mediation_type: "HTTP".to_string(),
-            processing_endpoint: self.config.processing_endpoint.clone(),
-            message_group: job.message_group.clone(),
-            batch_id: None,
+            mediation_target: self.config.processing_endpoint.clone(),
         };
 
         let message = QueueMessage {
@@ -408,10 +395,10 @@ impl Default for SchedulerConfig {
             batch_size: 200,
             stale_threshold: Duration::from_secs(15 * 60),
             default_dispatch_mode: DispatchMode::Immediate,
-            default_pool_code: "default".to_string(),
-            processing_endpoint: "http://localhost:8080/api/router/process".to_string(),
+            default_pool_code: "DISPATCH-POOL".to_string(),
+            processing_endpoint: "http://localhost:8080/api/dispatch/process".to_string(),
             app_key: None,
-            max_concurrent_groups: 50,
+            max_concurrent_groups: 10,
             connection_filter_enabled: true,
         }
     }
@@ -436,14 +423,13 @@ pub struct QueueMessage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MessagePointer {
-    pub job_id: String,
-    pub dispatch_pool_id: String,
-    pub auth_token: String,
+    pub id: String,
+    pub pool_code: String,
+    pub message_group_id: String,
     pub mediation_type: String,
-    pub processing_endpoint: String,
-    pub message_group: Option<String>,
-    pub batch_id: Option<String>,
+    pub mediation_target: String,
 }
 
 // ============================================================================
@@ -483,12 +469,10 @@ impl DispatchScheduler {
             "Starting dispatch scheduler"
         );
 
-        let auth_service = DispatchAuthService::new(self.config.app_key.clone());
         let group_dispatcher = Arc::new(MessageGroupDispatcher::new(
             self.config.clone(),
             self.db.clone(),
             self.queue_publisher.clone(),
-            auth_service,
         ));
 
         let poller = PendingJobPoller::new(self.config.clone(), self.db.clone(), group_dispatcher.clone());
@@ -560,6 +544,7 @@ mod tests {
             updated_at: Utc::now(),
             queued_at: None,
             last_error: None,
+            subscription_id: None,
         };
         assert_eq!(job.dispatch_status(), DispatchStatus::Queued);
     }
@@ -576,14 +561,14 @@ mod tests {
             dispatch_pool_id: None, status: "PENDING".to_string(),
             mode: "IMMEDIATE".to_string(), target_url: "http://a".to_string(),
             payload: None, sequence: 2, created_at: now, updated_at: now,
-            queued_at: None, last_error: None,
+            queued_at: None, last_error: None, subscription_id: None,
         };
         let job2 = DispatchJob {
             id: "job2".to_string(), message_group: Some("g1".to_string()),
             dispatch_pool_id: None, status: "PENDING".to_string(),
             mode: "IMMEDIATE".to_string(), target_url: "http://b".to_string(),
             payload: None, sequence: 1, created_at: now, updated_at: now,
-            queued_at: None, last_error: None,
+            queued_at: None, last_error: None, subscription_id: None,
         };
 
         queue.add_jobs(vec![job1, job2]);
@@ -611,7 +596,9 @@ mod tests {
         let config = SchedulerConfig::default();
         assert_eq!(config.poll_interval, Duration::from_millis(5000));
         assert_eq!(config.batch_size, 200);
-        assert_eq!(config.max_concurrent_groups, 50);
+        assert_eq!(config.max_concurrent_groups, 10);
+        assert_eq!(config.default_pool_code, "DISPATCH-POOL");
+        assert_eq!(config.processing_endpoint, "http://localhost:8080/api/dispatch/process");
         assert!(config.connection_filter_enabled);
     }
 }

@@ -1,6 +1,7 @@
 //! Enable Application for Client Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::ApplicationRepository;
@@ -8,7 +9,7 @@ use crate::ClientRepository;
 use crate::ApplicationClientConfigRepository;
 use crate::ApplicationClientConfig;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
 };
 use super::events::ApplicationEnabledForClient;
 
@@ -36,23 +37,37 @@ impl<U: UnitOfWork> EnableApplicationForClientUseCase<U> {
     ) -> Self {
         Self { application_repo, client_repo, config_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
-        &self,
-        command: EnableApplicationForClientCommand,
-        ctx: ExecutionContext,
-    ) -> UseCaseResult<ApplicationEnabledForClient> {
+#[async_trait]
+impl<U: UnitOfWork> UseCase for EnableApplicationForClientUseCase<U> {
+    type Command = EnableApplicationForClientCommand;
+    type Event = ApplicationEnabledForClient;
+
+    async fn validate(&self, command: &EnableApplicationForClientCommand) -> Result<(), UseCaseError> {
         if command.application_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "APPLICATION_ID_REQUIRED", "Application ID is required",
             ));
         }
         if command.client_id.trim().is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
+            return Err(UseCaseError::validation(
                 "CLIENT_ID_REQUIRED", "Client ID is required",
             ));
         }
 
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &EnableApplicationForClientCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        command: EnableApplicationForClientCommand,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<ApplicationEnabledForClient> {
         // Validate application exists
         match self.application_repo.find_by_id(&command.application_id).await {
             Ok(Some(_)) => {}

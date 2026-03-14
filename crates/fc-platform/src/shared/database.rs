@@ -4,6 +4,7 @@
 //! and SQL migration runner.
 
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr};
+use sqlx::postgres::{PgPool, PgPoolOptions};
 use std::time::Duration;
 use tracing::info;
 
@@ -62,6 +63,51 @@ pub async fn create_connection(database_url: &str) -> Result<DatabaseConnection,
     let db = Database::connect(opts).await?;
     info!("PostgreSQL database connection established");
     Ok(db)
+}
+
+/// Create a raw SQLx PgPool (for repositories migrated away from SeaORM).
+///
+/// Shares the same env-configurable pool settings as SeaORM connection.
+pub async fn create_pool(database_url: &str) -> Result<PgPool, DbErr> {
+    let max_connections: u32 = std::env::var("FC_DB_MAX_CONNECTIONS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10);
+    let min_connections: u32 = std::env::var("FC_DB_MIN_CONNECTIONS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(2);
+    let connect_timeout: u64 = std::env::var("FC_DB_CONNECT_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10);
+    let idle_timeout: u64 = std::env::var("FC_DB_IDLE_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(300);
+    let max_lifetime: u64 = std::env::var("FC_DB_MAX_LIFETIME_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1800);
+
+    info!(
+        max_connections,
+        min_connections,
+        "Creating SQLx PgPool"
+    );
+
+    let pool = PgPoolOptions::new()
+        .max_connections(max_connections)
+        .min_connections(min_connections)
+        .acquire_timeout(Duration::from_secs(connect_timeout))
+        .idle_timeout(Duration::from_secs(idle_timeout))
+        .max_lifetime(Duration::from_secs(max_lifetime))
+        .connect(database_url)
+        .await
+        .map_err(|e| DbErr::Conn(sea_orm::RuntimeErr::Internal(e.to_string())))?;
+
+    info!("SQLx PgPool established");
+    Ok(pool)
 }
 
 /// Run all SQL migrations from the migrations/ directory.

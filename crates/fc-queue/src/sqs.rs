@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use aws_sdk_sqs::{Client, types::Message as SqsMessage, types::QueueAttributeName};
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use tracing::{debug, info, error};
+use parking_lot::Mutex;
+use tracing::{debug, info, warn, error};
 
 use fc_common::{Message, QueuedMessage};
 use crate::{QueueConsumer, QueueMetrics, Result, QueueError};
@@ -14,6 +16,12 @@ pub struct SqsQueueConsumer {
     visibility_timeout_seconds: i32,
     wait_time_seconds: i32,
     running: AtomicBool,
+    /// SQS message IDs whose ACK (delete) failed due to expired receipt handle.
+    /// If these messages reappear on the next poll, they are immediately deleted
+    /// to prevent double-processing. Matches Java's `pendingDeleteSqsMessageIds`.
+    pending_delete_ids: Mutex<HashSet<String>>,
+    /// Maps receipt handle -> SQS message ID for pending-delete tracking on ACK failure
+    receipt_to_message_id: Mutex<HashMap<String, String>>,
     /// Total messages polled from queue
     total_polled: AtomicU64,
     /// Total messages successfully ACKed
@@ -43,6 +51,8 @@ impl SqsQueueConsumer {
             visibility_timeout_seconds,
             wait_time_seconds: Self::DEFAULT_WAIT_TIME_SECONDS,
             running: AtomicBool::new(true),
+            pending_delete_ids: Mutex::new(HashSet::new()),
+            receipt_to_message_id: Mutex::new(HashMap::new()),
             total_polled: AtomicU64::new(0),
             total_acked: AtomicU64::new(0),
             total_nacked: AtomicU64::new(0),
@@ -95,24 +105,58 @@ impl QueueConsumer for SqsQueueConsumer {
             return Err(QueueError::Stopped);
         }
 
+        let max_per_poll = max_messages.min(10) as i32; // SQS max is 10
+
+        // Java: 25s per-request API call timeout to prevent indefinite blocking
+        let timeout_config = aws_sdk_sqs::config::timeout::TimeoutConfig::builder()
+            .operation_timeout(std::time::Duration::from_secs(25))
+            .build();
+
         let result = self.client
             .receive_message()
             .queue_url(&self.queue_url)
-            .max_number_of_messages(max_messages.min(10) as i32) // SQS max is 10
+            .max_number_of_messages(max_per_poll)
             .visibility_timeout(self.visibility_timeout_seconds)
             .wait_time_seconds(self.wait_time_seconds)
             .message_system_attribute_names(aws_sdk_sqs::types::MessageSystemAttributeName::All)
             .message_attribute_names("All")
+            .customize()
+            .config_override(
+                aws_sdk_sqs::config::Builder::default()
+                    .timeout_config(timeout_config)
+            )
             .send()
             .await
             .map_err(|e| QueueError::Sqs(e.to_string()))?;
 
         let sqs_messages = result.messages.unwrap_or_default();
-        let mut messages = Vec::with_capacity(sqs_messages.len());
+        let sqs_messages_count = sqs_messages.len();
+        let mut messages = Vec::with_capacity(sqs_messages_count);
 
         for sqs_msg in sqs_messages {
+            // Java: check pendingDeleteSqsMessageIds — if this message was previously
+            // processed but its ACK failed (expired receipt handle), delete it immediately
+            // to prevent double-processing.
+            if let Some(msg_id) = sqs_msg.message_id() {
+                if self.pending_delete_ids.lock().remove(msg_id) {
+                    warn!(
+                        queue = %self.queue_name,
+                        message_id = %msg_id,
+                        "Redelivered message found in pending-delete set, deleting immediately"
+                    );
+                    if let Some(handle) = sqs_msg.receipt_handle() {
+                        let _ = self.ack(handle).await;
+                    }
+                    continue;
+                }
+            }
+
             match self.parse_sqs_message(&sqs_msg) {
                 Ok((message, receipt_handle, broker_message_id)) => {
+                    // Track receipt handle → message ID for pending-delete on ACK failure
+                    if let Some(ref msg_id) = broker_message_id {
+                        self.receipt_to_message_id.lock().insert(receipt_handle.clone(), msg_id.clone());
+                    }
                     messages.push(QueuedMessage {
                         message,
                         receipt_handle,
@@ -143,25 +187,50 @@ impl QueueConsumer for SqsQueueConsumer {
             );
         }
 
+        // Java: 100ms delay after partial batch for SQS cost control
+        if sqs_messages_count > 0 && (sqs_messages_count as i32) < max_per_poll {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+
         Ok(messages)
     }
 
     async fn ack(&self, receipt_handle: &str) -> Result<()> {
-        self.client
+        let result = self.client
             .delete_message()
             .queue_url(&self.queue_url)
             .receipt_handle(receipt_handle)
             .send()
-            .await
-            .map_err(|e| QueueError::Sqs(e.to_string()))?;
+            .await;
 
-        self.total_acked.fetch_add(1, Ordering::Relaxed);
-        debug!(
-            receipt_handle = %receipt_handle,
-            queue = %self.queue_name,
-            "Message acknowledged in SQS"
-        );
-        Ok(())
+        // Clean up tracking regardless of result
+        let msg_id = self.receipt_to_message_id.lock().remove(receipt_handle);
+
+        match result {
+            Ok(_) => {
+                self.total_acked.fetch_add(1, Ordering::Relaxed);
+                debug!(
+                    receipt_handle = %receipt_handle,
+                    queue = %self.queue_name,
+                    "Message acknowledged in SQS"
+                );
+                Ok(())
+            }
+            Err(e) => {
+                // Java: if delete fails (e.g. expired receipt handle), add SQS message ID
+                // to pending-delete set so it gets deleted on next poll instead of reprocessed
+                if let Some(id) = msg_id {
+                    warn!(
+                        queue = %self.queue_name,
+                        message_id = %id,
+                        error = %e,
+                        "ACK failed, adding to pending-delete set for cleanup on next poll"
+                    );
+                    self.pending_delete_ids.lock().insert(id);
+                }
+                Err(QueueError::Sqs(e.to_string()))
+            }
+        }
     }
 
     async fn nack(&self, receipt_handle: &str, delay_seconds: Option<u32>) -> Result<()> {

@@ -1,12 +1,13 @@
 //! Create ClientAuthConfig Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::config_entity::{ClientAuthConfig, AuthConfigType, AuthProvider};
 use crate::auth::config_repository::ClientAuthConfigRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::AuthConfigCreated;
 
@@ -40,19 +41,34 @@ impl<U: UnitOfWork> CreateAuthConfigUseCase<U> {
     pub fn new(auth_config_repo: Arc<ClientAuthConfigRepository>, unit_of_work: Arc<U>) -> Self {
         Self { auth_config_repo, unit_of_work }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl<U: UnitOfWork> UseCase for CreateAuthConfigUseCase<U> {
+    type Command = CreateAuthConfigCommand;
+    type Event = AuthConfigCreated;
+
+    async fn validate(&self, command: &CreateAuthConfigCommand) -> Result<(), UseCaseError> {
+        let email_domain = command.email_domain.trim().to_lowercase();
+        if email_domain.is_empty() {
+            return Err(UseCaseError::validation(
+                "EMAIL_DOMAIN_REQUIRED",
+                "Email domain is required",
+            ));
+        }
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &CreateAuthConfigCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: CreateAuthConfigCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<AuthConfigCreated> {
         let email_domain = command.email_domain.trim().to_lowercase();
-        if email_domain.is_empty() {
-            return UseCaseResult::failure(UseCaseError::validation(
-                "EMAIL_DOMAIN_REQUIRED",
-                "Email domain is required",
-            ));
-        }
 
         // Business rule: email domain must be unique
         if let Ok(Some(_)) = self.auth_config_repo.find_by_email_domain(&email_domain).await {

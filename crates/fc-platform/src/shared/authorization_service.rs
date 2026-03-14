@@ -4,6 +4,8 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Instant;
+use dashmap::DashMap;
 use crate::permissions;
 use crate::RoleRepository;
 use crate::shared::error::{PlatformError, Result};
@@ -99,35 +101,68 @@ impl AuthContext {
     }
 }
 
+/// Cached permission entry with TTL
+struct CachedPermissions {
+    permissions: HashSet<String>,
+    cached_at: Instant,
+}
+
+/// Cache TTL for resolved permissions (60 seconds)
+const PERMISSION_CACHE_TTL_SECS: u64 = 60;
+
 /// Authorization service for checking permissions
 pub struct AuthorizationService {
     role_repo: Arc<RoleRepository>,
+    /// Cache: sorted role codes joined by "," → resolved permissions
+    permission_cache: DashMap<String, CachedPermissions>,
 }
 
 impl AuthorizationService {
     pub fn new(role_repo: Arc<RoleRepository>) -> Self {
-        Self { role_repo }
+        Self {
+            role_repo,
+            permission_cache: DashMap::new(),
+        }
     }
 
     /// Build an authorization context from JWT claims
-    /// Resolves all permissions from roles
+    /// Resolves all permissions from roles (cached)
     pub async fn build_context(&self, claims: &AccessTokenClaims) -> Result<AuthContext> {
         let permissions = self.resolve_permissions(&claims.roles).await?;
         Ok(AuthContext::from_claims_with_permissions(claims, permissions))
     }
 
-    /// Resolve all permissions for a set of role codes
+    /// Resolve all permissions for a set of role codes, with in-memory caching
     async fn resolve_permissions(&self, role_codes: &[String]) -> Result<HashSet<String>> {
         if role_codes.is_empty() {
             return Ok(HashSet::new());
         }
 
+        // Build cache key from sorted role codes
+        let mut sorted_codes = role_codes.to_vec();
+        sorted_codes.sort();
+        let cache_key = sorted_codes.join(",");
+
+        // Check cache
+        if let Some(entry) = self.permission_cache.get(&cache_key) {
+            if entry.cached_at.elapsed().as_secs() < PERMISSION_CACHE_TTL_SECS {
+                return Ok(entry.permissions.clone());
+            }
+        }
+
+        // Cache miss or expired — query DB
         let roles = self.role_repo.find_by_codes(role_codes).await?;
         let mut permissions = HashSet::new();
 
         for role in roles {
             permissions.extend(role.permissions);
         }
+
+        // Store in cache
+        self.permission_cache.insert(cache_key, CachedPermissions {
+            permissions: permissions.clone(),
+            cached_at: Instant::now(),
+        });
 
         Ok(permissions)
     }

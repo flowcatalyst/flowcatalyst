@@ -210,8 +210,8 @@ mod tests {
         assert!(id.starts_with("prn_"));
         let id = TsidGenerator::generate(EntityType::Application);
         assert!(id.starts_with("app_"));
-        let id = TsidGenerator::generate(EntityType::Event);
-        assert!(id.starts_with("evn_"));
+        let id = TsidGenerator::generate_untyped();
+        assert_eq!(id.len(), 13);
         let id = TsidGenerator::generate(EntityType::AuditLog);
         assert!(id.starts_with("aud_"));
     }

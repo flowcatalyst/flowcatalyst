@@ -1,12 +1,13 @@
 //! Archive Dispatch Pool Use Case
 
 use std::sync::Arc;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::DispatchPoolStatus;
 use crate::DispatchPoolRepository;
 use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCaseError, UseCaseResult,
+    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
 };
 use super::events::DispatchPoolArchived;
 
@@ -34,8 +35,22 @@ impl<U: UnitOfWork> ArchiveDispatchPoolUseCase<U> {
             unit_of_work,
         }
     }
+}
 
-    pub async fn execute(
+#[async_trait]
+impl<U: UnitOfWork> UseCase for ArchiveDispatchPoolUseCase<U> {
+    type Command = ArchiveDispatchPoolCommand;
+    type Event = DispatchPoolArchived;
+
+    async fn validate(&self, _command: &ArchiveDispatchPoolCommand) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn authorize(&self, _command: &ArchiveDispatchPoolCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
         &self,
         command: ArchiveDispatchPoolCommand,
         ctx: ExecutionContext,

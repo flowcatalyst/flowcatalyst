@@ -119,7 +119,14 @@ pub struct ProcessPool {
 
 impl ProcessPool {
     pub fn new(config: PoolConfig, mediator: Arc<dyn Mediator>) -> Self {
-        let concurrency_val = config.concurrency;
+        // Java: effectiveConcurrency() — if concurrency is 0, fall back to max(rateLimitPerMinute/60, 1)
+        let concurrency_val = if config.concurrency == 0 {
+            config.rate_limit_per_minute
+                .map(|rpm| (rpm / 60).max(1))
+                .unwrap_or(1)
+        } else {
+            config.concurrency
+        };
 
         let rate_limiter = config.rate_limit_per_minute.and_then(|rpm| {
             NonZeroU32::new(rpm).map(|nz| {

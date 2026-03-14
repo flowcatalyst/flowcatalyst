@@ -1,19 +1,43 @@
 //! OAuth Client Repository — PostgreSQL via SeaORM
+//!
+//! Includes an in-memory TTL cache for `find_by_client_id` (the hot path
+//! during OAuth authorize/token flows), matching the TS oidc-provider
+//! adapter caching pattern.
 
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use sea_orm::*;
 use chrono::Utc;
+use tokio::sync::RwLock;
 
 use crate::auth::oauth_entity::{OAuthClient, GrantType};
 use crate::entities::{oauth_clients, oauth_client_collections};
 use crate::shared::error::Result;
 
+struct CacheEntry {
+    client: OAuthClient,
+    inserted_at: Instant,
+}
+
 pub struct OAuthClientRepository {
     db: DatabaseConnection,
+    /// In-memory cache keyed by client_id (public OAuth identifier)
+    cache_by_client_id: RwLock<HashMap<String, CacheEntry>>,
+    cache_ttl: Duration,
 }
 
 impl OAuthClientRepository {
     pub fn new(db: &DatabaseConnection) -> Self {
-        Self { db: db.clone() }
+        Self {
+            db: db.clone(),
+            cache_by_client_id: RwLock::new(HashMap::new()),
+            cache_ttl: Duration::from_secs(300), // 5 minutes
+        }
+    }
+
+    /// Invalidate cache entries for a client
+    async fn invalidate_cache(&self, client: &OAuthClient) {
+        self.cache_by_client_id.write().await.remove(&client.client_id);
     }
 
     // ── Junction table helpers ───────────────────────────────────
@@ -121,6 +145,7 @@ impl OAuthClientRepository {
         self.save_redirect_uris(&client.id, &client.redirect_uris).await?;
         self.save_grant_types(&client.id, &client.grant_types).await?;
         self.save_application_ids(&client.id, &client.application_ids).await?;
+        self.invalidate_cache(client).await;
         Ok(())
     }
 
@@ -133,12 +158,30 @@ impl OAuthClientRepository {
     }
 
     pub async fn find_by_client_id(&self, client_id: &str) -> Result<Option<OAuthClient>> {
+        // Check cache first (hot path for OAuth authorize/token flows)
+        {
+            let cache = self.cache_by_client_id.read().await;
+            if let Some(entry) = cache.get(client_id) {
+                if entry.inserted_at.elapsed() < self.cache_ttl {
+                    return Ok(Some(entry.client.clone()));
+                }
+            }
+        }
+
         let result = oauth_clients::Entity::find()
             .filter(oauth_clients::Column::ClientId.eq(client_id))
             .one(&self.db)
             .await?;
         match result {
-            Some(m) => Ok(Some(self.hydrate(OAuthClient::from(m)).await?)),
+            Some(m) => {
+                let client = self.hydrate(OAuthClient::from(m)).await?;
+                // Populate cache
+                self.cache_by_client_id.write().await.insert(
+                    client_id.to_string(),
+                    CacheEntry { client: client.clone(), inserted_at: Instant::now() },
+                );
+                Ok(Some(client))
+            }
             None => Ok(None),
         }
     }
@@ -221,10 +264,24 @@ impl OAuthClientRepository {
         self.save_redirect_uris(&client.id, &client.redirect_uris).await?;
         self.save_grant_types(&client.id, &client.grant_types).await?;
         self.save_application_ids(&client.id, &client.application_ids).await?;
+        self.invalidate_cache(client).await;
         Ok(())
     }
 
     pub async fn delete(&self, id: &str) -> Result<bool> {
+        // Evict from cache before delete
+        {
+            let cache = self.cache_by_client_id.read().await;
+            // Find the client_id key to evict (reverse lookup)
+            let client_id_key: Option<String> = cache.iter()
+                .find(|(_, entry)| entry.client.id == id)
+                .map(|(k, _)| k.clone());
+            drop(cache);
+            if let Some(key) = client_id_key {
+                self.cache_by_client_id.write().await.remove(&key);
+            }
+        }
+
         // Junction tables cascade or delete manually
         oauth_client_collections::redirect_uris::Entity::delete_many()
             .filter(oauth_client_collections::redirect_uris::Column::OauthClientId.eq(id))

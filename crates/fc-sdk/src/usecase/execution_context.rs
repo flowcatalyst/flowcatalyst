@@ -109,6 +109,32 @@ impl ExecutionContext {
         }
     }
 
+    /// Create an execution context from an [`AuthContext`](crate::auth::AuthContext).
+    ///
+    /// Bridges the auth layer to the use case layer by extracting the
+    /// principal_id from the validated token claims.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use fc_sdk::usecase::ExecutionContext;
+    ///
+    /// let ctx = ExecutionContext::from_auth(&auth_context);
+    /// let result = use_case.execute(command, ctx).await;
+    /// ```
+    #[cfg(feature = "auth")]
+    pub fn from_auth(auth: &crate::auth::AuthContext) -> Self {
+        Self::create(auth.principal_id())
+    }
+
+    /// Create an execution context from [`AccessTokenClaims`](crate::auth::AccessTokenClaims).
+    ///
+    /// Use this when you have the raw claims without a full AuthContext.
+    #[cfg(feature = "auth")]
+    pub fn from_claims(claims: &crate::auth::AccessTokenClaims) -> Self {
+        Self::create(claims.principal_id())
+    }
+
     /// Create a child context within the same execution.
     pub fn with_causation(&self, causing_event_id: impl Into<String>) -> Self {
         Self {

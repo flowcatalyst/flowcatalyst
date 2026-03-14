@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use crate::usecase::ExecutionContext;
 use crate::usecase::domain_event::EventMetadata;
 use crate::TsidGenerator;
-use crate::EntityType;
 use crate::impl_domain_event;
 
 /// Event emitted when a new application is created.
@@ -34,7 +33,7 @@ impl ApplicationCreated {
         name: &str,
         application_type: &str,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.application.{}", application_id);
         let message_group = format!("platform:application:{}", application_id);
 
@@ -86,7 +85,7 @@ impl ApplicationUpdated {
         name: Option<&str>,
         description: Option<&str>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.application.{}", application_id);
         let message_group = format!("platform:application:{}", application_id);
 
@@ -129,7 +128,7 @@ impl ApplicationActivated {
     const SOURCE: &'static str = "platform:application";
 
     pub fn new(ctx: &ExecutionContext, application_id: &str, code: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.application.{}", application_id);
         let message_group = format!("platform:application:{}", application_id);
 
@@ -171,7 +170,7 @@ impl ApplicationDeactivated {
     const SOURCE: &'static str = "platform:application";
 
     pub fn new(ctx: &ExecutionContext, application_id: &str, code: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.application.{}", application_id);
         let message_group = format!("platform:application:{}", application_id);
 
@@ -221,7 +220,7 @@ impl ApplicationServiceAccountProvisioned {
         service_account_id: &str,
         service_account_code: &str,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.application.{}", application_id);
         let message_group = format!("platform:application:{}", application_id);
 
@@ -266,7 +265,7 @@ impl ApplicationDeleted {
     const SOURCE: &'static str = "platform:application";
 
     pub fn new(ctx: &ExecutionContext, application_id: &str, code: &str, name: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.application.{}", application_id);
         let message_group = format!("platform:application:{}", application_id);
 
@@ -304,7 +303,7 @@ impl ApplicationEnabledForClient {
     const SOURCE: &'static str = "platform:application";
 
     pub fn new(ctx: &ExecutionContext, application_id: &str, client_id: &str, config_id: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.application.{}", application_id);
         let message_group = format!("platform:application:{}", application_id);
 
@@ -342,7 +341,7 @@ impl ApplicationDisabledForClient {
     const SOURCE: &'static str = "platform:application";
 
     pub fn new(ctx: &ExecutionContext, application_id: &str, client_id: &str, config_id: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.application.{}", application_id);
         let message_group = format!("platform:application:{}", application_id);
 

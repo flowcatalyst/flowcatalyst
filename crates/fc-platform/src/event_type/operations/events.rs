@@ -4,12 +4,11 @@ use serde::{Deserialize, Serialize};
 use crate::usecase::ExecutionContext;
 use crate::usecase::domain_event::EventMetadata;
 use crate::TsidGenerator;
-use crate::EntityType;
 use crate::impl_domain_event;
 
 /// Event emitted when a new event type is created.
 ///
-/// Event type: `platform:control-plane:eventtype:created`
+/// Event type: `platform:admin:eventtype:created`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventTypeCreated {
@@ -33,9 +32,9 @@ pub struct EventTypeCreated {
 impl_domain_event!(EventTypeCreated);
 
 impl EventTypeCreated {
-    const EVENT_TYPE: &'static str = "platform:control-plane:eventtype:created";
+    const EVENT_TYPE: &'static str = "platform:admin:eventtype:created";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:control-plane";
+    const SOURCE: &'static str = "platform:admin";
 
     /// Create a new EventTypeCreated event from an ExecutionContext.
     pub fn new(
@@ -50,7 +49,7 @@ impl EventTypeCreated {
         event_name: &str,
         client_id: Option<&str>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.eventtype.{}", event_type_id);
         let message_group = format!("platform:eventtype:{}", event_type_id);
 
@@ -125,7 +124,7 @@ impl EventTypeCreatedBuilder {
 
     /// Initialize from execution context (like Java's .from(ctx))
     pub fn from_context(mut self, ctx: &ExecutionContext) -> Self {
-        self.event_id = Some(TsidGenerator::generate(EntityType::Event));
+        self.event_id = Some(TsidGenerator::generate_untyped());
         self.execution_id = Some(ctx.execution_id.clone());
         self.correlation_id = Some(ctx.correlation_id.clone());
         self.causation_id = ctx.causation_id.clone();
@@ -179,7 +178,7 @@ impl EventTypeCreatedBuilder {
     }
 
     pub fn build(self) -> EventTypeCreated {
-        let event_id = self.event_id.unwrap_or_else(|| TsidGenerator::generate(EntityType::Event));
+        let event_id = self.event_id.unwrap_or_else(|| TsidGenerator::generate_untyped());
         let event_type_id = self.event_type_id.expect("event_type_id is required");
         let subject = format!("platform.eventtype.{}", event_type_id);
         let message_group = format!("platform:eventtype:{}", event_type_id);
@@ -233,9 +232,9 @@ pub struct EventTypeUpdated {
 impl_domain_event!(EventTypeUpdated);
 
 impl EventTypeUpdated {
-    const EVENT_TYPE: &'static str = "platform:control-plane:eventtype:updated";
+    const EVENT_TYPE: &'static str = "platform:admin:eventtype:updated";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:control-plane";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(
         ctx: &ExecutionContext,
@@ -243,7 +242,7 @@ impl EventTypeUpdated {
         name: Option<&str>,
         description: Option<&str>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.eventtype.{}", event_type_id);
         let message_group = format!("platform:eventtype:{}", event_type_id);
 
@@ -281,12 +280,12 @@ pub struct EventTypeArchived {
 impl_domain_event!(EventTypeArchived);
 
 impl EventTypeArchived {
-    const EVENT_TYPE: &'static str = "platform:control-plane:eventtype:archived";
+    const EVENT_TYPE: &'static str = "platform:admin:eventtype:archived";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:control-plane";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, event_type_id: &str, code: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.eventtype.{}", event_type_id);
         let message_group = format!("platform:eventtype:{}", event_type_id);
 
@@ -325,12 +324,12 @@ pub struct SchemaAdded {
 impl_domain_event!(SchemaAdded);
 
 impl SchemaAdded {
-    const EVENT_TYPE: &'static str = "platform:control-plane:eventtype:schema-added";
+    const EVENT_TYPE: &'static str = "platform:admin:eventtype:schema-added";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:control-plane";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, event_type_id: &str, version: &str, mime_type: &str, schema_type: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.eventtype.{}", event_type_id);
         let message_group = format!("platform:eventtype:{}", event_type_id);
 
@@ -365,12 +364,12 @@ pub struct SchemaFinalised {
 impl_domain_event!(SchemaFinalised);
 
 impl SchemaFinalised {
-    const EVENT_TYPE: &'static str = "platform:control-plane:eventtype:schema-finalised";
+    const EVENT_TYPE: &'static str = "platform:admin:eventtype:schema-finalised";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:control-plane";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, event_type_id: &str, version: &str, deprecated_version: Option<&str>) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.eventtype.{}", event_type_id);
         let message_group = format!("platform:eventtype:{}", event_type_id);
 
@@ -402,12 +401,12 @@ pub struct SchemaDeprecated {
 impl_domain_event!(SchemaDeprecated);
 
 impl SchemaDeprecated {
-    const EVENT_TYPE: &'static str = "platform:control-plane:eventtype:schema-deprecated";
+    const EVENT_TYPE: &'static str = "platform:admin:eventtype:schema-deprecated";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:control-plane";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, event_type_id: &str, version: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.eventtype.{}", event_type_id);
         let message_group = format!("platform:eventtype:{}", event_type_id);
 
@@ -438,12 +437,12 @@ pub struct EventTypeDeleted {
 impl_domain_event!(EventTypeDeleted);
 
 impl EventTypeDeleted {
-    const EVENT_TYPE: &'static str = "platform:control-plane:eventtype:deleted";
+    const EVENT_TYPE: &'static str = "platform:admin:eventtype:deleted";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:control-plane";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, event_type_id: &str, code: &str) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.eventtype.{}", event_type_id);
         let message_group = format!("platform:eventtype:{}", event_type_id);
 
@@ -477,9 +476,9 @@ pub struct EventTypesSynced {
 impl_domain_event!(EventTypesSynced);
 
 impl EventTypesSynced {
-    const EVENT_TYPE: &'static str = "platform:control-plane:eventtypes:synced";
+    const EVENT_TYPE: &'static str = "platform:admin:eventtypes:synced";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:control-plane";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(
         ctx: &ExecutionContext,
@@ -489,7 +488,7 @@ impl EventTypesSynced {
         deleted: u32,
         synced_codes: Vec<String>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.application.{}", application_code);
         let message_group = format!("platform:application:{}", application_code);
 
@@ -530,7 +529,7 @@ mod tests {
             .event_name("shipped")
             .build();
 
-        assert_eq!(event.event_type(), "platform:control-plane:eventtype:created");
+        assert_eq!(event.event_type(), "platform:admin:eventtype:created");
         assert_eq!(event.event_type_id, "0HZXEQ5Y8JY5Z");
         assert_eq!(event.code, "orders:fulfillment:shipment:shipped");
         assert_eq!(event.principal_id(), "user-123");
@@ -567,7 +566,7 @@ mod tests {
             Some("New Description"),
         );
 
-        assert_eq!(event.event_type(), "platform:control-plane:eventtype:updated");
+        assert_eq!(event.event_type(), "platform:admin:eventtype:updated");
         assert_eq!(event.event_type_id, "et-123");
         assert_eq!(event.name, Some("New Name".to_string()));
     }
@@ -577,7 +576,7 @@ mod tests {
         let ctx = ExecutionContext::create("user-123");
         let event = EventTypeArchived::new(&ctx, "et-123", "orders:fulfillment:order:created");
 
-        assert_eq!(event.event_type(), "platform:control-plane:eventtype:archived");
+        assert_eq!(event.event_type(), "platform:admin:eventtype:archived");
         assert_eq!(event.code, "orders:fulfillment:order:created");
     }
 }

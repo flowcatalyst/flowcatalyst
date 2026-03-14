@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use crate::usecase::ExecutionContext;
 use crate::usecase::domain_event::EventMetadata;
 use crate::TsidGenerator;
-use crate::EntityType;
 use crate::impl_domain_event;
 
 /// Event emitted when a new connection is created.
@@ -26,9 +25,9 @@ pub struct ConnectionCreated {
 impl_domain_event!(ConnectionCreated);
 
 impl ConnectionCreated {
-    const EVENT_TYPE: &'static str = "platform:control-plane:connection:created";
+    const EVENT_TYPE: &'static str = "platform:admin:connection:created";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:control-plane";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(
         ctx: &ExecutionContext,
@@ -39,7 +38,7 @@ impl ConnectionCreated {
         service_account_id: &str,
         client_id: Option<&str>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.connection.{}", connection_id);
         let message_group = format!("platform:connection:{}", connection_id);
 
@@ -80,9 +79,9 @@ pub struct ConnectionUpdated {
 impl_domain_event!(ConnectionUpdated);
 
 impl ConnectionUpdated {
-    const EVENT_TYPE: &'static str = "platform:control-plane:connection:updated";
+    const EVENT_TYPE: &'static str = "platform:admin:connection:updated";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:control-plane";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(
         ctx: &ExecutionContext,
@@ -92,7 +91,7 @@ impl ConnectionUpdated {
         endpoint: Option<&str>,
         status: Option<&str>,
     ) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.connection.{}", connection_id);
         let message_group = format!("platform:connection:{}", connection_id);
 
@@ -128,12 +127,12 @@ pub struct ConnectionDeleted {
 impl_domain_event!(ConnectionDeleted);
 
 impl ConnectionDeleted {
-    const EVENT_TYPE: &'static str = "platform:control-plane:connection:deleted";
+    const EVENT_TYPE: &'static str = "platform:admin:connection:deleted";
     const SPEC_VERSION: &'static str = "1.0";
-    const SOURCE: &'static str = "platform:control-plane";
+    const SOURCE: &'static str = "platform:admin";
 
     pub fn new(ctx: &ExecutionContext, connection_id: &str, code: &str, client_id: Option<&str>) -> Self {
-        let event_id = TsidGenerator::generate(EntityType::Event);
+        let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.connection.{}", connection_id);
         let message_group = format!("platform:connection:{}", connection_id);
 
