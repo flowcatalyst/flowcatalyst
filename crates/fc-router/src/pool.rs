@@ -427,7 +427,7 @@ impl ProcessPool {
         metrics_collector: Arc<PoolMetricsCollector>,
         warning_service: Option<Arc<crate::warning::WarningService>>,
     ) {
-        info!(group_id = %group_id, pool_code = %pool_code, "Group worker started");
+        debug!(group_id = %group_id, pool_code = %pool_code, "Group worker started");
 
         // Idle timeout for cleanup
         let idle_timeout = Duration::from_secs(300); // 5 minutes
@@ -627,7 +627,7 @@ impl ProcessPool {
             }
         }
 
-        info!(group_id = %group_id, pool_code = %pool_code, "Group worker exited");
+        debug!(group_id = %group_id, pool_code = %pool_code, "Group worker exited");
     }
 
     /// Decrement batch+group message count and cleanup tracking maps when count reaches zero.

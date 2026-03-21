@@ -468,7 +468,7 @@ impl HttpMediator {
                         }
                     }
 
-                    info!(
+                    debug!(
                         message_id = %message.id,
                         status_code = status_code,
                         "Message delivered successfully"
