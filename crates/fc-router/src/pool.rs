@@ -430,7 +430,7 @@ impl ProcessPool {
         debug!(group_id = %group_id, pool_code = %pool_code, "Group worker started");
 
         // Idle timeout for cleanup
-        let idle_timeout = Duration::from_secs(300); // 5 minutes
+        let idle_timeout = Duration::from_secs(10); // 10 seconds — clean up quickly after last message
 
         loop {
             // Biased select: always drain high-priority messages before regular ones.
@@ -490,9 +490,20 @@ impl ProcessPool {
                 }
             }
 
-            // Wait for rate limit permit (blocking with config-change awareness)
-            // Messages stay in memory instead of being NACKed back to SQS
-            Self::wait_for_rate_limit_permit(&rate_limiter, &metrics_collector).await;
+            // Wait for rate limit permit (with timeout to prevent stall)
+            let got_permit = Self::wait_for_rate_limit_permit(&rate_limiter, &metrics_collector).await;
+            if !got_permit {
+                // Timed out waiting for rate limit permit — NACK back to SQS for later retry
+                if let Some(ref key) = task.batch_group_key {
+                    Self::decrement_and_cleanup_batch_group_static(
+                        key,
+                        &batch_group_message_count,
+                        &failed_batch_groups,
+                    );
+                }
+                task.callback.nack(Some(10)).await;
+                continue;
+            }
 
             // Acquire semaphore permit
             let permit = match semaphore.acquire().await {
@@ -685,28 +696,37 @@ impl ProcessPool {
             .unwrap_or(false)
     }
 
-    /// Waits for a rate limit permit, handling config changes gracefully.
-    /// Uses a timed poll loop to detect when rate limiter is replaced or removed.
-    ///
-    /// This method handles the following scenarios:
-    /// - Rate limit removed (100→null): Returns immediately on next check
-    /// - Rate limit changed (100→200): Uses new limiter on next poll
-    /// - Permits available: check() succeeds immediately
+    /// Maximum time to wait for a rate limit permit before giving up.
+    /// Matches TS RateLimiterQueue overflow behavior — if we can't get a permit
+    /// within this window, return false so the caller can NACK the message.
+    const RATE_LIMIT_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
+
+    /// Waits for a rate limit permit, with a timeout to prevent indefinite blocking.
+    /// Returns true if permit was acquired, false if timed out (caller should NACK).
     async fn wait_for_rate_limit_permit(
         rate_limiter: &Arc<parking_lot::RwLock<Option<Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock>>>>>,
         metrics_collector: &Arc<PoolMetricsCollector>,
-    ) {
+    ) -> bool {
         let mut recorded_rate_limit = false;
+        let started = std::time::Instant::now();
 
         loop {
             // Read current rate limiter (may have changed via config update)
             let limiter = rate_limiter.read().clone();
 
             match limiter {
-                None => return, // No rate limiting configured, proceed immediately
+                None => return true, // No rate limiting configured, proceed immediately
                 Some(rl) => {
                     if rl.check().is_ok() {
-                        return; // Got permit, proceed with processing
+                        return true; // Got permit, proceed with processing
+                    }
+
+                    // Check timeout — don't block forever
+                    if started.elapsed() > Self::RATE_LIMIT_WAIT_TIMEOUT {
+                        metrics_collector.record_rate_limited();
+                        warn!("Rate limit wait timeout after {}s — NACKing message",
+                            Self::RATE_LIMIT_WAIT_TIMEOUT.as_secs());
+                        return false;
                     }
 
                     // Record rate limit event once per wait (not every poll)
@@ -717,7 +737,6 @@ impl ProcessPool {
                     }
 
                     // No permit available - wait briefly then re-check
-                    // This handles: rate limit removed, rate limit changed, permits available
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             }
