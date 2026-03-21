@@ -65,6 +65,8 @@ struct EndpointCircuitBreaker {
     rejected_calls: AtomicU64,
     last_failure_time: RwLock<Option<Instant>>,
     last_state_change: RwLock<Instant>,
+    /// Last time any call (success, failure, or rejected) was recorded
+    last_activity: RwLock<Instant>,
     half_open_success_count: RwLock<u32>,
 
     // Configuration
@@ -88,6 +90,7 @@ impl EndpointCircuitBreaker {
             rejected_calls: AtomicU64::new(0),
             last_failure_time: RwLock::new(None),
             last_state_change: RwLock::new(Instant::now()),
+            last_activity: RwLock::new(Instant::now()),
             half_open_success_count: RwLock::new(0),
             failure_rate_threshold: config.failure_rate_threshold,
             min_calls: config.min_calls,
@@ -109,6 +112,7 @@ impl EndpointCircuitBreaker {
 
     fn record_success(&self) {
         self.successful_calls.fetch_add(1, Ordering::Relaxed);
+        *self.last_activity.write() = Instant::now();
 
         let mut results = self.recent_results.write();
         if results.len() >= self.buffer_size as usize {
@@ -131,6 +135,7 @@ impl EndpointCircuitBreaker {
 
     fn record_failure(&self) {
         self.failed_calls.fetch_add(1, Ordering::Relaxed);
+        *self.last_activity.write() = Instant::now();
         *self.last_failure_time.write() = Some(Instant::now());
 
         let mut results = self.recent_results.write();
@@ -163,6 +168,7 @@ impl EndpointCircuitBreaker {
 
     fn record_rejected(&self) {
         self.rejected_calls.fetch_add(1, Ordering::Relaxed);
+        *self.last_activity.write() = Instant::now();
     }
 
     fn allow_request(&self) -> bool {
@@ -330,6 +336,31 @@ impl CircuitBreakerRegistry {
         for breaker in breakers.values() {
             breaker.reset();
         }
+    }
+
+    /// Evict circuit breakers that have been idle (no calls) for longer than `max_idle`.
+    /// Returns the number of breakers evicted.
+    pub fn evict_idle(&self, max_idle: Duration) -> usize {
+        let idle_keys: Vec<String> = {
+            let breakers = self.breakers.read();
+            breakers
+                .iter()
+                .filter(|(_, b)| b.last_activity.read().elapsed() > max_idle)
+                .map(|(k, _)| k.clone())
+                .collect()
+        };
+
+        if idle_keys.is_empty() {
+            return 0;
+        }
+
+        let mut breakers = self.breakers.write();
+        let mut evicted = 0;
+        for key in &idle_keys {
+            breakers.remove(key);
+            evicted += 1;
+        }
+        evicted
     }
 
     /// Get count of open circuit breakers

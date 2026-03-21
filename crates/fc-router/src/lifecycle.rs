@@ -18,8 +18,11 @@ use fc_common::{WarningCategory, WarningSeverity};
 use crate::manager::QueueManager;
 use crate::health::HealthService;
 use crate::warning::WarningService;
+use crate::circuit_breaker_registry::CircuitBreakerRegistry;
 use crate::config_sync::{ConfigSyncService, spawn_config_sync_task};
 use crate::standby::{StandbyProcessor, spawn_leadership_monitor};
+#[cfg(feature = "oidc-flow")]
+use crate::api::oidc_flow::{SessionStore, PendingOidcStateStore};
 
 /// Configuration for the lifecycle manager
 #[derive(Debug, Clone)]
@@ -36,6 +39,14 @@ pub struct LifecycleConfig {
     pub health_report_interval: Duration,
     /// Consumer restart delay after detecting a stall
     pub consumer_restart_delay: Duration,
+    /// Interval for reaping stale in-pipeline entries and idle circuit breakers
+    pub reaper_interval: Duration,
+    /// Max age for in-pipeline entries before they are reaped
+    pub in_pipeline_max_age: Duration,
+    /// Max age for pending-delete broker IDs before they are reaped
+    pub pending_delete_max_age: Duration,
+    /// Max idle time for circuit breakers before eviction
+    pub circuit_breaker_max_idle: Duration,
 }
 
 impl Default for LifecycleConfig {
@@ -47,6 +58,10 @@ impl Default for LifecycleConfig {
             warning_cleanup_interval: Duration::from_secs(300),  // 5 minutes
             health_report_interval: Duration::from_secs(60),
             consumer_restart_delay: Duration::from_secs(5),
+            reaper_interval: Duration::from_secs(60),
+            in_pipeline_max_age: Duration::from_secs(900),          // 15 minutes
+            pending_delete_max_age: Duration::from_secs(600),       // 10 minutes
+            circuit_breaker_max_idle: Duration::from_secs(3600),    // 1 hour
         }
     }
 }
@@ -60,6 +75,14 @@ pub struct LifecycleManager {
     config_sync: Option<Arc<ConfigSyncService>>,
     /// Optional standby processor
     standby: Option<Arc<StandbyProcessor>>,
+    /// Optional circuit breaker registry for idle eviction
+    circuit_breaker_registry: Option<Arc<CircuitBreakerRegistry>>,
+    /// Optional OIDC session store for periodic cleanup
+    #[cfg(feature = "oidc-flow")]
+    session_store: Option<Arc<SessionStore>>,
+    /// Optional OIDC pending state store for periodic cleanup
+    #[cfg(feature = "oidc-flow")]
+    pending_oidc_states: Option<Arc<PendingOidcStateStore>>,
 }
 
 impl LifecycleManager {
@@ -75,6 +98,11 @@ impl LifecycleManager {
             health_service,
             config_sync: None,
             standby: None,
+            circuit_breaker_registry: None,
+            #[cfg(feature = "oidc-flow")]
+            session_store: None,
+            #[cfg(feature = "oidc-flow")]
+            pending_oidc_states: None,
         }
     }
 
@@ -272,6 +300,54 @@ impl LifecycleManager {
             });
         }
 
+        // Stale entry reaper (in_pipeline, pending_delete, circuit breakers, health service)
+        {
+            let manager = manager.clone();
+            let health_service = health_service.clone();
+            let mut shutdown_rx = shutdown_tx.subscribe();
+            let interval = config.reaper_interval;
+            let in_pipeline_max_age = config.in_pipeline_max_age;
+            let pending_delete_max_age = config.pending_delete_max_age;
+
+            tokio::spawn(async move {
+                let mut ticker = tokio::time::interval(interval);
+
+                loop {
+                    tokio::select! {
+                        _ = ticker.tick() => {
+                            debug!("Running stale entry reaper");
+
+                            // Reap stale in_pipeline and pending_delete entries
+                            let (reaped_pipeline, reaped_pending) = manager.reap_stale_entries(
+                                in_pipeline_max_age,
+                                pending_delete_max_age,
+                            );
+
+                            // Clean up draining pools that have finished
+                            manager.cleanup_draining_pools().await;
+
+                            // Remove stale health service entries for destroyed pools/consumers
+                            let pool_codes = manager.pool_codes();
+                            let consumer_ids = manager.consumer_ids().await;
+                            health_service.remove_stale_entries(&pool_codes, &consumer_ids);
+
+                            if reaped_pipeline > 0 || reaped_pending > 0 {
+                                info!(
+                                    reaped_pipeline = reaped_pipeline,
+                                    reaped_pending = reaped_pending,
+                                    "Reaper cycle complete"
+                                );
+                            }
+                        }
+                        _ = shutdown_rx.recv() => {
+                            info!("Stale entry reaper shutting down");
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+
         info!("Lifecycle manager started with all background tasks");
 
         Self {
@@ -280,6 +356,11 @@ impl LifecycleManager {
             health_service,
             config_sync: None,
             standby: None,
+            circuit_breaker_registry: None,
+            #[cfg(feature = "oidc-flow")]
+            session_store: None,
+            #[cfg(feature = "oidc-flow")]
+            pending_oidc_states: None,
         }
     }
 
@@ -369,6 +450,68 @@ impl LifecycleManager {
     /// Get the shutdown sender for spawning additional tasks
     pub fn shutdown_sender(&self) -> broadcast::Sender<()> {
         self.shutdown_tx.clone()
+    }
+
+    /// Set the circuit breaker registry for periodic idle eviction.
+    /// Starts a background task that evicts idle breakers on the warning cleanup interval.
+    pub fn set_circuit_breaker_registry(&mut self, registry: Arc<CircuitBreakerRegistry>, max_idle: Duration) {
+        self.circuit_breaker_registry = Some(registry.clone());
+
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
+        // Run at the same cadence as warning cleanup (5 min)
+        let interval = Duration::from_secs(300);
+
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(interval);
+
+            loop {
+                tokio::select! {
+                    _ = ticker.tick() => {
+                        let evicted = registry.evict_idle(max_idle);
+                        if evicted > 0 {
+                            info!(evicted = evicted, "Evicted idle circuit breakers");
+                        }
+                    }
+                    _ = shutdown_rx.recv() => {
+                        info!("Circuit breaker eviction task shutting down");
+                        break;
+                    }
+                }
+            }
+        });
+    }
+
+    /// Set the OIDC stores for periodic expired-entry cleanup.
+    /// Starts a background task that cleans up expired sessions and pending states.
+    #[cfg(feature = "oidc-flow")]
+    pub fn set_oidc_stores(
+        &mut self,
+        session_store: Arc<SessionStore>,
+        pending_states: Arc<PendingOidcStateStore>,
+    ) {
+        self.session_store = Some(session_store.clone());
+        self.pending_oidc_states = Some(pending_states.clone());
+
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
+        // Clean up every 60 seconds
+        let interval = Duration::from_secs(60);
+
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(interval);
+
+            loop {
+                tokio::select! {
+                    _ = ticker.tick() => {
+                        session_store.cleanup();
+                        pending_states.cleanup();
+                    }
+                    _ = shutdown_rx.recv() => {
+                        info!("OIDC store cleanup task shutting down");
+                        break;
+                    }
+                }
+            }
+        });
     }
 }
 

@@ -326,6 +326,31 @@ impl HealthService {
             );
         }
     }
+
+    /// Remove tracking entries for pools and consumers that no longer exist.
+    /// Call this after config reload to prevent stale entries from accumulating.
+    pub fn remove_stale_entries(&self, active_pool_codes: &[String], active_consumer_ids: &[String]) {
+        // Remove pool counters for pools that no longer exist
+        {
+            let mut counters = self.pool_counters.write();
+            let before = counters.len();
+            counters.retain(|code, _| active_pool_codes.contains(code));
+            let removed = before - counters.len();
+            if removed > 0 {
+                debug!(removed = removed, "Removed stale pool counter entries");
+            }
+        }
+
+        // Remove consumer tracking for consumers that no longer exist
+        {
+            let mut last_poll = self.consumer_last_poll.write();
+            last_poll.retain(|id, _| active_consumer_ids.contains(id));
+        }
+        {
+            let mut running = self.consumer_running.write();
+            running.retain(|id, _| active_consumer_ids.contains(id));
+        }
+    }
 }
 
 #[cfg(test)]

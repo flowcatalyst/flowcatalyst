@@ -6,7 +6,7 @@
 //! - Pool management and lifecycle
 //! - Consumer health monitoring
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -92,7 +92,8 @@ pub struct QueueManager {
     /// (due to expired receipt handle). When these reappear, delete them immediately.
     /// Uses the broker's internal MessageId (not our application message ID) to correctly
     /// distinguish redeliveries from new instructions with the same application ID.
-    pending_delete_broker_ids: Arc<Mutex<HashSet<String>>>,
+    /// Each entry includes the insertion time for TTL-based eviction.
+    pending_delete_broker_ids: Arc<Mutex<HashMap<String, Instant>>>,
 
     /// Maximum number of pools allowed
     max_pools: usize,
@@ -143,7 +144,7 @@ impl QueueManager {
             running: AtomicBool::new(true),
             shutdown_tx,
             batch_counter: std::sync::atomic::AtomicU64::new(0),
-            pending_delete_broker_ids: Arc::new(Mutex::new(HashSet::new())),
+            pending_delete_broker_ids: Arc::new(Mutex::new(HashMap::new())),
             max_pools,
             pool_warning_threshold,
             stall_config,
@@ -491,7 +492,7 @@ impl QueueManager {
             let mut pending_delete = self.pending_delete_broker_ids.lock();
             for msg in messages {
                 let should_delete = msg.broker_message_id.as_ref()
-                    .map(|broker_id| pending_delete.remove(broker_id))
+                    .map(|broker_id| pending_delete.remove(broker_id).is_some())
                     .unwrap_or(false);
 
                 if should_delete {
@@ -676,7 +677,7 @@ impl QueueManager {
                                             error = %e,
                                             "ACK failed (receipt handle likely expired) - adding to pending delete"
                                         );
-                                        pending_delete.lock().insert(broker_id);
+                                        pending_delete.lock().insert(broker_id, Instant::now());
                                     } else {
                                         error!(
                                             app_message_id = %app_message_id_clone,
@@ -1067,6 +1068,56 @@ impl QueueManager {
         }
 
         true
+    }
+
+    /// Reap stale entries from in-memory tracking maps.
+    ///
+    /// Evicts `in_pipeline` and `app_message_to_pipeline_key` entries older than
+    /// `max_age`, which indicates the ACK callback task is stuck or was dropped.
+    /// Also evicts `pending_delete_broker_ids` entries older than `pending_delete_max_age`
+    /// (messages that were processed but never re-polled for deletion).
+    pub fn reap_stale_entries(&self, max_age: Duration, pending_delete_max_age: Duration) -> (usize, usize) {
+        // Reap stale in_pipeline entries
+        let mut reaped_pipeline = 0;
+        let stale_keys: Vec<String> = self.in_pipeline
+            .iter()
+            .filter(|entry| entry.value().started_at.elapsed() > max_age)
+            .map(|entry| entry.key().clone())
+            .collect();
+
+        for key in &stale_keys {
+            if let Some((_, entry)) = self.in_pipeline.remove(key) {
+                // Also remove the app_message_id mapping
+                self.app_message_to_pipeline_key.remove(&entry.message_id);
+                reaped_pipeline += 1;
+            }
+        }
+
+        if reaped_pipeline > 0 {
+            warn!(
+                reaped = reaped_pipeline,
+                max_age_seconds = max_age.as_secs(),
+                "Reaped stale in_pipeline entries (likely orphaned by dropped ACK tasks)"
+            );
+        }
+
+        // Reap stale pending_delete_broker_ids entries
+        let reaped_pending = {
+            let mut pending = self.pending_delete_broker_ids.lock();
+            let before = pending.len();
+            pending.retain(|_, inserted_at| inserted_at.elapsed() < pending_delete_max_age);
+            before - pending.len()
+        };
+
+        if reaped_pending > 0 {
+            info!(
+                reaped = reaped_pending,
+                max_age_seconds = pending_delete_max_age.as_secs(),
+                "Reaped stale pending_delete_broker_ids entries"
+            );
+        }
+
+        (reaped_pipeline, reaped_pending)
     }
 
     // ============================================================================
