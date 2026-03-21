@@ -552,7 +552,7 @@
 
             setupEventListeners() {
                 document.getElementById('statusContainer').addEventListener('click', () => this.showHealthModal());
-                document.getElementById('refreshBtn').addEventListener('click', () => this.loadData());
+                document.getElementById('refreshBtn').addEventListener('click', () => this.loadData(true));
                 document.getElementById('logoutBtn').addEventListener('click', () => this.logout());
                 document.getElementById('timePeriodSelect').addEventListener('change', (e) => {
                     this.timePeriod = e.target.value;
@@ -713,11 +713,14 @@
                 });
             }
 
-            async loadData() {
+            async loadData(refreshBrokerStats = false) {
                 try {
+                    const queueStatsUrl = refreshBrokerStats
+                        ? '/monitoring/queue-stats?refresh=true'
+                        : '/monitoring/queue-stats';
                     const responses = await Promise.all([
                         this.fetchWithAuth('/monitoring/health'),
-                        this.fetchWithAuth('/monitoring/queue-stats'),
+                        this.fetchWithAuth(queueStatsUrl),
                         this.fetchWithAuth('/monitoring/pool-stats'),
                         this.fetchWithAuth('/monitoring/warnings'),
                         this.fetchWithAuth('/monitoring/circuit-breakers')

@@ -1109,7 +1109,14 @@ struct DashboardQueueStats {
         (status = 200, description = "Queue stats for dashboard")
     )
 )]
-async fn dashboard_queue_stats_handler(State(state): State<AppState>) -> Json<HashMap<String, DashboardQueueStats>> {
+async fn dashboard_queue_stats_handler(
+    State(state): State<AppState>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Json<HashMap<String, DashboardQueueStats>> {
+    // ?refresh=true forces a live fetch from SQS
+    if params.get("refresh").is_some_and(|v| v == "true") {
+        state.cached_broker_stats.refresh().await;
+    }
     let metrics = state.cached_broker_stats.get().await;
     let mut result = HashMap::new();
 
