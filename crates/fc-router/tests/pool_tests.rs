@@ -15,9 +15,28 @@ use tokio::sync::oneshot;
 use async_trait::async_trait;
 
 use fc_common::{
-    Message, BatchMessage, AckNack, PoolConfig, MediationType,
+    Message, BatchMessage, AckNack, MessageCallback, PoolConfig, MediationType,
     MediationResult, MediationOutcome,
 };
+
+/// Test callback that records ack/nack via a oneshot channel
+struct TestCallback {
+    tx: parking_lot::Mutex<Option<oneshot::Sender<AckNack>>>,
+}
+
+#[async_trait]
+impl MessageCallback for TestCallback {
+    async fn ack(&self) {
+        if let Some(tx) = self.tx.lock().take() {
+            let _ = tx.send(AckNack::Ack);
+        }
+    }
+    async fn nack(&self, delay_seconds: Option<u32>) {
+        if let Some(tx) = self.tx.lock().take() {
+            let _ = tx.send(AckNack::Nack { delay_seconds });
+        }
+    }
+}
 use fc_router::{ProcessPool, Mediator};
 
 /// Mock mediator that tracks calls and can simulate delays/failures
@@ -110,7 +129,7 @@ fn create_batch_message(id: &str, group_id: Option<&str>) -> (BatchMessage, ones
         broker_message_id: Some(format!("broker-{}", id)),
         queue_identifier: "test-queue".to_string(),
         batch_id: Some("batch-1".to_string()),
-        ack_tx: tx,
+        callback: Box::new(TestCallback { tx: parking_lot::Mutex::new(Some(tx)) }),
     };
     (msg, rx)
 }

@@ -11,12 +11,12 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 use std::num::NonZeroU32;
 use dashmap::{DashMap, DashSet};
-use tokio::sync::{mpsc, Semaphore, oneshot};
+use tokio::sync::{mpsc, Semaphore};
 use governor::{Quota, RateLimiter, state::{NotKeyed, InMemoryState}, clock::DefaultClock};
 use tracing::{info, warn, error, debug};
 
 use fc_common::{
-    Message, BatchMessage, AckNack, PoolConfig, PoolStats,
+    Message, BatchMessage, MessageCallback, PoolConfig, PoolStats,
     MediationResult, EnhancedPoolMetrics,
 };
 use crate::mediator::Mediator;
@@ -54,7 +54,7 @@ impl std::fmt::Display for BatchGroupKey {
 pub struct PoolTask {
     pub message: Message,
     pub receipt_handle: String,
-    pub ack_tx: oneshot::Sender<AckNack>,
+    pub callback: Box<dyn MessageCallback>,
     pub batch_id: Option<Arc<str>>,
     /// Pre-computed batch+group key for FIFO tracking (uses tuple to avoid string formatting)
     pub batch_group_key: Option<BatchGroupKey>,
@@ -182,7 +182,7 @@ impl ProcessPool {
     /// Submit a message to the pool
     pub async fn submit(&self, batch_msg: BatchMessage) -> Result<()> {
         if !self.running.load(Ordering::SeqCst) {
-            let _ = batch_msg.ack_tx.send(AckNack::Nack { delay_seconds: Some(10) });
+            batch_msg.callback.nack(Some(10)).await;
             return Ok(());
         }
 
@@ -200,7 +200,7 @@ impl ProcessPool {
                 capacity = capacity,
                 "Pool at capacity, rejecting"
             );
-            let _ = batch_msg.ack_tx.send(AckNack::Nack { delay_seconds: Some(10) });
+            batch_msg.callback.nack(Some(10)).await;
             return Ok(());
         }
 
@@ -239,7 +239,7 @@ impl ProcessPool {
                 self.queue_size.fetch_sub(1, Ordering::SeqCst);
                 self.decrement_and_cleanup_batch_group(key);
                 // Java: setFastFailVisibility = 10 seconds for batch+group failure NACKs
-                let _ = batch_msg.ack_tx.send(AckNack::Nack { delay_seconds: Some(10) });
+                batch_msg.callback.nack(Some(10)).await;
                 return Ok(());
             }
         }
@@ -257,7 +257,7 @@ impl ProcessPool {
         let task = PoolTask {
             message: batch_msg.message,
             receipt_handle: batch_msg.receipt_handle,
-            ack_tx: batch_msg.ack_tx,
+            callback: batch_msg.callback,
             batch_id: batch_msg.batch_id.map(|s| Arc::from(s.as_str())),
             batch_group_key,
         };
@@ -282,7 +282,7 @@ impl ProcessPool {
             let retry_task = PoolTask {
                 message: e.0.message,
                 receipt_handle: e.0.receipt_handle,
-                ack_tx: e.0.ack_tx,
+                callback: e.0.callback,
                 batch_id: e.0.batch_id,
                 batch_group_key: e.0.batch_group_key,
             };
@@ -485,7 +485,7 @@ impl ProcessPool {
                         &failed_batch_groups,
                     );
                     // Java: setFastFailVisibility = 10 seconds for batch+group failure NACKs
-                    let _ = task.ack_tx.send(AckNack::Nack { delay_seconds: Some(10) });
+                    task.callback.nack(Some(10)).await;
                     continue;
                 }
             }
@@ -507,7 +507,7 @@ impl ProcessPool {
                             &failed_batch_groups,
                         );
                     }
-                    let _ = task.ack_tx.send(AckNack::Nack { delay_seconds: Some(10) });
+                    task.callback.nack(Some(10)).await;
                     break;
                 }
             };
@@ -520,17 +520,16 @@ impl ProcessPool {
             let outcome = mediator.mediate(&task.message).await;
             let duration_ms = start.elapsed().as_millis() as u64;
 
-            // Handle outcome and record metrics
-            let ack_nack = match outcome.result {
+            // Handle outcome: record metrics, call callback directly (no channel)
+            match outcome.result {
                 MediationResult::Success => {
                     debug!(
                         message_id = %task.message.id,
                         duration_ms = duration_ms,
                         "Message processed successfully"
                     );
-                    // Record success metric
                     metrics_collector.record_success(duration_ms);
-                    AckNack::Ack
+                    task.callback.ack().await;
                 }
                 MediationResult::ErrorConfig => {
                     warn!(
@@ -538,9 +537,8 @@ impl ProcessPool {
                         error = ?outcome.error_message,
                         "Configuration error, ACKing to prevent retry"
                     );
-                    // Config errors count as failures for metrics
                     metrics_collector.record_failure(duration_ms);
-                    AckNack::Ack
+                    task.callback.ack().await;
                 }
                 MediationResult::ErrorProcess => {
                     warn!(
@@ -548,8 +546,6 @@ impl ProcessPool {
                         error = ?outcome.error_message,
                         "Transient error, NACKing for retry"
                     );
-                    // Java: recordProcessingTransient() — NOT counted as a permanent failure.
-                    // Message will be retried, so success rate should not be penalised.
                     metrics_collector.record_transient(duration_ms);
 
                     // Mark batch+group as failed to trigger cascading NACKs
@@ -563,7 +559,7 @@ impl ProcessPool {
                         }
                     }
 
-                    AckNack::Nack { delay_seconds: outcome.delay_seconds }
+                    task.callback.nack(outcome.delay_seconds).await;
                 }
                 MediationResult::ErrorConnection => {
                     warn!(
@@ -571,7 +567,6 @@ impl ProcessPool {
                         error = ?outcome.error_message,
                         "Connection error, NACKing for retry"
                     );
-                    // Record failure metric
                     metrics_collector.record_failure(duration_ms);
 
                     // Mark batch+group as failed to trigger cascading NACKs
@@ -586,12 +581,9 @@ impl ProcessPool {
                     }
 
                     // Java: visibilityControl.resetVisibilityToDefault = 30 seconds
-                    AckNack::Nack { delay_seconds: Some(30) }
+                    task.callback.nack(Some(30)).await;
                 }
             };
-
-            // Send ACK/NACK
-            let _ = task.ack_tx.send(ack_nack);
 
             // Decrement batch+group count and cleanup if done (Java: decrementAndCleanupBatchGroup)
             if let Some(ref key) = task.batch_group_key {

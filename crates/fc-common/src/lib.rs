@@ -45,18 +45,40 @@ pub struct QueuedMessage {
     pub queue_identifier: String,
 }
 
+/// Callback for ACK/NACK — called by the pool worker when processing completes.
+/// Mirrors the TS `MessageCallback` pattern: the pool calls these directly,
+/// no spawned task or channel needed.
+#[async_trait::async_trait]
+pub trait MessageCallback: Send + Sync {
+    /// Acknowledge — delete from queue, clean up tracking.
+    async fn ack(&self);
+    /// Negative acknowledge — make visible again after delay, clean up tracking.
+    async fn nack(&self, delay_seconds: Option<u32>);
+}
+
 /// A message bundled with its callback for batch processing
-#[derive(Debug)]
 pub struct BatchMessage {
     pub message: Message,
     pub receipt_handle: String,
     pub broker_message_id: Option<String>,
     pub queue_identifier: String,
     pub batch_id: Option<String>,
-    pub ack_tx: tokio::sync::oneshot::Sender<AckNack>,
+    pub callback: Box<dyn MessageCallback>,
 }
 
-/// ACK/NACK response sent back to the queue consumer
+// Manual Debug since Box<dyn MessageCallback> isn't Debug
+impl std::fmt::Debug for BatchMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BatchMessage")
+            .field("message", &self.message)
+            .field("receipt_handle", &self.receipt_handle)
+            .field("broker_message_id", &self.broker_message_id)
+            .field("batch_id", &self.batch_id)
+            .finish()
+    }
+}
+
+/// ACK/NACK response — still used internally for mediation result classification
 #[derive(Debug, Clone)]
 pub enum AckNack {
     Ack,

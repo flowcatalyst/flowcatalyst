@@ -12,11 +12,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use dashmap::DashMap;
 use parking_lot::Mutex;
-use tokio::sync::{oneshot, broadcast, RwLock};
+use tokio::sync::{broadcast, RwLock};
 use tracing::{info, warn, error, debug};
 
 use fc_common::{
-    QueuedMessage, BatchMessage, AckNack, InFlightMessage,
+    QueuedMessage, BatchMessage, InFlightMessage, MessageCallback,
     PoolConfig, RouterConfig, PoolStats, StallConfig, StalledMessageInfo,
     WarningCategory, WarningSeverity,
 };
@@ -29,6 +29,70 @@ use crate::mediator::Mediator;
 use crate::warning::WarningService;
 use crate::error::RouterError;
 use crate::Result;
+
+/// Callback that the pool worker calls directly when processing completes.
+/// Reads the latest receipt handle from in_pipeline (may have been swapped by
+/// redelivery), performs the SQS operation, then cleans up tracking.
+/// No spawned task, no channel — mirrors the TS closure pattern.
+struct QueueMessageCallback {
+    pipeline_key: String,
+    app_message_id: String,
+    consumer: Arc<dyn QueueConsumer + Send + Sync>,
+    in_pipeline: Arc<DashMap<String, InFlightMessage>>,
+    app_message_to_pipeline_key: Arc<DashMap<String, String>>,
+    pending_delete: Arc<Mutex<HashMap<String, Instant>>>,
+}
+
+#[async_trait::async_trait]
+impl MessageCallback for QueueMessageCallback {
+    async fn ack(&self) {
+        // Read latest receipt handle (may have been updated by redelivery)
+        let (handle, broker_id) = self.in_pipeline
+            .get(&self.pipeline_key)
+            .map(|e| (e.receipt_handle.clone(), e.broker_message_id.clone()))
+            .unwrap_or_default();
+
+        if !handle.is_empty() {
+            if let Err(e) = self.consumer.ack(&handle).await {
+                // ACK failed — add to pending_delete BEFORE removing from in_pipeline
+                if let Some(ref bid) = broker_id {
+                    warn!(
+                        broker_message_id = %bid,
+                        app_message_id = %self.app_message_id,
+                        error = %e,
+                        "ACK failed (receipt handle likely expired) - adding to pending delete"
+                    );
+                    self.pending_delete.lock().insert(bid.clone(), Instant::now());
+                } else {
+                    error!(
+                        app_message_id = %self.app_message_id,
+                        error = %e,
+                        "ACK failed and no broker message ID to track for pending delete"
+                    );
+                }
+            }
+        }
+
+        // Clean up tracking AFTER SQS operation
+        self.in_pipeline.remove(&self.pipeline_key);
+        self.app_message_to_pipeline_key.remove(&self.app_message_id);
+    }
+
+    async fn nack(&self, delay_seconds: Option<u32>) {
+        let handle = self.in_pipeline
+            .get(&self.pipeline_key)
+            .map(|e| e.receipt_handle.clone())
+            .unwrap_or_default();
+
+        if !handle.is_empty() {
+            let _ = self.consumer.nack(&handle, delay_seconds).await;
+        }
+
+        // Clean up tracking AFTER SQS operation
+        self.in_pipeline.remove(&self.pipeline_key);
+        self.app_message_to_pipeline_key.remove(&self.app_message_id);
+    }
+}
 
 /// Factory trait for creating queue consumers
 /// Implementations can create SQS, ActiveMQ, or other consumer types
@@ -608,7 +672,6 @@ impl QueueManager {
                         continue;
                     }
 
-                    let (ack_tx, ack_rx) = oneshot::channel();
                     let app_message_id = msg.message.id.clone();
 
                     // Use broker_message_id as pipeline key (mirrors Java's sqsMessageId usage)
@@ -617,8 +680,6 @@ impl QueueManager {
                         .unwrap_or_else(|| format!("fallback:{}:{}", msg.queue_identifier, msg.message.id));
 
                     let receipt_handle = msg.receipt_handle.clone();
-                    let receipt_handle_for_callback = receipt_handle.clone();  // For async task
-                    let broker_message_id = msg.broker_message_id.clone();
 
                     // Track in pipeline with receipt handle
                     let in_flight = InFlightMessage::new(
@@ -631,85 +692,28 @@ impl QueueManager {
                     self.in_pipeline.insert(pipeline_key.clone(), in_flight);
 
                     // Track app message ID -> pipeline key for requeue detection
-                    // This mirrors Java's appMessageIdToPipelineKey map
                     self.app_message_to_pipeline_key.insert(app_message_id.clone(), pipeline_key.clone());
 
-                    // Submit to pool - pool will send ACK/NACK through ack_tx
+                    // Create callback — pool worker calls this directly, no spawned task
+                    let callback = QueueMessageCallback {
+                        pipeline_key: pipeline_key.clone(),
+                        app_message_id: app_message_id.clone(),
+                        consumer: consumer.clone(),
+                        in_pipeline: self.in_pipeline.clone(),
+                        app_message_to_pipeline_key: self.app_message_to_pipeline_key.clone(),
+                        pending_delete: self.pending_delete_broker_ids.clone(),
+                    };
+
                     let batch_msg = BatchMessage {
                         message: msg.message,
                         receipt_handle: msg.receipt_handle,
                         broker_message_id: msg.broker_message_id,
                         queue_identifier: msg.queue_identifier,
                         batch_id: Some(batch_id.clone()),
-                        ack_tx,
+                        callback: Box::new(callback),
                     };
 
-                    let consumer_clone = consumer.clone();
-                    let pipeline_key_clone = pipeline_key.clone();
-                    let app_message_id_clone = app_message_id.clone();
-                    let in_pipeline = self.in_pipeline.clone();
-                    let app_message_to_pipeline_key = self.app_message_to_pipeline_key.clone();
-                    let pending_delete = self.pending_delete_broker_ids.clone();
-
-                    // Spawn task to handle callback from pool.
-                    // Mirrors TS pattern: read latest receipt handle AFTER processing completes,
-                    // perform SQS operation, THEN remove from in_pipeline. This closes the race
-                    // where a redelivery arrives between removal and SQS ACK and gets reprocessed.
-                    tokio::spawn(async move {
-                        // Wait for ACK/NACK from pool
-                        let ack_result = ack_rx.await;
-
-                        // Read the latest receipt handle AFTER processing completes.
-                        // Redeliveries during processing update this via filter_duplicates.
-                        let (current_handle, current_broker_id) = in_pipeline
-                            .get(&pipeline_key_clone)
-                            .map(|entry| (entry.receipt_handle.clone(), entry.broker_message_id.clone()))
-                            .unwrap_or((receipt_handle_for_callback, broker_message_id));
-
-                        // Perform SQS operation FIRST, then remove from in_pipeline.
-                        // This ensures the message stays in in_pipeline (caught by dedup) until
-                        // SQS has accepted the ACK/NACK or we've recorded it in pending_delete.
-                        match ack_result {
-                            Ok(AckNack::Ack) => {
-                                if let Err(e) = consumer_clone.ack(&current_handle).await {
-                                    // ACK failed - likely receipt handle expired.
-                                    // Add to pending_delete BEFORE removing from in_pipeline
-                                    // so there is no window where the message is in neither map.
-                                    if let Some(ref broker_id) = current_broker_id {
-                                        warn!(
-                                            broker_message_id = %broker_id,
-                                            app_message_id = %app_message_id_clone,
-                                            error = %e,
-                                            "ACK failed (receipt handle likely expired) - adding to pending delete"
-                                        );
-                                        pending_delete.lock().insert(broker_id.clone(), Instant::now());
-                                    } else {
-                                        error!(
-                                            app_message_id = %app_message_id_clone,
-                                            error = %e,
-                                            "ACK failed and no broker message ID to track for pending delete"
-                                        );
-                                    }
-                                }
-                            }
-                            Ok(AckNack::Nack { delay_seconds }) => {
-                                let _ = consumer_clone.nack(&current_handle, delay_seconds).await;
-                            }
-                            Ok(AckNack::ExtendVisibility { seconds }) => {
-                                let _ = consumer_clone.extend_visibility(&current_handle, seconds).await;
-                            }
-                            Err(_) => {
-                                // Channel dropped - NACK to be safe
-                                let _ = consumer_clone.nack(&current_handle, None).await;
-                            }
-                        }
-
-                        // NOW remove from tracking — SQS operation is done (or pending_delete is set)
-                        in_pipeline.remove(&pipeline_key_clone);
-                        app_message_to_pipeline_key.remove(&app_message_id_clone);
-                    });
-
-                    // Actually submit to pool
+                    // Submit to pool — pool worker calls callback.ack()/nack() when done
                     if let Err(e) = pool.submit(batch_msg).await {
                         error!(
                             message_id = %app_message_id,
