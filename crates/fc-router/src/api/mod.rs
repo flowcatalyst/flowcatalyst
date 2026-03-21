@@ -22,7 +22,8 @@ use utoipa_swagger_ui::SwaggerUi;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::collections::HashMap;
-use fc_queue::QueuePublisher;
+use tokio::sync::RwLock;
+use fc_queue::{QueuePublisher, QueueMetrics as FcQueueMetrics};
 use fc_common::{
     Message, MediationType, HealthStatus, HealthReport, PoolStats, PoolConfig,
     Warning, WarningSeverity, WarningCategory,
@@ -61,6 +62,69 @@ pub struct AppState {
     pub traffic_strategy: Option<Arc<dyn crate::traffic::TrafficStrategy>>,
     /// Prometheus metrics handle for rendering /metrics endpoint
     pub metrics_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
+    /// Cached SQS broker stats — refreshed every 60s by background task,
+    /// or on demand via POST /monitoring/broker-stats/refresh.
+    pub cached_broker_stats: Arc<CachedBrokerStats>,
+}
+
+/// Cached SQS broker stats with timestamp
+pub struct CachedBrokerStats {
+    metrics: RwLock<Vec<FcQueueMetrics>>,
+    last_updated: RwLock<Option<std::time::Instant>>,
+    queue_manager: Arc<QueueManager>,
+}
+
+impl CachedBrokerStats {
+    pub fn new(queue_manager: Arc<QueueManager>) -> Self {
+        Self {
+            metrics: RwLock::new(Vec::new()),
+            last_updated: RwLock::new(None),
+            queue_manager,
+        }
+    }
+
+    /// Fetch fresh metrics from SQS and update cache
+    pub async fn refresh(&self) {
+        let fresh = self.queue_manager.get_queue_metrics().await;
+        *self.metrics.write().await = fresh;
+        *self.last_updated.write().await = Some(std::time::Instant::now());
+    }
+
+    /// Get cached metrics
+    pub async fn get(&self) -> Vec<FcQueueMetrics> {
+        self.metrics.read().await.clone()
+    }
+
+    /// Get time since last refresh
+    pub async fn age_seconds(&self) -> Option<u64> {
+        self.last_updated.read().await.map(|t| t.elapsed().as_secs())
+    }
+}
+
+/// Spawn background task that refreshes broker stats every 60 seconds
+pub fn spawn_broker_stats_refresh(
+    cached: Arc<CachedBrokerStats>,
+    shutdown_tx: tokio::sync::broadcast::Sender<()>,
+) {
+    let mut shutdown_rx = shutdown_tx.subscribe();
+
+    tokio::spawn(async move {
+        // Initial fetch
+        cached.refresh().await;
+
+        let mut ticker = tokio::time::interval(std::time::Duration::from_secs(60));
+
+        loop {
+            tokio::select! {
+                _ = ticker.tick() => {
+                    cached.refresh().await;
+                }
+                _ = shutdown_rx.recv() => {
+                    break;
+                }
+            }
+        }
+    });
 }
 
 /// Simple health response for basic health check
@@ -308,6 +372,8 @@ pub fn create_router_with_options(
     metrics_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
     auth_state: Option<AuthState>,
 ) -> Router {
+    let cached_broker_stats = Arc::new(CachedBrokerStats::new(queue_manager.clone()));
+
     let state = AppState {
         publisher,
         queue_manager,
@@ -319,6 +385,7 @@ pub fn create_router_with_options(
         stream_health_service,
         traffic_strategy,
         metrics_handle,
+        cached_broker_stats,
     };
 
     // Public routes — no authentication required
@@ -347,6 +414,7 @@ pub fn create_router_with_options(
         .route("/monitoring/pools", get(pool_stats_handler))
         .route("/monitoring/pools/{pool_code}", put(update_pool_config))
         .route("/monitoring/queues", get(queue_metrics_handler))
+        .route("/monitoring/broker-stats/refresh", post(broker_stats_refresh_handler))
         // Dashboard-compatible endpoints
         .route("/monitoring/queue-stats", get(dashboard_queue_stats_handler))
         .route("/monitoring/pool-stats", get(dashboard_pool_stats_handler))
@@ -1027,7 +1095,7 @@ struct DashboardQueueStats {
     )
 )]
 async fn dashboard_queue_stats_handler(State(state): State<AppState>) -> Json<HashMap<String, DashboardQueueStats>> {
-    let metrics = state.queue_manager.get_queue_metrics().await;
+    let metrics = state.cached_broker_stats.get().await;
     let mut result = HashMap::new();
 
     for m in metrics {
@@ -1069,6 +1137,24 @@ async fn dashboard_queue_stats_handler(State(state): State<AppState>) -> Json<Ha
     }
 
     Json(result)
+}
+
+/// Refresh broker stats on demand (called when user clicks refresh in dashboard)
+#[utoipa::path(
+    post,
+    path = "/monitoring/broker-stats/refresh",
+    tag = "monitoring",
+    responses(
+        (status = 200, description = "Broker stats refreshed")
+    )
+)]
+async fn broker_stats_refresh_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    state.cached_broker_stats.refresh().await;
+    let age = state.cached_broker_stats.age_seconds().await;
+    Json(serde_json::json!({
+        "refreshed": true,
+        "ageSeconds": age.unwrap_or(0)
+    }))
 }
 
 /// Pool stats for dashboard (matches Java PoolStats)

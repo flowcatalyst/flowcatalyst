@@ -928,14 +928,21 @@ impl QueueManager {
                             }
 
                             match result {
-                                Ok(messages) if !messages.is_empty() => {
+                                Ok(messages) if messages.is_empty() => {
+                                    // No messages — SQS long poll already waited up to 20s.
+                                    // Brief pause before re-polling.
+                                    tokio::time::sleep(Duration::from_secs(1)).await;
+                                }
+                                Ok(messages) => {
+                                    let count = messages.len();
                                     if let Err(e) = manager.route_batch(messages, consumer.clone()).await {
                                         error!(error = %e, "Error routing batch");
                                     }
-                                }
-                                Ok(_) => {
-                                    // No messages — SQS long poll already waited (up to 10s),
-                                    // so no additional delay needed. Matches TS EMPTY_BATCH_DELAY_MS = 0.
+                                    // Full batch (10) — re-poll immediately, more messages likely waiting.
+                                    // Partial batch (< 10) — brief pause, queue is draining.
+                                    if count < 10 {
+                                        tokio::time::sleep(Duration::from_millis(500)).await;
+                                    }
                                 }
                                 Err(e) => {
                                     error!(error = %e, consumer = %consumer.identifier(), "Error polling");

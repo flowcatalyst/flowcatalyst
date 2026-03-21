@@ -34,9 +34,9 @@ pub struct SqsQueueConsumer {
 
 impl SqsQueueConsumer {
     /// Default long poll wait time in seconds.
-    /// 5 seconds balances efficiency with shutdown responsiveness.
+    /// 20 seconds matches TS version and minimises SQS API calls.
     /// AWS SQS max is 20 seconds.
-    pub const DEFAULT_WAIT_TIME_SECONDS: i32 = 5;
+    pub const DEFAULT_WAIT_TIME_SECONDS: i32 = 20;
 
     pub fn new(
         client: Client,

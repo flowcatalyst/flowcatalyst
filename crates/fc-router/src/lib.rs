@@ -62,6 +62,7 @@ pub use queue_health_monitor::{
 
 // Re-export QueueMetrics for API
 pub use fc_queue::QueueMetrics;
+pub use api::{CachedBrokerStats, spawn_broker_stats_refresh};
 
 pub type Result<T> = std::result::Result<T, RouterError>;
 
