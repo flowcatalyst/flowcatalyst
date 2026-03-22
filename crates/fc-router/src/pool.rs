@@ -320,6 +320,33 @@ impl ProcessPool {
         tokio::spawn(async move {
             debug!(group_id = %group_id, pool_code = %pool_code, "Group drain task started");
 
+            // Safety guard: if this task panics, reset processing flag so the group isn't stuck.
+            // Remaining messages in the VecDeque will be NACKed by SQS visibility timeout
+            // and retried on the next poll.
+            struct PanicGuard {
+                group_handlers: Arc<DashMap<Arc<str>, parking_lot::Mutex<MessageGroupHandler>>>,
+                group_id: Arc<str>,
+                active: bool,
+            }
+            impl Drop for PanicGuard {
+                fn drop(&mut self) {
+                    if self.active {
+                        if let Some(entry) = self.group_handlers.get(&self.group_id) {
+                            let mut handler = entry.lock();
+                            if handler.processing {
+                                handler.processing = false;
+                                error!(group_id = %self.group_id, "Drain task exited abnormally — reset processing flag");
+                            }
+                        }
+                    }
+                }
+            }
+            let mut panic_guard = PanicGuard {
+                group_handlers: group_handlers.clone(),
+                group_id: group_id.clone(),
+                active: true,
+            };
+
             loop {
                 // Dequeue next task (lock is held only for the dequeue, dropped before any await)
                 let dequeue_result = {
@@ -372,6 +399,7 @@ impl ProcessPool {
                                 group_handlers.remove(&group_id);
                             }
                         }
+                        panic_guard.active = false; // Normal exit, don't trigger guard
                         debug!(group_id = %group_id, pool_code = %pool_code, "Group drain task exited");
                         break;
                     }
@@ -407,6 +435,7 @@ impl ProcessPool {
                             );
                         }
                         task.callback.nack(Some(10)).await;
+                        panic_guard.active = false;
                         break;
                     }
                 };

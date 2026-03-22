@@ -52,7 +52,13 @@ impl MessageCallback for QueueMessageCallback {
             .map(|e| (e.receipt_handle.clone(), e.broker_message_id.clone()))
             .unwrap_or_default();
 
-        if !handle.is_empty() {
+        if handle.is_empty() {
+            error!(
+                pipeline_key = %self.pipeline_key,
+                app_message_id = %self.app_message_id,
+                "ACK skipped — no receipt handle in in_pipeline (entry may have been reaped)"
+            );
+        } else {
             if let Err(e) = self.consumer.ack(&handle).await {
                 // ACK failed — add to pending_delete BEFORE removing from in_pipeline
                 if let Some(ref bid) = broker_id {
@@ -84,7 +90,13 @@ impl MessageCallback for QueueMessageCallback {
             .map(|e| e.receipt_handle.clone())
             .unwrap_or_default();
 
-        if !handle.is_empty() {
+        if handle.is_empty() {
+            error!(
+                pipeline_key = %self.pipeline_key,
+                app_message_id = %self.app_message_id,
+                "NACK skipped — no receipt handle in in_pipeline (entry may have been reaped)"
+            );
+        } else {
             let _ = self.consumer.nack(&handle, delay_seconds).await;
         }
 
