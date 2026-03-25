@@ -24,7 +24,7 @@ use fc_router::{
     QueueManager, HttpMediator, LifecycleManager, LifecycleConfig,
     WarningService, WarningServiceConfig,
     HealthService, HealthServiceConfig,
-    CircuitBreakerRegistry,
+    CircuitBreakerRegistry, ConsumerFactory,
     ConfigSyncService, ConfigSyncConfig,
     StandbyProcessor, StandbyRouterConfig,
     NotificationConfig, create_notification_service_with_scheduler,
@@ -98,6 +98,9 @@ async fn main() -> Result<()> {
     // 4. Create QueueManager
     let mut queue_manager_inner = QueueManager::new(mediator.clone());
     queue_manager_inner.set_health_service(health_service.clone());
+    queue_manager_inner.set_consumer_factory(Arc::new(SqsConsumerFactory {
+        sqs_client: sqs_client.clone(),
+    }));
     let queue_manager = Arc::new(queue_manager_inner);
 
     // 5. Initialize Standby Processor (Active/Passive HA)
@@ -523,6 +526,32 @@ async fn shutdown_signal() {
     tokio::select! {
         _ = ctrl_c => {},
         _ = terminate => {},
+    }
+}
+
+// SQS consumer factory for hot-reloading new queues from config sync
+struct SqsConsumerFactory {
+    sqs_client: aws_sdk_sqs::Client,
+}
+
+#[async_trait]
+impl ConsumerFactory for SqsConsumerFactory {
+    async fn create_consumer(
+        &self,
+        config: &QueueConfig,
+    ) -> std::result::Result<Arc<dyn fc_queue::QueueConsumer + Send + Sync>, fc_router::RouterError> {
+        info!(
+            queue_name = %config.name,
+            queue_uri = %config.uri,
+            visibility_timeout = config.visibility_timeout,
+            "Creating SQS consumer from config sync"
+        );
+        let consumer = SqsQueueConsumer::from_queue_url(
+            self.sqs_client.clone(),
+            config.uri.clone(),
+            config.visibility_timeout as i32,
+        ).await;
+        Ok(Arc::new(consumer))
     }
 }
 

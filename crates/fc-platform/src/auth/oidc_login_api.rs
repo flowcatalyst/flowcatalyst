@@ -935,6 +935,17 @@ async fn validate_id_token_with_jwks(
         .ok_or("No email claim in ID token")?
         .to_lowercase();
 
+    // Reject Entra external/guest users whose UPN contains #EXT#
+    // (e.g. "user_domain.co.za#EXT#@tenant.onmicrosoft.com").
+    // Guest accounts are managed by a different organization and bypass
+    // our email domain trust boundary. Users should sign in via their
+    // home organization's IDP instead.
+    if email.contains("#ext#") {
+        return Err(
+            "External guest accounts are not supported. Please sign in with your home organization.".to_string()
+        );
+    }
+
     // Extract name
     let name = payload["name"].as_str().map(String::from);
 

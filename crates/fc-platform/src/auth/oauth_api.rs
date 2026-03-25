@@ -76,6 +76,8 @@ pub struct TokenResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refresh_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub id_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
 }
 
@@ -144,9 +146,13 @@ pub struct UserInfoResponse {
     #[serde(rename = "type")]
     pub principal_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub clients: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub roles: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub applications: Option<Vec<String>>,
 }
 
 /// OAuth2 state
@@ -467,7 +473,7 @@ async fn handle_authorization_code_grant(state: OAuthState, req: TokenRequest) -
         }
     };
 
-    // Generate tokens
+    // Generate access token
     let access_token = match state.auth_service.generate_access_token(&principal) {
         Ok(t) => t,
         Err(e) => {
@@ -480,6 +486,29 @@ async fn handle_authorization_code_grant(state: OAuthState, req: TokenRequest) -
                 }),
             ).into_response();
         }
+    };
+
+    // Generate ID token when scope includes "openid"
+    let has_openid = auth_code.scope.as_deref()
+        .map(|s| s.split_whitespace().any(|sc| sc == "openid"))
+        .unwrap_or(false);
+
+    let id_token = if has_openid {
+        match state.auth_service.generate_id_token(&principal, &auth_code.client_id, auth_code.nonce.clone()) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                error!(error = %e, "Failed to generate ID token");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "server_error".to_string(),
+                        error_description: None,
+                    }),
+                ).into_response();
+            }
+        }
+    } else {
+        None
     };
 
     info!(principal_id = %principal.id, client_id = %auth_code.client_id, "Token issued via authorization code grant");
@@ -495,6 +524,7 @@ async fn handle_authorization_code_grant(state: OAuthState, req: TokenRequest) -
             token_type: "Bearer".to_string(),
             expires_in: 3600,
             refresh_token: None,
+            id_token,
             scope: auth_code.scope,
         }),
     ).into_response()
@@ -603,10 +633,34 @@ async fn handle_refresh_token_grant(state: OAuthState, req: TokenRequest) -> Res
         }
     };
 
+    // Generate ID token when the original scope included "openid"
+    let has_openid = stored_token.scopes.iter().any(|s| s == "openid");
+    let id_token = if has_openid {
+        let fallback_aud = &stored_token.principal_id;
+        let client_id = stored_token.oauth_client_id.as_deref().unwrap_or(fallback_aud);
+        match state.auth_service.generate_id_token(&principal, client_id, None) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                error!(error = %e, "Failed to generate ID token on refresh");
+                None // Non-fatal: still return access + refresh tokens
+            }
+        }
+    } else {
+        None
+    };
+
     // Generate new refresh token (rotation)
     let (raw_token, token_entity) = RefreshToken::generate_token_pair(&principal.id);
     let token_entity = token_entity
-        .with_accessible_clients(stored_token.accessible_clients.clone());
+        .with_accessible_clients(stored_token.accessible_clients.clone())
+        .with_scopes(stored_token.scopes.clone());
+
+    // Preserve oauth_client_id on rotated token
+    let token_entity = if let Some(ref cid) = stored_token.oauth_client_id {
+        token_entity.with_oauth_client(cid.clone())
+    } else {
+        token_entity
+    };
 
     if let Err(e) = state.refresh_token_repo.insert(&token_entity).await {
         error!(error = %e, "Failed to store new refresh token");
@@ -632,6 +686,7 @@ async fn handle_refresh_token_grant(state: OAuthState, req: TokenRequest) -> Res
             token_type: "Bearer".to_string(),
             expires_in: 3600,
             refresh_token: Some(raw_token),
+            id_token,
             scope: None,
         }),
     ).into_response()
@@ -829,6 +884,7 @@ async fn handle_client_credentials_grant(state: OAuthState, req: TokenRequest) -
             token_type: "Bearer".to_string(),
             expires_in: 3600,
             refresh_token: None,
+            id_token: None,
             scope: None,
         }),
     ).into_response()
@@ -1135,8 +1191,13 @@ pub async fn userinfo(
             name: Some(claims.name),
             scope: Some(claims.scope),
             principal_type: Some(claims.principal_type),
+            client_id: claims.clients.first().and_then(|c| {
+                // Extract the raw client ID from "id:identifier" format
+                if c == "*" { None } else { Some(c.split(':').next().unwrap_or(c).to_string()) }
+            }),
             clients: Some(claims.clients),
-            roles: Some(claims.roles),
+            roles: Some(claims.roles.clone()),
+            applications: Some(claims.applications),
         }),
     ).into_response()
 }

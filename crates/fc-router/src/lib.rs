@@ -31,7 +31,7 @@ pub mod queue_health_monitor;
 pub mod api;
 
 pub use error::RouterError;
-pub use manager::{QueueManager, InFlightMessageInfo};
+pub use manager::{QueueManager, InFlightMessageInfo, ConsumerFactory};
 pub use pool::{ProcessPool, PoolConfigUpdate};
 pub use mediator::{Mediator, HttpMediator, CircuitState, HttpMediatorConfig, HttpVersion};
 pub use lifecycle::{LifecycleManager, LifecycleConfig};

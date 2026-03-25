@@ -114,7 +114,7 @@ pub use password_reset::repository::PasswordResetTokenRepository;
 // Re-export services
 pub use audit::service::AuditService;
 pub use auth::password_service::PasswordService;
-pub use auth::auth_service::{AuthService, AccessTokenClaims};
+pub use auth::auth_service::{AuthService, AccessTokenClaims, IdTokenClaims};
 pub use auth::oidc_service::OidcService;
 pub use auth::oidc_sync_service::OidcSyncService;
 pub use shared::authorization_service::{AuthorizationService, AuthContext, checks};
@@ -175,7 +175,7 @@ pub mod repository {
 pub mod service {
     pub use crate::audit::service::AuditService;
     pub use crate::auth::password_service::PasswordService;
-    pub use crate::auth::auth_service::{AuthService, AuthConfig, AccessTokenClaims};
+    pub use crate::auth::auth_service::{AuthService, AuthConfig, AccessTokenClaims, IdTokenClaims};
     pub use crate::auth::oidc_service::OidcService;
     pub use crate::auth::oidc_sync_service::OidcSyncService;
     pub use crate::shared::authorization_service::{AuthorizationService, AuthContext, checks};

@@ -23,6 +23,77 @@ struct CachedClaims {
 /// Cache TTL for validated tokens (30 seconds — short enough to respect expiry changes)
 const TOKEN_CACHE_TTL_SECS: u64 = 30;
 
+/// JWT Claims for ID tokens (OIDC Core 1.0)
+///
+/// The ID token is a security token that contains claims about the authentication
+/// of the end-user. Unlike the access token (used for API calls), the ID token
+/// is consumed by the client application to establish the user's identity.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdTokenClaims {
+    /// Subject (principal ID)
+    pub sub: String,
+
+    /// Issuer
+    pub iss: String,
+
+    /// Audience (client_id of the relying party)
+    pub aud: String,
+
+    /// Expiration time (Unix timestamp)
+    pub exp: i64,
+
+    /// Issued at (Unix timestamp)
+    pub iat: i64,
+
+    /// Authentication time (Unix timestamp)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_time: Option<i64>,
+
+    /// Nonce from the authorization request (replay protection)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
+
+    // --- Standard OIDC claims ---
+
+    /// User's display name
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+
+    /// User's email address
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+
+    /// Whether the email is verified
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email_verified: Option<bool>,
+
+    /// Last updated timestamp
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<i64>,
+
+    // --- FlowCatalyst custom claims (matching TypeScript provider) ---
+
+    /// Principal type (USER or SERVICE)
+    #[serde(rename = "type")]
+    pub principal_type: String,
+
+    /// User scope (ANCHOR, PARTNER, CLIENT)
+    pub scope: String,
+
+    /// Client ID this principal belongs to
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+
+    /// Roles assigned to this principal
+    pub roles: Vec<String>,
+
+    /// Application codes extracted from role names
+    pub applications: Vec<String>,
+
+    /// Client access list ("*" for anchor users, "id:identifier" pairs for others)
+    pub clients: Vec<String>,
+}
+
 /// JWT Claims for access tokens
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccessTokenClaims {
@@ -452,6 +523,82 @@ impl AuthService {
     /// Generate a session token for a principal (longer-lived, for cookie-based sessions)
     pub fn generate_session_token(&self, principal: &Principal) -> Result<String> {
         self.generate_token_with_expiry(principal, self.config.session_token_expiry_secs)
+    }
+
+    /// Generate an OIDC ID token for a principal.
+    ///
+    /// The ID token contains identity claims for the client application (relying party).
+    /// It includes the same custom claims as the TypeScript oidc-provider version:
+    /// type, scope, client_id, roles, applications, clients.
+    ///
+    /// # Arguments
+    /// * `principal` - The authenticated principal
+    /// * `client_id` - The OAuth client_id (used as the `aud` claim)
+    /// * `nonce` - Optional nonce from the authorization request
+    pub fn generate_id_token(
+        &self,
+        principal: &Principal,
+        client_id: &str,
+        nonce: Option<String>,
+    ) -> Result<String> {
+        let now = Utc::now();
+        let exp = now + Duration::seconds(self.config.access_token_expiry_secs);
+
+        // Build client access list (same logic as access token)
+        let clients = match principal.scope {
+            UserScope::Anchor => vec!["*".to_string()],
+            UserScope::Partner => principal.assigned_clients.iter().map(|id| {
+                match principal.client_identifier_map.get(id) {
+                    Some(identifier) => format!("{}:{}", id, identifier),
+                    None => id.clone(),
+                }
+            }).collect(),
+            UserScope::Client => principal.client_id.clone().into_iter().map(|id| {
+                match principal.client_identifier_map.get(&id) {
+                    Some(identifier) => format!("{}:{}", id, identifier),
+                    None => id,
+                }
+            }).collect(),
+        };
+
+        // Extract application codes from role names
+        let role_names: Vec<String> = principal.roles.iter().map(|r| r.role.clone()).collect();
+        let applications: Vec<String> = {
+            let mut apps: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for role in &role_names {
+                if let Some(app_code) = role.split(':').next() {
+                    if role.contains(':') {
+                        apps.insert(app_code.to_string());
+                    }
+                }
+            }
+            apps.into_iter().collect()
+        };
+
+        let claims = IdTokenClaims {
+            sub: principal.id.clone(),
+            iss: self.config.issuer.clone(),
+            aud: client_id.to_string(),
+            exp: exp.timestamp(),
+            iat: now.timestamp(),
+            auth_time: Some(now.timestamp()),
+            nonce,
+            name: Some(principal.name.clone()),
+            email: principal.email().map(String::from),
+            email_verified: principal.email().map(|_| true),
+            updated_at: Some(now.timestamp()),
+            principal_type: format!("{:?}", principal.principal_type).to_uppercase(),
+            scope: format!("{:?}", principal.scope).to_uppercase(),
+            client_id: principal.client_id.clone(),
+            roles: role_names,
+            applications,
+            clients,
+        };
+
+        let mut header = Header::new(self.algorithm);
+        header.kid = self.key_id.clone();
+        encode(&header, &claims, &self.encoding_key)
+            .map_err(|e| PlatformError::Internal { message: format!("Failed to encode ID token: {}", e) })
     }
 
     /// Generate a token with a specific expiry duration

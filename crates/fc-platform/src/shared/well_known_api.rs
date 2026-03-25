@@ -31,6 +31,10 @@ pub struct OpenIdConfiguration {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub userinfo_endpoint: Option<String>,
 
+    /// URL of the end session endpoint (RP-initiated logout)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_session_endpoint: Option<String>,
+
     /// URL of the JWKS endpoint
     pub jwks_uri: String,
 
@@ -121,6 +125,7 @@ pub async fn get_openid_configuration(
         authorization_endpoint: format!("{}/oauth/authorize", base_url),
         token_endpoint: format!("{}/oauth/token", base_url),
         userinfo_endpoint: Some(format!("{}/oauth/userinfo", base_url)),
+        end_session_endpoint: Some(format!("{}/oidc/session/end", base_url)),
         jwks_uri: format!("{}/.well-known/jwks.json", base_url),
         response_types_supported: vec![
             "code".to_string(),
@@ -159,7 +164,10 @@ pub async fn get_openid_configuration(
             "email_verified".to_string(),
             "clients".to_string(),
             "roles".to_string(),
+            "applications".to_string(),
+            "type".to_string(),
             "scope".to_string(),
+            "client_id".to_string(),
         ],
         code_challenge_methods_supported: vec![
             "S256".to_string(),
@@ -218,6 +226,7 @@ mod tests {
             authorization_endpoint: "https://example.com/oauth/authorize".to_string(),
             token_endpoint: "https://example.com/oauth/token".to_string(),
             userinfo_endpoint: None,
+            end_session_endpoint: None,
             jwks_uri: "https://example.com/.well-known/jwks.json".to_string(),
             response_types_supported: vec!["code".to_string()],
             subject_types_supported: vec!["public".to_string()],
