@@ -18,10 +18,7 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::sync::Arc;
 use std::time::Duration;
-use parking_lot::RwLock;
 use tracing::{info, warn, error, debug};
-use failsafe::backoff;
-use failsafe::failure_policy;
 
 use crate::warning::WarningService;
 
@@ -84,130 +81,6 @@ fn default_ack() -> bool {
     true
 }
 
-/// Circuit breaker state
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CircuitState {
-    Closed,
-    Open,
-    HalfOpen,
-}
-
-/// Instrument for tracking circuit breaker state transitions.
-/// Implements `failsafe::Instrument` to receive callbacks when the state changes.
-/// State is stored in a shared `Arc<RwLock<CircuitState>>` so the owning
-/// `CircuitBreaker` wrapper can read it after the `StateMachine` takes ownership.
-#[derive(Clone)]
-struct CircuitBreakerInstrument {
-    state: Arc<RwLock<CircuitState>>,
-}
-
-impl failsafe::Instrument for CircuitBreakerInstrument {
-    fn on_call_rejected(&self) {
-        debug!("Circuit breaker rejected call");
-    }
-
-    fn on_open(&self) {
-        *self.state.write() = CircuitState::Open;
-        warn!("Circuit breaker opened (failure rate exceeded threshold)");
-    }
-
-    fn on_half_open(&self) {
-        *self.state.write() = CircuitState::HalfOpen;
-        debug!("Circuit breaker transitioning to half-open");
-    }
-
-    fn on_closed(&self) {
-        *self.state.write() = CircuitState::Closed;
-        info!("Circuit breaker closed (recovery successful)");
-    }
-}
-
-/// Circuit breaker backed by `failsafe` crate with success-rate-over-time-window policy.
-///
-/// Matches Java's MicroProfile Fault Tolerance / Resilience4j behavior:
-/// - Trips when failure rate >= 50% over a time window (after min 10 requests)
-/// - Stays open for `reset_timeout` before transitioning to half-open
-/// - In half-open: one test call allowed; success → closed, failure → re-open
-pub struct CircuitBreaker {
-    inner: failsafe::StateMachine<
-        failure_policy::SuccessRateOverTimeWindow<backoff::Constant>,
-        CircuitBreakerInstrument,
-    >,
-    state: Arc<RwLock<CircuitState>>,
-}
-
-impl CircuitBreaker {
-    /// Create a new circuit breaker.
-    ///
-    /// - `failure_rate_threshold`: fraction (0.0-1.0) of failures that trips the breaker (Java default: 0.5)
-    /// - `min_request_threshold`: minimum calls before evaluating rate (Java default: 10)
-    /// - `window`: time window for EWMA success rate calculation
-    /// - `reset_timeout`: time to wait in open state before transitioning to half-open (Java default: 5s)
-    pub fn new(
-        failure_rate_threshold: f64,
-        min_request_threshold: u32,
-        window: Duration,
-        reset_timeout: Duration,
-    ) -> Self {
-        let state = Arc::new(RwLock::new(CircuitState::Closed));
-        let instrument = CircuitBreakerInstrument { state: Arc::clone(&state) };
-
-        // Map failure_rate_threshold to required_success_rate:
-        // Java failureRatio=0.5 means trip at 50% failure → require 50% success
-        let required_success_rate = 1.0 - failure_rate_threshold;
-
-        let policy = failure_policy::success_rate_over_time_window(
-            required_success_rate,
-            min_request_threshold,
-            window,
-            backoff::constant(reset_timeout),
-        );
-
-        let inner = failsafe::Config::new()
-            .failure_policy(policy)
-            .instrument(instrument)
-            .build();
-
-        Self { inner, state }
-    }
-
-    /// Check if request should be allowed
-    pub fn allow_request(&self) -> bool {
-        self.inner.is_call_permitted()
-    }
-
-    /// Record a successful request
-    pub fn record_success(&self) {
-        self.inner.on_success();
-    }
-
-    /// Record a failed request
-    pub fn record_failure(&self) {
-        self.inner.on_error();
-    }
-
-    /// Get current state
-    pub fn state(&self) -> CircuitState {
-        *self.state.read()
-    }
-
-    /// Reset the circuit breaker to closed state
-    pub fn reset(&self) {
-        self.inner.reset();
-    }
-}
-
-impl Default for CircuitBreaker {
-    fn default() -> Self {
-        Self::new(
-            0.5,                          // 50% failure rate threshold (Java: failureRatio=0.5)
-            10,                           // min 10 requests before evaluating (Java: requestVolumeThreshold=10)
-            Duration::from_secs(300),     // 5-minute EWMA window
-            Duration::from_secs(5),       // 5s reset timeout (Java: delay=5000)
-        )
-    }
-}
-
 /// HTTP version to use for mediation requests
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HttpVersion {
@@ -227,14 +100,6 @@ pub struct HttpMediatorConfig {
     pub http_version: HttpVersion,
     pub max_retries: u32,
     pub retry_delays: Vec<Duration>,
-    /// Circuit breaker failure rate threshold (0.0-1.0). Java default: 0.5
-    pub circuit_breaker_failure_rate: f64,
-    /// Minimum calls before evaluating failure rate. Java default: 10
-    pub circuit_breaker_min_calls: u32,
-    /// EWMA time window for success rate calculation
-    pub circuit_breaker_window: Duration,
-    /// Time to wait in open state before half-open. Java default: 5s
-    pub circuit_breaker_reset_timeout: Duration,
     /// Connection timeout
     pub connect_timeout: Duration,
 }
@@ -250,10 +115,6 @@ impl Default for HttpMediatorConfig {
                 Duration::from_secs(2),
                 Duration::from_secs(3),
             ],
-            circuit_breaker_failure_rate: 0.5,              // Java: failureRatio=0.5
-            circuit_breaker_min_calls: 10,                  // Java: requestVolumeThreshold=10
-            circuit_breaker_window: Duration::from_secs(300), // 5-minute EWMA window
-            circuit_breaker_reset_timeout: Duration::from_secs(5), // Java: delay=5000
             connect_timeout: Duration::from_secs(30),
         }
     }
@@ -271,10 +132,6 @@ impl HttpMediatorConfig {
                 Duration::from_secs(2),
                 Duration::from_secs(3),
             ],
-            circuit_breaker_failure_rate: 0.5,
-            circuit_breaker_min_calls: 10,
-            circuit_breaker_window: Duration::from_secs(300),
-            circuit_breaker_reset_timeout: Duration::from_secs(5),
             connect_timeout: Duration::from_secs(10),
         }
     }
@@ -285,11 +142,11 @@ impl HttpMediatorConfig {
     }
 }
 
-/// HTTP-based message mediator with circuit breaker
+/// HTTP-based message mediator.
+/// Circuit breaking is handled by the per-endpoint CircuitBreakerRegistry in ProcessPool.
 pub struct HttpMediator {
     client: Client,
     config: HttpMediatorConfig,
-    circuit_breaker: CircuitBreaker,
     warning_service: Arc<WarningService>,
 }
 
@@ -331,20 +188,13 @@ impl HttpMediator {
 
         let client = builder.build().expect("Failed to build HTTP client");
 
-        let circuit_breaker = CircuitBreaker::new(
-            config.circuit_breaker_failure_rate,
-            config.circuit_breaker_min_calls,
-            config.circuit_breaker_window,
-            config.circuit_breaker_reset_timeout,
-        );
-
         info!(
             timeout_secs = config.timeout.as_secs(),
             http_version = ?config.http_version,
             "HttpMediator initialized"
         );
 
-        Self { client, config, circuit_breaker, warning_service: Arc::new(WarningService::noop()) }
+        Self { client, config, warning_service: Arc::new(WarningService::noop()) }
     }
 
     /// Set the warning service for generating configuration warnings
@@ -373,31 +223,12 @@ impl HttpMediator {
         );
     }
 
-    /// Get circuit breaker state
-    pub fn circuit_state(&self) -> CircuitState {
-        self.circuit_breaker.state()
-    }
-
     async fn mediate_once(&self, message: &Message) -> MediationOutcome {
         if message.mediation_type != MediationType::HTTP {
             return MediationOutcome::error_config(
                 0,
                 format!("Unsupported mediation type: {:?}", message.mediation_type),
             );
-        }
-
-        // Check circuit breaker
-        if !self.circuit_breaker.allow_request() {
-            debug!(
-                message_id = %message.id,
-                "Circuit breaker open, rejecting request"
-            );
-            return MediationOutcome {
-                result: MediationResult::ErrorConnection,
-                delay_seconds: Some(5),
-                status_code: None,
-                error_message: Some("Circuit breaker open".to_string()),
-            };
         }
 
         // Build payload matching Java format: {"messageId":"<id>"}
@@ -443,7 +274,6 @@ impl HttpMediator {
                 let status_code = status.as_u16();
 
                 if status.is_success() {
-                    self.circuit_breaker.record_success();
 
                     // Parse response body for ack and delaySeconds
                     if let Ok(body) = response.text().await {
@@ -474,7 +304,7 @@ impl HttpMediator {
                     MediationOutcome::success()
                 } else if status_code == 400 {
                     // Bad request - configuration error
-                    self.circuit_breaker.record_success(); // Don't count as failure
+
                     warn!(
                         message_id = %message.id,
                         status_code = status_code,
@@ -484,7 +314,7 @@ impl HttpMediator {
                     MediationOutcome::error_config(status_code, "HTTP 400: Bad request".to_string())
                 } else if status_code == 401 || status_code == 403 {
                     // Auth errors - configuration error
-                    self.circuit_breaker.record_success();
+
                     let desc = if status_code == 401 { "Unauthorized" } else { "Forbidden" };
                     warn!(
                         message_id = %message.id,
@@ -495,7 +325,7 @@ impl HttpMediator {
                     MediationOutcome::error_config(status_code, format!("HTTP {}: Auth error", status_code))
                 } else if status_code == 404 {
                     // Not found - configuration error
-                    self.circuit_breaker.record_success();
+
                     warn!(
                         message_id = %message.id,
                         status_code = status_code,
@@ -506,7 +336,6 @@ impl HttpMediator {
                 } else if status_code == 429 {
                     // Too Many Requests - TRANSIENT error, respect Retry-After
                     // Don't count as circuit breaker failure (it's rate limiting, not a real error)
-                    self.circuit_breaker.record_success();
 
                     // Parse Retry-After header if present, default to 30 seconds
                     let retry_after = response.headers()
@@ -529,7 +358,7 @@ impl HttpMediator {
                     }
                 } else if status_code == 501 {
                     // Not implemented - configuration error (CRITICAL)
-                    self.circuit_breaker.record_success();
+
                     warn!(
                         message_id = %message.id,
                         status_code = status_code,
@@ -539,7 +368,7 @@ impl HttpMediator {
                     MediationOutcome::error_config(status_code, "HTTP 501: Not implemented".to_string())
                 } else if status.is_client_error() {
                     // Other 4xx - treat as config error (but NOT 429 which is handled above)
-                    self.circuit_breaker.record_success();
+
                     warn!(
                         message_id = %message.id,
                         status_code = status_code,
@@ -548,7 +377,7 @@ impl HttpMediator {
                     MediationOutcome::error_config(status_code, format!("HTTP {}: Client error", status_code))
                 } else if status.is_server_error() {
                     // 5xx - Transient error, retry
-                    self.circuit_breaker.record_failure();
+
                     warn!(
                         message_id = %message.id,
                         status_code = status_code,
@@ -574,7 +403,7 @@ impl HttpMediator {
                 }
             }
             Err(e) => {
-                self.circuit_breaker.record_failure();
+
 
                 if e.is_timeout() {
                     warn!(
@@ -652,63 +481,4 @@ impl Default for HttpMediator {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_circuit_breaker_default_config() {
-        let cb = CircuitBreaker::default();
-        assert_eq!(cb.state(), CircuitState::Closed);
-        assert!(cb.allow_request());
-    }
-
-    #[tokio::test]
-    async fn test_circuit_breaker_trips_on_high_failure_rate() {
-        // Use very short window so EWMA can evaluate immediately in tests.
-        // The EWMA policy requires at least `window` duration of request history.
-        let cb = CircuitBreaker::new(0.5, 5, Duration::from_millis(10), Duration::from_secs(60));
-
-        assert_eq!(cb.state(), CircuitState::Closed);
-
-        // Record some failures then sleep past the window
-        for _ in 0..3 {
-            cb.allow_request();
-            cb.record_failure();
-        }
-        tokio::time::sleep(Duration::from_millis(15)).await;
-
-        // Record more failures — now EWMA has enough history
-        for _ in 0..10 {
-            if cb.allow_request() {
-                cb.record_failure();
-            }
-        }
-
-        assert_eq!(cb.state(), CircuitState::Open);
-        assert!(!cb.allow_request());
-    }
-
-    #[tokio::test]
-    async fn test_circuit_breaker_reset() {
-        let cb = CircuitBreaker::new(0.5, 5, Duration::from_millis(10), Duration::from_secs(60));
-
-        // Trip the breaker
-        for _ in 0..3 {
-            cb.allow_request();
-            cb.record_failure();
-        }
-        tokio::time::sleep(Duration::from_millis(15)).await;
-        for _ in 0..10 {
-            if cb.allow_request() {
-                cb.record_failure();
-            }
-        }
-        assert_eq!(cb.state(), CircuitState::Open);
-
-        // Reset should return to closed
-        cb.reset();
-        assert_eq!(cb.state(), CircuitState::Closed);
-        assert!(cb.allow_request());
-    }
-}
+// Circuit breaker tests are in circuit_breaker_registry.rs

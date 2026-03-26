@@ -2249,18 +2249,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "failsafe"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6b1dc7c28e66a8f5dc32b7043b735e93d9eea8ea6e7be5507dae5850ab7ac70"
-dependencies = [
- "futures-core",
- "parking_lot",
- "pin-project",
- "rand 0.8.5",
-]
-
-[[package]]
 name = "fastrand"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2483,7 +2471,6 @@ dependencies = [
  "bytes",
  "chrono",
  "dashmap",
- "failsafe",
  "fc-common",
  "fc-queue",
  "fc-standby",
@@ -2640,6 +2627,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "aws-config",
+ "aws-sdk-secretsmanager",
  "aws-sdk-sqs",
  "axum",
  "fc-common",
@@ -2661,6 +2649,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "urlencoding",
  "utoipa",
  "utoipa-axum",
  "utoipa-swagger-ui",

@@ -136,8 +136,24 @@ fn env_or(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
+/// Read an env var, trying the primary key first, then an alias.
+/// This allows both TS-style (`PORT`) and Rust-style (`FC_API_PORT`) env vars.
+fn env_or_alias(primary: &str, alias: &str, default: &str) -> String {
+    std::env::var(primary)
+        .or_else(|_| std::env::var(alias))
+        .unwrap_or_else(|_| default.to_string())
+}
+
 fn env_or_parse<T: std::str::FromStr>(key: &str, default: T) -> T {
     std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
+fn env_or_alias_parse<T: std::str::FromStr>(primary: &str, alias: &str, default: T) -> T {
+    std::env::var(primary)
+        .or_else(|_| std::env::var(alias))
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(default)
@@ -150,6 +166,74 @@ fn env_bool(key: &str, default: bool) -> bool {
         .unwrap_or(default)
 }
 
+fn env_bool_alias(primary: &str, alias: &str, default: bool) -> bool {
+    std::env::var(primary)
+        .or_else(|_| std::env::var(alias))
+        .ok()
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(default)
+}
+
+/// Resolve database URL from environment.
+/// Supports three modes:
+/// 1. `FC_DATABASE_URL` / `DATABASE_URL` — full connection string (preferred for Rust)
+/// 2. `DB_HOST` + `DB_NAME` + `DB_SECRET_ARN` — AWS Secrets Manager (TS compatibility)
+/// 3. `DB_HOST` + `DB_NAME` + `DB_USERNAME` + `DB_PASSWORD` — explicit credentials
+async fn resolve_database_url() -> Result<String> {
+    // Mode 1: Full connection string
+    if let Ok(url) = std::env::var("FC_DATABASE_URL").or_else(|_| std::env::var("DATABASE_URL")) {
+        return Ok(url);
+    }
+
+    // Mode 2/3: Build from components
+    let host = std::env::var("DB_HOST")
+        .map_err(|_| anyhow::anyhow!("No database config found. Set FC_DATABASE_URL or DB_HOST+DB_NAME"))?;
+    let name = env_or("DB_NAME", "flowcatalyst");
+    let port = env_or("DB_PORT", "5432");
+
+    // Try AWS Secrets Manager
+    if let Ok(secret_arn) = std::env::var("DB_SECRET_ARN") {
+        let provider = env_or("DB_SECRET_PROVIDER", "aws");
+        if provider == "aws" {
+            info!(secret_arn = %secret_arn, "Resolving database credentials from AWS Secrets Manager");
+            let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+            let sm_client = aws_sdk_secretsmanager::Client::new(&config);
+
+            let secret = sm_client.get_secret_value()
+                .secret_id(&secret_arn)
+                .send()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to get DB secret from Secrets Manager: {}", e))?;
+
+            let secret_string = secret.secret_string()
+                .ok_or_else(|| anyhow::anyhow!("DB secret has no string value"))?;
+
+            let creds: serde_json::Value = serde_json::from_str(secret_string)
+                .map_err(|e| anyhow::anyhow!("Failed to parse DB secret JSON: {}", e))?;
+
+            let username = creds["username"].as_str()
+                .ok_or_else(|| anyhow::anyhow!("DB secret missing 'username' field"))?;
+            let password = creds["password"].as_str()
+                .ok_or_else(|| anyhow::anyhow!("DB secret missing 'password' field"))?;
+
+            let password_encoded = urlencoding::encode(password);
+            let url = format!("postgresql://{}:{}@{}:{}/{}", username, password_encoded, host, port, name);
+            info!("Database URL resolved from Secrets Manager (host: {}, db: {})", host, name);
+            return Ok(url);
+        }
+    }
+
+    // Mode 3: Explicit credentials
+    let username = env_or("DB_USERNAME", "postgres");
+    let password = env_or("DB_PASSWORD", "");
+    if password.is_empty() {
+        Ok(format!("postgresql://{}@{}:{}/{}", username, host, port, name))
+    } else {
+        let password_encoded = urlencoding::encode(&password);
+        Ok(format!("postgresql://{}:{}@{}:{}/{}", username, password_encoded, host, port, name))
+    }
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 #[tokio::main]
@@ -159,21 +243,23 @@ async fn main() -> Result<()> {
     info!("Starting FlowCatalyst Unified Server");
 
     // ── Configuration ────────────────────────────────────────────────────────
-    let api_port: u16 = env_or_parse("FC_API_PORT", 3000);
+    // Each env var supports both the Rust name (FC_ prefix) and the TS name for
+    // compatibility with existing ECS task definitions.
+    let api_port: u16 = env_or_alias_parse("FC_API_PORT", "PORT", 3000);
     let metrics_port: u16 = env_or_parse("FC_METRICS_PORT", 9090);
-    let database_url = env_or("FC_DATABASE_URL", "postgresql://localhost:5432/flowcatalyst");
+    let database_url = resolve_database_url().await?;
     let jwt_issuer = env_or("FC_JWT_ISSUER", "flowcatalyst");
 
-    // Subsystem toggles
-    let platform_enabled = env_bool("FC_PLATFORM_ENABLED", true);
-    let router_enabled = env_bool("FC_ROUTER_ENABLED", false);
-    let scheduler_enabled = env_bool("FC_SCHEDULER_ENABLED", false);
-    let stream_enabled = env_bool("FC_STREAM_PROCESSOR_ENABLED", false);
-    let outbox_enabled = env_bool("FC_OUTBOX_ENABLED", false);
+    // Subsystem toggles (TS names: PLATFORM_ENABLED, MESSAGE_ROUTER_ENABLED, etc.)
+    let platform_enabled = env_bool_alias("FC_PLATFORM_ENABLED", "PLATFORM_ENABLED", true);
+    let router_enabled = env_bool_alias("FC_ROUTER_ENABLED", "MESSAGE_ROUTER_ENABLED", false);
+    let scheduler_enabled = env_bool_alias("FC_SCHEDULER_ENABLED", "DISPATCH_SCHEDULER_ENABLED", false);
+    let stream_enabled = env_bool_alias("FC_STREAM_PROCESSOR_ENABLED", "STREAM_PROCESSOR_ENABLED", false);
+    let outbox_enabled = env_bool_alias("FC_OUTBOX_ENABLED", "OUTBOX_PROCESSOR_ENABLED", false);
 
     // Standby / HA
-    let standby_enabled = env_bool("FC_STANDBY_ENABLED", false);
-    let standby_redis_url = env_or("FC_STANDBY_REDIS_URL", "redis://127.0.0.1:6379");
+    let standby_enabled = env_bool_alias("FC_STANDBY_ENABLED", "STANDBY_ENABLED", false);
+    let standby_redis_url = env_or_alias("FC_STANDBY_REDIS_URL", "REDIS_URL", "redis://127.0.0.1:6379");
     let standby_lock_key = env_or("FC_STANDBY_LOCK_KEY", "fc:server:leader");
 
     info!(
@@ -339,9 +425,9 @@ async fn main() -> Result<()> {
         secret_key: String::new(),
         issuer: jwt_issuer,
         audience: "flowcatalyst".to_string(),
-        access_token_expiry_secs: env_or_parse("FC_ACCESS_TOKEN_EXPIRY_SECS", 3600),
-        session_token_expiry_secs: env_or_parse("FC_SESSION_TOKEN_EXPIRY_SECS", 28800),
-        refresh_token_expiry_secs: env_or_parse("FC_REFRESH_TOKEN_EXPIRY_SECS", 86400 * 30),
+        access_token_expiry_secs: env_or_alias_parse("FC_ACCESS_TOKEN_EXPIRY_SECS", "OIDC_ACCESS_TOKEN_TTL", 3600),
+        session_token_expiry_secs: env_or_alias_parse("FC_SESSION_TOKEN_EXPIRY_SECS", "OIDC_SESSION_TTL", 28800),
+        refresh_token_expiry_secs: env_or_alias_parse("FC_REFRESH_TOKEN_EXPIRY_SECS", "OIDC_REFRESH_TOKEN_TTL", 86400 * 30),
     };
     let auth_service = Arc::new(AuthService::new(auth_config));
     let authz_service = Arc::new(AuthorizationService::new(role_repo.clone()));
@@ -630,7 +716,7 @@ fn build_platform_app(
         principal_repo: Some(principal_repo.clone()),
     };
 
-    let external_base_url = std::env::var("FC_EXTERNAL_BASE_URL").ok();
+    let external_base_url = std::env::var("FC_EXTERNAL_BASE_URL").or_else(|_| std::env::var("EXTERNAL_BASE_URL")).ok();
     let oidc_login_state = OidcLoginApiState::new(
         anchor_domain_repo.clone(),
         idp_repo.clone(),
@@ -710,7 +796,7 @@ fn build_platform_app(
     };
     let well_known_state = WellKnownState {
         auth_service: auth_service.clone(),
-        external_base_url: std::env::var("FC_EXTERNAL_BASE_URL")
+        external_base_url: std::env::var("FC_EXTERNAL_BASE_URL").or_else(|_| std::env::var("EXTERNAL_BASE_URL"))
             .unwrap_or_else(|_| format!("http://localhost:{}", api_port)),
     };
     let client_selection_state = ClientSelectionState {
@@ -732,7 +818,7 @@ fn build_platform_app(
         password_service: password_service.clone(),
         unit_of_work: unit_of_work.clone(),
         email_service,
-        external_base_url: std::env::var("FC_EXTERNAL_BASE_URL")
+        external_base_url: std::env::var("FC_EXTERNAL_BASE_URL").or_else(|_| std::env::var("EXTERNAL_BASE_URL"))
             .unwrap_or_else(|_| format!("http://localhost:{}", api_port)),
     };
 
@@ -1129,7 +1215,7 @@ fn load_scheduler_config() -> fc_scheduler::SchedulerConfig {
         stale_threshold: Duration::from_secs(config.scheduler.stale_threshold_minutes * 60),
         default_dispatch_mode: fc_common::DispatchMode::from_str(&config.scheduler.default_dispatch_mode),
         default_pool_code: env_or("FC_SCHEDULER_DEFAULT_POOL_CODE", "DISPATCH-POOL"),
-        processing_endpoint: env_or("FC_SCHEDULER_PROCESSING_ENDPOINT", "http://localhost:8080/api/dispatch/process"),
+        processing_endpoint: env_or_alias("FC_SCHEDULER_PROCESSING_ENDPOINT", "DISPATCH_SCHEDULER_PROCESSING_ENDPOINT", "http://localhost:8080/api/dispatch/process"),
         app_key: if config.scheduler.app_key.is_empty() { None } else { Some(config.scheduler.app_key.clone()) },
         max_concurrent_groups: env_or_parse("FC_SCHEDULER_MAX_CONCURRENT_GROUPS", 10),
         connection_filter_enabled: true,

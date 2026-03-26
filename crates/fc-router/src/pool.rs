@@ -142,8 +142,8 @@ pub struct ProcessPool {
     /// Enhanced metrics collector
     metrics_collector: Arc<PoolMetricsCollector>,
 
-    /// Per-pool circuit breaker — isolates failures so one bad endpoint doesn't block all pools.
-    circuit_breaker: Arc<crate::mediator::CircuitBreaker>,
+    /// Per-endpoint circuit breaker registry — shared across pools, keyed by mediation target URL.
+    circuit_breaker_registry: Arc<crate::circuit_breaker_registry::CircuitBreakerRegistry>,
 
     /// Warning service for generating warnings
     warning_service: Arc<crate::warning::WarningService>,
@@ -181,9 +181,14 @@ impl ProcessPool {
             queue_size: Arc::new(AtomicU32::new(0)),
             active_workers: Arc::new(AtomicU32::new(0)),
             metrics_collector: Arc::new(PoolMetricsCollector::new()),
-            circuit_breaker: Arc::new(crate::mediator::CircuitBreaker::default()),
+            circuit_breaker_registry: Arc::new(crate::circuit_breaker_registry::CircuitBreakerRegistry::default()),
             warning_service: Arc::new(crate::warning::WarningService::noop()),
         }
+    }
+
+    /// Set the shared circuit breaker registry
+    pub fn set_circuit_breaker_registry(&mut self, registry: Arc<crate::circuit_breaker_registry::CircuitBreakerRegistry>) {
+        self.circuit_breaker_registry = registry;
     }
 
     /// Set the warning service for generating warnings
@@ -325,14 +330,13 @@ impl ProcessPool {
     /// Spawn a standalone task for an IMMEDIATE mode message.
     /// No group ordering — acquires semaphore, rate-limits, mediates, callbacks directly.
     fn spawn_immediate_task(&self, task: PoolTask) {
-        let pool_code: Arc<str> = Arc::from(self.config.code.as_str());
         let semaphore = self.semaphore.clone();
         let mediator = self.mediator.clone();
         let queue_size = self.queue_size.clone();
         let active_workers = self.active_workers.clone();
         let rate_limiter = self.rate_limiter.clone();
         let metrics_collector = self.metrics_collector.clone();
-        let circuit_breaker = self.circuit_breaker.clone();
+        let cb_registry = self.circuit_breaker_registry.clone();
         let failed_batch_groups = self.failed_batch_groups.clone();
         let batch_group_message_count = self.batch_group_message_count.clone();
 
@@ -363,9 +367,10 @@ impl ProcessPool {
             active_workers.fetch_add(1, Ordering::Relaxed);
             queue_size.fetch_sub(1, Ordering::Relaxed);
 
-            // Check circuit breaker
-            if !circuit_breaker.allow_request() {
-                debug!(message_id = %task.message.id, pool_code = %pool_code, "Pool circuit breaker open");
+            // Check per-endpoint circuit breaker
+            let endpoint = &task.message.mediation_target;
+            if !cb_registry.allow_request(endpoint) {
+                debug!(message_id = %task.message.id, endpoint = %endpoint, "Endpoint circuit breaker open");
                 metrics_collector.record_failure(0);
                 task.callback.nack(Some(5)).await;
             } else {
@@ -374,8 +379,8 @@ impl ProcessPool {
                 let duration_ms = start.elapsed().as_millis() as u64;
 
                 match outcome.result {
-                    MediationResult::Success | MediationResult::ErrorConfig => circuit_breaker.record_success(),
-                    MediationResult::ErrorProcess | MediationResult::ErrorConnection => circuit_breaker.record_failure(),
+                    MediationResult::Success | MediationResult::ErrorConfig => cb_registry.record_success(endpoint),
+                    MediationResult::ErrorProcess | MediationResult::ErrorConnection => cb_registry.record_failure(endpoint),
                 }
 
                 match outcome.result {
@@ -420,7 +425,7 @@ impl ProcessPool {
         let rate_limiter = self.rate_limiter.clone();
         let group_handlers = self.group_handlers.clone();
         let metrics_collector = self.metrics_collector.clone();
-        let circuit_breaker = self.circuit_breaker.clone();
+        let cb_registry = self.circuit_breaker_registry.clone();
 
         tokio::spawn(async move {
             debug!(group_id = %group_id, pool_code = %pool_code, "Group drain task started");
@@ -561,12 +566,13 @@ impl ProcessPool {
                 in_flight_groups.insert(group_id.clone());
                 panic_guard.holding_permit = true;
 
-                // Check per-pool circuit breaker before attempting mediation
-                if !circuit_breaker.allow_request() {
+                // Check per-endpoint circuit breaker before attempting mediation
+                let endpoint = &task.message.mediation_target;
+                if !cb_registry.allow_request(endpoint) {
                     debug!(
                         message_id = %task.message.id,
-                        pool_code = %pool_code,
-                        "Pool circuit breaker open — NACKing for retry"
+                        endpoint = %endpoint,
+                        "Endpoint circuit breaker open — NACKing for retry"
                     );
                     metrics_collector.record_failure(0);
 
@@ -581,13 +587,13 @@ impl ProcessPool {
                     let outcome = mediator.mediate(&task.message).await;
                     let duration_ms = start.elapsed().as_millis() as u64;
 
-                    // Record outcome on per-pool circuit breaker
+                    // Record outcome on per-endpoint circuit breaker
                     match outcome.result {
                         MediationResult::Success | MediationResult::ErrorConfig => {
-                            circuit_breaker.record_success();
+                            cb_registry.record_success(endpoint);
                         }
                         MediationResult::ErrorProcess | MediationResult::ErrorConnection => {
-                            circuit_breaker.record_failure();
+                            cb_registry.record_failure(endpoint);
                         }
                     }
 
@@ -810,14 +816,9 @@ impl ProcessPool {
         &self.config.code
     }
 
-    /// Get the per-pool circuit breaker state
-    pub fn circuit_breaker_state(&self) -> crate::mediator::CircuitState {
-        self.circuit_breaker.state()
-    }
-
-    /// Reset the per-pool circuit breaker
-    pub fn reset_circuit_breaker(&self) {
-        self.circuit_breaker.reset();
+    /// Get the circuit breaker registry (for monitoring APIs)
+    pub fn circuit_breaker_registry(&self) -> &Arc<crate::circuit_breaker_registry::CircuitBreakerRegistry> {
+        &self.circuit_breaker_registry
     }
 
     /// Get current concurrency setting

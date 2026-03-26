@@ -33,7 +33,7 @@ pub mod api;
 pub use error::RouterError;
 pub use manager::{QueueManager, InFlightMessageInfo, ConsumerFactory};
 pub use pool::{ProcessPool, PoolConfigUpdate};
-pub use mediator::{Mediator, HttpMediator, CircuitState, HttpMediatorConfig, HttpVersion};
+pub use mediator::{Mediator, HttpMediator, HttpMediatorConfig, HttpVersion};
 pub use lifecycle::{LifecycleManager, LifecycleConfig};
 pub use warning::{WarningService, WarningServiceConfig};
 pub use health::{HealthService, HealthServiceConfig};

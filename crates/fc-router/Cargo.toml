@@ -39,7 +39,7 @@ tower = { workspace = true }
 tower-http = { workspace = true }
 base64 = "0.22"
 rand = { workspace = true }
-failsafe = { workspace = true }
+# failsafe removed — circuit breaking now handled by CircuitBreakerRegistry
 urlencoding = "2.1"
 jsonwebtoken = { workspace = true }
 lettre = { workspace = true, optional = true }

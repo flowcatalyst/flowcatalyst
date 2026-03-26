@@ -1,13 +1,14 @@
-//! Circuit Breaker Registry - Per-endpoint circuit breaker tracking
+//! Circuit Breaker Registry - Per-endpoint circuit breaker tracking and enforcement
 //!
-//! Provides centralized tracking of circuit breakers for monitoring purposes.
+//! Single source of truth for circuit breakers, keyed by endpoint URL.
+//! Used by ProcessPool to gate requests before mediation.
 //! Compatible with Java's Resilience4j circuit breaker stats format.
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -56,53 +57,54 @@ pub struct CircuitBreakerStats {
     pub buffer_size: u32,
 }
 
-/// Per-endpoint circuit breaker tracking
+/// Per-endpoint circuit breaker.
+/// All state transitions are protected by a single Mutex to prevent race conditions.
+/// Counters use atomics for lock-free increment (stats reads don't need the mutex).
 struct EndpointCircuitBreaker {
     name: String,
-    state: RwLock<CircuitBreakerState>,
+    /// Mutex protects state, sliding window, half_open_success_count, and last_failure_time
+    /// as a single unit — prevents race conditions in state transitions.
+    inner: Mutex<BreakerInner>,
+    /// Lock-free counters for stats (reads don't need the mutex)
     successful_calls: AtomicU64,
     failed_calls: AtomicU64,
     rejected_calls: AtomicU64,
-    last_failure_time: RwLock<Option<Instant>>,
-    last_state_change: RwLock<Instant>,
-    /// Last time any call (success, failure, or rejected) was recorded
+    /// Last time any call was recorded (for idle eviction)
     last_activity: RwLock<Instant>,
-    half_open_success_count: RwLock<u32>,
-
     // Configuration
-    failure_rate_threshold: f64,
-    min_calls: u32,
-    success_threshold: u32,
-    reset_timeout: Duration,
-    buffer_size: u32,
+    config: CircuitBreakerConfig,
+}
 
-    // Sliding window for failure rate calculation
-    recent_results: RwLock<Vec<bool>>,
+struct BreakerInner {
+    state: CircuitBreakerState,
+    last_failure_time: Option<Instant>,
+    last_state_change: Instant,
+    half_open_success_count: u32,
+    /// Sliding window of recent results (true=success, false=failure)
+    recent_results: VecDeque<bool>,
 }
 
 impl EndpointCircuitBreaker {
     fn new(name: String, config: &CircuitBreakerConfig) -> Self {
         Self {
             name,
-            state: RwLock::new(CircuitBreakerState::Closed),
+            inner: Mutex::new(BreakerInner {
+                state: CircuitBreakerState::Closed,
+                last_failure_time: None,
+                last_state_change: Instant::now(),
+                half_open_success_count: 0,
+                recent_results: VecDeque::with_capacity(config.buffer_size as usize),
+            }),
             successful_calls: AtomicU64::new(0),
             failed_calls: AtomicU64::new(0),
             rejected_calls: AtomicU64::new(0),
-            last_failure_time: RwLock::new(None),
-            last_state_change: RwLock::new(Instant::now()),
             last_activity: RwLock::new(Instant::now()),
-            half_open_success_count: RwLock::new(0),
-            failure_rate_threshold: config.failure_rate_threshold,
-            min_calls: config.min_calls,
-            success_threshold: config.success_threshold,
-            reset_timeout: config.reset_timeout,
-            buffer_size: config.buffer_size,
-            recent_results: RwLock::new(Vec::with_capacity(config.buffer_size as usize)),
+            config: config.clone(),
         }
     }
 
-    /// Calculate current failure rate from the sliding window
-    fn failure_rate(results: &[bool]) -> f64 {
+    /// Calculate failure rate from the sliding window
+    fn failure_rate(results: &VecDeque<bool>) -> f64 {
         if results.is_empty() {
             return 0.0;
         }
@@ -110,25 +112,27 @@ impl EndpointCircuitBreaker {
         failures as f64 / results.len() as f64
     }
 
+    fn push_result(inner: &mut BreakerInner, success: bool, buffer_size: u32) {
+        if inner.recent_results.len() >= buffer_size as usize {
+            inner.recent_results.pop_front();
+        }
+        inner.recent_results.push_back(success);
+    }
+
     fn record_success(&self) {
         self.successful_calls.fetch_add(1, Ordering::Relaxed);
         *self.last_activity.write() = Instant::now();
 
-        let mut results = self.recent_results.write();
-        if results.len() >= self.buffer_size as usize {
-            results.remove(0);
-        }
-        results.push(true);
+        let mut inner = self.inner.lock();
+        Self::push_result(&mut inner, true, self.config.buffer_size);
 
-        let state = *self.state.read();
-        if state == CircuitBreakerState::HalfOpen {
-            let mut count = self.half_open_success_count.write();
-            *count += 1;
-            if *count >= self.success_threshold {
-                *self.state.write() = CircuitBreakerState::Closed;
-                *self.last_state_change.write() = Instant::now();
-                results.clear(); // Reset window on close (matches Java/TypeScript)
-                *count = 0;
+        if inner.state == CircuitBreakerState::HalfOpen {
+            inner.half_open_success_count += 1;
+            if inner.half_open_success_count >= self.config.success_threshold {
+                inner.state = CircuitBreakerState::Closed;
+                inner.last_state_change = Instant::now();
+                inner.recent_results.clear();
+                inner.half_open_success_count = 0;
             }
         }
     }
@@ -136,31 +140,26 @@ impl EndpointCircuitBreaker {
     fn record_failure(&self) {
         self.failed_calls.fetch_add(1, Ordering::Relaxed);
         *self.last_activity.write() = Instant::now();
-        *self.last_failure_time.write() = Some(Instant::now());
 
-        let mut results = self.recent_results.write();
-        if results.len() >= self.buffer_size as usize {
-            results.remove(0);
-        }
-        results.push(false);
+        let mut inner = self.inner.lock();
+        inner.last_failure_time = Some(Instant::now());
+        Self::push_result(&mut inner, false, self.config.buffer_size);
 
-        let state = *self.state.read();
-        match state {
+        match inner.state {
             CircuitBreakerState::Closed => {
-                // Ratio-based tripping: only evaluate when we have enough calls
-                if results.len() >= self.min_calls as usize {
-                    let rate = Self::failure_rate(&results);
-                    if rate >= self.failure_rate_threshold {
-                        *self.state.write() = CircuitBreakerState::Open;
-                        *self.last_state_change.write() = Instant::now();
+                if inner.recent_results.len() >= self.config.min_calls as usize {
+                    let rate = Self::failure_rate(&inner.recent_results);
+                    if rate >= self.config.failure_rate_threshold {
+                        inner.state = CircuitBreakerState::Open;
+                        inner.last_state_change = Instant::now();
                     }
                 }
             }
             CircuitBreakerState::HalfOpen => {
                 // Any failure in half-open immediately reopens
-                *self.state.write() = CircuitBreakerState::Open;
-                *self.last_state_change.write() = Instant::now();
-                *self.half_open_success_count.write() = 0;
+                inner.state = CircuitBreakerState::Open;
+                inner.last_state_change = Instant::now();
+                inner.half_open_success_count = 0;
             }
             CircuitBreakerState::Open => {}
         }
@@ -172,16 +171,15 @@ impl EndpointCircuitBreaker {
     }
 
     fn allow_request(&self) -> bool {
-        let state = *self.state.read();
-
-        match state {
+        let mut inner = self.inner.lock();
+        match inner.state {
             CircuitBreakerState::Closed => true,
             CircuitBreakerState::Open => {
-                // Check if we should transition to half-open
-                if let Some(last_failure) = *self.last_failure_time.read() {
-                    if last_failure.elapsed() >= self.reset_timeout {
-                        *self.state.write() = CircuitBreakerState::HalfOpen;
-                        *self.last_state_change.write() = Instant::now();
+                if let Some(last_failure) = inner.last_failure_time {
+                    if last_failure.elapsed() >= self.config.reset_timeout {
+                        inner.state = CircuitBreakerState::HalfOpen;
+                        inner.last_state_change = Instant::now();
+                        inner.half_open_success_count = 0;
                         return true;
                     }
                 }
@@ -192,26 +190,26 @@ impl EndpointCircuitBreaker {
     }
 
     fn get_stats(&self) -> CircuitBreakerStats {
-        let results = self.recent_results.read();
-
+        let inner = self.inner.lock();
         CircuitBreakerStats {
             name: self.name.clone(),
-            state: *self.state.read(),
+            state: inner.state,
             successful_calls: self.successful_calls.load(Ordering::Relaxed),
             failed_calls: self.failed_calls.load(Ordering::Relaxed),
             rejected_calls: self.rejected_calls.load(Ordering::Relaxed),
-            failure_rate: Self::failure_rate(&results),
-            buffered_calls: results.len() as u32,
-            buffer_size: self.buffer_size,
+            failure_rate: Self::failure_rate(&inner.recent_results),
+            buffered_calls: inner.recent_results.len() as u32,
+            buffer_size: self.config.buffer_size,
         }
     }
 
     fn reset(&self) {
-        *self.state.write() = CircuitBreakerState::Closed;
-        *self.last_state_change.write() = Instant::now();
-        *self.last_failure_time.write() = None;
-        *self.half_open_success_count.write() = 0;
-        self.recent_results.write().clear();
+        let mut inner = self.inner.lock();
+        inner.state = CircuitBreakerState::Closed;
+        inner.last_state_change = Instant::now();
+        inner.last_failure_time = None;
+        inner.half_open_success_count = 0;
+        inner.recent_results.clear();
     }
 }
 
@@ -242,7 +240,9 @@ impl Default for CircuitBreakerConfig {
     }
 }
 
-/// Registry for per-endpoint circuit breakers
+/// Registry for per-endpoint circuit breakers.
+/// Thread-safe, keyed by endpoint URL. Used by ProcessPool for enforcement
+/// and by the monitoring API for observability.
 pub struct CircuitBreakerRegistry {
     breakers: RwLock<HashMap<String, Arc<EndpointCircuitBreaker>>>,
     config: CircuitBreakerConfig,
@@ -258,7 +258,7 @@ impl CircuitBreakerRegistry {
 
     /// Get or create a circuit breaker for an endpoint
     fn get_or_create(&self, endpoint: &str) -> Arc<EndpointCircuitBreaker> {
-        // Try read first
+        // Try read first (fast path — breaker already exists)
         {
             let breakers = self.breakers.read();
             if let Some(breaker) = breakers.get(endpoint) {
@@ -266,8 +266,12 @@ impl CircuitBreakerRegistry {
             }
         }
 
-        // Create new
+        // Slow path — create new breaker
         let mut breakers = self.breakers.write();
+        // Double-check after acquiring write lock
+        if let Some(breaker) = breakers.get(endpoint) {
+            return Arc::clone(breaker);
+        }
         let breaker = Arc::new(EndpointCircuitBreaker::new(
             endpoint.to_string(),
             &self.config,
@@ -276,7 +280,8 @@ impl CircuitBreakerRegistry {
         breaker
     }
 
-    /// Check if request should be allowed for endpoint
+    /// Check if request should be allowed for endpoint.
+    /// Records a rejection if the breaker is open.
     pub fn allow_request(&self, endpoint: &str) -> bool {
         let breaker = self.get_or_create(endpoint);
         let allowed = breaker.allow_request();
@@ -316,7 +321,7 @@ impl CircuitBreakerRegistry {
     /// Get state of a specific circuit breaker
     pub fn get_state(&self, endpoint: &str) -> Option<CircuitBreakerState> {
         let breakers = self.breakers.read();
-        breakers.get(endpoint).map(|b| *b.state.read())
+        breakers.get(endpoint).map(|b| b.inner.lock().state)
     }
 
     /// Reset a specific circuit breaker
@@ -341,7 +346,6 @@ impl CircuitBreakerRegistry {
     /// Evict circuit breakers that have been idle (no calls) for longer than `max_idle`.
     /// Returns the number of breakers evicted.
     pub fn evict_idle(&self, max_idle: Duration) -> usize {
-        // Skip when registry is empty (zero cost)
         if self.breakers.read().is_empty() {
             return 0;
         }
@@ -373,7 +377,7 @@ impl CircuitBreakerRegistry {
         let breakers = self.breakers.read();
         breakers
             .values()
-            .filter(|b| *b.state.read() == CircuitBreakerState::Open)
+            .filter(|b| b.inner.lock().state == CircuitBreakerState::Open)
             .count()
     }
 }
@@ -392,7 +396,7 @@ mod tests {
     fn test_circuit_breaker_trips_on_failure_ratio() {
         let registry = CircuitBreakerRegistry::new(CircuitBreakerConfig {
             failure_rate_threshold: 0.5,
-            min_calls: 4,        // Low threshold for testing
+            min_calls: 4,
             success_threshold: 2,
             reset_timeout: Duration::from_millis(100),
             buffer_size: 10,
@@ -438,18 +442,76 @@ mod tests {
     }
 
     #[test]
+    fn test_circuit_breaker_half_open_recovery() {
+        let registry = CircuitBreakerRegistry::new(CircuitBreakerConfig {
+            failure_rate_threshold: 0.5,
+            min_calls: 4,
+            success_threshold: 2,
+            reset_timeout: Duration::from_millis(50),
+            buffer_size: 10,
+        });
+
+        let endpoint = "http://test.com/api";
+
+        // Trip the breaker
+        for _ in 0..5 {
+            registry.record_failure(endpoint);
+        }
+        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::Open));
+
+        // Wait for reset timeout
+        std::thread::sleep(Duration::from_millis(60));
+
+        // Should transition to half-open on next allow_request
+        assert!(registry.allow_request(endpoint));
+        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::HalfOpen));
+
+        // Two successes should close it (success_threshold = 2)
+        registry.record_success(endpoint);
+        registry.record_success(endpoint);
+        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::Closed));
+    }
+
+    #[test]
+    fn test_circuit_breaker_half_open_failure_reopens() {
+        let registry = CircuitBreakerRegistry::new(CircuitBreakerConfig {
+            failure_rate_threshold: 0.5,
+            min_calls: 4,
+            success_threshold: 3,
+            reset_timeout: Duration::from_millis(50),
+            buffer_size: 10,
+        });
+
+        let endpoint = "http://test.com/api";
+
+        // Trip the breaker
+        for _ in 0..5 {
+            registry.record_failure(endpoint);
+        }
+        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::Open));
+
+        // Wait for reset timeout
+        std::thread::sleep(Duration::from_millis(60));
+
+        // Transition to half-open
+        assert!(registry.allow_request(endpoint));
+        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::HalfOpen));
+
+        // A failure in half-open should reopen
+        registry.record_failure(endpoint);
+        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::Open));
+    }
+
+    #[test]
     fn test_circuit_breaker_reset() {
         let registry = CircuitBreakerRegistry::default();
         let endpoint = "http://test.com/api";
 
-        // Trip the breaker with many failures
         for _ in 0..15 {
             registry.record_failure(endpoint);
         }
-
         assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::Open));
 
-        // Reset it
         assert!(registry.reset(endpoint));
         assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::Closed));
     }
@@ -472,5 +534,19 @@ mod tests {
         let api2_stats = stats.get("http://api2.com").unwrap();
         assert_eq!(api2_stats.successful_calls, 1);
         assert_eq!(api2_stats.failed_calls, 1);
+    }
+
+    #[test]
+    fn test_double_check_get_or_create() {
+        let registry = CircuitBreakerRegistry::default();
+        let endpoint = "http://test.com/api";
+
+        // First call creates
+        registry.record_success(endpoint);
+        // Second call reuses
+        registry.record_success(endpoint);
+
+        let stats = registry.get_stats(endpoint).unwrap();
+        assert_eq!(stats.successful_calls, 2);
     }
 }
