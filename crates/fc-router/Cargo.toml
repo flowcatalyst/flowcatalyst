@@ -20,6 +20,7 @@ dashmap = { workspace = true }
 indexmap = { workspace = true }
 futures = { workspace = true }
 governor = { workspace = true }
+hdrhistogram = { workspace = true }
 nonzero_ext = { workspace = true }
 parking_lot = { workspace = true }
 serde = { workspace = true }

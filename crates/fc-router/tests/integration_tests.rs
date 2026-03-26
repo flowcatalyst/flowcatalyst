@@ -102,6 +102,7 @@ fn create_test_message(id: &str, pool_code: &str, target: &str) -> Message {
         mediation_target: target.to_string(),
         message_group_id: None,
         high_priority: false,
+        dispatch_mode: fc_common::DispatchMode::default(),
     }
 }
 

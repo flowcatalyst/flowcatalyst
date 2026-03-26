@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+pub use fc_common::DispatchMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -47,26 +48,6 @@ impl SubscriptionSource {
     }
     pub fn from_str(s: &str) -> Self {
         match s { "CODE" => Self::Code, "API" => Self::Api, _ => Self::Ui }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum DispatchMode {
-    Immediate,
-    BlockOnError,
-}
-
-impl Default for DispatchMode {
-    fn default() -> Self { Self::Immediate }
-}
-
-impl DispatchMode {
-    pub fn as_str(&self) -> &'static str {
-        match self { Self::Immediate => "IMMEDIATE", Self::BlockOnError => "BLOCK_ON_ERROR" }
-    }
-    pub fn from_str(s: &str) -> Self {
-        match s { "BLOCK_ON_ERROR" => Self::BlockOnError, _ => Self::Immediate }
     }
 }
 

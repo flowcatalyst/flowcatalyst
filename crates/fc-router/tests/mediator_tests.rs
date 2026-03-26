@@ -26,6 +26,7 @@ fn create_test_message(target: &str) -> Message {
         mediation_target: target.to_string(),
         message_group_id: None,
         high_priority: false,
+        dispatch_mode: fc_common::DispatchMode::default(),
     }
 }
 
@@ -39,6 +40,7 @@ fn create_test_message_with_auth(target: &str, token: &str) -> Message {
         mediation_target: target.to_string(),
         message_group_id: None,
         high_priority: false,
+        dispatch_mode: fc_common::DispatchMode::default(),
     }
 }
 

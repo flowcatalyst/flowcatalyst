@@ -21,10 +21,10 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
 use tracing::{info, warn, error, debug};
 
-use fc_common::{Message, MediationType};
+use fc_common::{Message, MediationType, DispatchMode};
 use fc_queue::QueuePublisher;
 
-use crate::{DispatchJob, DispatchJobRepository, DispatchMode, DispatchStatus};
+use crate::{DispatchJob, DispatchJobRepository, DispatchStatus};
 use crate::shared::error::Result;
 
 const DEFAULT_MESSAGE_GROUP: &str = "default";
@@ -151,6 +151,7 @@ impl JobDispatcher {
                     .unwrap_or_else(|| DEFAULT_MESSAGE_GROUP.to_string())
             ),
             high_priority: false,
+            dispatch_mode: job.mode,
         };
 
         match self.publisher.publish(message).await {
@@ -692,14 +693,10 @@ impl EventDispatcher {
             }
 
             // Set subscription details
-            // Map subscription dispatch mode to dispatch job dispatch mode
-            let job_mode = match subscription.mode {
-                crate::subscription::entity::DispatchMode::Immediate => crate::dispatch_job::entity::DispatchMode::Immediate,
-                crate::subscription::entity::DispatchMode::BlockOnError => crate::dispatch_job::entity::DispatchMode::BlockOnError,
-            };
+            // Both subscription and dispatch job now use fc_common::DispatchMode
             job = job
                 .with_subscription_id(&subscription.id)
-                .with_mode(job_mode)
+                .with_mode(subscription.mode)
                 .with_data_only(subscription.data_only);
 
             // Set dispatch pool if configured

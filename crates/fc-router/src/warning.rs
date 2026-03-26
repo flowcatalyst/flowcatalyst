@@ -303,13 +303,21 @@ impl WarningService {
     }
 }
 
-impl Default for WarningService {
-    fn default() -> Self {
+impl WarningService {
+    /// Create a no-op warning service with default config.
+    /// Used as the default when no explicit warning service is configured.
+    pub fn noop() -> Self {
         Self {
             warnings: RwLock::new(HashMap::new()),
             config: WarningServiceConfig::default(),
             notification_service: RwLock::new(None),
         }
+    }
+}
+
+impl Default for WarningService {
+    fn default() -> Self {
+        Self::noop()
     }
 }
 

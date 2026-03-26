@@ -290,7 +290,7 @@ pub struct HttpMediator {
     client: Client,
     config: HttpMediatorConfig,
     circuit_breaker: CircuitBreaker,
-    warning_service: Option<Arc<WarningService>>,
+    warning_service: Arc<WarningService>,
 }
 
 impl HttpMediator {
@@ -344,35 +344,33 @@ impl HttpMediator {
             "HttpMediator initialized"
         );
 
-        Self { client, config, circuit_breaker, warning_service: None }
+        Self { client, config, circuit_breaker, warning_service: Arc::new(WarningService::noop()) }
     }
 
     /// Set the warning service for generating configuration warnings
     pub fn with_warning_service(mut self, warning_service: Arc<WarningService>) -> Self {
-        self.warning_service = Some(warning_service);
+        self.warning_service = warning_service;
         self
     }
 
     /// Set warning service after construction
     pub fn set_warning_service(&mut self, warning_service: Arc<WarningService>) {
-        self.warning_service = Some(warning_service);
+        self.warning_service = warning_service;
     }
 
     /// Generate a configuration warning
     fn warn_config(&self, message_id: &str, target: &str, status_code: u16, description: &str) {
-        if let Some(ref ws) = self.warning_service {
-            let severity = if status_code == 501 {
-                WarningSeverity::Critical
-            } else {
-                WarningSeverity::Error
-            };
-            ws.add_warning(
-                WarningCategory::Configuration,
-                severity,
-                format!("HTTP {} {} for message {}: Target: {}", status_code, description, message_id, target),
-                "HttpMediator".to_string(),
-            );
-        }
+        let severity = if status_code == 501 {
+            WarningSeverity::Critical
+        } else {
+            WarningSeverity::Error
+        };
+        self.warning_service.add_warning(
+            WarningCategory::Configuration,
+            severity,
+            format!("HTTP {} {} for message {}: Target: {}", status_code, description, message_id, target),
+            "HttpMediator".to_string(),
+        );
     }
 
     /// Get circuit breaker state

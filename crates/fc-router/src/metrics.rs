@@ -2,12 +2,13 @@
 //!
 //! Provides sliding window metrics for processing pools with:
 //! - Success/failure counters
-//! - Processing time tracking with percentiles
+//! - Processing time tracking with percentiles (HdrHistogram for O(1) record/read)
 //! - 5-minute and 30-minute time windows
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
+use hdrhistogram::Histogram;
 use parking_lot::RwLock;
 use chrono::Utc;
 
@@ -15,7 +16,7 @@ use fc_common::{
     EnhancedPoolMetrics, ProcessingTimeMetrics, WindowedMetrics,
 };
 
-/// A single metric sample
+/// A single metric sample (kept for windowed success/failure counting)
 #[derive(Debug, Clone)]
 struct MetricSample {
     /// Timestamp when the sample was recorded
@@ -29,7 +30,7 @@ struct MetricSample {
 /// Configuration for the metrics collector
 #[derive(Debug, Clone)]
 pub struct MetricsConfig {
-    /// Maximum samples to retain for percentile calculations
+    /// Maximum samples to retain for windowed calculations
     pub max_samples: usize,
     /// Duration of the short window (default: 5 minutes)
     pub short_window: Duration,
@@ -47,9 +48,10 @@ impl Default for MetricsConfig {
     }
 }
 
-/// Metrics collector for a processing pool
+/// Metrics collector for a processing pool.
 ///
-/// Uses a sliding window approach to track metrics over time.
+/// Uses HdrHistogram for O(1) percentile reads on all-time latency data.
+/// Uses a bounded VecDeque for windowed success/failure counting.
 /// Thread-safe for concurrent access from multiple workers.
 pub struct PoolMetricsCollector {
     config: MetricsConfig,
@@ -59,7 +61,11 @@ pub struct PoolMetricsCollector {
     total_failure: AtomicU64,
     total_rate_limited: AtomicU64,
 
-    /// Samples for percentile calculation (protected by RwLock)
+    /// All-time latency histogram — O(1) record, O(1) percentile query.
+    /// Covers 1ms to 15 minutes (900,000ms) with 3 significant digits.
+    histogram: RwLock<Histogram<u64>>,
+
+    /// Samples for windowed success/failure counting and windowed percentiles
     samples: RwLock<VecDeque<MetricSample>>,
 
     /// Rate-limited event timestamps for windowed counting
@@ -72,11 +78,16 @@ impl PoolMetricsCollector {
     }
 
     pub fn with_config(config: MetricsConfig) -> Self {
+        // 1ms to 900_000ms (15 minutes) with 3 significant digits
+        let histogram = Histogram::new_with_bounds(1, 900_000, 3)
+            .expect("valid histogram bounds");
+
         Self {
             config,
             total_success: AtomicU64::new(0),
             total_failure: AtomicU64::new(0),
             total_rate_limited: AtomicU64::new(0),
+            histogram: RwLock::new(histogram),
             samples: RwLock::new(VecDeque::with_capacity(10000)),
             rate_limited_events: RwLock::new(VecDeque::with_capacity(1000)),
         }
@@ -124,8 +135,12 @@ impl PoolMetricsCollector {
         self.total_rate_limited.load(Ordering::Relaxed)
     }
 
-    /// Add a sample to the sliding window
+    /// Add a sample to the sliding window and all-time histogram
     fn add_sample(&self, duration_ms: u64, success: bool) {
+        // Record in HdrHistogram (clamp to histogram bounds)
+        let clamped = duration_ms.max(1).min(900_000);
+        self.histogram.write().record(clamped).ok();
+
         let sample = MetricSample {
             timestamp: Instant::now(),
             duration_ms,
@@ -159,6 +174,39 @@ impl PoolMetricsCollector {
         self.total_failure.load(Ordering::Relaxed)
     }
 
+    /// Extract ProcessingTimeMetrics from an HdrHistogram
+    fn metrics_from_histogram(hist: &Histogram<u64>) -> ProcessingTimeMetrics {
+        if hist.is_empty() {
+            return ProcessingTimeMetrics::default();
+        }
+
+        ProcessingTimeMetrics {
+            avg_ms: hist.mean(),
+            min_ms: hist.min(),
+            max_ms: hist.max(),
+            p50_ms: hist.value_at_quantile(0.50),
+            p95_ms: hist.value_at_quantile(0.95),
+            p99_ms: hist.value_at_quantile(0.99),
+            sample_count: hist.len(),
+        }
+    }
+
+    /// Build a temporary histogram from a slice of samples (for windowed percentiles)
+    fn windowed_processing_time(samples: &[&MetricSample]) -> ProcessingTimeMetrics {
+        if samples.is_empty() {
+            return ProcessingTimeMetrics::default();
+        }
+
+        let mut hist = Histogram::<u64>::new_with_bounds(1, 900_000, 3)
+            .expect("valid histogram bounds");
+
+        for s in samples {
+            hist.record(s.duration_ms.max(1).min(900_000)).ok();
+        }
+
+        Self::metrics_from_histogram(&hist)
+    }
+
     /// Get enhanced metrics snapshot
     pub fn get_metrics(&self) -> EnhancedPoolMetrics {
         let samples = self.samples.read();
@@ -176,9 +224,8 @@ impl PoolMetricsCollector {
             1.0
         };
 
-        // Calculate all-time processing time metrics from samples
-        let all_durations: Vec<u64> = samples.iter().map(|s| s.duration_ms).collect();
-        let processing_time = Self::calculate_processing_time_metrics(&all_durations);
+        // All-time processing time from HdrHistogram — O(1) percentile reads
+        let processing_time = Self::metrics_from_histogram(&self.histogram.read());
 
         // Calculate windowed metrics
         let short_cutoff = now - self.config.short_window;
@@ -228,39 +275,7 @@ impl PoolMetricsCollector {
         }
     }
 
-    /// Calculate processing time metrics from durations
-    fn calculate_processing_time_metrics(durations: &[u64]) -> ProcessingTimeMetrics {
-        if durations.is_empty() {
-            return ProcessingTimeMetrics::default();
-        }
-
-        let mut sorted: Vec<u64> = durations.to_vec();
-        sorted.sort_unstable();
-
-        let sum: u64 = sorted.iter().sum();
-        let count = sorted.len() as u64;
-        let avg = sum as f64 / count as f64;
-
-        let min = sorted[0];
-        let max = sorted[sorted.len() - 1];
-
-        // Calculate percentiles
-        let p50 = Self::percentile(&sorted, 50.0);
-        let p95 = Self::percentile(&sorted, 95.0);
-        let p99 = Self::percentile(&sorted, 99.0);
-
-        ProcessingTimeMetrics {
-            avg_ms: avg,
-            min_ms: min,
-            max_ms: max,
-            p50_ms: p50,
-            p95_ms: p95,
-            p99_ms: p99,
-            sample_count: count,
-        }
-    }
-
-    /// Calculate windowed metrics from samples
+    /// Calculate windowed metrics from samples (uses HdrHistogram for windowed percentiles)
     fn calculate_windowed_metrics(
         samples: &[&MetricSample],
         window_duration: Duration,
@@ -282,8 +297,7 @@ impl PoolMetricsCollector {
             0.0
         };
 
-        let durations: Vec<u64> = samples.iter().map(|s| s.duration_ms).collect();
-        let processing_time = Self::calculate_processing_time_metrics(&durations);
+        let processing_time = Self::windowed_processing_time(samples);
 
         let window_start = Utc::now() - chrono::Duration::seconds(window_duration.as_secs() as i64);
 
@@ -299,24 +313,12 @@ impl PoolMetricsCollector {
         }
     }
 
-    /// Calculate a percentile value from sorted data
-    fn percentile(sorted: &[u64], p: f64) -> u64 {
-        if sorted.is_empty() {
-            return 0;
-        }
-        if sorted.len() == 1 {
-            return sorted[0];
-        }
-
-        let idx = (p / 100.0 * (sorted.len() - 1) as f64).round() as usize;
-        sorted[idx.min(sorted.len() - 1)]
-    }
-
     /// Reset all metrics (useful for testing)
     pub fn reset(&self) {
         self.total_success.store(0, Ordering::Relaxed);
         self.total_failure.store(0, Ordering::Relaxed);
         self.total_rate_limited.store(0, Ordering::Relaxed);
+        self.histogram.write().reset();
         self.samples.write().clear();
         self.rate_limited_events.write().clear();
     }
@@ -356,7 +358,7 @@ mod tests {
         assert_eq!(metrics.total_failure, 0);
         assert_eq!(metrics.success_rate, 1.0);
         assert_eq!(metrics.processing_time.sample_count, 3);
-        assert!((metrics.processing_time.avg_ms - 200.0).abs() < 0.01);
+        assert!((metrics.processing_time.avg_ms - 200.0).abs() < 1.0);
     }
 
     #[test]
@@ -374,28 +376,37 @@ mod tests {
     }
 
     #[test]
-    fn test_percentile_calculation() {
-        let sorted = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    fn test_percentiles_from_histogram() {
+        let collector = PoolMetricsCollector::new();
 
-        // p50 at index (50/100 * 9) = 4.5, rounds to 5, which gives value 6
-        assert_eq!(PoolMetricsCollector::percentile(&sorted, 50.0), 6);
-        // p95 at index (95/100 * 9) = 8.55, rounds to 9, which gives value 10
-        assert_eq!(PoolMetricsCollector::percentile(&sorted, 95.0), 10);
-        // p0 at index 0, which gives value 1
-        assert_eq!(PoolMetricsCollector::percentile(&sorted, 0.0), 1);
-        // p100 at index 9, which gives value 10
-        assert_eq!(PoolMetricsCollector::percentile(&sorted, 100.0), 10);
+        for i in 1..=100 {
+            collector.record_success(i);
+        }
+
+        let metrics = collector.get_metrics();
+
+        // HdrHistogram values are approximate; check within tolerance
+        assert!(metrics.processing_time.p50_ms >= 49 && metrics.processing_time.p50_ms <= 51);
+        assert!(metrics.processing_time.p95_ms >= 94 && metrics.processing_time.p95_ms <= 96);
+        assert!(metrics.processing_time.p99_ms >= 98 && metrics.processing_time.p99_ms <= 100);
     }
 
     #[test]
     fn test_processing_time_metrics() {
-        let durations = vec![100, 200, 300, 400, 500];
-        let metrics = PoolMetricsCollector::calculate_processing_time_metrics(&durations);
+        let collector = PoolMetricsCollector::new();
 
-        assert_eq!(metrics.min_ms, 100);
-        assert_eq!(metrics.max_ms, 500);
-        assert!((metrics.avg_ms - 300.0).abs() < 0.01);
-        assert_eq!(metrics.sample_count, 5);
+        collector.record_success(100);
+        collector.record_success(200);
+        collector.record_success(300);
+        collector.record_success(400);
+        collector.record_success(500);
+
+        let metrics = collector.get_metrics();
+
+        assert_eq!(metrics.processing_time.min_ms, 100);
+        assert_eq!(metrics.processing_time.max_ms, 500);
+        assert!((metrics.processing_time.avg_ms - 300.0).abs() < 1.0);
+        assert_eq!(metrics.processing_time.sample_count, 5);
     }
 
     #[test]
@@ -403,7 +414,7 @@ mod tests {
         let collector = PoolMetricsCollector::new();
 
         // Record some samples
-        for i in 0..10 {
+        for i in 0..10u64 {
             if i % 3 == 0 {
                 collector.record_failure(100 + i * 10);
             } else {

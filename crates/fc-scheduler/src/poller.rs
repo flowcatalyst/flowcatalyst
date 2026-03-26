@@ -6,11 +6,13 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
+use parking_lot::RwLock;
 use sea_orm::{
     DatabaseBackend, DatabaseConnection, FromQueryResult, Statement,
 };
-use tracing::{debug, trace};
+use tracing::{debug, info, trace, warn};
 
 use crate::{
     BlockOnErrorChecker, DispatchJob, DispatchMode,
@@ -19,12 +21,99 @@ use crate::{
 
 const DEFAULT_MESSAGE_GROUP: &str = "default";
 
+/// Caches the set of subscription IDs whose connections are PAUSED.
+/// Refreshed in the background on a configurable interval (default 60s).
+/// Avoids a JOIN query on every 5-second poll cycle.
+#[derive(Clone)]
+pub struct PausedConnectionCache {
+    db: DatabaseConnection,
+    /// Cached set of paused subscription IDs
+    cache: Arc<RwLock<HashSet<String>>>,
+    /// When the cache was last refreshed
+    last_refresh: Arc<RwLock<Instant>>,
+    /// How long before the cache is considered stale
+    ttl: Duration,
+}
+
+impl PausedConnectionCache {
+    pub fn new(db: DatabaseConnection, ttl: Duration) -> Self {
+        Self {
+            db,
+            cache: Arc::new(RwLock::new(HashSet::new())),
+            last_refresh: Arc::new(RwLock::new(Instant::now() - ttl - Duration::from_secs(1))), // force initial refresh
+            ttl,
+        }
+    }
+
+    /// Get the cached set of paused subscription IDs.
+    /// If the cache is stale, refreshes synchronously before returning.
+    pub async fn get_paused_subscription_ids(&self) -> Result<HashSet<String>, SchedulerError> {
+        if self.last_refresh.read().elapsed() > self.ttl {
+            self.refresh().await?;
+        }
+        Ok(self.cache.read().clone())
+    }
+
+    /// Refresh the cache from the database.
+    pub async fn refresh(&self) -> Result<(), SchedulerError> {
+        let sql = "SELECT s.id FROM msg_subscriptions s \
+                   JOIN msg_connections c ON c.id = s.connection_id \
+                   WHERE c.status = 'PAUSED'";
+
+        #[derive(FromQueryResult)]
+        struct SubIdRow { id: String }
+
+        let rows = SubIdRow::find_by_statement(
+            Statement::from_sql_and_values(DatabaseBackend::Postgres, sql, vec![]),
+        )
+        .all(&self.db)
+        .await?;
+
+        let paused: HashSet<String> = rows.into_iter().map(|r| r.id).collect();
+        let count = paused.len();
+
+        *self.cache.write() = paused;
+        *self.last_refresh.write() = Instant::now();
+
+        debug!(paused_subscriptions = count, "Refreshed paused connection cache");
+        Ok(())
+    }
+
+    /// Spawn a background task that refreshes the cache periodically.
+    pub fn spawn_refresh_task(&self, shutdown: tokio::sync::broadcast::Sender<()>) {
+        let cache = self.clone();
+        let interval = self.ttl;
+        let mut shutdown_rx = shutdown.subscribe();
+
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(interval);
+            // Skip first tick (handled by initial get_paused_subscription_ids call)
+            ticker.tick().await;
+
+            loop {
+                tokio::select! {
+                    _ = ticker.tick() => {
+                        if let Err(e) = cache.refresh().await {
+                            warn!(error = %e, "Failed to refresh paused connection cache");
+                        }
+                    }
+                    _ = shutdown_rx.recv() => {
+                        info!("Paused connection cache refresh task shutting down");
+                        break;
+                    }
+                }
+            }
+        });
+    }
+}
+
 #[derive(Clone)]
 pub struct PendingJobPoller {
     config: SchedulerConfig,
     db: DatabaseConnection,
     block_checker: Arc<BlockOnErrorChecker>,
     group_dispatcher: Arc<MessageGroupDispatcher>,
+    paused_cache: Arc<PausedConnectionCache>,
 }
 
 impl PendingJobPoller {
@@ -34,23 +123,36 @@ impl PendingJobPoller {
         group_dispatcher: Arc<MessageGroupDispatcher>,
     ) -> Self {
         let block_checker = Arc::new(BlockOnErrorChecker::new(db.clone()));
+        let paused_cache = Arc::new(PausedConnectionCache::new(
+            db.clone(),
+            Duration::from_secs(60), // 60s TTL
+        ));
         Self {
             config,
             db,
             block_checker,
             group_dispatcher,
+            paused_cache,
         }
     }
 
-    pub async fn poll(&self) -> Result<(), SchedulerError> {
+    /// Get the paused connection cache (for spawning the background refresh task)
+    pub fn paused_cache(&self) -> &Arc<PausedConnectionCache> {
+        &self.paused_cache
+    }
+
+    /// Poll for pending jobs and submit them for dispatch.
+    /// Returns the number of jobs found (used for adaptive polling).
+    pub async fn poll(&self) -> Result<usize, SchedulerError> {
         let pending_jobs = self.find_pending_jobs().await?;
         if pending_jobs.is_empty() {
             trace!("No pending jobs found");
-            return Ok(());
+            return Ok(0);
         }
 
-        debug!(count = pending_jobs.len(), "Found pending jobs to process");
-        metrics::gauge!("scheduler.pending_jobs").set(pending_jobs.len() as f64);
+        let job_count = pending_jobs.len();
+        debug!(count = job_count, "Found pending jobs to process");
+        metrics::gauge!("scheduler.pending_jobs").set(job_count as f64);
 
         // Group by message_group
         let jobs_by_group = Self::group_by_message_group(pending_jobs);
@@ -76,7 +178,7 @@ impl PendingJobPoller {
                 self.group_dispatcher.submit_jobs(&group, dispatchable);
             }
         }
-        Ok(())
+        Ok(job_count)
     }
 
     /// Query PENDING jobs with proper ordering: message_group, sequence, created_at.
@@ -103,18 +205,8 @@ impl PendingJobPoller {
             return Ok(jobs);
         }
 
-        // Post-query connection filter: batch-resolve connection statuses via subscription IDs
-        let sub_ids: Vec<String> = jobs.iter()
-            .filter_map(|j| j.subscription_id.clone())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
-
-        if sub_ids.is_empty() {
-            return Ok(jobs);
-        }
-
-        let paused_sub_ids = self.find_paused_subscription_ids(&sub_ids).await?;
+        // Filter using cached paused connection set (refreshed every 60s)
+        let paused_sub_ids = self.paused_cache.get_paused_subscription_ids().await?;
         if paused_sub_ids.is_empty() {
             return Ok(jobs);
         }
@@ -129,36 +221,6 @@ impl PendingJobPoller {
             .collect();
 
         Ok(filtered)
-    }
-
-    /// Batch-query subscription IDs whose connections are PAUSED.
-    async fn find_paused_subscription_ids(&self, sub_ids: &[String]) -> Result<HashSet<String>, SchedulerError> {
-        if sub_ids.is_empty() {
-            return Ok(HashSet::new());
-        }
-
-        let placeholders: Vec<String> = (1..=sub_ids.len()).map(|i| format!("${}", i)).collect();
-        let sql = format!(
-            "SELECT s.id FROM msg_subscriptions s \
-             JOIN msg_connections c ON c.id = s.connection_id \
-             WHERE s.id IN ({}) AND c.status = 'PAUSED'",
-            placeholders.join(", ")
-        );
-
-        #[derive(FromQueryResult)]
-        struct SubIdRow { id: String }
-
-        let values: Vec<sea_orm::Value> = sub_ids.iter()
-            .map(|s| sea_orm::Value::from(s.clone()))
-            .collect();
-
-        let rows = SubIdRow::find_by_statement(
-            Statement::from_sql_and_values(DatabaseBackend::Postgres, &sql, values),
-        )
-        .all(&self.db)
-        .await?;
-
-        Ok(rows.into_iter().map(|r| r.id).collect())
     }
 
     fn group_by_message_group(jobs: Vec<DispatchJob>) -> HashMap<String, Vec<DispatchJob>> {

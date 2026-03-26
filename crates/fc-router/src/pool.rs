@@ -142,8 +142,11 @@ pub struct ProcessPool {
     /// Enhanced metrics collector
     metrics_collector: Arc<PoolMetricsCollector>,
 
-    /// Warning service for generating warnings (optional)
-    warning_service: Option<Arc<crate::warning::WarningService>>,
+    /// Per-pool circuit breaker — isolates failures so one bad endpoint doesn't block all pools.
+    circuit_breaker: Arc<crate::mediator::CircuitBreaker>,
+
+    /// Warning service for generating warnings
+    warning_service: Arc<crate::warning::WarningService>,
 }
 
 impl ProcessPool {
@@ -178,19 +181,20 @@ impl ProcessPool {
             queue_size: Arc::new(AtomicU32::new(0)),
             active_workers: Arc::new(AtomicU32::new(0)),
             metrics_collector: Arc::new(PoolMetricsCollector::new()),
-            warning_service: None,
+            circuit_breaker: Arc::new(crate::mediator::CircuitBreaker::default()),
+            warning_service: Arc::new(crate::warning::WarningService::noop()),
         }
     }
 
     /// Set the warning service for generating warnings
     pub fn with_warning_service(mut self, warning_service: Arc<crate::warning::WarningService>) -> Self {
-        self.warning_service = Some(warning_service);
+        self.warning_service = warning_service;
         self
     }
 
     /// Set warning service after construction
     pub fn set_warning_service(&mut self, warning_service: Arc<crate::warning::WarningService>) {
-        self.warning_service = Some(warning_service);
+        self.warning_service = warning_service;
     }
 
     /// Start the pool
@@ -215,7 +219,7 @@ impl ProcessPool {
         }
 
         // Check capacity
-        let current_size = self.queue_size.load(Ordering::SeqCst);
+        let current_size = self.queue_size.load(Ordering::Relaxed);
         let capacity = std::cmp::max(
             self.config.concurrency * QUEUE_CAPACITY_MULTIPLIER,
             MIN_QUEUE_CAPACITY,
@@ -233,7 +237,7 @@ impl ProcessPool {
         }
 
         // Increment queue size
-        self.queue_size.fetch_add(1, Ordering::SeqCst);
+        self.queue_size.fetch_add(1, Ordering::Relaxed);
 
         // Get message group
         let group_id: Arc<str> = batch_msg.message.message_group_id
@@ -250,7 +254,7 @@ impl ProcessPool {
             self.batch_group_message_count
                 .entry(key.clone())
                 .or_insert_with(|| AtomicU32::new(0))
-                .fetch_add(1, Ordering::SeqCst);
+                .fetch_add(1, Ordering::Relaxed);
         }
 
         // Check if batch+group has failed (early check before queueing)
@@ -262,11 +266,26 @@ impl ProcessPool {
                     group_id = %key.group_id,
                     "Batch+group failed, NACKing for FIFO"
                 );
-                self.queue_size.fetch_sub(1, Ordering::SeqCst);
+                self.queue_size.fetch_sub(1, Ordering::Relaxed);
                 self.decrement_and_cleanup_batch_group(key);
                 batch_msg.callback.nack(Some(10)).await;
                 return Ok(());
             }
+        }
+
+        // IMMEDIATE mode: no ordering needed — spawn a standalone task per message.
+        // This avoids the sequential drain bottleneck where a slow HTTP call blocks
+        // all other messages in the group.
+        if !batch_msg.message.dispatch_mode.requires_ordering() {
+            let task = PoolTask {
+                message: batch_msg.message,
+                receipt_handle: String::new(), // not used in standalone path
+                callback: batch_msg.callback,
+                batch_id: batch_msg.batch_id,
+                batch_group_key,
+            };
+            self.spawn_immediate_task(task);
+            return Ok(());
         }
 
         let is_high_priority = batch_msg.message.high_priority;
@@ -275,11 +294,11 @@ impl ProcessPool {
             message: batch_msg.message,
             receipt_handle: batch_msg.receipt_handle,
             callback: batch_msg.callback,
-            batch_id: batch_msg.batch_id.map(|s| Arc::from(s.as_str())),
+            batch_id: batch_msg.batch_id,
             batch_group_key,
         };
 
-        // Enqueue to group handler and spawn drain task if idle
+        // Ordered mode: enqueue to group handler and spawn drain task if idle
         let should_spawn = {
             let entry = self.group_handlers
                 .entry(Arc::clone(&group_id))
@@ -303,6 +322,91 @@ impl ProcessPool {
         Ok(())
     }
 
+    /// Spawn a standalone task for an IMMEDIATE mode message.
+    /// No group ordering — acquires semaphore, rate-limits, mediates, callbacks directly.
+    fn spawn_immediate_task(&self, task: PoolTask) {
+        let pool_code: Arc<str> = Arc::from(self.config.code.as_str());
+        let semaphore = self.semaphore.clone();
+        let mediator = self.mediator.clone();
+        let queue_size = self.queue_size.clone();
+        let active_workers = self.active_workers.clone();
+        let rate_limiter = self.rate_limiter.clone();
+        let metrics_collector = self.metrics_collector.clone();
+        let circuit_breaker = self.circuit_breaker.clone();
+        let failed_batch_groups = self.failed_batch_groups.clone();
+        let batch_group_message_count = self.batch_group_message_count.clone();
+
+        tokio::spawn(async move {
+            // Wait for rate limit
+            if !Self::wait_for_rate_limit_permit(&rate_limiter, &metrics_collector).await {
+                queue_size.fetch_sub(1, Ordering::Relaxed);
+                if let Some(ref key) = task.batch_group_key {
+                    Self::decrement_and_cleanup_batch_group_static(key, &batch_group_message_count, &failed_batch_groups);
+                }
+                task.callback.nack(Some(10)).await;
+                return;
+            }
+
+            // Acquire semaphore
+            let permit = match semaphore.acquire().await {
+                Ok(p) => p,
+                Err(_) => {
+                    queue_size.fetch_sub(1, Ordering::Relaxed);
+                    if let Some(ref key) = task.batch_group_key {
+                        Self::decrement_and_cleanup_batch_group_static(key, &batch_group_message_count, &failed_batch_groups);
+                    }
+                    task.callback.nack(Some(10)).await;
+                    return;
+                }
+            };
+
+            active_workers.fetch_add(1, Ordering::Relaxed);
+            queue_size.fetch_sub(1, Ordering::Relaxed);
+
+            // Check circuit breaker
+            if !circuit_breaker.allow_request() {
+                debug!(message_id = %task.message.id, pool_code = %pool_code, "Pool circuit breaker open");
+                metrics_collector.record_failure(0);
+                task.callback.nack(Some(5)).await;
+            } else {
+                let start = std::time::Instant::now();
+                let outcome = mediator.mediate(&task.message).await;
+                let duration_ms = start.elapsed().as_millis() as u64;
+
+                match outcome.result {
+                    MediationResult::Success | MediationResult::ErrorConfig => circuit_breaker.record_success(),
+                    MediationResult::ErrorProcess | MediationResult::ErrorConnection => circuit_breaker.record_failure(),
+                }
+
+                match outcome.result {
+                    MediationResult::Success => {
+                        metrics_collector.record_success(duration_ms);
+                        task.callback.ack().await;
+                    }
+                    MediationResult::ErrorConfig => {
+                        metrics_collector.record_failure(duration_ms);
+                        task.callback.ack().await;
+                    }
+                    MediationResult::ErrorProcess => {
+                        metrics_collector.record_transient(duration_ms);
+                        task.callback.nack(outcome.delay_seconds).await;
+                    }
+                    MediationResult::ErrorConnection => {
+                        metrics_collector.record_failure(duration_ms);
+                        task.callback.nack(Some(30)).await;
+                    }
+                }
+            }
+
+            if let Some(ref key) = task.batch_group_key {
+                Self::decrement_and_cleanup_batch_group_static(key, &batch_group_message_count, &failed_batch_groups);
+            }
+
+            active_workers.fetch_sub(1, Ordering::Relaxed);
+            drop(permit);
+        });
+    }
+
     /// Spawn a task that drains all queued messages for a group, then exits.
     fn spawn_drain_task(&self, group_id: Arc<str>) {
         let pool_code: Arc<str> = Arc::from(self.config.code.as_str());
@@ -316,16 +420,22 @@ impl ProcessPool {
         let rate_limiter = self.rate_limiter.clone();
         let group_handlers = self.group_handlers.clone();
         let metrics_collector = self.metrics_collector.clone();
+        let circuit_breaker = self.circuit_breaker.clone();
 
         tokio::spawn(async move {
             debug!(group_id = %group_id, pool_code = %pool_code, "Group drain task started");
 
-            // Safety guard: if this task panics, reset processing flag so the group isn't stuck.
+            // Safety guard: if this task panics, reset processing flag so the group isn't stuck,
+            // and decrement active_workers if a permit was held.
             // Remaining messages in the VecDeque will be NACKed by SQS visibility timeout
             // and retried on the next poll.
             struct PanicGuard {
                 group_handlers: Arc<DashMap<Arc<str>, parking_lot::Mutex<MessageGroupHandler>>>,
                 group_id: Arc<str>,
+                in_flight_groups: DashSet<Arc<str>>,
+                active_workers: Arc<AtomicU32>,
+                /// Whether a semaphore permit was held when panic occurred
+                holding_permit: bool,
                 active: bool,
             }
             impl Drop for PanicGuard {
@@ -338,12 +448,19 @@ impl ProcessPool {
                                 error!(group_id = %self.group_id, "Drain task exited abnormally — reset processing flag");
                             }
                         }
+                        if self.holding_permit {
+                            self.in_flight_groups.remove(&self.group_id);
+                            self.active_workers.fetch_sub(1, Ordering::Relaxed);
+                        }
                     }
                 }
             }
             let mut panic_guard = PanicGuard {
                 group_handlers: group_handlers.clone(),
                 group_id: group_id.clone(),
+                in_flight_groups: in_flight_groups.clone(),
+                active_workers: active_workers.clone(),
+                holding_permit: false,
                 active: true,
             };
 
@@ -371,7 +488,7 @@ impl ProcessPool {
                     Some(task) => {
                         if let Some(ref key) = task.batch_group_key {
                             if failed_batch_groups.contains(key) {
-                                queue_size.fetch_sub(1, Ordering::SeqCst);
+                                queue_size.fetch_sub(1, Ordering::Relaxed);
                                 Self::decrement_and_cleanup_batch_group_static(
                                     key,
                                     &batch_group_message_count,
@@ -406,7 +523,7 @@ impl ProcessPool {
                 };
 
                 // Decrement queue size
-                queue_size.fetch_sub(1, Ordering::SeqCst);
+                queue_size.fetch_sub(1, Ordering::Relaxed);
 
                 // Wait for rate limit permit (with timeout to prevent stall)
                 let got_permit = Self::wait_for_rate_limit_permit(&rate_limiter, &metrics_collector).await;
@@ -440,75 +557,102 @@ impl ProcessPool {
                     }
                 };
 
-                active_workers.fetch_add(1, Ordering::SeqCst);
+                active_workers.fetch_add(1, Ordering::Relaxed);
                 in_flight_groups.insert(group_id.clone());
+                panic_guard.holding_permit = true;
 
-                // Process the message
-                let start = std::time::Instant::now();
-                let outcome = mediator.mediate(&task.message).await;
-                let duration_ms = start.elapsed().as_millis() as u64;
+                // Check per-pool circuit breaker before attempting mediation
+                if !circuit_breaker.allow_request() {
+                    debug!(
+                        message_id = %task.message.id,
+                        pool_code = %pool_code,
+                        "Pool circuit breaker open — NACKing for retry"
+                    );
+                    metrics_collector.record_failure(0);
 
-                // Handle outcome: record metrics, call callback directly
-                match outcome.result {
-                    MediationResult::Success => {
-                        debug!(
-                            message_id = %task.message.id,
-                            duration_ms = duration_ms,
-                            "Message processed successfully"
-                        );
-                        metrics_collector.record_success(duration_ms);
-                        task.callback.ack().await;
+                    if let Some(ref key) = task.batch_group_key {
+                        failed_batch_groups.insert(key.clone());
                     }
-                    MediationResult::ErrorConfig => {
-                        warn!(
-                            message_id = %task.message.id,
-                            error = ?outcome.error_message,
-                            "Configuration error, ACKing to prevent retry"
-                        );
-                        metrics_collector.record_failure(duration_ms);
-                        task.callback.ack().await;
-                    }
-                    MediationResult::ErrorProcess => {
-                        warn!(
-                            message_id = %task.message.id,
-                            error = ?outcome.error_message,
-                            "Transient error, NACKing for retry"
-                        );
-                        metrics_collector.record_transient(duration_ms);
 
-                        if let Some(ref key) = task.batch_group_key {
-                            let was_new = failed_batch_groups.insert(key.clone());
-                            if was_new {
-                                warn!(
-                                    batch_group = %key,
-                                    "Batch+group marked as failed - remaining messages will be NACKed"
-                                );
-                            }
+                    task.callback.nack(Some(5)).await;
+                } else {
+                    // Process the message
+                    let start = std::time::Instant::now();
+                    let outcome = mediator.mediate(&task.message).await;
+                    let duration_ms = start.elapsed().as_millis() as u64;
+
+                    // Record outcome on per-pool circuit breaker
+                    match outcome.result {
+                        MediationResult::Success | MediationResult::ErrorConfig => {
+                            circuit_breaker.record_success();
                         }
-
-                        task.callback.nack(outcome.delay_seconds).await;
-                    }
-                    MediationResult::ErrorConnection => {
-                        warn!(
-                            message_id = %task.message.id,
-                            error = ?outcome.error_message,
-                            "Connection error, NACKing for retry"
-                        );
-                        metrics_collector.record_failure(duration_ms);
-
-                        if let Some(ref key) = task.batch_group_key {
-                            let was_new = failed_batch_groups.insert(key.clone());
-                            if was_new {
-                                warn!(
-                                    batch_group = %key,
-                                    "Batch+group marked as failed - remaining messages will be NACKed"
-                                );
-                            }
+                        MediationResult::ErrorProcess | MediationResult::ErrorConnection => {
+                            circuit_breaker.record_failure();
                         }
-
-                        task.callback.nack(Some(30)).await;
                     }
-                };
+
+                    // Handle outcome: record metrics, call callback directly
+                    match outcome.result {
+                        MediationResult::Success => {
+                            debug!(
+                                message_id = %task.message.id,
+                                duration_ms = duration_ms,
+                                "Message processed successfully"
+                            );
+                            metrics_collector.record_success(duration_ms);
+                            task.callback.ack().await;
+                        }
+                        MediationResult::ErrorConfig => {
+                            warn!(
+                                message_id = %task.message.id,
+                                error = ?outcome.error_message,
+                                "Configuration error, ACKing to prevent retry"
+                            );
+                            metrics_collector.record_failure(duration_ms);
+                            task.callback.ack().await;
+                        }
+                        MediationResult::ErrorProcess => {
+                            warn!(
+                                message_id = %task.message.id,
+                                error = ?outcome.error_message,
+                                "Transient error, NACKing for retry"
+                            );
+                            metrics_collector.record_transient(duration_ms);
+
+                            if let Some(ref key) = task.batch_group_key {
+                                let was_new = failed_batch_groups.insert(key.clone());
+                                if was_new {
+                                    warn!(
+                                        batch_group = %key,
+                                        "Batch+group marked as failed - remaining messages will be NACKed"
+                                    );
+                                }
+                            }
+
+                            task.callback.nack(outcome.delay_seconds).await;
+                        }
+                        MediationResult::ErrorConnection => {
+                            warn!(
+                                message_id = %task.message.id,
+                                error = ?outcome.error_message,
+                                "Connection error, NACKing for retry"
+                            );
+                            metrics_collector.record_failure(duration_ms);
+
+                            if let Some(ref key) = task.batch_group_key {
+                                let was_new = failed_batch_groups.insert(key.clone());
+                                if was_new {
+                                    warn!(
+                                        batch_group = %key,
+                                        "Batch+group marked as failed - remaining messages will be NACKed"
+                                    );
+                                }
+                            }
+
+                            task.callback.nack(Some(30)).await;
+                        }
+                    };
+                }
 
                 // Decrement batch+group count and cleanup if done
                 if let Some(ref key) = task.batch_group_key {
@@ -521,7 +665,8 @@ impl ProcessPool {
 
                 // Cleanup
                 in_flight_groups.remove(&group_id);
-                active_workers.fetch_sub(1, Ordering::SeqCst);
+                active_workers.fetch_sub(1, Ordering::Relaxed);
+                panic_guard.holding_permit = false;
                 drop(permit);
             }
         });
@@ -545,7 +690,7 @@ impl ProcessPool {
         failed_batch_groups: &DashSet<BatchGroupKey>,
     ) {
         let should_cleanup = if let Some(counter) = batch_group_message_count.get(batch_group_key) {
-            let remaining = counter.fetch_sub(1, Ordering::SeqCst).saturating_sub(1);
+            let remaining = counter.fetch_sub(1, Ordering::Relaxed).saturating_sub(1);
             debug!(batch_group = %batch_group_key, remaining = remaining, "Batch+group count decremented");
             remaining == 0
         } else {
@@ -565,7 +710,7 @@ impl ProcessPool {
             self.config.concurrency * QUEUE_CAPACITY_MULTIPLIER,
             MIN_QUEUE_CAPACITY,
         ) as usize;
-        let used = self.queue_size.load(Ordering::SeqCst) as usize;
+        let used = self.queue_size.load(Ordering::Relaxed) as usize;
         capacity.saturating_sub(used)
     }
 
@@ -581,40 +726,34 @@ impl ProcessPool {
     /// Maximum time to wait for a rate limit permit before giving up.
     const RATE_LIMIT_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 
-    /// Waits for a rate limit permit, with a timeout to prevent indefinite blocking.
+    /// Waits for a rate limit permit using governor's async API (zero CPU while waiting).
     /// Returns true if permit was acquired, false if timed out (caller should NACK).
     async fn wait_for_rate_limit_permit(
         rate_limiter: &Arc<parking_lot::RwLock<Option<Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock>>>>>,
         metrics_collector: &Arc<PoolMetricsCollector>,
     ) -> bool {
-        let mut recorded_rate_limit = false;
-        let started = std::time::Instant::now();
+        let limiter = rate_limiter.read().clone();
 
-        loop {
-            let limiter = rate_limiter.read().clone();
+        let rl = match limiter {
+            None => return true,
+            Some(rl) => rl,
+        };
 
-            match limiter {
-                None => return true,
-                Some(rl) => {
-                    if rl.check().is_ok() {
-                        return true;
-                    }
+        // Fast path: permit available immediately
+        if rl.check().is_ok() {
+            return true;
+        }
 
-                    if started.elapsed() > Self::RATE_LIMIT_WAIT_TIMEOUT {
-                        metrics_collector.record_rate_limited();
-                        warn!("Rate limit wait timeout after {}s — NACKing message",
-                            Self::RATE_LIMIT_WAIT_TIMEOUT.as_secs());
-                        return false;
-                    }
+        // Slow path: wait for permit with timeout
+        metrics_collector.record_rate_limited();
+        debug!("Rate limited - waiting for permit");
 
-                    if !recorded_rate_limit {
-                        metrics_collector.record_rate_limited();
-                        recorded_rate_limit = true;
-                        debug!("Rate limited - waiting for permit");
-                    }
-
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                }
+        match tokio::time::timeout(Self::RATE_LIMIT_WAIT_TIMEOUT, rl.until_ready()).await {
+            Ok(_) => true,
+            Err(_) => {
+                warn!("Rate limit wait timeout after {}s — NACKing message",
+                    Self::RATE_LIMIT_WAIT_TIMEOUT.as_secs());
+                false
             }
         }
     }
@@ -627,8 +766,8 @@ impl ProcessPool {
 
     /// Check if fully drained
     pub fn is_fully_drained(&self) -> bool {
-        self.queue_size.load(Ordering::SeqCst) == 0 &&
-        self.active_workers.load(Ordering::SeqCst) == 0
+        self.queue_size.load(Ordering::Relaxed) == 0 &&
+        self.active_workers.load(Ordering::Relaxed) == 0
     }
 
     /// Shutdown the pool
@@ -643,8 +782,8 @@ impl ProcessPool {
         PoolStats {
             pool_code: self.config.code.clone(),
             concurrency: current_concurrency,
-            active_workers: self.active_workers.load(Ordering::SeqCst),
-            queue_size: self.queue_size.load(Ordering::SeqCst),
+            active_workers: self.active_workers.load(Ordering::Relaxed),
+            queue_size: self.queue_size.load(Ordering::Relaxed),
             queue_capacity: std::cmp::max(
                 current_concurrency * QUEUE_CAPACITY_MULTIPLIER,
                 MIN_QUEUE_CAPACITY,
@@ -671,6 +810,16 @@ impl ProcessPool {
         &self.config.code
     }
 
+    /// Get the per-pool circuit breaker state
+    pub fn circuit_breaker_state(&self) -> crate::mediator::CircuitState {
+        self.circuit_breaker.state()
+    }
+
+    /// Reset the per-pool circuit breaker
+    pub fn reset_circuit_breaker(&self) {
+        self.circuit_breaker.reset();
+    }
+
     /// Get current concurrency setting
     pub fn concurrency(&self) -> u32 {
         self.concurrency.load(Ordering::SeqCst)
@@ -683,12 +832,12 @@ impl ProcessPool {
 
     /// Get current queue size
     pub fn queue_size(&self) -> u32 {
-        self.queue_size.load(Ordering::SeqCst)
+        self.queue_size.load(Ordering::Relaxed)
     }
 
     /// Get current active worker count
     pub fn active_workers(&self) -> u32 {
-        self.active_workers.load(Ordering::SeqCst)
+        self.active_workers.load(Ordering::Relaxed)
     }
 
     /// Update concurrency at runtime
@@ -739,7 +888,7 @@ impl ProcessPool {
                         old = old_concurrency,
                         new = new_concurrency,
                         timeout_secs = 60,
-                        active_workers = self.active_workers.load(Ordering::SeqCst),
+                        active_workers = self.active_workers.load(Ordering::Relaxed),
                         "Concurrency decrease timed out waiting for idle slots - retaining current limit"
                     );
                     false

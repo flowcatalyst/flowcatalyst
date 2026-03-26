@@ -30,7 +30,7 @@ pub mod stale_recovery;
 
 pub use auth::{AuthError, DispatchAuthService};
 pub use dispatcher::JobDispatcher;
-pub use poller::PendingJobPoller;
+pub use poller::{PendingJobPoller, PausedConnectionCache};
 pub use stale_recovery::StaleQueuedJobPoller;
 
 #[derive(Error, Debug)]
@@ -45,27 +45,7 @@ pub enum SchedulerError {
     SerializationError(#[from] serde_json::Error),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum DispatchMode {
-    Immediate,
-    NextOnError,
-    BlockOnError,
-}
-
-impl Default for DispatchMode {
-    fn default() -> Self { Self::Immediate }
-}
-
-impl From<&str> for DispatchMode {
-    fn from(s: &str) -> Self {
-        match s.to_uppercase().as_str() {
-            "NEXT_ON_ERROR" => Self::NextOnError,
-            "BLOCK_ON_ERROR" => Self::BlockOnError,
-            _ => Self::Immediate,
-        }
-    }
-}
+pub use fc_common::DispatchMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -93,7 +73,7 @@ pub struct DispatchJob {
 
 impl DispatchJob {
     pub fn dispatch_mode(&self) -> DispatchMode {
-        DispatchMode::from(self.mode.as_str())
+        DispatchMode::from_str(&self.mode)
     }
 
     pub fn dispatch_status(&self) -> DispatchStatus {
@@ -301,6 +281,7 @@ impl MessageGroupDispatcher {
             message_group_id: job.message_group.clone().unwrap_or_else(|| "default".to_string()),
             mediation_type: "HTTP".to_string(),
             mediation_target: self.config.processing_endpoint.clone(),
+            dispatch_mode: job.dispatch_mode(),
         };
 
         let message = QueueMessage {
@@ -318,43 +299,58 @@ impl MessageGroupDispatcher {
 
         metrics::counter!("scheduler.jobs.dispatched_total").increment(1);
 
-        match self.queue_publisher.publish(message).await {
-            Ok(_) => {
-                let sql = "UPDATE msg_dispatch_jobs SET status = 'QUEUED', queued_at = NOW(), updated_at = NOW() WHERE id = $1";
-                if let Err(e) = self.db.execute(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    sql,
-                    vec![sea_orm::Value::from(job.id.clone())],
-                )).await {
-                    error!(job_id = %job.id, error = %e, "Failed to update job to QUEUED");
-                    return false;
-                }
-                metrics::counter!("scheduler.jobs.queued_total").increment(1);
-                true
-            }
+        let should_mark_queued = match self.queue_publisher.publish(message).await {
+            Ok(_) => true,
             Err(e) => {
                 let error_msg = format!("{}", e);
-
-                // Handle deduplication — still mark as QUEUED
                 if error_msg.contains("Deduplicated") || error_msg.contains("deduplicated") {
-                    let sql = "UPDATE msg_dispatch_jobs SET status = 'QUEUED', queued_at = NOW(), updated_at = NOW() WHERE id = $1";
-                    if let Err(e) = self.db.execute(Statement::from_sql_and_values(
-                        DatabaseBackend::Postgres,
-                        sql,
-                        vec![sea_orm::Value::from(job.id.clone())],
-                    )).await {
-                        error!(job_id = %job.id, error = %e, "Failed to update deduplicated job to QUEUED");
-                        return false;
-                    }
                     debug!(job_id = %job.id, "Job was deduplicated (already dispatched)");
-                    return true;
+                    true
+                } else {
+                    warn!(job_id = %job.id, error = %error_msg, "Failed to dispatch job");
+                    metrics::counter!("scheduler.jobs.dispatch_errors_total").increment(1);
+                    false
                 }
-
-                warn!(job_id = %job.id, error = %error_msg, "Failed to dispatch job");
-                metrics::counter!("scheduler.jobs.dispatch_errors_total").increment(1);
-                false
             }
+        };
+
+        if should_mark_queued {
+            if let Err(e) = self.batch_update_status_queued(&[&job.id]).await {
+                error!(job_id = %job.id, error = %e, "Failed to update job to QUEUED");
+                return false;
+            }
+            metrics::counter!("scheduler.jobs.queued_total").increment(1);
+            true
+        } else {
+            false
         }
+    }
+
+    /// Batch-update job statuses to QUEUED using a single query with ANY($1).
+    async fn batch_update_status_queued(&self, job_ids: &[&str]) -> Result<(), sea_orm::DbErr> {
+        if job_ids.is_empty() {
+            return Ok(());
+        }
+
+        // Single query: UPDATE ... WHERE id = ANY($1::text[])
+        let ids: Vec<sea_orm::Value> = job_ids.iter()
+            .map(|id| sea_orm::Value::from(id.to_string()))
+            .collect();
+
+        // SeaORM doesn't natively support array binds, so use a parameterized IN clause
+        let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("${}", i)).collect();
+        let sql = format!(
+            "UPDATE msg_dispatch_jobs SET status = 'QUEUED', queued_at = NOW(), updated_at = NOW() WHERE id IN ({})",
+            placeholders.join(", ")
+        );
+
+        self.db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            &sql,
+            ids,
+        )).await?;
+
+        Ok(())
     }
 
     /// Clean up empty queues.
@@ -411,6 +407,14 @@ impl Default for SchedulerConfig {
 #[async_trait]
 pub trait QueuePublisher: Send + Sync {
     async fn publish(&self, message: QueueMessage) -> Result<(), SchedulerError>;
+    /// Publish a batch of messages. Default implementation publishes sequentially.
+    async fn publish_batch(&self, messages: Vec<QueueMessage>) -> Vec<Result<(), SchedulerError>> {
+        let mut results = Vec::with_capacity(messages.len());
+        for msg in messages {
+            results.push(self.publish(msg).await);
+        }
+        results
+    }
     fn is_healthy(&self) -> bool;
 }
 
@@ -430,6 +434,8 @@ pub struct MessagePointer {
     pub message_group_id: String,
     pub mediation_type: String,
     pub mediation_target: String,
+    #[serde(default)]
+    pub dispatch_mode: DispatchMode,
 }
 
 // ============================================================================
@@ -476,18 +482,38 @@ impl DispatchScheduler {
         ));
 
         let poller = PendingJobPoller::new(self.config.clone(), self.db.clone(), group_dispatcher.clone());
-        let poll_interval = self.config.poll_interval;
+        let batch_size = self.config.batch_size;
         let running_clone = self.running.clone();
 
+        // Spawn background refresh for paused connection cache
+        let (shutdown_tx, _) = tokio::sync::broadcast::channel::<()>(1);
+        poller.paused_cache().spawn_refresh_task(shutdown_tx);
+
         tokio::spawn(async move {
-            let mut interval = interval(poll_interval);
             loop {
-                interval.tick().await;
                 if !*running_clone.read().await { break; }
-                if let Err(e) = poller.poll().await {
-                    error!(error = %e, "Error in pending job poller");
-                }
+
+                let job_count = match poller.poll().await {
+                    Ok(count) => count,
+                    Err(e) => {
+                        error!(error = %e, "Error in pending job poller");
+                        0
+                    }
+                };
                 group_dispatcher.cleanup_empty_queues();
+
+                // Adaptive polling:
+                // - Full batch → re-poll immediately, more jobs likely waiting
+                // - Partial batch → brief pause (500ms), queue is draining
+                // - Empty → longer pause (1s), nothing to do
+                if job_count >= batch_size {
+                    // Yield to let other tasks run, but don't sleep
+                    tokio::task::yield_now().await;
+                } else if job_count > 0 {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                } else {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
             }
         });
 
@@ -523,10 +549,10 @@ mod tests {
 
     #[test]
     fn test_dispatch_mode_from_str() {
-        assert_eq!(DispatchMode::from("IMMEDIATE"), DispatchMode::Immediate);
-        assert_eq!(DispatchMode::from("NEXT_ON_ERROR"), DispatchMode::NextOnError);
-        assert_eq!(DispatchMode::from("BLOCK_ON_ERROR"), DispatchMode::BlockOnError);
-        assert_eq!(DispatchMode::from("unknown"), DispatchMode::Immediate);
+        assert_eq!(DispatchMode::from_str("IMMEDIATE"), DispatchMode::Immediate);
+        assert_eq!(DispatchMode::from_str("NEXT_ON_ERROR"), DispatchMode::NextOnError);
+        assert_eq!(DispatchMode::from_str("BLOCK_ON_ERROR"), DispatchMode::BlockOnError);
+        assert_eq!(DispatchMode::from_str("unknown"), DispatchMode::Immediate);
     }
 
     #[test]

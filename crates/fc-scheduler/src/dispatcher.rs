@@ -50,17 +50,21 @@ impl JobDispatcher {
             return Ok(false);
         };
 
+        let dispatch_mode = job.dispatch_mode();
+        let message_group = job.message_group.clone();
+
         let pointer = MessagePointer {
             id: job_id.to_string(),
             pool_code: job.dispatch_pool_id.unwrap_or_else(|| self.config.default_pool_code.clone()),
-            message_group_id: job.message_group.clone().unwrap_or_else(|| "default".to_string()),
+            message_group_id: message_group.clone().unwrap_or_else(|| "default".to_string()),
             mediation_type: "HTTP".to_string(),
             mediation_target: self.config.processing_endpoint.clone(),
+            dispatch_mode,
         };
 
         let message = QueueMessage {
             id: job_id.to_string(),
-            message_group: job.message_group,
+            message_group,
             deduplication_id: job_id.to_string(),
             body: serde_json::to_string(&pointer)?,
         };

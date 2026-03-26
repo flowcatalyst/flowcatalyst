@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+pub use fc_common::DispatchMode;
 
 /// Dispatch job kind
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,41 +85,6 @@ impl DispatchStatus {
             "FAILED" => Self::Failed,
             "EXPIRED" => Self::Expired,
             _ => Self::Pending,
-        }
-    }
-}
-
-/// Dispatch mode for ordering behavior
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum DispatchMode {
-    /// Process immediately, independent of other jobs
-    Immediate,
-    /// If this job fails, continue with next in group
-    NextOnError,
-    /// If this job fails, block subsequent jobs in group
-    BlockOnError,
-}
-
-impl Default for DispatchMode {
-    fn default() -> Self {
-        Self::Immediate
-    }
-}
-
-impl DispatchMode {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Immediate => "IMMEDIATE",
-            Self::NextOnError => "NEXT_ON_ERROR",
-            Self::BlockOnError => "BLOCK_ON_ERROR",
-        }
-    }
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "NEXT_ON_ERROR" => Self::NextOnError,
-            "BLOCK_ON_ERROR" => Self::BlockOnError,
-            _ => Self::Immediate,
         }
     }
 }

@@ -135,6 +135,7 @@ fn create_test_message(id: &str, pool_code: &str) -> Message {
         mediation_target: "http://localhost:8080/test".to_string(),
         message_group_id: None,
         high_priority: false,
+        dispatch_mode: fc_common::DispatchMode::default(),
     }
 }
 

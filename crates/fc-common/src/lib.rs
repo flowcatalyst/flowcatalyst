@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use std::sync::Arc;
 use std::time::Instant;
 use utoipa::ToSchema;
 
@@ -29,11 +30,52 @@ pub struct Message {
     /// Whether this message should be processed with high priority
     #[serde(default)]
     pub high_priority: bool,
+    /// Dispatch mode — controls ordering behavior within message groups.
+    /// Default is Immediate (no ordering, concurrent processing allowed).
+    #[serde(default)]
+    pub dispatch_mode: DispatchMode,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum MediationType {
     HTTP,
+}
+
+/// Dispatch mode controls ordering behavior within a message group.
+/// Shared across platform, scheduler, and router.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum DispatchMode {
+    /// Process independently, no ordering guarantee within group
+    #[default]
+    Immediate,
+    /// If this message fails, skip it and continue with next in group
+    NextOnError,
+    /// If this message fails, block all subsequent messages in group
+    BlockOnError,
+}
+
+impl DispatchMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Immediate => "IMMEDIATE",
+            Self::NextOnError => "NEXT_ON_ERROR",
+            Self::BlockOnError => "BLOCK_ON_ERROR",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s.to_uppercase().as_str() {
+            "NEXT_ON_ERROR" => Self::NextOnError,
+            "BLOCK_ON_ERROR" => Self::BlockOnError,
+            _ => Self::Immediate,
+        }
+    }
+
+    /// Whether this mode requires sequential (FIFO) processing within a message group
+    pub fn requires_ordering(&self) -> bool {
+        matches!(self, Self::NextOnError | Self::BlockOnError)
+    }
 }
 
 /// A message that has been received from a queue with tracking metadata
@@ -62,7 +104,7 @@ pub struct BatchMessage {
     pub receipt_handle: String,
     pub broker_message_id: Option<String>,
     pub queue_identifier: String,
-    pub batch_id: Option<String>,
+    pub batch_id: Option<Arc<str>>,
     pub callback: Box<dyn MessageCallback>,
 }
 
@@ -99,7 +141,7 @@ pub struct InFlightMessage {
     pub queue_identifier: String,
     pub started_at: Instant,
     pub message_group_id: Option<String>,
-    pub batch_id: Option<String>,
+    pub batch_id: Option<Arc<str>>,
     /// Current receipt handle - may be updated on SQS redelivery
     pub receipt_handle: String,
 }
@@ -109,7 +151,7 @@ impl InFlightMessage {
         message: &Message,
         broker_message_id: Option<String>,
         queue_identifier: String,
-        batch_id: Option<String>,
+        batch_id: Option<Arc<str>>,
         receipt_handle: String,
     ) -> Self {
         Self {

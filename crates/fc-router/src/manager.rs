@@ -170,6 +170,9 @@ pub struct QueueManager {
     /// Uses the broker's internal MessageId (not our application message ID) to correctly
     /// distinguish redeliveries from new instructions with the same application ID.
     /// Each entry includes the insertion time for TTL-based eviction.
+    ///
+    /// Uses parking_lot::Mutex (not tokio) intentionally — all lock sites are brief
+    /// (single insert/remove/retain) and never held across .await boundaries.
     pending_delete_broker_ids: Arc<Mutex<HashMap<String, Instant>>>,
 
     /// Maximum number of pools allowed
@@ -182,10 +185,14 @@ pub struct QueueManager {
     stall_config: StallConfig,
 
     /// Warning service for generating operational warnings
-    warning_service: Option<Arc<WarningService>>,
+    warning_service: Arc<WarningService>,
 
     /// Health service for recording consumer poll times
     health_service: Option<Arc<crate::health::HealthService>>,
+
+    /// Weak self-reference for spawning poll tasks from sync_queue_consumers.
+    /// Set via `init_self_ref()` after wrapping in Arc.
+    self_ref: parking_lot::RwLock<Option<std::sync::Weak<Self>>>,
 }
 
 impl QueueManager {
@@ -225,9 +232,16 @@ impl QueueManager {
             max_pools,
             pool_warning_threshold,
             stall_config,
-            warning_service: None,
+            warning_service: Arc::new(WarningService::noop()),
             health_service: None,
+            self_ref: parking_lot::RwLock::new(None),
         }
+    }
+
+    /// Initialize the self-reference after wrapping in Arc.
+    /// Must be called before `start()` or any config sync.
+    pub fn init_self_ref(self: &Arc<Self>) {
+        *self.self_ref.write() = Some(Arc::downgrade(self));
     }
 
     /// Set the consumer factory for creating new queue consumers during config sync
@@ -237,7 +251,7 @@ impl QueueManager {
 
     /// Set the warning service
     pub fn set_warning_service(&mut self, warning_service: Arc<WarningService>) {
-        self.warning_service = Some(warning_service);
+        self.warning_service = warning_service;
     }
 
     /// Set the health service (for recording consumer poll times)
@@ -246,8 +260,8 @@ impl QueueManager {
     }
 
     /// Get warning service reference
-    pub fn warning_service(&self) -> Option<&Arc<WarningService>> {
-        self.warning_service.as_ref()
+    pub fn warning_service(&self) -> &Arc<WarningService> {
+        &self.warning_service
     }
 
     /// Add a queue consumer
@@ -358,15 +372,13 @@ impl QueueManager {
                         max_pools = self.max_pools,
                         "Cannot create pool: maximum pool limit reached"
                     );
-                    if let Some(ref ws) = self.warning_service {
-                        ws.add_warning(
-                            WarningCategory::PoolHealth,
-                            WarningSeverity::Critical,
-                            format!("Max pool limit reached ({}/{}) - cannot create pool [{}]",
-                                current_count, self.max_pools, pool_config.code),
-                            "QueueManager".to_string(),
-                        );
-                    }
+                    self.warning_service.add_warning(
+                        WarningCategory::PoolHealth,
+                        WarningSeverity::Critical,
+                        format!("Max pool limit reached ({}/{}) - cannot create pool [{}]",
+                            current_count, self.max_pools, pool_config.code),
+                        "QueueManager".to_string(),
+                    );
                     continue;
                 }
 
@@ -378,15 +390,13 @@ impl QueueManager {
                         threshold = self.pool_warning_threshold,
                         "Pool count approaching limit"
                     );
-                    if let Some(ref ws) = self.warning_service {
-                        ws.add_warning(
-                            WarningCategory::PoolHealth,
-                            WarningSeverity::Warn,
-                            format!("Pool count {} approaching limit {} (threshold: {})",
-                                current_count, self.max_pools, self.pool_warning_threshold),
-                            "QueueManager".to_string(),
-                        );
-                    }
+                    self.warning_service.add_warning(
+                        WarningCategory::PoolHealth,
+                        WarningSeverity::Warn,
+                        format!("Pool count {} approaching limit {} (threshold: {})",
+                            current_count, self.max_pools, self.pool_warning_threshold),
+                        "QueueManager".to_string(),
+                    );
                 }
 
                 // Create new pool
@@ -458,6 +468,9 @@ impl QueueManager {
         }
 
         // Start consumers for new queues (if factory is available)
+        // Collect new consumers to spawn poll tasks after releasing locks
+        let mut new_consumers: Vec<Arc<dyn QueueConsumer + Send + Sync>> = Vec::new();
+
         if let Some(ref factory) = self.consumer_factory {
             for (queue_id, queue_config) in &new_queue_configs {
                 if !consumers.contains_key::<String>(queue_id) {
@@ -465,22 +478,20 @@ impl QueueManager {
 
                     match factory.create_consumer(queue_config).await {
                         Ok(consumer) => {
-                            // Consumer is ready to poll - polling will be initiated by lifecycle manager
-                            consumers.insert(queue_id.clone(), consumer);
+                            consumers.insert(queue_id.clone(), consumer.clone());
                             queue_configs.insert(queue_id.clone(), queue_config.clone());
+                            new_consumers.push(consumer);
                             queues_created += 1;
                             info!(queue_id = %queue_id, "Queue consumer created and ready");
                         }
                         Err(e) => {
                             error!(queue_id = %queue_id, error = %e, "Failed to create queue consumer");
-                            if let Some(ref ws) = self.warning_service {
-                                ws.add_warning(
-                                    WarningCategory::ConsumerHealth,
-                                    WarningSeverity::Critical,
-                                    format!("Failed to create consumer for queue [{}]: {}", queue_id, e),
-                                    "QueueManager".to_string(),
-                                );
-                            }
+                            self.warning_service.add_warning(
+                                WarningCategory::ConsumerHealth,
+                                WarningSeverity::Critical,
+                                format!("Failed to create consumer for queue [{}]: {}", queue_id, e),
+                                "QueueManager".to_string(),
+                            );
                         }
                     }
                 }
@@ -494,6 +505,23 @@ impl QueueManager {
                         "New queue in config but no consumer factory available - consumer will not be auto-created"
                     );
                 }
+            }
+        }
+
+        // Release write locks before spawning tasks
+        drop(consumers);
+        drop(queue_configs);
+        drop(draining);
+
+        // Spawn poll tasks for newly created consumers
+        if !new_consumers.is_empty() {
+            if let Some(arc_self) = self.self_ref.read().as_ref().and_then(|w| w.upgrade()) {
+                for consumer in new_consumers {
+                    info!(consumer_id = %consumer.identifier(), "Spawning poll task for hot-added consumer");
+                    arc_self.spawn_consumer_poll_task(consumer);
+                }
+            } else {
+                warn!("Cannot spawn poll tasks for new consumers — self_ref not initialized (call init_self_ref after Arc::new)");
             }
         }
 
@@ -562,7 +590,7 @@ impl QueueManager {
             return Ok(());
         }
 
-        let batch_id = self.batch_counter.fetch_add(1, Ordering::SeqCst).to_string();
+        let batch_id: Arc<str> = Arc::from(self.batch_counter.fetch_add(1, Ordering::Relaxed).to_string().as_str());
 
         // Phase 0: Check for messages that need immediate deletion (previously processed but ACK failed)
         // First, identify which messages need deletion (while holding lock)
@@ -665,14 +693,12 @@ impl QueueManager {
                     requested = pool_messages.len(),
                     "Pool at capacity, deferring all messages for this pool"
                 );
-                if let Some(ref ws) = self.warning_service {
-                    ws.add_warning(
-                        WarningCategory::QueueHealth,
-                        WarningSeverity::Warn,
-                        format!("Pool [{}] queue full, deferring {} messages from batch", pool_code, pool_messages.len()),
-                        "QueueManager".to_string(),
-                    );
-                }
+                self.warning_service.add_warning(
+                    WarningCategory::QueueHealth,
+                    WarningSeverity::Warn,
+                    format!("Pool [{}] queue full, deferring {} messages from batch", pool_code, pool_messages.len()),
+                    "QueueManager".to_string(),
+                );
                 // Defer concurrently - capacity limits are not errors
                 let defer_futs: Vec<_> = pool_messages.iter().map(|msg| {
                     let consumer = consumer.clone();
@@ -720,7 +746,7 @@ impl QueueManager {
                         &msg.message,
                         msg.broker_message_id.clone(),
                         msg.queue_identifier.clone(),
-                        Some(batch_id.clone()),
+                        Some(Arc::clone(&batch_id)),
                         msg.receipt_handle.clone(),
                     );
                     self.in_pipeline.insert(pipeline_key.clone(), in_flight);
@@ -743,7 +769,7 @@ impl QueueManager {
                         receipt_handle: msg.receipt_handle,
                         broker_message_id: msg.broker_message_id,
                         queue_identifier: msg.queue_identifier,
-                        batch_id: Some(batch_id.clone()),
+                        batch_id: Some(Arc::clone(&batch_id)),
                         callback: Box::new(callback),
                     };
 
@@ -873,23 +899,21 @@ impl QueueManager {
         for msg in messages {
             let pool_code = if msg.message.pool_code.is_empty() {
                 self.default_pool_code.clone()
-            } else if !self.pools.contains_key(&msg.message.pool_code) {
-                // Java: no pool found → log warning + route to DEFAULT-POOL
+            } else if self.pools.get(&msg.message.pool_code).is_none() {
+                // No pool found → log warning + route to DEFAULT-POOL
                 warn!(
                     message_id = %msg.message.id,
                     pool_code = %msg.message.pool_code,
                     default_pool = %self.default_pool_code,
                     "No pool found for pool_code, routing to DEFAULT-POOL"
                 );
-                if let Some(ref ws) = self.warning_service {
-                    ws.add_warning(
-                        WarningCategory::Routing,
-                        WarningSeverity::Warn,
-                        format!("No pool found for code [{}] on message [{}] — routed to {}",
-                            msg.message.pool_code, msg.message.id, self.default_pool_code),
-                        "QueueManager".to_string(),
-                    );
-                }
+                self.warning_service.add_warning(
+                    WarningCategory::Routing,
+                    WarningSeverity::Warn,
+                    format!("No pool found for code [{}] on message [{}] — routed to {}",
+                        msg.message.pool_code, msg.message.id, self.default_pool_code),
+                    "QueueManager".to_string(),
+                );
                 self.default_pool_code.clone()
             } else {
                 msg.message.pool_code.clone()
@@ -916,8 +940,86 @@ impl QueueManager {
         by_group
     }
 
+    /// Spawn a poll task for a single consumer. Returns the JoinHandle.
+    /// Called from both `start()` (initial consumers) and `sync_queue_consumers` (hot-added consumers).
+    fn spawn_consumer_poll_task(
+        self: &Arc<Self>,
+        consumer: Arc<dyn QueueConsumer + Send + Sync>,
+    ) -> tokio::task::JoinHandle<()> {
+        let manager = self.clone();
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
+
+        tokio::spawn(async move {
+            let mut last_poll_end = Instant::now();
+            const STARVATION_THRESHOLD: Duration = Duration::from_secs(30);
+
+            loop {
+                // Detect thread/task starvation: warn if >30s between poll loops (Java: 30s)
+                let loop_gap = last_poll_end.elapsed();
+                if loop_gap > STARVATION_THRESHOLD {
+                    warn!(
+                        consumer = %consumer.identifier(),
+                        gap_seconds = loop_gap.as_secs(),
+                        "Task starvation detected: {}s between poll loops (threshold: {}s)",
+                        loop_gap.as_secs(),
+                        STARVATION_THRESHOLD.as_secs()
+                    );
+                }
+
+                // Backpressure: if all pools are full, wait instead of polling.
+                // Prevents hot poll-defer loop that wastes SQS API calls.
+                if !manager.has_pool_capacity() {
+                    debug!(consumer = %consumer.identifier(), "All pools at capacity — pausing poll");
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    continue;
+                }
+
+                tokio::select! {
+                    _ = shutdown_rx.recv() => {
+                        info!(consumer = %consumer.identifier(), "Consumer shutting down");
+                        break;
+                    }
+                    result = consumer.poll(10) => {
+                        last_poll_end = Instant::now();
+
+                        // Record consumer poll with health service
+                        if let Some(ref health_service) = manager.health_service {
+                            health_service.record_consumer_poll(consumer.identifier());
+                        }
+
+                        match result {
+                            Ok(messages) if messages.is_empty() => {
+                                // No messages — SQS long poll already waited up to 20s.
+                                // Brief pause before re-polling.
+                                tokio::time::sleep(Duration::from_secs(1)).await;
+                            }
+                            Ok(messages) => {
+                                let count = messages.len();
+                                if let Err(e) = manager.route_batch(messages, consumer.clone()).await {
+                                    error!(error = %e, "Error routing batch");
+                                }
+                                // Full batch (10) — re-poll immediately, more messages likely waiting.
+                                // Partial batch (< 10) — brief pause, queue is draining.
+                                if count < 10 {
+                                    tokio::time::sleep(Duration::from_millis(500)).await;
+                                }
+                            }
+                            Err(e) => {
+                                error!(error = %e, consumer = %consumer.identifier(), "Error polling");
+                                tokio::time::sleep(Duration::from_secs(1)).await;
+                            }
+                        }
+                    }
+                }
+            }
+        })
+    }
+
     /// Start the queue manager and all consumers
     pub async fn start(self: Arc<Self>) -> Result<()> {
+        // Ensure self_ref is set so sync_queue_consumers can spawn poll tasks
+        self.init_self_ref();
+
         let consumers = self.consumers.read().await;
         info!(consumers = consumers.len(), "Starting QueueManager");
 
@@ -928,67 +1030,7 @@ impl QueueManager {
         drop(consumers); // Release the read lock
 
         for consumer in consumers_vec {
-            let manager = self.clone();
-            let mut shutdown_rx = self.shutdown_tx.subscribe();
-
-            let handle = tokio::spawn(async move {
-                let mut last_poll_end = Instant::now();
-                const STARVATION_THRESHOLD: Duration = Duration::from_secs(30);
-
-                loop {
-                    // Detect thread/task starvation: warn if >30s between poll loops (Java: 30s)
-                    let loop_gap = last_poll_end.elapsed();
-                    if loop_gap > STARVATION_THRESHOLD {
-                        warn!(
-                            consumer = %consumer.identifier(),
-                            gap_seconds = loop_gap.as_secs(),
-                            "Task starvation detected: {}s between poll loops (threshold: {}s)",
-                            loop_gap.as_secs(),
-                            STARVATION_THRESHOLD.as_secs()
-                        );
-                    }
-
-                    tokio::select! {
-                        _ = shutdown_rx.recv() => {
-                            info!(consumer = %consumer.identifier(), "Consumer shutting down");
-                            break;
-                        }
-                        result = consumer.poll(10) => {
-                            last_poll_end = Instant::now();
-
-                            // Record consumer poll with health service
-                            if let Some(ref health_service) = manager.health_service {
-                                health_service.record_consumer_poll(consumer.identifier());
-                            }
-
-                            match result {
-                                Ok(messages) if messages.is_empty() => {
-                                    // No messages — SQS long poll already waited up to 20s.
-                                    // Brief pause before re-polling.
-                                    tokio::time::sleep(Duration::from_secs(1)).await;
-                                }
-                                Ok(messages) => {
-                                    let count = messages.len();
-                                    if let Err(e) = manager.route_batch(messages, consumer.clone()).await {
-                                        error!(error = %e, "Error routing batch");
-                                    }
-                                    // Full batch (10) — re-poll immediately, more messages likely waiting.
-                                    // Partial batch (< 10) — brief pause, queue is draining.
-                                    if count < 10 {
-                                        tokio::time::sleep(Duration::from_millis(500)).await;
-                                    }
-                                }
-                                Err(e) => {
-                                    error!(error = %e, consumer = %consumer.identifier(), "Error polling");
-                                    tokio::time::sleep(Duration::from_secs(1)).await;
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-
-            handles.push(handle);
+            handles.push(self.spawn_consumer_poll_task(consumer));
         }
 
         // Wait for all consumer tasks
@@ -1046,6 +1088,12 @@ impl QueueManager {
 
     fn all_pools_drained(&self) -> bool {
         self.pools.iter().all(|entry| entry.value().is_fully_drained())
+    }
+
+    /// Check if any pool has capacity to accept messages.
+    /// Used to gate SQS polling — avoids a hot poll-defer loop when all pools are full.
+    fn has_pool_capacity(&self) -> bool {
+        self.pools.is_empty() || self.pools.iter().any(|entry| entry.value().available_capacity() > 0)
     }
 
     /// Get statistics for all pools

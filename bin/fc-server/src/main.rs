@@ -1127,7 +1127,7 @@ fn load_scheduler_config() -> fc_scheduler::SchedulerConfig {
         poll_interval: Duration::from_millis(config.scheduler.poll_interval_ms),
         batch_size: config.scheduler.batch_size,
         stale_threshold: Duration::from_secs(config.scheduler.stale_threshold_minutes * 60),
-        default_dispatch_mode: config.scheduler.default_dispatch_mode.as_str().into(),
+        default_dispatch_mode: fc_common::DispatchMode::from_str(&config.scheduler.default_dispatch_mode),
         default_pool_code: env_or("FC_SCHEDULER_DEFAULT_POOL_CODE", "DISPATCH-POOL"),
         processing_endpoint: env_or("FC_SCHEDULER_PROCESSING_ENDPOINT", "http://localhost:8080/api/dispatch/process"),
         app_key: if config.scheduler.app_key.is_empty() { None } else { Some(config.scheduler.app_key.clone()) },

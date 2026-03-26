@@ -1538,6 +1538,7 @@ async fn publish_message(
         mediation_target: req.mediation_target.unwrap_or_else(|| "http://localhost:8080/echo".to_string()),
         message_group_id: req.message_group_id,
         high_priority: false,
+        dispatch_mode: fc_common::DispatchMode::default(),
     };
 
     match state.publisher.publish(message).await {
@@ -1569,6 +1570,7 @@ async fn simple_publish_message(
         mediation_target: req.mediation_target.unwrap_or_else(|| "http://localhost:8080/echo".to_string()),
         message_group_id: req.message_group_id,
         high_priority: false,
+        dispatch_mode: fc_common::DispatchMode::default(),
     };
 
     match state.publisher.publish(message).await {
@@ -2179,6 +2181,7 @@ async fn seed_messages(
             mediation_target: target.to_string(),
             message_group_id,
             high_priority: false,
+            dispatch_mode: fc_common::DispatchMode::default(),
         };
 
         if state.publisher.publish(message).await.is_ok() {

@@ -6,7 +6,7 @@
 //! - Pool and consumer health tracking
 //! - Integration with warning service
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
@@ -48,41 +48,57 @@ impl Default for HealthServiceConfig {
     }
 }
 
-/// Rolling window counter for success/failure rates
+/// Rolling window counter for success/failure rates.
+/// Uses a VecDeque so expired events can be popped from the front in O(1)
+/// instead of a full O(n) retain() scan on every record.
 #[derive(Debug)]
 struct RollingCounter {
     window: Duration,
-    events: RwLock<Vec<(Instant, bool)>>,  // (timestamp, success)
+    events: RwLock<VecDeque<(Instant, bool)>>,
 }
 
 impl RollingCounter {
     fn new(window: Duration) -> Self {
         Self {
             window,
-            events: RwLock::new(Vec::new()),
+            events: RwLock::new(VecDeque::new()),
         }
     }
 
     fn record(&self, success: bool) {
         let mut events = self.events.write();
-        events.push((Instant::now(), success));
-
-        // Cleanup old events
         let cutoff = Instant::now() - self.window;
-        events.retain(|(t, _)| *t > cutoff);
+
+        // Pop expired events from front (they're ordered by time)
+        while let Some(&(t, _)) = events.front() {
+            if t <= cutoff {
+                events.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        events.push_back((Instant::now(), success));
     }
 
     fn success_rate(&self) -> Option<f64> {
         let events = self.events.read();
         let cutoff = Instant::now() - self.window;
 
-        let recent: Vec<_> = events.iter().filter(|(t, _)| *t > cutoff).collect();
-        if recent.is_empty() {
-            return None;
+        let mut total = 0usize;
+        let mut successes = 0usize;
+        for &(t, s) in events.iter() {
+            if t > cutoff {
+                total += 1;
+                if s { successes += 1; }
+            }
         }
 
-        let successes = recent.iter().filter(|(_, s)| *s).count();
-        Some(successes as f64 / recent.len() as f64)
+        if total == 0 {
+            None
+        } else {
+            Some(successes as f64 / total as f64)
+        }
     }
 
     #[allow(dead_code)]

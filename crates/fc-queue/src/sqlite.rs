@@ -413,6 +413,7 @@ mod tests {
             mediation_target: "http://localhost:8080".to_string(),
             message_group_id: None,
             high_priority: false,
+            dispatch_mode: fc_common::DispatchMode::default(),
         };
 
         // Publish
@@ -445,6 +446,7 @@ mod tests {
             mediation_target: "http://localhost:8080".to_string(),
             message_group_id: None,
             high_priority: false,
+            dispatch_mode: fc_common::DispatchMode::default(),
         };
 
         queue.publish(message).await.unwrap();
@@ -473,6 +475,7 @@ mod tests {
                 mediation_target: "http://localhost:8080".to_string(),
                 message_group_id: Some("group-1".to_string()),
                 high_priority: false,
+                dispatch_mode: fc_common::DispatchMode::default(),
             };
             queue.publish(message).await.unwrap();
         }
@@ -504,6 +507,7 @@ mod tests {
             mediation_target: "http://localhost:8080".to_string(),
             message_group_id: None,
             high_priority: false,
+            dispatch_mode: fc_common::DispatchMode::default(),
         };
 
         // Publish same message twice
