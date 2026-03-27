@@ -1,6 +1,6 @@
 # Stream Processor
 
-The Stream Processor watches MongoDB change streams for new events and creates dispatch jobs by matching events to subscriptions.
+The Stream Processor watches for new events and creates dispatch jobs by matching events to subscriptions.
 
 ## Architecture
 
@@ -9,10 +9,10 @@ The Stream Processor watches MongoDB change streams for new events and creates d
 │                        Stream Processor                                  │
 │                                                                          │
 │  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │                    Change Stream Watcher                          │   │
+│  │                    Event Watcher                                  │   │
 │  │                                                                   │   │
-│  │   MongoDB events collection  ───▶  Change Stream Consumer        │   │
-│  │   (insert operations)              (resume token tracking)       │   │
+│  │   Events table/feed  ───▶  Event Consumer                        │   │
+│  │   (insert operations)       (checkpoint tracking)                │   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 │                                    │                                     │
 │                                    ▼                                     │
@@ -43,8 +43,8 @@ The Stream Processor watches MongoDB change streams for new events and creates d
 │                                    │                                     │
 │                                    ▼                                     │
 │                          ┌─────────────────┐                            │
-│                          │   MongoDB       │                            │
-│                          │ dispatch_jobs   │                            │
+│                          │  dispatch_jobs  │                            │
+│                          │                 │                            │
 │                          └─────────────────┘                            │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -53,9 +53,9 @@ The Stream Processor watches MongoDB change streams for new events and creates d
 
 ```
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│   Event      │    │   Change     │    │ Subscription │    │   Dispatch   │
-│  Published   │───▶│   Stream     │───▶│   Matching   │───▶│    Jobs      │
-│  (MongoDB)   │    │   Detected   │    │              │    │   Created    │
+│   Event      │    │   Event      │    │ Subscription │    │   Dispatch   │
+│  Published   │───▶│   Detected   │───▶│   Matching   │───▶│    Jobs      │
+│              │    │              │    │              │    │   Created    │
 └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
                                                                     │
                                                                     ▼
@@ -67,12 +67,12 @@ The Stream Processor watches MongoDB change streams for new events and creates d
 
 ## Components
 
-### Change Stream Watcher (`fc-stream/src/lib.rs`)
+### Event Watcher (`fc-stream/src/lib.rs`)
 
-Watches MongoDB for new events:
-- Subscribes to `insert` operations on `events` collection
-- Maintains resume token for crash recovery
-- Handles reconnection on network failures
+Watches for new events:
+- Subscribes to new events via the projection feed
+- Maintains checkpoint for crash recovery
+- Handles reconnection on failures
 
 ### Subscription Matcher
 
@@ -131,8 +131,8 @@ Builds read models for efficient querying:
 
 ### Index Initializer (`fc-stream/src/index_initializer.rs`)
 
-Ensures MongoDB indexes exist:
-- Events collection indexes
+Ensures database indexes exist:
+- Events table indexes
 - Dispatch jobs indexes
 - Subscription indexes
 
@@ -151,8 +151,7 @@ cargo build -p fc-stream-processor --release
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FC_MONGO_URL` | `mongodb://localhost:27017` | MongoDB connection URL |
-| `FC_MONGO_DB` | `flowcatalyst` | MongoDB database name |
+| `FC_DATABASE_URL` | `postgresql://localhost:5432/flowcatalyst` | PostgreSQL connection URL |
 | `FC_METRICS_PORT` | `9090` | Metrics/health port |
 | `FC_STREAM_BATCH_SIZE` | `100` | Max events per processing batch |
 | `FC_STREAM_RESUME_TOKEN_KEY` | `stream-processor` | Redis key for resume token |
@@ -173,31 +172,6 @@ export FC_REDIS_URL=redis://localhost:6379
 # No FC_REDIS_URL set - uses in-memory storage
 # Warning: Resume token lost on restart
 ```
-
-## MongoDB Change Streams
-
-### Requirements
-
-- MongoDB 3.6+ (change streams)
-- Replica set deployment (required for change streams)
-- Read concern `majority`
-
-### Change Stream Pipeline
-
-The processor watches with this pipeline:
-```javascript
-[
-  { $match: { operationType: "insert" } },
-  { $project: { fullDocument: 1, _id: 1 } }
-]
-```
-
-### Resume Behavior
-
-1. On startup, check for stored resume token
-2. If found, resume from that point
-3. If not found, start from current point
-4. After each batch, persist new resume token
 
 ## High Availability
 
@@ -245,18 +219,18 @@ Prometheus metrics at `/metrics`:
 | `fc_stream_events_processed_total` | Counter | Total events processed |
 | `fc_stream_dispatch_jobs_created_total` | Counter | Total dispatch jobs created |
 | `fc_stream_processing_duration_seconds` | Histogram | Event processing latency |
-| `fc_stream_change_stream_lag_seconds` | Gauge | Lag behind MongoDB oplog |
+| `fc_stream_processing_lag_seconds` | Gauge | Processing lag |
 | `fc_stream_subscriptions_matched_total` | Counter | Subscription matches |
 
 ## Error Handling
 
-### Change Stream Errors
+### Connection Errors
 
 | Error | Handling |
 |-------|----------|
 | Network disconnect | Automatic reconnection with backoff |
-| Invalid resume token | Start from current position, log warning |
-| MongoDB unavailable | Retry with exponential backoff |
+| Invalid checkpoint | Start from current position, log warning |
+| Database unavailable | Retry with exponential backoff |
 
 ### Processing Errors
 
@@ -293,7 +267,7 @@ cargo run -p fc-dev
 # Unit tests
 cargo test -p fc-stream
 
-# Integration tests (requires MongoDB replica set)
+# Integration tests (requires PostgreSQL)
 cargo test -p fc-stream --test integration_tests
 ```
 
@@ -302,6 +276,5 @@ cargo test -p fc-stream --test integration_tests
 - `fc-common`: Event and subscription types
 - `fc-platform`: Repository access
 - `fc-standby`: Leader election
-- `mongodb`: MongoDB driver with change streams
-- `redis`: Resume token storage
+- `redis`: Checkpoint storage
 - `futures`: Async stream handling

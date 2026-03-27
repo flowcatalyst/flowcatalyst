@@ -1,6 +1,6 @@
 # Scheduler
 
-The Scheduler polls pending dispatch jobs from MongoDB and queues them for delivery by the Message Router.
+The Scheduler polls pending dispatch jobs from the database and queues them for delivery by the Message Router.
 
 ## Architecture
 
@@ -70,7 +70,7 @@ The Scheduler polls pending dispatch jobs from MongoDB and queues them for deliv
 
 ### Job Poller (`fc-scheduler/src/lib.rs`)
 
-Polls MongoDB for pending jobs:
+Polls the database for pending jobs:
 - Configurable poll interval (default 1 second)
 - Batched queries for efficiency
 - Respects `scheduled_at` for delayed delivery
@@ -128,8 +128,7 @@ cargo build -p fc-scheduler-server --release
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FC_MONGO_URL` | `mongodb://localhost:27017` | MongoDB connection URL |
-| `FC_MONGO_DB` | `flowcatalyst` | MongoDB database name |
+| `FC_DATABASE_URL` | `postgresql://localhost:5432/flowcatalyst` | PostgreSQL connection URL |
 | `FC_SCHEDULER_POLL_INTERVAL_MS` | `1000` | Poll interval in milliseconds |
 | `FC_SCHEDULER_BATCH_SIZE` | `100` | Max jobs per poll |
 | `FC_SCHEDULER_STALE_THRESHOLD_SECS` | `300` | Stale job threshold |
@@ -148,10 +147,6 @@ The scheduler also supports TOML configuration:
 poll_interval_ms = 1000
 batch_size = 100
 stale_threshold_secs = 300
-
-[mongodb]
-url = "mongodb://localhost:27017"
-database = "flowcatalyst"
 
 [queue]
 type = "sqs"  # or "sqlite", "http"
@@ -288,7 +283,7 @@ Prometheus metrics at `/metrics`:
 
 | Error | Handling |
 |-------|----------|
-| MongoDB unavailable | Retry with backoff |
+| Database unavailable | Retry with backoff |
 | Write conflict | Retry |
 | Connection timeout | Reconnect and retry |
 
@@ -321,7 +316,7 @@ cargo run -p fc-scheduler-server
 # Unit tests
 cargo test -p fc-scheduler
 
-# Integration tests (requires MongoDB)
+# Integration tests (requires PostgreSQL)
 cargo test -p fc-scheduler --test integration_tests
 ```
 
@@ -331,4 +326,4 @@ cargo test -p fc-scheduler --test integration_tests
 - `fc-config`: Configuration loading
 - `fc-queue`: Queue publisher abstraction
 - `fc-standby`: Leader election
-- `mongodb`: MongoDB driver
+- `sqlx`: Database connectivity

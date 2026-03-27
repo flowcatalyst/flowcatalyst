@@ -14,7 +14,7 @@ FlowCatalyst is a distributed event processing system composed of specialized se
                                                           │
                                                           ▼
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   Platform      │◀────│    MongoDB       │◀────│     Stream      │
+│   Platform      │◀────│   PostgreSQL     │◀────│     Stream      │
 │   APIs          │────▶│   (Events DB)    │────▶│    Processor    │
 └─────────────────┘     └──────────────────┘     └────────┬────────┘
                                                           │
@@ -44,7 +44,7 @@ FlowCatalyst is a distributed event processing system composed of specialized se
 | **Message Router** | Consumes queued messages and delivers to webhooks with retry, circuit breakers, and rate limiting | [docs/message-router.md](docs/message-router.md) |
 | **Platform** | REST APIs for events, subscriptions, clients, principals, and administration | [docs/platform.md](docs/platform.md) |
 | **Outbox Processor** | Reads outbox tables from application databases and publishes events | [docs/outbox-processor.md](docs/outbox-processor.md) |
-| **Stream Processor** | Watches MongoDB change streams and creates dispatch jobs from events | [docs/stream-processor.md](docs/stream-processor.md) |
+| **Stream Processor** | Watches for new events and creates dispatch jobs from subscriptions | [docs/stream-processor.md](docs/stream-processor.md) |
 | **Scheduler** | Polls pending dispatch jobs and queues them for delivery | [docs/scheduler.md](docs/scheduler.md) |
 | **Shared Crates** | Common libraries used across services | [docs/shared-crates.md](docs/shared-crates.md) |
 
@@ -64,7 +64,7 @@ FlowCatalyst is a distributed event processing system composed of specialized se
 ### Development (All-in-One)
 
 ```bash
-# Start MongoDB
+# Start PostgreSQL
 docker compose -f docker-compose.dev.yml up -d
 
 # Run development server
@@ -128,9 +128,9 @@ flowcatalyst-rust/
 
 - **Runtime**: Tokio (async)
 - **Web Framework**: Axum
-- **Databases**: MongoDB, SQLite, PostgreSQL
+- **Databases**: PostgreSQL, SQLite
 - **Queue**: AWS SQS, SQLite (dev), ActiveMQ
-- **Serialization**: Serde, BSON
+- **Serialization**: Serde
 - **Authentication**: JWT with RSA keys
 - **Observability**: Tracing, Prometheus metrics
 - **API Docs**: OpenAPI/Swagger (utoipa)
@@ -143,8 +143,7 @@ Common variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FC_MONGO_URL` | `mongodb://localhost:27017` | MongoDB connection URL |
-| `FC_MONGO_DB` | `flowcatalyst` | MongoDB database name |
+| `FC_DATABASE_URL` | `postgresql://localhost:5432/flowcatalyst` | PostgreSQL connection URL |
 | `RUST_LOG` | `info` | Log level |
 
 ## Health Checks

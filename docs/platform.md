@@ -33,13 +33,13 @@ The Platform Service provides REST APIs for managing the FlowCatalyst platform, 
 │                                    ▼                                    │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
 │  │                      Repository Layer                            │   │
-│  │  MongoDB Collections: events, subscriptions, clients, etc.       │   │
+│  │  PostgreSQL Tables: events, subscriptions, clients, etc.          │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
                             ┌─────────────┐
-                            │   MongoDB   │
+                            │ PostgreSQL  │
                             └─────────────┘
 ```
 
@@ -47,8 +47,8 @@ The Platform Service provides REST APIs for managing the FlowCatalyst platform, 
 
 ### Core Entities
 
-| Entity | Collection | Description |
-|--------|------------|-------------|
+| Entity | Table | Description |
+|--------|-------|-------------|
 | `Event` | `events` | Published events with payload and metadata |
 | `EventType` | `event_types` | Event type definitions with versioning |
 | `Subscription` | `subscriptions` | Webhook subscriptions with filters |
@@ -57,8 +57,8 @@ The Platform Service provides REST APIs for managing the FlowCatalyst platform, 
 
 ### Identity & Access
 
-| Entity | Collection | Description |
-|--------|------------|-------------|
+| Entity | Table | Description |
+|--------|-------|-------------|
 | `Client` | `clients` | Tenant/customer organizations |
 | `Principal` | `principals` | Users and service accounts |
 | `Role` | `roles` | Permission roles |
@@ -68,8 +68,8 @@ The Platform Service provides REST APIs for managing the FlowCatalyst platform, 
 
 ### Configuration
 
-| Entity | Collection | Description |
-|--------|------------|-------------|
+| Entity | Table | Description |
+|--------|-------|-------------|
 | `AuthConfig` | `auth_configs` | Client authentication settings |
 | `AnchorDomain` | `anchor_domains` | Platform admin email domains |
 | `IdpRoleMapping` | `idp_role_mappings` | External IdP to internal role mappings |
@@ -213,8 +213,7 @@ cargo build -p fc-platform-server --release
 |----------|---------|-------------|
 | `FC_API_PORT` | `8080` | HTTP API port |
 | `FC_METRICS_PORT` | `9090` | Metrics/health port |
-| `FC_MONGO_URL` | `mongodb://localhost:27017` | MongoDB connection |
-| `FC_MONGO_DB` | `flowcatalyst` | MongoDB database |
+| `FC_DATABASE_URL` | `postgresql://localhost:5432/flowcatalyst` | PostgreSQL connection URL |
 | `FC_JWT_PRIVATE_KEY_PATH` | - | RSA private key file |
 | `FC_JWT_PUBLIC_KEY_PATH` | - | RSA public key file |
 | `FLOWCATALYST_JWT_PRIVATE_KEY` | - | RSA private key (env) |
@@ -252,7 +251,7 @@ let id = TsidGenerator::generate();  // "0HZXEQ5Y8JY5Z"
 
 ## Repository Layer
 
-All repositories implement MongoDB persistence with:
+All repositories implement PostgreSQL persistence with:
 - Index management for query optimization
 - TSID string ID handling
 - Pagination support
@@ -261,7 +260,7 @@ All repositories implement MongoDB persistence with:
 Example repository:
 ```rust
 pub struct EventRepository {
-    collection: Collection<Event>,
+    pool: PgPool,
 }
 
 impl EventRepository {
@@ -315,7 +314,7 @@ fc-platform/
 │   │   ├── subscription.rs
 │   │   ├── client.rs
 │   │   └── ...
-│   ├── repository/       # MongoDB repositories
+│   ├── repository/       # PostgreSQL repositories
 │   │   ├── event.rs
 │   │   ├── subscription.rs
 │   │   └── ...
