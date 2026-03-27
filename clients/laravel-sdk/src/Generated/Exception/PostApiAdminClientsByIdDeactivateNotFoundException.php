@@ -5,24 +5,15 @@ namespace FlowCatalyst\Generated\Exception;
 class PostApiAdminClientsByIdDeactivateNotFoundException extends NotFoundException
 {
     /**
-     * @var \FlowCatalyst\Generated\Model\ApiAdminClientsIdDeactivatePostResponse404
-     */
-    private $apiAdminClientsIdDeactivatePostResponse404;
-    /**
      * @var \Psr\Http\Message\ResponseInterface
      */
     private $response;
-    public function __construct(\FlowCatalyst\Generated\Model\ApiAdminClientsIdDeactivatePostResponse404 $apiAdminClientsIdDeactivatePostResponse404, \Psr\Http\Message\ResponseInterface $response)
+    public function __construct(\Psr\Http\Message\ResponseInterface $response = null)
     {
-        parent::__construct('Default Response');
-        $this->apiAdminClientsIdDeactivatePostResponse404 = $apiAdminClientsIdDeactivatePostResponse404;
+        parent::__construct('Client not found');
         $this->response = $response;
     }
-    public function getApiAdminClientsIdDeactivatePostResponse404(): \FlowCatalyst\Generated\Model\ApiAdminClientsIdDeactivatePostResponse404
-    {
-        return $this->apiAdminClientsIdDeactivatePostResponse404;
-    }
-    public function getResponse(): \Psr\Http\Message\ResponseInterface
+    public function getResponse(): ?\Psr\Http\Message\ResponseInterface
     {
         return $this->response;
     }

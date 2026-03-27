@@ -61,15 +61,42 @@ pub fn schemas() -> HashMap<&'static str, Value> {
         req_str("principalId"),
         req_str("clientId"),
     ]));
-    m.insert("platform:iam:user:logged-in", obj(&[
-        req_str("principalId"),
-        req_str("email"),
-        req_str("emailDomain"),
-        req_str("scope"),
-        req_str("identityProviderId"),
-        req_str("loginMethod"),
-        opt_str("clientId"),
-    ]));
+    m.insert("platform:iam:user:logged-in", json!({
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+            "userId": {"type": "string"},
+            "email": {"type": "string"},
+            "loginMethod": {"type": "string", "enum": ["INTERNAL", "OIDC"]},
+            "identityProviderCode": {"type": ["string", "null"]},
+            "flowcatalystClaims": {
+                "type": "object",
+                "properties": {
+                    "email": {"type": "string"},
+                    "type": {"type": "string"},
+                    "roles": {"type": "array", "items": {"type": "string"}},
+                    "clients": {"type": "array", "items": {"type": "string"}},
+                    "applications": {"type": "array", "items": {"type": "string"}}
+                },
+                "required": ["email", "type", "roles", "clients", "applications"]
+            },
+            "federatedClaims": {
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "accessToken": {"type": "object"},
+                            "idToken": {"type": "object"}
+                        },
+                        "required": ["accessToken", "idToken"]
+                    },
+                    {"type": "null"}
+                ]
+            }
+        },
+        "required": ["userId", "email", "loginMethod", "flowcatalystClaims"],
+        "additionalProperties": true
+    }));
     m.insert("platform:iam:user:password-reset-requested", obj(&[
         req_str("principalId"),
         req_str("email"),

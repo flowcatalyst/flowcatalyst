@@ -50,8 +50,12 @@ pub struct CreateSubscriptionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 
-    /// Connection ID (references msg_connections)
-    pub connection_id: String,
+    /// Webhook endpoint URL
+    pub endpoint: String,
+
+    /// Connection ID (references msg_connections, optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_id: Option<String>,
 
     /// Event types to listen to
     #[serde(default)]
@@ -95,6 +99,9 @@ pub struct UpdateSubscriptionRequest {
 
     /// Description
     pub description: Option<String>,
+
+    /// Webhook endpoint URL
+    pub endpoint: Option<String>,
 
     /// Connection ID
     pub connection_id: Option<String>,
@@ -151,7 +158,8 @@ pub struct SubscriptionResponse {
     pub client_id: Option<String>,
     pub client_identifier: Option<String>,
     pub event_types: Vec<EventTypeBindingResponse>,
-    pub connection_id: String,
+    pub endpoint: String,
+    pub connection_id: Option<String>,
     pub queue: Option<String>,
     pub custom_config: Vec<ConfigEntryResponse>,
     pub source: Option<String>,
@@ -182,6 +190,7 @@ impl From<Subscription> for SubscriptionResponse {
             client_id: s.client_id,
             client_identifier: None, // Denormalized, populated by projection
             event_types: s.event_types.iter().map(|e| e.into()).collect(),
+            endpoint: s.endpoint,
             connection_id: s.connection_id,
             queue: s.queue,
             custom_config: s.custom_config.iter().map(|c| c.into()).collect(),
@@ -246,7 +255,9 @@ pub struct SyncSubscriptionInputRequest {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    pub connection_id: String,
+    pub target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_id: Option<String>,
     pub event_types: Vec<SyncSubscriptionEventTypeRequest>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dispatch_pool_code: Option<String>,
@@ -338,8 +349,11 @@ pub async fn create_subscription(
         return Err(PlatformError::duplicate("Subscription", "code", &req.code));
     }
 
-    let mut subscription = Subscription::new(&req.code, &req.name, &req.connection_id);
+    let mut subscription = Subscription::new(&req.code, &req.name, &req.endpoint);
 
+    if let Some(conn_id) = req.connection_id {
+        subscription = subscription.with_connection_id(conn_id);
+    }
     if let Some(desc) = req.description {
         subscription = subscription.with_description(desc);
     }
@@ -500,8 +514,11 @@ pub async fn update_subscription(
     if let Some(desc) = req.description {
         subscription.description = Some(desc);
     }
+    if let Some(ep) = req.endpoint {
+        subscription.endpoint = ep;
+    }
     if let Some(conn_id) = req.connection_id {
-        subscription.connection_id = conn_id;
+        subscription.connection_id = Some(conn_id);
     }
     if let Some(timeout) = req.timeout_seconds {
         subscription.timeout_seconds = timeout as i32;
@@ -661,6 +678,7 @@ pub async fn sync_subscriptions(
             code: s.code,
             name: s.name,
             description: s.description,
+            target: s.target,
             connection_id: s.connection_id,
             event_types: s.event_types.into_iter().map(|et| EventTypeBindingInput {
                 event_type_code: et.event_type_code,

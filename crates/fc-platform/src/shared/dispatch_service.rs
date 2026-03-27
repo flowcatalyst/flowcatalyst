@@ -663,12 +663,12 @@ impl EventDispatcher {
             }
 
             // Create dispatch job using for_event constructor
-            // Target URL is resolved from the connection, not stored on the subscription
+            // Target URL is owned by the subscription
             let mut job = DispatchJob::for_event(
                 event_id,
                 event_type,
                 source,
-                "",
+                &subscription.endpoint,
                 &payload,
             );
 

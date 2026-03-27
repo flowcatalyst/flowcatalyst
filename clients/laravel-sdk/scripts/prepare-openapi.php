@@ -21,6 +21,27 @@ if ($json === null) {
 
 $fixed = 0;
 
+// ── OpenAPI 3.1 → 3.0 nullable type conversion ─────────────────────
+// utoipa generates "type": ["string", "null"] (3.1 style).
+// jane-openapi only supports "type": "string", "nullable": true (3.0).
+function downgradeNullableTypes(array &$node, int &$fixed): void {
+    foreach ($node as $key => &$value) {
+        if ($key === 'type' && is_array($value)) {
+            $nonNull = array_values(array_filter($value, fn($t) => $t !== 'null'));
+            if (count($nonNull) === 1 && count($value) > count($nonNull)) {
+                $node['type'] = $nonNull[0];
+                $node['nullable'] = true;
+                $fixed++;
+            }
+        } elseif (is_array($value)) {
+            downgradeNullableTypes($value, $fixed);
+        }
+    }
+    unset($value);
+}
+
+downgradeNullableTypes($json, $fixed);
+
 foreach ($json['paths'] as $path => &$methods) {
     foreach ($methods as $method => &$operation) {
         if (!is_array($operation)) continue;

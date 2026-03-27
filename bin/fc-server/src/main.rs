@@ -45,7 +45,6 @@ use axum::{
     response::Json,
     Router,
 };
-use utoipa_axum::router::OpenApiRouter;
 use tower_http::cors::{CorsLayer, AllowOrigin};
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
@@ -55,54 +54,53 @@ use axum::http::{Method, HeaderValue, header as http_header};
 use anyhow::Result;
 use tracing::{info, warn, error};
 use tokio::{signal, net::TcpListener, sync::watch};
-use utoipa_swagger_ui::SwaggerUi;
 
 use fc_platform::service::{AuthService, AuthConfig, AuthorizationService, AuditService};
 use fc_platform::api::middleware::{AppState, AuthLayer};
 use fc_platform::api::{
-    EventsState, events_router,
-    EventTypesState, event_types_router,
-    DispatchJobsState, dispatch_jobs_router,
-    FilterOptionsState, filter_options_router, event_type_filters_router,
-    ClientsState, clients_router,
-    PrincipalsState, principals_router,
-    RolesState, roles_router,
-    SubscriptionsState, subscriptions_router,
-    OAuthClientsState, oauth_clients_router,
-    AuthConfigState, anchor_domains_router, client_auth_configs_router, idp_role_mappings_router,
-    AuditLogsState, audit_logs_router,
-    ApplicationsState, applications_router,
-    DispatchPoolsState, dispatch_pools_router,
-    MonitoringState, monitoring_router, LeaderState, CircuitBreakerRegistry, InFlightTracker,
-    DebugState, debug_events_router, debug_dispatch_jobs_router,
-    AuthState, auth_router,
-    OAuthState, oauth_router,
-    platform_config_router,
-    ServiceAccountsState, service_accounts_router,
-    ConnectionsState, connections_router,
-    CorsState, cors_router,
-    IdentityProvidersState, identity_providers_router,
-    EmailDomainMappingsState, email_domain_mappings_router,
-    PlatformConfigState, admin_platform_config_router,
-    ConfigAccessState, config_access_router,
-    LoginAttemptsState, login_attempts_router,
-    MeState, me_router,
-    SdkEventsState, sdk_events_batch_router,
-    SdkClientsState, sdk_clients_router,
-    SdkPrincipalsState, sdk_principals_router,
-    SdkRolesState, sdk_roles_router,
-    WellKnownState, well_known_router,
-    ClientSelectionState, client_selection_router,
-    ApplicationRolesSdkState, application_roles_sdk_router,
-    public_router, PublicApiState,
-    PasswordResetApiState, password_reset_router,
-    SdkSyncState, sdk_sync_router,
-    SdkAuditBatchState, sdk_audit_batch_router,
-    SdkDispatchJobsState, sdk_dispatch_jobs_batch_router,
-    BffRolesState, bff_roles_router,
-    BffEventTypesState, bff_event_types_router,
+    EventsState,
+    EventTypesState,
+    DispatchJobsState,
+    FilterOptionsState,
+    ClientsState,
+    PrincipalsState,
+    RolesState,
+    SubscriptionsState,
+    OAuthClientsState,
+    AuthConfigState,
+    AuditLogsState,
+    ApplicationsState,
+    DispatchPoolsState,
+    MonitoringState, LeaderState, CircuitBreakerRegistry, InFlightTracker,
+    DebugState,
+    AuthState,
+    OAuthState,
+    ServiceAccountsState,
+    ConnectionsState,
+    CorsState,
+    IdentityProvidersState,
+    EmailDomainMappingsState,
+    PlatformConfigState,
+    ConfigAccessState,
+    LoginAttemptsState,
+    MeState,
+    SdkEventsState,
+    SdkClientsState,
+    SdkPrincipalsState,
+    SdkRolesState,
+    WellKnownState,
+    ClientSelectionState,
+    ApplicationRolesSdkState,
+    PublicApiState,
+    PasswordResetApiState,
+    SdkSyncState,
+    SdkAuditBatchState,
+    SdkDispatchJobsState,
+    BffRolesState,
+    BffEventTypesState,
+    OidcLoginApiState,
 };
-use fc_platform::api::{OidcLoginApiState, oidc_login_router};
+use fc_platform::router::PlatformRoutes;
 use fc_platform::repository::{
     EventRepository, EventTypeRepository, DispatchJobRepository, DispatchPoolRepository,
     SubscriptionRepository, ServiceAccountRepository, PrincipalRepository, ClientRepository,
@@ -888,74 +886,54 @@ fn build_platform_app(
         start_time: std::time::Instant::now(),
     };
 
-    // Build OpenAPI router
-    let (router, mut openapi) = OpenApiRouter::new()
-        .nest("/bff/events", events_router(events_state))
-        .nest("/bff/event-types", event_types_router(event_types_state))
-        .nest("/bff/dispatch-jobs", dispatch_jobs_router(dispatch_jobs_state))
-        .nest("/bff/filter-options", filter_options_router(filter_options_state.clone()))
-        .nest("/api/admin/clients", clients_router(clients_state))
-        .nest("/api/admin/principals", principals_router(principals_state))
-        .nest("/api/admin/roles", roles_router(roles_state))
-        .nest("/api/admin/subscriptions", subscriptions_router(subscriptions_state))
-        .nest("/api/admin/oauth-clients", oauth_clients_router(oauth_clients_state))
-        .nest("/api/admin/audit-logs", audit_logs_router(audit_logs_state))
-        .nest("/api/monitoring", monitoring_router(monitoring_state))
-        .nest("/auth", auth_router(embedded_auth_state))
-        .split_for_parts();
+    // Build platform API router via centralized PlatformRoutes builder
+    let routes = PlatformRoutes {
+        events: events_state,
+        event_types: event_types_state,
+        dispatch_jobs: dispatch_jobs_state,
+        filter_options: filter_options_state,
+        clients: clients_state,
+        principals: principals_state,
+        roles: roles_state,
+        subscriptions: subscriptions_state,
+        oauth_clients: oauth_clients_state,
+        audit_logs: audit_logs_state,
+        monitoring: monitoring_state,
+        auth: embedded_auth_state,
+        bff_roles: bff_roles_state,
+        bff_event_types: bff_event_types_state,
+        debug: debug_state,
+        auth_config: auth_config_state,
+        applications: applications_state,
+        dispatch_pools: dispatch_pools_state,
+        service_accounts: service_accounts_state,
+        connections: connections_state,
+        cors: cors_state,
+        identity_providers: idp_state,
+        email_domain_mappings: edm_state,
+        platform_config: platform_config_state,
+        config_access: config_access_state,
+        login_attempts: login_attempts_state,
+        me: me_state,
+        sdk_events: sdk_events_state,
+        sdk_clients: sdk_clients_state,
+        sdk_principals: sdk_principals_state,
+        sdk_roles: sdk_roles_state,
+        sdk_dispatch_jobs: sdk_dispatch_jobs_state,
+        oidc_login: oidc_login_state,
+        oauth: oauth_state,
+        well_known: well_known_state,
+        client_selection: client_selection_state,
+        application_roles_sdk: application_roles_sdk_state,
+        sdk_sync: sdk_sync_state,
+        sdk_audit_batch: sdk_audit_batch_state,
+        public: public_api_state,
+        password_reset: password_reset_state,
+    };
+    let (app, _openapi) = routes.build();
 
-    use utoipa::openapi::{ObjectBuilder, schema::Type};
-    if let Some(components) = openapi.components.as_mut() {
-        components.schemas.insert(
-            "PaginationParams".to_string(),
-            ObjectBuilder::new()
-                .property("page", ObjectBuilder::new().schema_type(Type::Integer))
-                .property("limit", ObjectBuilder::new().schema_type(Type::Integer))
-                .into(),
-        );
-    }
-    openapi.info.title = "FlowCatalyst Platform API".to_string();
-    openapi.info.version = "1.0.0".to_string();
-    openapi.info.description = Some("REST APIs for events, subscriptions, and administration".to_string());
-
-    let app = Router::new()
-        .merge(router)
-        .nest("/bff/event-types/filters", event_type_filters_router(filter_options_state))
-        .nest("/bff/roles", bff_roles_router(bff_roles_state).into())
-        .nest("/bff/event-types", bff_event_types_router(bff_event_types_state).into())
-        .nest("/bff/debug/events", debug_events_router(debug_state.clone()))
-        .nest("/bff/debug/dispatch-jobs", debug_dispatch_jobs_router(debug_state))
-        .nest("/api/admin/anchor-domains", anchor_domains_router(auth_config_state.clone()))
-        .nest("/api/admin/auth-configs", client_auth_configs_router(auth_config_state.clone()))
-        .nest("/api/admin/idp-role-mappings", idp_role_mappings_router(auth_config_state))
-        .nest("/api/admin/applications", applications_router(applications_state))
-        .nest("/api/admin/dispatch-pools", dispatch_pools_router(dispatch_pools_state))
-        .nest("/api/admin/service-accounts", service_accounts_router(service_accounts_state))
-        .nest("/api/admin/connections", connections_router(connections_state).into())
-        .nest("/api/admin/platform/cors", cors_router(cors_state))
-        .nest("/api/admin/identity-providers", identity_providers_router(idp_state))
-        .nest("/api/admin/email-domain-mappings", email_domain_mappings_router(edm_state).into())
-        .nest("/api/admin/config", admin_platform_config_router(platform_config_state).into())
-        .nest("/api/admin/config-access", config_access_router(config_access_state).into())
-        .nest("/api/admin/login-attempts", login_attempts_router(login_attempts_state))
-        .nest("/api/me", me_router(me_state))
-        .nest("/api/sdk/events", sdk_events_batch_router(sdk_events_state))
-        .nest("/api/sdk/clients", sdk_clients_router(sdk_clients_state))
-        .nest("/api/sdk/principals", sdk_principals_router(sdk_principals_state))
-        .nest("/api/sdk/roles", sdk_roles_router(sdk_roles_state))
-        .nest("/api/sdk/dispatch-jobs", sdk_dispatch_jobs_batch_router(sdk_dispatch_jobs_state))
-        .nest("/auth", oidc_login_router(oidc_login_state))
-        .nest("/oauth", oauth_router(oauth_state))
-        .nest("/.well-known", well_known_router(well_known_state))
-        .nest("/auth/client", client_selection_router(client_selection_state))
-        .nest("/api/applications", application_roles_sdk_router(application_roles_sdk_state))
-        .nest("/api/applications", sdk_sync_router(sdk_sync_state))
-        .nest("/api/audit-logs", sdk_audit_batch_router(sdk_audit_batch_state))
-        .nest("/api/config", platform_config_router())
-        .nest("/api/public", public_router(public_api_state))
-        .nest("/auth/password-reset", password_reset_router(password_reset_state))
-        .route("/health", get(health_handler))
-        .merge(SwaggerUi::new("/swagger-ui").url("/q/openapi", openapi))
+    // Add middleware layers
+    let app = app
         .layer(AuthLayer::new(app_state))
         .layer(TraceLayer::new_for_http())
         .layer({
@@ -1024,7 +1002,10 @@ fn build_platform_app(
         warn!(dir = %static_dir, "FC_STATIC_DIR set but index.html not found");
     }
 
-    app
+    // No static dir — add a root handler that redirects to Swagger UI
+    app.route("/", axum::routing::get(|| async {
+        axum::response::Redirect::temporary("/swagger-ui/")
+    }))
 }
 
 // ── Background Processor Spawners ────────────────────────────────────────────

@@ -6,7 +6,8 @@ class PostApiAdminPrincipalsByIdDeactivate extends \FlowCatalyst\Generated\Runti
 {
     protected $id;
     /**
-     * @param string $id
+     * Deactivates an active principal.
+     * @param string $id Principal ID
      */
     public function __construct(string $id)
     {
@@ -32,23 +33,27 @@ class PostApiAdminPrincipalsByIdDeactivate extends \FlowCatalyst\Generated\Runti
     /**
      * {@inheritdoc}
      *
+     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsByIdDeactivateForbiddenException
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsByIdDeactivateNotFoundException
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdDeactivatePostResponse200
+     * @return null|\FlowCatalyst\Generated\Model\StatusChangeResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdDeactivatePostResponse200', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\StatusChangeResponse', 'json');
         }
-        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsByIdDeactivateNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdDeactivatePostResponse404', 'json'), $response);
+        if (403 === $status) {
+            throw new \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsByIdDeactivateForbiddenException($response);
+        }
+        if (404 === $status) {
+            throw new \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsByIdDeactivateNotFoundException($response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

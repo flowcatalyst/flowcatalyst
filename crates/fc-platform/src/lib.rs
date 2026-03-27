@@ -55,6 +55,9 @@ pub mod usecase;
 pub mod seed;
 pub mod idp;
 
+// Centralized router builder
+pub mod router;
+
 // Re-export common types from shared
 pub use shared::error::{PlatformError, Result};
 pub use shared::tsid::{TsidGenerator, EntityType};
@@ -238,6 +241,9 @@ pub mod api {
     pub use crate::shared::client_selection_api::{client_selection_router, ClientSelectionState};
     pub use crate::shared::application_roles_sdk_api::{application_roles_sdk_router, ApplicationRolesSdkState};
     pub use crate::shared::platform_config_api::platform_config_router;
+
+    // Centralized router builder
+    pub use crate::router::PlatformRoutes;
 
     // Re-export middleware module for direct access
     pub mod middleware {

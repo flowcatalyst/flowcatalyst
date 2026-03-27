@@ -30,7 +30,6 @@ pub struct Connection {
     pub code: String,
     pub name: String,
     pub description: Option<String>,
-    pub endpoint: String,
     pub external_id: Option<String>,
     pub status: ConnectionStatus,
     pub service_account_id: String,
@@ -44,7 +43,6 @@ impl Connection {
     pub fn new(
         code: impl Into<String>,
         name: impl Into<String>,
-        endpoint: impl Into<String>,
         service_account_id: impl Into<String>,
     ) -> Self {
         let now = Utc::now();
@@ -53,7 +51,6 @@ impl Connection {
             code: code.into(),
             name: name.into(),
             description: None,
-            endpoint: endpoint.into(),
             external_id: None,
             status: ConnectionStatus::Active,
             service_account_id: service_account_id.into(),
@@ -87,7 +84,6 @@ impl From<crate::entities::msg_connections::Model> for Connection {
             code: m.code,
             name: m.name,
             description: m.description,
-            endpoint: m.endpoint,
             external_id: m.external_id,
             status: ConnectionStatus::from_str(&m.status),
             service_account_id: m.service_account_id,

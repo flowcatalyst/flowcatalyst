@@ -15,7 +15,6 @@ const toast = useToast();
 const code = ref("");
 const name = ref("");
 const description = ref("");
-const endpoint = ref("");
 const externalId = ref("");
 const serviceAccountId = ref<string | null>(null);
 const clientId = ref<string | null>(null);
@@ -32,16 +31,6 @@ const isCodeValid = computed(() => {
 	return !code.value || CODE_PATTERN.test(code.value);
 });
 
-const isEndpointValid = computed(() => {
-	if (!endpoint.value) return true;
-	try {
-		const url = new URL(endpoint.value);
-		return url.protocol === "http:" || url.protocol === "https:";
-	} catch {
-		return false;
-	}
-});
-
 const isFormValid = computed(() => {
 	return (
 		code.value.length >= 2 &&
@@ -49,8 +38,6 @@ const isFormValid = computed(() => {
 		CODE_PATTERN.test(code.value) &&
 		name.value.trim().length > 0 &&
 		name.value.length <= 255 &&
-		endpoint.value.length > 0 &&
-		isEndpointValid.value &&
 		serviceAccountId.value !== null
 	);
 });
@@ -82,7 +69,6 @@ async function onSubmit() {
 			code: code.value,
 			name: name.value,
 			description: description.value || undefined,
-			endpoint: endpoint.value,
 			externalId: externalId.value || undefined,
 			serviceAccountId: serviceAccountId.value!,
 			clientId: clientId.value || undefined,
@@ -156,23 +142,7 @@ async function onSubmit() {
         </div>
 
         <div class="form-section">
-          <h3>Endpoint</h3>
-
-          <div class="form-field">
-            <label>Endpoint URL <span class="required">*</span></label>
-            <InputText
-              v-model="endpoint"
-              placeholder="https://example.com/webhook"
-              class="full-width"
-              :invalid="!!(endpoint && !isEndpointValid)"
-            />
-            <small v-if="endpoint && !isEndpointValid" class="p-error">
-              Must be a valid HTTP or HTTPS URL
-            </small>
-            <small v-else class="hint">
-              The webhook URL where events will be delivered
-            </small>
-          </div>
+          <h3>Additional</h3>
 
           <div class="form-field">
             <label>External ID</label>

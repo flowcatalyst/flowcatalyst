@@ -39,7 +39,6 @@ const filteredConnections = computed(() => {
 			(conn) =>
 				conn.code.toLowerCase().includes(query) ||
 				conn.name.toLowerCase().includes(query) ||
-				conn.endpoint.toLowerCase().includes(query) ||
 				conn.clientIdentifier?.toLowerCase().includes(query),
 		);
 	}
@@ -135,11 +134,6 @@ function getScopeLabel(conn: Connection) {
           </template>
         </Column>
         <Column field="name" header="Name" sortable />
-        <Column field="endpoint" header="Endpoint" sortable>
-          <template #body="{ data }">
-            <code class="endpoint-url">{{ data.endpoint }}</code>
-          </template>
-        </Column>
         <Column header="Scope" sortable>
           <template #body="{ data }">
             <span class="client-scope">{{ getScopeLabel(data) }}</span>
@@ -212,12 +206,6 @@ function getScopeLabel(conn: Connection) {
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 13px;
-}
-
-.endpoint-url {
-  font-size: 12px;
-  color: #475569;
-  word-break: break-all;
 }
 
 .client-scope {

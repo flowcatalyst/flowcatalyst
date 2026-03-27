@@ -6,7 +6,7 @@ class GetApiAdminPrincipalsByIdClientAccess extends \FlowCatalyst\Generated\Runt
 {
     protected $id;
     /**
-     * @param string $id
+     * @param string $id Principal ID
      */
     public function __construct(string $id)
     {
@@ -34,21 +34,21 @@ class GetApiAdminPrincipalsByIdClientAccess extends \FlowCatalyst\Generated\Runt
      *
      * @throws \FlowCatalyst\Generated\Exception\GetApiAdminPrincipalsByIdClientAccessNotFoundException
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdClientAccessGetResponse200
+     * @return null|\FlowCatalyst\Generated\Model\ClientAccessListResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdClientAccessGetResponse200', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ClientAccessListResponse', 'json');
         }
-        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminPrincipalsByIdClientAccessNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdClientAccessGetResponse404', 'json'), $response);
+        if (404 === $status) {
+            throw new \FlowCatalyst\Generated\Exception\GetApiAdminPrincipalsByIdClientAccessNotFoundException($response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

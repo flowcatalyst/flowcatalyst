@@ -123,7 +123,9 @@ pub struct SyncSubscriptionInputRequest {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    pub connection_id: String,
+    pub target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_id: Option<String>,
     pub event_types: Vec<SyncSubscriptionEventTypeRequest>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dispatch_pool_code: Option<String>,
@@ -356,6 +358,7 @@ async fn sync_subscriptions(
             code: s.code,
             name: s.name,
             description: s.description,
+            target: s.target,
             connection_id: s.connection_id,
             event_types: s.event_types.into_iter().map(|et| EventTypeBindingInput {
                 event_type_code: et.event_type_code,

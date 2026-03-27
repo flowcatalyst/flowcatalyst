@@ -6,13 +6,12 @@ class PostApiAdminClientsByIdActivate extends \FlowCatalyst\Generated\Runtime\Cl
 {
     protected $id;
     /**
-     * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\ApiAdminClientsIdActivatePostBody $requestBody
+     * Transitions a suspended or pending client to active status.
+     * @param string $id Client ID
      */
-    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\ApiAdminClientsIdActivatePostBody $requestBody = null)
+    public function __construct(string $id)
     {
         $this->id = $id;
-        $this->body = $requestBody;
     }
     use \FlowCatalyst\Generated\Runtime\Client\EndpointTrait;
     public function getMethod(): string
@@ -25,9 +24,6 @@ class PostApiAdminClientsByIdActivate extends \FlowCatalyst\Generated\Runtime\Cl
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
-        if ($this->body instanceof \FlowCatalyst\Generated\Model\ApiAdminClientsIdActivatePostBody) {
-            return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
-        }
         return [[], null];
     }
     public function getExtraHeaders(): array
@@ -37,31 +33,27 @@ class PostApiAdminClientsByIdActivate extends \FlowCatalyst\Generated\Runtime\Cl
     /**
      * {@inheritdoc}
      *
-     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminClientsByIdActivateBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminClientsByIdActivateForbiddenException
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminClientsByIdActivateNotFoundException
-     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminClientsByIdActivateConflictException
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApiAdminClientsIdActivatePostResponse200
+     * @return null|\FlowCatalyst\Generated\Model\StatusChangeResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminClientsIdActivatePostResponse200', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\StatusChangeResponse', 'json');
         }
-        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminClientsByIdActivateBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminClientsIdActivatePostResponse400', 'json'), $response);
+        if (403 === $status) {
+            throw new \FlowCatalyst\Generated\Exception\PostApiAdminClientsByIdActivateForbiddenException($response);
         }
-        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminClientsByIdActivateNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminClientsIdActivatePostResponse404', 'json'), $response);
-        }
-        if (is_null($contentType) === false && (409 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminClientsByIdActivateConflictException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminClientsIdActivatePostResponse409', 'json'), $response);
+        if (404 === $status) {
+            throw new \FlowCatalyst\Generated\Exception\PostApiAdminClientsByIdActivateNotFoundException($response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

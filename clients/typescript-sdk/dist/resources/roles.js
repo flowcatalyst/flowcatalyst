@@ -14,10 +14,11 @@ export class RolesResource {
     /**
      * List all roles.
      */
-    list() {
+    list(pagination) {
         return this.client.request((httpClient, headers) => sdk.getApiAdminRoles({
             client: httpClient,
             headers,
+            query: { pagination: pagination ?? {} },
         }));
     }
     /**
@@ -27,7 +28,7 @@ export class RolesResource {
         return this.client.request((httpClient, headers) => sdk.getApiAdminRolesByName({
             client: httpClient,
             headers,
-            path: { name: roleName },
+            path: { role_name: roleName },
         }));
     }
     /**
@@ -47,7 +48,7 @@ export class RolesResource {
         return this.client.request((httpClient, headers) => sdk.putApiAdminRolesByName({
             client: httpClient,
             headers,
-            path: { name: roleName },
+            path: { role_name: roleName },
             body: data,
         }));
     }
@@ -58,7 +59,7 @@ export class RolesResource {
         return this.client.request((httpClient, headers) => sdk.deleteApiAdminRolesByName({
             client: httpClient,
             headers,
-            path: { name: roleName },
+            path: { role_name: roleName },
         }));
     }
     /**
@@ -68,7 +69,7 @@ export class RolesResource {
         return this.client.request((httpClient, headers) => sdk.getApiAdminRolesByApplicationByApplicationId({
             client: httpClient,
             headers,
-            path: { applicationId },
+            path: { application_id: applicationId },
         }));
     }
 }

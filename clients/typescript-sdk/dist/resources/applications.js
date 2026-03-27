@@ -2,8 +2,11 @@
  * Applications Resource
  *
  * Manage applications in the platform.
+ *
+ * Uses direct HTTP calls since generated SDK functions are not yet available
+ * (OpenAPI spec does not include /api/admin/applications routes). Will be
+ * migrated to generated functions once the spec is updated.
  */
-import * as sdk from "../generated/sdk.gen";
 /**
  * Applications resource for managing platform applications.
  */
@@ -15,8 +18,8 @@ export class ApplicationsResource {
      * List all applications.
      */
     list() {
-        return this.client.request((httpClient, headers) => sdk.getApiAdminApplications({
-            client: httpClient,
+        return this.client.request((httpClient, headers) => httpClient.get({
+            url: "/api/admin/applications",
             headers,
         }));
     }
@@ -24,8 +27,8 @@ export class ApplicationsResource {
      * Get an application by ID.
      */
     get(id) {
-        return this.client.request((httpClient, headers) => sdk.getApiAdminApplicationsById({
-            client: httpClient,
+        return this.client.request((httpClient, headers) => httpClient.get({
+            url: "/api/admin/applications/{id}",
             headers,
             path: { id },
         }));
@@ -34,8 +37,8 @@ export class ApplicationsResource {
      * Get an application by code.
      */
     getByCode(code) {
-        return this.client.request((httpClient, headers) => sdk.getApiAdminApplicationsByCodeByCode({
-            client: httpClient,
+        return this.client.request((httpClient, headers) => httpClient.get({
+            url: "/api/admin/applications/by-code/{code}",
             headers,
             path: { code },
         }));
@@ -44,9 +47,12 @@ export class ApplicationsResource {
      * Create a new application.
      */
     create(data) {
-        return this.client.request((httpClient, headers) => sdk.postApiAdminApplications({
-            client: httpClient,
-            headers,
+        return this.client.request((httpClient, headers) => httpClient.post({
+            url: "/api/admin/applications",
+            headers: {
+                ...headers,
+                "Content-Type": "application/json",
+            },
             body: data,
         }));
     }
@@ -54,9 +60,12 @@ export class ApplicationsResource {
      * Update an application.
      */
     update(id, data) {
-        return this.client.request((httpClient, headers) => sdk.putApiAdminApplicationsById({
-            client: httpClient,
-            headers,
+        return this.client.request((httpClient, headers) => httpClient.put({
+            url: "/api/admin/applications/{id}",
+            headers: {
+                ...headers,
+                "Content-Type": "application/json",
+            },
             path: { id },
             body: data,
         }));
@@ -65,8 +74,8 @@ export class ApplicationsResource {
      * Delete an application.
      */
     delete(id) {
-        return this.client.request((httpClient, headers) => sdk.deleteApiAdminApplicationsById({
-            client: httpClient,
+        return this.client.request((httpClient, headers) => httpClient.delete({
+            url: "/api/admin/applications/{id}",
             headers,
             path: { id },
         }));
@@ -75,8 +84,8 @@ export class ApplicationsResource {
      * Activate an application.
      */
     activate(id) {
-        return this.client.request((httpClient, headers) => sdk.postApiAdminApplicationsByIdActivate({
-            client: httpClient,
+        return this.client.request((httpClient, headers) => httpClient.post({
+            url: "/api/admin/applications/{id}/activate",
             headers,
             path: { id },
         }));
@@ -85,8 +94,8 @@ export class ApplicationsResource {
      * Deactivate an application.
      */
     deactivate(id) {
-        return this.client.request((httpClient, headers) => sdk.postApiAdminApplicationsByIdDeactivate({
-            client: httpClient,
+        return this.client.request((httpClient, headers) => httpClient.post({
+            url: "/api/admin/applications/{id}/deactivate",
             headers,
             path: { id },
         }));
@@ -95,11 +104,10 @@ export class ApplicationsResource {
      * Provision a service account for an application.
      */
     provisionServiceAccount(id) {
-        return this.client.request((httpClient, headers) => sdk.postApiAdminApplicationsByIdProvisionServiceAccount({
-            client: httpClient,
+        return this.client.request((httpClient, headers) => httpClient.post({
+            url: "/api/admin/applications/{id}/provision-service-account",
             headers,
             path: { id },
-            body: {},
         }));
     }
 }

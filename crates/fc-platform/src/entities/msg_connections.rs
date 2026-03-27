@@ -10,7 +10,6 @@ pub struct Model {
     pub code: String,
     pub name: String,
     pub description: Option<String>,
-    pub endpoint: String,
     pub external_id: Option<String>,
     pub status: String,
     pub service_account_id: String,

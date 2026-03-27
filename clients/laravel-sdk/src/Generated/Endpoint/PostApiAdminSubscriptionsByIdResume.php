@@ -6,7 +6,7 @@ class PostApiAdminSubscriptionsByIdResume extends \FlowCatalyst\Generated\Runtim
 {
     protected $id;
     /**
-     * @param string $id
+     * @param string $id Subscription ID
      */
     public function __construct(string $id)
     {
@@ -34,21 +34,21 @@ class PostApiAdminSubscriptionsByIdResume extends \FlowCatalyst\Generated\Runtim
      *
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminSubscriptionsByIdResumeNotFoundException
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdResumePostResponse200
+     * @return null|\FlowCatalyst\Generated\Model\SubscriptionResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdResumePostResponse200', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\SubscriptionResponse', 'json');
         }
-        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminSubscriptionsByIdResumeNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdResumePostResponse404', 'json'), $response);
+        if (404 === $status) {
+            throw new \FlowCatalyst\Generated\Exception\PostApiAdminSubscriptionsByIdResumeNotFoundException($response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

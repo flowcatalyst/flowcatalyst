@@ -6,10 +6,11 @@ class PutApiAdminPrincipalsByIdApplicationAccess extends \FlowCatalyst\Generated
 {
     protected $id;
     /**
-     * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdApplicationAccessPutBody $requestBody
+     * Replaces all application access with the provided list.
+     * @param string $id Principal ID
+     * @param null|\FlowCatalyst\Generated\Model\SetApplicationAccessRequest $requestBody
      */
-    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdApplicationAccessPutBody $requestBody = null)
+    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\SetApplicationAccessRequest $requestBody = null)
     {
         $this->id = $id;
         $this->body = $requestBody;
@@ -25,7 +26,7 @@ class PutApiAdminPrincipalsByIdApplicationAccess extends \FlowCatalyst\Generated
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
-        if ($this->body instanceof \FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdApplicationAccessPutBody) {
+        if ($this->body instanceof \FlowCatalyst\Generated\Model\SetApplicationAccessRequest) {
             return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
         }
         return [[], null];
@@ -37,27 +38,23 @@ class PutApiAdminPrincipalsByIdApplicationAccess extends \FlowCatalyst\Generated
     /**
      * {@inheritdoc}
      *
-     * @throws \FlowCatalyst\Generated\Exception\PutApiAdminPrincipalsByIdApplicationAccessBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\PutApiAdminPrincipalsByIdApplicationAccessNotFoundException
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdApplicationAccessPutResponse200
+     * @return null|\FlowCatalyst\Generated\Model\SetApplicationAccessResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdApplicationAccessPutResponse200', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\SetApplicationAccessResponse', 'json');
         }
-        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\PutApiAdminPrincipalsByIdApplicationAccessBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdApplicationAccessPutResponse400', 'json'), $response);
-        }
-        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\PutApiAdminPrincipalsByIdApplicationAccessNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdApplicationAccessPutResponse404', 'json'), $response);
+        if (404 === $status) {
+            throw new \FlowCatalyst\Generated\Exception\PutApiAdminPrincipalsByIdApplicationAccessNotFoundException($response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

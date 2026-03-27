@@ -6,7 +6,7 @@
 import type { ResultAsync } from "neverthrow";
 import type { SdkError } from "../errors";
 import type { FlowCatalystClient } from "../client";
-import type { GetApiAdminRolesResponse, GetApiAdminRolesByNameResponse, PostApiAdminRolesData, PutApiAdminRolesByNameData, GetApiAdminRolesByApplicationByApplicationIdResponse } from "../generated/types.gen";
+import type { GetApiAdminRolesResponse, GetApiAdminRolesByNameResponse, PostApiAdminRolesData, PutApiAdminRolesByNameData, GetApiAdminRolesByApplicationByApplicationIdResponse, PaginationParams } from "../generated/types.gen";
 export type RoleListResponse = GetApiAdminRolesResponse;
 export type RoleDto = GetApiAdminRolesByNameResponse;
 export type CreateRoleRequest = PostApiAdminRolesData["body"];
@@ -21,7 +21,7 @@ export declare class RolesResource {
     /**
      * List all roles.
      */
-    list(): ResultAsync<RoleListResponse, SdkError>;
+    list(pagination?: PaginationParams): ResultAsync<RoleListResponse, SdkError>;
     /**
      * Get a role by name.
      */

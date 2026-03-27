@@ -6,7 +6,7 @@ class GetApiAdminClientsByIdentifierByIdentifier extends \FlowCatalyst\Generated
 {
     protected $identifier;
     /**
-     * @param string $identifier
+     * @param string $identifier Client identifier/slug
      */
     public function __construct(string $identifier)
     {
@@ -34,21 +34,21 @@ class GetApiAdminClientsByIdentifierByIdentifier extends \FlowCatalyst\Generated
      *
      * @throws \FlowCatalyst\Generated\Exception\GetApiAdminClientsByIdentifierByIdentifierNotFoundException
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApiAdminClientsByIdentifierIdentifierGetResponse200
+     * @return null|\FlowCatalyst\Generated\Model\ClientResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminClientsByIdentifierIdentifierGetResponse200', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ClientResponse', 'json');
         }
-        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminClientsByIdentifierByIdentifierNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminClientsByIdentifierIdentifierGetResponse404', 'json'), $response);
+        if (404 === $status) {
+            throw new \FlowCatalyst\Generated\Exception\GetApiAdminClientsByIdentifierByIdentifierNotFoundException($response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

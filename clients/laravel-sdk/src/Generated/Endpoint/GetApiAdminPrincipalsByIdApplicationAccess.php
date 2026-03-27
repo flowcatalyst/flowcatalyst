@@ -6,7 +6,8 @@ class GetApiAdminPrincipalsByIdApplicationAccess extends \FlowCatalyst\Generated
 {
     protected $id;
     /**
-     * @param string $id
+     * Returns all applications the principal has been granted access to.
+     * @param string $id Principal ID
      */
     public function __construct(string $id)
     {
@@ -34,21 +35,21 @@ class GetApiAdminPrincipalsByIdApplicationAccess extends \FlowCatalyst\Generated
      *
      * @throws \FlowCatalyst\Generated\Exception\GetApiAdminPrincipalsByIdApplicationAccessNotFoundException
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdApplicationAccessGetResponse200
+     * @return null|\FlowCatalyst\Generated\Model\ApplicationAccessListResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdApplicationAccessGetResponse200', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApplicationAccessListResponse', 'json');
         }
-        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminPrincipalsByIdApplicationAccessNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdApplicationAccessGetResponse404', 'json'), $response);
+        if (404 === $status) {
+            throw new \FlowCatalyst\Generated\Exception\GetApiAdminPrincipalsByIdApplicationAccessNotFoundException($response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

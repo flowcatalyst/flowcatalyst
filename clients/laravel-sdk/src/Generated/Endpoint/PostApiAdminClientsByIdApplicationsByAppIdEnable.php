@@ -5,15 +5,15 @@ namespace FlowCatalyst\Generated\Endpoint;
 class PostApiAdminClientsByIdApplicationsByAppIdEnable extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
 {
     protected $id;
-    protected $appId;
+    protected $application_id;
     /**
-     * @param string $id
-     * @param string $appId
+     * @param string $id Client ID
+     * @param string $applicationId Application ID
      */
-    public function __construct(string $id, string $appId)
+    public function __construct(string $id, string $applicationId)
     {
         $this->id = $id;
-        $this->appId = $appId;
+        $this->application_id = $applicationId;
     }
     use \FlowCatalyst\Generated\Runtime\Client\EndpointTrait;
     public function getMethod(): string
@@ -22,36 +22,32 @@ class PostApiAdminClientsByIdApplicationsByAppIdEnable extends \FlowCatalyst\Gen
     }
     public function getUri(): string
     {
-        return str_replace(['{id}', '{appId}'], [$this->id, $this->appId], '/api/admin/clients/{id}/applications/{appId}/enable');
+        return str_replace(['{id}', '{application_id}'], [$this->id, $this->application_id], '/api/admin/clients/{id}/applications/{application_id}/enable');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
         return [[], null];
-    }
-    public function getExtraHeaders(): array
-    {
-        return ['Accept' => ['application/json']];
     }
     /**
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminClientsByIdApplicationsByAppIdEnableNotFoundException
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApiAdminClientsIdApplicationsAppIdEnablePostResponse200
+     * @return null
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminClientsIdApplicationsAppIdEnablePostResponse200', 'json');
+        if (204 === $status) {
+            return null;
         }
-        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminClientsByIdApplicationsByAppIdEnableNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminClientsIdApplicationsAppIdEnablePostResponse404', 'json'), $response);
+        if (404 === $status) {
+            throw new \FlowCatalyst\Generated\Exception\PostApiAdminClientsByIdApplicationsByAppIdEnableNotFoundException($response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

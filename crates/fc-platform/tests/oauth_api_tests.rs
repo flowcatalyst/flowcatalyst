@@ -391,48 +391,70 @@ fn test_user_scope_partner_access() {
 #[test]
 fn test_user_logged_in_event() {
     use fc_platform::usecase::domain_event::DomainEvent;
-    use fc_platform::principal::operations::events::UserLoggedIn;
+    use fc_platform::principal::operations::events::{UserLoggedIn, FlowcatalystClaims, FederatedClaims};
     use fc_platform::usecase::ExecutionContext;
 
     let ctx = ExecutionContext::create("principal-123");
+    let fc_claims = FlowcatalystClaims {
+        email: "user@example.com".to_string(),
+        principal_type: "USER".to_string(),
+        roles: vec!["platform:admin".to_string(), "ondemand:super-user".to_string()],
+        clients: vec!["*".to_string()],
+        applications: vec!["ondemand".to_string(), "platform".to_string()],
+    };
+    let federated = Some(FederatedClaims {
+        id_token: serde_json::json!({"sub": "ext-123", "email": "user@example.com"}),
+        access_token: serde_json::json!({"aud": "api://default"}),
+    });
     let event = UserLoggedIn::new(
         &ctx,
         "principal-123",
         "user@example.com",
-        UserScope::Anchor,
-        "idp-456",
-        Some("client-789"),
+        "OIDC",
+        Some("inhance-entra"),
+        fc_claims,
+        federated,
     );
 
     assert_eq!(event.event_type(), "platform:iam:user:logged-in");
     assert_eq!(event.source(), "platform:iam");
     assert!(event.subject().contains("principal-123"));
-    assert_eq!(event.principal_id, "principal-123");
+    assert_eq!(event.user_id, "principal-123");
     assert_eq!(event.email, "user@example.com");
-    assert_eq!(event.identity_provider_id, "idp-456");
-    assert_eq!(event.client_id, Some("client-789".to_string()));
+    assert_eq!(event.identity_provider_code, Some("inhance-entra".to_string()));
     assert_eq!(event.login_method, "OIDC");
+    assert_eq!(event.flowcatalyst_claims.roles.len(), 2);
+    assert!(event.federated_claims.is_some());
 }
 
 #[test]
-fn test_user_logged_in_event_without_client() {
+fn test_user_logged_in_event_internal() {
     use fc_platform::usecase::domain_event::DomainEvent;
-    use fc_platform::principal::operations::events::UserLoggedIn;
+    use fc_platform::principal::operations::events::{UserLoggedIn, FlowcatalystClaims};
     use fc_platform::usecase::ExecutionContext;
 
     let ctx = ExecutionContext::create("principal-123");
+    let fc_claims = FlowcatalystClaims {
+        email: "admin@example.com".to_string(),
+        principal_type: "USER".to_string(),
+        roles: vec!["platform:admin".to_string()],
+        clients: vec!["*".to_string()],
+        applications: vec!["platform".to_string()],
+    };
     let event = UserLoggedIn::new(
         &ctx,
         "principal-123",
         "admin@example.com",
-        UserScope::Anchor,
-        "idp-456",
+        "INTERNAL",
+        None,
+        fc_claims,
         None,
     );
 
-    assert_eq!(event.client_id, None);
-    assert_eq!(event.email_domain, "example.com");
-    assert_eq!(event.scope, "ANCHOR");
+    assert_eq!(event.identity_provider_code, None);
+    assert_eq!(event.login_method, "INTERNAL");
+    assert!(event.federated_claims.is_none());
+    assert_eq!(event.flowcatalyst_claims.applications, vec!["platform"]);
 }
 
 // ─── AuthContext Tests ─────────────────────────────────────────────────────

@@ -25,7 +25,9 @@ pub struct SyncSubscriptionInput {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    pub connection_id: String,
+    pub target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_id: Option<String>,
     pub event_types: Vec<EventTypeBindingInput>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dispatch_pool_code: Option<String>,
@@ -88,9 +90,9 @@ impl UseCase for SyncSubscriptionsUseCase {
                     "NAME_REQUIRED", "Subscription name is required",
                 ));
             }
-            if input.connection_id.trim().is_empty() {
+            if input.target.trim().is_empty() {
                 return Err(UseCaseError::validation(
-                    "CONNECTION_ID_REQUIRED", "Connection ID is required",
+                    "TARGET_REQUIRED", "Target endpoint URL is required",
                 ));
             }
             if input.event_types.is_empty() {
@@ -112,20 +114,22 @@ impl UseCase for SyncSubscriptionsUseCase {
         command: SyncSubscriptionsCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<SubscriptionsSynced> {
-        // Validate connections exist
+        // Validate connections exist (only when connection_id is provided)
         for input in &command.subscriptions {
-            match self.connection_repo.find_by_id(&input.connection_id).await {
-                Ok(Some(_)) => {}
-                Ok(None) => {
-                    return UseCaseResult::failure(UseCaseError::not_found(
-                        "CONNECTION_NOT_FOUND",
-                        format!("Connection '{}' not found", input.connection_id),
-                    ));
-                }
-                Err(e) => {
-                    return UseCaseResult::failure(UseCaseError::commit(format!(
-                        "Failed to validate connection: {}", e
-                    )));
+            if let Some(ref conn_id) = input.connection_id {
+                match self.connection_repo.find_by_id(conn_id).await {
+                    Ok(Some(_)) => {}
+                    Ok(None) => {
+                        return UseCaseResult::failure(UseCaseError::not_found(
+                            "CONNECTION_NOT_FOUND",
+                            format!("Connection '{}' not found", conn_id),
+                        ));
+                    }
+                    Err(e) => {
+                        return UseCaseResult::failure(UseCaseError::commit(format!(
+                            "Failed to validate connection: {}", e
+                        )));
+                    }
                 }
             }
         }
@@ -166,6 +170,7 @@ impl UseCase for SyncSubscriptionsUseCase {
                         let mut updated = sub.clone();
                         updated.name = input.name.clone();
                         updated.description = input.description.clone();
+                        updated.endpoint = input.target.clone();
                         updated.connection_id = input.connection_id.clone();
                         updated.event_types = bindings;
                         updated.data_only = input.data_only;
@@ -192,7 +197,8 @@ impl UseCase for SyncSubscriptionsUseCase {
                     }
                 }
                 None => {
-                    let mut sub = Subscription::new(&input.code, &input.name, &input.connection_id);
+                    let mut sub = Subscription::new(&input.code, &input.name, &input.target);
+                    sub.connection_id = input.connection_id.clone();
                     sub.application_code = Some(command.application_code.clone());
                     sub.source = SubscriptionSource::Api;
                     sub.description = input.description.clone();

@@ -6,8 +6,8 @@ class GetApiAdminEventsRaw extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
 {
     /**
      * @param array{
-     *    "page"?: string,
-     *    "size"?: string,
+     *    "page"?: int,
+     *    "size"?: int,
      * } $queryParameters
      */
     public function __construct(array $queryParameters = [])
@@ -21,11 +21,15 @@ class GetApiAdminEventsRaw extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
     }
     public function getUri(): string
     {
-        return '/api/admin/events/raw';
+        return '/bff/events/raw';
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
         return [[], null];
+    }
+    public function getExtraHeaders(): array
+    {
+        return ['Accept' => ['application/json']];
     }
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
@@ -33,26 +37,26 @@ class GetApiAdminEventsRaw extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
         $optionsResolver->setDefined(['page', 'size']);
         $optionsResolver->setRequired([]);
         $optionsResolver->setDefaults([]);
-        $optionsResolver->addAllowedTypes('page', ['string']);
-        $optionsResolver->addAllowedTypes('size', ['string']);
+        $optionsResolver->addAllowedTypes('page', ['int']);
+        $optionsResolver->addAllowedTypes('size', ['int']);
         return $optionsResolver;
     }
     /**
      * {@inheritdoc}
      *
      *
-     * @return null
+     * @return null|\FlowCatalyst\Generated\Model\PaginatedEventsResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (200 === $status) {
-            return null;
+        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\PaginatedEventsResponse', 'json');
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

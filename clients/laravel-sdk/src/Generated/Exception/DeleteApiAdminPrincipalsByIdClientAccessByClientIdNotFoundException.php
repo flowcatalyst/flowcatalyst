@@ -5,24 +5,15 @@ namespace FlowCatalyst\Generated\Exception;
 class DeleteApiAdminPrincipalsByIdClientAccessByClientIdNotFoundException extends NotFoundException
 {
     /**
-     * @var \FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdClientAccessClientIdDeleteResponse404
-     */
-    private $apiAdminPrincipalsIdClientAccessClientIdDeleteResponse404;
-    /**
      * @var \Psr\Http\Message\ResponseInterface
      */
     private $response;
-    public function __construct(\FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdClientAccessClientIdDeleteResponse404 $apiAdminPrincipalsIdClientAccessClientIdDeleteResponse404, \Psr\Http\Message\ResponseInterface $response)
+    public function __construct(\Psr\Http\Message\ResponseInterface $response = null)
     {
-        parent::__construct('Default Response');
-        $this->apiAdminPrincipalsIdClientAccessClientIdDeleteResponse404 = $apiAdminPrincipalsIdClientAccessClientIdDeleteResponse404;
+        parent::__construct('Principal not found');
         $this->response = $response;
     }
-    public function getApiAdminPrincipalsIdClientAccessClientIdDeleteResponse404(): \FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdClientAccessClientIdDeleteResponse404
-    {
-        return $this->apiAdminPrincipalsIdClientAccessClientIdDeleteResponse404;
-    }
-    public function getResponse(): \Psr\Http\Message\ResponseInterface
+    public function getResponse(): ?\Psr\Http\Message\ResponseInterface
     {
         return $this->response;
     }

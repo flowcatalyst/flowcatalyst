@@ -1,0 +1,193 @@
+<?php
+
+namespace FlowCatalyst\Generated\Normalizer;
+
+use Jane\Component\JsonSchemaRuntime\Reference;
+use FlowCatalyst\Generated\Runtime\Normalizer\CheckArray;
+use FlowCatalyst\Generated\Runtime\Normalizer\ValidatorTrait;
+use Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
+use Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
+use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
+use Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
+use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+class PrincipalResponseNormalizer implements DenormalizerInterface, NormalizerInterface, DenormalizerAwareInterface, NormalizerAwareInterface
+{
+    use DenormalizerAwareTrait;
+    use NormalizerAwareTrait;
+    use CheckArray;
+    use ValidatorTrait;
+    public function supportsDenormalization(mixed $data, string $type, ?string $format = null, array $context = []): bool
+    {
+        return $type === \FlowCatalyst\Generated\Model\PrincipalResponse::class;
+    }
+    public function supportsNormalization(mixed $data, ?string $format = null, array $context = []): bool
+    {
+        return is_object($data) && get_class($data) === \FlowCatalyst\Generated\Model\PrincipalResponse::class;
+    }
+    public function denormalize(mixed $data, string $type, ?string $format = null, array $context = []): mixed
+    {
+        if (isset($data['$ref'])) {
+            return new Reference($data['$ref'], $context['document-origin']);
+        }
+        if (isset($data['$recursiveRef'])) {
+            return new Reference($data['$recursiveRef'], $context['document-origin']);
+        }
+        $object = new \FlowCatalyst\Generated\Model\PrincipalResponse();
+        if (\array_key_exists('active', $data) && \is_int($data['active'])) {
+            $data['active'] = (bool) $data['active'];
+        }
+        if (\array_key_exists('isAnchorUser', $data) && \is_int($data['isAnchorUser'])) {
+            $data['isAnchorUser'] = (bool) $data['isAnchorUser'];
+        }
+        if (null === $data || false === \is_array($data)) {
+            return $object;
+        }
+        if (\array_key_exists('active', $data) && $data['active'] !== null) {
+            $object->setActive($data['active']);
+            unset($data['active']);
+        }
+        elseif (\array_key_exists('active', $data) && $data['active'] === null) {
+            $object->setActive(null);
+        }
+        if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
+            $object->setClientId($data['clientId']);
+            unset($data['clientId']);
+        }
+        elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
+            $object->setClientId(null);
+        }
+        if (\array_key_exists('createdAt', $data) && $data['createdAt'] !== null) {
+            $object->setCreatedAt($data['createdAt']);
+            unset($data['createdAt']);
+        }
+        elseif (\array_key_exists('createdAt', $data) && $data['createdAt'] === null) {
+            $object->setCreatedAt(null);
+        }
+        if (\array_key_exists('email', $data) && $data['email'] !== null) {
+            $object->setEmail($data['email']);
+            unset($data['email']);
+        }
+        elseif (\array_key_exists('email', $data) && $data['email'] === null) {
+            $object->setEmail(null);
+        }
+        if (\array_key_exists('grantedClientIds', $data) && $data['grantedClientIds'] !== null) {
+            $values = [];
+            foreach ($data['grantedClientIds'] as $value) {
+                $values[] = $value;
+            }
+            $object->setGrantedClientIds($values);
+            unset($data['grantedClientIds']);
+        }
+        elseif (\array_key_exists('grantedClientIds', $data) && $data['grantedClientIds'] === null) {
+            $object->setGrantedClientIds(null);
+        }
+        if (\array_key_exists('id', $data) && $data['id'] !== null) {
+            $object->setId($data['id']);
+            unset($data['id']);
+        }
+        elseif (\array_key_exists('id', $data) && $data['id'] === null) {
+            $object->setId(null);
+        }
+        if (\array_key_exists('idpType', $data) && $data['idpType'] !== null) {
+            $object->setIdpType($data['idpType']);
+            unset($data['idpType']);
+        }
+        elseif (\array_key_exists('idpType', $data) && $data['idpType'] === null) {
+            $object->setIdpType(null);
+        }
+        if (\array_key_exists('isAnchorUser', $data) && $data['isAnchorUser'] !== null) {
+            $object->setIsAnchorUser($data['isAnchorUser']);
+            unset($data['isAnchorUser']);
+        }
+        elseif (\array_key_exists('isAnchorUser', $data) && $data['isAnchorUser'] === null) {
+            $object->setIsAnchorUser(null);
+        }
+        if (\array_key_exists('name', $data) && $data['name'] !== null) {
+            $object->setName($data['name']);
+            unset($data['name']);
+        }
+        elseif (\array_key_exists('name', $data) && $data['name'] === null) {
+            $object->setName(null);
+        }
+        if (\array_key_exists('roles', $data) && $data['roles'] !== null) {
+            $values_1 = [];
+            foreach ($data['roles'] as $value_1) {
+                $values_1[] = $value_1;
+            }
+            $object->setRoles($values_1);
+            unset($data['roles']);
+        }
+        elseif (\array_key_exists('roles', $data) && $data['roles'] === null) {
+            $object->setRoles(null);
+        }
+        if (\array_key_exists('scope', $data) && $data['scope'] !== null) {
+            $object->setScope($data['scope']);
+            unset($data['scope']);
+        }
+        elseif (\array_key_exists('scope', $data) && $data['scope'] === null) {
+            $object->setScope(null);
+        }
+        if (\array_key_exists('type', $data) && $data['type'] !== null) {
+            $object->setType($data['type']);
+            unset($data['type']);
+        }
+        elseif (\array_key_exists('type', $data) && $data['type'] === null) {
+            $object->setType(null);
+        }
+        if (\array_key_exists('updatedAt', $data) && $data['updatedAt'] !== null) {
+            $object->setUpdatedAt($data['updatedAt']);
+            unset($data['updatedAt']);
+        }
+        elseif (\array_key_exists('updatedAt', $data) && $data['updatedAt'] === null) {
+            $object->setUpdatedAt(null);
+        }
+        foreach ($data as $key => $value_2) {
+            if (preg_match('/.*/', (string) $key)) {
+                $object[$key] = $value_2;
+            }
+        }
+        return $object;
+    }
+    public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
+    {
+        $dataArray = [];
+        $dataArray['active'] = $data->getActive();
+        if ($data->isInitialized('clientId')) {
+            $dataArray['clientId'] = $data->getClientId();
+        }
+        $dataArray['createdAt'] = $data->getCreatedAt();
+        if ($data->isInitialized('email')) {
+            $dataArray['email'] = $data->getEmail();
+        }
+        $values = [];
+        foreach ($data->getGrantedClientIds() as $value) {
+            $values[] = $value;
+        }
+        $dataArray['grantedClientIds'] = $values;
+        $dataArray['id'] = $data->getId();
+        if ($data->isInitialized('idpType')) {
+            $dataArray['idpType'] = $data->getIdpType();
+        }
+        $dataArray['isAnchorUser'] = $data->getIsAnchorUser();
+        $dataArray['name'] = $data->getName();
+        $values_1 = [];
+        foreach ($data->getRoles() as $value_1) {
+            $values_1[] = $value_1;
+        }
+        $dataArray['roles'] = $values_1;
+        $dataArray['scope'] = $data->getScope();
+        $dataArray['type'] = $data->getType();
+        $dataArray['updatedAt'] = $data->getUpdatedAt();
+        foreach ($data as $key => $value_2) {
+            if (preg_match('/.*/', (string) $key)) {
+                $dataArray[$key] = $value_2;
+            }
+        }
+        return $dataArray;
+    }
+    public function getSupportedTypes(?string $format = null): array
+    {
+        return [\FlowCatalyst\Generated\Model\PrincipalResponse::class => false];
+    }
+}

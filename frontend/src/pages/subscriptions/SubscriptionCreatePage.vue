@@ -19,6 +19,7 @@ const toast = useToast();
 const code = ref("");
 const name = ref("");
 const description = ref("");
+const endpoint = ref("");
 const connectionId = ref<string | null>(null);
 const queue = ref("");
 const maxAgeSeconds = ref<number>(86400);
@@ -54,6 +55,16 @@ const isCodeValid = computed(() => {
 	return !code.value || CODE_PATTERN.test(code.value);
 });
 
+const isEndpointValid = computed(() => {
+	if (!endpoint.value) return true;
+	try {
+		const url = new URL(endpoint.value);
+		return url.protocol === "http:" || url.protocol === "https:";
+	} catch {
+		return false;
+	}
+});
+
 const isFormValid = computed(() => {
 	return (
 		code.value.length >= 2 &&
@@ -61,7 +72,8 @@ const isFormValid = computed(() => {
 		CODE_PATTERN.test(code.value) &&
 		name.value.trim().length > 0 &&
 		name.value.length <= 255 &&
-		connectionId.value !== null &&
+		endpoint.value.length > 0 &&
+		isEndpointValid.value &&
 		queue.value.trim().length > 0 &&
 		dispatchPoolId.value !== null &&
 		selectedEventTypes.value.length > 0 &&
@@ -161,8 +173,9 @@ async function onSubmit() {
 			code: code.value,
 			name: name.value,
 			description: description.value || undefined,
+			endpoint: endpoint.value,
 			clientScoped: clientScoped.value,
-			connectionId: connectionId.value!,
+			connectionId: connectionId.value || undefined,
 			queue: queue.value,
 			eventTypes: buildEventTypeBindings(),
 			dispatchPoolId: dispatchPoolId.value!,
@@ -277,7 +290,23 @@ async function onSubmit() {
           <h3>Delivery Configuration</h3>
 
           <div class="form-field">
-            <label>Connection <span class="required">*</span></label>
+            <label>Endpoint URL <span class="required">*</span></label>
+            <InputText
+              v-model="endpoint"
+              placeholder="https://example.com/webhook"
+              class="full-width"
+              :invalid="!!(endpoint && !isEndpointValid)"
+            />
+            <small v-if="endpoint && !isEndpointValid" class="p-error">
+              Must be a valid HTTP or HTTPS URL
+            </small>
+            <small v-else class="hint">
+              The webhook URL where events will be delivered
+            </small>
+          </div>
+
+          <div class="form-field">
+            <label>Connection</label>
             <div class="field-with-action">
               <Select
                 v-model="connectionId"
@@ -293,7 +322,7 @@ async function onSubmit() {
                 <template #option="{ option }">
                   <div class="dropdown-option">
                     <span class="option-name">{{ option.name }}</span>
-                    <span class="option-code">{{ option.code }} &mdash; {{ option.endpoint }}</span>
+                    <span class="option-code">{{ option.code }}</span>
                   </div>
                 </template>
               </Select>

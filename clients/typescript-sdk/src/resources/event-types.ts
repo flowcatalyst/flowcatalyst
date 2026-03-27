@@ -12,26 +12,26 @@ import type {
 	GetApiAdminEventTypesResponse,
 	GetApiAdminEventTypesByIdResponse,
 	PostApiAdminEventTypesData,
-	PatchApiAdminEventTypesByIdData,
+	PutApiAdminEventTypesByIdData,
 	PostApiAdminEventTypesByIdSchemasData,
 	PostApiAdminEventTypesSyncData,
 	PostApiAdminEventTypesSyncResponse,
-	GetApiAdminEventTypesFiltersApplicationsResponse,
+	GetApiAdminFilterOptionsEventTypesFiltersApplicationsResponse,
+	PaginationParams,
 } from "../generated/types.gen";
 
 export type EventTypeListResponse = GetApiAdminEventTypesResponse;
 export type EventTypeResponse = GetApiAdminEventTypesByIdResponse;
 export type CreateEventTypeRequest = PostApiAdminEventTypesData["body"];
-export type UpdateEventTypeRequest = PatchApiAdminEventTypesByIdData["body"];
+export type UpdateEventTypeRequest = PutApiAdminEventTypesByIdData["body"];
 export type SyncEventTypesResponse = PostApiAdminEventTypesSyncResponse;
 export type FilterOptionsResponse =
-	GetApiAdminEventTypesFiltersApplicationsResponse;
+	GetApiAdminFilterOptionsEventTypesFiltersApplicationsResponse;
 
 export interface EventTypeFilters {
 	status?: string;
-	application?: string[];
-	subdomain?: string[];
-	aggregate?: string[];
+	application?: string;
+	clientId?: string;
 }
 
 /**
@@ -49,12 +49,16 @@ export class EventTypesResource {
 	 */
 	list(
 		filters?: EventTypeFilters,
+		pagination?: PaginationParams,
 	): ResultAsync<EventTypeListResponse, SdkError> {
 		return this.client.request<EventTypeListResponse>((httpClient, headers) =>
 			sdk.getApiAdminEventTypes({
 				client: httpClient,
 				headers,
-				query: filters,
+				query: {
+					pagination: pagination ?? {},
+					...filters,
+				},
 			}),
 		);
 	}
@@ -95,7 +99,7 @@ export class EventTypesResource {
 		data: UpdateEventTypeRequest,
 	): ResultAsync<EventTypeResponse, SdkError> {
 		return this.client.request<EventTypeResponse>((httpClient, headers) =>
-			sdk.patchApiAdminEventTypesById({
+			sdk.putApiAdminEventTypesById({
 				client: httpClient,
 				headers,
 				path: { id },
@@ -122,51 +126,6 @@ export class EventTypesResource {
 	}
 
 	/**
-	 * Finalise a schema version (FINALISING -> CURRENT).
-	 */
-	finaliseSchema(
-		id: string,
-		version: string,
-	): ResultAsync<EventTypeResponse, SdkError> {
-		return this.client.request<EventTypeResponse>((httpClient, headers) =>
-			sdk.postApiAdminEventTypesByIdSchemasByVersionFinalise({
-				client: httpClient,
-				headers,
-				path: { id, version },
-			}),
-		);
-	}
-
-	/**
-	 * Deprecate a schema version (CURRENT -> DEPRECATED).
-	 */
-	deprecateSchema(
-		id: string,
-		version: string,
-	): ResultAsync<EventTypeResponse, SdkError> {
-		return this.client.request<EventTypeResponse>((httpClient, headers) =>
-			sdk.postApiAdminEventTypesByIdSchemasByVersionDeprecate({
-				client: httpClient,
-				headers,
-				path: { id, version },
-			}),
-		);
-	}
-
-	/**
-	 * Archive an event type.
-	 */
-	archive(id: string): ResultAsync<EventTypeResponse, SdkError> {
-		return this.client.request<EventTypeResponse>((httpClient, headers) =>
-			sdk.postApiAdminEventTypesByIdArchive({
-				client: httpClient,
-				headers,
-				path: { id },
-			}),
-		);
-	}
-
-	/**
 	 * Delete an event type.
 	 */
 	delete(id: string): ResultAsync<unknown, SdkError> {
@@ -184,7 +143,7 @@ export class EventTypesResource {
 	 */
 	filterApplications(): ResultAsync<FilterOptionsResponse, SdkError> {
 		return this.client.request<FilterOptionsResponse>((httpClient, headers) =>
-			sdk.getApiAdminEventTypesFiltersApplications({
+			sdk.getApiAdminFilterOptionsEventTypesFiltersApplications({
 				client: httpClient,
 				headers,
 			}),
@@ -198,10 +157,10 @@ export class EventTypesResource {
 		application?: string[],
 	): ResultAsync<FilterOptionsResponse, SdkError> {
 		return this.client.request<FilterOptionsResponse>((httpClient, headers) =>
-			sdk.getApiAdminEventTypesFiltersSubdomains({
+			sdk.getApiAdminFilterOptionsEventTypesFiltersSubdomains({
 				client: httpClient,
 				headers,
-				query: { application },
+				query: { "application[]": application },
 			}),
 		);
 	}
@@ -214,10 +173,10 @@ export class EventTypesResource {
 		subdomain?: string[],
 	): ResultAsync<FilterOptionsResponse, SdkError> {
 		return this.client.request<FilterOptionsResponse>((httpClient, headers) =>
-			sdk.getApiAdminEventTypesFiltersAggregates({
+			sdk.getApiAdminFilterOptionsEventTypesFiltersAggregates({
 				client: httpClient,
 				headers,
-				query: { application, subdomain },
+				query: { "application[]": application, "subdomain[]": subdomain },
 			}),
 		);
 	}
@@ -234,7 +193,8 @@ export class EventTypesResource {
 			sdk.postApiAdminEventTypesSync({
 				client: httpClient,
 				headers,
-				body: { applicationCode, eventTypes, removeUnlisted },
+				body: { applicationCode, eventTypes },
+				query: { removeUnlisted },
 			}),
 		);
 	}

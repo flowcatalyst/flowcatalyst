@@ -5,15 +5,15 @@ namespace FlowCatalyst\Generated\Endpoint;
 class DeleteApiAdminPrincipalsByIdClientAccessByClientId extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
 {
     protected $id;
-    protected $clientId;
+    protected $client_id;
     /**
-     * @param string $id
-     * @param string $clientId
+     * @param string $id Principal ID
+     * @param string $clientId Client ID to revoke
      */
     public function __construct(string $id, string $clientId)
     {
         $this->id = $id;
-        $this->clientId = $clientId;
+        $this->client_id = $clientId;
     }
     use \FlowCatalyst\Generated\Runtime\Client\EndpointTrait;
     public function getMethod(): string
@@ -22,15 +22,11 @@ class DeleteApiAdminPrincipalsByIdClientAccessByClientId extends \FlowCatalyst\G
     }
     public function getUri(): string
     {
-        return str_replace(['{id}', '{clientId}'], [$this->id, $this->clientId], '/api/admin/principals/{id}/client-access/{clientId}');
+        return str_replace(['{id}', '{client_id}'], [$this->id, $this->client_id], '/api/admin/principals/{id}/client-access/{client_id}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
         return [[], null];
-    }
-    public function getExtraHeaders(): array
-    {
-        return ['Accept' => ['application/json']];
     }
     /**
      * {@inheritdoc}
@@ -46,12 +42,12 @@ class DeleteApiAdminPrincipalsByIdClientAccessByClientId extends \FlowCatalyst\G
         if (204 === $status) {
             return null;
         }
-        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminPrincipalsByIdClientAccessByClientIdNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdClientAccessClientIdDeleteResponse404', 'json'), $response);
+        if (404 === $status) {
+            throw new \FlowCatalyst\Generated\Exception\DeleteApiAdminPrincipalsByIdClientAccessByClientIdNotFoundException($response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

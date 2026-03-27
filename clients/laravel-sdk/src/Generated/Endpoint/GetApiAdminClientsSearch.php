@@ -6,9 +6,7 @@ class GetApiAdminClientsSearch extends \FlowCatalyst\Generated\Runtime\Client\Ba
 {
     /**
      * @param array{
-     *    "q"?: string,
-     *    "status"?: string,
-     *    "limit"?: string,
+     *    "q"?: string, //Search term
      * } $queryParameters
      */
     public function __construct(array $queryParameters = [])
@@ -35,30 +33,28 @@ class GetApiAdminClientsSearch extends \FlowCatalyst\Generated\Runtime\Client\Ba
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['q', 'status', 'limit']);
+        $optionsResolver->setDefined(['q']);
         $optionsResolver->setRequired([]);
         $optionsResolver->setDefaults([]);
         $optionsResolver->addAllowedTypes('q', ['string']);
-        $optionsResolver->addAllowedTypes('status', ['string']);
-        $optionsResolver->addAllowedTypes('limit', ['string']);
         return $optionsResolver;
     }
     /**
      * {@inheritdoc}
      *
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApiAdminClientsSearchGetResponse200
+     * @return null|\FlowCatalyst\Generated\Model\ClientListResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminClientsSearchGetResponse200', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ClientListResponse', 'json');
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

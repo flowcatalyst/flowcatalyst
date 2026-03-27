@@ -4,21 +4,16 @@ namespace FlowCatalyst\Generated\Endpoint;
 
 class GetApiAdminAuditLogsEntityByEntityTypeByEntityId extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
 {
-    protected $entityType;
-    protected $entityId;
+    protected $entity_type;
+    protected $entity_id;
     /**
-     * @param string $entityType
-     * @param string $entityId
-     * @param array{
-     *    "page"?: string,
-     *    "pageSize"?: string,
-     * } $queryParameters
+     * @param string $entityType Entity type
+     * @param string $entityId Entity ID
      */
-    public function __construct(string $entityType, string $entityId, array $queryParameters = [])
+    public function __construct(string $entityType, string $entityId)
     {
-        $this->entityType = $entityType;
-        $this->entityId = $entityId;
-        $this->queryParameters = $queryParameters;
+        $this->entity_type = $entityType;
+        $this->entity_id = $entityId;
     }
     use \FlowCatalyst\Generated\Runtime\Client\EndpointTrait;
     public function getMethod(): string
@@ -27,7 +22,7 @@ class GetApiAdminAuditLogsEntityByEntityTypeByEntityId extends \FlowCatalyst\Gen
     }
     public function getUri(): string
     {
-        return str_replace(['{entityType}', '{entityId}'], [$this->entityType, $this->entityId], '/api/admin/audit-logs/entity/{entityType}/{entityId}');
+        return str_replace(['{entity_type}', '{entity_id}'], [$this->entity_type, $this->entity_id], '/api/admin/audit-logs/entity/{entity_type}/{entity_id}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -37,32 +32,22 @@ class GetApiAdminAuditLogsEntityByEntityTypeByEntityId extends \FlowCatalyst\Gen
     {
         return ['Accept' => ['application/json']];
     }
-    protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
-    {
-        $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['page', 'pageSize']);
-        $optionsResolver->setRequired([]);
-        $optionsResolver->setDefaults([]);
-        $optionsResolver->addAllowedTypes('page', ['string']);
-        $optionsResolver->addAllowedTypes('pageSize', ['string']);
-        return $optionsResolver;
-    }
     /**
      * {@inheritdoc}
      *
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApiAdminAuditLogsEntityEntityTypeEntityIdGetResponse200
+     * @return null|\FlowCatalyst\Generated\Model\EntityAuditLogsResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminAuditLogsEntityEntityTypeEntityIdGetResponse200', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\EntityAuditLogsResponse', 'json');
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

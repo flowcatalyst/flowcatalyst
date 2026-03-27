@@ -486,21 +486,42 @@ impl ClientAccessRevoked {
     }
 }
 
+/// FlowCatalyst claims embedded in UserLoggedIn event data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlowcatalystClaims {
+    pub email: String,
+    #[serde(rename = "type")]
+    pub principal_type: String,
+    pub roles: Vec<String>,
+    pub clients: Vec<String>,
+    pub applications: Vec<String>,
+}
+
+/// Federated (external IDP) claims embedded in UserLoggedIn event data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FederatedClaims {
+    pub access_token: serde_json::Value,
+    pub id_token: serde_json::Value,
+}
+
 /// Event emitted when a user logs in via OIDC.
+/// Matches the TypeScript `UserLoggedInData` interface.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserLoggedIn {
     #[serde(flatten)]
     pub metadata: EventMetadata,
 
-    pub principal_id: String,
+    pub user_id: String,
     pub email: String,
-    pub email_domain: String,
-    pub scope: String,
-    pub identity_provider_id: String,
     pub login_method: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_id: Option<String>,
+    pub identity_provider_code: Option<String>,
+    pub flowcatalyst_claims: FlowcatalystClaims,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub federated_claims: Option<FederatedClaims>,
 }
 
 impl_domain_event!(UserLoggedIn);
@@ -512,16 +533,16 @@ impl UserLoggedIn {
 
     pub fn new(
         ctx: &ExecutionContext,
-        principal_id: &str,
+        user_id: &str,
         email: &str,
-        scope: UserScope,
-        identity_provider_id: &str,
-        client_id: Option<&str>,
+        login_method: &str,
+        identity_provider_code: Option<&str>,
+        flowcatalyst_claims: FlowcatalystClaims,
+        federated_claims: Option<FederatedClaims>,
     ) -> Self {
         let event_id = TsidGenerator::generate_untyped();
-        let subject = format!("platform.user.{}", principal_id);
-        let message_group = format!("platform:user:{}", principal_id);
-        let email_domain = extract_email_domain(email);
+        let subject = format!("platform.user.{}", user_id);
+        let message_group = format!("platform:user:{}", user_id);
 
         Self {
             metadata: EventMetadata::new(
@@ -536,13 +557,12 @@ impl UserLoggedIn {
                 ctx.causation_id.clone(),
                 ctx.principal_id.clone(),
             ),
-            principal_id: principal_id.to_string(),
+            user_id: user_id.to_string(),
             email: email.to_string(),
-            email_domain,
-            scope: format!("{:?}", scope).to_uppercase(),
-            identity_provider_id: identity_provider_id.to_string(),
-            login_method: "OIDC".to_string(),
-            client_id: client_id.map(String::from),
+            login_method: login_method.to_string(),
+            identity_provider_code: identity_provider_code.map(String::from),
+            flowcatalyst_claims,
+            federated_claims,
         }
     }
 }

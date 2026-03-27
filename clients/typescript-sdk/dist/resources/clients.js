@@ -69,7 +69,6 @@ export class ClientsResource {
             client: httpClient,
             headers,
             path: { id },
-            body: {},
         }));
     }
     /**
@@ -122,7 +121,7 @@ export class ClientsResource {
         return this.client.request((httpClient, headers) => sdk.postApiAdminClientsByIdApplicationsByAppIdEnable({
             client: httpClient,
             headers,
-            path: { id: clientId, appId: applicationId },
+            path: { id: clientId, application_id: applicationId },
         }));
     }
     /**
@@ -132,7 +131,7 @@ export class ClientsResource {
         return this.client.request((httpClient, headers) => sdk.postApiAdminClientsByIdApplicationsByAppIdDisable({
             client: httpClient,
             headers,
-            path: { id: clientId, appId: applicationId },
+            path: { id: clientId, application_id: applicationId },
         }));
     }
 }

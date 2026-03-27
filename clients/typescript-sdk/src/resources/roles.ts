@@ -14,6 +14,7 @@ import type {
 	PostApiAdminRolesData,
 	PutApiAdminRolesByNameData,
 	GetApiAdminRolesByApplicationByApplicationIdResponse,
+	PaginationParams,
 } from "../generated/types.gen";
 
 export type RoleListResponse = GetApiAdminRolesResponse;
@@ -36,11 +37,12 @@ export class RolesResource {
 	/**
 	 * List all roles.
 	 */
-	list(): ResultAsync<RoleListResponse, SdkError> {
+	list(pagination?: PaginationParams): ResultAsync<RoleListResponse, SdkError> {
 		return this.client.request<RoleListResponse>((httpClient, headers) =>
 			sdk.getApiAdminRoles({
 				client: httpClient,
 				headers,
+				query: { pagination: pagination ?? {} },
 			}),
 		);
 	}
@@ -53,7 +55,7 @@ export class RolesResource {
 			sdk.getApiAdminRolesByName({
 				client: httpClient,
 				headers,
-				path: { name: roleName },
+				path: { role_name: roleName },
 			}),
 		);
 	}
@@ -82,7 +84,7 @@ export class RolesResource {
 			sdk.putApiAdminRolesByName({
 				client: httpClient,
 				headers,
-				path: { name: roleName },
+				path: { role_name: roleName },
 				body: data,
 			}),
 		);
@@ -96,7 +98,7 @@ export class RolesResource {
 			sdk.deleteApiAdminRolesByName({
 				client: httpClient,
 				headers,
-				path: { name: roleName },
+				path: { role_name: roleName },
 			}),
 		);
 	}
@@ -112,7 +114,7 @@ export class RolesResource {
 				sdk.getApiAdminRolesByApplicationByApplicationId({
 					client: httpClient,
 					headers,
-					path: { applicationId },
+					path: { application_id: applicationId },
 				}),
 		);
 	}

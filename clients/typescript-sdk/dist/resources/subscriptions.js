@@ -14,11 +14,14 @@ export class SubscriptionsResource {
     /**
      * List all subscriptions with optional filters.
      */
-    list(filters) {
+    list(filters, pagination) {
         return this.client.request((httpClient, headers) => sdk.getApiAdminSubscriptions({
             client: httpClient,
             headers,
-            query: filters,
+            query: {
+                pagination: pagination ?? {},
+                ...filters,
+            },
         }));
     }
     /**
@@ -89,7 +92,8 @@ export class SubscriptionsResource {
         return this.client.request((httpClient, headers) => sdk.postApiAdminSubscriptionsSync({
             client: httpClient,
             headers,
-            body: { applicationCode, subscriptions, removeUnlisted },
+            body: { applicationCode, subscriptions },
+            query: { removeUnlisted },
         }));
     }
 }

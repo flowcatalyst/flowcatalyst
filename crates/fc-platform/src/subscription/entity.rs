@@ -108,8 +108,10 @@ pub struct Subscription {
     pub client_identifier: Option<String>,
     pub client_scoped: bool,
     pub event_types: Vec<EventTypeBinding>,
-    /// Connection ID — references msg_connections
-    pub connection_id: String,
+    /// Connection ID — references msg_connections (optional, SDK subscriptions may not have one)
+    pub connection_id: Option<String>,
+    /// Webhook endpoint URL — the target URL for this subscription
+    pub endpoint: String,
     pub queue: Option<String>,
     pub custom_config: Vec<ConfigEntry>,
     pub source: SubscriptionSource,
@@ -131,7 +133,7 @@ pub struct Subscription {
 }
 
 impl Subscription {
-    pub fn new(code: impl Into<String>, name: impl Into<String>, connection_id: impl Into<String>) -> Self {
+    pub fn new(code: impl Into<String>, name: impl Into<String>, endpoint: impl Into<String>) -> Self {
         let now = Utc::now();
         Self {
             id: crate::TsidGenerator::generate(crate::EntityType::Subscription),
@@ -143,7 +145,8 @@ impl Subscription {
             client_identifier: None,
             client_scoped: false,
             event_types: vec![],
-            connection_id: connection_id.into(),
+            connection_id: None,
+            endpoint: endpoint.into(),
             queue: None,
             custom_config: vec![],
             source: SubscriptionSource::Ui,
@@ -164,6 +167,8 @@ impl Subscription {
         }
     }
 
+    pub fn with_endpoint(mut self, ep: impl Into<String>) -> Self { self.endpoint = ep.into(); self }
+    pub fn with_connection_id(mut self, id: impl Into<String>) -> Self { self.connection_id = Some(id.into()); self }
     pub fn with_description(mut self, desc: impl Into<String>) -> Self { self.description = Some(desc.into()); self }
     pub fn with_client_id(mut self, id: impl Into<String>) -> Self { self.client_id = Some(id.into()); self }
     pub fn with_dispatch_pool_id(mut self, id: impl Into<String>) -> Self { self.dispatch_pool_id = Some(id.into()); self }
@@ -201,7 +206,8 @@ impl From<crate::entities::msg_subscriptions::Model> for Subscription {
             client_identifier: m.client_identifier,
             client_scoped: m.client_scoped,
             event_types: vec![], // loaded separately
-            connection_id: m.connection_id.unwrap_or_default(),
+            connection_id: m.connection_id,
+            endpoint: m.target,
             queue: m.queue,
             custom_config: vec![], // loaded separately
             source: SubscriptionSource::from_str(&m.source),

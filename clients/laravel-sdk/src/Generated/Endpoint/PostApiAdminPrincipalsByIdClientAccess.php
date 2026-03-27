@@ -6,10 +6,10 @@ class PostApiAdminPrincipalsByIdClientAccess extends \FlowCatalyst\Generated\Run
 {
     protected $id;
     /**
-     * @param string $id
-     * @param null|\FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdClientAccessPostBody $requestBody
+     * @param string $id Principal ID
+     * @param null|\FlowCatalyst\Generated\Model\GrantClientAccessRequest $requestBody
      */
-    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdClientAccessPostBody $requestBody = null)
+    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\GrantClientAccessRequest $requestBody = null)
     {
         $this->id = $id;
         $this->body = $requestBody;
@@ -25,7 +25,7 @@ class PostApiAdminPrincipalsByIdClientAccess extends \FlowCatalyst\Generated\Run
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
-        if ($this->body instanceof \FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdClientAccessPostBody) {
+        if ($this->body instanceof \FlowCatalyst\Generated\Model\GrantClientAccessRequest) {
             return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
         }
         return [[], null];
@@ -37,31 +37,23 @@ class PostApiAdminPrincipalsByIdClientAccess extends \FlowCatalyst\Generated\Run
     /**
      * {@inheritdoc}
      *
-     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsByIdClientAccessBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsByIdClientAccessNotFoundException
-     * @throws \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsByIdClientAccessConflictException
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdClientAccessPostResponse201
+     * @return null|\FlowCatalyst\Generated\Model\ClientAccessGrantResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (201 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdClientAccessPostResponse201', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ClientAccessGrantResponse', 'json');
         }
-        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsByIdClientAccessBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdClientAccessPostResponse400', 'json'), $response);
-        }
-        if (is_null($contentType) === false && (404 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsByIdClientAccessNotFoundException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdClientAccessPostResponse404', 'json'), $response);
-        }
-        if (is_null($contentType) === false && (409 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsByIdClientAccessConflictException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdClientAccessPostResponse409', 'json'), $response);
+        if (404 === $status) {
+            throw new \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsByIdClientAccessNotFoundException($response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

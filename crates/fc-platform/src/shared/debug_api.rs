@@ -35,7 +35,6 @@ pub struct DebugState {
 pub struct RawEventResponse {
     pub id: String,
     pub spec_version: String,
-    #[serde(rename = "type")]
     pub event_type: String,
     pub source: String,
     pub subject: Option<String>,

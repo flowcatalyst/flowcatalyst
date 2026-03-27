@@ -49,8 +49,12 @@ pub struct CreateSubscriptionCommand {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_id: Option<String>,
 
-    /// Connection ID (references msg_connections)
-    pub connection_id: String,
+    /// Webhook endpoint URL
+    pub endpoint: String,
+
+    /// Connection ID (references msg_connections, optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_id: Option<String>,
 
     /// Event types to subscribe to
     pub event_types: Vec<EventTypeBindingInput>,
@@ -125,11 +129,11 @@ impl<U: UnitOfWork> UseCase for CreateSubscriptionUseCase<U> {
             ));
         }
 
-        let connection_id = command.connection_id.trim();
-        if connection_id.is_empty() {
+        let endpoint = command.endpoint.trim();
+        if endpoint.is_empty() {
             return Err(UseCaseError::validation(
-                "CONNECTION_ID_REQUIRED",
-                "Connection ID is required",
+                "ENDPOINT_REQUIRED",
+                "Endpoint URL is required",
             ));
         }
 
@@ -154,7 +158,7 @@ impl<U: UnitOfWork> UseCase for CreateSubscriptionUseCase<U> {
     ) -> UseCaseResult<SubscriptionCreated> {
         let code = command.code.trim().to_lowercase();
         let name = command.name.trim();
-        let connection_id = command.connection_id.trim();
+        let endpoint = command.endpoint.trim();
 
         // Business rule: code must be unique within client scope
         let existing = self.subscription_repo
@@ -181,7 +185,8 @@ impl<U: UnitOfWork> UseCase for CreateSubscriptionUseCase<U> {
             .collect();
 
         // Create the subscription entity
-        let mut subscription = Subscription::new(&code, name, connection_id);
+        let mut subscription = Subscription::new(&code, name, endpoint);
+        subscription.connection_id = command.connection_id.clone();
 
         subscription.description = command.description.clone();
         subscription.client_id = command.client_id.clone();
@@ -212,7 +217,7 @@ impl<U: UnitOfWork> UseCase for CreateSubscriptionUseCase<U> {
             &subscription.id,
             &subscription.code,
             &subscription.name,
-            &subscription.connection_id,
+            &subscription.endpoint,
             event_type_codes,
             subscription.client_id.as_deref(),
         );
@@ -234,7 +239,8 @@ mod tests {
             name: "Order Webhook".to_string(),
             description: Some("Receives order events".to_string()),
             client_id: Some("client-123".to_string()),
-            connection_id: "conn-123".to_string(),
+            endpoint: "https://example.com/webhook".to_string(),
+            connection_id: Some("conn-123".to_string()),
             event_types: vec![
                 EventTypeBindingInput {
                     event_type_code: "orders:*:*:*".to_string(),
@@ -256,7 +262,7 @@ mod tests {
 
     #[test]
     fn test_subscription_has_id() {
-        let subscription = Subscription::new("test", "Test", "conn-test");
+        let subscription = Subscription::new("test", "Test", "https://example.com/test");
         assert!(!subscription.id().is_empty());
     }
 

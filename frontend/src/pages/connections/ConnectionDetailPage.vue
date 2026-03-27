@@ -22,7 +22,6 @@ const saving = ref(false);
 // Edit form
 const editName = ref("");
 const editDescription = ref("");
-const editEndpoint = ref("");
 const editExternalId = ref("");
 
 onMounted(async () => {
@@ -47,7 +46,6 @@ function startEditing() {
 	if (connection.value) {
 		editName.value = connection.value.name;
 		editDescription.value = connection.value.description || "";
-		editEndpoint.value = connection.value.endpoint;
 		editExternalId.value = connection.value.externalId || "";
 		editing.value = true;
 	}
@@ -65,7 +63,6 @@ async function saveChanges() {
 		connection.value = await connectionsApi.update(connection.value.id, {
 			name: editName.value,
 			description: editDescription.value || undefined,
-			endpoint: editEndpoint.value,
 			externalId: editExternalId.value || undefined,
 		});
 		editing.value = false;
@@ -247,10 +244,6 @@ function getScopeLabel(conn: Connection) {
               <Textarea v-model="editDescription" class="full-width" rows="3" />
             </div>
             <div class="form-field">
-              <label>Endpoint</label>
-              <InputText v-model="editEndpoint" class="full-width" />
-            </div>
-            <div class="form-field">
               <label>External ID</label>
               <InputText v-model="editExternalId" class="full-width" />
             </div>
@@ -273,10 +266,6 @@ function getScopeLabel(conn: Connection) {
               <div class="detail-item full-width" v-if="connection.description">
                 <label>Description</label>
                 <span>{{ connection.description }}</span>
-              </div>
-              <div class="detail-item full-width">
-                <label>Endpoint</label>
-                <code class="endpoint-url">{{ connection.endpoint }}</code>
               </div>
               <div class="detail-item" v-if="connection.externalId">
                 <label>External ID</label>
@@ -424,11 +413,6 @@ function getScopeLabel(conn: Connection) {
   font-weight: 500;
   color: #64748b;
   text-transform: uppercase;
-}
-
-.endpoint-url {
-  font-size: 13px;
-  word-break: break-all;
 }
 
 .form-field {

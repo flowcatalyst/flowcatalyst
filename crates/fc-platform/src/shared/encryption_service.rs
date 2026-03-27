@@ -102,10 +102,10 @@ impl EncryptionService {
     pub fn encrypt(&self, plaintext: &str) -> Result<String, String> {
         let mut nonce_bytes = [0u8; 12];
         OsRng.fill_bytes(&mut nonce_bytes);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce = Nonce::from(nonce_bytes);
 
         let ciphertext = self.current
-            .encrypt(nonce, plaintext.as_bytes())
+            .encrypt(&nonce, plaintext.as_bytes())
             .map_err(|e| format!("Encryption failed: {}", e))?;
 
         // Versioned format: version_byte || nonce || ciphertext
@@ -135,18 +135,20 @@ impl EncryptionService {
             if data.len() < 14 { // 1 + 12 + at least 1 byte ciphertext
                 return Err("Encrypted data too short".to_string());
             }
-            let nonce = Nonce::from_slice(&data[1..13]);
+            let nonce_bytes: [u8; 12] = data[1..13].try_into().unwrap();
+            let nonce = Nonce::from(nonce_bytes);
             let ciphertext = &data[13..];
-            return self.try_decrypt_with_fallback(nonce, ciphertext);
+            return self.try_decrypt_with_fallback(&nonce, ciphertext);
         }
 
         // Legacy format (v0): nonce(12) || ciphertext (no version byte)
         if data.len() < 13 {
             return Err("Encrypted data too short".to_string());
         }
-        let nonce = Nonce::from_slice(&data[..12]);
+        let nonce_bytes: [u8; 12] = data[..12].try_into().unwrap();
+        let nonce = Nonce::from(nonce_bytes);
         let ciphertext = &data[12..];
-        self.try_decrypt_with_fallback(nonce, ciphertext)
+        self.try_decrypt_with_fallback(&nonce, ciphertext)
     }
 
     /// Try decrypting with current key, then previous keys.
@@ -191,9 +193,10 @@ impl EncryptionService {
         if data.len() < 14 {
             return true;
         }
-        let nonce = Nonce::from_slice(&data[1..13]);
+        let nonce_bytes: [u8; 12] = data[1..13].try_into().unwrap();
+        let nonce = Nonce::from(nonce_bytes);
         let ciphertext = &data[13..];
-        self.current.decrypt(nonce, ciphertext).is_err()
+        self.current.decrypt(&nonce, ciphertext).is_err()
     }
 
     /// Generate a new random 32-byte key, base64-encoded.

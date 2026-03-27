@@ -23,6 +23,7 @@ const saving = ref(false);
 // Edit form
 const editName = ref("");
 const editDescription = ref("");
+const editEndpoint = ref("");
 const editConnectionId = ref("");
 const editQueue = ref("");
 const editMaxAgeSeconds = ref<number | null>(null);
@@ -59,7 +60,8 @@ function startEditing() {
 	if (subscription.value) {
 		editName.value = subscription.value.name;
 		editDescription.value = subscription.value.description || "";
-		editConnectionId.value = subscription.value.connectionId;
+		editEndpoint.value = subscription.value.endpoint || "";
+		editConnectionId.value = subscription.value.connectionId || "";
 		editQueue.value = subscription.value.queue;
 		editMaxAgeSeconds.value = subscription.value.maxAgeSeconds;
 		editDelaySeconds.value = subscription.value.delaySeconds;
@@ -82,6 +84,7 @@ async function saveChanges() {
 		subscription.value = await subscriptionsApi.update(subscription.value.id, {
 			name: editName.value,
 			description: editDescription.value || undefined,
+			endpoint: editEndpoint.value,
 			connectionId: editConnectionId.value,
 			queue: editQueue.value,
 			maxAgeSeconds: editMaxAgeSeconds.value || undefined,
@@ -282,6 +285,10 @@ function getScopeLabel(sub: Subscription) {
               <Textarea v-model="editDescription" class="full-width" rows="3" />
             </div>
             <div class="form-field">
+              <label>Endpoint URL</label>
+              <InputText v-model="editEndpoint" class="full-width" />
+            </div>
+            <div class="form-field">
               <label>Connection ID</label>
               <InputText v-model="editConnectionId" class="full-width" />
             </div>
@@ -348,6 +355,10 @@ function getScopeLabel(sub: Subscription) {
                 <span>{{ subscription.source }}</span>
               </div>
               <div class="detail-item full-width">
+                <label>Endpoint</label>
+                <code class="endpoint-url">{{ subscription.endpoint }}</code>
+              </div>
+              <div class="detail-item full-width" v-if="subscription.connectionId">
                 <label>Connection</label>
                 <code>{{ subscription.connectionId }}</code>
               </div>
@@ -551,6 +562,11 @@ function getScopeLabel(sub: Subscription) {
   font-weight: 500;
   color: #64748b;
   text-transform: uppercase;
+}
+
+.endpoint-url {
+  font-size: 13px;
+  word-break: break-all;
 }
 
 .form-field {

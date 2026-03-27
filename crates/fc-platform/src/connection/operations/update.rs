@@ -20,8 +20,6 @@ pub struct UpdateConnectionCommand {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub endpoint: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub external_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
@@ -85,9 +83,6 @@ impl<U: UnitOfWork> UseCase for UpdateConnectionUseCase<U> {
         if let Some(ref desc) = command.description {
             connection.description = Some(desc.clone());
         }
-        if let Some(ref endpoint) = command.endpoint {
-            connection.endpoint = endpoint.clone();
-        }
         if let Some(ref ext_id) = command.external_id {
             connection.external_id = Some(ext_id.clone());
         }
@@ -112,7 +107,6 @@ impl<U: UnitOfWork> UseCase for UpdateConnectionUseCase<U> {
             &connection.id,
             &connection.code,
             command.name.as_deref(),
-            command.endpoint.as_deref(),
             command.status.as_deref(),
         );
 
@@ -130,7 +124,6 @@ mod tests {
             connection_id: "conn-123".to_string(),
             name: Some("Updated Name".to_string()),
             description: None,
-            endpoint: None,
             external_id: None,
             status: None,
             service_account_id: None,

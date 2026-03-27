@@ -6,7 +6,7 @@ class GetApiAdminPrincipalsCheckEmailDomain extends \FlowCatalyst\Generated\Runt
 {
     /**
      * @param array{
-     *    "email"?: string,
+     *    "domain": string, //Email domain to check
      * } $queryParameters
      */
     public function __construct(array $queryParameters = [])
@@ -33,32 +33,28 @@ class GetApiAdminPrincipalsCheckEmailDomain extends \FlowCatalyst\Generated\Runt
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['email']);
-        $optionsResolver->setRequired([]);
+        $optionsResolver->setDefined(['domain']);
+        $optionsResolver->setRequired(['domain']);
         $optionsResolver->setDefaults([]);
-        $optionsResolver->addAllowedTypes('email', ['string']);
+        $optionsResolver->addAllowedTypes('domain', ['string']);
         return $optionsResolver;
     }
     /**
      * {@inheritdoc}
      *
-     * @throws \FlowCatalyst\Generated\Exception\GetApiAdminPrincipalsCheckEmailDomainBadRequestException
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApiAdminPrincipalsCheckEmailDomainGetResponse200
+     * @return null|\FlowCatalyst\Generated\Model\CheckEmailDomainResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsCheckEmailDomainGetResponse200', 'json');
-        }
-        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminPrincipalsCheckEmailDomainBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminPrincipalsCheckEmailDomainGetResponse400', 'json'), $response);
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\CheckEmailDomainResponse', 'json');
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

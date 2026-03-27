@@ -96,7 +96,7 @@ export class PrincipalsResource {
             client: httpClient,
             headers,
             path: { id },
-            body: { roleName },
+            body: { role: roleName },
         }));
     }
     /**
@@ -106,7 +106,7 @@ export class PrincipalsResource {
         return this.client.request((httpClient, headers) => sdk.deleteApiAdminPrincipalsByIdRolesByRoleName({
             client: httpClient,
             headers,
-            path: { id, roleName },
+            path: { id, role: roleName },
         }));
     }
     /**
@@ -148,7 +148,7 @@ export class PrincipalsResource {
         return this.client.request((httpClient, headers) => sdk.deleteApiAdminPrincipalsByIdClientAccessByClientId({
             client: httpClient,
             headers,
-            path: { id, clientId },
+            path: { id, client_id: clientId },
         }));
     }
 }

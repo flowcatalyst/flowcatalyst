@@ -7,7 +7,6 @@ export interface Connection {
 	code: string;
 	name: string;
 	description?: string;
-	endpoint: string;
 	externalId?: string;
 	serviceAccountId: string;
 	clientId?: string;
@@ -26,7 +25,6 @@ export interface CreateConnectionRequest {
 	code: string;
 	name: string;
 	description?: string;
-	endpoint: string;
 	externalId?: string;
 	serviceAccountId: string;
 	clientId?: string;
@@ -35,7 +33,6 @@ export interface CreateConnectionRequest {
 export interface UpdateConnectionRequest {
 	name?: string;
 	description?: string;
-	endpoint?: string;
 	externalId?: string;
 }
 

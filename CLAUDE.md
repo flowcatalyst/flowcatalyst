@@ -48,6 +48,25 @@ let (clients, events, pools) = tokio::try_join!(
 )?;
 ```
 
+### Prefer `fetch_optional` Over `fetch_one`
+`fetch_one` is a runtime panic waiting to happen — treat it like `.unwrap()`. Always use `fetch_optional` and handle `None` unless the query is **mathematically guaranteed** to return a row (e.g., `SELECT COUNT(*)`).
+
+```rust
+// Bad: panics at runtime if no rows
+let row: (i64,) = sqlx::query_as("SELECT id FROM foo WHERE bar = $1")
+    .bind(bar).fetch_one(&pool).await?;
+
+// Good: compile-time safety
+let row = sqlx::query_as::<_, (i64,)>("SELECT id FROM foo WHERE bar = $1")
+    .bind(bar).fetch_optional(&pool).await?;
+match row {
+    Some((id,)) => { /* use id */ }
+    None => { /* handle missing */ }
+}
+```
+
+The **only** acceptable use of `fetch_one` is on aggregate queries that always return exactly one row: `SELECT COUNT(*)`, `SELECT MAX(...)`, `SELECT EXISTS(...)`.
+
 ### Shallow Queries for Filter/List Endpoints
 If a handler only needs a few fields (e.g., id + name for a dropdown), don't load junction tables or child entities. Add a `find_*_shallow()` method that skips hydration.
 

@@ -26,7 +26,6 @@ pub struct CreateConnectionCommand {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    pub endpoint: String,
     pub service_account_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_id: Option<String>,
@@ -75,13 +74,6 @@ impl<U: UnitOfWork> UseCase for CreateConnectionUseCase<U> {
             ));
         }
 
-        let endpoint = command.endpoint.trim();
-        if endpoint.is_empty() {
-            return Err(UseCaseError::validation(
-                "ENDPOINT_REQUIRED", "Endpoint is required",
-            ));
-        }
-
         if command.service_account_id.trim().is_empty() {
             return Err(UseCaseError::validation(
                 "SERVICE_ACCOUNT_ID_REQUIRED", "Service account ID is required",
@@ -102,7 +94,6 @@ impl<U: UnitOfWork> UseCase for CreateConnectionUseCase<U> {
     ) -> UseCaseResult<ConnectionCreated> {
         let code = command.code.trim().to_lowercase();
         let name = command.name.trim();
-        let endpoint = command.endpoint.trim();
 
         // Validate service account exists
         match self.service_account_repo.find_by_id(&command.service_account_id).await {
@@ -131,7 +122,7 @@ impl<U: UnitOfWork> UseCase for CreateConnectionUseCase<U> {
             ));
         }
 
-        let mut connection = Connection::new(&code, name, endpoint, &command.service_account_id);
+        let mut connection = Connection::new(&code, name, &command.service_account_id);
         connection.description = command.description.clone();
         connection.client_id = command.client_id.clone();
         if let Some(ref ext_id) = command.external_id {
@@ -143,7 +134,6 @@ impl<U: UnitOfWork> UseCase for CreateConnectionUseCase<U> {
             &connection.id,
             &connection.code,
             &connection.name,
-            &connection.endpoint,
             &connection.service_account_id,
             connection.client_id.as_deref(),
         );
@@ -162,7 +152,6 @@ mod tests {
             code: "my-webhook".to_string(),
             name: "My Webhook".to_string(),
             description: None,
-            endpoint: "https://example.com/webhook".to_string(),
             service_account_id: "sa-123".to_string(),
             external_id: None,
             client_id: None,

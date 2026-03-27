@@ -27,10 +27,9 @@ export type SyncSubscriptionsResponse = PostApiAdminSubscriptionsSyncResponse;
 export interface SubscriptionFilters {
 	clientId?: string;
 	status?: string;
-	dispatchPoolId?: string;
-	source?: string;
-	anchorLevel?: string;
 }
+
+import type { PaginationParams } from "../generated/types.gen";
 
 /**
  * Subscriptions resource for managing event subscriptions.
@@ -47,13 +46,17 @@ export class SubscriptionsResource {
 	 */
 	list(
 		filters?: SubscriptionFilters,
+		pagination?: PaginationParams,
 	): ResultAsync<SubscriptionListResponse, SdkError> {
 		return this.client.request<SubscriptionListResponse>(
 			(httpClient, headers) =>
 				sdk.getApiAdminSubscriptions({
 					client: httpClient,
 					headers,
-					query: filters,
+					query: {
+						pagination: pagination ?? {},
+						...filters,
+					},
 				}),
 		);
 	}
@@ -155,7 +158,8 @@ export class SubscriptionsResource {
 				sdk.postApiAdminSubscriptionsSync({
 					client: httpClient,
 					headers,
-					body: { applicationCode, subscriptions, removeUnlisted },
+					body: { applicationCode, subscriptions },
+					query: { removeUnlisted },
 				}),
 		);
 	}

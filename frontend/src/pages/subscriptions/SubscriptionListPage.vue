@@ -60,7 +60,7 @@ const filteredSubscriptions = computed(() => {
 			(sub) =>
 				sub.code.toLowerCase().includes(query) ||
 				sub.name.toLowerCase().includes(query) ||
-				sub.connectionId.toLowerCase().includes(query) ||
+				(sub.connectionId?.toLowerCase().includes(query) ?? false) ||
 				sub.applicationCode?.toLowerCase().includes(query) ||
 				sub.clientIdentifier?.toLowerCase().includes(query),
 		);

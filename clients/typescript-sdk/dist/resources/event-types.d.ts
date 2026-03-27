@@ -6,18 +6,17 @@
 import type { ResultAsync } from "neverthrow";
 import type { SdkError } from "../errors";
 import type { FlowCatalystClient } from "../client";
-import type { GetApiAdminEventTypesResponse, GetApiAdminEventTypesByIdResponse, PostApiAdminEventTypesData, PatchApiAdminEventTypesByIdData, PostApiAdminEventTypesByIdSchemasData, PostApiAdminEventTypesSyncData, PostApiAdminEventTypesSyncResponse, GetApiAdminEventTypesFiltersApplicationsResponse } from "../generated/types.gen";
+import type { GetApiAdminEventTypesResponse, GetApiAdminEventTypesByIdResponse, PostApiAdminEventTypesData, PutApiAdminEventTypesByIdData, PostApiAdminEventTypesByIdSchemasData, PostApiAdminEventTypesSyncData, PostApiAdminEventTypesSyncResponse, GetApiAdminFilterOptionsEventTypesFiltersApplicationsResponse, PaginationParams } from "../generated/types.gen";
 export type EventTypeListResponse = GetApiAdminEventTypesResponse;
 export type EventTypeResponse = GetApiAdminEventTypesByIdResponse;
 export type CreateEventTypeRequest = PostApiAdminEventTypesData["body"];
-export type UpdateEventTypeRequest = PatchApiAdminEventTypesByIdData["body"];
+export type UpdateEventTypeRequest = PutApiAdminEventTypesByIdData["body"];
 export type SyncEventTypesResponse = PostApiAdminEventTypesSyncResponse;
-export type FilterOptionsResponse = GetApiAdminEventTypesFiltersApplicationsResponse;
+export type FilterOptionsResponse = GetApiAdminFilterOptionsEventTypesFiltersApplicationsResponse;
 export interface EventTypeFilters {
     status?: string;
-    application?: string[];
-    subdomain?: string[];
-    aggregate?: string[];
+    application?: string;
+    clientId?: string;
 }
 /**
  * Event Types resource for managing event type definitions.
@@ -28,7 +27,7 @@ export declare class EventTypesResource {
     /**
      * List all event types with optional filters.
      */
-    list(filters?: EventTypeFilters): ResultAsync<EventTypeListResponse, SdkError>;
+    list(filters?: EventTypeFilters, pagination?: PaginationParams): ResultAsync<EventTypeListResponse, SdkError>;
     /**
      * Get an event type by ID.
      */
@@ -45,18 +44,6 @@ export declare class EventTypesResource {
      * Add a schema version to an event type.
      */
     addSchema(id: string, schema: PostApiAdminEventTypesByIdSchemasData["body"]): ResultAsync<EventTypeResponse, SdkError>;
-    /**
-     * Finalise a schema version (FINALISING -> CURRENT).
-     */
-    finaliseSchema(id: string, version: string): ResultAsync<EventTypeResponse, SdkError>;
-    /**
-     * Deprecate a schema version (CURRENT -> DEPRECATED).
-     */
-    deprecateSchema(id: string, version: string): ResultAsync<EventTypeResponse, SdkError>;
-    /**
-     * Archive an event type.
-     */
-    archive(id: string): ResultAsync<EventTypeResponse, SdkError>;
     /**
      * Delete an event type.
      */

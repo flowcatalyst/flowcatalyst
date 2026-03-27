@@ -90,7 +90,7 @@ impl DispatchJobProjectionService {
 }
 
 async fn poll_once(pool: &PgPool, batch_size: u32) -> anyhow::Result<u32> {
-    let row: (i64,) = sqlx::query_as(
+    let row: Option<(i64,)> = sqlx::query_as(
         r#"
         WITH batch AS (
             SELECT id, dispatch_job_id, operation, payload
@@ -177,11 +177,11 @@ async fn poll_once(pool: &PgPool, batch_size: u32) -> anyhow::Result<u32> {
         "#,
     )
     .bind(batch_size as i64)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await
     .map_err(|e| anyhow::anyhow!("dispatch job projection query failed: {}", e))?;
 
-    Ok(row.0 as u32)
+    Ok(row.map(|r| r.0 as u32).unwrap_or(0))
 }
 
 /// Returns how long to sleep (ms) based on how many rows were processed.

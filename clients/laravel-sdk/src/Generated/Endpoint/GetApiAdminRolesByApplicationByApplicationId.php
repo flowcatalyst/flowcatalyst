@@ -4,13 +4,13 @@ namespace FlowCatalyst\Generated\Endpoint;
 
 class GetApiAdminRolesByApplicationByApplicationId extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
 {
-    protected $applicationId;
+    protected $application_id;
     /**
-     * @param string $applicationId
+     * @param string $applicationId Application ID
      */
     public function __construct(string $applicationId)
     {
-        $this->applicationId = $applicationId;
+        $this->application_id = $applicationId;
     }
     use \FlowCatalyst\Generated\Runtime\Client\EndpointTrait;
     public function getMethod(): string
@@ -19,7 +19,7 @@ class GetApiAdminRolesByApplicationByApplicationId extends \FlowCatalyst\Generat
     }
     public function getUri(): string
     {
-        return str_replace(['{applicationId}'], [$this->applicationId], '/api/admin/roles/by-application/{applicationId}');
+        return str_replace(['{application_id}'], [$this->application_id], '/api/admin/roles/by-application/{application_id}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -33,18 +33,18 @@ class GetApiAdminRolesByApplicationByApplicationId extends \FlowCatalyst\Generat
      * {@inheritdoc}
      *
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApiAdminRolesByApplicationApplicationIdGetResponse200
+     * @return null|\FlowCatalyst\Generated\Model\RoleResponse[]
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminRolesByApplicationApplicationIdGetResponse200', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\RoleResponse[]', 'json');
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

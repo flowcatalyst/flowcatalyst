@@ -6,7 +6,7 @@ class GetApiAdminRolesBySourceBySource extends \FlowCatalyst\Generated\Runtime\C
 {
     protected $source;
     /**
-     * @param string $source
+     * @param string $source Role source (CODE, DATABASE, SDK)
      */
     public function __construct(string $source)
     {
@@ -34,21 +34,21 @@ class GetApiAdminRolesBySourceBySource extends \FlowCatalyst\Generated\Runtime\C
      *
      * @throws \FlowCatalyst\Generated\Exception\GetApiAdminRolesBySourceBySourceBadRequestException
      *
-     * @return null|\FlowCatalyst\Generated\Model\ApiAdminRolesBySourceSourceGetResponse200
+     * @return null|\FlowCatalyst\Generated\Model\RoleResponse[]
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminRolesBySourceSourceGetResponse200', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\RoleResponse[]', 'json');
         }
-        if (is_null($contentType) === false && (400 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            throw new \FlowCatalyst\Generated\Exception\GetApiAdminRolesBySourceBySourceBadRequestException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApiAdminRolesBySourceSourceGetResponse400', 'json'), $response);
+        if (400 === $status) {
+            throw new \FlowCatalyst\Generated\Exception\GetApiAdminRolesBySourceBySourceBadRequestException($response);
         }
     }
     public function getAuthenticationScopes(): array
     {
-        return ['bearerAuth'];
+        return ['bearer_auth'];
     }
 }

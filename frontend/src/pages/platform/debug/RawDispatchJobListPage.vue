@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { useListState } from "@/composables/useListState";
-import { apiFetch } from "@/api/client";
+import { bffFetch } from "@/api/client";
 
 interface RawDispatchJob {
 	id: string;
@@ -57,8 +57,8 @@ onMounted(async () => {
 async function loadDispatchJobs() {
 	loading.value = true;
 	try {
-		const data = await apiFetch<{ items: RawDispatchJob[]; page: number; size: number }>(
-			`/admin/dispatch-jobs/raw?page=${page.value}&size=${pageSize.value}`,
+		const data = await bffFetch<{ items: RawDispatchJob[]; page: number; size: number }>(
+			`/debug/dispatch-jobs?page=${page.value}&size=${pageSize.value}`,
 		);
 		dispatchJobs.value = data.items || [];
 		totalRecords.value = data.items.length < pageSize.value

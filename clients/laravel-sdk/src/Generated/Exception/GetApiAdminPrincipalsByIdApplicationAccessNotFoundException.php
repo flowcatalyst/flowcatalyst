@@ -5,24 +5,15 @@ namespace FlowCatalyst\Generated\Exception;
 class GetApiAdminPrincipalsByIdApplicationAccessNotFoundException extends NotFoundException
 {
     /**
-     * @var \FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdApplicationAccessGetResponse404
-     */
-    private $apiAdminPrincipalsIdApplicationAccessGetResponse404;
-    /**
      * @var \Psr\Http\Message\ResponseInterface
      */
     private $response;
-    public function __construct(\FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdApplicationAccessGetResponse404 $apiAdminPrincipalsIdApplicationAccessGetResponse404, \Psr\Http\Message\ResponseInterface $response)
+    public function __construct(\Psr\Http\Message\ResponseInterface $response = null)
     {
-        parent::__construct('Default Response');
-        $this->apiAdminPrincipalsIdApplicationAccessGetResponse404 = $apiAdminPrincipalsIdApplicationAccessGetResponse404;
+        parent::__construct('Principal not found');
         $this->response = $response;
     }
-    public function getApiAdminPrincipalsIdApplicationAccessGetResponse404(): \FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdApplicationAccessGetResponse404
-    {
-        return $this->apiAdminPrincipalsIdApplicationAccessGetResponse404;
-    }
-    public function getResponse(): \Psr\Http\Message\ResponseInterface
+    public function getResponse(): ?\Psr\Http\Message\ResponseInterface
     {
         return $this->response;
     }

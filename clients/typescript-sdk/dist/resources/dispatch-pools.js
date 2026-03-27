@@ -2,8 +2,11 @@
  * Dispatch Pools Resource
  *
  * Manage dispatch pools for rate limiting and concurrency control.
+ *
+ * Uses direct HTTP calls since generated SDK functions are not yet available
+ * (OpenAPI spec does not include /api/admin/dispatch-pools routes). Will be
+ * migrated to generated functions once the spec is updated.
  */
-import * as sdk from "../generated/sdk.gen";
 /**
  * Dispatch Pools resource for managing rate limiting and concurrency.
  */
@@ -15,8 +18,8 @@ export class DispatchPoolsResource {
      * List all dispatch pools with optional filters.
      */
     list(filters) {
-        return this.client.request((httpClient, headers) => sdk.getApiAdminDispatchPools({
-            client: httpClient,
+        return this.client.request((httpClient, headers) => httpClient.get({
+            url: "/api/admin/dispatch-pools",
             headers,
             query: filters,
         }));
@@ -25,8 +28,8 @@ export class DispatchPoolsResource {
      * Get a dispatch pool by ID.
      */
     get(id) {
-        return this.client.request((httpClient, headers) => sdk.getApiAdminDispatchPoolsById({
-            client: httpClient,
+        return this.client.request((httpClient, headers) => httpClient.get({
+            url: "/api/admin/dispatch-pools/{id}",
             headers,
             path: { id },
         }));
@@ -35,9 +38,12 @@ export class DispatchPoolsResource {
      * Create a new dispatch pool.
      */
     create(data) {
-        return this.client.request((httpClient, headers) => sdk.postApiAdminDispatchPools({
-            client: httpClient,
-            headers,
+        return this.client.request((httpClient, headers) => httpClient.post({
+            url: "/api/admin/dispatch-pools",
+            headers: {
+                ...headers,
+                "Content-Type": "application/json",
+            },
             body: data,
         }));
     }
@@ -45,9 +51,12 @@ export class DispatchPoolsResource {
      * Update a dispatch pool.
      */
     update(id, data) {
-        return this.client.request((httpClient, headers) => sdk.putApiAdminDispatchPoolsById({
-            client: httpClient,
-            headers,
+        return this.client.request((httpClient, headers) => httpClient.put({
+            url: "/api/admin/dispatch-pools/{id}",
+            headers: {
+                ...headers,
+                "Content-Type": "application/json",
+            },
             path: { id },
             body: data,
         }));
@@ -56,8 +65,8 @@ export class DispatchPoolsResource {
      * Delete (archive) a dispatch pool.
      */
     delete(id) {
-        return this.client.request((httpClient, headers) => sdk.deleteApiAdminDispatchPoolsById({
-            client: httpClient,
+        return this.client.request((httpClient, headers) => httpClient.delete({
+            url: "/api/admin/dispatch-pools/{id}",
             headers,
             path: { id },
         }));
@@ -66,8 +75,8 @@ export class DispatchPoolsResource {
      * Suspend a dispatch pool.
      */
     suspend(id) {
-        return this.client.request((httpClient, headers) => sdk.postApiAdminDispatchPoolsByIdSuspend({
-            client: httpClient,
+        return this.client.request((httpClient, headers) => httpClient.post({
+            url: "/api/admin/dispatch-pools/{id}/suspend",
             headers,
             path: { id },
         }));
@@ -76,8 +85,8 @@ export class DispatchPoolsResource {
      * Activate a dispatch pool.
      */
     activate(id) {
-        return this.client.request((httpClient, headers) => sdk.postApiAdminDispatchPoolsByIdActivate({
-            client: httpClient,
+        return this.client.request((httpClient, headers) => httpClient.post({
+            url: "/api/admin/dispatch-pools/{id}/activate",
             headers,
             path: { id },
         }));
@@ -86,10 +95,14 @@ export class DispatchPoolsResource {
      * Sync dispatch pools for an application.
      */
     sync(applicationCode, pools, removeUnlisted = false) {
-        return this.client.request((httpClient, headers) => sdk.postApiAdminDispatchPoolsSync({
-            client: httpClient,
-            headers,
-            body: { applicationCode, pools, removeUnlisted },
+        return this.client.request((httpClient, headers) => httpClient.post({
+            url: "/api/admin/dispatch-pools/sync",
+            headers: {
+                ...headers,
+                "Content-Type": "application/json",
+            },
+            body: { applicationCode, pools },
+            query: { removeUnlisted },
         }));
     }
 }

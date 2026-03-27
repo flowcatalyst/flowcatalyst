@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { useListState } from "@/composables/useListState";
-import { apiFetch } from "@/api/client";
+import { bffFetch } from "@/api/client";
 
 interface RawEvent {
 	id: string;
@@ -39,8 +39,8 @@ onMounted(async () => {
 async function loadEvents() {
 	loading.value = true;
 	try {
-		const data = await apiFetch<{ items: RawEvent[]; page: number; size: number }>(
-			`/admin/events/raw?page=${page.value}&size=${pageSize.value}`,
+		const data = await bffFetch<{ items: RawEvent[]; page: number; size: number }>(
+			`/debug/events?page=${page.value}&size=${pageSize.value}`,
 		);
 		events.value = data.items || [];
 		totalRecords.value = data.items.length < pageSize.value
@@ -56,7 +56,7 @@ async function loadEvents() {
 async function viewEventDetail(event: RawEvent) {
 	showDetailDialog.value = true;
 	try {
-		const full = await apiFetch<RawEvent>(`/admin/events/${event.id}`);
+		const full = await bffFetch<RawEvent>(`/debug/events/${event.id}`);
 		selectedEvent.value = full;
 	} catch {
 		selectedEvent.value = event;
@@ -120,36 +120,38 @@ function truncateId(id: string): string {
         :rowsPerPageOptions="[10, 20, 50]"
         @page="onPage"
         stripedRows
+        resizableColumns
+        columnResizeMode="expand"
         emptyMessage="No events found"
         tableStyle="min-width: 60rem"
       >
-        <Column field="id" header="Event ID" style="width: 10rem">
+        <Column field="id" header="Event ID" style="min-width: 14rem; width: 14rem">
           <template #body="{ data }">
             <span class="font-mono text-sm">{{ truncateId(data.id) }}</span>
           </template>
         </Column>
-        <Column field="eventType" header="Type">
+        <Column field="eventType" header="Type" style="min-width: 14rem">
           <template #body="{ data }">
             <Tag :value="data.eventType" severity="secondary" />
           </template>
         </Column>
-        <Column field="source" header="Source" />
-        <Column field="subject" header="Subject">
+        <Column field="source" header="Source" style="min-width: 10rem" />
+        <Column field="subject" header="Subject" style="min-width: 10rem; max-width: 18rem">
           <template #body="{ data }">
             <span class="text-sm truncate-cell">{{ data.subject || '-' }}</span>
           </template>
         </Column>
-        <Column field="deduplicationId" header="Dedup ID" style="width: 10rem">
+        <Column field="deduplicationId" header="Dedup ID" style="min-width: 10rem; width: 10rem">
           <template #body="{ data }">
             <span class="font-mono text-sm">{{ truncateId(data.deduplicationId) }}</span>
           </template>
         </Column>
-        <Column field="time" header="Time" style="width: 12rem">
+        <Column field="time" header="Time" style="min-width: 12rem; width: 12rem">
           <template #body="{ data }">
             <span class="text-sm">{{ formatDate(data.time) }}</span>
           </template>
         </Column>
-        <Column header="Actions" style="width: 6rem">
+        <Column header="Actions" style="width: 5rem; min-width: 5rem">
           <template #body="{ data }">
             <Button
               icon="pi pi-eye"
@@ -167,7 +169,7 @@ function truncateId(id: string): string {
     <Dialog
       v-model:visible="showDetailDialog"
       header="Raw Event Details"
-      :style="{ width: '700px' }"
+      :style="{ width: 'clamp(700px, 70vw, 1024px)' }"
       modal
     >
       <div v-if="selectedEvent" class="event-detail">

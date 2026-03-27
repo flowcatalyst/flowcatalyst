@@ -67,9 +67,10 @@ impl EncryptedProvider {
         }
 
         let (nonce_bytes, ciphertext) = encrypted.split_at(12);
-        let nonce = Nonce::from_slice(nonce_bytes);
+        let nonce_arr: [u8; 12] = nonce_bytes.try_into().unwrap();
+        let nonce = Nonce::from(nonce_arr);
 
-        let plaintext = self.cipher.decrypt(nonce, ciphertext)
+        let plaintext = self.cipher.decrypt(&nonce, ciphertext)
             .map_err(|e| SecretsError::EncryptionError(e.to_string()))?;
 
         let secrets: HashMap<String, String> = serde_json::from_slice(&plaintext)?;
@@ -85,9 +86,9 @@ impl EncryptedProvider {
 
         let mut nonce_bytes = [0u8; 12];
         OsRng.fill_bytes(&mut nonce_bytes);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce = Nonce::from(nonce_bytes);
 
-        let ciphertext = self.cipher.encrypt(nonce, plaintext.as_slice())
+        let ciphertext = self.cipher.encrypt(&nonce, plaintext.as_slice())
             .map_err(|e| SecretsError::EncryptionError(e.to_string()))?;
 
         let mut output = nonce_bytes.to_vec();

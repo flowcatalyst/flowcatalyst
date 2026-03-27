@@ -642,14 +642,57 @@ pub async fn oidc_callback(
 
     // Emit UserLoggedIn domain event (best-effort — don't fail the login if this fails)
     {
+        use crate::principal::operations::events::{FlowcatalystClaims, FederatedClaims};
+
         let ctx = ExecutionContext::create(&principal.id);
+
+        // Build role codes from the synced principal
+        let roles: Vec<String> = principal.roles.iter().map(|r| r.role.clone()).collect();
+
+        // Extract application codes from role strings (e.g., "ondemand:admin" → "ondemand")
+        let applications: Vec<String> = {
+            let mut codes = std::collections::BTreeSet::new();
+            for role in &roles {
+                if let Some(idx) = role.find(':') {
+                    if idx > 0 {
+                        codes.insert(role[..idx].to_string());
+                    }
+                }
+            }
+            codes.into_iter().collect()
+        };
+
+        // Build clients list matching TS behaviour
+        let clients: Vec<String> = match user_scope {
+            UserScope::Anchor => vec!["*".to_string()],
+            _ => principal.assigned_clients.clone(),
+        };
+
+        let fc_claims = FlowcatalystClaims {
+            email: claims.email.clone(),
+            principal_type: "USER".to_string(),
+            roles,
+            clients,
+            applications,
+        };
+
+        // Decode access token claims (may be a JWT or opaque)
+        let access_token_claims = decode_jwt_payload_unsafe(&tokens.access_token)
+            .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+
+        let federated_claims = Some(FederatedClaims {
+            id_token: claims.raw_claims.clone(),
+            access_token: access_token_claims,
+        });
+
         let login_event = UserLoggedIn::new(
             &ctx,
             &principal.id,
             &claims.email,
-            user_scope,
-            &idp.id,
-            mapping.primary_client_id.as_deref(),
+            "OIDC",
+            Some(&idp.code),
+            fc_claims,
+            federated_claims,
         );
 
         #[derive(serde::Serialize)]
@@ -681,6 +724,18 @@ pub async fn oidc_callback(
 }
 
 // ==================== Helper Functions ====================
+
+/// Decode a JWT payload without signature verification.
+/// Used to extract claims from access tokens (which may be JWTs or opaque).
+/// Returns None if the token is not a valid JWT.
+fn decode_jwt_payload_unsafe(token: &str) -> Option<serde_json::Value> {
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let payload_bytes = URL_SAFE_NO_PAD.decode(parts[1]).ok()?;
+    serde_json::from_slice(&payload_bytes).ok()
+}
 
 fn generate_random_string(length: usize) -> String {
     let bytes: Vec<u8> = (0..length).map(|_| rand::rng().random()).collect();
@@ -838,6 +893,8 @@ struct IdTokenClaims {
     name: Option<String>,
     tenant_id: Option<String>,
     roles: Option<Vec<String>>,
+    /// Raw ID token claims as JSON (for the UserLoggedIn event's federatedClaims)
+    raw_claims: serde_json::Value,
 }
 
 /// Validate an ID token using JWKS signature verification.
@@ -964,6 +1021,14 @@ async fn validate_id_token_with_jwks(
                 .collect()
         });
 
+    // Build raw claims for the event, stripping OIDC protocol artifacts
+    let mut raw_claims = payload.clone();
+    if let Some(obj) = raw_claims.as_object_mut() {
+        for key in &["nonce", "at_hash", "c_hash"] {
+            obj.remove(*key);
+        }
+    }
+
     Ok(IdTokenClaims {
         issuer,
         subject,
@@ -971,6 +1036,7 @@ async fn validate_id_token_with_jwks(
         name,
         tenant_id,
         roles,
+        raw_claims,
     })
 }
 

@@ -1,4758 +1,1840 @@
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
-export type GetApiAdminPrincipalsData = {
-    body?: never;
-    path?: never;
-    query?: {
-        type?: string;
-        clientId?: string;
-        active?: string;
-        email?: string;
-        q?: string;
-        page?: string;
-        pageSize?: string;
-    };
-    url: '/api/admin/principals';
-};
-export type GetApiAdminPrincipalsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        principals: Array<{
-            id: string;
-            type: string;
-            scope: string | null;
-            clientId: string | null;
-            name: string;
-            active: boolean;
-            email: string | null;
-            idpType: string | null;
-            roles: Array<string>;
-            isAnchorUser: boolean;
-            grantedClientIds: Array<string>;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-    };
+/**
+ * Add note request (matches Java AddNoteRequest)
+ */
+export type AddNoteRequest = {
+    /**
+     * Category of the note
+     */
+    category: string;
+    /**
+     * Note content
+     */
+    text: string;
+};
+/**
+ * Add note response
+ */
+export type AddNoteResponse = {
+    message: string;
+};
+/**
+ * Add schema version request
+ */
+export type AddSchemaVersionRequest = {
+    /**
+     * JSON schema for this version
+     */
+    schema: unknown;
+};
+/**
+ * Aggregates list response
+ */
+export type AggregatesResponse = {
+    aggregates: Array<FilterOption>;
+};
+/**
+ * All filter options combined
+ */
+export type AllFilterOptions = {
+    applications: Array<FilterOption>;
+    clients: Array<FilterOption>;
+    dispatchPools: Array<FilterOption>;
+    eventTypes: Array<FilterOption>;
+    subscriptions: Array<FilterOption>;
+};
+/**
+ * Application access list response
+ */
+export type ApplicationAccessListResponse = {
+    applications: Array<ApplicationAccessResponse>;
+    total: number;
+};
+/**
+ * Application access response
+ */
+export type ApplicationAccessResponse = {
+    applicationCode: string;
+    applicationId: string;
+    applicationName: string;
+};
+/**
+ * Application IDs response
+ */
+export type ApplicationIdsResponse = {
+    applicationIds: Array<string>;
+};
+/**
+ * Application option for filter dropdown
+ */
+export type ApplicationOption = {
+    code: string;
+    id: string;
+    name: string;
+};
+/**
+ * Application options response
+ */
+export type ApplicationOptionsResponse = {
+    options: Array<ApplicationOption>;
+};
+/**
+ * Applications list response
+ */
+export type ApplicationsResponse = {
+    applications: Array<FilterOption>;
+};
+/**
+ * Assign role request
+ */
+export type AssignRoleRequest = {
+    /**
+     * Client ID (optional, for client-scoped roles)
+     */
+    clientId?: string | null;
+    /**
+     * Role code
+     */
+    role: string;
+};
+/**
+ * Audit log detail response (includes operation JSON)
+ */
+export type AuditLogDetailResponse = {
+    applicationId?: string | null;
+    clientId?: string | null;
+    entityId?: string | null;
+    entityType: string;
+    id: string;
+    operation: string;
+    operationJson?: string | null;
+    performedAt: string;
+    principalId?: string | null;
+    principalName?: string | null;
+};
+/**
+ * Audit logs list response (matches Java AuditLogListResponse)
+ */
+export type AuditLogListResponse = {
+    auditLogs: Array<AuditLogResponse>;
+    page: number;
+    pageSize: number;
+    total: number;
+};
+/**
+ * Audit log response DTO (matches Java AuditLogDto)
+ */
+export type AuditLogResponse = {
+    applicationId?: string | null;
+    clientId?: string | null;
+    entityId?: string | null;
+    entityType: string;
+    id: string;
+    operation: string;
+    performedAt: string;
+    principalId?: string | null;
+    principalName?: string | null;
+};
+/**
+ * Authentication method
+ */
+export type AuthMethod = 'INTERNAL' | 'OIDC' | 'SAML';
+/**
+ * Available application response (slim DTO)
+ */
+export type AvailableApplicationResponse = {
+    active: boolean;
+    code: string;
+    description?: string | null;
+    id: string;
+    name: string;
+    type: string;
 };
-export type GetApiAdminPrincipalsResponse = GetApiAdminPrincipalsResponses[keyof GetApiAdminPrincipalsResponses];
-export type DeleteApiAdminPrincipalsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}';
-};
-export type DeleteApiAdminPrincipalsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Available applications list response
+ */
+export type AvailableApplicationsResponse = {
+    applications: Array<AvailableApplicationResponse>;
+    total: number;
 };
-export type DeleteApiAdminPrincipalsByIdError = DeleteApiAdminPrincipalsByIdErrors[keyof DeleteApiAdminPrincipalsByIdErrors];
-export type DeleteApiAdminPrincipalsByIdResponses = {
+/**
+ * Batch assign roles request (for PUT /roles - declarative update)
+ */
+export type BatchAssignRolesRequest = {
     /**
-     * Default Response
+     * List of role codes to assign (replaces existing roles)
      */
-    204: void;
-};
-export type DeleteApiAdminPrincipalsByIdResponse = DeleteApiAdminPrincipalsByIdResponses[keyof DeleteApiAdminPrincipalsByIdResponses];
-export type GetApiAdminPrincipalsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}';
-};
-export type GetApiAdminPrincipalsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminPrincipalsByIdError = GetApiAdminPrincipalsByIdErrors[keyof GetApiAdminPrincipalsByIdErrors];
-export type GetApiAdminPrincipalsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        type: string;
-        scope: string | null;
-        clientId: string | null;
-        name: string;
-        active: boolean;
-        email: string | null;
-        idpType: string | null;
-        roles: Array<string>;
-        isAnchorUser: boolean;
-        grantedClientIds: Array<string>;
-        lastLoginAt: string | null;
-        createdAt: string;
-        updatedAt: string;
-    };
+    roles: Array<string>;
 };
-export type GetApiAdminPrincipalsByIdResponse = GetApiAdminPrincipalsByIdResponses[keyof GetApiAdminPrincipalsByIdResponses];
-export type PutApiAdminPrincipalsByIdData = {
-    body: {
-        name: string;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}';
-};
-export type PutApiAdminPrincipalsByIdErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Batch assign roles response (matches Java RolesAssignedResponse)
+ */
+export type BatchAssignRolesResponse = {
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PutApiAdminPrincipalsByIdError = PutApiAdminPrincipalsByIdErrors[keyof PutApiAdminPrincipalsByIdErrors];
-export type PutApiAdminPrincipalsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        type: string;
-        scope: string | null;
-        clientId: string | null;
-        name: string;
-        active: boolean;
-        email: string | null;
-        idpType: string | null;
-        roles: Array<string>;
-        isAnchorUser: boolean;
-        grantedClientIds: Array<string>;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PutApiAdminPrincipalsByIdResponse = PutApiAdminPrincipalsByIdResponses[keyof PutApiAdminPrincipalsByIdResponses];
-export type PostApiAdminPrincipalsUsersData = {
-    body: {
-        email: string;
-        password?: string | null;
-        name: string;
-        clientId?: string | null;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/admin/principals/users';
-};
-export type PostApiAdminPrincipalsUsersErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Roles that were added
+     */
+    added: Array<string>;
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Roles that were removed
+     */
+    removed: Array<string>;
+    /**
+     * Current role assignments after update
+     */
+    roles: Array<RoleAssignmentDto>;
 };
-export type PostApiAdminPrincipalsUsersError = PostApiAdminPrincipalsUsersErrors[keyof PostApiAdminPrincipalsUsersErrors];
-export type PostApiAdminPrincipalsUsersResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        type: string;
-        scope: string | null;
-        clientId: string | null;
-        name: string;
-        active: boolean;
-        email: string | null;
-        idpType: string | null;
-        roles: Array<string>;
-        isAnchorUser: boolean;
-        grantedClientIds: Array<string>;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Batch create dispatch jobs request
+ */
+export type BatchCreateDispatchJobsRequest = {
+    jobs: Array<CreateDispatchJobRequest>;
 };
-export type PostApiAdminPrincipalsUsersResponse = PostApiAdminPrincipalsUsersResponses[keyof PostApiAdminPrincipalsUsersResponses];
-export type PostApiAdminPrincipalsByIdActivateData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}/activate';
-};
-export type PostApiAdminPrincipalsByIdActivateErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Batch create dispatch jobs response
+ */
+export type BatchCreateDispatchJobsResponse = {
+    count: number;
+    jobs: Array<DispatchJobResponse>;
 };
-export type PostApiAdminPrincipalsByIdActivateError = PostApiAdminPrincipalsByIdActivateErrors[keyof PostApiAdminPrincipalsByIdActivateErrors];
-export type PostApiAdminPrincipalsByIdActivateResponses = {
+/**
+ * Batch create events request
+ */
+export type BatchCreateEventsRequest = {
+    events: Array<CreateEventRequest>;
+};
+/**
+ * Batch create response (matches Java BatchEventResponse)
+ */
+export type BatchCreateResponse = {
     /**
-     * Default Response
+     * Total number of events in response
      */
-    200: {
-        message: string;
-    };
-};
-export type PostApiAdminPrincipalsByIdActivateResponse = PostApiAdminPrincipalsByIdActivateResponses[keyof PostApiAdminPrincipalsByIdActivateResponses];
-export type PostApiAdminPrincipalsByIdDeactivateData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}/deactivate';
-};
-export type PostApiAdminPrincipalsByIdDeactivateErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminPrincipalsByIdDeactivateError = PostApiAdminPrincipalsByIdDeactivateErrors[keyof PostApiAdminPrincipalsByIdDeactivateErrors];
-export type PostApiAdminPrincipalsByIdDeactivateResponses = {
+    count: number;
     /**
-     * Default Response
+     * Number of dispatch jobs created for matching subscriptions
      */
-    200: {
-        message: string;
-    };
-};
-export type PostApiAdminPrincipalsByIdDeactivateResponse = PostApiAdminPrincipalsByIdDeactivateResponses[keyof PostApiAdminPrincipalsByIdDeactivateResponses];
-export type PostApiAdminPrincipalsByIdResetPasswordData = {
-    body: {
-        newPassword: string;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}/reset-password';
-};
-export type PostApiAdminPrincipalsByIdResetPasswordErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    dispatchJobCount: number;
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminPrincipalsByIdResetPasswordError = PostApiAdminPrincipalsByIdResetPasswordErrors[keyof PostApiAdminPrincipalsByIdResetPasswordErrors];
-export type PostApiAdminPrincipalsByIdResetPasswordResponses = {
+     * Number of events that were deduplicated (already existed)
+     */
+    duplicateCount: number;
     /**
-     * Default Response
+     * All created events (new and deduplicated)
      */
-    200: {
-        message: string;
-    };
-};
-export type PostApiAdminPrincipalsByIdResetPasswordResponse = PostApiAdminPrincipalsByIdResetPasswordResponses[keyof PostApiAdminPrincipalsByIdResetPasswordResponses];
-export type GetApiAdminPrincipalsByIdRolesData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}/roles';
-};
-export type GetApiAdminPrincipalsByIdRolesErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    events: Array<EventResponse>;
 };
-export type GetApiAdminPrincipalsByIdRolesError = GetApiAdminPrincipalsByIdRolesErrors[keyof GetApiAdminPrincipalsByIdRolesErrors];
-export type GetApiAdminPrincipalsByIdRolesResponses = {
+/**
+ * Check email domain response (matches Java EmailDomainCheckResponse)
+ */
+export type CheckEmailDomainResponse = {
     /**
-     * Default Response
+     * Auth provider if configured (INTERNAL, OIDC)
      */
-    200: {
-        roles: Array<{
-            roleName: string;
-            assignmentSource: string;
-            assignedAt: string;
-        }>;
-    };
-};
-export type GetApiAdminPrincipalsByIdRolesResponse = GetApiAdminPrincipalsByIdRolesResponses[keyof GetApiAdminPrincipalsByIdRolesResponses];
-export type PostApiAdminPrincipalsByIdRolesData = {
-    body: {
-        roleName: string;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}/roles';
-};
-export type PostApiAdminPrincipalsByIdRolesErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    authProvider?: string | null;
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminPrincipalsByIdRolesError = PostApiAdminPrincipalsByIdRolesErrors[keyof PostApiAdminPrincipalsByIdRolesErrors];
-export type PostApiAdminPrincipalsByIdRolesResponses = {
+     * The domain that was checked
+     */
+    domain: string;
     /**
-     * Default Response
+     * Whether the email already exists
      */
-    201: {
-        roleName: string;
-        assignmentSource: string;
-        assignedAt: string;
-    };
-};
-export type PostApiAdminPrincipalsByIdRolesResponse = PostApiAdminPrincipalsByIdRolesResponses[keyof PostApiAdminPrincipalsByIdRolesResponses];
-export type PutApiAdminPrincipalsByIdRolesData = {
-    body: {
-        roles: Array<string>;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}/roles';
-};
-export type PutApiAdminPrincipalsByIdRolesErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    emailExists: boolean;
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PutApiAdminPrincipalsByIdRolesError = PutApiAdminPrincipalsByIdRolesErrors[keyof PutApiAdminPrincipalsByIdRolesErrors];
-export type PutApiAdminPrincipalsByIdRolesResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        roles: Array<{
-            roleName: string;
-            assignmentSource: string;
-            assignedAt: string;
-        }>;
-        added: Array<string>;
-        removed: Array<string>;
-    };
-};
-export type PutApiAdminPrincipalsByIdRolesResponse = PutApiAdminPrincipalsByIdRolesResponses[keyof PutApiAdminPrincipalsByIdRolesResponses];
-export type DeleteApiAdminPrincipalsByIdRolesByRoleNameData = {
-    body?: never;
-    path: {
-        id: string;
-        roleName: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}/roles/{roleName}';
-};
-export type DeleteApiAdminPrincipalsByIdRolesByRoleNameErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type DeleteApiAdminPrincipalsByIdRolesByRoleNameError = DeleteApiAdminPrincipalsByIdRolesByRoleNameErrors[keyof DeleteApiAdminPrincipalsByIdRolesByRoleNameErrors];
-export type DeleteApiAdminPrincipalsByIdRolesByRoleNameResponses = {
+     * Whether this domain has auth configuration
+     */
+    hasAuthConfig: boolean;
     /**
-     * Default Response
+     * Informational message
      */
-    204: void;
-};
-export type DeleteApiAdminPrincipalsByIdRolesByRoleNameResponse = DeleteApiAdminPrincipalsByIdRolesByRoleNameResponses[keyof DeleteApiAdminPrincipalsByIdRolesByRoleNameResponses];
-export type GetApiAdminPrincipalsByIdClientAccessData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}/client-access';
-};
-export type GetApiAdminPrincipalsByIdClientAccessErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminPrincipalsByIdClientAccessError = GetApiAdminPrincipalsByIdClientAccessErrors[keyof GetApiAdminPrincipalsByIdClientAccessErrors];
-export type GetApiAdminPrincipalsByIdClientAccessResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        grants: Array<{
-            id: string;
-            clientId: string;
-            grantedBy: string;
-            grantedAt: string;
-        }>;
-    };
-};
-export type GetApiAdminPrincipalsByIdClientAccessResponse = GetApiAdminPrincipalsByIdClientAccessResponses[keyof GetApiAdminPrincipalsByIdClientAccessResponses];
-export type PostApiAdminPrincipalsByIdClientAccessData = {
-    body: {
-        clientId: string;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}/client-access';
-};
-export type PostApiAdminPrincipalsByIdClientAccessErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    info?: string | null;
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Whether this is an anchor domain
+     */
+    isAnchorDomain: boolean;
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Warning message
+     */
+    warning?: string | null;
 };
-export type PostApiAdminPrincipalsByIdClientAccessError = PostApiAdminPrincipalsByIdClientAccessErrors[keyof PostApiAdminPrincipalsByIdClientAccessErrors];
-export type PostApiAdminPrincipalsByIdClientAccessResponses = {
+/**
+ * Circuit breaker state
+ */
+export type CircuitBreakerState = {
     /**
-     * Default Response
+     * Failure count
      */
-    201: {
-        id: string;
-        clientId: string;
-        grantedBy: string;
-        grantedAt: string;
-    };
-};
-export type PostApiAdminPrincipalsByIdClientAccessResponse = PostApiAdminPrincipalsByIdClientAccessResponses[keyof PostApiAdminPrincipalsByIdClientAccessResponses];
-export type DeleteApiAdminPrincipalsByIdClientAccessByClientIdData = {
-    body?: never;
-    path: {
-        id: string;
-        clientId: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}/client-access/{clientId}';
-};
-export type DeleteApiAdminPrincipalsByIdClientAccessByClientIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type DeleteApiAdminPrincipalsByIdClientAccessByClientIdError = DeleteApiAdminPrincipalsByIdClientAccessByClientIdErrors[keyof DeleteApiAdminPrincipalsByIdClientAccessByClientIdErrors];
-export type DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponses = {
+    failureCount: number;
     /**
-     * Default Response
+     * Last failure time
      */
-    204: void;
-};
-export type DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponse = DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponses[keyof DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponses];
-export type GetApiAdminPrincipalsCheckEmailDomainData = {
-    body?: never;
-    path?: never;
-    query?: {
-        email?: string;
-    };
-    url: '/api/admin/principals/check-email-domain';
-};
-export type GetApiAdminPrincipalsCheckEmailDomainErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    lastFailure?: string | null;
+    /**
+     * Time until reset (if open)
+     */
+    resetAt?: string | null;
+    /**
+     * Current state (CLOSED, OPEN, HALF_OPEN)
+     */
+    state: string;
+    /**
+     * Success count since last failure
+     */
+    successCount: number;
+    /**
+     * Target identifier
+     */
+    target: string;
 };
-export type GetApiAdminPrincipalsCheckEmailDomainError = GetApiAdminPrincipalsCheckEmailDomainErrors[keyof GetApiAdminPrincipalsCheckEmailDomainErrors];
-export type GetApiAdminPrincipalsCheckEmailDomainResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        domain: string;
-        authProvider: string;
-        isAnchorDomain: boolean;
-        hasAuthConfig: boolean;
-        emailExists: boolean;
-        info: string | null;
-        warning: string | null;
-    };
+/**
+ * Circuit breakers response
+ */
+export type CircuitBreakersResponse = {
+    breakers: Array<CircuitBreakerState>;
+    totalClosed: number;
+    totalHalfOpen: number;
+    totalOpen: number;
 };
-export type GetApiAdminPrincipalsCheckEmailDomainResponse = GetApiAdminPrincipalsCheckEmailDomainResponses[keyof GetApiAdminPrincipalsCheckEmailDomainResponses];
-export type GetApiAdminPrincipalsByIdApplicationAccessData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}/application-access';
-};
-export type GetApiAdminPrincipalsByIdApplicationAccessErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Client access grant response (matches Java ClientAccessGrantDto)
+ */
+export type ClientAccessGrantResponse = {
+    clientId: string;
+    expiresAt?: string | null;
+    grantedAt: string;
+    id: string;
 };
-export type GetApiAdminPrincipalsByIdApplicationAccessError = GetApiAdminPrincipalsByIdApplicationAccessErrors[keyof GetApiAdminPrincipalsByIdApplicationAccessErrors];
-export type GetApiAdminPrincipalsByIdApplicationAccessResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        applications: Array<{
-            id: string;
-            code: string;
-            name: string;
-            grantedAt: string | null;
-        }>;
-    };
+/**
+ * Client access list response
+ */
+export type ClientAccessListResponse = {
+    grants: Array<ClientAccessGrantResponse>;
 };
-export type GetApiAdminPrincipalsByIdApplicationAccessResponse = GetApiAdminPrincipalsByIdApplicationAccessResponses[keyof GetApiAdminPrincipalsByIdApplicationAccessResponses];
-export type PutApiAdminPrincipalsByIdApplicationAccessData = {
-    body: {
-        applicationIds: Array<string>;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}/application-access';
-};
-export type PutApiAdminPrincipalsByIdApplicationAccessErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Client application config response (matches Java ClientApplicationDto)
+ */
+export type ClientApplicationResponse = {
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Whether the application itself is active globally
+     */
+    active: boolean;
+    /**
+     * Application code
+     */
+    code: string;
+    /**
+     * Application description
+     */
+    description?: string | null;
+    /**
+     * Whether this application is enabled for this specific client
+     */
+    enabledForClient: boolean;
+    /**
+     * Application icon URL
+     */
+    iconUrl?: string | null;
+    /**
+     * Application ID
+     */
+    id: string;
+    /**
+     * Application display name
+     */
+    name: string;
 };
-export type PutApiAdminPrincipalsByIdApplicationAccessError = PutApiAdminPrincipalsByIdApplicationAccessErrors[keyof PutApiAdminPrincipalsByIdApplicationAccessErrors];
-export type PutApiAdminPrincipalsByIdApplicationAccessResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        applications: Array<{
-            id: string;
-            code: string;
-            name: string;
-            grantedAt: string | null;
-        }>;
-        added: Array<string>;
-        removed: Array<string>;
-    };
+/**
+ * Client applications list response
+ */
+export type ClientApplicationsResponse = {
+    applications: Array<ClientApplicationResponse>;
+    total: number;
 };
-export type PutApiAdminPrincipalsByIdApplicationAccessResponse = PutApiAdminPrincipalsByIdApplicationAccessResponses[keyof PutApiAdminPrincipalsByIdApplicationAccessResponses];
-export type GetApiAdminPrincipalsByIdAvailableApplicationsData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/principals/{id}/available-applications';
-};
-export type GetApiAdminPrincipalsByIdAvailableApplicationsErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Client filter options response
+ */
+export type ClientFilterOptions = {
+    clients: Array<FilterOption>;
 };
-export type GetApiAdminPrincipalsByIdAvailableApplicationsError = GetApiAdminPrincipalsByIdAvailableApplicationsErrors[keyof GetApiAdminPrincipalsByIdAvailableApplicationsErrors];
-export type GetApiAdminPrincipalsByIdAvailableApplicationsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        applications: Array<{
-            id: string;
-            code: string;
-            name: string;
-            grantedAt: string | null;
-        }>;
-    };
+/**
+ * Client IDs response
+ */
+export type ClientIdsResponse = {
+    clientIds: Array<string>;
 };
-export type GetApiAdminPrincipalsByIdAvailableApplicationsResponse = GetApiAdminPrincipalsByIdAvailableApplicationsResponses[keyof GetApiAdminPrincipalsByIdAvailableApplicationsResponses];
-export type GetApiAdminClientsData = {
-    body?: never;
-    path?: never;
-    query?: {
-        status?: string;
-        page?: string;
-        pageSize?: string;
-    };
-    url: '/api/admin/clients';
-};
-export type GetApiAdminClientsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        clients: Array<{
-            id: string;
-            name: string;
-            identifier: string;
-            status: string;
-            statusReason: string | null;
-            statusChangedAt: string | null;
-            notes: Array<{
-                category: string;
-                text: string;
-                addedBy: string;
-                addedAt: string;
-            }>;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-        page: number;
-        pageSize: number;
-    };
+/**
+ * Client list response (matches Java ClientListResponse)
+ */
+export type ClientListResponse = {
+    clients: Array<ClientResponse>;
+    total: number;
 };
-export type GetApiAdminClientsResponse = GetApiAdminClientsResponses[keyof GetApiAdminClientsResponses];
-export type PostApiAdminClientsData = {
-    body: {
-        name: string;
-        identifier: string;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/admin/clients';
-};
-export type PostApiAdminClientsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Client response DTO (matches Java ClientDto)
+ */
+export type ClientResponse = {
+    createdAt: string;
+    id: string;
+    identifier: string;
+    name: string;
+    status: string;
+    statusChangedAt?: string | null;
+    statusReason?: string | null;
+    updatedAt: string;
 };
-export type PostApiAdminClientsError = PostApiAdminClientsErrors[keyof PostApiAdminClientsErrors];
-export type PostApiAdminClientsResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        name: string;
-        identifier: string;
-        status: string;
-        statusReason: string | null;
-        statusChangedAt: string | null;
-        notes: Array<{
-            category: string;
-            text: string;
-            addedBy: string;
-            addedAt: string;
-        }>;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Cluster member info
+ */
+export type ClusterMember = {
+    healthy: boolean;
+    instanceId: string;
+    lastSeen: string;
+    role: string;
 };
-export type PostApiAdminClientsResponse = PostApiAdminClientsResponses[keyof PostApiAdminClientsResponses];
-export type GetApiAdminClientsSearchData = {
-    body?: never;
-    path?: never;
-    query?: {
-        q?: string;
-        status?: string;
-        limit?: string;
-    };
-    url: '/api/admin/clients/search';
-};
-export type GetApiAdminClientsSearchResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        clients: Array<{
-            id: string;
-            name: string;
-            identifier: string;
-            status: string;
-            statusReason: string | null;
-            statusChangedAt: string | null;
-            notes: Array<{
-                category: string;
-                text: string;
-                addedBy: string;
-                addedAt: string;
-            }>;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-        page: number;
-        pageSize: number;
-    };
+/**
+ * Config entry response (matches Java ConfigEntry)
+ */
+export type ConfigEntryResponse = {
+    key: string;
+    value: string;
 };
-export type GetApiAdminClientsSearchResponse = GetApiAdminClientsSearchResponses[keyof GetApiAdminClientsSearchResponses];
-export type DeleteApiAdminClientsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/clients/{id}';
-};
-export type DeleteApiAdminClientsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Context data for event filtering/searching
+ */
+export type ContextDataDto = {
+    key: string;
+    value: string;
 };
-export type DeleteApiAdminClientsByIdError = DeleteApiAdminClientsByIdErrors[keyof DeleteApiAdminClientsByIdErrors];
-export type DeleteApiAdminClientsByIdResponses = {
+/**
+ * Create client request
+ */
+export type CreateClientRequest = {
     /**
-     * Default Response
+     * Unique identifier/slug (URL-safe)
      */
-    204: void;
-};
-export type DeleteApiAdminClientsByIdResponse = DeleteApiAdminClientsByIdResponses[keyof DeleteApiAdminClientsByIdResponses];
-export type GetApiAdminClientsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/clients/{id}';
-};
-export type GetApiAdminClientsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminClientsByIdError = GetApiAdminClientsByIdErrors[keyof GetApiAdminClientsByIdErrors];
-export type GetApiAdminClientsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        name: string;
-        identifier: string;
-        status: string;
-        statusReason: string | null;
-        statusChangedAt: string | null;
-        notes: Array<{
-            category: string;
-            text: string;
-            addedBy: string;
-            addedAt: string;
-        }>;
-        createdAt: string;
-        updatedAt: string;
-    };
+    identifier: string;
+    /**
+     * Human-readable name
+     */
+    name: string;
 };
-export type GetApiAdminClientsByIdResponse = GetApiAdminClientsByIdResponses[keyof GetApiAdminClientsByIdResponses];
-export type PutApiAdminClientsByIdData = {
-    body: {
-        name: string;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/clients/{id}';
-};
-export type PutApiAdminClientsByIdErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Request to create a new dispatch job
+ */
+export type CreateDispatchJobRequest = {
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Client ID
+     */
+    clientId?: string | null;
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PutApiAdminClientsByIdError = PutApiAdminClientsByIdErrors[keyof PutApiAdminClientsByIdErrors];
-export type PutApiAdminClientsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        name: string;
-        identifier: string;
-        status: string;
-        statusReason: string | null;
-        statusChangedAt: string | null;
-        notes: Array<{
-            category: string;
-            text: string;
-            addedBy: string;
-            addedAt: string;
-        }>;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PutApiAdminClientsByIdResponse = PutApiAdminClientsByIdResponses[keyof PutApiAdminClientsByIdResponses];
-export type GetApiAdminClientsByIdentifierByIdentifierData = {
-    body?: never;
-    path: {
-        identifier: string;
-    };
-    query?: never;
-    url: '/api/admin/clients/by-identifier/{identifier}';
-};
-export type GetApiAdminClientsByIdentifierByIdentifierErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminClientsByIdentifierByIdentifierError = GetApiAdminClientsByIdentifierByIdentifierErrors[keyof GetApiAdminClientsByIdentifierByIdentifierErrors];
-export type GetApiAdminClientsByIdentifierByIdentifierResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        name: string;
-        identifier: string;
-        status: string;
-        statusReason: string | null;
-        statusChangedAt: string | null;
-        notes: Array<{
-            category: string;
-            text: string;
-            addedBy: string;
-            addedAt: string;
-        }>;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type GetApiAdminClientsByIdentifierByIdentifierResponse = GetApiAdminClientsByIdentifierByIdentifierResponses[keyof GetApiAdminClientsByIdentifierByIdentifierResponses];
-export type PostApiAdminClientsByIdActivateData = {
-    body: {
-        reason?: string | null;
-        note?: string | null;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/clients/{id}/activate';
-};
-export type PostApiAdminClientsByIdActivateErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * The event type or task code
+     */
+    code: string;
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Correlation ID for distributed tracing
+     */
+    correlationId?: string | null;
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminClientsByIdActivateError = PostApiAdminClientsByIdActivateErrors[keyof PostApiAdminClientsByIdActivateErrors];
-export type PostApiAdminClientsByIdActivateResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        name: string;
-        identifier: string;
-        status: string;
-        statusReason: string | null;
-        statusChangedAt: string | null;
-        notes: Array<{
-            category: string;
-            text: string;
-            addedBy: string;
-            addedAt: string;
-        }>;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PostApiAdminClientsByIdActivateResponse = PostApiAdminClientsByIdActivateResponses[keyof PostApiAdminClientsByIdActivateResponses];
-export type PostApiAdminClientsByIdSuspendData = {
-    body: {
-        reason?: string | null;
-        note?: string | null;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/clients/{id}/suspend';
-};
-export type PostApiAdminClientsByIdSuspendErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * If true, send raw payload only
+     */
+    dataOnly?: boolean;
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Rate limiting pool ID
+     */
+    dispatchPoolId?: string | null;
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminClientsByIdSuspendError = PostApiAdminClientsByIdSuspendErrors[keyof PostApiAdminClientsByIdSuspendErrors];
-export type PostApiAdminClientsByIdSuspendResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        name: string;
-        identifier: string;
-        status: string;
-        statusReason: string | null;
-        statusChangedAt: string | null;
-        notes: Array<{
-            category: string;
-            text: string;
-            addedBy: string;
-            addedAt: string;
-        }>;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PostApiAdminClientsByIdSuspendResponse = PostApiAdminClientsByIdSuspendResponses[keyof PostApiAdminClientsByIdSuspendResponses];
-export type PostApiAdminClientsByIdDeactivateData = {
-    body: {
-        reason?: string | null;
-        note?: string | null;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/clients/{id}/deactivate';
-};
-export type PostApiAdminClientsByIdDeactivateErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Source event ID (required for EVENT kind)
+     */
+    eventId?: string | null;
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * External reference ID
+     */
+    externalId?: string | null;
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminClientsByIdDeactivateError = PostApiAdminClientsByIdDeactivateErrors[keyof PostApiAdminClientsByIdDeactivateErrors];
-export type PostApiAdminClientsByIdDeactivateResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        name: string;
-        identifier: string;
-        status: string;
-        statusReason: string | null;
-        statusChangedAt: string | null;
-        notes: Array<{
-            category: string;
-            text: string;
-            addedBy: string;
-            addedAt: string;
-        }>;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PostApiAdminClientsByIdDeactivateResponse = PostApiAdminClientsByIdDeactivateResponses[keyof PostApiAdminClientsByIdDeactivateResponses];
-export type PostApiAdminClientsByIdNotesData = {
-    body: {
-        category: string;
-        text: string;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/clients/{id}/notes';
-};
-export type PostApiAdminClientsByIdNotesErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Idempotency key for deduplication
+     */
+    idempotencyKey?: string | null;
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminClientsByIdNotesError = PostApiAdminClientsByIdNotesErrors[keyof PostApiAdminClientsByIdNotesErrors];
-export type PostApiAdminClientsByIdNotesResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        name: string;
-        identifier: string;
-        status: string;
-        statusReason: string | null;
-        statusChangedAt: string | null;
-        notes: Array<{
-            category: string;
-            text: string;
-            addedBy: string;
-            addedAt: string;
-        }>;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PostApiAdminClientsByIdNotesResponse = PostApiAdminClientsByIdNotesResponses[keyof PostApiAdminClientsByIdNotesResponses];
-export type GetApiAdminClientsByIdApplicationsData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/clients/{id}/applications';
-};
-export type GetApiAdminClientsByIdApplicationsErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminClientsByIdApplicationsError = GetApiAdminClientsByIdApplicationsErrors[keyof GetApiAdminClientsByIdApplicationsErrors];
-export type GetApiAdminClientsByIdApplicationsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        applications: Array<{
-            id: string;
-            code: string;
-            name: string;
-            description: string | null;
-            iconUrl: string | null;
-            website: string | null;
-            logoMimeType: string | null;
-            active: boolean;
-            enabledForClient: boolean;
-        }>;
-        total: number;
-    };
-};
-export type GetApiAdminClientsByIdApplicationsResponse = GetApiAdminClientsByIdApplicationsResponses[keyof GetApiAdminClientsByIdApplicationsResponses];
-export type PutApiAdminClientsByIdApplicationsData = {
-    body: {
-        enabledApplicationIds: Array<string>;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/clients/{id}/applications';
-};
-export type PutApiAdminClientsByIdApplicationsErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PutApiAdminClientsByIdApplicationsError = PutApiAdminClientsByIdApplicationsErrors[keyof PutApiAdminClientsByIdApplicationsErrors];
-export type PutApiAdminClientsByIdApplicationsResponses = {
+     * The kind of dispatch job (EVENT or TASK)
+     */
+    kind?: string | null;
     /**
-     * Default Response
+     * Maximum retry attempts
      */
-    200: {
-        /**
-         * Human-readable status message
-         */
-        message: string;
-    };
-};
-export type PutApiAdminClientsByIdApplicationsResponse = PutApiAdminClientsByIdApplicationsResponses[keyof PutApiAdminClientsByIdApplicationsResponses];
-export type PostApiAdminClientsByIdApplicationsByAppIdEnableData = {
-    body?: never;
-    path: {
-        id: string;
-        appId: string;
-    };
-    query?: never;
-    url: '/api/admin/clients/{id}/applications/{appId}/enable';
-};
-export type PostApiAdminClientsByIdApplicationsByAppIdEnableErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminClientsByIdApplicationsByAppIdEnableError = PostApiAdminClientsByIdApplicationsByAppIdEnableErrors[keyof PostApiAdminClientsByIdApplicationsByAppIdEnableErrors];
-export type PostApiAdminClientsByIdApplicationsByAppIdEnableResponses = {
+    maxRetries?: number | null;
     /**
-     * Default Response
+     * Message group for FIFO ordering
      */
-    200: {
-        /**
-         * Human-readable status message
-         */
-        message: string;
-    };
-};
-export type PostApiAdminClientsByIdApplicationsByAppIdEnableResponse = PostApiAdminClientsByIdApplicationsByAppIdEnableResponses[keyof PostApiAdminClientsByIdApplicationsByAppIdEnableResponses];
-export type PostApiAdminClientsByIdApplicationsByAppIdDisableData = {
-    body?: never;
-    path: {
-        id: string;
-        appId: string;
-    };
-    query?: never;
-    url: '/api/admin/clients/{id}/applications/{appId}/disable';
-};
-export type PostApiAdminClientsByIdApplicationsByAppIdDisableErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminClientsByIdApplicationsByAppIdDisableError = PostApiAdminClientsByIdApplicationsByAppIdDisableErrors[keyof PostApiAdminClientsByIdApplicationsByAppIdDisableErrors];
-export type PostApiAdminClientsByIdApplicationsByAppIdDisableResponses = {
+    messageGroup?: string | null;
     /**
-     * Default Response
+     * Custom metadata
      */
-    200: {
-        /**
-         * Human-readable status message
-         */
-        message: string;
+    metadata?: {
+        [key: string]: string;
     };
-};
-export type PostApiAdminClientsByIdApplicationsByAppIdDisableResponse = PostApiAdminClientsByIdApplicationsByAppIdDisableResponses[keyof PostApiAdminClientsByIdApplicationsByAppIdDisableResponses];
-export type GetApiAdminAnchorDomainsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/admin/anchor-domains';
-};
-export type GetApiAdminAnchorDomainsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        anchorDomains: Array<{
-            id: string;
-            domain: string;
-            createdAt: string;
-        }>;
-        total: number;
-    };
-};
-export type GetApiAdminAnchorDomainsResponse = GetApiAdminAnchorDomainsResponses[keyof GetApiAdminAnchorDomainsResponses];
-export type PostApiAdminAnchorDomainsData = {
-    body: {
-        domain: string;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/admin/anchor-domains';
-};
-export type PostApiAdminAnchorDomainsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminAnchorDomainsError = PostApiAdminAnchorDomainsErrors[keyof PostApiAdminAnchorDomainsErrors];
-export type PostApiAdminAnchorDomainsResponses = {
+     * Dispatch mode for ordering
+     */
+    mode?: string | null;
     /**
-     * Default Response
+     * Payload to deliver (JSON string)
      */
-    201: {
-        id: string;
-        domain: string;
-        createdAt: string;
-    };
-};
-export type PostApiAdminAnchorDomainsResponse = PostApiAdminAnchorDomainsResponses[keyof PostApiAdminAnchorDomainsResponses];
-export type DeleteApiAdminAnchorDomainsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/anchor-domains/{id}';
-};
-export type DeleteApiAdminAnchorDomainsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type DeleteApiAdminAnchorDomainsByIdError = DeleteApiAdminAnchorDomainsByIdErrors[keyof DeleteApiAdminAnchorDomainsByIdErrors];
-export type DeleteApiAdminAnchorDomainsByIdResponses = {
+    payload: string;
     /**
-     * Default Response
+     * Content type of payload
      */
-    204: void;
-};
-export type DeleteApiAdminAnchorDomainsByIdResponse = DeleteApiAdminAnchorDomainsByIdResponses[keyof DeleteApiAdminAnchorDomainsByIdResponses];
-export type GetApiAdminAnchorDomainsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/anchor-domains/{id}';
-};
-export type GetApiAdminAnchorDomainsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminAnchorDomainsByIdError = GetApiAdminAnchorDomainsByIdErrors[keyof GetApiAdminAnchorDomainsByIdErrors];
-export type GetApiAdminAnchorDomainsByIdResponses = {
+    payloadContentType?: string | null;
     /**
-     * Default Response
+     * Retry strategy
      */
-    200: {
-        id: string;
-        domain: string;
-        createdAt: string;
-    };
+    retryStrategy?: string | null;
+    /**
+     * Sequence number within message group
+     */
+    sequence?: number | null;
+    /**
+     * Service account for authentication
+     */
+    serviceAccountId: string;
+    /**
+     * Source system/application
+     */
+    source?: string | null;
+    /**
+     * CloudEvents-style subject/aggregate reference
+     */
+    subject?: string | null;
+    /**
+     * Subscription ID that created this job
+     */
+    subscriptionId?: string | null;
+    /**
+     * Target URL for webhook delivery
+     */
+    targetUrl: string;
+    /**
+     * Timeout in seconds for HTTP call
+     */
+    timeoutSeconds?: number | null;
 };
-export type GetApiAdminAnchorDomainsByIdResponse = GetApiAdminAnchorDomainsByIdResponses[keyof GetApiAdminAnchorDomainsByIdResponses];
-export type PutApiAdminAnchorDomainsByIdData = {
-    body: {
-        domain: string;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/anchor-domains/{id}';
-};
-export type PutApiAdminAnchorDomainsByIdErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Create event request
+ */
+export type CreateEventRequest = {
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Causation ID - the event that caused this event
+     */
+    causationId?: string | null;
+    /**
+     * Client ID (optional, defaults to caller's client)
+     */
+    clientId?: string | null;
+    /**
+     * Context data for filtering/searching
+     */
+    contextData?: Array<ContextDataDto>;
+    /**
+     * Correlation ID for request tracing
+     */
+    correlationId?: string | null;
+    /**
+     * Event payload data
+     */
+    data: unknown;
+    /**
+     * Deduplication ID for exactly-once delivery
+     */
+    deduplicationId?: string | null;
+    /**
+     * Event type code (e.g., "orders:fulfillment:shipment:shipped")
+     */
+    eventType: string;
+    /**
+     * Message group for FIFO ordering
+     */
+    messageGroup?: string | null;
+    /**
+     * Event source URI
+     */
+    source: string;
+    /**
+     * Event subject (optional context)
+     */
+    subject?: string | null;
 };
-export type PutApiAdminAnchorDomainsByIdError = PutApiAdminAnchorDomainsByIdErrors[keyof PutApiAdminAnchorDomainsByIdErrors];
-export type PutApiAdminAnchorDomainsByIdResponses = {
+/**
+ * Create event response - includes deduplication info and dispatch job count
+ */
+export type CreateEventResponse = {
     /**
-     * Default Response
+     * Number of dispatch jobs created for matching subscriptions
      */
-    200: {
-        id: string;
-        domain: string;
-        createdAt: string;
-    };
+    dispatchJobCount: number;
+    event: EventResponse;
+    /**
+     * True if this was a deduplicated request (event already existed)
+     */
+    isDuplicate: boolean;
 };
-export type PutApiAdminAnchorDomainsByIdResponse = PutApiAdminAnchorDomainsByIdResponses[keyof PutApiAdminAnchorDomainsByIdResponses];
-export type GetApiAdminApplicationsData = {
-    body?: never;
-    path?: never;
-    query?: {
-        page?: string;
-        pageSize?: string;
-        type?: string;
-        activeOnly?: string;
-    };
-    url: '/api/admin/applications';
-};
-export type GetApiAdminApplicationsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        applications: Array<{
-            id: string;
-            type: string;
-            code: string;
-            name: string;
-            description: string | null;
-            iconUrl: string | null;
-            website: string | null;
-            logo: string | null;
-            logoMimeType: string | null;
-            defaultBaseUrl: string | null;
-            serviceAccountId: string | null;
-            active: boolean;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-        page: number;
-        pageSize: number;
-    };
+/**
+ * Create event type request
+ */
+export type CreateEventTypeRequest = {
+    /**
+     * Client ID (optional, null = anchor-level)
+     */
+    clientId?: string | null;
+    /**
+     * Event type code (e.g., "orders:fulfillment:shipment:shipped")
+     * Format: {application}:{subdomain}:{aggregate}:{event}
+     */
+    code: string;
+    /**
+     * Description
+     */
+    description?: string | null;
+    /**
+     * Human-readable name
+     */
+    name: string;
+    /**
+     * Initial JSON schema
+     */
+    schema?: unknown;
 };
-export type GetApiAdminApplicationsResponse = GetApiAdminApplicationsResponses[keyof GetApiAdminApplicationsResponses];
-export type PostApiAdminApplicationsData = {
-    body: {
-        code: string;
-        name: string;
-        type?: 'APPLICATION' | 'INTEGRATION';
-        description?: string | null;
-        iconUrl?: string | null;
-        website?: string | null;
-        logo?: string | null;
-        logoMimeType?: string | null;
-        defaultBaseUrl?: string | null;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/admin/applications';
-};
-export type PostApiAdminApplicationsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Create OAuth client request
+ */
+export type CreateOAuthClientRequest = {
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Application IDs this client can access
+     */
+    applicationIds?: Array<string>;
+    /**
+     * OAuth client_id (public identifier)
+     */
+    clientId: string;
+    /**
+     * Human-readable name
+     */
+    clientName: string;
+    /**
+     * Client type (PUBLIC or CONFIDENTIAL)
+     */
+    clientType?: string | null;
+    /**
+     * Allowed grant types
+     */
+    grantTypes?: Array<string>;
+    /**
+     * Whether PKCE is required
+     */
+    pkceRequired?: boolean | null;
+    /**
+     * Allowed redirect URIs
+     */
+    redirectUris?: Array<string>;
 };
-export type PostApiAdminApplicationsError = PostApiAdminApplicationsErrors[keyof PostApiAdminApplicationsErrors];
-export type PostApiAdminApplicationsResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        type: string;
-        code: string;
-        name: string;
-        description: string | null;
-        iconUrl: string | null;
-        website: string | null;
-        logo: string | null;
-        logoMimeType: string | null;
-        defaultBaseUrl: string | null;
-        serviceAccountId: string | null;
-        active: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Create role request
+ */
+export type CreateRoleRequest = {
+    /**
+     * Application code this role belongs to
+     */
+    applicationCode: string;
+    /**
+     * Whether clients can manage this role
+     */
+    clientManaged?: boolean;
+    /**
+     * Description
+     */
+    description?: string | null;
+    /**
+     * Display name
+     */
+    displayName: string;
+    /**
+     * Initial permissions
+     */
+    permissions?: Array<string>;
+    /**
+     * Role name (will be combined with app code to form code)
+     */
+    roleName: string;
 };
-export type PostApiAdminApplicationsResponse = PostApiAdminApplicationsResponses[keyof PostApiAdminApplicationsResponses];
-export type DeleteApiAdminApplicationsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/applications/{id}';
-};
-export type DeleteApiAdminApplicationsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Create subscription request
+ */
+export type CreateSubscriptionRequest = {
+    /**
+     * Client ID (optional, null = anchor-level)
+     */
+    clientId?: string | null;
+    /**
+     * Unique code
+     */
+    code: string;
+    /**
+     * Connection ID (references msg_connections, optional)
+     */
+    connectionId?: string | null;
+    /**
+     * Send raw event data only
+     */
+    dataOnly?: boolean;
+    /**
+     * Description
+     */
+    description?: string | null;
+    /**
+     * Dispatch pool ID for rate limiting
+     */
+    dispatchPoolId?: string | null;
+    /**
+     * Webhook endpoint URL
+     */
+    endpoint: string;
+    /**
+     * Event types to listen to
+     */
+    eventTypes?: Array<EventTypeBindingRequest>;
+    /**
+     * Maximum retry attempts
+     */
+    maxRetries?: number | null;
+    /**
+     * Dispatch mode
+     */
+    mode?: string | null;
+    /**
+     * Human-readable name
+     */
+    name: string;
+    /**
+     * Service account ID for authentication
+     */
+    serviceAccountId?: string | null;
+    /**
+     * Timeout in seconds
+     */
+    timeoutSeconds?: number | null;
 };
-export type DeleteApiAdminApplicationsByIdError = DeleteApiAdminApplicationsByIdErrors[keyof DeleteApiAdminApplicationsByIdErrors];
-export type DeleteApiAdminApplicationsByIdResponses = {
+/**
+ * Create user request (matches Java CreateUserRequest)
+ */
+export type CreateUserRequest = {
+    /**
+     * Client ID (for client-bound users)
+     */
+    clientId?: string | null;
+    /**
+     * Email address
+     */
+    email: string;
+    /**
+     * Display name
+     */
+    name: string;
     /**
-     * Default Response
+     * Password (optional - only for internal auth users)
      */
-    204: void;
+    password?: string | null;
 };
-export type DeleteApiAdminApplicationsByIdResponse = DeleteApiAdminApplicationsByIdResponses[keyof DeleteApiAdminApplicationsByIdResponses];
-export type GetApiAdminApplicationsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/applications/{id}';
-};
-export type GetApiAdminApplicationsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Created response with ID
+ */
+export type CreatedResponse = {
+    id: string;
 };
-export type GetApiAdminApplicationsByIdError = GetApiAdminApplicationsByIdErrors[keyof GetApiAdminApplicationsByIdErrors];
-export type GetApiAdminApplicationsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        type: string;
-        code: string;
-        name: string;
-        description: string | null;
-        iconUrl: string | null;
-        website: string | null;
-        logo: string | null;
-        logoMimeType: string | null;
-        defaultBaseUrl: string | null;
-        serviceAccountId: string | null;
-        active: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Current user info response
+ */
+export type CurrentUserResponse = {
+    /**
+     * Client ID (for CLIENT scope users)
+     */
+    clientId?: string | null;
+    /**
+     * Accessible client IDs
+     */
+    clients: Array<string>;
+    /**
+     * Email address
+     */
+    email?: string | null;
+    /**
+     * Principal ID
+     */
+    id: string;
+    /**
+     * Display name
+     */
+    name: string;
+    /**
+     * Principal type (USER, SERVICE)
+     */
+    principalType: string;
+    /**
+     * Assigned roles
+     */
+    roles: Array<string>;
+    /**
+     * User scope (ANCHOR, PARTNER, CLIENT)
+     */
+    scope: string;
 };
-export type GetApiAdminApplicationsByIdResponse = GetApiAdminApplicationsByIdResponses[keyof GetApiAdminApplicationsByIdResponses];
-export type PutApiAdminApplicationsByIdData = {
-    body: {
-        name: string;
-        description?: string | null;
-        iconUrl?: string | null;
-        website?: string | null;
-        logo?: string | null;
-        logoMimeType?: string | null;
-        defaultBaseUrl?: string | null;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/applications/{id}';
-};
-export type PutApiAdminApplicationsByIdErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Dashboard metrics response
+ */
+export type DashboardMetrics = {
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Active dispatch pools
+     */
+    activePools: number;
+    /**
+     * Active subscriptions
+     */
+    activeSubscriptions: number;
+    /**
+     * Events in last hour
+     */
+    eventsLastHour: number;
+    /**
+     * System health
+     */
+    health: SystemHealth;
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
+     * Jobs by status
+     */
+    jobsByStatus: {
+        [key: string]: number;
     };
+    /**
+     * Total events received
+     */
+    totalEvents: number;
+    /**
+     * Total dispatch jobs
+     */
+    totalJobs: number;
 };
-export type PutApiAdminApplicationsByIdError = PutApiAdminApplicationsByIdErrors[keyof PutApiAdminApplicationsByIdErrors];
-export type PutApiAdminApplicationsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        type: string;
-        code: string;
-        name: string;
-        description: string | null;
-        iconUrl: string | null;
-        website: string | null;
-        logo: string | null;
-        logoMimeType: string | null;
-        defaultBaseUrl: string | null;
-        serviceAccountId: string | null;
-        active: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Dispatch attempt response DTO
+ */
+export type DispatchAttemptResponse = {
+    attemptNumber: number;
+    attemptedAt: string;
+    completedAt?: string | null;
+    durationMillis?: number | null;
+    errorMessage?: string | null;
+    errorType?: string | null;
+    responseBody?: string | null;
+    responseCode?: number | null;
+    success: boolean;
 };
-export type PutApiAdminApplicationsByIdResponse = PutApiAdminApplicationsByIdResponses[keyof PutApiAdminApplicationsByIdResponses];
-export type GetApiAdminApplicationsByCodeByCodeData = {
-    body?: never;
-    path: {
-        code: string;
-    };
-    query?: never;
-    url: '/api/admin/applications/by-code/{code}';
-};
-export type GetApiAdminApplicationsByCodeByCodeErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Filter options for dispatch jobs dropdowns
+ */
+export type DispatchJobFilterOptionsResponse = {
+    eventTypeCodes: Array<string>;
+    modes: Array<string>;
+    statuses: Array<string>;
+    subscriptionIds: Array<string>;
 };
-export type GetApiAdminApplicationsByCodeByCodeError = GetApiAdminApplicationsByCodeByCodeErrors[keyof GetApiAdminApplicationsByCodeByCodeErrors];
-export type GetApiAdminApplicationsByCodeByCodeResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        type: string;
-        code: string;
-        name: string;
-        description: string | null;
-        iconUrl: string | null;
-        website: string | null;
-        logo: string | null;
-        logoMimeType: string | null;
-        defaultBaseUrl: string | null;
-        serviceAccountId: string | null;
-        active: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Dispatch job response DTO (matches Java DispatchJobReadResponse)
+ */
+export type DispatchJobResponse = {
+    attemptCount: number;
+    clientId?: string | null;
+    code: string;
+    completedAt?: string | null;
+    correlationId?: string | null;
+    createdAt: string;
+    dispatchPoolId?: string | null;
+    durationMillis?: number | null;
+    eventId?: string | null;
+    expiresAt?: string | null;
+    externalId?: string | null;
+    id: string;
+    idempotencyKey?: string | null;
+    isCompleted: boolean;
+    isTerminal: boolean;
+    kind: string;
+    lastAttemptAt?: string | null;
+    lastError?: string | null;
+    maxRetries: number;
+    messageGroup?: string | null;
+    mode: string;
+    protocol: string;
+    retryStrategy: string;
+    scheduledFor?: string | null;
+    sequence: number;
+    serviceAccountId?: string | null;
+    source?: string | null;
+    status: string;
+    subject?: string | null;
+    subscriptionId?: string | null;
+    targetUrl: string;
+    timeoutSeconds: number;
+    updatedAt: string;
 };
-export type GetApiAdminApplicationsByCodeByCodeResponse = GetApiAdminApplicationsByCodeByCodeResponses[keyof GetApiAdminApplicationsByCodeByCodeResponses];
-export type PostApiAdminApplicationsByIdActivateData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/applications/{id}/activate';
-};
-export type PostApiAdminApplicationsByIdActivateErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Dispatch jobs filter options response
+ */
+export type DispatchJobsFilterOptions = {
+    clients: Array<FilterOption>;
+    eventTypes: Array<FilterOption>;
+    statuses: Array<FilterOption>;
+    subscriptions: Array<FilterOption>;
 };
-export type PostApiAdminApplicationsByIdActivateError = PostApiAdminApplicationsByIdActivateErrors[keyof PostApiAdminApplicationsByIdActivateErrors];
-export type PostApiAdminApplicationsByIdActivateResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        type: string;
-        code: string;
-        name: string;
-        description: string | null;
-        iconUrl: string | null;
-        website: string | null;
-        logo: string | null;
-        logoMimeType: string | null;
-        defaultBaseUrl: string | null;
-        serviceAccountId: string | null;
-        active: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Dispatch pool filter options response
+ */
+export type DispatchPoolFilterOptions = {
+    dispatchPools: Array<FilterOption>;
 };
-export type PostApiAdminApplicationsByIdActivateResponse = PostApiAdminApplicationsByIdActivateResponses[keyof PostApiAdminApplicationsByIdActivateResponses];
-export type PostApiAdminApplicationsByIdDeactivateData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/applications/{id}/deactivate';
-};
-export type PostApiAdminApplicationsByIdDeactivateErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Domain check response
+ */
+export type DomainCheckResponse = {
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminApplicationsByIdDeactivateError = PostApiAdminApplicationsByIdDeactivateErrors[keyof PostApiAdminApplicationsByIdDeactivateErrors];
-export type PostApiAdminApplicationsByIdDeactivateResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        type: string;
-        code: string;
-        name: string;
-        description: string | null;
-        iconUrl: string | null;
-        website: string | null;
-        logo: string | null;
-        logoMimeType: string | null;
-        defaultBaseUrl: string | null;
-        serviceAccountId: string | null;
-        active: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PostApiAdminApplicationsByIdDeactivateResponse = PostApiAdminApplicationsByIdDeactivateResponses[keyof PostApiAdminApplicationsByIdDeactivateResponses];
-export type GetApiAdminApplicationsByIdClientsData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/applications/{id}/clients';
-};
-export type GetApiAdminApplicationsByIdClientsErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminApplicationsByIdClientsError = GetApiAdminApplicationsByIdClientsErrors[keyof GetApiAdminApplicationsByIdClientsErrors];
-export type GetApiAdminApplicationsByIdClientsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        configs: Array<{
-            id: string;
-            applicationId: string;
-            clientId: string;
-            enabled: boolean;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-    };
+     * Authentication method for this domain
+     */
+    authMethod: AuthMethod;
+    /**
+     * Authorization URL if external IDP
+     */
+    authorizationUrl?: string | null;
+    /**
+     * The email domain
+     */
+    domain: string;
+    /**
+     * Provider ID if external IDP is required
+     */
+    providerId?: string | null;
 };
-export type GetApiAdminApplicationsByIdClientsResponse = GetApiAdminApplicationsByIdClientsResponses[keyof GetApiAdminApplicationsByIdClientsResponses];
-export type PostApiAdminApplicationsByIdClientsData = {
-    body: {
-        clientId: string;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/applications/{id}/clients';
-};
-export type PostApiAdminApplicationsByIdClientsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Enhanced metrics for a processing pool
+ */
+export type EnhancedPoolMetrics = {
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Metrics for the last 30 minutes
+     */
+    last30Min: WindowedMetrics;
+    /**
+     * Metrics for the last 5 minutes
+     */
+    last5Min: WindowedMetrics;
+    /**
+     * Processing time metrics (all time)
+     */
+    processingTime: ProcessingTimeMetrics;
+    /**
+     * Success rate (0.0 - 1.0)
+     */
+    successRate: number;
+    /**
+     * Total messages failed (all time)
+     */
+    totalFailure: number;
+    /**
+     * Total messages rate limited (all time)
+     */
+    totalRateLimited: number;
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminApplicationsByIdClientsError = PostApiAdminApplicationsByIdClientsErrors[keyof PostApiAdminApplicationsByIdClientsErrors];
-export type PostApiAdminApplicationsByIdClientsResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        applicationId: string;
-        clientId: string;
-        enabled: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+     * Total messages processed successfully (all time)
+     */
+    totalSuccess: number;
 };
-export type PostApiAdminApplicationsByIdClientsResponse = PostApiAdminApplicationsByIdClientsResponses[keyof PostApiAdminApplicationsByIdClientsResponses];
-export type DeleteApiAdminApplicationsByIdClientsByClientIdData = {
-    body?: never;
-    path: {
-        id: string;
-        clientId: string;
-    };
-    query?: never;
-    url: '/api/admin/applications/{id}/clients/{clientId}';
-};
-export type DeleteApiAdminApplicationsByIdClientsByClientIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Entity audit logs response
+ */
+export type EntityAuditLogsResponse = {
+    auditLogs: Array<AuditLogResponse>;
+    entityId: string;
+    entityType: string;
+    total: number;
 };
-export type DeleteApiAdminApplicationsByIdClientsByClientIdError = DeleteApiAdminApplicationsByIdClientsByClientIdErrors[keyof DeleteApiAdminApplicationsByIdClientsByClientIdErrors];
-export type DeleteApiAdminApplicationsByIdClientsByClientIdResponses = {
-    /**
-     * Default Response
-     */
-    204: void;
+/**
+ * Entity types response
+ */
+export type EntityTypesResponse = {
+    entityTypes: Array<string>;
 };
-export type DeleteApiAdminApplicationsByIdClientsByClientIdResponse = DeleteApiAdminApplicationsByIdClientsByClientIdResponses[keyof DeleteApiAdminApplicationsByIdClientsByClientIdResponses];
-export type GetApiAdminApplicationsByIdRolesData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/applications/{id}/roles';
-};
-export type GetApiAdminApplicationsByIdRolesErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Event response DTO
+ */
+export type EventResponse = {
+    causationId?: string | null;
+    clientId?: string | null;
+    contextData?: Array<ContextDataDto>;
+    correlationId?: string | null;
+    createdAt: string;
+    data: unknown;
+    deduplicationId?: string | null;
+    eventType: string;
+    id: string;
+    messageGroup?: string | null;
+    source: string;
+    specVersion: string;
+    subject?: string | null;
+    time: string;
 };
-export type GetApiAdminApplicationsByIdRolesError = GetApiAdminApplicationsByIdRolesErrors[keyof GetApiAdminApplicationsByIdRolesErrors];
-export type GetApiAdminApplicationsByIdRolesResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        roles: Array<{
-            id: string;
-            name: string;
-            displayName: string;
-            description: string | null;
-            permissions: Array<string>;
-            clientManaged: boolean;
-        }>;
-    };
+/**
+ * Event summary for list endpoints (no payload data)
+ */
+export type EventSummaryResponse = {
+    clientId?: string | null;
+    correlationId?: string | null;
+    createdAt: string;
+    eventType: string;
+    id: string;
+    messageGroup?: string | null;
+    source: string;
+    specVersion: string;
+    subject?: string | null;
+    time: string;
 };
-export type GetApiAdminApplicationsByIdRolesResponse = GetApiAdminApplicationsByIdRolesResponses[keyof GetApiAdminApplicationsByIdRolesResponses];
-export type PostApiAdminApplicationsByIdProvisionServiceAccountData = {
-    body: {
-        code?: string;
-        name?: string;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/applications/{id}/provision-service-account';
-};
-export type PostApiAdminApplicationsByIdProvisionServiceAccountErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Event type binding request
+ */
+export type EventTypeBindingRequest = {
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Event type code (with optional wildcards)
+     */
+    eventTypeCode: string;
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Optional filter expression
+     */
+    filter?: string | null;
 };
-export type PostApiAdminApplicationsByIdProvisionServiceAccountError = PostApiAdminApplicationsByIdProvisionServiceAccountErrors[keyof PostApiAdminApplicationsByIdProvisionServiceAccountErrors];
-export type PostApiAdminApplicationsByIdProvisionServiceAccountResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        code: string;
-        name: string;
-        applicationId: string | null;
-        active: boolean;
-        createdAt: string;
-    };
+/**
+ * Event type binding response
+ */
+export type EventTypeBindingResponse = {
+    eventTypeCode: string;
+    filter?: string | null;
 };
-export type PostApiAdminApplicationsByIdProvisionServiceAccountResponse = PostApiAdminApplicationsByIdProvisionServiceAccountResponses[keyof PostApiAdminApplicationsByIdProvisionServiceAccountResponses];
-export type GetApiAdminRolesData = {
-    body?: never;
-    path?: never;
-    query?: {
-        page?: string;
-        pageSize?: string;
-        q?: string;
-        source?: string;
-        applicationId?: string;
-    };
-    url: '/api/admin/roles';
-};
-export type GetApiAdminRolesResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        roles: Array<{
-            id: string;
-            applicationId: string | null;
-            applicationCode: string | null;
-            name: string;
-            displayName: string;
-            description: string | null;
-            source: string;
-            permissions: Array<string>;
-            clientManaged: boolean;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-        page: number;
-        pageSize: number;
-    };
+/**
+ * Event type filter options response
+ */
+export type EventTypeFilterOptions = {
+    applications: Array<FilterOption>;
+    eventTypes: Array<FilterOption>;
+    subdomains: Array<FilterOption>;
 };
-export type GetApiAdminRolesResponse = GetApiAdminRolesResponses[keyof GetApiAdminRolesResponses];
-export type PostApiAdminRolesData = {
-    body: {
-        applicationId?: string | null;
-        applicationCode?: string | null;
-        shortName: string;
-        displayName: string;
-        description?: string | null;
-        source?: 'CODE' | 'DATABASE' | 'SDK';
-        permissions?: Array<string>;
-        clientManaged?: boolean;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/admin/roles';
-};
-export type PostApiAdminRolesErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Event type list response (matches Java BffEventTypeListResponse)
+ */
+export type EventTypeListResponse = {
+    items: Array<EventTypeResponse>;
 };
-export type PostApiAdminRolesError = PostApiAdminRolesErrors[keyof PostApiAdminRolesErrors];
-export type PostApiAdminRolesResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        applicationId: string | null;
-        applicationCode: string | null;
-        name: string;
-        displayName: string;
-        description: string | null;
-        source: string;
-        permissions: Array<string>;
-        clientManaged: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Event type response DTO (matches Java BffEventTypeResponse)
+ */
+export type EventTypeResponse = {
+    aggregate: string;
+    application: string;
+    code: string;
+    createdAt: string;
+    description?: string | null;
+    event: string;
+    id: string;
+    name: string;
+    specVersions: Array<SpecVersionResponse>;
+    status: string;
+    subdomain: string;
+    updatedAt: string;
 };
-export type PostApiAdminRolesResponse = PostApiAdminRolesResponses[keyof PostApiAdminRolesResponses];
-export type DeleteApiAdminRolesByNameData = {
-    body?: never;
-    path: {
-        name: string;
-    };
-    query?: never;
-    url: '/api/admin/roles/{name}';
-};
-export type DeleteApiAdminRolesByNameErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Events filter options response (for events list page)
+ */
+export type EventsFilterOptions = {
+    applications: Array<FilterOption>;
+    clients: Array<FilterOption>;
+    eventTypes: Array<FilterOption>;
+    subdomains: Array<FilterOption>;
 };
-export type DeleteApiAdminRolesByNameError = DeleteApiAdminRolesByNameErrors[keyof DeleteApiAdminRolesByNameErrors];
-export type DeleteApiAdminRolesByNameResponses = {
+/**
+ * Filter option item
+ */
+export type FilterOption = {
+    label: string;
+    value: string;
+};
+/**
+ * Grant client access request
+ */
+export type GrantClientAccessRequest = {
     /**
-     * Default Response
+     * Client ID to grant access to
      */
-    204: void;
+    clientId: string;
 };
-export type DeleteApiAdminRolesByNameResponse = DeleteApiAdminRolesByNameResponses[keyof DeleteApiAdminRolesByNameResponses];
-export type GetApiAdminRolesByNameData = {
-    body?: never;
-    path: {
-        name: string;
-    };
-    query?: never;
-    url: '/api/admin/roles/{name}';
-};
-export type GetApiAdminRolesByNameErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Grant permission request
+ */
+export type GrantPermissionRequest = {
+    /**
+     * Permission to grant
+     */
+    permission: string;
 };
-export type GetApiAdminRolesByNameError = GetApiAdminRolesByNameErrors[keyof GetApiAdminRolesByNameErrors];
-export type GetApiAdminRolesByNameResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        applicationId: string | null;
-        applicationCode: string | null;
-        name: string;
-        displayName: string;
-        description: string | null;
-        source: string;
-        permissions: Array<string>;
-        clientManaged: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * In-flight message info
+ */
+export type InFlightMessage = {
+    attempt: number;
+    elapsedMs: number;
+    eventId?: string | null;
+    jobId: string;
+    messageGroup?: string | null;
+    poolId?: string | null;
+    startedAt: string;
+    targetUrl: string;
 };
-export type GetApiAdminRolesByNameResponse = GetApiAdminRolesByNameResponses[keyof GetApiAdminRolesByNameResponses];
-export type PutApiAdminRolesByNameData = {
-    body: {
-        displayName: string;
-        description?: string | null;
-        permissions?: Array<string>;
-        clientManaged?: boolean;
+/**
+ * In-flight messages response
+ */
+export type InFlightMessagesResponse = {
+    byMessageGroup: {
+        [key: string]: number;
     };
-    path: {
-        name: string;
+    byPool: {
+        [key: string]: number;
     };
-    query?: never;
-    url: '/api/admin/roles/{name}';
-};
-export type PutApiAdminRolesByNameErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    messages: Array<InFlightMessage>;
+    totalInFlight: number;
+};
+/**
+ * Login request
+ */
+export type LoginRequest = {
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Email address
+     */
+    email: string;
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Password
+     */
+    password: string;
+    /**
+     * Remember me (extends session duration)
+     */
+    rememberMe?: boolean;
 };
-export type PutApiAdminRolesByNameError = PutApiAdminRolesByNameErrors[keyof PutApiAdminRolesByNameErrors];
-export type PutApiAdminRolesByNameResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        applicationId: string | null;
-        applicationCode: string | null;
-        name: string;
-        displayName: string;
-        description: string | null;
-        source: string;
-        permissions: Array<string>;
-        clientManaged: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Login response - matches Java LoginResponse record
+ */
+export type LoginResponse = {
+    /**
+     * Client ID (for CLIENT scope users)
+     */
+    clientId?: string | null;
+    /**
+     * Email address
+     */
+    email: string;
+    /**
+     * Display name
+     */
+    name: string;
+    /**
+     * Principal ID
+     */
+    principalId: string;
+    /**
+     * Assigned roles
+     */
+    roles: Array<string>;
 };
-export type PutApiAdminRolesByNameResponse = PutApiAdminRolesByNameResponses[keyof PutApiAdminRolesByNameResponses];
-export type GetApiAdminRolesBySourceBySourceData = {
-    body?: never;
-    path: {
-        source: string;
-    };
-    query?: never;
-    url: '/api/admin/roles/by-source/{source}';
-};
-export type GetApiAdminRolesBySourceBySourceErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * OAuth client response DTO
+ */
+export type OAuthClientResponse = {
+    active: boolean;
+    applicationIds: Array<string>;
+    clientId: string;
+    clientName: string;
+    clientType: string;
+    createdAt: string;
+    createdBy?: string | null;
+    defaultScopes: Array<string>;
+    grantTypes: Array<string>;
+    id: string;
+    pkceRequired: boolean;
+    redirectUris: Array<string>;
+    serviceAccountPrincipalId?: string | null;
+    updatedAt: string;
 };
-export type GetApiAdminRolesBySourceBySourceError = GetApiAdminRolesBySourceBySourceErrors[keyof GetApiAdminRolesBySourceBySourceErrors];
-export type GetApiAdminRolesBySourceBySourceResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        roles: Array<{
-            id: string;
-            applicationId: string | null;
-            applicationCode: string | null;
-            name: string;
-            displayName: string;
-            description: string | null;
-            source: string;
-            permissions: Array<string>;
-            clientManaged: boolean;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-    };
+/**
+ * Operations response
+ */
+export type OperationsResponse = {
+    operations: Array<string>;
 };
-export type GetApiAdminRolesBySourceBySourceResponse = GetApiAdminRolesBySourceBySourceResponses[keyof GetApiAdminRolesBySourceBySourceResponses];
-export type GetApiAdminRolesByApplicationByApplicationIdData = {
-    body?: never;
-    path: {
-        applicationId: string;
-    };
-    query?: never;
-    url: '/api/admin/roles/by-application/{applicationId}';
-};
-export type GetApiAdminRolesByApplicationByApplicationIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        roles: Array<{
-            id: string;
-            applicationId: string | null;
-            applicationCode: string | null;
-            name: string;
-            displayName: string;
-            description: string | null;
-            source: string;
-            permissions: Array<string>;
-            clientManaged: boolean;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-    };
+/**
+ * Paginated dispatch jobs response
+ */
+export type PaginatedDispatchJobsResponse = {
+    items: Array<DispatchJobResponse>;
+    page: number;
+    size: number;
 };
-export type GetApiAdminRolesByApplicationByApplicationIdResponse = GetApiAdminRolesByApplicationByApplicationIdResponses[keyof GetApiAdminRolesByApplicationByApplicationIdResponses];
-export type GetApiAdminRolesPermissionsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/admin/roles/permissions';
-};
-export type GetApiAdminRolesPermissionsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        permissions: Array<{
-            id: string;
-            code: string;
-            subdomain: string;
-            context: string;
-            aggregate: string;
-            action: string;
-            description: string | null;
-        }>;
-    };
+/**
+ * Paginated response (matches TS: { items, page, size })
+ */
+export type PaginatedEventsResponse = {
+    items: Array<EventSummaryResponse>;
+    page: number;
+    size: number;
 };
-export type GetApiAdminRolesPermissionsResponse = GetApiAdminRolesPermissionsResponses[keyof GetApiAdminRolesPermissionsResponses];
-export type GetApiAdminRolesPermissionsByPermissionData = {
-    body?: never;
-    path: {
-        permission: string;
-    };
-    query?: never;
-    url: '/api/admin/roles/permissions/{permission}';
-};
-export type GetApiAdminRolesPermissionsByPermissionErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+export type PaginationParams = {
+    limit?: number;
+    page?: number;
 };
-export type GetApiAdminRolesPermissionsByPermissionError = GetApiAdminRolesPermissionsByPermissionErrors[keyof GetApiAdminRolesPermissionsByPermissionErrors];
-export type GetApiAdminRolesPermissionsByPermissionResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        code: string;
-        subdomain: string;
-        context: string;
-        aggregate: string;
-        action: string;
-        description: string | null;
-    };
+/**
+ * Permission list response
+ */
+export type PermissionListResponse = {
+    permissions: Array<PermissionResponse>;
+    total: number;
 };
-export type GetApiAdminRolesPermissionsByPermissionResponse = GetApiAdminRolesPermissionsByPermissionResponses[keyof GetApiAdminRolesPermissionsByPermissionResponses];
-export type GetApiAdminAuthConfigsData = {
-    body?: never;
-    path?: never;
-    query?: {
-        clientId?: string;
-        configType?: string;
-    };
-    url: '/api/admin/auth-configs';
-};
-export type GetApiAdminAuthConfigsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        configs: Array<{
-            id: string;
-            emailDomain: string;
-            configType: string;
-            primaryClientId: string | null;
-            additionalClientIds: Array<string>;
-            grantedClientIds: Array<string>;
-            authProvider: string;
-            oidcIssuerUrl: string | null;
-            oidcClientId: string | null;
-            oidcMultiTenant: boolean;
-            oidcIssuerPattern: string | null;
-            hasClientSecret: boolean;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-    };
+/**
+ * Permission response
+ */
+export type PermissionResponse = {
+    action: string;
+    aggregate: string;
+    application: string;
+    context: string;
+    description: string;
+    permission: string;
 };
-export type GetApiAdminAuthConfigsResponse = GetApiAdminAuthConfigsResponses[keyof GetApiAdminAuthConfigsResponses];
-export type DeleteApiAdminAuthConfigsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/auth-configs/{id}';
-};
-export type DeleteApiAdminAuthConfigsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+export type PoolStats = {
+    active_workers: number;
+    concurrency: number;
+    is_rate_limited: boolean;
+    message_group_count: number;
+    metrics?: null | EnhancedPoolMetrics;
+    pool_code: string;
+    queue_capacity: number;
+    queue_size: number;
+    rate_limit_per_minute?: number | null;
 };
-export type DeleteApiAdminAuthConfigsByIdError = DeleteApiAdminAuthConfigsByIdErrors[keyof DeleteApiAdminAuthConfigsByIdErrors];
-export type DeleteApiAdminAuthConfigsByIdResponses = {
+/**
+ * Pool statistics response (with enhanced metrics)
+ */
+export type PoolStatsResponse = {
     /**
-     * Default Response
+     * Aggregate success rate across all pools
      */
-    204: void;
-};
-export type DeleteApiAdminAuthConfigsByIdResponse = DeleteApiAdminAuthConfigsByIdResponses[keyof DeleteApiAdminAuthConfigsByIdResponses];
-export type GetApiAdminAuthConfigsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/auth-configs/{id}';
-};
-export type GetApiAdminAuthConfigsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    aggregateSuccessRate: number;
+    /**
+     * Aggregate throughput (messages/sec) across all pools
+     */
+    aggregateThroughputPerSec: number;
+    pools: Array<PoolStats>;
+    totalActiveWorkers: number;
+    totalPools: number;
+    totalQueueSize: number;
 };
-export type GetApiAdminAuthConfigsByIdError = GetApiAdminAuthConfigsByIdErrors[keyof GetApiAdminAuthConfigsByIdErrors];
-export type GetApiAdminAuthConfigsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        emailDomain: string;
-        configType: string;
-        primaryClientId: string | null;
-        additionalClientIds: Array<string>;
-        grantedClientIds: Array<string>;
-        authProvider: string;
-        oidcIssuerUrl: string | null;
-        oidcClientId: string | null;
-        oidcMultiTenant: boolean;
-        oidcIssuerPattern: string | null;
-        hasClientSecret: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Principal list response (matches Java PrincipalListResponse)
+ */
+export type PrincipalListResponse = {
+    principals: Array<PrincipalResponse>;
+    total: number;
 };
-export type GetApiAdminAuthConfigsByIdResponse = GetApiAdminAuthConfigsByIdResponses[keyof GetApiAdminAuthConfigsByIdResponses];
-export type GetApiAdminAuthConfigsByDomainByDomainData = {
-    body?: never;
-    path: {
-        domain: string;
-    };
-    query?: never;
-    url: '/api/admin/auth-configs/by-domain/{domain}';
-};
-export type GetApiAdminAuthConfigsByDomainByDomainErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Principal response DTO (matches Java PrincipalDto)
+ */
+export type PrincipalResponse = {
+    active: boolean;
+    clientId?: string | null;
+    createdAt: string;
+    email?: string | null;
+    /**
+     * Granted client IDs (matches Java's Set<String>)
+     */
+    grantedClientIds: Array<string>;
+    id: string;
+    idpType?: string | null;
+    /**
+     * Whether user is an anchor domain user
+     */
+    isAnchorUser: boolean;
+    name: string;
+    /**
+     * Role names (matches Java's Set<String>)
+     */
+    roles: Array<string>;
+    scope: string;
+    type: string;
+    updatedAt: string;
 };
-export type GetApiAdminAuthConfigsByDomainByDomainError = GetApiAdminAuthConfigsByDomainByDomainErrors[keyof GetApiAdminAuthConfigsByDomainByDomainErrors];
-export type GetApiAdminAuthConfigsByDomainByDomainResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        emailDomain: string;
-        configType: string;
-        primaryClientId: string | null;
-        additionalClientIds: Array<string>;
-        grantedClientIds: Array<string>;
-        authProvider: string;
-        oidcIssuerUrl: string | null;
-        oidcClientId: string | null;
-        oidcMultiTenant: boolean;
-        oidcIssuerPattern: string | null;
-        hasClientSecret: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Processing time metrics with percentiles
+ */
+export type ProcessingTimeMetrics = {
+    /**
+     * Average processing time in milliseconds
+     */
+    avgMs: number;
+    /**
+     * Maximum processing time in milliseconds
+     */
+    maxMs: number;
+    /**
+     * Minimum processing time in milliseconds
+     */
+    minMs: number;
+    /**
+     * 50th percentile (median) in milliseconds
+     */
+    p50Ms: number;
+    /**
+     * 95th percentile in milliseconds
+     */
+    p95Ms: number;
+    /**
+     * 99th percentile in milliseconds
+     */
+    p99Ms: number;
+    /**
+     * Total samples collected
+     */
+    sampleCount: number;
 };
-export type GetApiAdminAuthConfigsByDomainByDomainResponse = GetApiAdminAuthConfigsByDomainByDomainResponses[keyof GetApiAdminAuthConfigsByDomainByDomainResponses];
-export type PostApiAdminAuthConfigsInternalData = {
-    body: {
-        emailDomain: string;
-        configType: 'ANCHOR' | 'PARTNER' | 'CLIENT';
-        primaryClientId?: string | null;
-        additionalClientIds?: Array<string>;
-        grantedClientIds?: Array<string>;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/admin/auth-configs/internal';
-};
-export type PostApiAdminAuthConfigsInternalErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Refresh token request
+ */
+export type RefreshTokenRequest = {
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * The refresh token
+     */
+    refreshToken: string;
 };
-export type PostApiAdminAuthConfigsInternalError = PostApiAdminAuthConfigsInternalErrors[keyof PostApiAdminAuthConfigsInternalErrors];
-export type PostApiAdminAuthConfigsInternalResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        emailDomain: string;
-        configType: string;
-        primaryClientId: string | null;
-        additionalClientIds: Array<string>;
-        grantedClientIds: Array<string>;
-        authProvider: string;
-        oidcIssuerUrl: string | null;
-        oidcClientId: string | null;
-        oidcMultiTenant: boolean;
-        oidcIssuerPattern: string | null;
-        hasClientSecret: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Regenerate secret response
+ */
+export type RegenerateSecretResponse = {
+    /**
+     * The new plaintext client secret (shown once)
+     */
+    clientSecret: string;
 };
-export type PostApiAdminAuthConfigsInternalResponse = PostApiAdminAuthConfigsInternalResponses[keyof PostApiAdminAuthConfigsInternalResponses];
-export type PostApiAdminAuthConfigsOidcData = {
-    body: {
-        emailDomain: string;
-        configType: 'ANCHOR' | 'PARTNER' | 'CLIENT';
-        primaryClientId?: string | null;
-        additionalClientIds?: Array<string>;
-        grantedClientIds?: Array<string>;
-        oidcIssuerUrl: string;
-        oidcClientId: string;
-        oidcClientSecretRef?: string | null;
-        oidcMultiTenant?: boolean;
-        oidcIssuerPattern?: string | null;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/admin/auth-configs/oidc';
-};
-export type PostApiAdminAuthConfigsOidcErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Reset password request
+ */
+export type ResetPasswordRequest = {
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * New password (min 12 characters)
+     */
+    newPassword: string;
 };
-export type PostApiAdminAuthConfigsOidcError = PostApiAdminAuthConfigsOidcErrors[keyof PostApiAdminAuthConfigsOidcErrors];
-export type PostApiAdminAuthConfigsOidcResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        emailDomain: string;
-        configType: string;
-        primaryClientId: string | null;
-        additionalClientIds: Array<string>;
-        grantedClientIds: Array<string>;
-        authProvider: string;
-        oidcIssuerUrl: string | null;
-        oidcClientId: string | null;
-        oidcMultiTenant: boolean;
-        oidcIssuerPattern: string | null;
-        hasClientSecret: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Role assignment DTO (matches Java RoleAssignmentDto for GET /roles)
+ */
+export type RoleAssignmentDto = {
+    assignedAt: string;
+    assignmentSource: string;
+    id: string;
+    roleName: string;
 };
-export type PostApiAdminAuthConfigsOidcResponse = PostApiAdminAuthConfigsOidcResponses[keyof PostApiAdminAuthConfigsOidcResponses];
-export type PutApiAdminAuthConfigsByIdOidcData = {
-    body: {
-        oidcIssuerUrl: string;
-        oidcClientId: string;
-        oidcClientSecretRef?: string | null;
-        oidcMultiTenant?: boolean;
-        oidcIssuerPattern?: string | null;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/auth-configs/{id}/oidc';
-};
-export type PutApiAdminAuthConfigsByIdOidcErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Role list response (matches Java RoleListResponse)
+ */
+export type RoleListResponse = {
+    roles: Array<RoleResponse>;
+    total: number;
+};
+/**
+ * Role response DTO (matches Java BffRoleResponse)
+ */
+export type RoleResponse = {
+    applicationCode: string;
+    clientManaged: boolean;
+    createdAt: string;
+    description?: string | null;
+    displayName: string;
+    id: string;
+    name: string;
+    permissions: Array<string>;
+    shortName: string;
+    source: string;
+    updatedAt: string;
+};
+/**
+ * Roles list response
+ */
+export type RolesListResponse = {
+    roles: Array<RoleAssignmentDto>;
+};
+/**
+ * Set application access request (batch replace)
+ */
+export type SetApplicationAccessRequest = {
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Application IDs to grant access to (replaces existing)
+     */
+    applicationIds: Array<string>;
 };
-export type PutApiAdminAuthConfigsByIdOidcError = PutApiAdminAuthConfigsByIdOidcErrors[keyof PutApiAdminAuthConfigsByIdOidcErrors];
-export type PutApiAdminAuthConfigsByIdOidcResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        emailDomain: string;
-        configType: string;
-        primaryClientId: string | null;
-        additionalClientIds: Array<string>;
-        grantedClientIds: Array<string>;
-        authProvider: string;
-        oidcIssuerUrl: string | null;
-        oidcClientId: string | null;
-        oidcMultiTenant: boolean;
-        oidcIssuerPattern: string | null;
-        hasClientSecret: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Set application access result response
+ */
+export type SetApplicationAccessResponse = {
+    added: number;
+    applications: Array<ApplicationAccessResponse>;
+    removed: number;
 };
-export type PutApiAdminAuthConfigsByIdOidcResponse = PutApiAdminAuthConfigsByIdOidcResponses[keyof PutApiAdminAuthConfigsByIdOidcResponses];
-export type PutApiAdminAuthConfigsByIdConfigTypeData = {
-    body: {
-        configType: 'ANCHOR' | 'PARTNER' | 'CLIENT';
-        primaryClientId?: string | null;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/auth-configs/{id}/config-type';
-};
-export type PutApiAdminAuthConfigsByIdConfigTypeErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Schema version response (matches Java BffSpecVersionResponse)
+ */
+export type SpecVersionResponse = {
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Schema content (included for detail views)
+     */
+    schema?: unknown;
+    status: string;
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Version string (converted from u32 to "X.0" format for frontend compatibility)
+     */
+    version: string;
 };
-export type PutApiAdminAuthConfigsByIdConfigTypeError = PutApiAdminAuthConfigsByIdConfigTypeErrors[keyof PutApiAdminAuthConfigsByIdConfigTypeErrors];
-export type PutApiAdminAuthConfigsByIdConfigTypeResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        emailDomain: string;
-        configType: string;
-        primaryClientId: string | null;
-        additionalClientIds: Array<string>;
-        grantedClientIds: Array<string>;
-        authProvider: string;
-        oidcIssuerUrl: string | null;
-        oidcClientId: string | null;
-        oidcMultiTenant: boolean;
-        oidcIssuerPattern: string | null;
-        hasClientSecret: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Standby status response
+ */
+export type StandbyStatus = {
+    /**
+     * Cluster members
+     */
+    clusterMembers: Array<ClusterMember>;
+    /**
+     * Instance ID
+     */
+    instanceId: string;
+    /**
+     * Whether this instance is the leader
+     */
+    isLeader: boolean;
+    /**
+     * Last heartbeat time
+     */
+    lastHeartbeat?: string | null;
+    /**
+     * Leader instance ID (if known)
+     */
+    leaderId?: string | null;
+    /**
+     * Current role (LEADER or STANDBY)
+     */
+    role: string;
 };
-export type PutApiAdminAuthConfigsByIdConfigTypeResponse = PutApiAdminAuthConfigsByIdConfigTypeResponses[keyof PutApiAdminAuthConfigsByIdConfigTypeResponses];
-export type PutApiAdminAuthConfigsByIdAdditionalClientsData = {
-    body: {
-        clientIds: Array<string>;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/auth-configs/{id}/additional-clients';
-};
-export type PutApiAdminAuthConfigsByIdAdditionalClientsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Status change request (for suspend/deactivate)
+ */
+export type StatusChangeRequest = {
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Reason for the status change
+     */
+    reason: string;
 };
-export type PutApiAdminAuthConfigsByIdAdditionalClientsError = PutApiAdminAuthConfigsByIdAdditionalClientsErrors[keyof PutApiAdminAuthConfigsByIdAdditionalClientsErrors];
-export type PutApiAdminAuthConfigsByIdAdditionalClientsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        emailDomain: string;
-        configType: string;
-        primaryClientId: string | null;
-        additionalClientIds: Array<string>;
-        grantedClientIds: Array<string>;
-        authProvider: string;
-        oidcIssuerUrl: string | null;
-        oidcClientId: string | null;
-        oidcMultiTenant: boolean;
-        oidcIssuerPattern: string | null;
-        hasClientSecret: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Status change response
+ */
+export type StatusChangeResponse = {
+    message: string;
 };
-export type PutApiAdminAuthConfigsByIdAdditionalClientsResponse = PutApiAdminAuthConfigsByIdAdditionalClientsResponses[keyof PutApiAdminAuthConfigsByIdAdditionalClientsResponses];
-export type PutApiAdminAuthConfigsByIdGrantedClientsData = {
-    body: {
-        clientIds: Array<string>;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/auth-configs/{id}/granted-clients';
-};
-export type PutApiAdminAuthConfigsByIdGrantedClientsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Subdomains list response
+ */
+export type SubdomainsResponse = {
+    subdomains: Array<FilterOption>;
 };
-export type PutApiAdminAuthConfigsByIdGrantedClientsError = PutApiAdminAuthConfigsByIdGrantedClientsErrors[keyof PutApiAdminAuthConfigsByIdGrantedClientsErrors];
-export type PutApiAdminAuthConfigsByIdGrantedClientsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        emailDomain: string;
-        configType: string;
-        primaryClientId: string | null;
-        additionalClientIds: Array<string>;
-        grantedClientIds: Array<string>;
-        authProvider: string;
-        oidcIssuerUrl: string | null;
-        oidcClientId: string | null;
-        oidcMultiTenant: boolean;
-        oidcIssuerPattern: string | null;
-        hasClientSecret: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Subscription filter options response
+ */
+export type SubscriptionFilterOptions = {
+    subscriptions: Array<FilterOption>;
 };
-export type PutApiAdminAuthConfigsByIdGrantedClientsResponse = PutApiAdminAuthConfigsByIdGrantedClientsResponses[keyof PutApiAdminAuthConfigsByIdGrantedClientsResponses];
-export type GetApiAdminOauthClientsData = {
-    body?: never;
-    path?: never;
-    query?: {
-        active?: string;
-    };
-    url: '/api/admin/oauth-clients';
-};
-export type GetApiAdminOauthClientsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        clients: Array<{
-            id: string;
-            clientId: string;
-            clientName: string;
-            clientType: string;
-            hasClientSecret: boolean;
-            redirectUris: Array<string>;
-            allowedOrigins: Array<string>;
-            grantTypes: Array<string>;
-            defaultScopes: Array<string>;
-            pkceRequired: boolean;
-            applicationIds: Array<string>;
-            applications: Array<{
-                id: string;
-                name: string;
-            }>;
-            serviceAccountPrincipalId: string | null;
-            active: boolean;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-    };
+/**
+ * Subscription list response (matches Java SubscriptionListResponse)
+ */
+export type SubscriptionListResponse = {
+    subscriptions: Array<SubscriptionResponse>;
+    total: number;
 };
-export type GetApiAdminOauthClientsResponse = GetApiAdminOauthClientsResponses[keyof GetApiAdminOauthClientsResponses];
-export type PostApiAdminOauthClientsData = {
-    body: {
-        clientName: string;
-        clientType: 'PUBLIC' | 'CONFIDENTIAL';
-        clientSecretRef?: string | null;
-        redirectUris?: Array<string>;
-        allowedOrigins?: Array<string>;
-        grantTypes?: Array<'authorization_code' | 'client_credentials' | 'refresh_token' | 'password'>;
-        defaultScopes?: Array<string> | string | null;
-        pkceRequired?: boolean;
-        applicationIds?: Array<string>;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/admin/oauth-clients';
-};
-export type PostApiAdminOauthClientsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Subscription response DTO (matches Java SubscriptionDto)
+ */
+export type SubscriptionResponse = {
+    applicationCode?: string | null;
+    clientId?: string | null;
+    clientIdentifier?: string | null;
+    clientScoped: boolean;
+    code: string;
+    connectionId?: string | null;
+    createdAt: string;
+    customConfig: Array<ConfigEntryResponse>;
+    dataOnly: boolean;
+    delaySeconds: number;
+    description?: string | null;
+    dispatchPoolCode?: string | null;
+    dispatchPoolId?: string | null;
+    endpoint: string;
+    eventTypes: Array<EventTypeBindingResponse>;
+    id: string;
+    maxAgeSeconds: number;
+    maxRetries: number;
+    mode: string;
+    name: string;
+    queue?: string | null;
+    sequence: number;
+    serviceAccountId?: string | null;
+    source?: string | null;
+    status: string;
+    timeoutSeconds: number;
+    updatedAt: string;
 };
-export type PostApiAdminOauthClientsError = PostApiAdminOauthClientsErrors[keyof PostApiAdminOauthClientsErrors];
-export type PostApiAdminOauthClientsResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        clientId: string;
-        clientName: string;
-        clientType: string;
-        hasClientSecret: boolean;
-        redirectUris: Array<string>;
-        allowedOrigins: Array<string>;
-        grantTypes: Array<string>;
-        defaultScopes: Array<string>;
-        pkceRequired: boolean;
-        applicationIds: Array<string>;
-        applications: Array<{
-            id: string;
-            name: string;
-        }>;
-        serviceAccountPrincipalId: string | null;
-        active: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Success response with optional message
+ */
+export type SuccessResponse = {
+    message?: string | null;
+    success: boolean;
 };
-export type PostApiAdminOauthClientsResponse = PostApiAdminOauthClientsResponses[keyof PostApiAdminOauthClientsResponses];
-export type DeleteApiAdminOauthClientsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/oauth-clients/{id}';
-};
-export type DeleteApiAdminOauthClientsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * A single event type input for sync
+ */
+export type SyncEventTypeInputRequest = {
+    /**
+     * Full code (application:subdomain:aggregate:event)
+     */
+    code: string;
+    description?: string | null;
+    name: string;
 };
-export type DeleteApiAdminOauthClientsByIdError = DeleteApiAdminOauthClientsByIdErrors[keyof DeleteApiAdminOauthClientsByIdErrors];
-export type DeleteApiAdminOauthClientsByIdResponses = {
+/**
+ * Sync event types request (admin)
+ */
+export type SyncEventTypesRequest = {
+    /**
+     * Application code
+     */
+    applicationCode: string;
     /**
-     * Default Response
+     * Event types to sync
      */
-    204: void;
+    eventTypes: Array<SyncEventTypeInputRequest>;
 };
-export type DeleteApiAdminOauthClientsByIdResponse = DeleteApiAdminOauthClientsByIdResponses[keyof DeleteApiAdminOauthClientsByIdResponses];
-export type GetApiAdminOauthClientsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/oauth-clients/{id}';
-};
-export type GetApiAdminOauthClientsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Sync result response
+ */
+export type SyncResultResponse = {
+    created: number;
+    deleted: number;
+    updated: number;
 };
-export type GetApiAdminOauthClientsByIdError = GetApiAdminOauthClientsByIdErrors[keyof GetApiAdminOauthClientsByIdErrors];
-export type GetApiAdminOauthClientsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        clientId: string;
-        clientName: string;
-        clientType: string;
-        hasClientSecret: boolean;
-        redirectUris: Array<string>;
-        allowedOrigins: Array<string>;
-        grantTypes: Array<string>;
-        defaultScopes: Array<string>;
-        pkceRequired: boolean;
-        applicationIds: Array<string>;
-        applications: Array<{
-            id: string;
-            name: string;
-        }>;
-        serviceAccountPrincipalId: string | null;
-        active: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Event type binding for sync subscription input
+ */
+export type SyncSubscriptionEventTypeRequest = {
+    eventTypeCode: string;
+    filter?: string | null;
 };
-export type GetApiAdminOauthClientsByIdResponse = GetApiAdminOauthClientsByIdResponses[keyof GetApiAdminOauthClientsByIdResponses];
-export type PutApiAdminOauthClientsByIdData = {
-    body: {
-        clientName?: string;
-        redirectUris?: Array<string>;
-        allowedOrigins?: Array<string>;
-        grantTypes?: Array<'authorization_code' | 'client_credentials' | 'refresh_token' | 'password'>;
-        defaultScopes?: Array<string> | string | null;
-        pkceRequired?: boolean;
-        applicationIds?: Array<string>;
-        active?: boolean;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/oauth-clients/{id}';
-};
-export type PutApiAdminOauthClientsByIdErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * A single subscription input for sync
+ */
+export type SyncSubscriptionInputRequest = {
+    code: string;
+    connectionId?: string | null;
+    dataOnly?: boolean;
+    description?: string | null;
+    dispatchPoolCode?: string | null;
+    eventTypes: Array<SyncSubscriptionEventTypeRequest>;
+    maxRetries?: number | null;
+    mode?: string | null;
+    name: string;
+    target: string;
+    timeoutSeconds?: number | null;
+};
+/**
+ * Sync subscriptions request (admin)
+ */
+export type SyncSubscriptionsRequest = {
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Application code
+     */
+    applicationCode: string;
     /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PutApiAdminOauthClientsByIdError = PutApiAdminOauthClientsByIdErrors[keyof PutApiAdminOauthClientsByIdErrors];
-export type PutApiAdminOauthClientsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        clientId: string;
-        clientName: string;
-        clientType: string;
-        hasClientSecret: boolean;
-        redirectUris: Array<string>;
-        allowedOrigins: Array<string>;
-        grantTypes: Array<string>;
-        defaultScopes: Array<string>;
-        pkceRequired: boolean;
-        applicationIds: Array<string>;
-        applications: Array<{
-            id: string;
-            name: string;
-        }>;
-        serviceAccountPrincipalId: string | null;
-        active: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+     * Subscriptions to sync
+     */
+    subscriptions: Array<SyncSubscriptionInputRequest>;
 };
-export type PutApiAdminOauthClientsByIdResponse = PutApiAdminOauthClientsByIdResponses[keyof PutApiAdminOauthClientsByIdResponses];
-export type GetApiAdminOauthClientsByClientIdByClientIdData = {
-    body?: never;
-    path: {
-        clientId: string;
-    };
-    query?: never;
-    url: '/api/admin/oauth-clients/by-client-id/{clientId}';
-};
-export type GetApiAdminOauthClientsByClientIdByClientIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * System health info
+ */
+export type SystemHealth = {
+    cpuUsagePercent: number;
+    memoryUsedMb: number;
+    status: string;
+    uptimeSeconds: number;
 };
-export type GetApiAdminOauthClientsByClientIdByClientIdError = GetApiAdminOauthClientsByClientIdByClientIdErrors[keyof GetApiAdminOauthClientsByClientIdByClientIdErrors];
-export type GetApiAdminOauthClientsByClientIdByClientIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        clientId: string;
-        clientName: string;
-        clientType: string;
-        hasClientSecret: boolean;
-        redirectUris: Array<string>;
-        allowedOrigins: Array<string>;
-        grantTypes: Array<string>;
-        defaultScopes: Array<string>;
-        pkceRequired: boolean;
-        applicationIds: Array<string>;
-        applications: Array<{
-            id: string;
-            name: string;
-        }>;
-        serviceAccountPrincipalId: string | null;
-        active: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+/**
+ * Token refresh response
+ */
+export type TokenRefreshResponse = {
+    /**
+     * New access token
+     */
+    accessToken: string;
+    /**
+     * Expiration time in seconds
+     */
+    expiresIn: number;
+    /**
+     * New refresh token (rotation)
+     */
+    refreshToken: string;
+    /**
+     * Token type (always "Bearer")
+     */
+    tokenType: string;
 };
-export type GetApiAdminOauthClientsByClientIdByClientIdResponse = GetApiAdminOauthClientsByClientIdByClientIdResponses[keyof GetApiAdminOauthClientsByClientIdByClientIdResponses];
-export type PostApiAdminOauthClientsByIdRegenerateSecretData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/oauth-clients/{id}/regenerate-secret';
-};
-export type PostApiAdminOauthClientsByIdRegenerateSecretErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Update client applications request (matches Java)
+ */
+export type UpdateClientApplicationsRequest = {
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * List of application IDs to enable
+     */
+    enabledApplicationIds: Array<string>;
 };
-export type PostApiAdminOauthClientsByIdRegenerateSecretError = PostApiAdminOauthClientsByIdRegenerateSecretErrors[keyof PostApiAdminOauthClientsByIdRegenerateSecretErrors];
-export type PostApiAdminOauthClientsByIdRegenerateSecretResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        client: {
-            id: string;
-            clientId: string;
-            clientName: string;
-            clientType: string;
-            hasClientSecret: boolean;
-            redirectUris: Array<string>;
-            allowedOrigins: Array<string>;
-            grantTypes: Array<string>;
-            defaultScopes: Array<string>;
-            pkceRequired: boolean;
-            applicationIds: Array<string>;
-            applications: Array<{
-                id: string;
-                name: string;
-            }>;
-            serviceAccountPrincipalId: string | null;
-            active: boolean;
-            createdAt: string;
-            updatedAt: string;
-        };
-        /**
-         * The plaintext client secret (shown only once)
-         */
-        clientSecret: string;
-    };
+/**
+ * Update client request
+ */
+export type UpdateClientRequest = {
+    /**
+     * Human-readable name
+     */
+    name?: string | null;
 };
-export type PostApiAdminOauthClientsByIdRegenerateSecretResponse = PostApiAdminOauthClientsByIdRegenerateSecretResponses[keyof PostApiAdminOauthClientsByIdRegenerateSecretResponses];
-export type PostApiAdminOauthClientsByIdActivateData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/oauth-clients/{id}/activate';
-};
-export type PostApiAdminOauthClientsByIdActivateErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Update event type request
+ */
+export type UpdateEventTypeRequest = {
+    /**
+     * Description
+     */
+    description?: string | null;
+    /**
+     * Human-readable name
+     */
+    name?: string | null;
 };
-export type PostApiAdminOauthClientsByIdActivateError = PostApiAdminOauthClientsByIdActivateErrors[keyof PostApiAdminOauthClientsByIdActivateErrors];
-export type PostApiAdminOauthClientsByIdActivateResponses = {
+/**
+ * Update OAuth client request
+ */
+export type UpdateOAuthClientRequest = {
     /**
-     * Default Response
+     * Whether client is active
      */
-    200: {
-        /**
-         * Human-readable status message
-         */
-        message: string;
-    };
+    active?: boolean | null;
+    /**
+     * Application IDs this client can access
+     */
+    applicationIds?: Array<string> | null;
+    /**
+     * Human-readable name
+     */
+    clientName?: string | null;
+    /**
+     * Allowed grant types
+     */
+    grantTypes?: Array<string> | null;
+    /**
+     * Whether PKCE is required
+     */
+    pkceRequired?: boolean | null;
+    /**
+     * Allowed redirect URIs
+     */
+    redirectUris?: Array<string> | null;
 };
-export type PostApiAdminOauthClientsByIdActivateResponse = PostApiAdminOauthClientsByIdActivateResponses[keyof PostApiAdminOauthClientsByIdActivateResponses];
-export type PostApiAdminOauthClientsByIdDeactivateData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/oauth-clients/{id}/deactivate';
-};
-export type PostApiAdminOauthClientsByIdDeactivateErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Update principal request
+ */
+export type UpdatePrincipalRequest = {
+    /**
+     * Active status
+     */
+    active?: boolean | null;
+    /**
+     * First name (for users)
+     */
+    firstName?: string | null;
+    /**
+     * Last name (for users)
+     */
+    lastName?: string | null;
+    /**
+     * Display name
+     */
+    name?: string | null;
 };
-export type PostApiAdminOauthClientsByIdDeactivateError = PostApiAdminOauthClientsByIdDeactivateErrors[keyof PostApiAdminOauthClientsByIdDeactivateErrors];
-export type PostApiAdminOauthClientsByIdDeactivateResponses = {
+/**
+ * Update role request
+ */
+export type UpdateRoleRequest = {
     /**
-     * Default Response
+     * Whether clients can manage this role
      */
-    200: {
-        /**
-         * Human-readable status message
-         */
-        message: string;
-    };
+    clientManaged?: boolean | null;
+    /**
+     * Description
+     */
+    description?: string | null;
+    /**
+     * Display name
+     */
+    displayName?: string | null;
 };
-export type PostApiAdminOauthClientsByIdDeactivateResponse = PostApiAdminOauthClientsByIdDeactivateResponses[keyof PostApiAdminOauthClientsByIdDeactivateResponses];
-export type PostApiAdminOauthClientsByIdRotateSecretData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/oauth-clients/{id}/rotate-secret';
-};
-export type PostApiAdminOauthClientsByIdRotateSecretErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+/**
+ * Update subscription request
+ */
+export type UpdateSubscriptionRequest = {
     /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+     * Connection ID
+     */
+    connectionId?: string | null;
+    /**
+     * Description
+     */
+    description?: string | null;
+    /**
+     * Webhook endpoint URL
+     */
+    endpoint?: string | null;
+    /**
+     * Maximum retry attempts
+     */
+    maxRetries?: number | null;
+    /**
+     * Human-readable name
+     */
+    name?: string | null;
+    /**
+     * Timeout in seconds
+     */
+    timeoutSeconds?: number | null;
 };
-export type PostApiAdminOauthClientsByIdRotateSecretError = PostApiAdminOauthClientsByIdRotateSecretErrors[keyof PostApiAdminOauthClientsByIdRotateSecretErrors];
-export type PostApiAdminOauthClientsByIdRotateSecretResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        client: {
-            id: string;
-            clientId: string;
-            clientName: string;
-            clientType: string;
-            hasClientSecret: boolean;
-            redirectUris: Array<string>;
-            allowedOrigins: Array<string>;
-            grantTypes: Array<string>;
-            defaultScopes: Array<string>;
-            pkceRequired: boolean;
-            applicationIds: Array<string>;
-            applications: Array<{
-                id: string;
-                name: string;
-            }>;
-            serviceAccountPrincipalId: string | null;
-            active: boolean;
-            createdAt: string;
-            updatedAt: string;
-        };
-        /**
-         * The plaintext client secret (shown only once)
-         */
-        clientSecret: string;
-    };
+/**
+ * Time-windowed metrics
+ */
+export type WindowedMetrics = {
+    /**
+     * Messages failed in this window
+     */
+    failureCount: number;
+    /**
+     * Processing time metrics for this window
+     */
+    processingTime: ProcessingTimeMetrics;
+    /**
+     * Messages rate limited in this window
+     */
+    rateLimitedCount: number;
+    /**
+     * Messages processed successfully in this window
+     */
+    successCount: number;
+    /**
+     * Success rate in this window (0.0 - 1.0)
+     */
+    successRate: number;
+    /**
+     * Throughput (messages per second)
+     */
+    throughputPerSec: number;
+    /**
+     * Window duration in seconds
+     */
+    windowDurationSecs: number;
+    /**
+     * Window start time
+     */
+    windowStart: string;
 };
-export type PostApiAdminOauthClientsByIdRotateSecretResponse = PostApiAdminOauthClientsByIdRotateSecretResponses[keyof PostApiAdminOauthClientsByIdRotateSecretResponses];
 export type GetApiAdminAuditLogsData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * Page number (0-based, matches Java)
+         */
+        page?: number;
+        /**
+         * Page size (default 50)
+         */
+        pageSize?: number;
+        /**
+         * Filter by entity type
+         */
         entityType?: string;
+        /**
+         * Filter by entity ID
+         */
         entityId?: string;
-        principalId?: string;
+        /**
+         * Filter by operation (Java calls this "operation", maps to action internally)
+         */
         operation?: string;
-        page?: string;
-        pageSize?: string;
+        /**
+         * Filter by principal ID
+         */
+        principalId?: string;
     };
     url: '/api/admin/audit-logs';
 };
 export type GetApiAdminAuditLogsResponses = {
     /**
-     * Default Response
+     * List of audit logs
      */
-    200: {
-        auditLogs: Array<{
-            id: string;
-            entityType: string;
-            entityId: string;
-            operation: string;
-            operationJson: unknown | null;
-            principalId: string | null;
-            principalName: string | null;
-            performedAt: string;
-        }>;
-        total: number;
-        page: number;
-        pageSize: number;
-    };
+    200: AuditLogListResponse;
 };
 export type GetApiAdminAuditLogsResponse = GetApiAdminAuditLogsResponses[keyof GetApiAdminAuditLogsResponses];
-export type GetApiAdminAuditLogsByIdData = {
+export type GetApiAdminAuditLogsApplicationIdsData = {
     body?: never;
-    path: {
-        id: string;
-    };
+    path?: never;
     query?: never;
-    url: '/api/admin/audit-logs/{id}';
+    url: '/api/admin/audit-logs/application-ids';
 };
-export type GetApiAdminAuditLogsByIdErrors = {
+export type GetApiAdminAuditLogsApplicationIdsResponses = {
     /**
-     * Default Response
+     * List of distinct application IDs
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    200: ApplicationIdsResponse;
 };
-export type GetApiAdminAuditLogsByIdError = GetApiAdminAuditLogsByIdErrors[keyof GetApiAdminAuditLogsByIdErrors];
-export type GetApiAdminAuditLogsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        entityType: string;
-        entityId: string;
-        operation: string;
-        operationJson: unknown | null;
-        principalId: string | null;
-        principalName: string | null;
-        performedAt: string;
-    };
-};
-export type GetApiAdminAuditLogsByIdResponse = GetApiAdminAuditLogsByIdResponses[keyof GetApiAdminAuditLogsByIdResponses];
-export type GetApiAdminAuditLogsEntityByEntityTypeByEntityIdData = {
+export type GetApiAdminAuditLogsApplicationIdsResponse = GetApiAdminAuditLogsApplicationIdsResponses[keyof GetApiAdminAuditLogsApplicationIdsResponses];
+export type GetApiAdminAuditLogsClientIdsData = {
     body?: never;
-    path: {
-        entityType: string;
-        entityId: string;
-    };
-    query?: {
-        page?: string;
-        pageSize?: string;
-    };
-    url: '/api/admin/audit-logs/entity/{entityType}/{entityId}';
+    path?: never;
+    query?: never;
+    url: '/api/admin/audit-logs/client-ids';
 };
-export type GetApiAdminAuditLogsEntityByEntityTypeByEntityIdResponses = {
+export type GetApiAdminAuditLogsClientIdsResponses = {
     /**
-     * Default Response
+     * List of distinct client IDs
      */
-    200: {
-        auditLogs: Array<{
-            id: string;
-            entityType: string;
-            entityId: string;
-            operation: string;
-            operationJson: unknown | null;
-            principalId: string | null;
-            principalName: string | null;
-            performedAt: string;
-        }>;
-        total: number;
-        page: number;
-        pageSize: number;
-    };
+    200: ClientIdsResponse;
 };
-export type GetApiAdminAuditLogsEntityByEntityTypeByEntityIdResponse = GetApiAdminAuditLogsEntityByEntityTypeByEntityIdResponses[keyof GetApiAdminAuditLogsEntityByEntityTypeByEntityIdResponses];
+export type GetApiAdminAuditLogsClientIdsResponse = GetApiAdminAuditLogsClientIdsResponses[keyof GetApiAdminAuditLogsClientIdsResponses];
 export type GetApiAdminAuditLogsEntityTypesData = {
     body?: never;
     path?: never;
@@ -4761,13 +1843,33 @@ export type GetApiAdminAuditLogsEntityTypesData = {
 };
 export type GetApiAdminAuditLogsEntityTypesResponses = {
     /**
-     * Default Response
+     * List of distinct entity types
      */
-    200: {
-        entityTypes: Array<string>;
-    };
+    200: EntityTypesResponse;
 };
 export type GetApiAdminAuditLogsEntityTypesResponse = GetApiAdminAuditLogsEntityTypesResponses[keyof GetApiAdminAuditLogsEntityTypesResponses];
+export type GetApiAdminAuditLogsEntityByEntityTypeByEntityIdData = {
+    body?: never;
+    path: {
+        /**
+         * Entity type
+         */
+        entity_type: string;
+        /**
+         * Entity ID
+         */
+        entity_id: string;
+    };
+    query?: never;
+    url: '/api/admin/audit-logs/entity/{entity_type}/{entity_id}';
+};
+export type GetApiAdminAuditLogsEntityByEntityTypeByEntityIdResponses = {
+    /**
+     * Audit logs for entity
+     */
+    200: EntityAuditLogsResponse;
+};
+export type GetApiAdminAuditLogsEntityByEntityTypeByEntityIdResponse = GetApiAdminAuditLogsEntityByEntityTypeByEntityIdResponses[keyof GetApiAdminAuditLogsEntityByEntityTypeByEntityIdResponses];
 export type GetApiAdminAuditLogsOperationsData = {
     body?: never;
     path?: never;
@@ -4776,147 +1878,549 @@ export type GetApiAdminAuditLogsOperationsData = {
 };
 export type GetApiAdminAuditLogsOperationsResponses = {
     /**
-     * Default Response
+     * List of distinct operations
      */
-    200: {
-        operations: Array<string>;
-    };
+    200: OperationsResponse;
 };
 export type GetApiAdminAuditLogsOperationsResponse = GetApiAdminAuditLogsOperationsResponses[keyof GetApiAdminAuditLogsOperationsResponses];
-export type GetApiAdminEventTypesData = {
+export type GetApiAdminAuditLogsPrincipalByPrincipalIdData = {
+    body?: never;
+    path: {
+        /**
+         * Principal ID
+         */
+        principal_id: string;
+    };
+    query?: never;
+    url: '/api/admin/audit-logs/principal/{principal_id}';
+};
+export type GetApiAdminAuditLogsPrincipalByPrincipalIdResponses = {
+    /**
+     * Audit logs for principal
+     */
+    200: Array<AuditLogResponse>;
+};
+export type GetApiAdminAuditLogsPrincipalByPrincipalIdResponse = GetApiAdminAuditLogsPrincipalByPrincipalIdResponses[keyof GetApiAdminAuditLogsPrincipalByPrincipalIdResponses];
+export type GetApiAdminAuditLogsRecentData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/admin/audit-logs/recent';
+};
+export type GetApiAdminAuditLogsRecentResponses = {
+    /**
+     * Recent audit logs
+     */
+    200: Array<AuditLogResponse>;
+};
+export type GetApiAdminAuditLogsRecentResponse = GetApiAdminAuditLogsRecentResponses[keyof GetApiAdminAuditLogsRecentResponses];
+export type GetApiAdminAuditLogsByIdData = {
+    body?: never;
+    path: {
+        /**
+         * Audit log ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/audit-logs/{id}';
+};
+export type GetApiAdminAuditLogsByIdErrors = {
+    /**
+     * Audit log not found
+     */
+    404: unknown;
+};
+export type GetApiAdminAuditLogsByIdResponses = {
+    /**
+     * Audit log found
+     */
+    200: AuditLogDetailResponse;
+};
+export type GetApiAdminAuditLogsByIdResponse = GetApiAdminAuditLogsByIdResponses[keyof GetApiAdminAuditLogsByIdResponses];
+export type GetApiAdminClientsData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * Page number
+         */
+        page?: number;
+        /**
+         * Items per page
+         */
+        limit?: number;
+        /**
+         * Filter by status
+         */
         status?: string;
-        application?: string | Array<string>;
-        subdomain?: string | Array<string>;
-        aggregate?: string | Array<string>;
+    };
+    url: '/api/admin/clients';
+};
+export type GetApiAdminClientsResponses = {
+    /**
+     * List of clients
+     */
+    200: ClientListResponse;
+};
+export type GetApiAdminClientsResponse = GetApiAdminClientsResponses[keyof GetApiAdminClientsResponses];
+export type PostApiAdminClientsData = {
+    body: CreateClientRequest;
+    path?: never;
+    query?: never;
+    url: '/api/admin/clients';
+};
+export type PostApiAdminClientsErrors = {
+    /**
+     * Validation error
+     */
+    400: unknown;
+    /**
+     * Duplicate identifier
+     */
+    409: unknown;
+};
+export type PostApiAdminClientsResponses = {
+    /**
+     * Client created
+     */
+    201: ClientResponse;
+};
+export type PostApiAdminClientsResponse = PostApiAdminClientsResponses[keyof PostApiAdminClientsResponses];
+export type GetApiAdminClientsByIdentifierByIdentifierData = {
+    body?: never;
+    path: {
+        /**
+         * Client identifier/slug
+         */
+        identifier: string;
+    };
+    query?: never;
+    url: '/api/admin/clients/by-identifier/{identifier}';
+};
+export type GetApiAdminClientsByIdentifierByIdentifierErrors = {
+    /**
+     * Client not found
+     */
+    404: unknown;
+};
+export type GetApiAdminClientsByIdentifierByIdentifierResponses = {
+    /**
+     * Client found
+     */
+    200: ClientResponse;
+};
+export type GetApiAdminClientsByIdentifierByIdentifierResponse = GetApiAdminClientsByIdentifierByIdentifierResponses[keyof GetApiAdminClientsByIdentifierByIdentifierResponses];
+export type GetApiAdminClientsSearchData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Search term
+         */
+        q?: string;
+    };
+    url: '/api/admin/clients/search';
+};
+export type GetApiAdminClientsSearchResponses = {
+    /**
+     * Search results
+     */
+    200: ClientListResponse;
+};
+export type GetApiAdminClientsSearchResponse = GetApiAdminClientsSearchResponses[keyof GetApiAdminClientsSearchResponses];
+export type DeleteApiAdminClientsByIdData = {
+    body?: never;
+    path: {
+        /**
+         * Client ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/clients/{id}';
+};
+export type DeleteApiAdminClientsByIdErrors = {
+    /**
+     * Client not found
+     */
+    404: unknown;
+};
+export type DeleteApiAdminClientsByIdResponses = {
+    /**
+     * Client deleted
+     */
+    204: void;
+};
+export type DeleteApiAdminClientsByIdResponse = DeleteApiAdminClientsByIdResponses[keyof DeleteApiAdminClientsByIdResponses];
+export type GetApiAdminClientsByIdData = {
+    body?: never;
+    path: {
+        /**
+         * Client ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/clients/{id}';
+};
+export type GetApiAdminClientsByIdErrors = {
+    /**
+     * Client not found
+     */
+    404: unknown;
+};
+export type GetApiAdminClientsByIdResponses = {
+    /**
+     * Client found
+     */
+    200: ClientResponse;
+};
+export type GetApiAdminClientsByIdResponse = GetApiAdminClientsByIdResponses[keyof GetApiAdminClientsByIdResponses];
+export type PutApiAdminClientsByIdData = {
+    body: UpdateClientRequest;
+    path: {
+        /**
+         * Client ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/clients/{id}';
+};
+export type PutApiAdminClientsByIdErrors = {
+    /**
+     * Client not found
+     */
+    404: unknown;
+};
+export type PutApiAdminClientsByIdResponses = {
+    /**
+     * Client updated
+     */
+    200: ClientResponse;
+};
+export type PutApiAdminClientsByIdResponse = PutApiAdminClientsByIdResponses[keyof PutApiAdminClientsByIdResponses];
+export type PostApiAdminClientsByIdActivateData = {
+    body?: never;
+    path: {
+        /**
+         * Client ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/clients/{id}/activate';
+};
+export type PostApiAdminClientsByIdActivateErrors = {
+    /**
+     * Insufficient permissions
+     */
+    403: unknown;
+    /**
+     * Client not found
+     */
+    404: unknown;
+};
+export type PostApiAdminClientsByIdActivateResponses = {
+    /**
+     * Client activated
+     */
+    200: StatusChangeResponse;
+};
+export type PostApiAdminClientsByIdActivateResponse = PostApiAdminClientsByIdActivateResponses[keyof PostApiAdminClientsByIdActivateResponses];
+export type GetApiAdminClientsByIdApplicationsData = {
+    body?: never;
+    path: {
+        /**
+         * Client ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/clients/{id}/applications';
+};
+export type GetApiAdminClientsByIdApplicationsErrors = {
+    /**
+     * Client not found
+     */
+    404: unknown;
+};
+export type GetApiAdminClientsByIdApplicationsResponses = {
+    /**
+     * Client applications
+     */
+    200: ClientApplicationsResponse;
+};
+export type GetApiAdminClientsByIdApplicationsResponse = GetApiAdminClientsByIdApplicationsResponses[keyof GetApiAdminClientsByIdApplicationsResponses];
+export type PutApiAdminClientsByIdApplicationsData = {
+    body: UpdateClientApplicationsRequest;
+    path: {
+        /**
+         * Client ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/clients/{id}/applications';
+};
+export type PutApiAdminClientsByIdApplicationsErrors = {
+    /**
+     * Client not found
+     */
+    404: unknown;
+};
+export type PutApiAdminClientsByIdApplicationsResponses = {
+    /**
+     * Applications updated
+     */
+    204: void;
+};
+export type PutApiAdminClientsByIdApplicationsResponse = PutApiAdminClientsByIdApplicationsResponses[keyof PutApiAdminClientsByIdApplicationsResponses];
+export type PostApiAdminClientsByIdApplicationsByAppIdDisableData = {
+    body?: never;
+    path: {
+        /**
+         * Client ID
+         */
+        id: string;
+        /**
+         * Application ID
+         */
+        application_id: string;
+    };
+    query?: never;
+    url: '/api/admin/clients/{id}/applications/{application_id}/disable';
+};
+export type PostApiAdminClientsByIdApplicationsByAppIdDisableErrors = {
+    /**
+     * Client or application not found
+     */
+    404: unknown;
+};
+export type PostApiAdminClientsByIdApplicationsByAppIdDisableResponses = {
+    /**
+     * Application disabled
+     */
+    204: void;
+};
+export type PostApiAdminClientsByIdApplicationsByAppIdDisableResponse = PostApiAdminClientsByIdApplicationsByAppIdDisableResponses[keyof PostApiAdminClientsByIdApplicationsByAppIdDisableResponses];
+export type PostApiAdminClientsByIdApplicationsByAppIdEnableData = {
+    body?: never;
+    path: {
+        /**
+         * Client ID
+         */
+        id: string;
+        /**
+         * Application ID
+         */
+        application_id: string;
+    };
+    query?: never;
+    url: '/api/admin/clients/{id}/applications/{application_id}/enable';
+};
+export type PostApiAdminClientsByIdApplicationsByAppIdEnableErrors = {
+    /**
+     * Client or application not found
+     */
+    404: unknown;
+};
+export type PostApiAdminClientsByIdApplicationsByAppIdEnableResponses = {
+    /**
+     * Application enabled
+     */
+    204: void;
+};
+export type PostApiAdminClientsByIdApplicationsByAppIdEnableResponse = PostApiAdminClientsByIdApplicationsByAppIdEnableResponses[keyof PostApiAdminClientsByIdApplicationsByAppIdEnableResponses];
+export type PostApiAdminClientsByIdDeactivateData = {
+    body: StatusChangeRequest;
+    path: {
+        /**
+         * Client ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/clients/{id}/deactivate';
+};
+export type PostApiAdminClientsByIdDeactivateErrors = {
+    /**
+     * Insufficient permissions
+     */
+    403: unknown;
+    /**
+     * Client not found
+     */
+    404: unknown;
+};
+export type PostApiAdminClientsByIdDeactivateResponses = {
+    /**
+     * Client deactivated
+     */
+    200: StatusChangeResponse;
+};
+export type PostApiAdminClientsByIdDeactivateResponse = PostApiAdminClientsByIdDeactivateResponses[keyof PostApiAdminClientsByIdDeactivateResponses];
+export type PostApiAdminClientsByIdNotesData = {
+    body: AddNoteRequest;
+    path: {
+        /**
+         * Client ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/clients/{id}/notes';
+};
+export type PostApiAdminClientsByIdNotesErrors = {
+    /**
+     * Client not found
+     */
+    404: unknown;
+};
+export type PostApiAdminClientsByIdNotesResponses = {
+    /**
+     * Note added
+     */
+    200: AddNoteResponse;
+};
+export type PostApiAdminClientsByIdNotesResponse = PostApiAdminClientsByIdNotesResponses[keyof PostApiAdminClientsByIdNotesResponses];
+export type PostApiAdminClientsByIdSuspendData = {
+    body: StatusChangeRequest;
+    path: {
+        /**
+         * Client ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/clients/{id}/suspend';
+};
+export type PostApiAdminClientsByIdSuspendErrors = {
+    /**
+     * Insufficient permissions
+     */
+    403: unknown;
+    /**
+     * Client not found
+     */
+    404: unknown;
+};
+export type PostApiAdminClientsByIdSuspendResponses = {
+    /**
+     * Client suspended
+     */
+    200: StatusChangeResponse;
+};
+export type PostApiAdminClientsByIdSuspendResponse = PostApiAdminClientsByIdSuspendResponses[keyof PostApiAdminClientsByIdSuspendResponses];
+export type GetApiAdminEventTypesData = {
+    body?: never;
+    path?: never;
+    query: {
+        pagination: PaginationParams;
+        /**
+         * Filter by application
+         */
+        application?: string;
+        /**
+         * Filter by client ID
+         */
+        clientId?: string;
+        /**
+         * Filter by status
+         */
+        status?: string;
     };
     url: '/api/admin/event-types';
 };
 export type GetApiAdminEventTypesResponses = {
     /**
-     * Default Response
+     * List of event types
      */
-    200: {
-        eventTypes: Array<{
-            id: string;
-            code: string;
-            name: string;
-            description: string | null;
-            application: string | null;
-            subdomain: string | null;
-            aggregate: string | null;
-            event: string | null;
-            specVersions: Array<{
-                id: string;
-                version: string;
-                mimeType: string;
-                schemaContent: unknown | null;
-                schemaType: string;
-                status: string;
-                createdAt: string;
-                updatedAt: string;
-            }>;
-            status: string;
-            source: string;
-            clientScoped: boolean;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-    };
+    200: EventTypeListResponse;
 };
 export type GetApiAdminEventTypesResponse = GetApiAdminEventTypesResponses[keyof GetApiAdminEventTypesResponses];
 export type PostApiAdminEventTypesData = {
-    body: {
-        application: string;
-        subdomain: string;
-        aggregate: string;
-        event: string;
-        name: string;
-        description?: string | null;
-        clientScoped?: boolean;
-    };
+    body: CreateEventTypeRequest;
     path?: never;
     query?: never;
     url: '/api/admin/event-types';
 };
 export type PostApiAdminEventTypesErrors = {
     /**
-     * Default Response
+     * Validation error
      */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    400: unknown;
     /**
-     * Default Response
+     * Duplicate code
      */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    409: unknown;
 };
-export type PostApiAdminEventTypesError = PostApiAdminEventTypesErrors[keyof PostApiAdminEventTypesErrors];
 export type PostApiAdminEventTypesResponses = {
     /**
-     * Default Response
+     * Event type created
      */
-    201: {
-        id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        application: string | null;
-        subdomain: string | null;
-        aggregate: string | null;
-        event: string | null;
-        specVersions: Array<{
-            id: string;
-            version: string;
-            mimeType: string;
-            schemaContent: unknown | null;
-            schemaType: string;
-            status: string;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        status: string;
-        source: string;
-        clientScoped: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+    201: EventTypeResponse;
 };
 export type PostApiAdminEventTypesResponse = PostApiAdminEventTypesResponses[keyof PostApiAdminEventTypesResponses];
+export type GetApiAdminEventTypesByCodeByCodeData = {
+    body?: never;
+    path: {
+        /**
+         * Event type code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/admin/event-types/by-code/{code}';
+};
+export type GetApiAdminEventTypesByCodeByCodeErrors = {
+    /**
+     * Event type not found
+     */
+    404: unknown;
+};
+export type GetApiAdminEventTypesByCodeByCodeResponses = {
+    /**
+     * Event type found
+     */
+    200: EventTypeResponse;
+};
+export type GetApiAdminEventTypesByCodeByCodeResponse = GetApiAdminEventTypesByCodeByCodeResponses[keyof GetApiAdminEventTypesByCodeByCodeResponses];
+export type PostApiAdminEventTypesSyncData = {
+    body: SyncEventTypesRequest;
+    path?: never;
+    query?: {
+        /**
+         * Remove items not in the sync list
+         */
+        removeUnlisted?: boolean;
+    };
+    url: '/api/admin/event-types/sync';
+};
+export type PostApiAdminEventTypesSyncErrors = {
+    /**
+     * Validation error
+     */
+    400: unknown;
+    /**
+     * Application not found
+     */
+    404: unknown;
+};
+export type PostApiAdminEventTypesSyncResponses = {
+    /**
+     * Event types synced
+     */
+    200: SyncResultResponse;
+};
+export type PostApiAdminEventTypesSyncResponse = PostApiAdminEventTypesSyncResponses[keyof PostApiAdminEventTypesSyncResponses];
 export type DeleteApiAdminEventTypesByIdData = {
     body?: never;
     path: {
+        /**
+         * Event type ID
+         */
         id: string;
     };
     query?: never;
@@ -4924,29 +2428,13 @@ export type DeleteApiAdminEventTypesByIdData = {
 };
 export type DeleteApiAdminEventTypesByIdErrors = {
     /**
-     * Default Response
+     * Event type not found
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type DeleteApiAdminEventTypesByIdError = DeleteApiAdminEventTypesByIdErrors[keyof DeleteApiAdminEventTypesByIdErrors];
 export type DeleteApiAdminEventTypesByIdResponses = {
     /**
-     * Default Response
+     * Event type archived
      */
     204: void;
 };
@@ -4954,6 +2442,9 @@ export type DeleteApiAdminEventTypesByIdResponse = DeleteApiAdminEventTypesByIdR
 export type GetApiAdminEventTypesByIdData = {
     body?: never;
     path: {
+        /**
+         * Event type ID
+         */
         id: string;
     };
     query?: never;
@@ -4961,1101 +2452,1152 @@ export type GetApiAdminEventTypesByIdData = {
 };
 export type GetApiAdminEventTypesByIdErrors = {
     /**
-     * Default Response
+     * Event type not found
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type GetApiAdminEventTypesByIdError = GetApiAdminEventTypesByIdErrors[keyof GetApiAdminEventTypesByIdErrors];
 export type GetApiAdminEventTypesByIdResponses = {
     /**
-     * Default Response
+     * Event type found
      */
-    200: {
-        id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        application: string | null;
-        subdomain: string | null;
-        aggregate: string | null;
-        event: string | null;
-        specVersions: Array<{
-            id: string;
-            version: string;
-            mimeType: string;
-            schemaContent: unknown | null;
-            schemaType: string;
-            status: string;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        status: string;
-        source: string;
-        clientScoped: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+    200: EventTypeResponse;
 };
 export type GetApiAdminEventTypesByIdResponse = GetApiAdminEventTypesByIdResponses[keyof GetApiAdminEventTypesByIdResponses];
-export type PatchApiAdminEventTypesByIdData = {
-    body: {
-        name?: string;
-        description?: string | null;
-    };
+export type PutApiAdminEventTypesByIdData = {
+    body: UpdateEventTypeRequest;
     path: {
+        /**
+         * Event type ID
+         */
         id: string;
     };
     query?: never;
     url: '/api/admin/event-types/{id}';
 };
-export type PatchApiAdminEventTypesByIdErrors = {
+export type PutApiAdminEventTypesByIdErrors = {
     /**
-     * Default Response
+     * Event type not found
      */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
+};
+export type PutApiAdminEventTypesByIdResponses = {
     /**
-     * Default Response
+     * Event type updated
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    200: EventTypeResponse;
 };
-export type PatchApiAdminEventTypesByIdError = PatchApiAdminEventTypesByIdErrors[keyof PatchApiAdminEventTypesByIdErrors];
-export type PatchApiAdminEventTypesByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        application: string | null;
-        subdomain: string | null;
-        aggregate: string | null;
-        event: string | null;
-        specVersions: Array<{
-            id: string;
-            version: string;
-            mimeType: string;
-            schemaContent: unknown | null;
-            schemaType: string;
-            status: string;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        status: string;
-        source: string;
-        clientScoped: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PatchApiAdminEventTypesByIdResponse = PatchApiAdminEventTypesByIdResponses[keyof PatchApiAdminEventTypesByIdResponses];
-export type PostApiAdminEventTypesByIdArchiveData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/event-types/{id}/archive';
-};
-export type PostApiAdminEventTypesByIdArchiveErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminEventTypesByIdArchiveError = PostApiAdminEventTypesByIdArchiveErrors[keyof PostApiAdminEventTypesByIdArchiveErrors];
-export type PostApiAdminEventTypesByIdArchiveResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        application: string | null;
-        subdomain: string | null;
-        aggregate: string | null;
-        event: string | null;
-        specVersions: Array<{
-            id: string;
-            version: string;
-            mimeType: string;
-            schemaContent: unknown | null;
-            schemaType: string;
-            status: string;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        status: string;
-        source: string;
-        clientScoped: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PostApiAdminEventTypesByIdArchiveResponse = PostApiAdminEventTypesByIdArchiveResponses[keyof PostApiAdminEventTypesByIdArchiveResponses];
+export type PutApiAdminEventTypesByIdResponse = PutApiAdminEventTypesByIdResponses[keyof PutApiAdminEventTypesByIdResponses];
 export type PostApiAdminEventTypesByIdSchemasData = {
-    body: {
-        version: string;
-        mimeType: string;
-        schemaContent: unknown;
-        schemaType: 'JSON_SCHEMA' | 'PROTO' | 'XSD';
-    };
+    body: AddSchemaVersionRequest;
     path: {
+        /**
+         * Event type ID
+         */
         id: string;
     };
     query?: never;
-    url: '/api/admin/event-types/{id}/schemas';
+    url: '/api/admin/event-types/{id}/versions';
 };
 export type PostApiAdminEventTypesByIdSchemasErrors = {
     /**
-     * Default Response
+     * Event type not found
      */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type PostApiAdminEventTypesByIdSchemasError = PostApiAdminEventTypesByIdSchemasErrors[keyof PostApiAdminEventTypesByIdSchemasErrors];
 export type PostApiAdminEventTypesByIdSchemasResponses = {
     /**
-     * Default Response
+     * Schema version added
      */
-    201: {
-        id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        application: string | null;
-        subdomain: string | null;
-        aggregate: string | null;
-        event: string | null;
-        specVersions: Array<{
-            id: string;
-            version: string;
-            mimeType: string;
-            schemaContent: unknown | null;
-            schemaType: string;
-            status: string;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        status: string;
-        source: string;
-        clientScoped: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+    200: EventTypeResponse;
 };
 export type PostApiAdminEventTypesByIdSchemasResponse = PostApiAdminEventTypesByIdSchemasResponses[keyof PostApiAdminEventTypesByIdSchemasResponses];
-export type PostApiAdminEventTypesByIdSchemasByVersionFinaliseData = {
+export type GetApiAdminOauthClientsData = {
+    body?: never;
+    path?: never;
+    query: {
+        pagination: PaginationParams;
+        /**
+         * Filter by active status
+         */
+        active?: boolean;
+    };
+    url: '/api/admin/oauth-clients';
+};
+export type GetApiAdminOauthClientsResponses = {
+    /**
+     * List of OAuth clients
+     */
+    200: Array<OAuthClientResponse>;
+};
+export type GetApiAdminOauthClientsResponse = GetApiAdminOauthClientsResponses[keyof GetApiAdminOauthClientsResponses];
+export type PostApiAdminOauthClientsData = {
+    body: CreateOAuthClientRequest;
+    path?: never;
+    query?: never;
+    url: '/api/admin/oauth-clients';
+};
+export type PostApiAdminOauthClientsErrors = {
+    /**
+     * Validation error
+     */
+    400: unknown;
+    /**
+     * Duplicate client_id
+     */
+    409: unknown;
+};
+export type PostApiAdminOauthClientsResponses = {
+    /**
+     * OAuth client created
+     */
+    201: OAuthClientResponse;
+};
+export type PostApiAdminOauthClientsResponse = PostApiAdminOauthClientsResponses[keyof PostApiAdminOauthClientsResponses];
+export type GetApiAdminOauthClientsByClientIdData = {
     body?: never;
     path: {
-        id: string;
-        version: string;
+        /**
+         * OAuth client_id (public identifier)
+         */
+        clientId: string;
     };
     query?: never;
-    url: '/api/admin/event-types/{id}/schemas/{version}/finalise';
+    url: '/api/admin/oauth-clients/by-client-id/{clientId}';
 };
-export type PostApiAdminEventTypesByIdSchemasByVersionFinaliseErrors = {
+export type GetApiAdminOauthClientsByClientIdErrors = {
     /**
-     * Default Response
+     * OAuth client not found
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type PostApiAdminEventTypesByIdSchemasByVersionFinaliseError = PostApiAdminEventTypesByIdSchemasByVersionFinaliseErrors[keyof PostApiAdminEventTypesByIdSchemasByVersionFinaliseErrors];
-export type PostApiAdminEventTypesByIdSchemasByVersionFinaliseResponses = {
+export type GetApiAdminOauthClientsByClientIdResponses = {
     /**
-     * Default Response
+     * OAuth client found
      */
-    200: {
-        id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        application: string | null;
-        subdomain: string | null;
-        aggregate: string | null;
-        event: string | null;
-        specVersions: Array<{
-            id: string;
-            version: string;
-            mimeType: string;
-            schemaContent: unknown | null;
-            schemaType: string;
-            status: string;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        status: string;
-        source: string;
-        clientScoped: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+    200: OAuthClientResponse;
 };
-export type PostApiAdminEventTypesByIdSchemasByVersionFinaliseResponse = PostApiAdminEventTypesByIdSchemasByVersionFinaliseResponses[keyof PostApiAdminEventTypesByIdSchemasByVersionFinaliseResponses];
-export type PostApiAdminEventTypesByIdSchemasByVersionDeprecateData = {
+export type GetApiAdminOauthClientsByClientIdResponse = GetApiAdminOauthClientsByClientIdResponses[keyof GetApiAdminOauthClientsByClientIdResponses];
+export type DeleteApiAdminOauthClientsByIdData = {
     body?: never;
     path: {
-        id: string;
-        version: string;
-    };
-    query?: never;
-    url: '/api/admin/event-types/{id}/schemas/{version}/deprecate';
-};
-export type PostApiAdminEventTypesByIdSchemasByVersionDeprecateErrors = {
-    /**
-     * Default Response
-     */
-    404: {
         /**
-         * Human-readable error message
+         * OAuth client ID
          */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminEventTypesByIdSchemasByVersionDeprecateError = PostApiAdminEventTypesByIdSchemasByVersionDeprecateErrors[keyof PostApiAdminEventTypesByIdSchemasByVersionDeprecateErrors];
-export type PostApiAdminEventTypesByIdSchemasByVersionDeprecateResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        application: string | null;
-        subdomain: string | null;
-        aggregate: string | null;
-        event: string | null;
-        specVersions: Array<{
-            id: string;
-            version: string;
-            mimeType: string;
-            schemaContent: unknown | null;
-            schemaType: string;
-            status: string;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        status: string;
-        source: string;
-        clientScoped: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PostApiAdminEventTypesByIdSchemasByVersionDeprecateResponse = PostApiAdminEventTypesByIdSchemasByVersionDeprecateResponses[keyof PostApiAdminEventTypesByIdSchemasByVersionDeprecateResponses];
-export type PostApiAdminEventTypesSyncData = {
-    body: {
-        applicationCode: string;
-        eventTypes: Array<{
-            subdomain: string;
-            aggregate: string;
-            event: string;
-            name: string;
-            description?: string | null;
-            clientScoped?: boolean;
-        }>;
-        removeUnlisted?: boolean;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/admin/event-types/sync';
-};
-export type PostApiAdminEventTypesSyncErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminEventTypesSyncError = PostApiAdminEventTypesSyncErrors[keyof PostApiAdminEventTypesSyncErrors];
-export type PostApiAdminEventTypesSyncResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        applicationCode: string;
-        created: number;
-        updated: number;
-        deleted: number;
-        syncedCodes: Array<string>;
-    };
-};
-export type PostApiAdminEventTypesSyncResponse = PostApiAdminEventTypesSyncResponses[keyof PostApiAdminEventTypesSyncResponses];
-export type GetApiAdminEventTypesFiltersApplicationsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/admin/event-types/filters/applications';
-};
-export type GetApiAdminEventTypesFiltersApplicationsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        values: Array<string>;
-    };
-};
-export type GetApiAdminEventTypesFiltersApplicationsResponse = GetApiAdminEventTypesFiltersApplicationsResponses[keyof GetApiAdminEventTypesFiltersApplicationsResponses];
-export type GetApiAdminEventTypesFiltersSubdomainsData = {
-    body?: never;
-    path?: never;
-    query?: {
-        application?: string | Array<string>;
-    };
-    url: '/api/admin/event-types/filters/subdomains';
-};
-export type GetApiAdminEventTypesFiltersSubdomainsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        values: Array<string>;
-    };
-};
-export type GetApiAdminEventTypesFiltersSubdomainsResponse = GetApiAdminEventTypesFiltersSubdomainsResponses[keyof GetApiAdminEventTypesFiltersSubdomainsResponses];
-export type GetApiAdminEventTypesFiltersAggregatesData = {
-    body?: never;
-    path?: never;
-    query?: {
-        application?: string | Array<string>;
-        subdomain?: string | Array<string>;
-    };
-    url: '/api/admin/event-types/filters/aggregates';
-};
-export type GetApiAdminEventTypesFiltersAggregatesResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        values: Array<string>;
-    };
-};
-export type GetApiAdminEventTypesFiltersAggregatesResponse = GetApiAdminEventTypesFiltersAggregatesResponses[keyof GetApiAdminEventTypesFiltersAggregatesResponses];
-export type GetApiAdminDispatchPoolsData = {
-    body?: never;
-    path?: never;
-    query?: {
-        clientId?: string;
-        status?: string;
-        anchorLevel?: string;
-    };
-    url: '/api/admin/dispatch-pools';
-};
-export type GetApiAdminDispatchPoolsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        pools: Array<{
-            id: string;
-            code: string;
-            name: string;
-            description: string | null;
-            rateLimit: number;
-            concurrency: number;
-            clientId: string | null;
-            clientIdentifier: string | null;
-            status: string;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-    };
-};
-export type GetApiAdminDispatchPoolsResponse = GetApiAdminDispatchPoolsResponses[keyof GetApiAdminDispatchPoolsResponses];
-export type PostApiAdminDispatchPoolsData = {
-    body: {
-        code: string;
-        name: string;
-        description?: string | null;
-        rateLimit?: number;
-        concurrency?: number;
-        clientId?: string | null;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/admin/dispatch-pools';
-};
-export type PostApiAdminDispatchPoolsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminDispatchPoolsError = PostApiAdminDispatchPoolsErrors[keyof PostApiAdminDispatchPoolsErrors];
-export type PostApiAdminDispatchPoolsResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        rateLimit: number;
-        concurrency: number;
-        clientId: string | null;
-        clientIdentifier: string | null;
-        status: string;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PostApiAdminDispatchPoolsResponse = PostApiAdminDispatchPoolsResponses[keyof PostApiAdminDispatchPoolsResponses];
-export type DeleteApiAdminDispatchPoolsByIdData = {
-    body?: never;
-    path: {
         id: string;
     };
     query?: never;
-    url: '/api/admin/dispatch-pools/{id}';
+    url: '/api/admin/oauth-clients/{id}';
 };
-export type DeleteApiAdminDispatchPoolsByIdErrors = {
+export type DeleteApiAdminOauthClientsByIdErrors = {
     /**
-     * Default Response
+     * OAuth client not found
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type DeleteApiAdminDispatchPoolsByIdError = DeleteApiAdminDispatchPoolsByIdErrors[keyof DeleteApiAdminDispatchPoolsByIdErrors];
-export type DeleteApiAdminDispatchPoolsByIdResponses = {
+export type DeleteApiAdminOauthClientsByIdResponses = {
     /**
-     * Default Response
+     * OAuth client deleted
      */
     204: void;
 };
-export type DeleteApiAdminDispatchPoolsByIdResponse = DeleteApiAdminDispatchPoolsByIdResponses[keyof DeleteApiAdminDispatchPoolsByIdResponses];
-export type GetApiAdminDispatchPoolsByIdData = {
+export type DeleteApiAdminOauthClientsByIdResponse = DeleteApiAdminOauthClientsByIdResponses[keyof DeleteApiAdminOauthClientsByIdResponses];
+export type GetApiAdminOauthClientsByIdData = {
     body?: never;
     path: {
+        /**
+         * OAuth client ID
+         */
         id: string;
     };
     query?: never;
-    url: '/api/admin/dispatch-pools/{id}';
+    url: '/api/admin/oauth-clients/{id}';
 };
-export type GetApiAdminDispatchPoolsByIdErrors = {
+export type GetApiAdminOauthClientsByIdErrors = {
     /**
-     * Default Response
+     * OAuth client not found
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type GetApiAdminDispatchPoolsByIdError = GetApiAdminDispatchPoolsByIdErrors[keyof GetApiAdminDispatchPoolsByIdErrors];
-export type GetApiAdminDispatchPoolsByIdResponses = {
+export type GetApiAdminOauthClientsByIdResponses = {
     /**
-     * Default Response
+     * OAuth client found
      */
-    200: {
-        id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        rateLimit: number;
-        concurrency: number;
-        clientId: string | null;
-        clientIdentifier: string | null;
-        status: string;
-        createdAt: string;
-        updatedAt: string;
-    };
+    200: OAuthClientResponse;
 };
-export type GetApiAdminDispatchPoolsByIdResponse = GetApiAdminDispatchPoolsByIdResponses[keyof GetApiAdminDispatchPoolsByIdResponses];
-export type PutApiAdminDispatchPoolsByIdData = {
-    body: {
-        name?: string;
-        description?: string | null;
-        rateLimit?: number;
-        concurrency?: number;
-        status?: 'ACTIVE' | 'SUSPENDED';
-    };
+export type GetApiAdminOauthClientsByIdResponse = GetApiAdminOauthClientsByIdResponses[keyof GetApiAdminOauthClientsByIdResponses];
+export type PutApiAdminOauthClientsByIdData = {
+    body: UpdateOAuthClientRequest;
     path: {
+        /**
+         * OAuth client ID
+         */
         id: string;
     };
     query?: never;
-    url: '/api/admin/dispatch-pools/{id}';
+    url: '/api/admin/oauth-clients/{id}';
 };
-export type PutApiAdminDispatchPoolsByIdErrors = {
+export type PutApiAdminOauthClientsByIdErrors = {
     /**
-     * Default Response
+     * OAuth client not found
      */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type PutApiAdminDispatchPoolsByIdError = PutApiAdminDispatchPoolsByIdErrors[keyof PutApiAdminDispatchPoolsByIdErrors];
-export type PutApiAdminDispatchPoolsByIdResponses = {
+export type PutApiAdminOauthClientsByIdResponses = {
     /**
-     * Default Response
+     * OAuth client updated
      */
-    200: {
-        id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        rateLimit: number;
-        concurrency: number;
-        clientId: string | null;
-        clientIdentifier: string | null;
-        status: string;
-        createdAt: string;
-        updatedAt: string;
-    };
+    200: OAuthClientResponse;
 };
-export type PutApiAdminDispatchPoolsByIdResponse = PutApiAdminDispatchPoolsByIdResponses[keyof PutApiAdminDispatchPoolsByIdResponses];
-export type PostApiAdminDispatchPoolsByIdSuspendData = {
+export type PutApiAdminOauthClientsByIdResponse = PutApiAdminOauthClientsByIdResponses[keyof PutApiAdminOauthClientsByIdResponses];
+export type PostApiAdminOauthClientsActivateData = {
     body?: never;
     path: {
+        /**
+         * OAuth client ID
+         */
         id: string;
     };
     query?: never;
-    url: '/api/admin/dispatch-pools/{id}/suspend';
+    url: '/api/admin/oauth-clients/{id}/activate';
 };
-export type PostApiAdminDispatchPoolsByIdSuspendErrors = {
+export type PostApiAdminOauthClientsActivateErrors = {
     /**
-     * Default Response
+     * OAuth client not found
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type PostApiAdminDispatchPoolsByIdSuspendError = PostApiAdminDispatchPoolsByIdSuspendErrors[keyof PostApiAdminDispatchPoolsByIdSuspendErrors];
-export type PostApiAdminDispatchPoolsByIdSuspendResponses = {
+export type PostApiAdminOauthClientsActivateResponses = {
     /**
-     * Default Response
+     * OAuth client activated
      */
-    200: {
-        id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        rateLimit: number;
-        concurrency: number;
-        clientId: string | null;
-        clientIdentifier: string | null;
-        status: string;
-        createdAt: string;
-        updatedAt: string;
-    };
+    200: SuccessResponse;
 };
-export type PostApiAdminDispatchPoolsByIdSuspendResponse = PostApiAdminDispatchPoolsByIdSuspendResponses[keyof PostApiAdminDispatchPoolsByIdSuspendResponses];
-export type PostApiAdminDispatchPoolsByIdActivateData = {
+export type PostApiAdminOauthClientsActivateResponse = PostApiAdminOauthClientsActivateResponses[keyof PostApiAdminOauthClientsActivateResponses];
+export type PostApiAdminOauthClientsDeactivateData = {
     body?: never;
     path: {
+        /**
+         * OAuth client ID
+         */
         id: string;
     };
     query?: never;
-    url: '/api/admin/dispatch-pools/{id}/activate';
+    url: '/api/admin/oauth-clients/{id}/deactivate';
 };
-export type PostApiAdminDispatchPoolsByIdActivateErrors = {
+export type PostApiAdminOauthClientsDeactivateErrors = {
     /**
-     * Default Response
+     * OAuth client not found
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type PostApiAdminDispatchPoolsByIdActivateError = PostApiAdminDispatchPoolsByIdActivateErrors[keyof PostApiAdminDispatchPoolsByIdActivateErrors];
-export type PostApiAdminDispatchPoolsByIdActivateResponses = {
+export type PostApiAdminOauthClientsDeactivateResponses = {
     /**
-     * Default Response
+     * OAuth client deactivated
      */
-    200: {
+    200: SuccessResponse;
+};
+export type PostApiAdminOauthClientsDeactivateResponse = PostApiAdminOauthClientsDeactivateResponses[keyof PostApiAdminOauthClientsDeactivateResponses];
+export type PostApiAdminOauthClientsRegenerateSecretData = {
+    body?: never;
+    path: {
+        /**
+         * OAuth client ID
+         */
         id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        rateLimit: number;
-        concurrency: number;
-        clientId: string | null;
-        clientIdentifier: string | null;
-        status: string;
-        createdAt: string;
-        updatedAt: string;
     };
-};
-export type PostApiAdminDispatchPoolsByIdActivateResponse = PostApiAdminDispatchPoolsByIdActivateResponses[keyof PostApiAdminDispatchPoolsByIdActivateResponses];
-export type PostApiAdminDispatchPoolsSyncData = {
-    body: {
-        applicationCode: string;
-        pools: Array<{
-            code: string;
-            name: string;
-            description?: string | null;
-            rateLimit?: number;
-            concurrency?: number;
-        }>;
-        removeUnlisted?: boolean;
-    };
-    path?: never;
     query?: never;
-    url: '/api/admin/dispatch-pools/sync';
+    url: '/api/admin/oauth-clients/{id}/regenerate-secret';
 };
-export type PostApiAdminDispatchPoolsSyncErrors = {
+export type PostApiAdminOauthClientsRegenerateSecretErrors = {
     /**
-     * Default Response
+     * OAuth client not found
      */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type PostApiAdminDispatchPoolsSyncError = PostApiAdminDispatchPoolsSyncErrors[keyof PostApiAdminDispatchPoolsSyncErrors];
-export type PostApiAdminDispatchPoolsSyncResponses = {
+export type PostApiAdminOauthClientsRegenerateSecretResponses = {
     /**
-     * Default Response
+     * New client secret generated
      */
-    200: {
-        applicationCode: string;
-        created: number;
-        updated: number;
-        deleted: number;
-        syncedCodes: Array<string>;
-    };
+    200: RegenerateSecretResponse;
 };
-export type PostApiAdminDispatchPoolsSyncResponse = PostApiAdminDispatchPoolsSyncResponses[keyof PostApiAdminDispatchPoolsSyncResponses];
-export type GetApiAdminSubscriptionsData = {
+export type PostApiAdminOauthClientsRegenerateSecretResponse = PostApiAdminOauthClientsRegenerateSecretResponses[keyof PostApiAdminOauthClientsRegenerateSecretResponses];
+export type PostApiAdminOauthClientsRotateSecretData = {
+    body?: never;
+    path: {
+        /**
+         * OAuth client ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/oauth-clients/{id}/rotate-secret';
+};
+export type PostApiAdminOauthClientsRotateSecretErrors = {
+    /**
+     * OAuth client not found
+     */
+    404: unknown;
+};
+export type PostApiAdminOauthClientsRotateSecretResponses = {
+    /**
+     * New client secret generated
+     */
+    200: RegenerateSecretResponse;
+};
+export type PostApiAdminOauthClientsRotateSecretResponse = PostApiAdminOauthClientsRotateSecretResponses[keyof PostApiAdminOauthClientsRotateSecretResponses];
+export type GetApiAdminPrincipalsData = {
     body?: never;
     path?: never;
     query?: {
-        clientId?: string;
-        status?: string;
+        /**
+         * Page number
+         */
+        page?: number;
+        /**
+         * Items per page
+         */
+        limit?: number;
+        /**
+         * Filter by type
+         */
+        type?: string;
+        /**
+         * Filter by scope
+         */
+        scope?: string;
+        /**
+         * Filter by client ID
+         */
+        client_id?: string;
+    };
+    url: '/api/admin/principals';
+};
+export type GetApiAdminPrincipalsResponses = {
+    /**
+     * List of principals
+     */
+    200: PrincipalListResponse;
+};
+export type GetApiAdminPrincipalsResponse = GetApiAdminPrincipalsResponses[keyof GetApiAdminPrincipalsResponses];
+export type PostApiAdminPrincipalsUsersData = {
+    body: CreateUserRequest;
+    path?: never;
+    query?: never;
+    url: '/api/admin/principals';
+};
+export type PostApiAdminPrincipalsUsersErrors = {
+    /**
+     * Validation error
+     */
+    400: unknown;
+    /**
+     * Duplicate email
+     */
+    409: unknown;
+};
+export type PostApiAdminPrincipalsUsersResponses = {
+    /**
+     * User created
+     */
+    201: CreatedResponse;
+};
+export type PostApiAdminPrincipalsUsersResponse = PostApiAdminPrincipalsUsersResponses[keyof PostApiAdminPrincipalsUsersResponses];
+export type GetApiAdminPrincipalsCheckEmailDomainData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Email domain to check
+         */
+        domain: string;
+    };
+    url: '/api/admin/principals/check-email-domain';
+};
+export type GetApiAdminPrincipalsCheckEmailDomainResponses = {
+    /**
+     * Domain check result
+     */
+    200: CheckEmailDomainResponse;
+};
+export type GetApiAdminPrincipalsCheckEmailDomainResponse = GetApiAdminPrincipalsCheckEmailDomainResponses[keyof GetApiAdminPrincipalsCheckEmailDomainResponses];
+export type DeleteApiAdminPrincipalsByIdData = {
+    body?: never;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}';
+};
+export type DeleteApiAdminPrincipalsByIdErrors = {
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type DeleteApiAdminPrincipalsByIdResponses = {
+    /**
+     * Principal deleted
+     */
+    204: void;
+};
+export type DeleteApiAdminPrincipalsByIdResponse = DeleteApiAdminPrincipalsByIdResponses[keyof DeleteApiAdminPrincipalsByIdResponses];
+export type GetApiAdminPrincipalsByIdData = {
+    body?: never;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}';
+};
+export type GetApiAdminPrincipalsByIdErrors = {
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type GetApiAdminPrincipalsByIdResponses = {
+    /**
+     * Principal found
+     */
+    200: PrincipalResponse;
+};
+export type GetApiAdminPrincipalsByIdResponse = GetApiAdminPrincipalsByIdResponses[keyof GetApiAdminPrincipalsByIdResponses];
+export type PutApiAdminPrincipalsByIdData = {
+    body: UpdatePrincipalRequest;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}';
+};
+export type PutApiAdminPrincipalsByIdErrors = {
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type PutApiAdminPrincipalsByIdResponses = {
+    /**
+     * Principal updated
+     */
+    200: PrincipalResponse;
+};
+export type PutApiAdminPrincipalsByIdResponse = PutApiAdminPrincipalsByIdResponses[keyof PutApiAdminPrincipalsByIdResponses];
+export type PostApiAdminPrincipalsByIdActivateData = {
+    body?: never;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}/activate';
+};
+export type PostApiAdminPrincipalsByIdActivateErrors = {
+    /**
+     * Insufficient permissions
+     */
+    403: unknown;
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type PostApiAdminPrincipalsByIdActivateResponses = {
+    /**
+     * Principal activated
+     */
+    200: StatusChangeResponse;
+};
+export type PostApiAdminPrincipalsByIdActivateResponse = PostApiAdminPrincipalsByIdActivateResponses[keyof PostApiAdminPrincipalsByIdActivateResponses];
+export type GetApiAdminPrincipalsByIdApplicationAccessData = {
+    body?: never;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}/application-access';
+};
+export type GetApiAdminPrincipalsByIdApplicationAccessErrors = {
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type GetApiAdminPrincipalsByIdApplicationAccessResponses = {
+    /**
+     * Application access list
+     */
+    200: ApplicationAccessListResponse;
+};
+export type GetApiAdminPrincipalsByIdApplicationAccessResponse = GetApiAdminPrincipalsByIdApplicationAccessResponses[keyof GetApiAdminPrincipalsByIdApplicationAccessResponses];
+export type PutApiAdminPrincipalsByIdApplicationAccessData = {
+    body: SetApplicationAccessRequest;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}/application-access';
+};
+export type PutApiAdminPrincipalsByIdApplicationAccessErrors = {
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type PutApiAdminPrincipalsByIdApplicationAccessResponses = {
+    /**
+     * Application access updated
+     */
+    200: SetApplicationAccessResponse;
+};
+export type PutApiAdminPrincipalsByIdApplicationAccessResponse = PutApiAdminPrincipalsByIdApplicationAccessResponses[keyof PutApiAdminPrincipalsByIdApplicationAccessResponses];
+export type GetApiAdminPrincipalsByIdAvailableApplicationsData = {
+    body?: never;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}/available-applications';
+};
+export type GetApiAdminPrincipalsByIdAvailableApplicationsErrors = {
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type GetApiAdminPrincipalsByIdAvailableApplicationsResponses = {
+    /**
+     * Available applications
+     */
+    200: AvailableApplicationsResponse;
+};
+export type GetApiAdminPrincipalsByIdAvailableApplicationsResponse = GetApiAdminPrincipalsByIdAvailableApplicationsResponses[keyof GetApiAdminPrincipalsByIdAvailableApplicationsResponses];
+export type GetApiAdminPrincipalsByIdClientAccessData = {
+    body?: never;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}/client-access';
+};
+export type GetApiAdminPrincipalsByIdClientAccessErrors = {
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type GetApiAdminPrincipalsByIdClientAccessResponses = {
+    /**
+     * Client access grants
+     */
+    200: ClientAccessListResponse;
+};
+export type GetApiAdminPrincipalsByIdClientAccessResponse = GetApiAdminPrincipalsByIdClientAccessResponses[keyof GetApiAdminPrincipalsByIdClientAccessResponses];
+export type PostApiAdminPrincipalsByIdClientAccessData = {
+    body: GrantClientAccessRequest;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}/client-access';
+};
+export type PostApiAdminPrincipalsByIdClientAccessErrors = {
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type PostApiAdminPrincipalsByIdClientAccessResponses = {
+    /**
+     * Client access granted
+     */
+    201: ClientAccessGrantResponse;
+};
+export type PostApiAdminPrincipalsByIdClientAccessResponse = PostApiAdminPrincipalsByIdClientAccessResponses[keyof PostApiAdminPrincipalsByIdClientAccessResponses];
+export type DeleteApiAdminPrincipalsByIdClientAccessByClientIdData = {
+    body?: never;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+        /**
+         * Client ID to revoke
+         */
+        client_id: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}/client-access/{client_id}';
+};
+export type DeleteApiAdminPrincipalsByIdClientAccessByClientIdErrors = {
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponses = {
+    /**
+     * Client access revoked
+     */
+    204: void;
+};
+export type DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponse = DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponses[keyof DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponses];
+export type PostApiAdminPrincipalsByIdDeactivateData = {
+    body?: never;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}/deactivate';
+};
+export type PostApiAdminPrincipalsByIdDeactivateErrors = {
+    /**
+     * Insufficient permissions
+     */
+    403: unknown;
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type PostApiAdminPrincipalsByIdDeactivateResponses = {
+    /**
+     * Principal deactivated
+     */
+    200: StatusChangeResponse;
+};
+export type PostApiAdminPrincipalsByIdDeactivateResponse = PostApiAdminPrincipalsByIdDeactivateResponses[keyof PostApiAdminPrincipalsByIdDeactivateResponses];
+export type PostApiAdminPrincipalsByIdResetPasswordData = {
+    body: ResetPasswordRequest;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}/reset-password';
+};
+export type PostApiAdminPrincipalsByIdResetPasswordErrors = {
+    /**
+     * User is not internal auth or invalid password
+     */
+    400: unknown;
+    /**
+     * Insufficient permissions
+     */
+    403: unknown;
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type PostApiAdminPrincipalsByIdResetPasswordResponses = {
+    /**
+     * Password reset
+     */
+    200: StatusChangeResponse;
+};
+export type PostApiAdminPrincipalsByIdResetPasswordResponse = PostApiAdminPrincipalsByIdResetPasswordResponses[keyof PostApiAdminPrincipalsByIdResetPasswordResponses];
+export type GetApiAdminPrincipalsByIdRolesData = {
+    body?: never;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}/roles';
+};
+export type GetApiAdminPrincipalsByIdRolesErrors = {
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type GetApiAdminPrincipalsByIdRolesResponses = {
+    /**
+     * List of roles
+     */
+    200: RolesListResponse;
+};
+export type GetApiAdminPrincipalsByIdRolesResponse = GetApiAdminPrincipalsByIdRolesResponses[keyof GetApiAdminPrincipalsByIdRolesResponses];
+export type PostApiAdminPrincipalsByIdRolesData = {
+    body: AssignRoleRequest;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}/roles';
+};
+export type PostApiAdminPrincipalsByIdRolesErrors = {
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type PostApiAdminPrincipalsByIdRolesResponses = {
+    /**
+     * Role assigned
+     */
+    200: PrincipalResponse;
+};
+export type PostApiAdminPrincipalsByIdRolesResponse = PostApiAdminPrincipalsByIdRolesResponses[keyof PostApiAdminPrincipalsByIdRolesResponses];
+export type PutApiAdminPrincipalsByIdRolesData = {
+    body: BatchAssignRolesRequest;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}/roles';
+};
+export type PutApiAdminPrincipalsByIdRolesErrors = {
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type PutApiAdminPrincipalsByIdRolesResponses = {
+    /**
+     * Roles updated
+     */
+    200: BatchAssignRolesResponse;
+};
+export type PutApiAdminPrincipalsByIdRolesResponse = PutApiAdminPrincipalsByIdRolesResponses[keyof PutApiAdminPrincipalsByIdRolesResponses];
+export type DeleteApiAdminPrincipalsByIdRolesByRoleNameData = {
+    body?: never;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+        /**
+         * Role to remove
+         */
+        role: string;
+    };
+    query?: never;
+    url: '/api/admin/principals/{id}/roles/{role}';
+};
+export type DeleteApiAdminPrincipalsByIdRolesByRoleNameErrors = {
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+export type DeleteApiAdminPrincipalsByIdRolesByRoleNameResponses = {
+    /**
+     * Role removed
+     */
+    200: PrincipalResponse;
+};
+export type DeleteApiAdminPrincipalsByIdRolesByRoleNameResponse = DeleteApiAdminPrincipalsByIdRolesByRoleNameResponses[keyof DeleteApiAdminPrincipalsByIdRolesByRoleNameResponses];
+export type GetApiAdminRolesData = {
+    body?: never;
+    path?: never;
+    query: {
+        pagination: PaginationParams;
+        /**
+         * Filter by application code
+         */
+        applicationCode?: string;
+        /**
+         * Filter by source
+         */
         source?: string;
-        dispatchPoolId?: string;
-        anchorLevel?: string;
+        /**
+         * Filter client-managed roles only
+         */
+        clientManaged?: boolean;
+    };
+    url: '/api/admin/roles';
+};
+export type GetApiAdminRolesResponses = {
+    /**
+     * List of roles
+     */
+    200: RoleListResponse;
+};
+export type GetApiAdminRolesResponse = GetApiAdminRolesResponses[keyof GetApiAdminRolesResponses];
+export type PostApiAdminRolesData = {
+    body: CreateRoleRequest;
+    path?: never;
+    query?: never;
+    url: '/api/admin/roles';
+};
+export type PostApiAdminRolesErrors = {
+    /**
+     * Validation error
+     */
+    400: unknown;
+    /**
+     * Duplicate role code
+     */
+    409: unknown;
+};
+export type PostApiAdminRolesResponses = {
+    /**
+     * Role created
+     */
+    201: RoleResponse;
+};
+export type PostApiAdminRolesResponse = PostApiAdminRolesResponses[keyof PostApiAdminRolesResponses];
+export type GetApiAdminRolesByApplicationByApplicationIdData = {
+    body?: never;
+    path: {
+        /**
+         * Application ID
+         */
+        application_id: string;
+    };
+    query?: never;
+    url: '/api/admin/roles/by-application/{application_id}';
+};
+export type GetApiAdminRolesByApplicationByApplicationIdResponses = {
+    /**
+     * Roles filtered by application ID
+     */
+    200: Array<RoleResponse>;
+};
+export type GetApiAdminRolesByApplicationByApplicationIdResponse = GetApiAdminRolesByApplicationByApplicationIdResponses[keyof GetApiAdminRolesByApplicationByApplicationIdResponses];
+export type GetApiAdminRolesByCodeByCodeData = {
+    body?: never;
+    path: {
+        /**
+         * Role code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/admin/roles/by-code/{code}';
+};
+export type GetApiAdminRolesByCodeByCodeErrors = {
+    /**
+     * Role not found
+     */
+    404: unknown;
+};
+export type GetApiAdminRolesByCodeByCodeResponses = {
+    /**
+     * Role found
+     */
+    200: RoleResponse;
+};
+export type GetApiAdminRolesByCodeByCodeResponse = GetApiAdminRolesByCodeByCodeResponses[keyof GetApiAdminRolesByCodeByCodeResponses];
+export type GetApiAdminRolesBySourceBySourceData = {
+    body?: never;
+    path: {
+        /**
+         * Role source (CODE, DATABASE, SDK)
+         */
+        source: string;
+    };
+    query?: never;
+    url: '/api/admin/roles/by-source/{source}';
+};
+export type GetApiAdminRolesBySourceBySourceErrors = {
+    /**
+     * Invalid source
+     */
+    400: unknown;
+};
+export type GetApiAdminRolesBySourceBySourceResponses = {
+    /**
+     * Roles filtered by source
+     */
+    200: Array<RoleResponse>;
+};
+export type GetApiAdminRolesBySourceBySourceResponse = GetApiAdminRolesBySourceBySourceResponses[keyof GetApiAdminRolesBySourceBySourceResponses];
+export type GetApiAdminRolesFiltersApplicationsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/admin/roles/filters/applications';
+};
+export type GetApiAdminRolesFiltersApplicationsResponses = {
+    /**
+     * Application options
+     */
+    200: ApplicationOptionsResponse;
+};
+export type GetApiAdminRolesFiltersApplicationsResponse = GetApiAdminRolesFiltersApplicationsResponses[keyof GetApiAdminRolesFiltersApplicationsResponses];
+export type GetApiAdminRolesPermissionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/admin/roles/permissions';
+};
+export type GetApiAdminRolesPermissionsResponses = {
+    /**
+     * List of permissions
+     */
+    200: PermissionListResponse;
+};
+export type GetApiAdminRolesPermissionsResponse = GetApiAdminRolesPermissionsResponses[keyof GetApiAdminRolesPermissionsResponses];
+export type GetApiAdminRolesPermissionsByPermissionData = {
+    body?: never;
+    path: {
+        /**
+         * Permission string
+         */
+        permission: string;
+    };
+    query?: never;
+    url: '/api/admin/roles/permissions/{permission}';
+};
+export type GetApiAdminRolesPermissionsByPermissionErrors = {
+    /**
+     * Permission not found
+     */
+    404: unknown;
+};
+export type GetApiAdminRolesPermissionsByPermissionResponses = {
+    /**
+     * Permission found
+     */
+    200: PermissionResponse;
+};
+export type GetApiAdminRolesPermissionsByPermissionResponse = GetApiAdminRolesPermissionsByPermissionResponses[keyof GetApiAdminRolesPermissionsByPermissionResponses];
+export type DeleteApiAdminRolesByNameData = {
+    body?: never;
+    path: {
+        /**
+         * Role name (code) or ID
+         */
+        role_name: string;
+    };
+    query?: never;
+    url: '/api/admin/roles/{role_name}';
+};
+export type DeleteApiAdminRolesByNameErrors = {
+    /**
+     * Role not found
+     */
+    404: unknown;
+};
+export type DeleteApiAdminRolesByNameResponses = {
+    /**
+     * Role deleted
+     */
+    204: void;
+};
+export type DeleteApiAdminRolesByNameResponse = DeleteApiAdminRolesByNameResponses[keyof DeleteApiAdminRolesByNameResponses];
+export type GetApiAdminRolesByNameData = {
+    body?: never;
+    path: {
+        /**
+         * Role name (code) or ID
+         */
+        role_name: string;
+    };
+    query?: never;
+    url: '/api/admin/roles/{role_name}';
+};
+export type GetApiAdminRolesByNameErrors = {
+    /**
+     * Role not found
+     */
+    404: unknown;
+};
+export type GetApiAdminRolesByNameResponses = {
+    /**
+     * Role found
+     */
+    200: RoleResponse;
+};
+export type GetApiAdminRolesByNameResponse = GetApiAdminRolesByNameResponses[keyof GetApiAdminRolesByNameResponses];
+export type PutApiAdminRolesByNameData = {
+    body: UpdateRoleRequest;
+    path: {
+        /**
+         * Role name (code) or ID
+         */
+        role_name: string;
+    };
+    query?: never;
+    url: '/api/admin/roles/{role_name}';
+};
+export type PutApiAdminRolesByNameErrors = {
+    /**
+     * Role not found
+     */
+    404: unknown;
+};
+export type PutApiAdminRolesByNameResponses = {
+    /**
+     * Role updated
+     */
+    200: RoleResponse;
+};
+export type PutApiAdminRolesByNameResponse = PutApiAdminRolesByNameResponses[keyof PutApiAdminRolesByNameResponses];
+export type PostApiAdminRolesByNamePermissionsData = {
+    body: GrantPermissionRequest;
+    path: {
+        /**
+         * Role name (code) or ID
+         */
+        role_name: string;
+    };
+    query?: never;
+    url: '/api/admin/roles/{role_name}/permissions';
+};
+export type PostApiAdminRolesByNamePermissionsErrors = {
+    /**
+     * Role not found
+     */
+    404: unknown;
+};
+export type PostApiAdminRolesByNamePermissionsResponses = {
+    /**
+     * Permission granted
+     */
+    200: RoleResponse;
+};
+export type PostApiAdminRolesByNamePermissionsResponse = PostApiAdminRolesByNamePermissionsResponses[keyof PostApiAdminRolesByNamePermissionsResponses];
+export type DeleteApiAdminRolesByNamePermissionsByPermissionData = {
+    body?: never;
+    path: {
+        /**
+         * Role name (code) or ID
+         */
+        role_name: string;
+        /**
+         * Permission to revoke
+         */
+        permission: string;
+    };
+    query?: never;
+    url: '/api/admin/roles/{role_name}/permissions/{permission}';
+};
+export type DeleteApiAdminRolesByNamePermissionsByPermissionErrors = {
+    /**
+     * Role not found
+     */
+    404: unknown;
+};
+export type DeleteApiAdminRolesByNamePermissionsByPermissionResponses = {
+    /**
+     * Permission revoked
+     */
+    200: RoleResponse;
+};
+export type DeleteApiAdminRolesByNamePermissionsByPermissionResponse = DeleteApiAdminRolesByNamePermissionsByPermissionResponses[keyof DeleteApiAdminRolesByNamePermissionsByPermissionResponses];
+export type GetApiAdminSubscriptionsData = {
+    body?: never;
+    path?: never;
+    query: {
+        pagination: PaginationParams;
+        /**
+         * Filter by client ID
+         */
+        clientId?: string;
+        /**
+         * Filter by status
+         */
+        status?: string;
     };
     url: '/api/admin/subscriptions';
 };
 export type GetApiAdminSubscriptionsResponses = {
     /**
-     * Default Response
+     * List of subscriptions
      */
-    200: {
-        subscriptions: Array<{
-            id: string;
-            code: string;
-            applicationCode: string | null;
-            name: string;
-            description: string | null;
-            clientId: string | null;
-            clientIdentifier: string | null;
-            clientScoped: boolean;
-            eventTypes: Array<{
-                eventTypeId: string | null;
-                eventTypeCode: string;
-                specVersion: string | null;
-            }>;
-            target: string;
-            queue: string | null;
-            customConfig: Array<{
-                key: string;
-                value: string;
-            }>;
-            source: string;
-            status: string;
-            maxAgeSeconds: number;
-            dispatchPoolId: string | null;
-            dispatchPoolCode: string | null;
-            delaySeconds: number;
-            sequence: number;
-            mode: string;
-            timeoutSeconds: number;
-            maxRetries: number;
-            serviceAccountId: string | null;
-            dataOnly: boolean;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-    };
+    200: SubscriptionListResponse;
 };
 export type GetApiAdminSubscriptionsResponse = GetApiAdminSubscriptionsResponses[keyof GetApiAdminSubscriptionsResponses];
 export type PostApiAdminSubscriptionsData = {
-    body: {
-        code: string;
-        applicationCode?: string | null;
-        name: string;
-        description?: string | null;
-        clientId?: string | null;
-        clientScoped?: boolean;
-        eventTypes: Array<{
-            eventTypeId?: string | null;
-            eventTypeCode: string;
-            specVersion?: string | null;
-        }>;
-        target: string;
-        queue?: string | null;
-        customConfig?: Array<{
-            key: string;
-            value: string;
-        }>;
-        maxAgeSeconds?: number;
-        dispatchPoolId?: string | null;
-        dispatchPoolCode?: string | null;
-        delaySeconds?: number;
-        sequence?: number;
-        mode?: 'IMMEDIATE' | 'BLOCK_ON_ERROR';
-        timeoutSeconds?: number;
-        maxRetries?: number;
-        serviceAccountId?: string | null;
-        dataOnly?: boolean;
-    };
+    body: CreateSubscriptionRequest;
     path?: never;
     query?: never;
     url: '/api/admin/subscriptions';
 };
 export type PostApiAdminSubscriptionsErrors = {
     /**
-     * Default Response
+     * Validation error
      */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    400: unknown;
     /**
-     * Default Response
+     * Duplicate code
      */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    409: unknown;
 };
-export type PostApiAdminSubscriptionsError = PostApiAdminSubscriptionsErrors[keyof PostApiAdminSubscriptionsErrors];
 export type PostApiAdminSubscriptionsResponses = {
     /**
-     * Default Response
+     * Subscription created
      */
-    201: {
-        id: string;
-        code: string;
-        applicationCode: string | null;
-        name: string;
-        description: string | null;
-        clientId: string | null;
-        clientIdentifier: string | null;
-        clientScoped: boolean;
-        eventTypes: Array<{
-            eventTypeId: string | null;
-            eventTypeCode: string;
-            specVersion: string | null;
-        }>;
-        target: string;
-        queue: string | null;
-        customConfig: Array<{
-            key: string;
-            value: string;
-        }>;
-        source: string;
-        status: string;
-        maxAgeSeconds: number;
-        dispatchPoolId: string | null;
-        dispatchPoolCode: string | null;
-        delaySeconds: number;
-        sequence: number;
-        mode: string;
-        timeoutSeconds: number;
-        maxRetries: number;
-        serviceAccountId: string | null;
-        dataOnly: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+    201: SubscriptionResponse;
 };
 export type PostApiAdminSubscriptionsResponse = PostApiAdminSubscriptionsResponses[keyof PostApiAdminSubscriptionsResponses];
+export type PostApiAdminSubscriptionsSyncData = {
+    body: SyncSubscriptionsRequest;
+    path?: never;
+    query?: {
+        /**
+         * Remove items not in the sync list
+         */
+        removeUnlisted?: boolean;
+    };
+    url: '/api/admin/subscriptions/sync';
+};
+export type PostApiAdminSubscriptionsSyncErrors = {
+    /**
+     * Validation error
+     */
+    400: unknown;
+    /**
+     * Application or connection not found
+     */
+    404: unknown;
+};
+export type PostApiAdminSubscriptionsSyncResponses = {
+    /**
+     * Subscriptions synced
+     */
+    200: SyncResultResponse;
+};
+export type PostApiAdminSubscriptionsSyncResponse = PostApiAdminSubscriptionsSyncResponses[keyof PostApiAdminSubscriptionsSyncResponses];
 export type DeleteApiAdminSubscriptionsByIdData = {
     body?: never;
     path: {
+        /**
+         * Subscription ID
+         */
         id: string;
     };
     query?: never;
@@ -6063,29 +3605,13 @@ export type DeleteApiAdminSubscriptionsByIdData = {
 };
 export type DeleteApiAdminSubscriptionsByIdErrors = {
     /**
-     * Default Response
+     * Subscription not found
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type DeleteApiAdminSubscriptionsByIdError = DeleteApiAdminSubscriptionsByIdErrors[keyof DeleteApiAdminSubscriptionsByIdErrors];
 export type DeleteApiAdminSubscriptionsByIdResponses = {
     /**
-     * Default Response
+     * Subscription deleted
      */
     204: void;
 };
@@ -6093,6 +3619,9 @@ export type DeleteApiAdminSubscriptionsByIdResponse = DeleteApiAdminSubscription
 export type GetApiAdminSubscriptionsByIdData = {
     body?: never;
     path: {
+        /**
+         * Subscription ID
+         */
         id: string;
     };
     query?: never;
@@ -6100,95 +3629,23 @@ export type GetApiAdminSubscriptionsByIdData = {
 };
 export type GetApiAdminSubscriptionsByIdErrors = {
     /**
-     * Default Response
+     * Subscription not found
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type GetApiAdminSubscriptionsByIdError = GetApiAdminSubscriptionsByIdErrors[keyof GetApiAdminSubscriptionsByIdErrors];
 export type GetApiAdminSubscriptionsByIdResponses = {
     /**
-     * Default Response
+     * Subscription found
      */
-    200: {
-        id: string;
-        code: string;
-        applicationCode: string | null;
-        name: string;
-        description: string | null;
-        clientId: string | null;
-        clientIdentifier: string | null;
-        clientScoped: boolean;
-        eventTypes: Array<{
-            eventTypeId: string | null;
-            eventTypeCode: string;
-            specVersion: string | null;
-        }>;
-        target: string;
-        queue: string | null;
-        customConfig: Array<{
-            key: string;
-            value: string;
-        }>;
-        source: string;
-        status: string;
-        maxAgeSeconds: number;
-        dispatchPoolId: string | null;
-        dispatchPoolCode: string | null;
-        delaySeconds: number;
-        sequence: number;
-        mode: string;
-        timeoutSeconds: number;
-        maxRetries: number;
-        serviceAccountId: string | null;
-        dataOnly: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+    200: SubscriptionResponse;
 };
 export type GetApiAdminSubscriptionsByIdResponse = GetApiAdminSubscriptionsByIdResponses[keyof GetApiAdminSubscriptionsByIdResponses];
 export type PutApiAdminSubscriptionsByIdData = {
-    body: {
-        name?: string;
-        description?: string | null;
-        eventTypes?: Array<{
-            eventTypeId?: string | null;
-            eventTypeCode: string;
-            specVersion?: string | null;
-        }>;
-        target?: string;
-        queue?: string | null;
-        customConfig?: Array<{
-            key: string;
-            value: string;
-        }>;
-        status?: 'ACTIVE' | 'PAUSED';
-        maxAgeSeconds?: number;
-        dispatchPoolId?: string | null;
-        dispatchPoolCode?: string | null;
-        delaySeconds?: number;
-        sequence?: number;
-        mode?: 'IMMEDIATE' | 'BLOCK_ON_ERROR';
-        timeoutSeconds?: number;
-        maxRetries?: number;
-        serviceAccountId?: string | null;
-        dataOnly?: boolean;
-    };
+    body: UpdateSubscriptionRequest;
     path: {
+        /**
+         * Subscription ID
+         */
         id: string;
     };
     query?: never;
@@ -6196,89 +3653,23 @@ export type PutApiAdminSubscriptionsByIdData = {
 };
 export type PutApiAdminSubscriptionsByIdErrors = {
     /**
-     * Default Response
+     * Subscription not found
      */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type PutApiAdminSubscriptionsByIdError = PutApiAdminSubscriptionsByIdErrors[keyof PutApiAdminSubscriptionsByIdErrors];
 export type PutApiAdminSubscriptionsByIdResponses = {
     /**
-     * Default Response
+     * Subscription updated
      */
-    200: {
-        id: string;
-        code: string;
-        applicationCode: string | null;
-        name: string;
-        description: string | null;
-        clientId: string | null;
-        clientIdentifier: string | null;
-        clientScoped: boolean;
-        eventTypes: Array<{
-            eventTypeId: string | null;
-            eventTypeCode: string;
-            specVersion: string | null;
-        }>;
-        target: string;
-        queue: string | null;
-        customConfig: Array<{
-            key: string;
-            value: string;
-        }>;
-        source: string;
-        status: string;
-        maxAgeSeconds: number;
-        dispatchPoolId: string | null;
-        dispatchPoolCode: string | null;
-        delaySeconds: number;
-        sequence: number;
-        mode: string;
-        timeoutSeconds: number;
-        maxRetries: number;
-        serviceAccountId: string | null;
-        dataOnly: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+    200: SubscriptionResponse;
 };
 export type PutApiAdminSubscriptionsByIdResponse = PutApiAdminSubscriptionsByIdResponses[keyof PutApiAdminSubscriptionsByIdResponses];
 export type PostApiAdminSubscriptionsByIdPauseData = {
     body?: never;
     path: {
+        /**
+         * Subscription ID
+         */
         id: string;
     };
     query?: never;
@@ -6286,70 +3677,23 @@ export type PostApiAdminSubscriptionsByIdPauseData = {
 };
 export type PostApiAdminSubscriptionsByIdPauseErrors = {
     /**
-     * Default Response
+     * Subscription not found
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type PostApiAdminSubscriptionsByIdPauseError = PostApiAdminSubscriptionsByIdPauseErrors[keyof PostApiAdminSubscriptionsByIdPauseErrors];
 export type PostApiAdminSubscriptionsByIdPauseResponses = {
     /**
-     * Default Response
+     * Subscription paused
      */
-    200: {
-        id: string;
-        code: string;
-        applicationCode: string | null;
-        name: string;
-        description: string | null;
-        clientId: string | null;
-        clientIdentifier: string | null;
-        clientScoped: boolean;
-        eventTypes: Array<{
-            eventTypeId: string | null;
-            eventTypeCode: string;
-            specVersion: string | null;
-        }>;
-        target: string;
-        queue: string | null;
-        customConfig: Array<{
-            key: string;
-            value: string;
-        }>;
-        source: string;
-        status: string;
-        maxAgeSeconds: number;
-        dispatchPoolId: string | null;
-        dispatchPoolCode: string | null;
-        delaySeconds: number;
-        sequence: number;
-        mode: string;
-        timeoutSeconds: number;
-        maxRetries: number;
-        serviceAccountId: string | null;
-        dataOnly: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+    200: SubscriptionResponse;
 };
 export type PostApiAdminSubscriptionsByIdPauseResponse = PostApiAdminSubscriptionsByIdPauseResponses[keyof PostApiAdminSubscriptionsByIdPauseResponses];
 export type PostApiAdminSubscriptionsByIdResumeData = {
     body?: never;
     path: {
+        /**
+         * Subscription ID
+         */
         id: string;
     };
     query?: never;
@@ -6357,3971 +3701,624 @@ export type PostApiAdminSubscriptionsByIdResumeData = {
 };
 export type PostApiAdminSubscriptionsByIdResumeErrors = {
     /**
-     * Default Response
+     * Subscription not found
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type PostApiAdminSubscriptionsByIdResumeError = PostApiAdminSubscriptionsByIdResumeErrors[keyof PostApiAdminSubscriptionsByIdResumeErrors];
 export type PostApiAdminSubscriptionsByIdResumeResponses = {
     /**
-     * Default Response
+     * Subscription resumed
      */
-    200: {
-        id: string;
-        code: string;
-        applicationCode: string | null;
-        name: string;
-        description: string | null;
-        clientId: string | null;
-        clientIdentifier: string | null;
-        clientScoped: boolean;
-        eventTypes: Array<{
-            eventTypeId: string | null;
-            eventTypeCode: string;
-            specVersion: string | null;
-        }>;
-        target: string;
-        queue: string | null;
-        customConfig: Array<{
-            key: string;
-            value: string;
-        }>;
-        source: string;
-        status: string;
-        maxAgeSeconds: number;
-        dispatchPoolId: string | null;
-        dispatchPoolCode: string | null;
-        delaySeconds: number;
-        sequence: number;
-        mode: string;
-        timeoutSeconds: number;
-        maxRetries: number;
-        serviceAccountId: string | null;
-        dataOnly: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+    200: SubscriptionResponse;
 };
 export type PostApiAdminSubscriptionsByIdResumeResponse = PostApiAdminSubscriptionsByIdResumeResponses[keyof PostApiAdminSubscriptionsByIdResumeResponses];
-export type PostApiAdminSubscriptionsSyncData = {
-    body: {
-        applicationCode: string;
-        subscriptions: Array<{
-            code: string;
-            name: string;
-            description?: string | null;
-            clientScoped?: boolean;
-            eventTypes: Array<{
-                eventTypeId?: string | null;
-                eventTypeCode: string;
-                specVersion?: string | null;
-            }>;
-            target: string;
-            queue?: string | null;
-            customConfig?: Array<{
-                key: string;
-                value: string;
-            }>;
-            maxAgeSeconds?: number;
-            dispatchPoolCode?: string | null;
-            delaySeconds?: number;
-            sequence?: number;
-            mode?: 'IMMEDIATE' | 'BLOCK_ON_ERROR';
-            timeoutSeconds?: number;
-            maxRetries?: number;
-            dataOnly?: boolean;
-        }>;
-        removeUnlisted?: boolean;
-    };
+export type GetApiAdminMonitoringCircuitBreakersData = {
+    body?: never;
     path?: never;
     query?: never;
-    url: '/api/admin/subscriptions/sync';
+    url: '/api/monitoring/circuit-breakers';
 };
-export type PostApiAdminSubscriptionsSyncErrors = {
+export type GetApiAdminMonitoringCircuitBreakersResponses = {
     /**
-     * Default Response
+     * Circuit breaker states
      */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    200: CircuitBreakersResponse;
 };
-export type PostApiAdminSubscriptionsSyncError = PostApiAdminSubscriptionsSyncErrors[keyof PostApiAdminSubscriptionsSyncErrors];
-export type PostApiAdminSubscriptionsSyncResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        applicationCode: string;
-        created: number;
-        updated: number;
-        deleted: number;
-        syncedCodes: Array<string>;
-    };
-};
-export type PostApiAdminSubscriptionsSyncResponse = PostApiAdminSubscriptionsSyncResponses[keyof PostApiAdminSubscriptionsSyncResponses];
-export type GetApiAdminEventsData = {
+export type GetApiAdminMonitoringCircuitBreakersResponse = GetApiAdminMonitoringCircuitBreakersResponses[keyof GetApiAdminMonitoringCircuitBreakersResponses];
+export type GetApiAdminMonitoringDashboardData = {
     body?: never;
     path?: never;
-    query?: {
-        clientIds?: string;
-        applications?: string;
-        subdomains?: string;
-        aggregates?: string;
-        types?: string;
-        source?: string;
-        subject?: string;
-        correlationId?: string;
-        messageGroup?: string;
-        timeAfter?: string;
-        timeBefore?: string;
-        page?: string;
-        size?: string;
-    };
-    url: '/api/admin/events';
-};
-export type GetApiAdminEventsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        items: Array<{
-            id: string;
-            specVersion: string | null;
-            type: string;
-            application: string | null;
-            subdomain: string | null;
-            aggregate: string | null;
-            source: string;
-            subject: string | null;
-            time: string;
-            data: string | null;
-            messageGroup: string | null;
-            correlationId: string | null;
-            causationId: string | null;
-            deduplicationId: string | null;
-            clientId: string | null;
-            projectedAt: string;
-        }>;
-        page: number;
-        size: number;
-        totalItems: number;
-        totalPages: number;
-    };
-};
-export type GetApiAdminEventsResponse = GetApiAdminEventsResponses[keyof GetApiAdminEventsResponses];
-export type GetApiAdminEventsFilterOptionsData = {
-    body?: never;
-    path?: never;
-    query?: {
-        clientIds?: string;
-        applications?: string;
-        subdomains?: string;
-        aggregates?: string;
-    };
-    url: '/api/admin/events/filter-options';
-};
-export type GetApiAdminEventsFilterOptionsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        applications: Array<string>;
-        subdomains: Array<string>;
-        aggregates: Array<string>;
-        types: Array<string>;
-    };
-};
-export type GetApiAdminEventsFilterOptionsResponse = GetApiAdminEventsFilterOptionsResponses[keyof GetApiAdminEventsFilterOptionsResponses];
-export type GetApiAdminEventsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
     query?: never;
-    url: '/api/admin/events/{id}';
+    url: '/api/monitoring/dashboard';
 };
-export type GetApiAdminEventsByIdErrors = {
+export type GetApiAdminMonitoringDashboardResponses = {
     /**
-     * Default Response
+     * Dashboard metrics
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    200: DashboardMetrics;
 };
-export type GetApiAdminEventsByIdError = GetApiAdminEventsByIdErrors[keyof GetApiAdminEventsByIdErrors];
-export type GetApiAdminEventsByIdResponses = {
+export type GetApiAdminMonitoringDashboardResponse = GetApiAdminMonitoringDashboardResponses[keyof GetApiAdminMonitoringDashboardResponses];
+export type GetApiAdminMonitoringInFlightMessagesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/monitoring/in-flight-messages';
+};
+export type GetApiAdminMonitoringInFlightMessagesResponses = {
     /**
-     * Default Response
+     * In-flight messages
      */
-    200: {
-        id: string;
-        specVersion: string | null;
-        type: string;
-        application: string | null;
-        subdomain: string | null;
-        aggregate: string | null;
-        source: string;
-        subject: string | null;
-        time: string;
-        data: string | null;
-        messageGroup: string | null;
-        correlationId: string | null;
-        causationId: string | null;
-        deduplicationId: string | null;
-        clientId: string | null;
-        projectedAt: string;
-    };
+    200: InFlightMessagesResponse;
 };
-export type GetApiAdminEventsByIdResponse = GetApiAdminEventsByIdResponses[keyof GetApiAdminEventsByIdResponses];
+export type GetApiAdminMonitoringInFlightMessagesResponse = GetApiAdminMonitoringInFlightMessagesResponses[keyof GetApiAdminMonitoringInFlightMessagesResponses];
+export type GetApiAdminMonitoringPoolStatsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/monitoring/pool-stats';
+};
+export type GetApiAdminMonitoringPoolStatsResponses = {
+    /**
+     * Pool statistics with enhanced metrics
+     */
+    200: PoolStatsResponse;
+};
+export type GetApiAdminMonitoringPoolStatsResponse = GetApiAdminMonitoringPoolStatsResponses[keyof GetApiAdminMonitoringPoolStatsResponses];
+export type GetApiAdminMonitoringStandbyStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/monitoring/standby-status';
+};
+export type GetApiAdminMonitoringStandbyStatusResponses = {
+    /**
+     * Standby status
+     */
+    200: StandbyStatus;
+};
+export type GetApiAdminMonitoringStandbyStatusResponse = GetApiAdminMonitoringStandbyStatusResponses[keyof GetApiAdminMonitoringStandbyStatusResponses];
+export type GetAuthCheckDomainData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Email address to check
+         */
+        email: string;
+    };
+    url: '/auth/check-domain';
+};
+export type GetAuthCheckDomainResponses = {
+    /**
+     * Domain check result
+     */
+    200: DomainCheckResponse;
+};
+export type GetAuthCheckDomainResponse = GetAuthCheckDomainResponses[keyof GetAuthCheckDomainResponses];
+export type PostAuthLoginData = {
+    body: LoginRequest;
+    path?: never;
+    query?: never;
+    url: '/auth/login';
+};
+export type PostAuthLoginErrors = {
+    /**
+     * Invalid credentials
+     */
+    401: unknown;
+};
+export type PostAuthLoginResponses = {
+    /**
+     * Login successful
+     */
+    200: LoginResponse;
+};
+export type PostAuthLoginResponse = PostAuthLoginResponses[keyof PostAuthLoginResponses];
+export type PostAuthLogoutData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/logout';
+};
+export type PostAuthLogoutResponses = {
+    /**
+     * Logout successful
+     */
+    204: void;
+};
+export type PostAuthLogoutResponse = PostAuthLogoutResponses[keyof PostAuthLogoutResponses];
+export type GetAuthMeData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/me';
+};
+export type GetAuthMeErrors = {
+    /**
+     * Not authenticated
+     */
+    401: unknown;
+};
+export type GetAuthMeResponses = {
+    /**
+     * Current user info
+     */
+    200: CurrentUserResponse;
+};
+export type GetAuthMeResponse = GetAuthMeResponses[keyof GetAuthMeResponses];
+export type PostAuthRefreshData = {
+    body: RefreshTokenRequest;
+    path?: never;
+    query?: never;
+    url: '/auth/refresh';
+};
+export type PostAuthRefreshErrors = {
+    /**
+     * Invalid refresh token
+     */
+    401: unknown;
+};
+export type PostAuthRefreshResponses = {
+    /**
+     * Token refreshed
+     */
+    200: TokenRefreshResponse;
+};
+export type PostAuthRefreshResponse = PostAuthRefreshResponses[keyof PostAuthRefreshResponses];
 export type GetApiAdminDispatchJobsData = {
     body?: never;
     path?: never;
-    query?: {
-        clientIds?: string;
-        statuses?: string;
-        applications?: string;
-        subdomains?: string;
-        aggregates?: string;
-        codes?: string;
-        source?: string;
-        kind?: string;
+    query: {
+        pagination: PaginationParams;
+        /**
+         * Filter by event ID
+         */
+        eventId?: string;
+        /**
+         * Filter by correlation ID
+         */
+        correlationId?: string;
+        /**
+         * Filter by subscription ID
+         */
         subscriptionId?: string;
-        dispatchPoolId?: string;
-        messageGroup?: string;
-        createdAfter?: string;
-        createdBefore?: string;
-        page?: string;
-        size?: string;
+        /**
+         * Filter by client ID
+         */
+        clientId?: string;
+        /**
+         * Filter by status
+         */
+        status?: string;
     };
-    url: '/api/admin/dispatch-jobs';
+    url: '/bff/dispatch-jobs';
 };
 export type GetApiAdminDispatchJobsResponses = {
     /**
-     * Default Response
+     * List of dispatch jobs
      */
-    200: {
-        items: Array<{
-            id: string;
-            externalId: string | null;
-            source: string | null;
-            kind: string;
-            code: string;
-            subject: string | null;
-            eventId: string | null;
-            correlationId: string | null;
-            targetUrl: string;
-            protocol: string;
-            application: string | null;
-            subdomain: string | null;
-            aggregate: string | null;
-            clientId: string | null;
-            subscriptionId: string | null;
-            serviceAccountId: string | null;
-            dispatchPoolId: string | null;
-            messageGroup: string | null;
-            mode: string;
-            sequence: number | null;
-            status: string;
-            attemptCount: number;
-            maxRetries: number;
-            lastError: string | null;
-            timeoutSeconds: number | null;
-            retryStrategy: string | null;
-            createdAt: string;
-            updatedAt: string;
-            scheduledFor: string | null;
-            expiresAt: string | null;
-            completedAt: string | null;
-            lastAttemptAt: string | null;
-            durationMillis: number | null;
-            idempotencyKey: string | null;
-            isCompleted: boolean | null;
-            isTerminal: boolean | null;
-            projectedAt: string | null;
-        }>;
-        page: number;
-        size: number;
-        totalItems: number;
-        totalPages: number;
-    };
+    200: Array<DispatchJobResponse>;
 };
 export type GetApiAdminDispatchJobsResponse = GetApiAdminDispatchJobsResponses[keyof GetApiAdminDispatchJobsResponses];
+export type PostApiAdminDispatchJobsData = {
+    body: CreateDispatchJobRequest;
+    path?: never;
+    query?: never;
+    url: '/bff/dispatch-jobs';
+};
+export type PostApiAdminDispatchJobsErrors = {
+    /**
+     * Invalid request
+     */
+    400: unknown;
+    /**
+     * No access to client
+     */
+    403: unknown;
+};
+export type PostApiAdminDispatchJobsResponses = {
+    /**
+     * Dispatch job created
+     */
+    201: DispatchJobResponse;
+};
+export type PostApiAdminDispatchJobsResponse = PostApiAdminDispatchJobsResponses[keyof PostApiAdminDispatchJobsResponses];
+export type PostApiAdminDispatchJobsBatchData = {
+    body: BatchCreateDispatchJobsRequest;
+    path?: never;
+    query?: never;
+    url: '/bff/dispatch-jobs/batch';
+};
+export type PostApiAdminDispatchJobsBatchErrors = {
+    /**
+     * Invalid request or batch size exceeds limit
+     */
+    400: unknown;
+};
+export type PostApiAdminDispatchJobsBatchResponses = {
+    /**
+     * Dispatch jobs created
+     */
+    201: BatchCreateDispatchJobsResponse;
+};
+export type PostApiAdminDispatchJobsBatchResponse = PostApiAdminDispatchJobsBatchResponses[keyof PostApiAdminDispatchJobsBatchResponses];
+export type GetApiAdminDispatchJobsByEventByEventIdData = {
+    body?: never;
+    path: {
+        /**
+         * Event ID
+         */
+        event_id: string;
+    };
+    query?: never;
+    url: '/bff/dispatch-jobs/by-event/{event_id}';
+};
+export type GetApiAdminDispatchJobsByEventByEventIdResponses = {
+    /**
+     * Dispatch jobs for event
+     */
+    200: Array<DispatchJobResponse>;
+};
+export type GetApiAdminDispatchJobsByEventByEventIdResponse = GetApiAdminDispatchJobsByEventByEventIdResponses[keyof GetApiAdminDispatchJobsByEventByEventIdResponses];
 export type GetApiAdminDispatchJobsFilterOptionsData = {
     body?: never;
     path?: never;
-    query?: {
-        clientIds?: string;
-        applications?: string;
-        subdomains?: string;
-        aggregates?: string;
-    };
-    url: '/api/admin/dispatch-jobs/filter-options';
+    query?: never;
+    url: '/bff/dispatch-jobs/filter-options';
 };
 export type GetApiAdminDispatchJobsFilterOptionsResponses = {
     /**
-     * Default Response
+     * Filter options
      */
-    200: {
-        applications: Array<string>;
-        subdomains: Array<string>;
-        aggregates: Array<string>;
-        codes: Array<string>;
-        statuses: Array<string>;
-    };
+    200: DispatchJobFilterOptionsResponse;
 };
 export type GetApiAdminDispatchJobsFilterOptionsResponse = GetApiAdminDispatchJobsFilterOptionsResponses[keyof GetApiAdminDispatchJobsFilterOptionsResponses];
+export type GetApiAdminDispatchJobsRawData = {
+    body?: never;
+    path?: never;
+    query?: {
+        page?: number;
+        size?: number;
+    };
+    url: '/bff/dispatch-jobs/raw';
+};
+export type GetApiAdminDispatchJobsRawResponses = {
+    /**
+     * Raw dispatch jobs page
+     */
+    200: PaginatedDispatchJobsResponse;
+};
+export type GetApiAdminDispatchJobsRawResponse = GetApiAdminDispatchJobsRawResponses[keyof GetApiAdminDispatchJobsRawResponses];
 export type GetApiAdminDispatchJobsByIdData = {
     body?: never;
     path: {
+        /**
+         * Dispatch job ID
+         */
         id: string;
     };
     query?: never;
-    url: '/api/admin/dispatch-jobs/{id}';
+    url: '/bff/dispatch-jobs/{id}';
 };
 export type GetApiAdminDispatchJobsByIdErrors = {
     /**
-     * Default Response
+     * Dispatch job not found
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type GetApiAdminDispatchJobsByIdError = GetApiAdminDispatchJobsByIdErrors[keyof GetApiAdminDispatchJobsByIdErrors];
 export type GetApiAdminDispatchJobsByIdResponses = {
     /**
-     * Default Response
+     * Dispatch job found
      */
-    200: {
-        id: string;
-        externalId: string | null;
-        source: string | null;
-        kind: string;
-        code: string;
-        subject: string | null;
-        eventId: string | null;
-        correlationId: string | null;
-        targetUrl: string;
-        protocol: string;
-        application: string | null;
-        subdomain: string | null;
-        aggregate: string | null;
-        clientId: string | null;
-        subscriptionId: string | null;
-        serviceAccountId: string | null;
-        dispatchPoolId: string | null;
-        messageGroup: string | null;
-        mode: string;
-        sequence: number | null;
-        status: string;
-        attemptCount: number;
-        maxRetries: number;
-        lastError: string | null;
-        timeoutSeconds: number | null;
-        retryStrategy: string | null;
-        createdAt: string;
-        updatedAt: string;
-        scheduledFor: string | null;
-        expiresAt: string | null;
-        completedAt: string | null;
-        lastAttemptAt: string | null;
-        durationMillis: number | null;
-        idempotencyKey: string | null;
-        isCompleted: boolean | null;
-        isTerminal: boolean | null;
-        projectedAt: string | null;
-    };
+    200: DispatchJobResponse;
 };
 export type GetApiAdminDispatchJobsByIdResponse = GetApiAdminDispatchJobsByIdResponses[keyof GetApiAdminDispatchJobsByIdResponses];
 export type GetApiAdminDispatchJobsByIdAttemptsData = {
     body?: never;
     path: {
+        /**
+         * Dispatch job ID
+         */
         id: string;
     };
     query?: never;
-    url: '/api/admin/dispatch-jobs/{id}/attempts';
+    url: '/bff/dispatch-jobs/{id}/attempts';
 };
 export type GetApiAdminDispatchJobsByIdAttemptsErrors = {
     /**
-     * Default Response
+     * Dispatch job not found
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    404: unknown;
 };
-export type GetApiAdminDispatchJobsByIdAttemptsError = GetApiAdminDispatchJobsByIdAttemptsErrors[keyof GetApiAdminDispatchJobsByIdAttemptsErrors];
 export type GetApiAdminDispatchJobsByIdAttemptsResponses = {
     /**
-     * Default Response
+     * Attempts list returned
      */
-    200: {
-        dispatchJobId: string;
-        attempts: Array<{
-            id: string;
-            attemptNumber: number | null;
-            status: string | null;
-            responseCode: number | null;
-            responseBody: string | null;
-            errorMessage: string | null;
-            errorType: string | null;
-            durationMillis: number | null;
-            attemptedAt: string | null;
-            completedAt: string | null;
-            createdAt: string | null;
-        }>;
-        total: number;
-    };
+    200: Array<DispatchAttemptResponse>;
 };
 export type GetApiAdminDispatchJobsByIdAttemptsResponse = GetApiAdminDispatchJobsByIdAttemptsResponses[keyof GetApiAdminDispatchJobsByIdAttemptsResponses];
-export type GetApiAdminIdentityProvidersData = {
+export type GetApiAdminDispatchJobsByIdRawData = {
+    body?: never;
+    path: {
+        /**
+         * Dispatch job ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/bff/dispatch-jobs/{id}/raw';
+};
+export type GetApiAdminDispatchJobsByIdRawErrors = {
+    /**
+     * Dispatch job not found
+     */
+    404: unknown;
+};
+export type GetApiAdminDispatchJobsByIdRawResponses = {
+    /**
+     * Raw dispatch job data
+     */
+    200: unknown;
+};
+export type GetApiAdminEventsData = {
     body?: never;
     path?: never;
-    query?: never;
-    url: '/api/admin/identity-providers';
-};
-export type GetApiAdminIdentityProvidersResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        identityProviders: Array<{
-            id: string;
-            code: string;
-            name: string;
-            type: string;
-            oidcIssuerUrl: string | null;
-            oidcClientId: string | null;
-            hasClientSecret: boolean;
-            oidcMultiTenant: boolean;
-            oidcIssuerPattern: string | null;
-            allowedEmailDomains: Array<string>;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-    };
-};
-export type GetApiAdminIdentityProvidersResponse = GetApiAdminIdentityProvidersResponses[keyof GetApiAdminIdentityProvidersResponses];
-export type PostApiAdminIdentityProvidersData = {
-    body: {
-        code: string;
-        name: string;
-        type: 'INTERNAL' | 'OIDC';
-        oidcIssuerUrl?: string | null;
-        oidcClientId?: string | null;
-        oidcClientSecretRef?: string | null;
-        oidcMultiTenant?: boolean;
-        oidcIssuerPattern?: string | null;
-        allowedEmailDomains?: Array<string>;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/admin/identity-providers';
-};
-export type PostApiAdminIdentityProvidersErrors = {
-    /**
-     * Default Response
-     */
-    400: {
+    query: {
+        pagination: PaginationParams;
         /**
-         * Human-readable error message
+         * Filter by event type
          */
-        message: string;
+        eventType?: string;
         /**
-         * Machine-readable error code
+         * Filter by correlation ID
          */
-        code: string;
+        correlationId?: string;
         /**
-         * Additional error details
+         * Filter by client ID
          */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminIdentityProvidersError = PostApiAdminIdentityProvidersErrors[keyof PostApiAdminIdentityProvidersErrors];
-export type PostApiAdminIdentityProvidersResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        code: string;
-        name: string;
-        type: string;
-        oidcIssuerUrl: string | null;
-        oidcClientId: string | null;
-        hasClientSecret: boolean;
-        oidcMultiTenant: boolean;
-        oidcIssuerPattern: string | null;
-        allowedEmailDomains: Array<string>;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PostApiAdminIdentityProvidersResponse = PostApiAdminIdentityProvidersResponses[keyof PostApiAdminIdentityProvidersResponses];
-export type DeleteApiAdminIdentityProvidersByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/identity-providers/{id}';
-};
-export type DeleteApiAdminIdentityProvidersByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type DeleteApiAdminIdentityProvidersByIdError = DeleteApiAdminIdentityProvidersByIdErrors[keyof DeleteApiAdminIdentityProvidersByIdErrors];
-export type DeleteApiAdminIdentityProvidersByIdResponses = {
-    /**
-     * Default Response
-     */
-    204: void;
-};
-export type DeleteApiAdminIdentityProvidersByIdResponse = DeleteApiAdminIdentityProvidersByIdResponses[keyof DeleteApiAdminIdentityProvidersByIdResponses];
-export type GetApiAdminIdentityProvidersByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/identity-providers/{id}';
-};
-export type GetApiAdminIdentityProvidersByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminIdentityProvidersByIdError = GetApiAdminIdentityProvidersByIdErrors[keyof GetApiAdminIdentityProvidersByIdErrors];
-export type GetApiAdminIdentityProvidersByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        code: string;
-        name: string;
-        type: string;
-        oidcIssuerUrl: string | null;
-        oidcClientId: string | null;
-        hasClientSecret: boolean;
-        oidcMultiTenant: boolean;
-        oidcIssuerPattern: string | null;
-        allowedEmailDomains: Array<string>;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type GetApiAdminIdentityProvidersByIdResponse = GetApiAdminIdentityProvidersByIdResponses[keyof GetApiAdminIdentityProvidersByIdResponses];
-export type PutApiAdminIdentityProvidersByIdData = {
-    body: {
-        name?: string;
-        type?: 'INTERNAL' | 'OIDC';
-        oidcIssuerUrl?: string | null;
-        oidcClientId?: string | null;
-        oidcClientSecretRef?: string | null;
-        oidcMultiTenant?: boolean;
-        oidcIssuerPattern?: string | null;
-        allowedEmailDomains?: Array<string>;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/identity-providers/{id}';
-};
-export type PutApiAdminIdentityProvidersByIdErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PutApiAdminIdentityProvidersByIdError = PutApiAdminIdentityProvidersByIdErrors[keyof PutApiAdminIdentityProvidersByIdErrors];
-export type PutApiAdminIdentityProvidersByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        code: string;
-        name: string;
-        type: string;
-        oidcIssuerUrl: string | null;
-        oidcClientId: string | null;
-        hasClientSecret: boolean;
-        oidcMultiTenant: boolean;
-        oidcIssuerPattern: string | null;
-        allowedEmailDomains: Array<string>;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PutApiAdminIdentityProvidersByIdResponse = PutApiAdminIdentityProvidersByIdResponses[keyof PutApiAdminIdentityProvidersByIdResponses];
-export type GetApiAdminEmailDomainMappingsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/admin/email-domain-mappings';
-};
-export type GetApiAdminEmailDomainMappingsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        mappings: Array<{
-            id: string;
-            emailDomain: string;
-            identityProviderId: string;
-            identityProviderName: string | null;
-            identityProviderType: string | null;
-            scopeType: string;
-            primaryClientId: string | null;
-            primaryClientName: string | null;
-            additionalClientIds: Array<string>;
-            grantedClientIds: Array<string>;
-            requiredOidcTenantId: string | null;
-            allowedRoleIds: Array<string>;
-            syncRolesFromIdp: boolean;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-    };
-};
-export type GetApiAdminEmailDomainMappingsResponse = GetApiAdminEmailDomainMappingsResponses[keyof GetApiAdminEmailDomainMappingsResponses];
-export type PostApiAdminEmailDomainMappingsData = {
-    body: {
-        emailDomain: string;
-        identityProviderId: string;
-        scopeType: 'ANCHOR' | 'PARTNER' | 'CLIENT';
-        primaryClientId?: string | null;
-        additionalClientIds?: Array<string>;
-        grantedClientIds?: Array<string>;
-        requiredOidcTenantId?: string | null;
-        allowedRoleIds?: Array<string>;
-        syncRolesFromIdp?: boolean;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/admin/email-domain-mappings';
-};
-export type PostApiAdminEmailDomainMappingsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminEmailDomainMappingsError = PostApiAdminEmailDomainMappingsErrors[keyof PostApiAdminEmailDomainMappingsErrors];
-export type PostApiAdminEmailDomainMappingsResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        emailDomain: string;
-        identityProviderId: string;
-        identityProviderName: string | null;
-        identityProviderType: string | null;
-        scopeType: string;
-        primaryClientId: string | null;
-        primaryClientName: string | null;
-        additionalClientIds: Array<string>;
-        grantedClientIds: Array<string>;
-        requiredOidcTenantId: string | null;
-        allowedRoleIds: Array<string>;
-        syncRolesFromIdp: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PostApiAdminEmailDomainMappingsResponse = PostApiAdminEmailDomainMappingsResponses[keyof PostApiAdminEmailDomainMappingsResponses];
-export type DeleteApiAdminEmailDomainMappingsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/email-domain-mappings/{id}';
-};
-export type DeleteApiAdminEmailDomainMappingsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type DeleteApiAdminEmailDomainMappingsByIdError = DeleteApiAdminEmailDomainMappingsByIdErrors[keyof DeleteApiAdminEmailDomainMappingsByIdErrors];
-export type DeleteApiAdminEmailDomainMappingsByIdResponses = {
-    /**
-     * Default Response
-     */
-    204: void;
-};
-export type DeleteApiAdminEmailDomainMappingsByIdResponse = DeleteApiAdminEmailDomainMappingsByIdResponses[keyof DeleteApiAdminEmailDomainMappingsByIdResponses];
-export type GetApiAdminEmailDomainMappingsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/email-domain-mappings/{id}';
-};
-export type GetApiAdminEmailDomainMappingsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminEmailDomainMappingsByIdError = GetApiAdminEmailDomainMappingsByIdErrors[keyof GetApiAdminEmailDomainMappingsByIdErrors];
-export type GetApiAdminEmailDomainMappingsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        emailDomain: string;
-        identityProviderId: string;
-        identityProviderName: string | null;
-        identityProviderType: string | null;
-        scopeType: string;
-        primaryClientId: string | null;
-        primaryClientName: string | null;
-        additionalClientIds: Array<string>;
-        grantedClientIds: Array<string>;
-        requiredOidcTenantId: string | null;
-        allowedRoleIds: Array<string>;
-        syncRolesFromIdp: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type GetApiAdminEmailDomainMappingsByIdResponse = GetApiAdminEmailDomainMappingsByIdResponses[keyof GetApiAdminEmailDomainMappingsByIdResponses];
-export type PutApiAdminEmailDomainMappingsByIdData = {
-    body: {
-        identityProviderId?: string;
-        scopeType?: 'ANCHOR' | 'PARTNER' | 'CLIENT';
-        primaryClientId?: string | null;
-        additionalClientIds?: Array<string>;
-        grantedClientIds?: Array<string>;
-        requiredOidcTenantId?: string | null;
-        allowedRoleIds?: Array<string>;
-        syncRolesFromIdp?: boolean;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/email-domain-mappings/{id}';
-};
-export type PutApiAdminEmailDomainMappingsByIdErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PutApiAdminEmailDomainMappingsByIdError = PutApiAdminEmailDomainMappingsByIdErrors[keyof PutApiAdminEmailDomainMappingsByIdErrors];
-export type PutApiAdminEmailDomainMappingsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        emailDomain: string;
-        identityProviderId: string;
-        identityProviderName: string | null;
-        identityProviderType: string | null;
-        scopeType: string;
-        primaryClientId: string | null;
-        primaryClientName: string | null;
-        additionalClientIds: Array<string>;
-        grantedClientIds: Array<string>;
-        requiredOidcTenantId: string | null;
-        allowedRoleIds: Array<string>;
-        syncRolesFromIdp: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PutApiAdminEmailDomainMappingsByIdResponse = PutApiAdminEmailDomainMappingsByIdResponses[keyof PutApiAdminEmailDomainMappingsByIdResponses];
-export type GetApiAdminEmailDomainMappingsLookupByDomainData = {
-    body?: never;
-    path: {
-        domain: string;
-    };
-    query?: never;
-    url: '/api/admin/email-domain-mappings/lookup/{domain}';
-};
-export type GetApiAdminEmailDomainMappingsLookupByDomainErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminEmailDomainMappingsLookupByDomainError = GetApiAdminEmailDomainMappingsLookupByDomainErrors[keyof GetApiAdminEmailDomainMappingsLookupByDomainErrors];
-export type GetApiAdminEmailDomainMappingsLookupByDomainResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        emailDomain: string;
-        identityProviderId: string;
-        identityProviderName: string | null;
-        identityProviderType: string | null;
-        scopeType: string;
-        primaryClientId: string | null;
-        primaryClientName: string | null;
-        additionalClientIds: Array<string>;
-        grantedClientIds: Array<string>;
-        requiredOidcTenantId: string | null;
-        allowedRoleIds: Array<string>;
-        syncRolesFromIdp: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type GetApiAdminEmailDomainMappingsLookupByDomainResponse = GetApiAdminEmailDomainMappingsLookupByDomainResponses[keyof GetApiAdminEmailDomainMappingsLookupByDomainResponses];
-export type GetApiAdminServiceAccountsData = {
-    body?: never;
-    path?: never;
-    query?: {
-        clientId?: string;
-        applicationId?: string;
-        active?: string;
-    };
-    url: '/api/admin/service-accounts';
-};
-export type GetApiAdminServiceAccountsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        serviceAccounts: Array<{
-            id: string;
-            code: string;
-            name: string;
-            description: string | null;
-            scope: string | null;
-            clientIds: Array<string>;
-            applicationId: string | null;
-            active: boolean;
-            authType: string | null;
-            roles: Array<string>;
-            lastUsedAt: string | null;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-    };
-};
-export type GetApiAdminServiceAccountsResponse = GetApiAdminServiceAccountsResponses[keyof GetApiAdminServiceAccountsResponses];
-export type PostApiAdminServiceAccountsData = {
-    body: {
-        code: string;
-        name: string;
-        description?: string | null;
-        applicationId?: string | null;
-        clientIds?: Array<string>;
-        scope?: 'ANCHOR' | 'PARTNER' | 'CLIENT';
-        webhookAuthType?: 'NONE' | 'BEARER_TOKEN' | 'BASIC_AUTH' | 'API_KEY' | 'HMAC_SIGNATURE';
-    };
-    path?: never;
-    query?: never;
-    url: '/api/admin/service-accounts';
-};
-export type PostApiAdminServiceAccountsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminServiceAccountsError = PostApiAdminServiceAccountsErrors[keyof PostApiAdminServiceAccountsErrors];
-export type PostApiAdminServiceAccountsResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        serviceAccount: {
-            id: string;
-            code: string;
-            name: string;
-            description: string | null;
-            scope: string | null;
-            clientIds: Array<string>;
-            applicationId: string | null;
-            active: boolean;
-            authType: string | null;
-            roles: Array<string>;
-            lastUsedAt: string | null;
-            createdAt: string;
-            updatedAt: string;
-        };
-        principalId: string;
-        oauth: {
-            clientId: string;
-            clientSecret: string;
-        };
-        webhook: {
-            authToken: string;
-            signingSecret: string;
-        };
-    };
-};
-export type PostApiAdminServiceAccountsResponse = PostApiAdminServiceAccountsResponses[keyof PostApiAdminServiceAccountsResponses];
-export type DeleteApiAdminServiceAccountsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/service-accounts/{id}';
-};
-export type DeleteApiAdminServiceAccountsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type DeleteApiAdminServiceAccountsByIdError = DeleteApiAdminServiceAccountsByIdErrors[keyof DeleteApiAdminServiceAccountsByIdErrors];
-export type DeleteApiAdminServiceAccountsByIdResponses = {
-    /**
-     * Default Response
-     */
-    204: void;
-};
-export type DeleteApiAdminServiceAccountsByIdResponse = DeleteApiAdminServiceAccountsByIdResponses[keyof DeleteApiAdminServiceAccountsByIdResponses];
-export type GetApiAdminServiceAccountsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/service-accounts/{id}';
-};
-export type GetApiAdminServiceAccountsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminServiceAccountsByIdError = GetApiAdminServiceAccountsByIdErrors[keyof GetApiAdminServiceAccountsByIdErrors];
-export type GetApiAdminServiceAccountsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        scope: string | null;
-        clientIds: Array<string>;
-        applicationId: string | null;
-        active: boolean;
-        authType: string | null;
-        roles: Array<string>;
-        lastUsedAt: string | null;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type GetApiAdminServiceAccountsByIdResponse = GetApiAdminServiceAccountsByIdResponses[keyof GetApiAdminServiceAccountsByIdResponses];
-export type PutApiAdminServiceAccountsByIdData = {
-    body: {
-        name?: string;
-        description?: string | null;
-        clientIds?: Array<string>;
-        scope?: 'ANCHOR' | 'PARTNER' | 'CLIENT';
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/service-accounts/{id}';
-};
-export type PutApiAdminServiceAccountsByIdErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PutApiAdminServiceAccountsByIdError = PutApiAdminServiceAccountsByIdErrors[keyof PutApiAdminServiceAccountsByIdErrors];
-export type PutApiAdminServiceAccountsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        scope: string | null;
-        clientIds: Array<string>;
-        applicationId: string | null;
-        active: boolean;
-        authType: string | null;
-        roles: Array<string>;
-        lastUsedAt: string | null;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PutApiAdminServiceAccountsByIdResponse = PutApiAdminServiceAccountsByIdResponses[keyof PutApiAdminServiceAccountsByIdResponses];
-export type GetApiAdminServiceAccountsCodeByCodeData = {
-    body?: never;
-    path: {
-        code: string;
-    };
-    query?: never;
-    url: '/api/admin/service-accounts/code/{code}';
-};
-export type GetApiAdminServiceAccountsCodeByCodeErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminServiceAccountsCodeByCodeError = GetApiAdminServiceAccountsCodeByCodeErrors[keyof GetApiAdminServiceAccountsCodeByCodeErrors];
-export type GetApiAdminServiceAccountsCodeByCodeResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        scope: string | null;
-        clientIds: Array<string>;
-        applicationId: string | null;
-        active: boolean;
-        authType: string | null;
-        roles: Array<string>;
-        lastUsedAt: string | null;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type GetApiAdminServiceAccountsCodeByCodeResponse = GetApiAdminServiceAccountsCodeByCodeResponses[keyof GetApiAdminServiceAccountsCodeByCodeResponses];
-export type PutApiAdminServiceAccountsByIdAuthTokenData = {
-    body: {
-        authToken: string;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/service-accounts/{id}/auth-token';
-};
-export type PutApiAdminServiceAccountsByIdAuthTokenErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PutApiAdminServiceAccountsByIdAuthTokenError = PutApiAdminServiceAccountsByIdAuthTokenErrors[keyof PutApiAdminServiceAccountsByIdAuthTokenErrors];
-export type PutApiAdminServiceAccountsByIdAuthTokenResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        code: string;
-        name: string;
-        description: string | null;
-        scope: string | null;
-        clientIds: Array<string>;
-        applicationId: string | null;
-        active: boolean;
-        authType: string | null;
-        roles: Array<string>;
-        lastUsedAt: string | null;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PutApiAdminServiceAccountsByIdAuthTokenResponse = PutApiAdminServiceAccountsByIdAuthTokenResponses[keyof PutApiAdminServiceAccountsByIdAuthTokenResponses];
-export type PostApiAdminServiceAccountsByIdRegenerateTokenData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/service-accounts/{id}/regenerate-token';
-};
-export type PostApiAdminServiceAccountsByIdRegenerateTokenErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminServiceAccountsByIdRegenerateTokenError = PostApiAdminServiceAccountsByIdRegenerateTokenErrors[keyof PostApiAdminServiceAccountsByIdRegenerateTokenErrors];
-export type PostApiAdminServiceAccountsByIdRegenerateTokenResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        authToken: string;
-    };
-};
-export type PostApiAdminServiceAccountsByIdRegenerateTokenResponse = PostApiAdminServiceAccountsByIdRegenerateTokenResponses[keyof PostApiAdminServiceAccountsByIdRegenerateTokenResponses];
-export type PostApiAdminServiceAccountsByIdRegenerateAuthTokenData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/service-accounts/{id}/regenerate-auth-token';
-};
-export type PostApiAdminServiceAccountsByIdRegenerateAuthTokenErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminServiceAccountsByIdRegenerateAuthTokenError = PostApiAdminServiceAccountsByIdRegenerateAuthTokenErrors[keyof PostApiAdminServiceAccountsByIdRegenerateAuthTokenErrors];
-export type PostApiAdminServiceAccountsByIdRegenerateAuthTokenResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        authToken: string;
-    };
-};
-export type PostApiAdminServiceAccountsByIdRegenerateAuthTokenResponse = PostApiAdminServiceAccountsByIdRegenerateAuthTokenResponses[keyof PostApiAdminServiceAccountsByIdRegenerateAuthTokenResponses];
-export type PostApiAdminServiceAccountsByIdRegenerateSecretData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/service-accounts/{id}/regenerate-secret';
-};
-export type PostApiAdminServiceAccountsByIdRegenerateSecretErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminServiceAccountsByIdRegenerateSecretError = PostApiAdminServiceAccountsByIdRegenerateSecretErrors[keyof PostApiAdminServiceAccountsByIdRegenerateSecretErrors];
-export type PostApiAdminServiceAccountsByIdRegenerateSecretResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        signingSecret: string;
-    };
-};
-export type PostApiAdminServiceAccountsByIdRegenerateSecretResponse = PostApiAdminServiceAccountsByIdRegenerateSecretResponses[keyof PostApiAdminServiceAccountsByIdRegenerateSecretResponses];
-export type PostApiAdminServiceAccountsByIdRegenerateSigningSecretData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/service-accounts/{id}/regenerate-signing-secret';
-};
-export type PostApiAdminServiceAccountsByIdRegenerateSigningSecretErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminServiceAccountsByIdRegenerateSigningSecretError = PostApiAdminServiceAccountsByIdRegenerateSigningSecretErrors[keyof PostApiAdminServiceAccountsByIdRegenerateSigningSecretErrors];
-export type PostApiAdminServiceAccountsByIdRegenerateSigningSecretResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        signingSecret: string;
-    };
-};
-export type PostApiAdminServiceAccountsByIdRegenerateSigningSecretResponse = PostApiAdminServiceAccountsByIdRegenerateSigningSecretResponses[keyof PostApiAdminServiceAccountsByIdRegenerateSigningSecretResponses];
-export type GetApiAdminServiceAccountsByIdRolesData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/service-accounts/{id}/roles';
-};
-export type GetApiAdminServiceAccountsByIdRolesErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminServiceAccountsByIdRolesError = GetApiAdminServiceAccountsByIdRolesErrors[keyof GetApiAdminServiceAccountsByIdRolesErrors];
-export type GetApiAdminServiceAccountsByIdRolesResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        roles: Array<{
-            roleName: string;
-            assignmentSource: string;
-            assignedAt: string;
-        }>;
-    };
-};
-export type GetApiAdminServiceAccountsByIdRolesResponse = GetApiAdminServiceAccountsByIdRolesResponses[keyof GetApiAdminServiceAccountsByIdRolesResponses];
-export type PutApiAdminServiceAccountsByIdRolesData = {
-    body: {
-        roles: Array<string>;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/service-accounts/{id}/roles';
-};
-export type PutApiAdminServiceAccountsByIdRolesErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PutApiAdminServiceAccountsByIdRolesError = PutApiAdminServiceAccountsByIdRolesErrors[keyof PutApiAdminServiceAccountsByIdRolesErrors];
-export type PutApiAdminServiceAccountsByIdRolesResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        roles: Array<{
-            roleName: string;
-            assignmentSource: string;
-            assignedAt: string;
-        }>;
-        addedRoles: Array<string>;
-        removedRoles: Array<string>;
-    };
-};
-export type PutApiAdminServiceAccountsByIdRolesResponse = PutApiAdminServiceAccountsByIdRolesResponses[keyof PutApiAdminServiceAccountsByIdRolesResponses];
-export type GetApiAdminPlatformCorsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/admin/platform/cors';
-};
-export type GetApiAdminPlatformCorsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        corsOrigins: Array<{
-            id: string;
-            origin: string;
-            description: string | null;
-            createdBy: string | null;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-    };
-};
-export type GetApiAdminPlatformCorsResponse = GetApiAdminPlatformCorsResponses[keyof GetApiAdminPlatformCorsResponses];
-export type PostApiAdminPlatformCorsData = {
-    body: {
-        origin: string;
-        description?: string;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/admin/platform/cors';
-};
-export type PostApiAdminPlatformCorsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminPlatformCorsError = PostApiAdminPlatformCorsErrors[keyof PostApiAdminPlatformCorsErrors];
-export type PostApiAdminPlatformCorsResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        origin: string;
-        description: string | null;
-        createdBy: string | null;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PostApiAdminPlatformCorsResponse = PostApiAdminPlatformCorsResponses[keyof PostApiAdminPlatformCorsResponses];
-export type GetApiAdminPlatformCorsAllowedData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/admin/platform/cors/allowed';
-};
-export type GetApiAdminPlatformCorsAllowedResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        origins: Array<string>;
-    };
-};
-export type GetApiAdminPlatformCorsAllowedResponse = GetApiAdminPlatformCorsAllowedResponses[keyof GetApiAdminPlatformCorsAllowedResponses];
-export type DeleteApiAdminPlatformCorsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/platform/cors/{id}';
-};
-export type DeleteApiAdminPlatformCorsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type DeleteApiAdminPlatformCorsByIdError = DeleteApiAdminPlatformCorsByIdErrors[keyof DeleteApiAdminPlatformCorsByIdErrors];
-export type DeleteApiAdminPlatformCorsByIdResponses = {
-    /**
-     * Default Response
-     */
-    204: void;
-};
-export type DeleteApiAdminPlatformCorsByIdResponse = DeleteApiAdminPlatformCorsByIdResponses[keyof DeleteApiAdminPlatformCorsByIdResponses];
-export type GetApiAdminPlatformCorsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/platform/cors/{id}';
-};
-export type GetApiAdminPlatformCorsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminPlatformCorsByIdError = GetApiAdminPlatformCorsByIdErrors[keyof GetApiAdminPlatformCorsByIdErrors];
-export type GetApiAdminPlatformCorsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        origin: string;
-        description: string | null;
-        createdBy: string | null;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type GetApiAdminPlatformCorsByIdResponse = GetApiAdminPlatformCorsByIdResponses[keyof GetApiAdminPlatformCorsByIdResponses];
-export type GetApiAdminConfigByAppCodeData = {
-    body?: never;
-    path: {
-        appCode: string;
-    };
-    query?: {
-        scope?: 'GLOBAL' | 'CLIENT';
         clientId?: string;
     };
-    url: '/api/admin/config/{appCode}';
+    url: '/bff/events';
 };
-export type GetApiAdminConfigByAppCodeErrors = {
+export type GetApiAdminEventsResponses = {
     /**
-     * Default Response
+     * List of events
      */
-    403: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    200: Array<EventResponse>;
 };
-export type GetApiAdminConfigByAppCodeError = GetApiAdminConfigByAppCodeErrors[keyof GetApiAdminConfigByAppCodeErrors];
-export type GetApiAdminConfigByAppCodeResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        items: Array<{
-            id: string;
-            applicationCode: string;
-            section: string;
-            property: string;
-            scope: string;
-            clientId: string | null;
-            valueType: string;
-            value: string;
-            description: string | null;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-    };
-};
-export type GetApiAdminConfigByAppCodeResponse = GetApiAdminConfigByAppCodeResponses[keyof GetApiAdminConfigByAppCodeResponses];
-export type GetApiAdminConfigByAppCodeBySectionData = {
-    body?: never;
-    path: {
-        appCode: string;
-        section: string;
-    };
-    query?: {
-        scope?: 'GLOBAL' | 'CLIENT';
-        clientId?: string;
-    };
-    url: '/api/admin/config/{appCode}/{section}';
-};
-export type GetApiAdminConfigByAppCodeBySectionErrors = {
-    /**
-     * Default Response
-     */
-    403: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminConfigByAppCodeBySectionError = GetApiAdminConfigByAppCodeBySectionErrors[keyof GetApiAdminConfigByAppCodeBySectionErrors];
-export type GetApiAdminConfigByAppCodeBySectionResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        applicationCode: string;
-        section: string;
-        scope: string;
-        clientId: string | null;
-        values: {
-            [key: string]: string;
-        };
-    };
-};
-export type GetApiAdminConfigByAppCodeBySectionResponse = GetApiAdminConfigByAppCodeBySectionResponses[keyof GetApiAdminConfigByAppCodeBySectionResponses];
-export type DeleteApiAdminConfigByAppCodeBySectionByPropertyData = {
-    body?: never;
-    path: {
-        appCode: string;
-        section: string;
-        property: string;
-    };
-    query?: {
-        scope?: 'GLOBAL' | 'CLIENT';
-        clientId?: string;
-    };
-    url: '/api/admin/config/{appCode}/{section}/{property}';
-};
-export type DeleteApiAdminConfigByAppCodeBySectionByPropertyErrors = {
-    /**
-     * Default Response
-     */
-    403: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type DeleteApiAdminConfigByAppCodeBySectionByPropertyError = DeleteApiAdminConfigByAppCodeBySectionByPropertyErrors[keyof DeleteApiAdminConfigByAppCodeBySectionByPropertyErrors];
-export type DeleteApiAdminConfigByAppCodeBySectionByPropertyResponses = {
-    /**
-     * Default Response
-     */
-    204: void;
-};
-export type DeleteApiAdminConfigByAppCodeBySectionByPropertyResponse = DeleteApiAdminConfigByAppCodeBySectionByPropertyResponses[keyof DeleteApiAdminConfigByAppCodeBySectionByPropertyResponses];
-export type GetApiAdminConfigByAppCodeBySectionByPropertyData = {
-    body?: never;
-    path: {
-        appCode: string;
-        section: string;
-        property: string;
-    };
-    query?: {
-        scope?: 'GLOBAL' | 'CLIENT';
-        clientId?: string;
-    };
-    url: '/api/admin/config/{appCode}/{section}/{property}';
-};
-export type GetApiAdminConfigByAppCodeBySectionByPropertyErrors = {
-    /**
-     * Default Response
-     */
-    403: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiAdminConfigByAppCodeBySectionByPropertyError = GetApiAdminConfigByAppCodeBySectionByPropertyErrors[keyof GetApiAdminConfigByAppCodeBySectionByPropertyErrors];
-export type GetApiAdminConfigByAppCodeBySectionByPropertyResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        applicationCode: string;
-        section: string;
-        property: string;
-        scope: string;
-        clientId: string | null;
-        value: string;
-    };
-};
-export type GetApiAdminConfigByAppCodeBySectionByPropertyResponse = GetApiAdminConfigByAppCodeBySectionByPropertyResponses[keyof GetApiAdminConfigByAppCodeBySectionByPropertyResponses];
-export type PutApiAdminConfigByAppCodeBySectionByPropertyData = {
-    body: {
-        value: string;
-        valueType?: 'PLAIN' | 'SECRET';
-        description?: string;
-    };
-    path: {
-        appCode: string;
-        section: string;
-        property: string;
-    };
-    query?: {
-        scope?: 'GLOBAL' | 'CLIENT';
-        clientId?: string;
-    };
-    url: '/api/admin/config/{appCode}/{section}/{property}';
-};
-export type PutApiAdminConfigByAppCodeBySectionByPropertyErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PutApiAdminConfigByAppCodeBySectionByPropertyError = PutApiAdminConfigByAppCodeBySectionByPropertyErrors[keyof PutApiAdminConfigByAppCodeBySectionByPropertyErrors];
-export type PutApiAdminConfigByAppCodeBySectionByPropertyResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        applicationCode: string;
-        section: string;
-        property: string;
-        scope: string;
-        clientId: string | null;
-        valueType: string;
-        value: string;
-        description: string | null;
-        createdAt: string;
-        updatedAt: string;
-    };
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        applicationCode: string;
-        section: string;
-        property: string;
-        scope: string;
-        clientId: string | null;
-        valueType: string;
-        value: string;
-        description: string | null;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PutApiAdminConfigByAppCodeBySectionByPropertyResponse = PutApiAdminConfigByAppCodeBySectionByPropertyResponses[keyof PutApiAdminConfigByAppCodeBySectionByPropertyResponses];
-export type GetApiAdminConfigAccessByAppCodeData = {
-    body?: never;
-    path: {
-        appCode: string;
-    };
-    query?: never;
-    url: '/api/admin/config-access/{appCode}';
-};
-export type GetApiAdminConfigAccessByAppCodeResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        items: Array<{
-            id: string;
-            applicationCode: string;
-            roleCode: string;
-            canRead: boolean;
-            canWrite: boolean;
-            createdAt: string;
-        }>;
-    };
-};
-export type GetApiAdminConfigAccessByAppCodeResponse = GetApiAdminConfigAccessByAppCodeResponses[keyof GetApiAdminConfigAccessByAppCodeResponses];
-export type PostApiAdminConfigAccessByAppCodeData = {
-    body: {
-        roleCode: string;
-        canRead?: boolean;
-        canWrite?: boolean;
-    };
-    path: {
-        appCode: string;
-    };
-    query?: never;
-    url: '/api/admin/config-access/{appCode}';
-};
-export type PostApiAdminConfigAccessByAppCodeErrors = {
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiAdminConfigAccessByAppCodeError = PostApiAdminConfigAccessByAppCodeErrors[keyof PostApiAdminConfigAccessByAppCodeErrors];
-export type PostApiAdminConfigAccessByAppCodeResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        applicationCode: string;
-        roleCode: string;
-        canRead: boolean;
-        canWrite: boolean;
-        createdAt: string;
-    };
-};
-export type PostApiAdminConfigAccessByAppCodeResponse = PostApiAdminConfigAccessByAppCodeResponses[keyof PostApiAdminConfigAccessByAppCodeResponses];
-export type DeleteApiAdminConfigAccessByAppCodeByRoleCodeData = {
-    body?: never;
-    path: {
-        appCode: string;
-        roleCode: string;
-    };
-    query?: never;
-    url: '/api/admin/config-access/{appCode}/{roleCode}';
-};
-export type DeleteApiAdminConfigAccessByAppCodeByRoleCodeErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type DeleteApiAdminConfigAccessByAppCodeByRoleCodeError = DeleteApiAdminConfigAccessByAppCodeByRoleCodeErrors[keyof DeleteApiAdminConfigAccessByAppCodeByRoleCodeErrors];
-export type DeleteApiAdminConfigAccessByAppCodeByRoleCodeResponses = {
-    /**
-     * Default Response
-     */
-    204: void;
-};
-export type DeleteApiAdminConfigAccessByAppCodeByRoleCodeResponse = DeleteApiAdminConfigAccessByAppCodeByRoleCodeResponses[keyof DeleteApiAdminConfigAccessByAppCodeByRoleCodeResponses];
-export type PutApiAdminConfigAccessByAppCodeByRoleCodeData = {
-    body: {
-        canRead?: boolean;
-        canWrite?: boolean;
-    };
-    path: {
-        appCode: string;
-        roleCode: string;
-    };
-    query?: never;
-    url: '/api/admin/config-access/{appCode}/{roleCode}';
-};
-export type PutApiAdminConfigAccessByAppCodeByRoleCodeErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PutApiAdminConfigAccessByAppCodeByRoleCodeError = PutApiAdminConfigAccessByAppCodeByRoleCodeErrors[keyof PutApiAdminConfigAccessByAppCodeByRoleCodeErrors];
-export type PutApiAdminConfigAccessByAppCodeByRoleCodeResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        applicationCode: string;
-        roleCode: string;
-        canRead: boolean;
-        canWrite: boolean;
-        createdAt: string;
-    };
-};
-export type PutApiAdminConfigAccessByAppCodeByRoleCodeResponse = PutApiAdminConfigAccessByAppCodeByRoleCodeResponses[keyof PutApiAdminConfigAccessByAppCodeByRoleCodeResponses];
-export type GetApiSdkClientsData = {
-    body?: never;
+export type GetApiAdminEventsResponse = GetApiAdminEventsResponses[keyof GetApiAdminEventsResponses];
+export type PostApiAdminEventsData = {
+    body: CreateEventRequest;
     path?: never;
     query?: never;
-    url: '/api/sdk/clients';
+    url: '/bff/events';
 };
-export type GetApiSdkClientsResponses = {
+export type PostApiAdminEventsErrors = {
     /**
-     * Default Response
+     * Validation error
      */
-    200: {
-        clients: Array<{
-            id: string;
-            name: string;
-            identifier: string;
-            status: string;
-            statusReason: string | null;
-            statusChangedAt: string | null;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-    };
+    400: unknown;
+    /**
+     * No access to client
+     */
+    403: unknown;
 };
-export type GetApiSdkClientsResponse = GetApiSdkClientsResponses[keyof GetApiSdkClientsResponses];
-export type PostApiSdkClientsData = {
-    body: {
-        name: string;
-        identifier: string;
-    };
+export type PostApiAdminEventsResponses = {
+    /**
+     * Event already exists (idempotent)
+     */
+    200: CreateEventResponse;
+    /**
+     * Event created
+     */
+    201: CreateEventResponse;
+};
+export type PostApiAdminEventsResponse = PostApiAdminEventsResponses[keyof PostApiAdminEventsResponses];
+export type PostApiAdminEventsBatchData = {
+    body: BatchCreateEventsRequest;
     path?: never;
     query?: never;
-    url: '/api/sdk/clients';
+    url: '/bff/events/batch';
 };
-export type PostApiSdkClientsErrors = {
+export type PostApiAdminEventsBatchErrors = {
     /**
-     * Default Response
+     * Invalid request or batch size exceeds limit
      */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    400: unknown;
+};
+export type PostApiAdminEventsBatchResponses = {
     /**
-     * Default Response
+     * Events created
      */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    201: BatchCreateResponse;
 };
-export type PostApiSdkClientsError = PostApiSdkClientsErrors[keyof PostApiSdkClientsErrors];
-export type PostApiSdkClientsResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        name: string;
-        identifier: string;
-        status: string;
-        statusReason: string | null;
-        statusChangedAt: string | null;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PostApiSdkClientsResponse = PostApiSdkClientsResponses[keyof PostApiSdkClientsResponses];
-export type GetApiSdkClientsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/sdk/clients/{id}';
-};
-export type GetApiSdkClientsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiSdkClientsByIdError = GetApiSdkClientsByIdErrors[keyof GetApiSdkClientsByIdErrors];
-export type GetApiSdkClientsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        name: string;
-        identifier: string;
-        status: string;
-        statusReason: string | null;
-        statusChangedAt: string | null;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type GetApiSdkClientsByIdResponse = GetApiSdkClientsByIdResponses[keyof GetApiSdkClientsByIdResponses];
-export type PutApiSdkClientsByIdData = {
-    body: {
-        name: string;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/sdk/clients/{id}';
-};
-export type PutApiSdkClientsByIdErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PutApiSdkClientsByIdError = PutApiSdkClientsByIdErrors[keyof PutApiSdkClientsByIdErrors];
-export type PutApiSdkClientsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        name: string;
-        identifier: string;
-        status: string;
-        statusReason: string | null;
-        statusChangedAt: string | null;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PutApiSdkClientsByIdResponse = PutApiSdkClientsByIdResponses[keyof PutApiSdkClientsByIdResponses];
-export type PostApiSdkClientsByIdActivateData = {
-    body: {
-        reason?: string | null;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/sdk/clients/{id}/activate';
-};
-export type PostApiSdkClientsByIdActivateErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiSdkClientsByIdActivateError = PostApiSdkClientsByIdActivateErrors[keyof PostApiSdkClientsByIdActivateErrors];
-export type PostApiSdkClientsByIdActivateResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        message: string;
-    };
-};
-export type PostApiSdkClientsByIdActivateResponse = PostApiSdkClientsByIdActivateResponses[keyof PostApiSdkClientsByIdActivateResponses];
-export type PostApiSdkClientsByIdSuspendData = {
-    body: {
-        reason?: string | null;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/sdk/clients/{id}/suspend';
-};
-export type PostApiSdkClientsByIdSuspendErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiSdkClientsByIdSuspendError = PostApiSdkClientsByIdSuspendErrors[keyof PostApiSdkClientsByIdSuspendErrors];
-export type PostApiSdkClientsByIdSuspendResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        message: string;
-    };
-};
-export type PostApiSdkClientsByIdSuspendResponse = PostApiSdkClientsByIdSuspendResponses[keyof PostApiSdkClientsByIdSuspendResponses];
-export type PostApiSdkClientsByIdDeactivateData = {
-    body: {
-        reason?: string | null;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/sdk/clients/{id}/deactivate';
-};
-export type PostApiSdkClientsByIdDeactivateErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiSdkClientsByIdDeactivateError = PostApiSdkClientsByIdDeactivateErrors[keyof PostApiSdkClientsByIdDeactivateErrors];
-export type PostApiSdkClientsByIdDeactivateResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        message: string;
-    };
-};
-export type PostApiSdkClientsByIdDeactivateResponse = PostApiSdkClientsByIdDeactivateResponses[keyof PostApiSdkClientsByIdDeactivateResponses];
-export type GetApiSdkRolesData = {
+export type PostApiAdminEventsBatchResponse = PostApiAdminEventsBatchResponses[keyof PostApiAdminEventsBatchResponses];
+export type GetApiAdminEventsRawData = {
     body?: never;
     path?: never;
     query?: {
-        application?: string;
-        source?: string;
+        page?: number;
+        size?: number;
     };
-    url: '/api/sdk/roles';
+    url: '/bff/events/raw';
 };
-export type GetApiSdkRolesResponses = {
+export type GetApiAdminEventsRawResponses = {
     /**
-     * Default Response
+     * Raw events page
      */
-    200: {
-        roles: Array<{
-            name: string;
-            applicationCode: string;
-            displayName: string;
-            shortName: string;
-            description: string | null;
-            permissions: Array<string>;
-            source: string;
-            clientManaged: boolean;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-    };
+    200: PaginatedEventsResponse;
 };
-export type GetApiSdkRolesResponse = GetApiSdkRolesResponses[keyof GetApiSdkRolesResponses];
-export type PostApiSdkRolesData = {
-    body: {
-        applicationCode: string;
-        name: string;
-        displayName?: string;
-        description?: string;
-        permissions?: Array<string>;
-        clientManaged?: boolean;
+export type GetApiAdminEventsRawResponse = GetApiAdminEventsRawResponses[keyof GetApiAdminEventsRawResponses];
+export type GetApiAdminEventsByIdData = {
+    body?: never;
+    path: {
+        /**
+         * Event ID
+         */
+        id: string;
     };
+    query?: never;
+    url: '/bff/events/{id}';
+};
+export type GetApiAdminEventsByIdErrors = {
+    /**
+     * Event not found
+     */
+    404: unknown;
+};
+export type GetApiAdminEventsByIdResponses = {
+    /**
+     * Event found
+     */
+    200: EventResponse;
+};
+export type GetApiAdminEventsByIdResponse = GetApiAdminEventsByIdResponses[keyof GetApiAdminEventsByIdResponses];
+export type GetApiAdminFilterOptionsData = {
+    body?: never;
     path?: never;
     query?: never;
-    url: '/api/sdk/roles';
+    url: '/bff/filter-options';
 };
-export type PostApiSdkRolesErrors = {
+export type GetApiAdminFilterOptionsResponses = {
     /**
-     * Default Response
+     * All filter options
      */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    200: AllFilterOptions;
 };
-export type PostApiSdkRolesError = PostApiSdkRolesErrors[keyof PostApiSdkRolesErrors];
-export type PostApiSdkRolesResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        name: string;
-        applicationCode: string;
-        displayName: string;
-        shortName: string;
-        description: string | null;
-        permissions: Array<string>;
-        source: string;
-        clientManaged: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PostApiSdkRolesResponse = PostApiSdkRolesResponses[keyof PostApiSdkRolesResponses];
-export type DeleteApiSdkRolesByRoleNameData = {
+export type GetApiAdminFilterOptionsResponse = GetApiAdminFilterOptionsResponses[keyof GetApiAdminFilterOptionsResponses];
+export type GetApiAdminFilterOptionsClientsData = {
     body?: never;
-    path: {
-        roleName: string;
-    };
+    path?: never;
     query?: never;
-    url: '/api/sdk/roles/{roleName}';
+    url: '/bff/filter-options/clients';
 };
-export type DeleteApiSdkRolesByRoleNameErrors = {
+export type GetApiAdminFilterOptionsClientsResponses = {
     /**
-     * Default Response
+     * Client filter options
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    200: ClientFilterOptions;
 };
-export type DeleteApiSdkRolesByRoleNameError = DeleteApiSdkRolesByRoleNameErrors[keyof DeleteApiSdkRolesByRoleNameErrors];
-export type DeleteApiSdkRolesByRoleNameResponses = {
-    /**
-     * Default Response
-     */
-    204: void;
-};
-export type DeleteApiSdkRolesByRoleNameResponse = DeleteApiSdkRolesByRoleNameResponses[keyof DeleteApiSdkRolesByRoleNameResponses];
-export type GetApiSdkRolesByRoleNameData = {
+export type GetApiAdminFilterOptionsClientsResponse = GetApiAdminFilterOptionsClientsResponses[keyof GetApiAdminFilterOptionsClientsResponses];
+export type GetApiAdminDispatchJobsFilterOptions2Data = {
     body?: never;
-    path: {
-        roleName: string;
-    };
+    path?: never;
     query?: never;
-    url: '/api/sdk/roles/{roleName}';
+    url: '/bff/filter-options/dispatch-jobs';
 };
-export type GetApiSdkRolesByRoleNameErrors = {
+export type GetApiAdminDispatchJobsFilterOptions2Responses = {
     /**
-     * Default Response
+     * Dispatch jobs filter options
      */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    200: DispatchJobsFilterOptions;
 };
-export type GetApiSdkRolesByRoleNameError = GetApiSdkRolesByRoleNameErrors[keyof GetApiSdkRolesByRoleNameErrors];
-export type GetApiSdkRolesByRoleNameResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        name: string;
-        applicationCode: string;
-        displayName: string;
-        shortName: string;
-        description: string | null;
-        permissions: Array<string>;
-        source: string;
-        clientManaged: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type GetApiSdkRolesByRoleNameResponse = GetApiSdkRolesByRoleNameResponses[keyof GetApiSdkRolesByRoleNameResponses];
-export type PutApiSdkRolesByRoleNameData = {
-    body: {
-        displayName?: string;
-        description?: string;
-        permissions?: Array<string>;
-        clientManaged?: boolean;
-    };
-    path: {
-        roleName: string;
-    };
+export type GetApiAdminDispatchJobsFilterOptions2Response = GetApiAdminDispatchJobsFilterOptions2Responses[keyof GetApiAdminDispatchJobsFilterOptions2Responses];
+export type GetApiAdminFilterOptionsDispatchPoolsData = {
+    body?: never;
+    path?: never;
     query?: never;
-    url: '/api/sdk/roles/{roleName}';
+    url: '/bff/filter-options/dispatch-pools';
 };
-export type PutApiSdkRolesByRoleNameErrors = {
+export type GetApiAdminFilterOptionsDispatchPoolsResponses = {
     /**
-     * Default Response
+     * Dispatch pool filter options
      */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    200: DispatchPoolFilterOptions;
 };
-export type PutApiSdkRolesByRoleNameError = PutApiSdkRolesByRoleNameErrors[keyof PutApiSdkRolesByRoleNameErrors];
-export type PutApiSdkRolesByRoleNameResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        name: string;
-        applicationCode: string;
-        displayName: string;
-        shortName: string;
-        description: string | null;
-        permissions: Array<string>;
-        source: string;
-        clientManaged: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
+export type GetApiAdminFilterOptionsDispatchPoolsResponse = GetApiAdminFilterOptionsDispatchPoolsResponses[keyof GetApiAdminFilterOptionsDispatchPoolsResponses];
+export type GetApiAdminFilterOptionsEventTypesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/bff/filter-options/event-types';
 };
-export type PutApiSdkRolesByRoleNameResponse = PutApiSdkRolesByRoleNameResponses[keyof PutApiSdkRolesByRoleNameResponses];
-export type GetApiSdkPrincipalsData = {
+export type GetApiAdminFilterOptionsEventTypesResponses = {
+    /**
+     * Event type filter options
+     */
+    200: EventTypeFilterOptions;
+};
+export type GetApiAdminFilterOptionsEventTypesResponse = GetApiAdminFilterOptionsEventTypesResponses[keyof GetApiAdminFilterOptionsEventTypesResponses];
+export type GetApiAdminFilterOptionsEventTypesFiltersAggregatesData = {
     body?: never;
     path?: never;
     query?: {
-        clientId?: string;
-        type?: string;
-        active?: string;
-        email?: string;
+        /**
+         * Filter by application(s)
+         */
+        'application[]'?: Array<string>;
+        /**
+         * Filter by subdomain(s)
+         */
+        'subdomain[]'?: Array<string>;
     };
-    url: '/api/sdk/principals';
+    url: '/bff/filter-options/event-types/filters/aggregates';
 };
-export type GetApiSdkPrincipalsResponses = {
+export type GetApiAdminFilterOptionsEventTypesFiltersAggregatesResponses = {
     /**
-     * Default Response
+     * Aggregate filter options
      */
-    200: {
-        principals: Array<{
-            id: string;
-            type: string;
-            scope: string | null;
-            clientId: string | null;
-            name: string;
-            active: boolean;
-            email: string | null;
-            idpType: string | null;
-            roles: Array<string>;
-            grantedClientIds: Array<string>;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-    };
+    200: AggregatesResponse;
 };
-export type GetApiSdkPrincipalsResponse = GetApiSdkPrincipalsResponses[keyof GetApiSdkPrincipalsResponses];
-export type GetApiSdkPrincipalsByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/sdk/principals/{id}';
-};
-export type GetApiSdkPrincipalsByIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiSdkPrincipalsByIdError = GetApiSdkPrincipalsByIdErrors[keyof GetApiSdkPrincipalsByIdErrors];
-export type GetApiSdkPrincipalsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        type: string;
-        scope: string | null;
-        clientId: string | null;
-        name: string;
-        active: boolean;
-        email: string | null;
-        idpType: string | null;
-        roles: Array<string>;
-        grantedClientIds: Array<string>;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type GetApiSdkPrincipalsByIdResponse = GetApiSdkPrincipalsByIdResponses[keyof GetApiSdkPrincipalsByIdResponses];
-export type PutApiSdkPrincipalsByIdData = {
-    body: {
-        name: string;
-        scope?: string;
-        clientId?: string | null;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/sdk/principals/{id}';
-};
-export type PutApiSdkPrincipalsByIdErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PutApiSdkPrincipalsByIdError = PutApiSdkPrincipalsByIdErrors[keyof PutApiSdkPrincipalsByIdErrors];
-export type PutApiSdkPrincipalsByIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        type: string;
-        scope: string | null;
-        clientId: string | null;
-        name: string;
-        active: boolean;
-        email: string | null;
-        idpType: string | null;
-        roles: Array<string>;
-        grantedClientIds: Array<string>;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PutApiSdkPrincipalsByIdResponse = PutApiSdkPrincipalsByIdResponses[keyof PutApiSdkPrincipalsByIdResponses];
-export type PostApiSdkPrincipalsUserData = {
-    body: {
-        email: string;
-        password?: string | null;
-        name: string;
-        clientId?: string | null;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/sdk/principals/user';
-};
-export type PostApiSdkPrincipalsUserErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiSdkPrincipalsUserError = PostApiSdkPrincipalsUserErrors[keyof PostApiSdkPrincipalsUserErrors];
-export type PostApiSdkPrincipalsUserResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        type: string;
-        scope: string | null;
-        clientId: string | null;
-        name: string;
-        active: boolean;
-        email: string | null;
-        idpType: string | null;
-        roles: Array<string>;
-        grantedClientIds: Array<string>;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type PostApiSdkPrincipalsUserResponse = PostApiSdkPrincipalsUserResponses[keyof PostApiSdkPrincipalsUserResponses];
-export type PostApiSdkPrincipalsByIdActivateData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/sdk/principals/{id}/activate';
-};
-export type PostApiSdkPrincipalsByIdActivateErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiSdkPrincipalsByIdActivateError = PostApiSdkPrincipalsByIdActivateErrors[keyof PostApiSdkPrincipalsByIdActivateErrors];
-export type PostApiSdkPrincipalsByIdActivateResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        message: string;
-    };
-};
-export type PostApiSdkPrincipalsByIdActivateResponse = PostApiSdkPrincipalsByIdActivateResponses[keyof PostApiSdkPrincipalsByIdActivateResponses];
-export type PostApiSdkPrincipalsByIdDeactivateData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/sdk/principals/{id}/deactivate';
-};
-export type PostApiSdkPrincipalsByIdDeactivateErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiSdkPrincipalsByIdDeactivateError = PostApiSdkPrincipalsByIdDeactivateErrors[keyof PostApiSdkPrincipalsByIdDeactivateErrors];
-export type PostApiSdkPrincipalsByIdDeactivateResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        message: string;
-    };
-};
-export type PostApiSdkPrincipalsByIdDeactivateResponse = PostApiSdkPrincipalsByIdDeactivateResponses[keyof PostApiSdkPrincipalsByIdDeactivateResponses];
-export type GetApiSdkPrincipalsByIdRolesData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/sdk/principals/{id}/roles';
-};
-export type GetApiSdkPrincipalsByIdRolesErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiSdkPrincipalsByIdRolesError = GetApiSdkPrincipalsByIdRolesErrors[keyof GetApiSdkPrincipalsByIdRolesErrors];
-export type GetApiSdkPrincipalsByIdRolesResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        roles: Array<{
-            roleName: string;
-            assignmentSource: string;
-            assignedAt: string;
-        }>;
-    };
-};
-export type GetApiSdkPrincipalsByIdRolesResponse = GetApiSdkPrincipalsByIdRolesResponses[keyof GetApiSdkPrincipalsByIdRolesResponses];
-export type PutApiSdkPrincipalsByIdRolesData = {
-    body: {
-        roles: Array<string>;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/sdk/principals/{id}/roles';
-};
-export type PutApiSdkPrincipalsByIdRolesErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PutApiSdkPrincipalsByIdRolesError = PutApiSdkPrincipalsByIdRolesErrors[keyof PutApiSdkPrincipalsByIdRolesErrors];
-export type PutApiSdkPrincipalsByIdRolesResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        roles: Array<{
-            roleName: string;
-            assignmentSource: string;
-            assignedAt: string;
-        }>;
-    };
-};
-export type PutApiSdkPrincipalsByIdRolesResponse = PutApiSdkPrincipalsByIdRolesResponses[keyof PutApiSdkPrincipalsByIdRolesResponses];
-export type GetApiSdkPrincipalsByIdClientsData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/sdk/principals/{id}/clients';
-};
-export type GetApiSdkPrincipalsByIdClientsErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiSdkPrincipalsByIdClientsError = GetApiSdkPrincipalsByIdClientsErrors[keyof GetApiSdkPrincipalsByIdClientsErrors];
-export type GetApiSdkPrincipalsByIdClientsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        grants: Array<{
-            id: string;
-            clientId: string;
-            grantedAt: string;
-        }>;
-    };
-};
-export type GetApiSdkPrincipalsByIdClientsResponse = GetApiSdkPrincipalsByIdClientsResponses[keyof GetApiSdkPrincipalsByIdClientsResponses];
-export type DeleteApiSdkPrincipalsByIdClientsByClientIdData = {
-    body?: never;
-    path: {
-        id: string;
-        clientId: string;
-    };
-    query?: never;
-    url: '/api/sdk/principals/{id}/clients/{clientId}';
-};
-export type DeleteApiSdkPrincipalsByIdClientsByClientIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type DeleteApiSdkPrincipalsByIdClientsByClientIdError = DeleteApiSdkPrincipalsByIdClientsByClientIdErrors[keyof DeleteApiSdkPrincipalsByIdClientsByClientIdErrors];
-export type DeleteApiSdkPrincipalsByIdClientsByClientIdResponses = {
-    /**
-     * Default Response
-     */
-    204: void;
-};
-export type DeleteApiSdkPrincipalsByIdClientsByClientIdResponse = DeleteApiSdkPrincipalsByIdClientsByClientIdResponses[keyof DeleteApiSdkPrincipalsByIdClientsByClientIdResponses];
-export type PostApiSdkPrincipalsByIdClientsByClientIdData = {
-    body?: never;
-    path: {
-        id: string;
-        clientId: string;
-    };
-    query?: never;
-    url: '/api/sdk/principals/{id}/clients/{clientId}';
-};
-export type PostApiSdkPrincipalsByIdClientsByClientIdErrors = {
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type PostApiSdkPrincipalsByIdClientsByClientIdError = PostApiSdkPrincipalsByIdClientsByClientIdErrors[keyof PostApiSdkPrincipalsByIdClientsByClientIdErrors];
-export type PostApiSdkPrincipalsByIdClientsByClientIdResponses = {
-    /**
-     * Default Response
-     */
-    201: {
-        id: string;
-        clientId: string;
-        grantedAt: string;
-    };
-};
-export type PostApiSdkPrincipalsByIdClientsByClientIdResponse = PostApiSdkPrincipalsByIdClientsByClientIdResponses[keyof PostApiSdkPrincipalsByIdClientsByClientIdResponses];
-export type GetApiMeClientsData = {
+export type GetApiAdminFilterOptionsEventTypesFiltersAggregatesResponse = GetApiAdminFilterOptionsEventTypesFiltersAggregatesResponses[keyof GetApiAdminFilterOptionsEventTypesFiltersAggregatesResponses];
+export type GetApiAdminFilterOptionsEventTypesFiltersApplicationsData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/me/clients';
+    url: '/bff/filter-options/event-types/filters/applications';
 };
-export type GetApiMeClientsErrors = {
+export type GetApiAdminFilterOptionsEventTypesFiltersApplicationsResponses = {
     /**
-     * Default Response
+     * Application filter options
      */
-    401: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
+    200: ApplicationsResponse;
 };
-export type GetApiMeClientsError = GetApiMeClientsErrors[keyof GetApiMeClientsErrors];
-export type GetApiMeClientsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        clients: Array<{
-            id: string;
-            name: string;
-            identifier: string;
-            status: string | null;
-            createdAt: string;
-            updatedAt: string;
-        }>;
-        total: number;
-    };
-};
-export type GetApiMeClientsResponse = GetApiMeClientsResponses[keyof GetApiMeClientsResponses];
-export type GetApiMeClientsByClientIdData = {
-    body?: never;
-    path: {
-        clientId: string;
-    };
-    query?: never;
-    url: '/api/me/clients/{clientId}';
-};
-export type GetApiMeClientsByClientIdErrors = {
-    /**
-     * Default Response
-     */
-    401: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiMeClientsByClientIdError = GetApiMeClientsByClientIdErrors[keyof GetApiMeClientsByClientIdErrors];
-export type GetApiMeClientsByClientIdResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        name: string;
-        identifier: string;
-        status: string | null;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-export type GetApiMeClientsByClientIdResponse = GetApiMeClientsByClientIdResponses[keyof GetApiMeClientsByClientIdResponses];
-export type GetApiMeClientsByClientIdApplicationsData = {
-    body?: never;
-    path: {
-        clientId: string;
-    };
-    query?: never;
-    url: '/api/me/clients/{clientId}/applications';
-};
-export type GetApiMeClientsByClientIdApplicationsErrors = {
-    /**
-     * Default Response
-     */
-    401: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        /**
-         * Human-readable error message
-         */
-        message: string;
-        /**
-         * Machine-readable error code
-         */
-        code: string;
-        /**
-         * Additional error details
-         */
-        details?: {
-            [key: string]: unknown;
-        };
-    };
-};
-export type GetApiMeClientsByClientIdApplicationsError = GetApiMeClientsByClientIdApplicationsErrors[keyof GetApiMeClientsByClientIdApplicationsErrors];
-export type GetApiMeClientsByClientIdApplicationsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        applications: Array<{
-            id: string;
-            code: string;
-            name: string;
-            description: string | null;
-            iconUrl: string | null;
-            baseUrl: string | null;
-            website: string | null;
-            logoMimeType: string | null;
-        }>;
-        total: number;
-        clientId: string;
-    };
-};
-export type GetApiMeClientsByClientIdApplicationsResponse = GetApiMeClientsByClientIdApplicationsResponses[keyof GetApiMeClientsByClientIdApplicationsResponses];
-export type GetApiPublicLoginThemeData = {
+export type GetApiAdminFilterOptionsEventTypesFiltersApplicationsResponse = GetApiAdminFilterOptionsEventTypesFiltersApplicationsResponses[keyof GetApiAdminFilterOptionsEventTypesFiltersApplicationsResponses];
+export type GetApiAdminFilterOptionsEventTypesFiltersSubdomainsData = {
     body?: never;
     path?: never;
     query?: {
-        clientId?: string;
+        /**
+         * Filter by application(s)
+         */
+        'application[]'?: Array<string>;
+        /**
+         * Filter by subdomain(s)
+         */
+        'subdomain[]'?: Array<string>;
     };
-    url: '/api/public/login-theme';
+    url: '/bff/filter-options/event-types/filters/subdomains';
 };
-export type GetApiPublicLoginThemeResponses = {
+export type GetApiAdminFilterOptionsEventTypesFiltersSubdomainsResponses = {
     /**
-     * Default Response
+     * Subdomain filter options
      */
-    200: {
-        brandName: string | null;
-        brandSubtitle: string | null;
-        logoUrl: string | null;
-        logoSvg: string | null;
-        logoHeight: number | null;
-        primaryColor: string | null;
-        accentColor: string | null;
-        backgroundColor: string | null;
-        backgroundGradient: string | null;
-        footerText: string | null;
-        customCss: string | null;
-    };
+    200: SubdomainsResponse;
 };
-export type GetApiPublicLoginThemeResponse = GetApiPublicLoginThemeResponses[keyof GetApiPublicLoginThemeResponses];
-export type GetApiPublicPlatformData = {
+export type GetApiAdminFilterOptionsEventTypesFiltersSubdomainsResponse = GetApiAdminFilterOptionsEventTypesFiltersSubdomainsResponses[keyof GetApiAdminFilterOptionsEventTypesFiltersSubdomainsResponses];
+export type GetApiAdminEventsFilterOptionsData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/public/platform';
+    url: '/bff/filter-options/events';
 };
-export type GetApiPublicPlatformResponses = {
+export type GetApiAdminEventsFilterOptionsResponses = {
     /**
-     * Default Response
+     * Events filter options
      */
-    200: {
-        features: {
-            messagingEnabled: boolean;
-        };
-    };
+    200: EventsFilterOptions;
 };
-export type GetApiPublicPlatformResponse = GetApiPublicPlatformResponses[keyof GetApiPublicPlatformResponses];
-export type GetApiConfigLoginThemeData = {
-    body?: never;
-    path?: never;
-    query?: {
-        clientId?: string;
-    };
-    url: '/api/config/login-theme';
-};
-export type GetApiConfigLoginThemeResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        brandName: string | null;
-        brandSubtitle: string | null;
-        logoUrl: string | null;
-        logoSvg: string | null;
-        logoHeight: number | null;
-        primaryColor: string | null;
-        accentColor: string | null;
-        backgroundColor: string | null;
-        backgroundGradient: string | null;
-        footerText: string | null;
-        customCss: string | null;
-    };
-};
-export type GetApiConfigLoginThemeResponse = GetApiConfigLoginThemeResponses[keyof GetApiConfigLoginThemeResponses];
-export type GetApiConfigPlatformData = {
+export type GetApiAdminEventsFilterOptionsResponse = GetApiAdminEventsFilterOptionsResponses[keyof GetApiAdminEventsFilterOptionsResponses];
+export type GetApiAdminFilterOptionsSubscriptionsData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/config/platform';
+    url: '/bff/filter-options/subscriptions';
 };
-export type GetApiConfigPlatformResponses = {
+export type GetApiAdminFilterOptionsSubscriptionsResponses = {
     /**
-     * Default Response
+     * Subscription filter options
      */
-    200: {
-        features: {
-            messagingEnabled: boolean;
-        };
-    };
+    200: SubscriptionFilterOptions;
 };
-export type GetApiConfigPlatformResponse = GetApiConfigPlatformResponses[keyof GetApiConfigPlatformResponses];
+export type GetApiAdminFilterOptionsSubscriptionsResponse = GetApiAdminFilterOptionsSubscriptionsResponses[keyof GetApiAdminFilterOptionsSubscriptionsResponses];
 //# sourceMappingURL=types.gen.d.ts.map

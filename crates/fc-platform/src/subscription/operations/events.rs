@@ -16,7 +16,7 @@ pub struct SubscriptionCreated {
     pub subscription_id: String,
     pub code: String,
     pub name: String,
-    pub connection_id: String,
+    pub endpoint: String,
     pub event_types: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_id: Option<String>,
@@ -34,7 +34,7 @@ impl SubscriptionCreated {
         subscription_id: &str,
         code: &str,
         name: &str,
-        connection_id: &str,
+        endpoint: &str,
         event_types: Vec<String>,
         client_id: Option<&str>,
     ) -> Self {
@@ -58,7 +58,7 @@ impl SubscriptionCreated {
             subscription_id: subscription_id.to_string(),
             code: code.to_string(),
             name: name.to_string(),
-            connection_id: connection_id.to_string(),
+            endpoint: endpoint.to_string(),
             event_types,
             client_id: client_id.map(String::from),
         }
@@ -314,6 +314,7 @@ mod tests {
         assert_eq!(event.event_type(), "platform:admin:subscription:created");
         assert_eq!(event.subscription_id, "sub-1");
         assert_eq!(event.code, "order-webhook");
+        assert_eq!(event.endpoint, "https://example.com/webhook");
     }
 
     #[test]

@@ -5,24 +5,15 @@ namespace FlowCatalyst\Generated\Exception;
 class PostApiAdminPrincipalsByIdResetPasswordBadRequestException extends BadRequestException
 {
     /**
-     * @var \FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdResetPasswordPostResponse400
-     */
-    private $apiAdminPrincipalsIdResetPasswordPostResponse400;
-    /**
      * @var \Psr\Http\Message\ResponseInterface
      */
     private $response;
-    public function __construct(\FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdResetPasswordPostResponse400 $apiAdminPrincipalsIdResetPasswordPostResponse400, \Psr\Http\Message\ResponseInterface $response)
+    public function __construct(\Psr\Http\Message\ResponseInterface $response = null)
     {
-        parent::__construct('Default Response');
-        $this->apiAdminPrincipalsIdResetPasswordPostResponse400 = $apiAdminPrincipalsIdResetPasswordPostResponse400;
+        parent::__construct('User is not internal auth or invalid password');
         $this->response = $response;
     }
-    public function getApiAdminPrincipalsIdResetPasswordPostResponse400(): \FlowCatalyst\Generated\Model\ApiAdminPrincipalsIdResetPasswordPostResponse400
-    {
-        return $this->apiAdminPrincipalsIdResetPasswordPostResponse400;
-    }
-    public function getResponse(): \Psr\Http\Message\ResponseInterface
+    public function getResponse(): ?\Psr\Http\Message\ResponseInterface
     {
         return $this->response;
     }

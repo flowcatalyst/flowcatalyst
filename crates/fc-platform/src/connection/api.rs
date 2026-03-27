@@ -20,7 +20,6 @@ pub struct CreateConnectionRequest {
     pub code: String,
     pub name: String,
     pub description: Option<String>,
-    pub endpoint: String,
     pub external_id: Option<String>,
     pub service_account_id: String,
     pub client_id: Option<String>,
@@ -31,7 +30,6 @@ pub struct CreateConnectionRequest {
 pub struct UpdateConnectionRequest {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub endpoint: Option<String>,
     pub external_id: Option<String>,
     pub status: Option<String>,
 }
@@ -43,7 +41,6 @@ pub struct ConnectionResponse {
     pub code: String,
     pub name: String,
     pub description: Option<String>,
-    pub endpoint: String,
     pub external_id: Option<String>,
     pub status: String,
     pub service_account_id: String,
@@ -60,7 +57,6 @@ impl From<Connection> for ConnectionResponse {
             code: c.code,
             name: c.name,
             description: c.description,
-            endpoint: c.endpoint,
             external_id: c.external_id,
             status: c.status.as_str().to_string(),
             service_account_id: c.service_account_id,
@@ -115,7 +111,7 @@ pub async fn create_connection(
         return Err(PlatformError::duplicate("Connection", "code", &existing.code));
     }
 
-    let mut conn = Connection::new(&req.code, &req.name, &req.endpoint, &req.service_account_id);
+    let mut conn = Connection::new(&req.code, &req.name, &req.service_account_id);
     if let Some(desc) = req.description { conn = conn.with_description(desc); }
     if let Some(ext) = req.external_id { conn = conn.with_external_id(ext); }
     if let Some(cid) = req.client_id { conn = conn.with_client_id(cid); }
@@ -209,7 +205,6 @@ pub async fn update_connection(
 
     if let Some(name) = req.name { conn.name = name; }
     if let Some(desc) = req.description { conn.description = Some(desc); }
-    if let Some(ep) = req.endpoint { conn.endpoint = ep; }
     if let Some(ext) = req.external_id { conn.external_id = Some(ext); }
     if let Some(status) = req.status {
         conn.status = ConnectionStatus::from_str(&status);

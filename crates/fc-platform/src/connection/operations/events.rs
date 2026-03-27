@@ -16,7 +16,6 @@ pub struct ConnectionCreated {
     pub connection_id: String,
     pub code: String,
     pub name: String,
-    pub endpoint: String,
     pub service_account_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_id: Option<String>,
@@ -34,7 +33,6 @@ impl ConnectionCreated {
         connection_id: &str,
         code: &str,
         name: &str,
-        endpoint: &str,
         service_account_id: &str,
         client_id: Option<&str>,
     ) -> Self {
@@ -52,7 +50,6 @@ impl ConnectionCreated {
             connection_id: connection_id.to_string(),
             code: code.to_string(),
             name: name.to_string(),
-            endpoint: endpoint.to_string(),
             service_account_id: service_account_id.to_string(),
             client_id: client_id.map(String::from),
         }
@@ -71,8 +68,6 @@ pub struct ConnectionUpdated {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub endpoint: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
 }
 
@@ -88,7 +83,6 @@ impl ConnectionUpdated {
         connection_id: &str,
         code: &str,
         name: Option<&str>,
-        endpoint: Option<&str>,
         status: Option<&str>,
     ) -> Self {
         let event_id = TsidGenerator::generate_untyped();
@@ -105,7 +99,6 @@ impl ConnectionUpdated {
             connection_id: connection_id.to_string(),
             code: code.to_string(),
             name: name.map(String::from),
-            endpoint: endpoint.map(String::from),
             status: status.map(String::from),
         }
     }

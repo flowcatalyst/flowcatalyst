@@ -5,24 +5,15 @@ namespace FlowCatalyst\Generated\Exception;
 class PostApiAdminSubscriptionsByIdResumeNotFoundException extends NotFoundException
 {
     /**
-     * @var \FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdResumePostResponse404
-     */
-    private $apiAdminSubscriptionsIdResumePostResponse404;
-    /**
      * @var \Psr\Http\Message\ResponseInterface
      */
     private $response;
-    public function __construct(\FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdResumePostResponse404 $apiAdminSubscriptionsIdResumePostResponse404, \Psr\Http\Message\ResponseInterface $response)
+    public function __construct(\Psr\Http\Message\ResponseInterface $response = null)
     {
-        parent::__construct('Default Response');
-        $this->apiAdminSubscriptionsIdResumePostResponse404 = $apiAdminSubscriptionsIdResumePostResponse404;
+        parent::__construct('Subscription not found');
         $this->response = $response;
     }
-    public function getApiAdminSubscriptionsIdResumePostResponse404(): \FlowCatalyst\Generated\Model\ApiAdminSubscriptionsIdResumePostResponse404
-    {
-        return $this->apiAdminSubscriptionsIdResumePostResponse404;
-    }
-    public function getResponse(): \Psr\Http\Message\ResponseInterface
+    public function getResponse(): ?\Psr\Http\Message\ResponseInterface
     {
         return $this->response;
     }

@@ -1,0 +1,110 @@
+name: Generate OpenAPI & SDKs
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: 'What to regenerate'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - typescript-sdk
+          - laravel-sdk
+          - frontend-api
+
+jobs:
+  generate:
+    name: Generate SDKs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: flowcatalyst
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: shivammathur/setup-php@v2
+        if: inputs.targets == 'all' || inputs.targets == 'laravel-sdk'
+        with:
+          php-version: '8.3'
+
+      - name: Build and extract OpenAPI spec
+        env:
+          FC_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/flowcatalyst
+        run: |
+          cargo build --release --bin fc-server
+
+          # Start server in background, wait for health, extract spec
+          ./target/release/fc-server &
+          SERVER_PID=$!
+
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl -sf http://localhost:8080/q/openapi > openapi.json
+          echo "OpenAPI spec extracted ($(wc -c < openapi.json) bytes)"
+
+          kill $SERVER_PID 2>/dev/null || true
+
+      - name: Generate TypeScript SDK
+        if: inputs.targets == 'all' || inputs.targets == 'typescript-sdk'
+        run: |
+          cp openapi.json clients/typescript-sdk/openapi/openapi.json
+          # Convert to YAML if yq is available
+          if command -v yq &> /dev/null; then
+            yq -p json -o yaml openapi.json > clients/typescript-sdk/openapi/openapi.yaml
+          fi
+          cd clients/typescript-sdk && npm ci && npm run generate && npm run build
+
+      - name: Generate Laravel SDK
+        if: inputs.targets == 'all' || inputs.targets == 'laravel-sdk'
+        run: |
+          cp openapi.json clients/laravel-sdk/openapi/openapi.json
+          cd clients/laravel-sdk && php scripts/prepare-openapi.php
+          cd clients/laravel-sdk && vendor/bin/jane-openapi generate -c jane-openapi.php
+
+      - name: Generate frontend API client
+        if: inputs.targets == 'all' || inputs.targets == 'frontend-api'
+        run: |
+          mkdir -p frontend/openapi
+          cp openapi.json frontend/openapi/openapi.json
+
+      - name: Commit changes
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: regenerate OpenAPI specs and SDK clients (${{ inputs.targets }})"
+            git push
+          fi

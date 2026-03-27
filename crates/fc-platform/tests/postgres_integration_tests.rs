@@ -495,7 +495,7 @@ async fn test_connection_crud() {
     svc_repo.insert(&svc).await.expect("Failed to insert service account");
 
     // Create a connection
-    let conn = Connection::new("test-conn", "Test Connection", "https://example.com/webhook", &svc.id);
+    let conn = Connection::new("test-conn", "Test Connection", &svc.id);
     conn_repo.insert(&conn).await.expect("Failed to insert connection");
 
     // Find by ID
@@ -504,7 +504,6 @@ async fn test_connection_crud() {
     let found = found.unwrap();
     assert_eq!(found.code, "test-conn");
     assert_eq!(found.name, "Test Connection");
-    assert_eq!(found.endpoint, "https://example.com/webhook");
     assert_eq!(found.service_account_id, svc.id);
     assert_eq!(found.status, ConnectionStatus::Active);
 

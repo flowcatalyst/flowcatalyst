@@ -5,24 +5,15 @@ namespace FlowCatalyst\Generated\Exception;
 class GetApiAdminRolesBySourceBySourceBadRequestException extends BadRequestException
 {
     /**
-     * @var \FlowCatalyst\Generated\Model\ApiAdminRolesBySourceSourceGetResponse400
-     */
-    private $apiAdminRolesBySourceSourceGetResponse400;
-    /**
      * @var \Psr\Http\Message\ResponseInterface
      */
     private $response;
-    public function __construct(\FlowCatalyst\Generated\Model\ApiAdminRolesBySourceSourceGetResponse400 $apiAdminRolesBySourceSourceGetResponse400, \Psr\Http\Message\ResponseInterface $response)
+    public function __construct(\Psr\Http\Message\ResponseInterface $response = null)
     {
-        parent::__construct('Default Response');
-        $this->apiAdminRolesBySourceSourceGetResponse400 = $apiAdminRolesBySourceSourceGetResponse400;
+        parent::__construct('Invalid source');
         $this->response = $response;
     }
-    public function getApiAdminRolesBySourceSourceGetResponse400(): \FlowCatalyst\Generated\Model\ApiAdminRolesBySourceSourceGetResponse400
-    {
-        return $this->apiAdminRolesBySourceSourceGetResponse400;
-    }
-    public function getResponse(): \Psr\Http\Message\ResponseInterface
+    public function getResponse(): ?\Psr\Http\Message\ResponseInterface
     {
         return $this->response;
     }
