@@ -476,30 +476,22 @@ async fn authenticate_client(
                 .into_response()
         })?;
 
-        match state.password_service.verify_password(&provided_secret, secret_hash) {
-            Ok(true) => { /* verified */ }
-            Ok(false) => {
-                warn!(client_id = %client_id, "Client secret verification failed");
-                return Err((
-                    StatusCode::UNAUTHORIZED,
-                    Json(ErrorResponse {
-                        error: "invalid_client".to_string(),
-                        error_description: Some("Invalid client credentials".to_string()),
-                    }),
-                )
-                    .into_response());
-            }
-            Err(e) => {
-                error!(client_id = %client_id, error = %e, "Client secret verification error");
-                return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "server_error".to_string(),
-                        error_description: None,
-                    }),
-                )
-                    .into_response());
-            }
+        // Client secrets are stored as SHA-256 hex hashes (not argon2 password hashes).
+        // Hash the provided secret and compare.
+        let mut hasher = Sha256::new();
+        hasher.update(provided_secret.as_bytes());
+        let provided_hash = format!("{:x}", hasher.finalize());
+
+        if provided_hash != *secret_hash {
+            warn!(client_id = %client_id, "Client secret verification failed");
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "invalid_client".to_string(),
+                    error_description: Some("Invalid client credentials".to_string()),
+                }),
+            )
+                .into_response());
         }
     }
     // Public clients (no secret_ref) pass without secret verification
