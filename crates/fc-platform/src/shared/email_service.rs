@@ -38,33 +38,43 @@ impl EmailService for LogEmailService {
 }
 
 /// SMTP email service for production use.
-/// Configure via environment variables:
-/// - `FC_SMTP_HOST` — SMTP server hostname
-/// - `FC_SMTP_PORT` — SMTP server port (default: 587)
-/// - `FC_SMTP_USERNAME` — SMTP auth username
-/// - `FC_SMTP_PASSWORD` — SMTP auth password
-/// - `FC_SMTP_FROM` — Sender email address
+/// Configure via environment variables (supports both FC_ and TS-style names):
+/// - `FC_SMTP_HOST` / `SMTP_HOST` — SMTP server hostname
+/// - `FC_SMTP_PORT` / `SMTP_PORT` — SMTP server port (default: 587)
+/// - `FC_SMTP_USERNAME` / `SMTP_USERNAME` — SMTP auth username
+/// - `FC_SMTP_PASSWORD` / `SMTP_PASSWORD` — SMTP auth password
+/// - `FC_SMTP_FROM` / `SMTP_FROM` — Sender email address
+/// - `FC_SMTP_SECURE` / `SMTP_SECURE` — Use TLS directly (default: false, uses STARTTLS)
 pub struct SmtpEmailService {
     host: String,
     port: u16,
     username: String,
     password: String,
     from: String,
+    secure: bool,
+}
+
+/// Read env var with fallback alias (FC_ prefix first, then TS-style name).
+fn env_or_alias(primary: &str, alias: &str) -> Option<String> {
+    std::env::var(primary).ok().or_else(|| std::env::var(alias).ok())
 }
 
 impl SmtpEmailService {
     /// Create from environment variables. Returns None if SMTP is not configured.
     pub fn from_env() -> Option<Self> {
-        let host = std::env::var("FC_SMTP_HOST").ok()?;
-        let port = std::env::var("FC_SMTP_PORT")
-            .ok()
+        let host = env_or_alias("FC_SMTP_HOST", "SMTP_HOST")?;
+        let port = env_or_alias("FC_SMTP_PORT", "SMTP_PORT")
             .and_then(|p| p.parse().ok())
             .unwrap_or(587);
-        let username = std::env::var("FC_SMTP_USERNAME").unwrap_or_default();
-        let password = std::env::var("FC_SMTP_PASSWORD").unwrap_or_default();
-        let from = std::env::var("FC_SMTP_FROM").unwrap_or_else(|_| "noreply@flowcatalyst.local".to_string());
+        let username = env_or_alias("FC_SMTP_USERNAME", "SMTP_USERNAME").unwrap_or_default();
+        let password = env_or_alias("FC_SMTP_PASSWORD", "SMTP_PASSWORD").unwrap_or_default();
+        let from = env_or_alias("FC_SMTP_FROM", "SMTP_FROM")
+            .unwrap_or_else(|| "noreply@flowcatalyst.local".to_string());
+        let secure = env_or_alias("FC_SMTP_SECURE", "SMTP_SECURE")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false);
 
-        Some(Self { host, port, username, password, from })
+        Some(Self { host, port, username, password, from, secure })
     }
 }
 
@@ -93,11 +103,19 @@ impl EmailService for SmtpEmailService {
 
         let creds = Credentials::new(self.username.clone(), self.password.clone());
 
-        let mailer = SmtpTransport::starttls_relay(&self.host)
-            .map_err(|e| format!("SMTP connection failed: {}", e))?
-            .port(self.port)
-            .credentials(creds)
-            .build();
+        let mailer = if self.secure {
+            SmtpTransport::relay(&self.host)
+                .map_err(|e| format!("SMTP TLS connection failed: {}", e))?
+                .port(self.port)
+                .credentials(creds)
+                .build()
+        } else {
+            SmtpTransport::starttls_relay(&self.host)
+                .map_err(|e| format!("SMTP STARTTLS connection failed: {}", e))?
+                .port(self.port)
+                .credentials(creds)
+                .build()
+        };
 
         mailer.send(&email)
             .map_err(|e| format!("Failed to send email: {}", e))?;
