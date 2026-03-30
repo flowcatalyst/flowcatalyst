@@ -954,8 +954,9 @@ async fn validate_id_token_with_jwks(
     // and validate against pattern; for single-tenant, validate against configured issuer
     if idp.oidc_multi_tenant {
         // For multi-tenant: disable issuer validation in jsonwebtoken,
-        // we'll validate manually with pattern matching
-        validation.set_issuer::<String>(&[]);
+        // we'll validate manually with pattern matching after decode.
+        // Setting iss to None skips validation (empty set would reject all issuers).
+        validation.iss = None;
         validation.validate_aud = false; // audience may vary per tenant
     } else {
         validation.set_issuer(&[issuer_url]);
