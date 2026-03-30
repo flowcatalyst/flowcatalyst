@@ -214,8 +214,20 @@ async fn resolve_database_url() -> Result<String> {
             let password = creds["password"].as_str()
                 .ok_or_else(|| anyhow::anyhow!("DB secret missing 'password' field"))?;
 
+            // Use port from secret, then DB_PORT env, then default.
+            // Skip port if host already contains one (e.g., "host:5432").
+            let secret_port = creds["port"].as_u64().map(|p| p.to_string());
+            let effective_port = secret_port
+                .or_else(|| std::env::var("DB_PORT").ok())
+                .unwrap_or_else(|| "5432".to_string());
+
             let password_encoded = urlencoding::encode(password);
-            let url = format!("postgresql://{}:{}@{}:{}/{}", username, password_encoded, host, port, name);
+            let url = if host.contains(':') {
+                // Host already includes port (e.g., from DB_HOST=host:5432)
+                format!("postgresql://{}:{}@{}/{}", username, password_encoded, host, name)
+            } else {
+                format!("postgresql://{}:{}@{}:{}/{}", username, password_encoded, host, effective_port, name)
+            };
             info!("Database URL resolved from Secrets Manager (host: {}, db: {})", host, name);
             return Ok(url);
         }
@@ -224,11 +236,16 @@ async fn resolve_database_url() -> Result<String> {
     // Mode 3: Explicit credentials
     let username = env_or("DB_USERNAME", "postgres");
     let password = env_or("DB_PASSWORD", "");
+    let host_port = if host.contains(':') {
+        host.clone()
+    } else {
+        format!("{}:{}", host, port)
+    };
     if password.is_empty() {
-        Ok(format!("postgresql://{}@{}:{}/{}", username, host, port, name))
+        Ok(format!("postgresql://{}@{}/{}", username, host_port, name))
     } else {
         let password_encoded = urlencoding::encode(&password);
-        Ok(format!("postgresql://{}:{}@{}:{}/{}", username, password_encoded, host, port, name))
+        Ok(format!("postgresql://{}:{}@{}/{}", username, password_encoded, host_port, name))
     }
 }
 
