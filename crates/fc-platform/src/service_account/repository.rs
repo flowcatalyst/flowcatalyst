@@ -327,32 +327,68 @@ impl HasId for ServiceAccount {
 #[async_trait]
 impl PgPersist for ServiceAccount {
     async fn pg_upsert(&self, txn: &sea_orm::DatabaseTransaction) -> Result<()> {
-        // Upsert iam_service_accounts (webhook credentials)
-        if self.service_account_table_id.is_some() {
-            let model = ServiceAccountRepository::build_sa_active_model(self, true);
-            iam_service_accounts::Entity::insert(model)
-                .on_conflict(
-                    OnConflict::column(iam_service_accounts::Column::Id)
-                        .update_columns([
-                            iam_service_accounts::Column::Code,
-                            iam_service_accounts::Column::Name,
-                            iam_service_accounts::Column::Description,
-                            iam_service_accounts::Column::ApplicationId,
-                            iam_service_accounts::Column::Active,
-                            iam_service_accounts::Column::WhAuthType,
-                            iam_service_accounts::Column::WhAuthTokenRef,
-                            iam_service_accounts::Column::WhSigningSecretRef,
-                            iam_service_accounts::Column::WhSigningAlgorithm,
-                            iam_service_accounts::Column::LastUsedAt,
-                            iam_service_accounts::Column::UpdatedAt,
-                        ])
-                        .to_owned(),
-                )
-                .exec(txn)
-                .await?;
-        }
+        // 1. Upsert iam_principals (SERVICE type principal — 1:1 with service account)
+        // The principal ID is self.id, service_account_id also points to self.id
+        let principal_model = iam_principals::ActiveModel {
+            id: Set(self.id.clone()),
+            principal_type: Set("SERVICE".to_string()),
+            scope: Set(Some(self.scope.clone().unwrap_or_else(|| "ANCHOR".to_string()))),
+            client_id: Set(self.client_ids.first().cloned()),
+            application_id: Set(self.application_id.clone()),
+            name: Set(self.name.clone()),
+            active: Set(self.active),
+            email: Set(None),
+            email_domain: Set(None),
+            idp_type: Set(None),
+            external_idp_id: Set(None),
+            password_hash: Set(None),
+            last_login_at: Set(None),
+            service_account_id: Set(Some(self.id.clone())),
+            created_at: Set(self.created_at.into()),
+            updated_at: Set(chrono::Utc::now().into()),
+        };
+        iam_principals::Entity::insert(principal_model)
+            .on_conflict(
+                OnConflict::column(iam_principals::Column::Id)
+                    .update_columns([
+                        iam_principals::Column::Name,
+                        iam_principals::Column::Active,
+                        iam_principals::Column::ClientId,
+                        iam_principals::Column::ApplicationId,
+                        iam_principals::Column::UpdatedAt,
+                    ])
+                    .to_owned(),
+            )
+            .exec(txn)
+            .await?;
 
-        // Sync roles to iam_principal_roles using the principal ID (self.id)
+        // 2. Upsert iam_service_accounts (webhook credentials)
+        // Use self.id as the SA table ID (1:1 with principal)
+        let mut sa_model = ServiceAccountRepository::build_sa_active_model(self, true);
+        // Ensure the SA ID matches the principal ID
+        sa_model.id = Set(self.service_account_table_id.clone().unwrap_or_else(|| self.id.clone()));
+        iam_service_accounts::Entity::insert(sa_model)
+            .on_conflict(
+                OnConflict::column(iam_service_accounts::Column::Id)
+                    .update_columns([
+                        iam_service_accounts::Column::Code,
+                        iam_service_accounts::Column::Name,
+                        iam_service_accounts::Column::Description,
+                        iam_service_accounts::Column::ApplicationId,
+                        iam_service_accounts::Column::Active,
+                        iam_service_accounts::Column::WhAuthType,
+                        iam_service_accounts::Column::WhAuthTokenRef,
+                        iam_service_accounts::Column::WhSigningSecretRef,
+                        iam_service_accounts::Column::WhSigningAlgorithm,
+                        iam_service_accounts::Column::LastUsedAt,
+                        iam_service_accounts::Column::UpdatedAt,
+                    ])
+                    .to_owned(),
+            )
+            .exec(txn)
+            .await?;
+
+        // 3. Sync roles to iam_principal_roles using the principal ID (self.id)
         iam_principal_roles::Entity::delete_many()
             .filter(iam_principal_roles::Column::PrincipalId.eq(&self.id))
             .exec(txn)

@@ -27,7 +27,16 @@ use tower_http::services::{ServeDir, ServeFile};
 use axum::http::header::CACHE_CONTROL;
 use axum::http::HeaderValue;
 
+use rust_embed::Embed;
+
 use fc_common::{RouterConfig, PoolConfig, QueueConfig};
+
+/// Embedded frontend static files (compiled into the binary from frontend/dist/).
+/// In dev, set FC_STATIC_DIR to override with a live directory.
+#[derive(Embed)]
+#[folder = "../../frontend/dist/"]
+#[prefix = ""]
+struct FrontendAssets;
 use fc_router::{
     QueueManager, HttpMediator, LifecycleManager, LifecycleConfig,
     WarningService, WarningServiceConfig, HealthService, HealthServiceConfig,
@@ -170,6 +179,15 @@ async fn main() -> Result<()> {
     // Load .env.development (or .env) if present
     let _ = dotenvy::from_filename(".env.development")
         .or_else(|_| dotenvy::dotenv());
+
+    // Set dev defaults for env vars that aren't set
+    // These make fc-dev zero-config (only DB URL needed).
+    if std::env::var("FLOWCATALYST_APP_KEY").is_err() {
+        std::env::set_var("FLOWCATALYST_APP_KEY", "MpU3dI07kjZmZGROrElYfDXQgab30e3wr0KTnxQbePg=");
+    }
+    if std::env::var("FC_DEV_MODE").is_err() {
+        std::env::set_var("FC_DEV_MODE", "true");
+    }
 
     // Initialize logging (JSON if LOG_FORMAT=json, text otherwise)
     fc_common::logging::init_logging("fc-dev");
@@ -525,6 +543,7 @@ async fn main() -> Result<()> {
     };
     let service_accounts_state = ServiceAccountsState {
         repo: service_account_repo.clone(),
+        oauth_client_repo: oauth_client_repo.clone(),
         create_use_case: create_service_account_use_case,
         update_use_case: update_service_account_use_case,
         delete_use_case: delete_service_account_use_case,
@@ -619,7 +638,7 @@ async fn main() -> Result<()> {
         sdk_audit_batch: sdk_audit_batch_state,
         public: public_api_state,
         password_reset: password_reset_state,
-        static_dir: std::env::var("FC_STATIC_DIR").ok(),
+        static_dir: None, // fc-dev handles SPA serving itself (embedded or FC_STATIC_DIR)
     };
     let (platform_app, _openapi) = routes.build();
 
@@ -646,18 +665,17 @@ async fn main() -> Result<()> {
     );
 
     let api_app = Router::new()
-        .merge(router_api)
+        .nest("/q/router", router_api)
         .merge(platform_router)
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any));
 
-    // Static frontend serving (SPA fallback)
+    // Static frontend serving — uses FC_STATIC_DIR if set (for live reload),
+    // otherwise serves from the embedded frontend assets compiled into the binary.
     let api_app = if let Ok(static_dir) = std::env::var("FC_STATIC_DIR") {
         let index_path = std::path::PathBuf::from(&static_dir).join("index.html");
         if index_path.exists() {
-            info!(dir = %static_dir, "Serving static frontend files with SPA fallback");
-
-            // Hashed assets (Vite: /assets/*.js, /assets/*.css) — immutable cache
+            info!(dir = %static_dir, "Serving frontend from filesystem (live reload)");
             let assets_dir = std::path::PathBuf::from(&static_dir).join("assets");
             let assets_service = tower::ServiceBuilder::new()
                 .layer(SetResponseHeaderLayer::overriding(
@@ -667,17 +685,25 @@ async fn main() -> Result<()> {
                 .service(ServeDir::new(&assets_dir));
 
             api_app
+                .route("/auth/login", axum::routing::get(embedded_spa_handler))
+                .route("/auth/forgot-password", axum::routing::get(embedded_spa_handler))
+                .route("/auth/reset-password", axum::routing::get(embedded_spa_handler))
                 .nest_service("/assets", assets_service)
                 .fallback_service(
                     ServeDir::new(&static_dir)
                         .fallback(ServeFile::new(index_path))
                 )
         } else {
-            warn!(dir = %static_dir, "FC_STATIC_DIR set but index.html not found");
-            api_app
+            warn!(dir = %static_dir, "FC_STATIC_DIR set but index.html not found — using embedded assets");
+            api_app.fallback(axum::routing::get(embedded_asset_handler))
         }
     } else {
+        info!("Serving embedded frontend (compiled into binary)");
         api_app
+            .route("/auth/login", axum::routing::get(embedded_spa_handler))
+            .route("/auth/forgot-password", axum::routing::get(embedded_spa_handler))
+            .route("/auth/reset-password", axum::routing::get(embedded_spa_handler))
+            .fallback(axum::routing::get(embedded_asset_handler))
     };
 
     let api_addr = format!("0.0.0.0:{}", args.api_port);
@@ -814,3 +840,51 @@ async fn shutdown_signal() {
         _ = terminate => {},
     }
 }
+
+/// Serve embedded frontend assets. Handles all GET requests that don't match API routes.
+/// For HTML requests or root, serves index.html (SPA fallback).
+/// For asset requests, serves the matching embedded file with correct MIME type.
+async fn embedded_asset_handler(uri: axum::http::Uri) -> impl axum::response::IntoResponse {
+    let path = uri.path().trim_start_matches('/');
+
+    // Try exact path first (for assets like /assets/index-BKjElYp6.js)
+    if let Some(file) = FrontendAssets::get(path) {
+        let mime = mime_guess::from_path(path).first_or_octet_stream();
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            axum::http::header::CONTENT_TYPE,
+            mime.as_ref().parse().unwrap(),
+        );
+        // Immutable cache for hashed assets
+        if path.starts_with("assets/") {
+            headers.insert(
+                axum::http::header::CACHE_CONTROL,
+                "public, max-age=31536000, immutable".parse().unwrap(),
+            );
+        }
+        return (headers, file.data.to_vec()).into_response();
+    }
+
+    // SPA fallback: serve index.html for all other paths
+    embedded_spa_handler().await.into_response()
+}
+
+/// Serve the embedded index.html (SPA entry point).
+async fn embedded_spa_handler() -> impl axum::response::IntoResponse {
+    match FrontendAssets::get("index.html") {
+        Some(file) => {
+            let mut headers = axum::http::HeaderMap::new();
+            headers.insert(
+                axum::http::header::CONTENT_TYPE,
+                "text/html; charset=utf-8".parse().unwrap(),
+            );
+            (headers, file.data.to_vec()).into_response()
+        }
+        None => (
+            axum::http::StatusCode::NOT_FOUND,
+            "Frontend not embedded in this build",
+        ).into_response(),
+    }
+}
+
+use axum::response::IntoResponse;

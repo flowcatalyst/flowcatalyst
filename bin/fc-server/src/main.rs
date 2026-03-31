@@ -850,6 +850,7 @@ fn build_platform_app(
     };
     let service_accounts_state = ServiceAccountsState {
         repo: service_account_repo.clone(),
+        oauth_client_repo: oauth_client_repo.clone(),
         create_use_case: create_sa_use_case,
         update_use_case: update_sa_use_case,
         delete_use_case: delete_sa_use_case,

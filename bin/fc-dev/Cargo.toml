@@ -29,3 +29,5 @@ uuid = { workspace = true }
 async-trait = { workspace = true }
 serde_json = { workspace = true }
 dotenvy = "0.15.7"
+rust-embed = { workspace = true }
+mime_guess = "2"

@@ -316,10 +316,12 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
                     )
             } else {
                 tracing::warn!(dir = %static_dir, "Static dir set but index.html not found");
-                app.route("/", get(|| async { axum::response::Redirect::temporary("/swagger-ui/") }))
+                app
             }
         } else {
-            app.route("/", get(|| async { axum::response::Redirect::temporary("/swagger-ui/") }))
+            // No static_dir — don't add a root handler. The binary can add its own
+            // (fc-dev uses embedded assets, fc-server/fc-platform-server may redirect to Swagger).
+            app
         };
 
         (app, openapi)

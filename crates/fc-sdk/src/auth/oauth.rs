@@ -420,8 +420,8 @@ use std::collections::HashMap;
 /// Generate a random URL-safe string of the given length.
 fn generate_random_string(len: usize) -> String {
     use rand::Rng;
-    let mut rng = rand::thread_rng();
-    let bytes: Vec<u8> = (0..len).map(|_| rng.gen()).collect();
+    let mut rng = rand::rng();
+    let bytes: Vec<u8> = (0..len).map(|_| rng.random()).collect();
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&bytes)
 }
 

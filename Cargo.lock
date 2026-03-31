@@ -2326,6 +2326,8 @@ dependencies = [
  "fc-standby",
  "metrics",
  "metrics-exporter-prometheus",
+ "mime_guess",
+ "rust-embed",
  "sea-orm",
  "serde_json",
  "sqlx",

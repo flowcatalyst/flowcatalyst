@@ -25,8 +25,8 @@ use crate::shared::middleware::Authenticated;
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateOAuthClientRequest {
-    /// OAuth client_id (public identifier)
-    pub client_id: String,
+    /// OAuth client_id (public identifier). Auto-generated if not provided.
+    pub client_id: Option<String>,
 
     /// Human-readable name
     pub client_name: String,
@@ -106,7 +106,7 @@ impl From<OAuthClient> for OAuthClientResponse {
             client_type: format!("{:?}", c.client_type).to_uppercase(),
             redirect_uris: c.redirect_uris,
             grant_types: c.grant_types.iter()
-                .map(|g| format!("{:?}", g).to_lowercase())
+                .map(|g| g.as_str().to_string())
                 .collect(),
             default_scopes: c.default_scopes,
             pkce_required: c.pkce_required,
@@ -176,12 +176,16 @@ pub async fn create_oauth_client(
 ) -> Result<(StatusCode, Json<OAuthClientResponse>), PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
+    // Auto-generate client_id if not provided
+    let client_id = req.client_id
+        .unwrap_or_else(|| crate::TsidGenerator::generate(crate::EntityType::OAuthClient));
+
     // Check for duplicate client_id
-    if state.oauth_client_repo.exists_by_client_id(&req.client_id).await? {
-        return Err(PlatformError::duplicate("OAuthClient", "clientId", &req.client_id));
+    if state.oauth_client_repo.exists_by_client_id(&client_id).await? {
+        return Err(PlatformError::duplicate("OAuthClient", "clientId", &client_id));
     }
 
-    let mut client = OAuthClient::new(&req.client_id, &req.client_name);
+    let mut client = OAuthClient::new(&client_id, &req.client_name);
 
     if let Some(ref ct) = req.client_type {
         client.client_type = parse_client_type(ct);

@@ -141,15 +141,29 @@ impl From<ServiceAccount> for ServiceAccountResponse {
     }
 }
 
+/// OAuth credentials (one-time, shown only at creation)
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthCredentials {
+    pub client_id: String,
+    pub client_secret: String,
+}
+
+/// Webhook credentials (one-time, shown only at creation)
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WebhookCredentialsResponse {
+    pub auth_token: String,
+    pub signing_secret: String,
+}
+
 /// Create service account response (includes one-time secrets)
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateServiceAccountResponse {
     pub service_account: ServiceAccountResponse,
-    /// Auth token (shown only once)
-    pub auth_token: String,
-    /// Signing secret (shown only once)
-    pub signing_secret: String,
+    pub oauth: OAuthCredentials,
+    pub webhook: WebhookCredentialsResponse,
 }
 
 /// Regenerate token response
@@ -201,6 +215,7 @@ pub struct AssignRolesResponse {
 #[derive(Clone)]
 pub struct ServiceAccountsState<U: UnitOfWork + 'static> {
     pub repo: Arc<ServiceAccountRepository>,
+    pub oauth_client_repo: Arc<crate::OAuthClientRepository>,
     pub create_use_case: Arc<CreateServiceAccountUseCase<U>>,
     pub update_use_case: Arc<UpdateServiceAccountUseCase<U>>,
     pub delete_use_case: Arc<DeleteServiceAccountUseCase<U>>,
@@ -346,10 +361,58 @@ pub async fn create_service_account<U: UnitOfWork>(
             let account = state.repo.find_by_id(&result.event.service_account_id).await?
                 .ok_or_else(|| PlatformError::internal("Created service account not found"))?;
 
+            // Auto-create a CONFIDENTIAL OAuth client for this service account
+            use sha2::{Sha256, Digest};
+            use base64::Engine;
+
+            let oauth_client_id = crate::TsidGenerator::generate(crate::EntityType::OAuthClient);
+            let mut secret_bytes = [0u8; 32];
+            rand::RngCore::fill_bytes(&mut rand::rng(), &mut secret_bytes);
+            let plaintext_secret = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(secret_bytes);
+
+            // Store SHA-256 hash of secret
+            let mut hasher = Sha256::new();
+            hasher.update(plaintext_secret.as_bytes());
+            let secret_hash = format!("{:x}", hasher.finalize());
+
+            let now = chrono::Utc::now();
+            let oauth_client = crate::auth::oauth_entity::OAuthClient {
+                id: oauth_client_id.clone(),
+                client_id: oauth_client_id.clone(),
+                client_name: account.name.clone(),
+                client_type: crate::auth::oauth_entity::OAuthClientType::Confidential,
+                client_secret_ref: Some(secret_hash),
+                redirect_uris: vec![],
+                grant_types: vec![
+                    crate::auth::oauth_entity::GrantType::ClientCredentials,
+                    crate::auth::oauth_entity::GrantType::AuthorizationCode,
+                ],
+                default_scopes: vec!["openid".to_string(), "profile".to_string(), "email".to_string()],
+                pkce_required: false,
+                application_ids: vec![],
+                service_account_principal_id: Some(result.event.service_account_id.clone()),
+                active: true,
+                created_at: now,
+                updated_at: now,
+                created_by: Some(auth.0.principal_id.clone()),
+            };
+
+            state.oauth_client_repo.insert(&oauth_client).await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "Failed to auto-create OAuth client for service account");
+                    PlatformError::internal(format!("Failed to create OAuth client: {}", e))
+                })?;
+
             Ok(Json(CreateServiceAccountResponse {
                 service_account: ServiceAccountResponse::from(account),
-                auth_token: result.auth_token,
-                signing_secret: result.signing_secret,
+                oauth: OAuthCredentials {
+                    client_id: oauth_client_id,
+                    client_secret: plaintext_secret,
+                },
+                webhook: WebhookCredentialsResponse {
+                    auth_token: result.auth_token,
+                    signing_secret: result.signing_secret,
+                },
             }))
         }
         UseCaseResult::Failure(err) => Err(err.into()),

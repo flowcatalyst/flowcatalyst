@@ -58,6 +58,7 @@ dashmap = "6.1"
 indexmap = "2.8"
 governor = "0.8"
 hdrhistogram = "7.5"
+rust-embed = "8.7"
 nonzero_ext = "0.3"
 redis = { version = "0.29", features = ["tokio-comp", "connection-manager"] }
 parking_lot = "0.12"

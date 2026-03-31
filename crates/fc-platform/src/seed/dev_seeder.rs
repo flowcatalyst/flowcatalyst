@@ -20,6 +20,10 @@ use crate::{
     ClientAuthConfigRepository, ClientAccessGrantRepository, EventTypeRepository,
     PrincipalRepository,
 };
+use crate::identity_provider::entity::IdentityProvider;
+use crate::identity_provider::repository::IdentityProviderRepository;
+use crate::email_domain_mapping::entity::{EmailDomainMapping, ScopeType};
+use crate::email_domain_mapping::repository::EmailDomainMappingRepository;
 use crate::auth::password_service::{PasswordService, Argon2Config, PasswordPolicy};
 
 const DEV_PASSWORD: &str = "DevPassword123!";
@@ -46,7 +50,9 @@ impl DevDataSeeder {
         info!("Seeding development data...");
 
         self.seed_anchor_domain().await?;
+        let internal_idp_id = self.seed_internal_identity_provider().await?;
         let clients = self.seed_clients().await?;
+        self.seed_email_domain_mappings(&internal_idp_id, &clients).await?;
         self.seed_auth_configs(&clients).await?;
         self.seed_users(&clients).await?;
         self.seed_applications().await?;
@@ -73,6 +79,67 @@ impl DevDataSeeder {
         let anchor = AnchorDomain::new("flowcatalyst.local");
         repo.insert(&anchor).await?;
         info!("Created anchor domain: flowcatalyst.local");
+
+        Ok(())
+    }
+
+    /// Ensure the "internal" identity provider exists (for password-based auth).
+    async fn seed_internal_identity_provider(&self) -> Result<String, Box<dyn std::error::Error>> {
+        let repo = IdentityProviderRepository::new(&self.pg_db);
+
+        if let Some(existing) = repo.find_by_code("internal").await? {
+            return Ok(existing.id);
+        }
+
+        let idp = IdentityProvider::new("internal", "Internal Authentication", crate::identity_provider::entity::IdentityProviderType::Internal);
+        repo.insert(&idp).await?;
+        info!("Created internal identity provider");
+        Ok(idp.id)
+    }
+
+    /// Create email domain mappings linking domains to the internal IDP.
+    async fn seed_email_domain_mappings(
+        &self,
+        internal_idp_id: &str,
+        clients: &SeedClients,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = EmailDomainMappingRepository::new(&self.pg_db);
+
+        // Anchor domain
+        self.create_edm_if_not_exists(&repo, "flowcatalyst.local", internal_idp_id, ScopeType::Anchor, None).await?;
+
+        // Client domains
+        if let Some(ref acme) = clients.acme {
+            self.create_edm_if_not_exists(&repo, "acme.com", internal_idp_id, ScopeType::Client, Some(&acme.id)).await?;
+        }
+        if let Some(ref globex) = clients.globex {
+            self.create_edm_if_not_exists(&repo, "globex.com", internal_idp_id, ScopeType::Client, Some(&globex.id)).await?;
+        }
+
+        // Partner domain
+        self.create_edm_if_not_exists(&repo, "partner.io", internal_idp_id, ScopeType::Partner, None).await?;
+
+        Ok(())
+    }
+
+    async fn create_edm_if_not_exists(
+        &self,
+        repo: &EmailDomainMappingRepository,
+        domain: &str,
+        idp_id: &str,
+        scope_type: ScopeType,
+        primary_client_id: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if repo.find_by_email_domain(domain).await?.is_some() {
+            return Ok(());
+        }
+
+        let mut mapping = EmailDomainMapping::new(domain, idp_id, scope_type);
+        if let Some(client_id) = primary_client_id {
+            mapping.primary_client_id = Some(client_id.to_string());
+        }
+        repo.insert(&mapping).await?;
+        info!("Created email domain mapping: {} → internal ({})", domain, scope_type.as_str());
 
         Ok(())
     }
