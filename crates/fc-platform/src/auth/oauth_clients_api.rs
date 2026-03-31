@@ -259,7 +259,7 @@ pub async fn list_oauth_clients(
     State(state): State<OAuthClientsState>,
     auth: Authenticated,
     Query(query): Query<OAuthClientsQuery>,
-) -> Result<Json<Vec<OAuthClientResponse>>, PlatformError> {
+) -> Result<Json<serde_json::Value>, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
     let clients = if query.active.unwrap_or(true) {
@@ -272,7 +272,7 @@ pub async fn list_oauth_clients(
         .map(|c| c.into())
         .collect();
 
-    Ok(Json(response))
+    Ok(Json(serde_json::json!({ "clients": response })))
 }
 
 /// Update OAuth client
