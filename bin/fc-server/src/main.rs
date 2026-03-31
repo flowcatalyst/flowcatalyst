@@ -46,10 +46,10 @@ use axum::{
     Router,
 };
 use tower_http::cors::{CorsLayer, AllowOrigin};
-use tower_http::set_header::SetResponseHeaderLayer;
+// SetResponseHeaderLayer moved to PlatformRoutes
 use tower_http::trace::TraceLayer;
-use axum::http::header::CACHE_CONTROL;
-use tower_http::services::{ServeDir, ServeFile};
+// CACHE_CONTROL moved to PlatformRoutes
+// SPA serving is handled by PlatformRoutes::build()
 use axum::http::{Method, HeaderValue, header as http_header};
 use anyhow::Result;
 use tracing::{info, warn, error};
@@ -946,6 +946,7 @@ fn build_platform_app(
         sdk_audit_batch: sdk_audit_batch_state,
         public: public_api_state,
         password_reset: password_reset_state,
+        static_dir: std::env::var("FC_STATIC_DIR").ok(),
     };
     let (app, _openapi) = routes.build();
 
@@ -996,33 +997,8 @@ fn build_platform_app(
                 .max_age(Duration::from_secs(86400))
         });
 
-    // Static frontend serving
-    if let Ok(static_dir) = std::env::var("FC_STATIC_DIR") {
-        let index_path = std::path::PathBuf::from(&static_dir).join("index.html");
-        if index_path.exists() {
-            info!(dir = %static_dir, "Serving static frontend files with SPA fallback");
-            let assets_dir = std::path::PathBuf::from(&static_dir).join("assets");
-            let assets_service = tower::ServiceBuilder::new()
-                .layer(SetResponseHeaderLayer::overriding(
-                    CACHE_CONTROL,
-                    HeaderValue::from_static("public, max-age=31536000, immutable"),
-                ))
-                .service(ServeDir::new(&assets_dir));
-
-            return app
-                .nest_service("/assets", assets_service)
-                .fallback_service(
-                    ServeDir::new(&static_dir)
-                        .fallback(ServeFile::new(index_path))
-                );
-        }
-        warn!(dir = %static_dir, "FC_STATIC_DIR set but index.html not found");
-    }
-
-    // No static dir — add a root handler that redirects to Swagger UI
-    app.route("/", axum::routing::get(|| async {
-        axum::response::Redirect::temporary("/swagger-ui/")
-    }))
+    // SPA serving is now handled by PlatformRoutes::build() via the static_dir field.
+    app
 }
 
 // ── Background Processor Spawners ────────────────────────────────────────────

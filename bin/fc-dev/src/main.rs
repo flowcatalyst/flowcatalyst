@@ -619,6 +619,7 @@ async fn main() -> Result<()> {
         sdk_audit_batch: sdk_audit_batch_state,
         public: public_api_state,
         password_reset: password_reset_state,
+        static_dir: std::env::var("FC_STATIC_DIR").ok(),
     };
     let (platform_app, _openapi) = routes.build();
 

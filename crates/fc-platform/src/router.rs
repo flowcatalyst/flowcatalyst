@@ -4,7 +4,7 @@
 //! fc-platform-server, fc-dev). Each binary still constructs the state
 //! objects and adds its own middleware/static-file layers on top.
 
-use axum::{routing::get, response::Json, Router};
+use axum::{routing::get, response::{Json, IntoResponse}, Router};
 use utoipa::openapi::{ObjectBuilder, schema::Type};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_swagger_ui::SwaggerUi;
@@ -177,14 +177,20 @@ pub struct PlatformRoutes<U: UnitOfWork + Clone + 'static> {
     pub sdk_audit_batch: SdkAuditBatchState,
     pub public: PublicApiState,
     pub password_reset: PasswordResetApiState,
+
+    /// Optional static directory for SPA serving. When set, serves:
+    /// - `/assets/*` with immutable cache headers (Vite hashed assets)
+    /// - SPA fallback (index.html) for unmatched GET requests
+    /// - Explicit SPA routes for paths that conflict with API nests (e.g., /auth/login)
+    pub static_dir: Option<String>,
 }
 
 impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
     /// Assemble the full platform router and OpenAPI spec.
     ///
     /// The returned `Router` includes all API routes, the health endpoint,
-    /// and Swagger UI. It does **not** include auth middleware, CORS, tracing
-    /// layers, or static-file serving — the calling binary adds those.
+    /// Swagger UI, and SPA serving (if `static_dir` is set).
+    /// It does **not** include auth middleware, CORS, or tracing layers.
     pub fn build(self) -> (Router, utoipa::openapi::OpenApi) {
         // 1. OpenApiRouter routes (auto-collected in Swagger spec)
         let (router, mut openapi) = OpenApiRouter::new()
@@ -266,6 +272,55 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
             .route(PATH_HEALTH, get(health_handler))
             // Swagger UI
             .merge(SwaggerUi::new(PATH_SWAGGER_UI).url(PATH_OPENAPI_SPEC, openapi.clone()));
+
+        // SPA serving (if static_dir is configured)
+        let app = if let Some(ref static_dir) = self.static_dir {
+            let index_path = std::path::PathBuf::from(static_dir).join("index.html");
+            if index_path.exists() {
+                use tower_http::services::{ServeDir, ServeFile};
+                use tower_http::set_header::SetResponseHeaderLayer;
+                use axum::http::header::CACHE_CONTROL;
+                use axum::http::HeaderValue;
+
+                tracing::info!(dir = %static_dir, "Serving static frontend files with SPA fallback");
+
+                let assets_dir = std::path::PathBuf::from(static_dir).join("assets");
+                let assets_service = tower::ServiceBuilder::new()
+                    .layer(SetResponseHeaderLayer::overriding(
+                        CACHE_CONTROL,
+                        HeaderValue::from_static("public, max-age=31536000, immutable"),
+                    ))
+                    .service(ServeDir::new(&assets_dir));
+
+                // SPA routes that conflict with API nests (e.g., /auth/login vs POST /auth/login).
+                // Without these, the /auth nest returns 405 for GET requests the SPA should handle.
+                let spa_index = index_path.clone();
+                let spa_handler = get(move || {
+                    let path = spa_index.clone();
+                    async move {
+                        match tokio::fs::read_to_string(&path).await {
+                            Ok(html) => axum::response::Html(html).into_response(),
+                            Err(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+                        }
+                    }
+                });
+
+                app
+                    .route("/auth/login", spa_handler.clone())
+                    .route("/auth/forgot-password", spa_handler.clone())
+                    .route("/auth/reset-password", spa_handler)
+                    .nest_service("/assets", assets_service)
+                    .fallback_service(
+                        ServeDir::new(static_dir)
+                            .fallback(ServeFile::new(index_path))
+                    )
+            } else {
+                tracing::warn!(dir = %static_dir, "Static dir set but index.html not found");
+                app.route("/", get(|| async { axum::response::Redirect::temporary("/swagger-ui/") }))
+            }
+        } else {
+            app.route("/", get(|| async { axum::response::Redirect::temporary("/swagger-ui/") }))
+        };
 
         (app, openapi)
     }
