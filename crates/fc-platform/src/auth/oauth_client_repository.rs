@@ -66,10 +66,19 @@ impl OAuthClientRepository {
         Ok(rows.into_iter().map(|r| r.application_id).collect())
     }
 
+    async fn load_allowed_origins(&self, oauth_client_id: &str) -> Result<Vec<String>> {
+        let rows = oauth_client_collections::allowed_origins::Entity::find()
+            .filter(oauth_client_collections::allowed_origins::Column::OauthClientId.eq(oauth_client_id))
+            .all(&self.db)
+            .await?;
+        Ok(rows.into_iter().map(|r| r.allowed_origin).collect())
+    }
+
     async fn hydrate(&self, mut client: OAuthClient) -> Result<OAuthClient> {
         client.redirect_uris = self.load_redirect_uris(&client.id).await?;
         client.grant_types = self.load_grant_types(&client.id).await?;
         client.application_ids = self.load_application_ids(&client.id).await?;
+        client.allowed_origins = self.load_allowed_origins(&client.id).await?;
         Ok(client)
     }
 
@@ -99,6 +108,21 @@ impl OAuthClientRepository {
                 grant_type: Set(gt.as_str().to_string()),
             };
             oauth_client_collections::grant_types::Entity::insert(model).exec(&self.db).await?;
+        }
+        Ok(())
+    }
+
+    async fn save_allowed_origins(&self, oauth_client_id: &str, origins: &[String]) -> Result<()> {
+        oauth_client_collections::allowed_origins::Entity::delete_many()
+            .filter(oauth_client_collections::allowed_origins::Column::OauthClientId.eq(oauth_client_id))
+            .exec(&self.db)
+            .await?;
+        for origin in origins {
+            let model = oauth_client_collections::allowed_origins::ActiveModel {
+                oauth_client_id: Set(oauth_client_id.to_string()),
+                allowed_origin: Set(origin.clone()),
+            };
+            oauth_client_collections::allowed_origins::Entity::insert(model).exec(&self.db).await?;
         }
         Ok(())
     }
@@ -145,6 +169,7 @@ impl OAuthClientRepository {
         self.save_redirect_uris(&client.id, &client.redirect_uris).await?;
         self.save_grant_types(&client.id, &client.grant_types).await?;
         self.save_application_ids(&client.id, &client.application_ids).await?;
+        self.save_allowed_origins(&client.id, &client.allowed_origins).await?;
         self.invalidate_cache(client).await;
         Ok(())
     }
@@ -264,6 +289,7 @@ impl OAuthClientRepository {
         self.save_redirect_uris(&client.id, &client.redirect_uris).await?;
         self.save_grant_types(&client.id, &client.grant_types).await?;
         self.save_application_ids(&client.id, &client.application_ids).await?;
+        self.save_allowed_origins(&client.id, &client.allowed_origins).await?;
         self.invalidate_cache(client).await;
         Ok(())
     }

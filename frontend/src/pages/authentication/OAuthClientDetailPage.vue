@@ -129,7 +129,7 @@ function resetEditForm() {
 			grantTypes: [...(client.value.grantTypes || [])],
 			defaultScopes: [...(client.value.defaultScopes || [])],
 			pkceRequired: client.value.pkceRequired ?? true,
-			applicationIds: (client.value.applications || []).map((a) => a.id),
+			applicationIds: [...(client.value.applicationIds || [])],
 		};
 	}
 }

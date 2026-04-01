@@ -101,6 +101,10 @@ pub struct OAuthClient {
     #[serde(default)]
     pub application_ids: Vec<String>,
 
+    /// Allowed CORS origins
+    #[serde(default)]
+    pub allowed_origins: Vec<String>,
+
     /// Service account principal ID (for client_credentials grant)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub service_account_principal_id: Option<String>,
@@ -135,6 +139,7 @@ impl OAuthClient {
             default_scopes: vec![],
             pkce_required: true,
             application_ids: vec![],
+            allowed_origins: vec![],
             service_account_principal_id: None,
             active: true,
             created_at: now,
@@ -215,7 +220,8 @@ impl From<crate::entities::oauth_clients::Model> for OAuthClient {
             grant_types: vec![],   // loaded separately
             default_scopes,
             pkce_required: m.pkce_required,
-            application_ids: vec![], // loaded separately
+            application_ids: vec![],
+            allowed_origins: vec![], // loaded separately
             service_account_principal_id: m.service_account_principal_id,
             active: m.active,
             created_at: m.created_at.with_timezone(&Utc),

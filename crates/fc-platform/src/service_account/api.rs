@@ -390,6 +390,7 @@ pub async fn create_service_account<U: UnitOfWork>(
                 default_scopes: vec!["openid".to_string(), "profile".to_string(), "email".to_string()],
                 pkce_required: false,
                 application_ids: vec![],
+                allowed_origins: vec![],
                 service_account_principal_id: Some(result.event.service_account_id.clone()),
                 active: true,
                 created_at: now,

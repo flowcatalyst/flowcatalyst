@@ -263,7 +263,11 @@ async fn main() -> Result<()> {
     let api_port: u16 = env_or_alias_parse("FC_API_PORT", "PORT", 3000);
     let metrics_port: u16 = env_or_parse("FC_METRICS_PORT", 9090);
     let database_url = resolve_database_url().await?;
-    let jwt_issuer = env_or("FC_JWT_ISSUER", "flowcatalyst");
+    // JWT issuer should be the external base URL per OIDC spec
+    let jwt_issuer = std::env::var("FC_JWT_ISSUER")
+        .or_else(|_| std::env::var("FC_EXTERNAL_BASE_URL"))
+        .or_else(|_| std::env::var("EXTERNAL_BASE_URL"))
+        .unwrap_or_else(|_| "http://localhost:3000".to_string());
 
     // Subsystem toggles (TS names: PLATFORM_ENABLED, MESSAGE_ROUTER_ENABLED, etc.)
     let platform_enabled = env_bool_alias("FC_PLATFORM_ENABLED", "PLATFORM_ENABLED", true);

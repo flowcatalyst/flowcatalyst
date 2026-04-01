@@ -71,6 +71,9 @@ pub struct UpdateOAuthClientRequest {
     /// Application IDs this client can access
     pub application_ids: Option<Vec<String>>,
 
+    /// Allowed CORS origins
+    pub allowed_origins: Option<Vec<String>>,
+
     /// Whether client is active
     pub active: Option<bool>,
 }
@@ -113,7 +116,7 @@ impl From<OAuthClient> for OAuthClientResponse {
             default_scopes: c.default_scopes,
             pkce_required: c.pkce_required,
             application_ids: c.application_ids,
-            allowed_origins: vec![], // TODO: persist when supported
+            allowed_origins: c.allowed_origins,
             service_account_principal_id: c.service_account_principal_id,
             active: c.active,
             created_at: c.created_at.to_rfc3339(),
@@ -349,6 +352,9 @@ pub async fn update_oauth_client(
     }
     if let Some(apps) = req.application_ids {
         client.application_ids = apps;
+    }
+    if let Some(origins) = req.allowed_origins {
+        client.allowed_origins = origins;
     }
     if let Some(active) = req.active {
         client.active = active;

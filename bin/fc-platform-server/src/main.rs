@@ -134,7 +134,10 @@ async fn main() -> Result<()> {
     let api_port: u16 = env_or_parse("FC_API_PORT", 3000);
     let metrics_port: u16 = env_or_parse("FC_METRICS_PORT", 9090);
     let database_url = env_or("FC_DATABASE_URL", "postgresql://localhost:5432/flowcatalyst");
-    let jwt_issuer = env_or("FC_JWT_ISSUER", "flowcatalyst");
+    let jwt_issuer = std::env::var("FC_JWT_ISSUER")
+        .or_else(|_| std::env::var("FC_EXTERNAL_BASE_URL"))
+        .or_else(|_| std::env::var("EXTERNAL_BASE_URL"))
+        .unwrap_or_else(|_| "http://localhost:3000".to_string());
 
     // Connect to PostgreSQL
     info!("Connecting to PostgreSQL...");

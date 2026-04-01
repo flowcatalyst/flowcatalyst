@@ -363,7 +363,10 @@ async fn main() -> Result<()> {
         rsa_public_key: Some(public_key),
         rsa_public_key_previous: None, // Dev mode: no key rotation
         secret_key: String::new(),
-        issuer: "flowcatalyst".to_string(),
+        issuer: std::env::var("FC_JWT_ISSUER")
+            .or_else(|_| std::env::var("FC_EXTERNAL_BASE_URL"))
+            .or_else(|_| std::env::var("EXTERNAL_BASE_URL"))
+            .unwrap_or_else(|_| "http://localhost:8080".to_string()),
         audience: "flowcatalyst".to_string(),
         access_token_expiry_secs: std::env::var("FC_ACCESS_TOKEN_EXPIRY_SECS")
             .ok().and_then(|v| v.parse().ok()).unwrap_or(3600),
