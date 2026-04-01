@@ -445,11 +445,11 @@ function getClientTypeSeverity(clientType: string) {
 
             <div class="field-group">
               <label>Associated Applications</label>
-              <div v-if="client.applications.length > 0" class="tag-list">
+              <div v-if="(client.applicationIds?.length ?? 0) > 0" class="tag-list">
                 <Tag
-                  v-for="app in client.applications"
-                  :key="app.id"
-                  :value="app.name"
+                  v-for="appId in client.applicationIds"
+                  :key="appId"
+                  :value="applications.find(a => a.id === appId)?.name || appId"
                   severity="info"
                 />
               </div>

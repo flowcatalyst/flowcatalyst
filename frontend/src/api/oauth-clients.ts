@@ -17,7 +17,8 @@ export interface OAuthClient {
 	grantTypes: string[];
 	defaultScopes: string[];
 	pkceRequired: boolean;
-	applications: ApplicationRef[];
+	applicationIds: string[];
+	applications?: ApplicationRef[];
 	active: boolean;
 	createdAt: string;
 	updatedAt: string;

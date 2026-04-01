@@ -30,7 +30,7 @@ const filteredClients = computed(() => {
 		(client) =>
 			client.clientName.toLowerCase().includes(query) ||
 			client.clientId.toLowerCase().includes(query) ||
-			client.applications.some((app) => app.name.toLowerCase().includes(query)),
+			(client.applications?.some((app) => app.name.toLowerCase().includes(query)) ?? false),
 	);
 });
 

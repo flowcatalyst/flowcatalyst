@@ -88,6 +88,8 @@ pub struct OAuthClientResponse {
     pub default_scopes: Vec<String>,
     pub pkce_required: bool,
     pub application_ids: Vec<String>,
+    #[serde(default)]
+    pub allowed_origins: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub service_account_principal_id: Option<String>,
     pub active: bool,
@@ -111,6 +113,7 @@ impl From<OAuthClient> for OAuthClientResponse {
             default_scopes: c.default_scopes,
             pkce_required: c.pkce_required,
             application_ids: c.application_ids,
+            allowed_origins: vec![], // TODO: persist when supported
             service_account_principal_id: c.service_account_principal_id,
             active: c.active,
             created_at: c.created_at.to_rfc3339(),
@@ -173,7 +176,7 @@ pub async fn create_oauth_client(
     State(state): State<OAuthClientsState>,
     auth: Authenticated,
     Json(req): Json<CreateOAuthClientRequest>,
-) -> Result<(StatusCode, Json<OAuthClientResponse>), PlatformError> {
+) -> Result<(StatusCode, Json<serde_json::Value>), PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
     // Auto-generate client_id if not provided
@@ -210,9 +213,36 @@ pub async fn create_oauth_client(
 
     client.application_ids = req.application_ids;
 
+    // For CONFIDENTIAL clients, auto-generate a secret.
+    // The plaintext is returned once; only the hash is stored.
+    let generated_secret = if client.client_type == crate::auth::oauth_entity::OAuthClientType::Confidential {
+        use sha2::{Sha256, Digest};
+        use base64::Engine;
+
+        let mut secret_bytes = [0u8; 32];
+        rand::RngCore::fill_bytes(&mut rand::rng(), &mut secret_bytes);
+        let plaintext = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(secret_bytes);
+
+        let mut hasher = Sha256::new();
+        hasher.update(plaintext.as_bytes());
+        client.client_secret_ref = Some(format!("{:x}", hasher.finalize()));
+
+        Some(plaintext)
+    } else {
+        None
+    };
+
     state.oauth_client_repo.insert(&client).await?;
 
-    Ok((StatusCode::CREATED, Json(OAuthClientResponse::from(client))))
+    // Return wrapped response matching frontend expectations: { client: {...}, clientSecret?: "..." }
+    let mut response = serde_json::json!({
+        "client": OAuthClientResponse::from(client),
+    });
+    if let Some(secret) = generated_secret {
+        response["clientSecret"] = serde_json::json!(secret);
+    }
+
+    Ok((StatusCode::CREATED, Json(response)))
 }
 
 /// Get OAuth client by ID
