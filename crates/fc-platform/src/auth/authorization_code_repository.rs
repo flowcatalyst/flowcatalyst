@@ -7,6 +7,7 @@ use sea_orm::*;
 use sea_orm::prelude::Expr;
 use chrono::Utc;
 use serde_json::json;
+use tracing::debug;
 use crate::AuthorizationCode;
 use crate::entities::oauth_oidc_payloads;
 use crate::shared::error::Result;
@@ -121,6 +122,39 @@ impl AuthorizationCodeRepository {
             .filter(oauth_oidc_payloads::Column::ExpiresAt.gt(now))
             .one(&self.db)
             .await?;
+        Ok(result.map(Self::from_model))
+    }
+
+    /// Atomically find and consume a valid (not used, not expired) authorization code.
+    ///
+    /// Uses `UPDATE ... WHERE consumed_at IS NULL AND expires_at > NOW() RETURNING *`
+    /// to prevent race conditions where two concurrent token requests could both
+    /// consume the same authorization code. Returns None if the code doesn't exist,
+    /// has expired, or was already consumed by another request.
+    pub async fn find_and_consume(&self, code: &str) -> Result<Option<AuthorizationCode>> {
+        let composite_id = Self::make_id(code);
+        let sql = r#"
+            UPDATE oauth_oidc_payloads
+            SET consumed_at = NOW()
+            WHERE id = $1
+              AND consumed_at IS NULL
+              AND expires_at > NOW()
+            RETURNING *
+        "#;
+
+        let result = oauth_oidc_payloads::Entity::find()
+            .from_raw_sql(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                sql,
+                [composite_id.into()],
+            ))
+            .one(&self.db)
+            .await?;
+
+        if let Some(ref _model) = result {
+            debug!(code_prefix = &code[..code.len().min(8)], "Authorization code atomically consumed");
+        }
+
         Ok(result.map(Self::from_model))
     }
 

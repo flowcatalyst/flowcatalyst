@@ -61,6 +61,12 @@ pub struct OpenIdConfiguration {
 
     /// Code challenge methods supported (PKCE)
     pub code_challenge_methods_supported: Vec<String>,
+
+    /// Whether the OP supports use of the `request` parameter (OIDC Discovery §3)
+    pub request_parameter_supported: bool,
+
+    /// Whether the OP supports use of the `request_uri` parameter (OIDC Discovery §3)
+    pub request_uri_parameter_supported: bool,
 }
 
 /// JSON Web Key Set (JWKS)
@@ -159,20 +165,27 @@ pub async fn get_openid_configuration(
             "aud".to_string(),
             "exp".to_string(),
             "iat".to_string(),
+            "auth_time".to_string(),
+            "nonce".to_string(),
             "name".to_string(),
             "email".to_string(),
             "email_verified".to_string(),
-            "clients".to_string(),
-            "roles".to_string(),
-            "applications".to_string(),
+            "acr".to_string(),
+            "amr".to_string(),
+            "azp".to_string(),
             "type".to_string(),
             "scope".to_string(),
             "client_id".to_string(),
+            "roles".to_string(),
+            "applications".to_string(),
+            "clients".to_string(),
         ],
         code_challenge_methods_supported: vec![
             "S256".to_string(),
             "plain".to_string(),
         ],
+        request_parameter_supported: false,
+        request_uri_parameter_supported: false,
     })
 }
 
@@ -236,6 +249,8 @@ mod tests {
             grant_types_supported: vec!["authorization_code".to_string()],
             claims_supported: vec!["sub".to_string()],
             code_challenge_methods_supported: vec!["S256".to_string()],
+            request_parameter_supported: false,
+            request_uri_parameter_supported: false,
         };
 
         let json = serde_json::to_string(&config).unwrap();

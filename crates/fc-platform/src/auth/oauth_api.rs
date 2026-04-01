@@ -49,6 +49,10 @@ pub struct AuthorizeRequest {
     pub code_challenge_method: Option<String>,
     /// Provider ID for external OIDC
     pub provider: Option<String>,
+    /// OIDC max_age: maximum authentication age in seconds
+    pub max_age: Option<i64>,
+    /// OIDC prompt: space-separated list of prompt values (none, login, consent, select_account)
+    pub prompt: Option<String>,
 }
 
 /// Token request (form-urlencoded)
@@ -259,6 +263,26 @@ pub async fn authorize(
         if method != "S256" && method != "plain" {
             return error_redirect(&req.redirect_uri, "invalid_request", "Invalid code_challenge_method", req.state.as_deref());
         }
+        if method == "plain" {
+            warn!(client_id = %req.client_id, "PKCE plain method used — S256 is strongly recommended");
+        }
+    }
+
+    // Validate requested scopes against client's allowed scopes
+    if let Some(ref scope_str) = req.scope {
+        let standard_scopes: &[&str] = &["openid", "profile", "email", "offline_access"];
+        let invalid_scopes: Vec<&str> = scope_str
+            .split_whitespace()
+            .filter(|s| !standard_scopes.contains(s) && !client.default_scopes.iter().any(|ds| ds == *s))
+            .collect();
+        if !invalid_scopes.is_empty() {
+            return error_redirect(
+                &req.redirect_uri,
+                "invalid_scope",
+                &format!("Invalid scope(s): {}", invalid_scopes.join(", ")),
+                req.state.as_deref(),
+            );
+        }
     }
 
     // Check if user is already authenticated (has valid session cookie).
@@ -271,8 +295,40 @@ pub async fn authorize(
                 .map(|t| t.to_string())
         });
 
-    if let Some(ref token) = session_token {
-        if let Ok(claims) = state.auth_service.validate_token(token) {
+    // Handle `prompt` parameter (OIDC Core Section 3.1.2.1)
+    let force_login = if let Some(ref prompt) = req.prompt {
+        match prompt.as_str() {
+            "none" => {
+                // prompt=none: if user is not authenticated, return login_required error
+                let has_valid_session = session_token.as_ref()
+                    .and_then(|t| state.auth_service.validate_token(t).ok())
+                    .is_some();
+                if !has_valid_session {
+                    return error_redirect(&req.redirect_uri, "login_required",
+                        "User is not authenticated", req.state.as_deref());
+                }
+                false
+            }
+            "login" => {
+                // prompt=login: force re-authentication — skip session check
+                true
+            }
+            _ => false, // consent, select_account — not applicable
+        }
+    } else {
+        false
+    };
+
+    if !force_login {
+        if let Some(ref token) = session_token {
+            if let Ok(claims) = state.auth_service.validate_token(token) {
+                // Check max_age: if session is older than max_age seconds, force re-authentication
+                let session_too_old = req.max_age.map_or(false, |max_age| {
+                    let now = Utc::now().timestamp();
+                    now - claims.iat > max_age
+                });
+
+                if !session_too_old {
             // User is authenticated — issue authorization code immediately
             let auth_code_str = generate_random_string(64);
             let mut auth_code = AuthorizationCode::new(
@@ -301,8 +357,10 @@ pub async fn authorize(
 
             info!(client_id = %req.client_id, principal_id = %claims.sub, "Issued authorization code (authenticated session)");
             return Redirect::temporary(&redirect_url).into_response();
-        }
-    }
+                } // !session_too_old
+            } // validate_token Ok
+        } // session_token Some
+    } // !force_login
 
     // User is not authenticated — proceed with login flow
     // Generate state for CSRF protection if not provided
@@ -463,6 +521,24 @@ async fn authenticate_client(
         }
     };
 
+    // Reject client_secret for public clients (no stored secret).
+    // Per RFC 6749 Section 2.1, public clients MUST NOT use client authentication.
+    if client.client_secret_ref.is_none() {
+        if client_secret.is_some() {
+            warn!(client_id = %client_id, "client_secret provided for public client — rejecting");
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "invalid_client".to_string(),
+                    error_description: Some("Public clients must not provide a client_secret".to_string()),
+                }),
+            )
+                .into_response());
+        }
+        // Public client with no secret provided — OK
+        return Ok(client);
+    }
+
     // If confidential client (has a secret), verify it.
     // Secrets are stored as "encrypted:..." (encrypted with FLOWCATALYST_APP_KEY).
     if let Some(ref secret_ref) = client.client_secret_ref {
@@ -607,8 +683,10 @@ async fn handle_authorization_code_grant(state: OAuthState, req: TokenRequest, _
         }
     };
 
-    // Find valid authorization code (not used, not expired)
-    let auth_code = match state.auth_code_repo.find_valid_code(&code).await {
+    // Atomically consume the authorization code (single-use enforcement).
+    // Uses UPDATE...WHERE consumed_at IS NULL...RETURNING to prevent race conditions
+    // where two concurrent requests could both redeem the same code.
+    let auth_code = match state.auth_code_repo.find_and_consume(&code).await {
         Ok(Some(c)) => c,
         Ok(None) => {
             return (
@@ -620,7 +698,7 @@ async fn handle_authorization_code_grant(state: OAuthState, req: TokenRequest, _
             ).into_response();
         }
         Err(e) => {
-            error!(error = %e, "Failed to lookup authorization code");
+            error!(error = %e, "Failed to consume authorization code");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
@@ -631,36 +709,38 @@ async fn handle_authorization_code_grant(state: OAuthState, req: TokenRequest, _
         }
     };
 
-    // Mark code as used (single-use enforcement)
-    if let Err(e) = state.auth_code_repo.mark_as_used(&code).await {
-        error!(error = %e, "Failed to mark authorization code as used");
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "server_error".to_string(),
-                error_description: None,
-            }),
-        ).into_response();
-    }
-
-    // Validate redirect_uri
-    if req.redirect_uri.as_deref() != Some(&auth_code.redirect_uri) {
+    // Check authorization code TTL (10 minutes per RFC 6749 Section 4.1.2)
+    let code_age_secs = (Utc::now() - auth_code.created_at).num_seconds();
+    if code_age_secs > 600 {
         return (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "invalid_grant".to_string(),
-                error_description: Some("Redirect URI mismatch".to_string()),
+                error_description: Some("Authorization code has expired".to_string()),
             }),
         ).into_response();
     }
 
-    // Validate client_id
+    // Validate client_id — code is already consumed, so replay is impossible
     if req.client_id.as_deref() != Some(&auth_code.client_id) {
+        warn!("Authorization code client_id mismatch after atomic consume");
         return (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "invalid_grant".to_string(),
                 error_description: Some("Client ID mismatch".to_string()),
+            }),
+        ).into_response();
+    }
+
+    // Validate redirect_uri — code is already consumed, so replay is impossible
+    if req.redirect_uri.as_deref() != Some(&auth_code.redirect_uri) {
+        warn!("Authorization code redirect_uri mismatch after atomic consume");
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "invalid_grant".to_string(),
+                error_description: Some("Redirect URI mismatch".to_string()),
             }),
         ).into_response();
     }
@@ -679,6 +759,28 @@ async fn handle_authorization_code_grant(state: OAuthState, req: TokenRequest, _
                 ).into_response();
             }
         };
+
+        // Validate code_verifier length (RFC 7636: 43-128 characters)
+        if verifier.len() < 43 || verifier.len() > 128 {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid_grant".to_string(),
+                    error_description: Some("code_verifier must be 43-128 characters".to_string()),
+                }),
+            ).into_response();
+        }
+
+        // Validate code_verifier characters (RFC 7636: unreserved characters only)
+        if !verifier.bytes().all(|b| b.is_ascii_alphanumeric() || b"-._~".contains(&b)) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid_grant".to_string(),
+                    error_description: Some("code_verifier contains invalid characters".to_string()),
+                }),
+            ).into_response();
+        }
 
         let method = auth_code.code_challenge_method.as_deref().unwrap_or("S256");
         let computed_challenge = if method == "S256" {
@@ -981,6 +1083,13 @@ async fn handle_refresh_token_grant(state: OAuthState, req: TokenRequest, authen
 
     info!(principal_id = %principal.id, "Token refreshed via refresh_token grant");
 
+    // Include scope in the response per RFC 6749 Section 5.1
+    let scope = if stored_token.scopes.is_empty() {
+        None
+    } else {
+        Some(stored_token.scopes.join(" "))
+    };
+
     (
         StatusCode::OK,
         [
@@ -993,7 +1102,7 @@ async fn handle_refresh_token_grant(state: OAuthState, req: TokenRequest, authen
             expires_in: 3600,
             refresh_token: Some(raw_token),
             id_token,
-            scope: None,
+            scope,
         }),
     ).into_response()
 }

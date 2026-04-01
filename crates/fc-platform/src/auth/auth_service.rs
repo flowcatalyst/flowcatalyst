@@ -71,6 +71,20 @@ pub struct IdTokenClaims {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<i64>,
 
+    // --- OIDC optional claims ---
+
+    /// Authentication Context Class Reference (OIDC Core §2)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub acr: Option<String>,
+
+    /// Authentication Methods References (OIDC Core §2)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amr: Option<Vec<String>>,
+
+    /// Authorized party — the client_id of the party the ID token was issued to (OIDC Core §2)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub azp: Option<String>,
+
     // --- FlowCatalyst custom claims (matching TypeScript provider) ---
 
     /// Principal type (USER or SERVICE)
@@ -577,6 +591,9 @@ impl AuthService {
             email: principal.email().map(String::from),
             email_verified: principal.email().map(|_| true),
             updated_at: Some(now.timestamp()),
+            acr: None, // Not tracking authentication context class yet
+            amr: None, // Not tracking authentication methods yet
+            azp: Some(client_id.to_string()), // Always set when aud is single-valued (OIDC Core §2)
             principal_type: format!("{:?}", principal.principal_type).to_uppercase(),
             scope: format!("{:?}", principal.scope).to_uppercase(),
             client_id: principal.client_id.clone(),

@@ -367,7 +367,10 @@ async fn main() -> Result<()> {
             .or_else(|_| std::env::var("FC_EXTERNAL_BASE_URL"))
             .or_else(|_| std::env::var("EXTERNAL_BASE_URL"))
             .unwrap_or_else(|_| "http://localhost:8080".to_string()),
-        audience: "flowcatalyst".to_string(),
+        audience: std::env::var("FC_JWT_ISSUER")
+            .or_else(|_| std::env::var("FC_EXTERNAL_BASE_URL"))
+            .or_else(|_| std::env::var("EXTERNAL_BASE_URL"))
+            .unwrap_or_else(|_| "http://localhost:8080".to_string()),
         access_token_expiry_secs: std::env::var("FC_ACCESS_TOKEN_EXPIRY_SECS")
             .ok().and_then(|v| v.parse().ok()).unwrap_or(3600),
         session_token_expiry_secs: std::env::var("FC_SESSION_TOKEN_EXPIRY_SECS")
