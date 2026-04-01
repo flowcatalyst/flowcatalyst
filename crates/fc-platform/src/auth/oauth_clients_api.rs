@@ -11,8 +11,8 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa::{ToSchema, IntoParams};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use rand::Rng;
-use sha2::{Sha256, Digest};
+// rand::Rng removed — now using rand::RngCore directly
+// SHA-256 removed — secrets now use encrypted: format via EncryptionService
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 
 use crate::auth::oauth_entity::{OAuthClient, OAuthClientType, GrantType};
@@ -214,18 +214,19 @@ pub async fn create_oauth_client(
     client.application_ids = req.application_ids;
 
     // For CONFIDENTIAL clients, auto-generate a secret.
-    // The plaintext is returned once; only the hash is stored.
+    // The plaintext is returned once; the encrypted ref is stored.
     let generated_secret = if client.client_type == crate::auth::oauth_entity::OAuthClientType::Confidential {
-        use sha2::{Sha256, Digest};
         use base64::Engine;
 
         let mut secret_bytes = [0u8; 32];
         rand::RngCore::fill_bytes(&mut rand::rng(), &mut secret_bytes);
         let plaintext = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(secret_bytes);
 
-        let mut hasher = Sha256::new();
-        hasher.update(plaintext.as_bytes());
-        client.client_secret_ref = Some(format!("{:x}", hasher.finalize()));
+        let enc = crate::shared::encryption_service::EncryptionService::from_env()
+            .ok_or_else(|| PlatformError::internal("FLOWCATALYST_APP_KEY not configured — cannot encrypt client secret"))?;
+        let encrypted = enc.encrypt(&plaintext)
+            .map_err(|e| PlatformError::internal(format!("Failed to encrypt client secret: {}", e)))?;
+        client.client_secret_ref = Some(format!("encrypted:{}", encrypted));
 
         Some(plaintext)
     } else {
@@ -518,15 +519,16 @@ pub async fn regenerate_oauth_client_secret(
 
     // Generate a random 32-byte secret and encode as URL-safe base64
     let mut secret_bytes = [0u8; 32];
-    rand::rng().fill(&mut secret_bytes);
+    rand::RngCore::fill_bytes(&mut rand::rng(), &mut secret_bytes);
     let plaintext_secret = URL_SAFE_NO_PAD.encode(secret_bytes);
 
-    // Store SHA-256 hash as the secret reference
-    let mut hasher = Sha256::new();
-    hasher.update(plaintext_secret.as_bytes());
-    let hash_hex = format!("{:x}", hasher.finalize());
+    // Encrypt and store as encrypted: ref
+    let enc = crate::shared::encryption_service::EncryptionService::from_env()
+        .ok_or_else(|| PlatformError::internal("FLOWCATALYST_APP_KEY not configured"))?;
+    let encrypted = enc.encrypt(&plaintext_secret)
+        .map_err(|e| PlatformError::internal(format!("Failed to encrypt secret: {}", e)))?;
 
-    client.client_secret_ref = Some(hash_hex);
+    client.client_secret_ref = Some(format!("encrypted:{}", encrypted));
     client.updated_at = chrono::Utc::now();
     state.oauth_client_repo.update(&client).await?;
 

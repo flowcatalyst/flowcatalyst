@@ -464,9 +464,7 @@ async fn authenticate_client(
     };
 
     // If confidential client (has a secret), verify it.
-    // Secrets are stored in one of two formats:
-    // - "encrypted:..." — TS format, encrypted with FLOWCATALYST_APP_KEY (decrypt and compare)
-    // - hex string — Rust format, SHA-256 hash of the plaintext secret
+    // Secrets are stored as "encrypted:..." (encrypted with FLOWCATALYST_APP_KEY).
     if let Some(ref secret_ref) = client.client_secret_ref {
         let provided_secret = client_secret.ok_or_else(|| {
             (
@@ -479,27 +477,18 @@ async fn authenticate_client(
                 .into_response()
         })?;
 
-        let verified = if secret_ref.starts_with("encrypted:") {
-            // TS format: decrypt the stored secret and compare directly
-            match crate::shared::encryption_service::EncryptionService::from_env() {
-                Some(enc) => match enc.decrypt(secret_ref) {
-                    Ok(decrypted) => decrypted == provided_secret,
-                    Err(e) => {
-                        error!(client_id = %client_id, error = %e, "Failed to decrypt client secret");
-                        false
-                    }
-                },
-                None => {
-                    error!(client_id = %client_id, "Cannot verify encrypted client secret — FLOWCATALYST_APP_KEY not configured");
+        let verified = match crate::shared::encryption_service::EncryptionService::from_env() {
+            Some(enc) => match enc.decrypt(secret_ref) {
+                Ok(decrypted) => decrypted == provided_secret,
+                Err(e) => {
+                    error!(client_id = %client_id, error = %e, "Failed to decrypt client secret");
                     false
                 }
+            },
+            None => {
+                error!(client_id = %client_id, "Cannot verify client secret — FLOWCATALYST_APP_KEY not configured");
+                false
             }
-        } else {
-            // Rust format: SHA-256 hex hash comparison
-            let mut hasher = Sha256::new();
-            hasher.update(provided_secret.as_bytes());
-            let provided_hash = format!("{:x}", hasher.finalize());
-            provided_hash == *secret_ref
         };
 
         if !verified {
@@ -1086,35 +1075,36 @@ async fn handle_client_credentials_grant(state: OAuthState, req: TokenRequest) -
         }
     };
 
-    match state.password_service.verify_password(&client_secret, secret_hash) {
-        Ok(true) => { /* secret verified */ }
-        Ok(false) => {
-            warn!(client_id = %client_id, "Client secret verification failed");
-            // Log failed service account login attempt
-            let mut attempt = LoginAttempt::new(AttemptType::ServiceAccountToken, LoginOutcome::Failure);
-            attempt.identifier = Some(client_id.clone());
-            attempt.failure_reason = Some("Invalid client secret".to_string());
-            if let Err(e) = state.login_attempt_repo.create(&attempt).await {
-                warn!(error = %e, "Failed to log service account login attempt");
+    // Verify client secret — decrypt stored encrypted ref and compare
+    let verified = match crate::shared::encryption_service::EncryptionService::from_env() {
+        Some(enc) => match enc.decrypt(secret_hash) {
+            Ok(decrypted) => decrypted == client_secret,
+            Err(e) => {
+                error!(client_id = %client_id, error = %e, "Failed to decrypt client secret");
+                false
             }
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "invalid_client".to_string(),
-                    error_description: Some("Invalid client credentials".to_string()),
-                }),
-            ).into_response();
+        },
+        None => {
+            error!(client_id = %client_id, "Cannot verify client secret — FLOWCATALYST_APP_KEY not configured");
+            false
         }
-        Err(e) => {
-            error!(client_id = %client_id, error = %e, "Client secret verification error");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "server_error".to_string(),
-                    error_description: None,
-                }),
-            ).into_response();
+    };
+
+    if !verified {
+        warn!(client_id = %client_id, "Client secret verification failed");
+        let mut attempt = LoginAttempt::new(AttemptType::ServiceAccountToken, LoginOutcome::Failure);
+        attempt.identifier = Some(client_id.clone());
+        attempt.failure_reason = Some("Invalid client secret".to_string());
+        if let Err(e) = state.login_attempt_repo.create(&attempt).await {
+            warn!(error = %e, "Failed to log service account login attempt");
         }
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "invalid_client".to_string(),
+                error_description: Some("Invalid client credentials".to_string()),
+            }),
+        ).into_response();
     }
 
     // Look up the real service account principal (with roles/permissions)

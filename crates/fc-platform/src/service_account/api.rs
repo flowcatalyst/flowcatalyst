@@ -362,7 +362,6 @@ pub async fn create_service_account<U: UnitOfWork>(
                 .ok_or_else(|| PlatformError::internal("Created service account not found"))?;
 
             // Auto-create a CONFIDENTIAL OAuth client for this service account
-            use sha2::{Sha256, Digest};
             use base64::Engine;
 
             let oauth_client_id = crate::TsidGenerator::generate(crate::EntityType::OAuthClient);
@@ -370,10 +369,11 @@ pub async fn create_service_account<U: UnitOfWork>(
             rand::RngCore::fill_bytes(&mut rand::rng(), &mut secret_bytes);
             let plaintext_secret = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(secret_bytes);
 
-            // Store SHA-256 hash of secret
-            let mut hasher = Sha256::new();
-            hasher.update(plaintext_secret.as_bytes());
-            let secret_hash = format!("{:x}", hasher.finalize());
+            // Encrypt and store as encrypted: ref
+            let enc = crate::shared::encryption_service::EncryptionService::from_env()
+                .ok_or_else(|| PlatformError::internal("FLOWCATALYST_APP_KEY not configured — cannot encrypt client secret"))?;
+            let encrypted = enc.encrypt(&plaintext_secret)
+                .map_err(|e| PlatformError::internal(format!("Failed to encrypt client secret: {}", e)))?;
 
             let now = chrono::Utc::now();
             let oauth_client = crate::auth::oauth_entity::OAuthClient {
@@ -381,7 +381,7 @@ pub async fn create_service_account<U: UnitOfWork>(
                 client_id: oauth_client_id.clone(),
                 client_name: account.name.clone(),
                 client_type: crate::auth::oauth_entity::OAuthClientType::Confidential,
-                client_secret_ref: Some(secret_hash),
+                client_secret_ref: Some(format!("encrypted:{}", encrypted)),
                 redirect_uris: vec![],
                 grant_types: vec![
                     crate::auth::oauth_entity::GrantType::ClientCredentials,
