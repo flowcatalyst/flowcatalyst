@@ -281,6 +281,10 @@ pub enum MediationResult {
     ErrorProcess,
     /// Connection error - NACK for retry
     ErrorConnection,
+    /// Destination throttled the request (HTTP 429). NACK with `Retry-After`
+    /// delay, but do NOT count toward circuit-breaker failures or attempt
+    /// budget — the destination is healthy, just throttling us.
+    RateLimited,
 }
 
 /// Outcome of mediation including result and optional delay
@@ -326,6 +330,15 @@ impl MediationOutcome {
             delay_seconds: Some(30), // Java default: 30 seconds
             status_code: None,
             error_message: Some(message),
+        }
+    }
+
+    pub fn rate_limited(retry_after_seconds: u32) -> Self {
+        Self {
+            result: MediationResult::RateLimited,
+            delay_seconds: Some(retry_after_seconds),
+            status_code: Some(429),
+            error_message: Some("HTTP 429: Too Many Requests".to_string()),
         }
     }
 }

@@ -334,8 +334,10 @@ impl HttpMediator {
                     self.warn_config(&message.id, &message.mediation_target, status_code, "Not Found");
                     MediationOutcome::error_config(status_code, "HTTP 404: Not found".to_string())
                 } else if status_code == 429 {
-                    // Too Many Requests - TRANSIENT error, respect Retry-After
-                    // Don't count as circuit breaker failure (it's rate limiting, not a real error)
+                    // Too Many Requests — destination is healthy but throttling us.
+                    // Returned as RateLimited (not ErrorProcess) so the pool nacks
+                    // with the Retry-After delay WITHOUT recording a circuit-breaker
+                    // failure or consuming the dispatch retry budget.
 
                     // Parse Retry-After header if present, default to 30 seconds
                     let retry_after = response.headers()
@@ -350,12 +352,7 @@ impl HttpMediator {
                         retry_after = retry_after,
                         "Rate limited (429) - will retry"
                     );
-                    MediationOutcome {
-                        result: MediationResult::ErrorProcess,
-                        delay_seconds: Some(retry_after),
-                        status_code: Some(status_code),
-                        error_message: Some("HTTP 429: Too Many Requests".to_string()),
-                    }
+                    MediationOutcome::rate_limited(retry_after)
                 } else if status_code == 501 {
                     // Not implemented - configuration error (CRITICAL)
 
@@ -447,9 +444,12 @@ impl Mediator for HttpMediator {
         loop {
             let outcome = self.mediate_once(message).await;
 
-            // Don't retry on success or config errors
+            // Don't retry on success, config errors, or rate-limit responses.
+            // For 429 we want the queue to apply the Retry-After delay rather
+            // than blocking this worker on in-process backoff.
             if outcome.result == MediationResult::Success ||
-               outcome.result == MediationResult::ErrorConfig {
+               outcome.result == MediationResult::ErrorConfig ||
+               outcome.result == MediationResult::RateLimited {
                 return outcome;
             }
 

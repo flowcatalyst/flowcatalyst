@@ -381,6 +381,9 @@ impl ProcessPool {
                 match outcome.result {
                     MediationResult::Success | MediationResult::ErrorConfig => cb_registry.record_success(endpoint),
                     MediationResult::ErrorProcess | MediationResult::ErrorConnection => cb_registry.record_failure(endpoint),
+                    // RateLimited is destination throttling, not a real failure —
+                    // do not affect the circuit breaker either way.
+                    MediationResult::RateLimited => {}
                 }
 
                 match outcome.result {
@@ -399,6 +402,13 @@ impl ProcessPool {
                     MediationResult::ErrorConnection => {
                         metrics_collector.record_failure(duration_ms);
                         task.callback.nack(Some(30)).await;
+                    }
+                    MediationResult::RateLimited => {
+                        // Nack with Retry-After so SQS redelivers after the
+                        // destination's requested delay. Not counted as a
+                        // delivery attempt or a failure.
+                        metrics_collector.record_rate_limited();
+                        task.callback.nack(outcome.delay_seconds.or(Some(30))).await;
                     }
                 }
             }
@@ -595,6 +605,9 @@ impl ProcessPool {
                         MediationResult::ErrorProcess | MediationResult::ErrorConnection => {
                             cb_registry.record_failure(endpoint);
                         }
+                        // RateLimited is destination throttling, not a real failure —
+                        // do not affect the circuit breaker either way.
+                        MediationResult::RateLimited => {}
                     }
 
                     // Handle outcome: record metrics, call callback directly
@@ -656,6 +669,20 @@ impl ProcessPool {
                             }
 
                             task.callback.nack(Some(30)).await;
+                        }
+                        MediationResult::RateLimited => {
+                            // Destination throttled us — nack with Retry-After.
+                            // NOT counted as a delivery attempt or failure, and
+                            // we deliberately do NOT mark the batch+group as
+                            // failed: a 429 means "try again later", not "this
+                            // group is broken".
+                            warn!(
+                                message_id = %task.message.id,
+                                retry_after = ?outcome.delay_seconds,
+                                "Rate limited by destination, NACKing for retry"
+                            );
+                            metrics_collector.record_rate_limited();
+                            task.callback.nack(outcome.delay_seconds.or(Some(30))).await;
                         }
                     };
                 }
