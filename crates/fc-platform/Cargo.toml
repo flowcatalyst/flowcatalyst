@@ -65,6 +65,10 @@ regex = { workspace = true }
 # Concurrent cache
 dashmap = { workspace = true }
 
+# AWS Secrets Manager (for DB credential refresh)
+aws-config = { workspace = true }
+aws-sdk-secretsmanager = { workspace = true }
+
 [dev-dependencies]
 tokio-test = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

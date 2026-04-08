@@ -69,6 +69,24 @@ function resolvePythonType(schema: Schema, nullable: boolean): string {
 
 	const type = schema["type"];
 
+	// Handle JSON Schema type arrays like ["string", "null"] → "str | None"
+	if (Array.isArray(type)) {
+		const hasNull = (type as string[]).includes("null");
+		const nonNull = (type as string[]).filter((t) => t !== "null");
+		if (nonNull.length === 1) {
+			return resolvePythonType({ ...schema, type: nonNull[0] }, hasNull || nullable);
+		}
+		const types = nonNull.map((t) => {
+			if (t === "string") return "str";
+			if (t === "integer") return "int";
+			if (t === "number") return "float";
+			if (t === "boolean") return "bool";
+			return "Any";
+		});
+		const union = [...new Set(types)].join(" | ");
+		return hasNull || nullable ? `${union} | None` : union;
+	}
+
 	if (type === "string") return nullable ? "str | None" : "str";
 	if (type === "integer") return nullable ? "int | None" : "int";
 	if (type === "number") return nullable ? "float | None" : "float";

@@ -172,15 +172,19 @@ fn env_bool_alias(primary: &str, alias: &str, default: bool) -> bool {
         .unwrap_or(default)
 }
 
-/// Resolve database URL from environment.
+/// Resolve database URL and (optionally) the live `SecretProvider` it came from.
+///
 /// Supports three modes:
 /// 1. `FC_DATABASE_URL` / `DATABASE_URL` — full connection string (preferred for Rust)
 /// 2. `DB_HOST` + `DB_NAME` + `DB_SECRET_ARN` — AWS Secrets Manager (TS compatibility)
 /// 3. `DB_HOST` + `DB_NAME` + `DB_USERNAME` + `DB_PASSWORD` — explicit credentials
-async fn resolve_database_url() -> Result<String> {
+///
+/// When mode 2 is used the returned `SecretProvider` is also returned so the
+/// caller can spawn the background credential-refresh task.
+async fn resolve_database_url() -> Result<(String, Option<Arc<dyn fc_platform::shared::database::SecretProvider>>)> {
     // Mode 1: Full connection string
     if let Ok(url) = std::env::var("FC_DATABASE_URL").or_else(|_| std::env::var("DATABASE_URL")) {
-        return Ok(url);
+        return Ok((url, None));
     }
 
     // Mode 2/3: Build from components
@@ -191,45 +195,18 @@ async fn resolve_database_url() -> Result<String> {
 
     // Try AWS Secrets Manager
     if let Ok(secret_arn) = std::env::var("DB_SECRET_ARN") {
-        let provider = env_or("DB_SECRET_PROVIDER", "aws");
-        if provider == "aws" {
+        let provider_kind = env_or("DB_SECRET_PROVIDER", "aws");
+        if provider_kind == "aws" {
             info!(secret_arn = %secret_arn, "Resolving database credentials from AWS Secrets Manager");
-            let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-            let sm_client = aws_sdk_secretsmanager::Client::new(&config);
-
-            let secret = sm_client.get_secret_value()
-                .secret_id(&secret_arn)
-                .send()
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to get DB secret from Secrets Manager: {}", e))?;
-
-            let secret_string = secret.secret_string()
-                .ok_or_else(|| anyhow::anyhow!("DB secret has no string value"))?;
-
-            let creds: serde_json::Value = serde_json::from_str(secret_string)
-                .map_err(|e| anyhow::anyhow!("Failed to parse DB secret JSON: {}", e))?;
-
-            let username = creds["username"].as_str()
-                .ok_or_else(|| anyhow::anyhow!("DB secret missing 'username' field"))?;
-            let password = creds["password"].as_str()
-                .ok_or_else(|| anyhow::anyhow!("DB secret missing 'password' field"))?;
-
-            // Use port from secret, then DB_PORT env, then default.
-            // Skip port if host already contains one (e.g., "host:5432").
-            let secret_port = creds["port"].as_u64().map(|p| p.to_string());
-            let effective_port = secret_port
-                .or_else(|| std::env::var("DB_PORT").ok())
-                .unwrap_or_else(|| "5432".to_string());
-
-            let password_encoded = urlencoding::encode(password);
-            let url = if host.contains(':') {
-                // Host already includes port (e.g., from DB_HOST=host:5432)
-                format!("postgresql://{}:{}@{}/{}", username, password_encoded, host, name)
-            } else {
-                format!("postgresql://{}:{}@{}:{}/{}", username, password_encoded, host, effective_port, name)
-            };
+            let provider = Arc::new(fc_platform::shared::database::AwsSecretProvider::new(
+                secret_arn,
+                host.clone(),
+                name.clone(),
+                port.clone(),
+            ));
+            let url = fc_platform::shared::database::SecretProvider::get_db_url(provider.as_ref()).await?;
             info!("Database URL resolved from Secrets Manager (host: {}, db: {})", host, name);
-            return Ok(url);
+            return Ok((url, Some(provider as Arc<dyn fc_platform::shared::database::SecretProvider>)));
         }
     }
 
@@ -241,12 +218,13 @@ async fn resolve_database_url() -> Result<String> {
     } else {
         format!("{}:{}", host, port)
     };
-    if password.is_empty() {
-        Ok(format!("postgresql://{}@{}/{}", username, host_port, name))
+    let url = if password.is_empty() {
+        format!("postgresql://{}@{}/{}", username, host_port, name)
     } else {
         let password_encoded = urlencoding::encode(&password);
-        Ok(format!("postgresql://{}:{}@{}/{}", username, password_encoded, host_port, name))
-    }
+        format!("postgresql://{}:{}@{}/{}", username, password_encoded, host_port, name)
+    };
+    Ok((url, None))
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -262,7 +240,7 @@ async fn main() -> Result<()> {
     // compatibility with existing ECS task definitions.
     let api_port: u16 = env_or_alias_parse("FC_API_PORT", "PORT", 3000);
     let metrics_port: u16 = env_or_parse("FC_METRICS_PORT", 9090);
-    let database_url = resolve_database_url().await?;
+    let (database_url, secret_provider) = resolve_database_url().await?;
     // JWT issuer should be the external base URL per OIDC spec
     let jwt_issuer = std::env::var("FC_JWT_ISSUER")
         .or_else(|_| std::env::var("FC_EXTERNAL_BASE_URL"))
@@ -309,6 +287,22 @@ async fn main() -> Result<()> {
 
     let pg_pool = fc_platform::shared::database::create_pool(&database_url).await
         .map_err(|e| anyhow::anyhow!("SQLx pool creation failed: {}", e))?;
+
+    // ── DB credential refresh (AWS Secrets Manager rotation) ─────────────────
+    // When credentials come from a secret provider, poll it on an interval and
+    // update the pools' connect options when the password rotates. This avoids
+    // the failure mode where AWS rotates the password and the pool keeps using
+    // the now-stale credentials. Mirrors the TS implementation.
+    if let Some(provider) = secret_provider {
+        let interval_ms: u64 = env_or_parse("DB_SECRET_REFRESH_INTERVAL_MS", 300_000);
+        fc_platform::shared::database::start_secret_refresh(
+            provider,
+            pg_db.clone(),
+            pg_pool.clone(),
+            database_url.clone(),
+            std::time::Duration::from_millis(interval_ms),
+        );
+    }
 
     // ── Leader Election ──────────────────────────────────────────────────────
     // Shared watch channel: true = active (process), false = standby (pause)

@@ -2384,6 +2384,8 @@ dependencies = [
  "anyhow",
  "argon2",
  "async-trait",
+ "aws-config",
+ "aws-sdk-secretsmanager",
  "axum",
  "axum-extra",
  "base64 0.22.1",

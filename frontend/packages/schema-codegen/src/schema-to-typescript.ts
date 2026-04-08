@@ -55,6 +55,20 @@ function resolveType(schema: Schema, indent: string): string {
 
 	const type = schema["type"];
 
+	// Handle JSON Schema type arrays like ["string", "null"] → "string | null"
+	if (Array.isArray(type)) {
+		const types = (type as string[]).map((t) => {
+			if (t === "string") return "string";
+			if (t === "integer" || t === "number") return "number";
+			if (t === "boolean") return "boolean";
+			if (t === "null") return "null";
+			if (t === "object") return resolveObjectType(schema, indent);
+			if (t === "array") return "unknown[]";
+			return "unknown";
+		});
+		return [...new Set(types)].join(" | ");
+	}
+
 	if (type === "string") return "string";
 	if (type === "integer" || type === "number") return "number";
 	if (type === "boolean") return "boolean";

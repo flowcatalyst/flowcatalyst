@@ -74,6 +74,17 @@ function resolveJavaType(schema: Schema, nullable: boolean): JavaTypeInfo {
 
 	const type = schema["type"];
 
+	// Handle JSON Schema type arrays like ["string", "null"]
+	if (Array.isArray(type)) {
+		const nonNull = (type as string[]).filter((t) => t !== "null");
+		const hasNull = (type as string[]).includes("null");
+		if (nonNull.length === 1) {
+			return resolveJavaType({ ...schema, type: nonNull[0] }, hasNull || nullable);
+		}
+		// Multiple non-null types — fall back to Object
+		return { type: "Object", cast: "Object", imports: [] };
+	}
+
 	if (type === "string") {
 		return { type: "String", cast: "String", imports: [] };
 	}

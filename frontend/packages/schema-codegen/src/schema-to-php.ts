@@ -91,6 +91,16 @@ function resolvePhpType(schema: Schema, nullable: boolean): PhpTypeInfo {
 
 	const type = schema["type"];
 
+	// Handle JSON Schema type arrays like ["string", "null"]
+	if (Array.isArray(type)) {
+		const nonNull = (type as string[]).filter((t: string) => t !== "null");
+		const hasNull = (type as string[]).includes("null");
+		if (nonNull.length === 1) {
+			return resolvePhpType({ ...schema, type: nonNull[0] }, hasNull || nullable);
+		}
+		return simpleType("mixed", false);
+	}
+
 	if (type === "string") return simpleType("string", nullable);
 	if (type === "integer") return simpleType("int", nullable);
 	if (type === "number") return simpleType("float", nullable);
@@ -219,6 +229,17 @@ function resolvePhpDocType(schema: Schema, nullable: boolean): string {
 
 	const type = schema["type"];
 	const suffix = nullable ? "|null" : "";
+
+	// Handle JSON Schema type arrays like ["string", "null"]
+	if (Array.isArray(type)) {
+		const hasNull = (type as string[]).includes("null");
+		const nonNull = (type as string[]).filter((t: string) => t !== "null");
+		if (nonNull.length === 1) {
+			return resolvePhpDocType({ ...schema, type: nonNull[0] }, hasNull || nullable);
+		}
+		return "mixed";
+	}
+
 	if (type === "string") return `string${suffix}`;
 	if (type === "integer") return `int${suffix}`;
 	if (type === "number") return `float${suffix}`;

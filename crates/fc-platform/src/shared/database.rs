@@ -1,62 +1,79 @@
 //! PostgreSQL Database Connection
 //!
-//! Provides SeaORM DatabaseConnection setup with connection pooling
-//! and SQL migration runner.
+//! Provides:
+//! - SeaORM `DatabaseConnection` and SQLx `PgPool` creation with shared env-driven pool config.
+//! - `SecretProvider` abstraction (env / AWS Secrets Manager) and a background
+//!   refresh task that polls the provider on an interval and updates the pools'
+//!   connection options when the DB password rotates. Existing repositories do
+//!   not need to change — `PgPool::set_connect_options` mutates the pool in
+//!   place, so any future connection (including reconnects after `max_lifetime`)
+//!   uses the new credentials.
+//!
+//! This mirrors the TS `flowcatalyst` approach (timer-based polling + graceful
+//! refresh) but takes advantage of sqlx's in-place options update so we don't
+//! need to swap pool handles or refactor every repository.
 
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr};
-use sqlx::postgres::{PgPool, PgPoolOptions};
+use sqlx::postgres::{PgConnectOptions, PgPool, PgPoolOptions};
+use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
-use tracing::info;
+use tracing::{error, info, warn};
+
+// ── Pool config ──────────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug)]
+struct PoolConfig {
+    max_connections: u32,
+    min_connections: u32,
+    connect_timeout: u64,
+    idle_timeout: u64,
+    max_lifetime: u64,
+    sqlx_logging: bool,
+}
+
+impl PoolConfig {
+    fn from_env() -> Self {
+        Self {
+            max_connections: env_parse("FC_DB_MAX_CONNECTIONS", 10),
+            min_connections: env_parse("FC_DB_MIN_CONNECTIONS", 2),
+            connect_timeout: env_parse("FC_DB_CONNECT_TIMEOUT_SECS", 10),
+            idle_timeout: env_parse("FC_DB_IDLE_TIMEOUT_SECS", 300),
+            max_lifetime: env_parse("FC_DB_MAX_LIFETIME_SECS", 1800),
+            sqlx_logging: std::env::var("FC_DB_SQLX_LOGGING")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(false),
+        }
+    }
+}
+
+fn env_parse<T: FromStr>(key: &str, default: T) -> T {
+    std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+}
 
 /// Create a new SeaORM DatabaseConnection with connection pooling.
 ///
-/// # Arguments
-/// * `database_url` - PostgreSQL connection URL (e.g., `postgresql://user:pass@host:5432/db`)
-///
-/// # Environment-configurable pool settings
-/// * `FC_DB_MAX_CONNECTIONS` - Maximum pool connections (default: 10)
-/// * `FC_DB_MIN_CONNECTIONS` - Minimum idle connections (default: 2)
-/// * `FC_DB_CONNECT_TIMEOUT_SECS` - Connection timeout in seconds (default: 10)
-/// * `FC_DB_IDLE_TIMEOUT_SECS` - Idle connection timeout in seconds (default: 300)
-/// * `FC_DB_MAX_LIFETIME_SECS` - Max connection lifetime in seconds (default: 1800)
-/// * `FC_DB_SQLX_LOGGING` - Enable sqlx query logging (default: false)
+/// Environment-configurable pool settings:
+/// * `FC_DB_MAX_CONNECTIONS` (default: 10)
+/// * `FC_DB_MIN_CONNECTIONS` (default: 2)
+/// * `FC_DB_CONNECT_TIMEOUT_SECS` (default: 10)
+/// * `FC_DB_IDLE_TIMEOUT_SECS` (default: 300)
+/// * `FC_DB_MAX_LIFETIME_SECS` (default: 1800)
+/// * `FC_DB_SQLX_LOGGING` (default: false)
 pub async fn create_connection(database_url: &str) -> Result<DatabaseConnection, DbErr> {
-    let max_connections: u32 = std::env::var("FC_DB_MAX_CONNECTIONS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(10);
-    let min_connections: u32 = std::env::var("FC_DB_MIN_CONNECTIONS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(2);
-    let connect_timeout: u64 = std::env::var("FC_DB_CONNECT_TIMEOUT_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(10);
-    let idle_timeout: u64 = std::env::var("FC_DB_IDLE_TIMEOUT_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(300);
-    let max_lifetime: u64 = std::env::var("FC_DB_MAX_LIFETIME_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(1800);
-    let sqlx_logging: bool = std::env::var("FC_DB_SQLX_LOGGING")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(false);
-
+    let cfg = PoolConfig::from_env();
     let mut opts = ConnectOptions::new(database_url);
-    opts.max_connections(max_connections)
-        .min_connections(min_connections)
-        .connect_timeout(Duration::from_secs(connect_timeout))
-        .idle_timeout(Duration::from_secs(idle_timeout))
-        .max_lifetime(Duration::from_secs(max_lifetime))
-        .sqlx_logging(sqlx_logging);
+    opts.max_connections(cfg.max_connections)
+        .min_connections(cfg.min_connections)
+        .connect_timeout(Duration::from_secs(cfg.connect_timeout))
+        .idle_timeout(Duration::from_secs(cfg.idle_timeout))
+        .max_lifetime(Duration::from_secs(cfg.max_lifetime))
+        .sqlx_logging(cfg.sqlx_logging);
 
     info!(
-        max_connections,
-        min_connections,
+        max_connections = cfg.max_connections,
+        min_connections = cfg.min_connections,
         "Connecting to PostgreSQL database"
     );
 
@@ -66,42 +83,20 @@ pub async fn create_connection(database_url: &str) -> Result<DatabaseConnection,
 }
 
 /// Create a raw SQLx PgPool (for repositories migrated away from SeaORM).
-///
-/// Shares the same env-configurable pool settings as SeaORM connection.
 pub async fn create_pool(database_url: &str) -> Result<PgPool, DbErr> {
-    let max_connections: u32 = std::env::var("FC_DB_MAX_CONNECTIONS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(10);
-    let min_connections: u32 = std::env::var("FC_DB_MIN_CONNECTIONS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(2);
-    let connect_timeout: u64 = std::env::var("FC_DB_CONNECT_TIMEOUT_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(10);
-    let idle_timeout: u64 = std::env::var("FC_DB_IDLE_TIMEOUT_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(300);
-    let max_lifetime: u64 = std::env::var("FC_DB_MAX_LIFETIME_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(1800);
-
+    let cfg = PoolConfig::from_env();
     info!(
-        max_connections,
-        min_connections,
+        max_connections = cfg.max_connections,
+        min_connections = cfg.min_connections,
         "Creating SQLx PgPool"
     );
 
     let pool = PgPoolOptions::new()
-        .max_connections(max_connections)
-        .min_connections(min_connections)
-        .acquire_timeout(Duration::from_secs(connect_timeout))
-        .idle_timeout(Duration::from_secs(idle_timeout))
-        .max_lifetime(Duration::from_secs(max_lifetime))
+        .max_connections(cfg.max_connections)
+        .min_connections(cfg.min_connections)
+        .acquire_timeout(Duration::from_secs(cfg.connect_timeout))
+        .idle_timeout(Duration::from_secs(cfg.idle_timeout))
+        .max_lifetime(Duration::from_secs(cfg.max_lifetime))
         .connect(database_url)
         .await
         .map_err(|e| DbErr::Conn(sea_orm::RuntimeErr::Internal(e.to_string())))?;
@@ -110,10 +105,152 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool, DbErr> {
     Ok(pool)
 }
 
-/// Run all SQL migrations from the migrations/ directory.
+// ── Secret provider ──────────────────────────────────────────────────────────
+
+/// A source for the database connection URL. Implementations are async because
+/// cloud providers (Secrets Manager, GCP Secret Manager) require network calls.
+#[async_trait::async_trait]
+pub trait SecretProvider: Send + Sync {
+    fn name(&self) -> &'static str;
+    async fn get_db_url(&self) -> Result<String, anyhow::Error>;
+}
+
+/// AWS Secrets Manager provider. Reads `{"username":..., "password":..., "port":...}`
+/// JSON from a secret and constructs a `postgresql://` URL using the supplied
+/// host and database name.
+pub struct AwsSecretProvider {
+    secret_arn: String,
+    host: String,
+    db_name: String,
+    fallback_port: String,
+}
+
+impl AwsSecretProvider {
+    pub fn new(secret_arn: String, host: String, db_name: String, fallback_port: String) -> Self {
+        Self { secret_arn, host, db_name, fallback_port }
+    }
+}
+
+#[async_trait::async_trait]
+impl SecretProvider for AwsSecretProvider {
+    fn name(&self) -> &'static str { "aws-secrets-manager" }
+
+    async fn get_db_url(&self) -> Result<String, anyhow::Error> {
+        let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+        let sm = aws_sdk_secretsmanager::Client::new(&config);
+
+        let secret = sm.get_secret_value()
+            .secret_id(&self.secret_arn)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get DB secret from Secrets Manager: {}", e))?;
+
+        let secret_string = secret.secret_string()
+            .ok_or_else(|| anyhow::anyhow!("DB secret has no string value"))?;
+
+        let creds: serde_json::Value = serde_json::from_str(secret_string)
+            .map_err(|e| anyhow::anyhow!("Failed to parse DB secret JSON: {}", e))?;
+
+        let username = creds["username"].as_str()
+            .ok_or_else(|| anyhow::anyhow!("DB secret missing 'username' field"))?;
+        let password = creds["password"].as_str()
+            .ok_or_else(|| anyhow::anyhow!("DB secret missing 'password' field"))?;
+        let port = creds["port"].as_u64()
+            .map(|p| p.to_string())
+            .unwrap_or_else(|| self.fallback_port.clone());
+
+        let password_encoded = urlencoding::encode(password);
+        let url = if self.host.contains(':') {
+            format!("postgresql://{}:{}@{}/{}", username, password_encoded, self.host, self.db_name)
+        } else {
+            format!("postgresql://{}:{}@{}:{}/{}", username, password_encoded, self.host, port, self.db_name)
+        };
+        Ok(url)
+    }
+}
+
+// ── Background refresh task ──────────────────────────────────────────────────
+
+/// Spawn a background task that polls `provider` on `interval` and, when the
+/// resolved DB URL changes, updates the connection options on both pools.
 ///
-/// Uses `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` so migrations
-/// are safe to run against an existing TypeScript-created database.
+/// Mirrors the TypeScript flowcatalyst approach (timer-based polling + graceful
+/// refresh). Takes advantage of AWS RDS's dual-password rotation window: both
+/// old and new passwords are valid for a period after rotation, so a periodic
+/// poll catches the change before the old password is invalidated.
+///
+/// `pg_db` is the SeaORM connection — we reach into it via
+/// `get_postgres_connection_pool()` to update the underlying pool. `pg_pool` is
+/// the standalone SQLx pool used by repositories migrated off SeaORM.
+///
+/// Disable by passing `Duration::ZERO` for `interval`.
+pub fn start_secret_refresh(
+    provider: Arc<dyn SecretProvider>,
+    pg_db: DatabaseConnection,
+    pg_pool: PgPool,
+    initial_url: String,
+    interval: Duration,
+) {
+    if interval.is_zero() {
+        info!("DB secret refresh disabled (interval=0)");
+        return;
+    }
+    info!(
+        provider = provider.name(),
+        interval_secs = interval.as_secs(),
+        "Starting DB secret refresh task"
+    );
+    tokio::spawn(async move {
+        let mut current_url = initial_url;
+        loop {
+            tokio::time::sleep(interval).await;
+            match provider.get_db_url().await {
+                Ok(new_url) => {
+                    if new_url == current_url {
+                        continue;
+                    }
+                    info!(
+                        provider = provider.name(),
+                        "DB credentials changed — updating pool connect options"
+                    );
+                    match PgConnectOptions::from_str(&new_url) {
+                        Ok(opts) => {
+                            // Update both pools. New connections (and reconnects
+                            // after `max_lifetime`) will use the new credentials.
+                            // The dual-password window on RDS keeps existing
+                            // connections valid until they cycle out naturally.
+                            pg_pool.set_connect_options(opts.clone());
+                            sea_inner_pool(&pg_db).set_connect_options(opts);
+                            current_url = new_url;
+                            info!("Pool connect options updated successfully");
+                        }
+                        Err(e) => {
+                            error!(error = %e, "Failed to parse refreshed DB URL");
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        provider = provider.name(),
+                        error = %e,
+                        "Failed to poll secret provider for credential changes"
+                    );
+                }
+            }
+        }
+    });
+}
+
+/// Reach into a SeaORM `DatabaseConnection` to get its underlying SQLx pool.
+/// Only valid for the Postgres-backed variant — panics otherwise (which is
+/// fine: this codebase is Postgres-only).
+fn sea_inner_pool(db: &DatabaseConnection) -> &PgPool {
+    db.get_postgres_connection_pool()
+}
+
+// ── Migrations ───────────────────────────────────────────────────────────────
+
+/// Run all SQL migrations from the migrations/ directory.
 pub async fn run_migrations(db: &DatabaseConnection) -> Result<(), DbErr> {
     use sea_orm::ConnectionTrait;
 
@@ -134,9 +271,7 @@ pub async fn run_migrations(db: &DatabaseConnection) -> Result<(), DbErr> {
     ];
 
     for (i, sql) in migration_files.iter().enumerate() {
-        // Split on semicolons and execute each statement individually
         for statement in sql.split(';') {
-            // Strip comment-only lines, then check if any SQL remains
             let cleaned: String = statement
                 .lines()
                 .filter(|line| !line.trim_start().starts_with("--"))
