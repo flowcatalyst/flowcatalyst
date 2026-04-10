@@ -177,7 +177,7 @@ impl PgUnitOfWork {
         let operation_json = serde_json::to_value(command).ok().map(sea_orm::JsonValue::from);
 
         aud_logs::ActiveModel {
-            id: Set(crate::TsidGenerator::generate(crate::EntityType::AuditLog)),
+            id: Set(crate::TsidGenerator::generate_untyped()),
             entity_type: Set(Self::extract_aggregate_type(event.subject())),
             entity_id: Set(Self::extract_entity_id(event.subject())),
             operation: Set(command_name),

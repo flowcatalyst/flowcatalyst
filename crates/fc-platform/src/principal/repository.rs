@@ -404,8 +404,22 @@ impl PrincipalRepository {
         let id = model.id.clone();
         let mut principal = Principal::from(model);
         principal.roles = self.load_roles(&id).await?;
-        let (clients, identifier_map) = self.load_assigned_clients(&id).await?;
+        let (clients, mut identifier_map) = self.load_assigned_clients(&id).await?;
         principal.assigned_clients = clients;
+
+        // Also look up the home client's identifier so Client-scoped users
+        // get "id:identifier" in the JWT clients claim (not just the bare ID).
+        if let Some(ref home_client_id) = principal.client_id {
+            if !identifier_map.contains_key(home_client_id) {
+                if let Some(client) = tnt_clients::Entity::find_by_id(home_client_id)
+                    .one(&self.db)
+                    .await?
+                {
+                    identifier_map.insert(client.id, client.identifier);
+                }
+            }
+        }
+
         principal.client_identifier_map = identifier_map;
 
         // Load application access
@@ -456,6 +470,12 @@ impl PrincipalRepository {
         for g in &all_grants {
             all_client_ids.insert(g.client_id.clone());
         }
+        // Also include home client IDs so Client-scoped users get "id:identifier"
+        for m in &models {
+            if let Some(ref cid) = m.client_id {
+                all_client_ids.insert(cid.clone());
+            }
+        }
         for g in all_grants {
             grant_map.entry(g.principal_id).or_default().push(g.client_id);
         }
@@ -494,17 +514,22 @@ impl PrincipalRepository {
                 if let Some(roles) = role_map.remove(&id) {
                     principal.roles = roles;
                 }
+                // Build client identifier map — include both grant clients and home client
+                let mut id_map = std::collections::HashMap::new();
+                if let Some(ref home_cid) = principal.client_id {
+                    if let Some(ident) = client_id_to_identifier.get(home_cid) {
+                        id_map.insert(home_cid.clone(), ident.clone());
+                    }
+                }
                 if let Some(clients) = grant_map.remove(&id) {
-                    // Build client identifier map for this principal's clients
-                    let mut id_map = std::collections::HashMap::new();
                     for cid in &clients {
                         if let Some(ident) = client_id_to_identifier.get(cid) {
                             id_map.insert(cid.clone(), ident.clone());
                         }
                     }
                     principal.assigned_clients = clients;
-                    principal.client_identifier_map = id_map;
                 }
+                principal.client_identifier_map = id_map;
                 if let Some(apps) = app_access_map.remove(&id) {
                     principal.accessible_application_ids = apps;
                 }

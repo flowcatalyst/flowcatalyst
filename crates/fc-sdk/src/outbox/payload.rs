@@ -7,7 +7,7 @@
 use serde::Serialize;
 use sqlx::{PgPool, Postgres, Transaction};
 
-use crate::tsid::{EntityType, TsidGenerator};
+use crate::tsid::TsidGenerator;
 use crate::usecase::DomainEvent;
 
 /// Write a dispatch job to the outbox for async processing.
@@ -118,7 +118,7 @@ pub async fn write_audit_log(
     audit: &AuditLogPayload,
     client_id: Option<&str>,
 ) -> anyhow::Result<()> {
-    let id = TsidGenerator::generate(EntityType::AuditLog);
+    let id = TsidGenerator::generate_untyped();
     let payload = serde_json::to_value(audit)?;
     let payload_size = payload.to_string().len() as i32;
 

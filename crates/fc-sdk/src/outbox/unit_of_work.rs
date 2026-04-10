@@ -67,7 +67,7 @@ use serde::Serialize;
 use sqlx::{PgPool, Postgres, Transaction};
 use tracing::{debug, error};
 
-use crate::tsid::{EntityType, TsidGenerator};
+use crate::tsid::TsidGenerator;
 use crate::usecase::domain_event::DomainEvent;
 use crate::usecase::error::UseCaseError;
 use crate::usecase::result::UseCaseResult;
@@ -347,7 +347,7 @@ impl OutboxUnitOfWork {
         command: &C,
         client_id: &Option<String>,
     ) -> Result<(), UseCaseError> {
-        let id = TsidGenerator::generate(EntityType::AuditLog);
+        let id = TsidGenerator::generate_untyped();
 
         let command_name = std::any::type_name::<C>()
             .rsplit("::")

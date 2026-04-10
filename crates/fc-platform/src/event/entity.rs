@@ -81,7 +81,7 @@ impl Event {
         data: serde_json::Value,
     ) -> Self {
         Self {
-            id: crate::TsidGenerator::generate(crate::EntityType::Event),
+            id: crate::TsidGenerator::generate_untyped(),
             event_type: event_type.into(),
             source: source.into(),
             subject: None,

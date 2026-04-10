@@ -45,7 +45,9 @@ use fc_router::{
 };
 use fc_queue::sqlite::SqliteQueue;
 use fc_queue::EmbeddedQueue;
-// fc_outbox used for EnhancedOutboxProcessor (TODO: wire up)
+use fc_outbox::enhanced_processor::{EnhancedOutboxProcessor, EnhancedProcessorConfig};
+use fc_outbox::http_dispatcher::HttpDispatcherConfig;
+use fc_outbox::postgres::PostgresOutboxRepository;
 
 // Platform imports
 use fc_platform::service::{AuthService, AuthConfig, AuthorizationService, AuditService, PasswordService, OidcService, OidcSyncService};
@@ -257,11 +259,22 @@ async fn main() -> Result<()> {
         LifecycleConfig::default(),
     );
 
-    // 7. Outbox processor (placeholder - needs migration to EnhancedOutboxProcessor)
-    let outbox_handle: Option<tokio::task::JoinHandle<()>> = if args.outbox_enabled {
-        info!("Outbox processing enabled (using EnhancedOutboxProcessor)");
-        // TODO: Wire up EnhancedOutboxProcessor with the new API
-        None
+    // 7. Outbox processor — deferred until after AuthService is ready (needs a service token).
+    //    We store the config now and start it after step 8c.
+    let outbox_pool: Option<sqlx::PgPool> = if args.outbox_enabled && args.outbox_db_type == "postgres" {
+        let outbox_db_url = args.outbox_db_url.as_deref()
+            .unwrap_or(&args.database_url);
+        info!(
+            db_type = %args.outbox_db_type,
+            db_url = %outbox_db_url,
+            poll_interval_ms = args.outbox_poll_interval_ms,
+            "Connecting to outbox database"
+        );
+        Some(sqlx::postgres::PgPoolOptions::new()
+            .max_connections(5)
+            .connect(outbox_db_url)
+            .await
+            .map_err(|e| anyhow::anyhow!("Outbox PostgreSQL connection failed: {}", e))?)
     } else {
         None
     };
@@ -382,6 +395,53 @@ async fn main() -> Result<()> {
     let authz_service = Arc::new(AuthorizationService::new(role_repo.clone()));
     let password_service = Arc::new(PasswordService::default());
     info!("Auth services initialized");
+
+    // 7b. Start outbox processor now that AuthService is ready — generate a
+    //     long-lived internal service token so the outbox HTTP dispatcher can
+    //     authenticate against the SDK batch endpoints.
+    let outbox_handle: Option<tokio::task::JoinHandle<()>> = if let Some(pool) = outbox_pool {
+        use fc_platform::principal::entity::Principal;
+
+        let internal_principal = Principal::new_service("outbox-processor", "Outbox Processor (internal)");
+        let token = auth_service.generate_access_token(&internal_principal)
+            .map_err(|e| anyhow::anyhow!("Failed to generate outbox service token: {}", e))?;
+        info!("Generated internal service token for outbox processor");
+
+        let repository = Arc::new(PostgresOutboxRepository::new(pool));
+        let api_base_url = format!("http://localhost:{}", args.api_port);
+
+        let config = EnhancedProcessorConfig {
+            poll_interval: Duration::from_millis(args.outbox_poll_interval_ms),
+            http_config: HttpDispatcherConfig {
+                api_base_url,
+                api_token: Some(token),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let processor = Arc::new(
+            EnhancedOutboxProcessor::new(config, repository)
+                .map_err(|e| anyhow::anyhow!("Failed to create outbox processor: {}", e))?
+        );
+
+        let proc_clone = processor.clone();
+        let mut shutdown_rx = shutdown_tx.subscribe();
+        let handle = tokio::spawn(async move {
+            tokio::select! {
+                _ = processor.start() => {}
+                _ = shutdown_rx.recv() => {
+                    info!("Outbox processor received shutdown signal");
+                    proc_clone.stop();
+                }
+            }
+        });
+
+        info!("Outbox processor started");
+        Some(handle)
+    } else {
+        None
+    };
 
     // 8d. Create AppState for authentication middleware
     let app_state = AppState {

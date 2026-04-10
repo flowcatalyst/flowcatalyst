@@ -20,15 +20,24 @@ use crate::shared::middleware::Authenticated;
 #[serde(rename_all = "camelCase")]
 pub struct BatchEventItem {
     pub spec_version: Option<String>,
+    /// Event type — accepts both `type` (camelCase API) and `event_type` (SDK outbox payload).
+    #[serde(alias = "event_type")]
     pub r#type: String,
     pub source: Option<String>,
     pub subject: Option<String>,
     pub data: Option<serde_json::Value>,
+    #[serde(alias = "correlation_id")]
     pub correlation_id: Option<String>,
+    #[serde(alias = "causation_id")]
     pub causation_id: Option<String>,
+    #[serde(alias = "deduplication_id")]
     pub deduplication_id: Option<String>,
+    #[serde(alias = "message_group")]
     pub message_group: Option<String>,
+    #[serde(alias = "client_id")]
     pub client_id: Option<String>,
+    #[serde(alias = "context_data")]
+    pub context_data: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

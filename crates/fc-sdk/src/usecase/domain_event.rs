@@ -159,7 +159,7 @@ impl EventMetadataBuilder {
     /// Sets event_id (new TSID), execution_id, correlation_id, causation_id,
     /// and principal_id from the context.
     pub fn from(mut self, ctx: &super::ExecutionContext) -> Self {
-        self.event_id = Some(crate::tsid::TsidGenerator::generate(crate::tsid::EntityType::Event));
+        self.event_id = Some(crate::tsid::TsidGenerator::generate_untyped());
         self.execution_id = Some(ctx.execution_id.clone());
         self.correlation_id = Some(ctx.correlation_id.clone());
         self.causation_id = ctx.causation_id.clone();
@@ -226,7 +226,7 @@ impl EventMetadataBuilder {
     pub fn build(self) -> EventMetadata {
         EventMetadata {
             event_id: self.event_id.unwrap_or_else(|| {
-                crate::tsid::TsidGenerator::generate(crate::tsid::EntityType::Event)
+                crate::tsid::TsidGenerator::generate_untyped()
             }),
             event_type: self.event_type.expect("event_type is required"),
             spec_version: self.spec_version.expect("spec_version is required"),
@@ -251,7 +251,7 @@ impl EventMetadataBuilder {
     pub fn try_build(self) -> Result<EventMetadata, &'static str> {
         Ok(EventMetadata {
             event_id: self.event_id.unwrap_or_else(|| {
-                crate::tsid::TsidGenerator::generate(crate::tsid::EntityType::Event)
+                crate::tsid::TsidGenerator::generate_untyped()
             }),
             event_type: self.event_type.ok_or("event_type is required")?,
             spec_version: self.spec_version.ok_or("spec_version is required")?,
