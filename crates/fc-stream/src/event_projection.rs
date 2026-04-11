@@ -7,10 +7,10 @@ use tracing::{debug, error, info};
 
 use crate::health::StreamHealth;
 
-/// Projects events from `msg_event_projection_feed` into `msg_events_read`.
+/// Projects events from `msg_events` into `msg_events_read`.
 ///
-/// Runs a polling loop that picks up unprocessed feed rows, inserts them into
-/// the read model via a single SQL CTE, and marks them as processed.
+/// Reads rows where `projected_at IS NULL`, inserts them into the read model
+/// with parsed application/subdomain/aggregate fields, and stamps `projected_at`.
 pub struct EventProjectionService {
     pool: PgPool,
     batch_size: u32,
@@ -90,13 +90,15 @@ impl EventProjectionService {
 }
 
 async fn poll_once(pool: &PgPool, batch_size: u32) -> anyhow::Result<u32> {
-    let row: Option<(i64,)> = sqlx::query_as(
+    // Select unprojected events, insert into read model, and stamp projected_at
+    // in a single atomic CTE. The RETURNING clause gives us the count.
+    let rows = sqlx::query_as::<_, (i32,)>(
         r#"
         WITH batch AS (
-            SELECT id, event_id, payload
-            FROM msg_event_projection_feed
-            WHERE processed = 0
-            ORDER BY id
+            SELECT id
+            FROM msg_events
+            WHERE projected_at IS NULL
+            ORDER BY created_at
             LIMIT $1
         ),
         projected AS (
@@ -106,36 +108,38 @@ async fn poll_once(pool: &PgPool, batch_size: u32) -> anyhow::Result<u32> {
                 client_id, application, subdomain, aggregate, projected_at
             )
             SELECT
-                b.event_id,
-                b.payload->>'specVersion',
-                b.payload->>'type',
-                b.payload->>'source',
-                b.payload->>'subject',
-                (b.payload->>'time')::timestamptz,
-                b.payload->>'data',
-                b.payload->>'correlationId',
-                b.payload->>'causationId',
-                b.payload->>'deduplicationId',
-                b.payload->>'messageGroup',
-                b.payload->>'clientId',
-                split_part(b.payload->>'type', ':', 1),
-                NULLIF(split_part(b.payload->>'type', ':', 2), ''),
-                NULLIF(split_part(b.payload->>'type', ':', 3), ''),
+                e.id,
+                e.spec_version,
+                e.type,
+                e.source,
+                e.subject,
+                e.time,
+                e.data::text,
+                e.correlation_id,
+                e.causation_id,
+                e.deduplication_id,
+                e.message_group,
+                e.client_id,
+                split_part(e.type, ':', 1),
+                NULLIF(split_part(e.type, ':', 2), ''),
+                NULLIF(split_part(e.type, ':', 3), ''),
                 NOW()
-            FROM batch b
+            FROM msg_events e
+            JOIN batch b ON b.id = e.id
             ON CONFLICT (id) DO NOTHING
         )
-        UPDATE msg_event_projection_feed
-        SET processed = 1, processed_at = NOW()
+        UPDATE msg_events
+        SET projected_at = NOW()
         WHERE id IN (SELECT id FROM batch)
+        RETURNING 1
         "#,
     )
     .bind(batch_size as i64)
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await
     .map_err(|e| anyhow::anyhow!("event projection query failed: {}", e))?;
 
-    Ok(row.map(|r| r.0 as u32).unwrap_or(0))
+    Ok(rows.len() as u32)
 }
 
 /// Returns how long to sleep (ms) based on how many rows were processed.

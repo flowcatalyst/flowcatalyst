@@ -335,6 +335,19 @@ async fn main() -> Result<()> {
     let pending_auth_repo = Arc::new(fc_platform::PendingAuthRepository::new(&pg_db));
     info!("Platform repositories initialized");
 
+    // 8b1.5 Start CQRS stream processor (projects msg_events → msg_events_read, etc.)
+    let stream_handle = {
+        let config = fc_stream::StreamProcessorConfig {
+            events_enabled: true,
+            events_batch_size: 100,
+            dispatch_jobs_enabled: true,
+            dispatch_jobs_batch_size: 100,
+        };
+        let (handle, _health) = fc_stream::start_stream_processor(pg_pool.clone(), config);
+        info!("Stream processor started (event + dispatch job projections)");
+        handle
+    };
+
     // 8b2. Create UnitOfWork for atomic commits
     let unit_of_work = Arc::new(PgUnitOfWork::new(pg_db.clone()));
 
@@ -848,8 +861,9 @@ async fn main() -> Result<()> {
     // Broadcast shutdown to all components
     let _ = shutdown_tx.send(());
 
-    // Stop lifecycle manager
+    // Stop lifecycle manager and stream processor
     lifecycle.shutdown().await;
+    stream_handle.stop().await;
 
     // Wait for all handles with timeout
     let shutdown_timeout = Duration::from_secs(30);

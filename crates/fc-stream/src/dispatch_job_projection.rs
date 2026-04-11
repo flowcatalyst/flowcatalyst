@@ -7,10 +7,10 @@ use tracing::{debug, error, info};
 
 use crate::health::StreamHealth;
 
-/// Projects dispatch jobs from `msg_dispatch_job_projection_feed` into `msg_dispatch_jobs_read`.
+/// Projects dispatch jobs from `msg_dispatch_jobs` into `msg_dispatch_jobs_read`.
 ///
-/// Handles both INSERT (new jobs) and UPDATE (status changes) operations via
-/// a single SQL CTE per poll cycle.
+/// Reads rows where `projected_at IS NULL` (new inserts) or where `updated_at > projected_at`
+/// (status changes), upserts into the read model, and stamps `projected_at`.
 pub struct DispatchJobProjectionService {
     pool: PgPool,
     batch_size: u32,
@@ -90,16 +90,20 @@ impl DispatchJobProjectionService {
 }
 
 async fn poll_once(pool: &PgPool, batch_size: u32) -> anyhow::Result<u32> {
-    let row: Option<(i64,)> = sqlx::query_as(
+    // Pick up dispatch jobs that are new (projected_at IS NULL) or updated
+    // since last projection (updated_at > projected_at). Upsert into read
+    // model and stamp projected_at.
+    let rows = sqlx::query_as::<_, (i32,)>(
         r#"
         WITH batch AS (
-            SELECT id, dispatch_job_id, operation, payload
-            FROM msg_dispatch_job_projection_feed
-            WHERE processed = 0
-            ORDER BY id
+            SELECT id
+            FROM msg_dispatch_jobs
+            WHERE projected_at IS NULL
+               OR updated_at > projected_at
+            ORDER BY created_at
             LIMIT $1
         ),
-        projected_inserts AS (
+        projected AS (
             INSERT INTO msg_dispatch_jobs_read (
                 id, external_id, source, kind, code, subject, event_id, correlation_id,
                 target_url, protocol, service_account_id, client_id, subscription_id,
@@ -111,33 +115,23 @@ async fn poll_once(pool: &PgPool, batch_size: u32) -> anyhow::Result<u32> {
                 created_at, updated_at, projected_at
             )
             SELECT
-                b.dispatch_job_id,
-                b.payload->>'externalId', b.payload->>'source', b.payload->>'kind',
-                b.payload->>'code', b.payload->>'subject', b.payload->>'eventId',
-                b.payload->>'correlationId', b.payload->>'targetUrl', b.payload->>'protocol',
-                b.payload->>'serviceAccountId', b.payload->>'clientId',
-                b.payload->>'subscriptionId', b.payload->>'mode',
-                b.payload->>'dispatchPoolId', b.payload->>'messageGroup',
-                (b.payload->>'sequence')::int, (b.payload->>'timeoutSeconds')::int,
-                b.payload->>'status',
-                COALESCE((b.payload->>'maxRetries')::int, 3),
-                b.payload->>'retryStrategy',
-                (b.payload->>'scheduledFor')::timestamptz,
-                (b.payload->>'expiresAt')::timestamptz,
-                COALESCE((b.payload->>'attemptCount')::int, 0),
-                (b.payload->>'lastAttemptAt')::timestamptz,
-                (b.payload->>'completedAt')::timestamptz,
-                (b.payload->>'durationMillis')::bigint,
-                b.payload->>'lastError', b.payload->>'idempotencyKey',
-                (b.payload->>'isCompleted')::boolean, (b.payload->>'isTerminal')::boolean,
-                split_part(b.payload->>'code', ':', 1),
-                NULLIF(split_part(b.payload->>'code', ':', 2), ''),
-                NULLIF(split_part(b.payload->>'code', ':', 3), ''),
-                COALESCE((b.payload->>'createdAt')::timestamptz, NOW()),
-                COALESCE((b.payload->>'updatedAt')::timestamptz, NOW()),
-                NOW()
-            FROM batch b
-            WHERE b.operation = 'INSERT'
+                j.id, j.external_id, j.source, j.kind, j.code, j.subject,
+                j.event_id, j.correlation_id, j.target_url, j.protocol,
+                j.service_account_id, j.client_id, j.subscription_id,
+                j.mode, j.dispatch_pool_id, j.message_group,
+                j.sequence, j.timeout_seconds, j.status,
+                j.max_retries, j.retry_strategy,
+                j.scheduled_for, j.expires_at,
+                j.attempt_count, j.last_attempt_at, j.completed_at,
+                j.duration_millis, j.last_error, j.idempotency_key,
+                j.status IN ('SUCCESS', 'FAILED', 'IGNORED', 'CANCELLED', 'EXPIRED') AS is_completed,
+                j.status IN ('FAILED', 'IGNORED', 'CANCELLED', 'EXPIRED') AS is_terminal,
+                split_part(j.code, ':', 1),
+                NULLIF(split_part(j.code, ':', 2), ''),
+                NULLIF(split_part(j.code, ':', 3), ''),
+                j.created_at, j.updated_at, NOW()
+            FROM msg_dispatch_jobs j
+            JOIN batch b ON b.id = j.id
             ON CONFLICT (id) DO UPDATE SET
                 status = EXCLUDED.status,
                 attempt_count = EXCLUDED.attempt_count,
@@ -149,39 +143,19 @@ async fn poll_once(pool: &PgPool, batch_size: u32) -> anyhow::Result<u32> {
                 is_terminal = EXCLUDED.is_terminal,
                 updated_at = EXCLUDED.updated_at,
                 projected_at = NOW()
-        ),
-        projected_updates AS (
-            UPDATE msg_dispatch_jobs_read AS t
-            SET
-                status = COALESCE(src.payload->>'status', t.status),
-                attempt_count = COALESCE((src.payload->>'attemptCount')::int, t.attempt_count),
-                last_attempt_at = COALESCE((src.payload->>'lastAttemptAt')::timestamptz, t.last_attempt_at),
-                completed_at = COALESCE((src.payload->>'completedAt')::timestamptz, t.completed_at),
-                duration_millis = COALESCE((src.payload->>'durationMillis')::bigint, t.duration_millis),
-                last_error = COALESCE(src.payload->>'lastError', t.last_error),
-                is_completed = COALESCE((src.payload->>'isCompleted')::boolean, t.is_completed),
-                is_terminal = COALESCE((src.payload->>'isTerminal')::boolean, t.is_terminal),
-                updated_at = COALESCE((src.payload->>'updatedAt')::timestamptz, t.updated_at),
-                projected_at = NOW()
-            FROM (
-                SELECT DISTINCT ON (dispatch_job_id) dispatch_job_id, payload
-                FROM batch
-                WHERE operation = 'UPDATE'
-                ORDER BY dispatch_job_id, id DESC
-            ) src
-            WHERE t.id = src.dispatch_job_id
         )
-        UPDATE msg_dispatch_job_projection_feed
-        SET processed = 1, processed_at = NOW()
+        UPDATE msg_dispatch_jobs
+        SET projected_at = NOW()
         WHERE id IN (SELECT id FROM batch)
+        RETURNING 1
         "#,
     )
     .bind(batch_size as i64)
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await
     .map_err(|e| anyhow::anyhow!("dispatch job projection query failed: {}", e))?;
 
-    Ok(row.map(|r| r.0 as u32).unwrap_or(0))
+    Ok(rows.len() as u32)
 }
 
 /// Returns how long to sleep (ms) based on how many rows were processed.

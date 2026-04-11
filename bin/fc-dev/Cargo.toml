@@ -11,6 +11,7 @@ fc-router = { path = "../../crates/fc-router" }
 fc-queue = { path = "../../crates/fc-queue", features = ["sqlite"] }
 # Outbox supports all database backends - reads from developer's app database
 fc-outbox = { path = "../../crates/fc-outbox", features = ["sqlite", "postgres", "mongo"] }
+fc-stream = { path = "../../crates/fc-stream" }
 fc-standby = { path = "../../crates/fc-standby" }
 fc-platform = { path = "../../crates/fc-platform" }
 tokio = { workspace = true }

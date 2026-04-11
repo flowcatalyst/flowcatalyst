@@ -268,6 +268,7 @@ pub async fn run_migrations(db: &DatabaseConnection) -> Result<(), DbErr> {
         include_str!("../../../../migrations/009_p0_alignment.sql"),
         include_str!("../../../../migrations/010_auth_state_tables.sql"),
         include_str!("../../../../migrations/011_dispatch_job_tables.sql"),
+        include_str!("../../../../migrations/012_projection_columns.sql"),
     ];
 
     for (i, sql) in migration_files.iter().enumerate() {

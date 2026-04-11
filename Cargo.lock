@@ -2324,6 +2324,7 @@ dependencies = [
  "fc-queue",
  "fc-router",
  "fc-standby",
+ "fc-stream",
  "metrics",
  "metrics-exporter-prometheus",
  "mime_guess",
