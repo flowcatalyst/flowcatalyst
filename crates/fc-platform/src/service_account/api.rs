@@ -431,7 +431,7 @@ pub async fn create_service_account<U: UnitOfWork>(
     ),
     request_body = UpdateServiceAccountRequest,
     responses(
-        (status = 200, description = "Service account updated", body = ServiceAccountResponse),
+        (status = 204, description = "Service account updated"),
         (status = 404, description = "Service account not found")
     ),
     security(("bearer_auth" = []))
@@ -441,7 +441,7 @@ pub async fn update_service_account<U: UnitOfWork>(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateServiceAccountRequest>,
-) -> Result<Json<ServiceAccountResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     let command = UpdateServiceAccountCommand {
         id: id.clone(),
         name: req.name,
@@ -452,12 +452,7 @@ pub async fn update_service_account<U: UnitOfWork>(
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
     match state.update_use_case.run(command, ctx).await {
-        UseCaseResult::Success(event) => {
-            let account = state.repo.find_by_id(&event.service_account_id).await?
-                .ok_or_else(|| PlatformError::ServiceAccountNotFound { id })?;
-
-            Ok(Json(ServiceAccountResponse::from(account)))
-        }
+        UseCaseResult::Success(_event) => Ok(StatusCode::NO_CONTENT),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
 }

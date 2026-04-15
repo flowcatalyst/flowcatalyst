@@ -1,72 +1,143 @@
-//! Audit Log Repository — PostgreSQL via SeaORM
+//! Audit Log Repository — PostgreSQL via SQLx
 
-use sea_orm::*;
-use chrono::Utc;
+use sqlx::{PgPool, Postgres, QueryBuilder};
+use chrono::{DateTime, Utc};
 
 use super::entity::AuditLog;
-use crate::entities::aud_logs;
 use crate::shared::error::Result;
 
+#[derive(sqlx::FromRow)]
+struct AuditLogRow {
+    id: String,
+    entity_type: String,
+    entity_id: String,
+    operation: String,
+    operation_json: Option<serde_json::Value>,
+    principal_id: Option<String>,
+    application_id: Option<String>,
+    client_id: Option<String>,
+    performed_at: DateTime<Utc>,
+}
+
+impl From<AuditLogRow> for AuditLog {
+    fn from(r: AuditLogRow) -> Self {
+        Self {
+            id: r.id,
+            entity_type: r.entity_type,
+            entity_id: r.entity_id,
+            operation: r.operation,
+            operation_json: r.operation_json,
+            principal_id: r.principal_id,
+            principal_name: None,
+            application_id: r.application_id,
+            client_id: r.client_id,
+            performed_at: r.performed_at,
+        }
+    }
+}
+
+fn apply_audit_filters(
+    qb: &mut QueryBuilder<Postgres>,
+    entity_type: Option<&str>,
+    entity_id: Option<&str>,
+    operation: Option<&str>,
+    principal_id: Option<&str>,
+) {
+    let mut has_where = false;
+    let push_where = |qb: &mut QueryBuilder<Postgres>, has_where: &mut bool| {
+        qb.push(if *has_where { " AND " } else { " WHERE " });
+        *has_where = true;
+    };
+
+    if let Some(et) = entity_type {
+        push_where(qb, &mut has_where);
+        qb.push("entity_type = ").push_bind(et.to_string());
+    }
+    if let Some(eid) = entity_id {
+        push_where(qb, &mut has_where);
+        qb.push("entity_id = ").push_bind(eid.to_string());
+    }
+    if let Some(op) = operation {
+        push_where(qb, &mut has_where);
+        qb.push("operation = ").push_bind(op.to_string());
+    }
+    if let Some(pid) = principal_id {
+        push_where(qb, &mut has_where);
+        qb.push("principal_id = ").push_bind(pid.to_string());
+    }
+}
+
 pub struct AuditLogRepository {
-    db: DatabaseConnection,
+    pool: PgPool,
 }
 
 impl AuditLogRepository {
-    pub fn new(db: &DatabaseConnection) -> Self {
-        Self { db: db.clone() }
+    pub fn new(pool: &PgPool) -> Self {
+        Self { pool: pool.clone() }
     }
 
     pub async fn insert(&self, log: &AuditLog) -> Result<()> {
-        let model = aud_logs::ActiveModel {
-            id: Set(log.id.clone()),
-            entity_type: Set(log.entity_type.clone()),
-            entity_id: Set(log.entity_id.clone()),
-            operation: Set(log.operation.clone()),
-            operation_json: Set(log.operation_json.clone().map(sea_orm::JsonValue::from)),
-            principal_id: Set(log.principal_id.clone()),
-            application_id: Set(log.application_id.clone()),
-            client_id: Set(log.client_id.clone()),
-            performed_at: Set(Utc::now().into()),
-        };
-        aud_logs::Entity::insert(model).exec(&self.db).await?;
+        sqlx::query(
+            r#"INSERT INTO aud_logs
+                (id, entity_type, entity_id, operation, operation_json,
+                 principal_id, application_id, client_id, performed_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())"#
+        )
+        .bind(&log.id)
+        .bind(&log.entity_type)
+        .bind(&log.entity_id)
+        .bind(&log.operation)
+        .bind(&log.operation_json)
+        .bind(&log.principal_id)
+        .bind(&log.application_id)
+        .bind(&log.client_id)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<AuditLog>> {
-        let result = aud_logs::Entity::find_by_id(id)
-            .one(&self.db)
-            .await?;
-        Ok(result.map(AuditLog::from))
+        let row = sqlx::query_as::<_, AuditLogRow>(
+            "SELECT * FROM aud_logs WHERE id = $1"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(AuditLog::from))
     }
 
-    pub async fn find_by_entity(&self, entity_type: &str, entity_id: &str, limit: u64) -> Result<Vec<AuditLog>> {
-        let results = aud_logs::Entity::find()
-            .filter(aud_logs::Column::EntityType.eq(entity_type))
-            .filter(aud_logs::Column::EntityId.eq(entity_id))
-            .order_by_desc(aud_logs::Column::PerformedAt)
-            .limit(limit)
-            .all(&self.db)
-            .await?;
-        Ok(results.into_iter().map(AuditLog::from).collect())
+    pub async fn find_by_entity(&self, entity_type: &str, entity_id: &str, limit: i64) -> Result<Vec<AuditLog>> {
+        let rows = sqlx::query_as::<_, AuditLogRow>(
+            "SELECT * FROM aud_logs WHERE entity_type = $1 AND entity_id = $2 \
+             ORDER BY performed_at DESC LIMIT $3"
+        )
+        .bind(entity_type)
+        .bind(entity_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(AuditLog::from).collect())
     }
 
-    pub async fn find_by_principal(&self, principal_id: &str, limit: u64) -> Result<Vec<AuditLog>> {
-        let results = aud_logs::Entity::find()
-            .filter(aud_logs::Column::PrincipalId.eq(principal_id))
-            .order_by_desc(aud_logs::Column::PerformedAt)
-            .limit(limit)
-            .all(&self.db)
-            .await?;
-        Ok(results.into_iter().map(AuditLog::from).collect())
+    pub async fn find_by_principal(&self, principal_id: &str, limit: i64) -> Result<Vec<AuditLog>> {
+        let rows = sqlx::query_as::<_, AuditLogRow>(
+            "SELECT * FROM aud_logs WHERE principal_id = $1 ORDER BY performed_at DESC LIMIT $2"
+        )
+        .bind(principal_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(AuditLog::from).collect())
     }
 
-    pub async fn find_recent(&self, limit: u64) -> Result<Vec<AuditLog>> {
-        let results = aud_logs::Entity::find()
-            .order_by_desc(aud_logs::Column::PerformedAt)
-            .limit(limit)
-            .all(&self.db)
-            .await?;
-        Ok(results.into_iter().map(AuditLog::from).collect())
+    pub async fn find_recent(&self, limit: i64) -> Result<Vec<AuditLog>> {
+        let rows = sqlx::query_as::<_, AuditLogRow>(
+            "SELECT * FROM aud_logs ORDER BY performed_at DESC LIMIT $1"
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(AuditLog::from).collect())
     }
 
     pub async fn search(
@@ -75,29 +146,18 @@ impl AuditLogRepository {
         entity_id: Option<&str>,
         operation: Option<&str>,
         principal_id: Option<&str>,
-        skip: u64,
         limit: i64,
+        offset: i64,
     ) -> Result<Vec<AuditLog>> {
-        let mut query = aud_logs::Entity::find();
-        if let Some(et) = entity_type {
-            query = query.filter(aud_logs::Column::EntityType.eq(et));
-        }
-        if let Some(eid) = entity_id {
-            query = query.filter(aud_logs::Column::EntityId.eq(eid));
-        }
-        if let Some(op) = operation {
-            query = query.filter(aud_logs::Column::Operation.eq(op));
-        }
-        if let Some(pid) = principal_id {
-            query = query.filter(aud_logs::Column::PrincipalId.eq(pid));
-        }
-        let results = query
-            .order_by_desc(aud_logs::Column::PerformedAt)
-            .offset(skip)
-            .limit(limit as u64)
-            .all(&self.db)
-            .await?;
-        Ok(results.into_iter().map(AuditLog::from).collect())
+        let mut qb: QueryBuilder<Postgres> = QueryBuilder::new("SELECT * FROM aud_logs");
+        apply_audit_filters(&mut qb, entity_type, entity_id, operation, principal_id);
+        qb.push(" ORDER BY performed_at DESC LIMIT ")
+            .push_bind(limit)
+            .push(" OFFSET ")
+            .push_bind(offset);
+
+        let rows: Vec<AuditLogRow> = qb.build_query_as().fetch_all(&self.pool).await?;
+        Ok(rows.into_iter().map(AuditLog::from).collect())
     }
 
     pub async fn count_with_filters(
@@ -107,72 +167,47 @@ impl AuditLogRepository {
         operation: Option<&str>,
         principal_id: Option<&str>,
     ) -> Result<i64> {
-        let mut query = aud_logs::Entity::find();
-        if let Some(et) = entity_type {
-            query = query.filter(aud_logs::Column::EntityType.eq(et));
-        }
-        if let Some(eid) = entity_id {
-            query = query.filter(aud_logs::Column::EntityId.eq(eid));
-        }
-        if let Some(op) = operation {
-            query = query.filter(aud_logs::Column::Operation.eq(op));
-        }
-        if let Some(pid) = principal_id {
-            query = query.filter(aud_logs::Column::PrincipalId.eq(pid));
-        }
-        let count = query.count(&self.db).await?;
-        Ok(count as i64)
+        let mut qb: QueryBuilder<Postgres> = QueryBuilder::new("SELECT COUNT(*) FROM aud_logs");
+        apply_audit_filters(&mut qb, entity_type, entity_id, operation, principal_id);
+        let count: i64 = qb.build_query_scalar().fetch_one(&self.pool).await?;
+        Ok(count)
     }
 
     pub async fn find_distinct_entity_types(&self) -> Result<Vec<String>> {
-        use sea_orm::QuerySelect;
-        let results: Vec<(String,)> = aud_logs::Entity::find()
-            .select_only()
-            .column(aud_logs::Column::EntityType)
-            .group_by(aud_logs::Column::EntityType)
-            .order_by_asc(aud_logs::Column::EntityType)
-            .into_tuple()
-            .all(&self.db)
-            .await?;
-        Ok(results.into_iter().map(|(t,)| t).collect())
+        let rows = sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT entity_type FROM aud_logs ORDER BY entity_type"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
     }
 
     pub async fn find_distinct_application_ids(&self) -> Result<Vec<String>> {
-        use sea_orm::QuerySelect;
-        let results: Vec<(Option<String>,)> = aud_logs::Entity::find()
-            .select_only()
-            .column(aud_logs::Column::ApplicationId)
-            .group_by(aud_logs::Column::ApplicationId)
-            .order_by_asc(aud_logs::Column::ApplicationId)
-            .into_tuple()
-            .all(&self.db)
-            .await?;
-        Ok(results.into_iter().filter_map(|(t,)| t).collect())
+        let rows = sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT application_id FROM aud_logs \
+             WHERE application_id IS NOT NULL ORDER BY application_id"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
     }
 
     pub async fn find_distinct_client_ids(&self) -> Result<Vec<String>> {
-        use sea_orm::QuerySelect;
-        let results: Vec<(Option<String>,)> = aud_logs::Entity::find()
-            .select_only()
-            .column(aud_logs::Column::ClientId)
-            .group_by(aud_logs::Column::ClientId)
-            .order_by_asc(aud_logs::Column::ClientId)
-            .into_tuple()
-            .all(&self.db)
-            .await?;
-        Ok(results.into_iter().filter_map(|(t,)| t).collect())
+        let rows = sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT client_id FROM aud_logs \
+             WHERE client_id IS NOT NULL ORDER BY client_id"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
     }
 
     pub async fn find_distinct_operations(&self) -> Result<Vec<String>> {
-        use sea_orm::QuerySelect;
-        let results: Vec<(String,)> = aud_logs::Entity::find()
-            .select_only()
-            .column(aud_logs::Column::Operation)
-            .group_by(aud_logs::Column::Operation)
-            .order_by_asc(aud_logs::Column::Operation)
-            .into_tuple()
-            .all(&self.db)
-            .await?;
-        Ok(results.into_iter().map(|(t,)| t).collect())
+        let rows = sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT operation FROM aud_logs ORDER BY operation"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
     }
 }

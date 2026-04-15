@@ -337,36 +337,243 @@ impl ServiceAccount {
     }
 }
 
-/// Convert from SeaORM model to domain entity
-/// Note: roles must be loaded separately from iam_principal_roles via the linked principal
-impl From<crate::entities::iam_service_accounts::Model> for ServiceAccount {
-    fn from(m: crate::entities::iam_service_accounts::Model) -> Self {
-        let webhook_credentials = WebhookCredentials {
-            auth_type: m.wh_auth_type.as_deref().map(WebhookAuthType::from_str).unwrap_or_default(),
-            token: m.wh_auth_token_ref.clone(),
-            username: None,
-            password: None,
-            header_name: None,
-            signing_secret: m.wh_signing_secret_ref.clone(),
-            signing_algorithm: m.wh_signing_algorithm.clone(),
-            signature_header: None,
-        };
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        Self {
-            id: m.id.clone(),
-            code: m.code,
-            name: m.name,
-            description: m.description,
-            active: m.active,
-            client_ids: vec![],
-            scope: None,
-            application_id: m.application_id,
-            webhook_credentials,
-            service_account_table_id: Some(m.id),
-            roles: vec![],
-            last_used_at: m.last_used_at.map(|dt| dt.naive_utc().and_utc()),
-            created_at: m.created_at.naive_utc().and_utc(),
-            updated_at: m.updated_at.naive_utc().and_utc(),
+    #[test]
+    fn test_new_service_account() {
+        let sa = ServiceAccount::new("app:my-app", "My App Service Account");
+
+        assert!(!sa.id.is_empty());
+        assert!(sa.id.starts_with("sac_"), "ID should have sac_ prefix, got: {}", sa.id);
+        assert_eq!(sa.id.len(), 17, "Typed ID should be 17 chars, got: {}", sa.id.len());
+        assert_eq!(sa.code, "app:my-app");
+        assert_eq!(sa.name, "My App Service Account");
+        assert!(sa.description.is_none());
+        assert!(sa.active);
+        assert!(sa.client_ids.is_empty());
+        assert!(sa.scope.is_none());
+        assert!(sa.application_id.is_none());
+        assert_eq!(sa.webhook_credentials.auth_type, WebhookAuthType::None);
+        assert!(sa.roles.is_empty());
+        assert!(sa.last_used_at.is_none());
+        assert_eq!(sa.created_at, sa.updated_at);
+    }
+
+    #[test]
+    fn test_service_account_unique_ids() {
+        let sa1 = ServiceAccount::new("a", "A");
+        let sa2 = ServiceAccount::new("b", "B");
+        assert_ne!(sa1.id, sa2.id);
+    }
+
+    #[test]
+    fn test_service_account_builder_methods() {
+        let sa = ServiceAccount::new("sa", "SA")
+            .with_description("A test service account")
+            .with_client_id("client-1")
+            .with_application_id("app-1")
+            .with_credentials(WebhookCredentials::bearer_token("my-token"));
+
+        assert_eq!(sa.description, Some("A test service account".to_string()));
+        assert_eq!(sa.client_ids, vec!["client-1".to_string()]);
+        assert_eq!(sa.application_id, Some("app-1".to_string()));
+        assert_eq!(sa.webhook_credentials.auth_type, WebhookAuthType::BearerToken);
+        assert_eq!(sa.webhook_credentials.token, Some("my-token".to_string()));
+    }
+
+    #[test]
+    fn test_service_account_activate_deactivate() {
+        let mut sa = ServiceAccount::new("sa", "SA");
+        assert!(sa.active);
+
+        sa.deactivate();
+        assert!(!sa.active);
+
+        sa.activate();
+        assert!(sa.active);
+    }
+
+    #[test]
+    fn test_service_account_assign_role() {
+        let mut sa = ServiceAccount::new("sa", "SA");
+        assert!(sa.roles.is_empty());
+
+        sa.assign_role("admin");
+        assert_eq!(sa.roles.len(), 1);
+        assert_eq!(sa.roles[0].role, "admin");
+    }
+
+    #[test]
+    fn test_service_account_assign_role_for_client() {
+        let mut sa = ServiceAccount::new("sa", "SA");
+        sa.assign_role_for_client("viewer", "client-1");
+
+        assert_eq!(sa.roles.len(), 1);
+        assert_eq!(sa.roles[0].role, "viewer");
+        assert_eq!(sa.roles[0].client_id, Some("client-1".to_string()));
+    }
+
+    #[test]
+    fn test_service_account_has_role() {
+        let mut sa = ServiceAccount::new("sa", "SA");
+        sa.assign_role("admin");
+        sa.assign_role("viewer");
+
+        assert!(sa.has_role("admin"));
+        assert!(sa.has_role("viewer"));
+        assert!(!sa.has_role("editor"));
+    }
+
+    #[test]
+    fn test_service_account_has_client_access() {
+        let sa_no_clients = ServiceAccount::new("sa", "SA");
+        // Empty client_ids means access to all
+        assert!(sa_no_clients.has_client_access("any-client"));
+
+        let sa_with_clients = ServiceAccount::new("sa", "SA")
+            .with_client_id("client-1");
+        assert!(sa_with_clients.has_client_access("client-1"));
+        assert!(!sa_with_clients.has_client_access("client-2"));
+    }
+
+    #[test]
+    fn test_service_account_record_usage() {
+        let mut sa = ServiceAccount::new("sa", "SA");
+        assert!(sa.last_used_at.is_none());
+
+        sa.record_usage();
+        assert!(sa.last_used_at.is_some());
+    }
+
+    // --- WebhookAuthType ---
+
+    #[test]
+    fn test_webhook_auth_type_as_str() {
+        assert_eq!(WebhookAuthType::None.as_str(), "NONE");
+        assert_eq!(WebhookAuthType::BearerToken.as_str(), "BEARER_TOKEN");
+        assert_eq!(WebhookAuthType::BasicAuth.as_str(), "BASIC_AUTH");
+        assert_eq!(WebhookAuthType::ApiKey.as_str(), "API_KEY");
+        assert_eq!(WebhookAuthType::HmacSignature.as_str(), "HMAC_SIGNATURE");
+    }
+
+    #[test]
+    fn test_webhook_auth_type_from_str() {
+        assert_eq!(WebhookAuthType::from_str("NONE"), WebhookAuthType::None);
+        assert_eq!(WebhookAuthType::from_str("BEARER_TOKEN"), WebhookAuthType::BearerToken);
+        assert_eq!(WebhookAuthType::from_str("BASIC_AUTH"), WebhookAuthType::BasicAuth);
+        assert_eq!(WebhookAuthType::from_str("API_KEY"), WebhookAuthType::ApiKey);
+        assert_eq!(WebhookAuthType::from_str("HMAC_SIGNATURE"), WebhookAuthType::HmacSignature);
+        assert_eq!(WebhookAuthType::from_str("unknown"), WebhookAuthType::None);
+    }
+
+    #[test]
+    fn test_webhook_auth_type_default() {
+        assert_eq!(WebhookAuthType::default(), WebhookAuthType::None);
+    }
+
+    #[test]
+    fn test_webhook_auth_type_roundtrip() {
+        for t in [
+            WebhookAuthType::None,
+            WebhookAuthType::BearerToken,
+            WebhookAuthType::BasicAuth,
+            WebhookAuthType::ApiKey,
+            WebhookAuthType::HmacSignature,
+        ] {
+            assert_eq!(WebhookAuthType::from_str(t.as_str()), t, "Roundtrip failed for {:?}", t);
         }
     }
+
+    // --- WebhookCredentials constructors ---
+
+    #[test]
+    fn test_webhook_credentials_none() {
+        let creds = WebhookCredentials::none();
+        assert_eq!(creds.auth_type, WebhookAuthType::None);
+        assert!(creds.token.is_none());
+        assert!(creds.username.is_none());
+        assert!(creds.password.is_none());
+    }
+
+    #[test]
+    fn test_webhook_credentials_bearer_token() {
+        let creds = WebhookCredentials::bearer_token("my-secret-token");
+        assert_eq!(creds.auth_type, WebhookAuthType::BearerToken);
+        assert_eq!(creds.token, Some("my-secret-token".to_string()));
+    }
+
+    #[test]
+    fn test_webhook_credentials_basic_auth() {
+        let creds = WebhookCredentials::basic_auth("user", "pass");
+        assert_eq!(creds.auth_type, WebhookAuthType::BasicAuth);
+        assert_eq!(creds.username, Some("user".to_string()));
+        assert_eq!(creds.password, Some("pass".to_string()));
+    }
+
+    #[test]
+    fn test_webhook_credentials_api_key() {
+        let creds = WebhookCredentials::api_key("key-value", None);
+        assert_eq!(creds.auth_type, WebhookAuthType::ApiKey);
+        assert_eq!(creds.token, Some("key-value".to_string()));
+        assert_eq!(creds.header_name, Some("X-Api-Key".to_string()));
+
+        let creds_custom = WebhookCredentials::api_key("key", Some("X-Custom-Key".to_string()));
+        assert_eq!(creds_custom.header_name, Some("X-Custom-Key".to_string()));
+    }
+
+    #[test]
+    fn test_webhook_credentials_hmac_signature() {
+        let creds = WebhookCredentials::hmac_signature("my-signing-secret");
+        assert_eq!(creds.auth_type, WebhookAuthType::HmacSignature);
+        assert_eq!(creds.signing_secret, Some("my-signing-secret".to_string()));
+        assert_eq!(creds.signing_algorithm, Some("SHA256".to_string()));
+        assert_eq!(creds.signature_header, Some("X-Signature".to_string()));
+    }
+
+    #[test]
+    fn test_webhook_credentials_default() {
+        let creds = WebhookCredentials::default();
+        assert_eq!(creds.auth_type, WebhookAuthType::None);
+    }
+
+    // --- RoleAssignment ---
+
+    #[test]
+    fn test_role_assignment_new() {
+        let ra = RoleAssignment::new("admin");
+        assert_eq!(ra.role, "admin");
+        assert!(ra.client_id.is_none());
+        assert!(ra.assignment_source.is_none());
+        assert!(ra.assigned_by.is_none());
+    }
+
+    #[test]
+    fn test_role_assignment_with_source() {
+        let ra = RoleAssignment::with_source("admin", "IDP_SYNC");
+        assert_eq!(ra.role, "admin");
+        assert_eq!(ra.assignment_source, Some("IDP_SYNC".to_string()));
+        assert!(ra.is_idp_sync());
+    }
+
+    #[test]
+    fn test_role_assignment_for_client() {
+        let ra = RoleAssignment::for_client("viewer", "client-1");
+        assert_eq!(ra.role, "viewer");
+        assert_eq!(ra.client_id, Some("client-1".to_string()));
+    }
+
+    #[test]
+    fn test_role_assignment_is_idp_sync() {
+        let ra_sync = RoleAssignment::with_source("admin", "IDP_SYNC");
+        assert!(ra_sync.is_idp_sync());
+
+        let ra_not_sync = RoleAssignment::with_source("admin", "ADMIN");
+        assert!(!ra_not_sync.is_idp_sync());
+
+        let ra_no_source = RoleAssignment::new("admin");
+        assert!(!ra_no_source.is_idp_sync());
+    }
 }
+

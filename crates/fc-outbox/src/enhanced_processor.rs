@@ -65,7 +65,9 @@ impl Default for EnhancedProcessorConfig {
             processing_timeout_seconds: 300,
             recovery_interval: Duration::from_secs(60),
             http_config: HttpDispatcherConfig::default(),
-            leader_election: LeaderElectionConfig::default(),
+            // Default to leader election disabled — consumers that want HA
+            // should construct a `LeaderElectionConfig` explicitly.
+            leader_election: LeaderElectionConfig::default().with_enabled(false),
         }
     }
 }

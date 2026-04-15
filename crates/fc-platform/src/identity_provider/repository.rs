@@ -1,101 +1,178 @@
-//! IdentityProvider Repository — PostgreSQL via SeaORM
+//! IdentityProvider Repository — PostgreSQL via SQLx
 
-use sea_orm::*;
-use chrono::Utc;
+use std::collections::HashMap;
+use sqlx::PgPool;
+use chrono::{DateTime, Utc};
 
-use super::entity::IdentityProvider;
-use crate::entities::{oauth_identity_providers, oauth_identity_provider_allowed_domains};
+use super::entity::{IdentityProvider, IdentityProviderType};
 use crate::shared::error::Result;
 
+// ── Row structs ─────────────────────────────────────────────────────
+
+#[derive(sqlx::FromRow)]
+struct IdentityProviderRow {
+    id: String,
+    code: String,
+    name: String,
+    r#type: String,
+    oidc_issuer_url: Option<String>,
+    oidc_client_id: Option<String>,
+    oidc_client_secret_ref: Option<String>,
+    oidc_multi_tenant: bool,
+    oidc_issuer_pattern: Option<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+impl From<IdentityProviderRow> for IdentityProvider {
+    fn from(r: IdentityProviderRow) -> Self {
+        Self {
+            id: r.id,
+            code: r.code,
+            name: r.name,
+            r#type: IdentityProviderType::from_str(&r.r#type),
+            oidc_issuer_url: r.oidc_issuer_url,
+            oidc_client_id: r.oidc_client_id,
+            oidc_client_secret_ref: r.oidc_client_secret_ref,
+            oidc_multi_tenant: r.oidc_multi_tenant,
+            oidc_issuer_pattern: r.oidc_issuer_pattern,
+            allowed_email_domains: Vec::new(), // loaded separately
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        }
+    }
+}
+
 pub struct IdentityProviderRepository {
-    db: DatabaseConnection,
+    pool: PgPool,
 }
 
 impl IdentityProviderRepository {
-    pub fn new(db: &DatabaseConnection) -> Self {
-        Self { db: db.clone() }
+    pub fn new(pool: &PgPool) -> Self {
+        Self { pool: pool.clone() }
     }
 
-    async fn load_allowed_domains(&self, idp_id: &str) -> Result<Vec<String>> {
-        let domains = oauth_identity_provider_allowed_domains::Entity::find()
-            .filter(oauth_identity_provider_allowed_domains::Column::IdentityProviderId.eq(idp_id))
-            .all(&self.db)
-            .await?;
-        Ok(domains.into_iter().map(|d| d.email_domain).collect())
-    }
-
-    async fn hydrate(&self, model: oauth_identity_providers::Model) -> Result<IdentityProvider> {
-        let id = model.id.clone();
-        let mut idp = IdentityProvider::from(model);
-        idp.allowed_email_domains = self.load_allowed_domains(&id).await?;
+    async fn hydrate(&self, mut idp: IdentityProvider) -> Result<IdentityProvider> {
+        idp.allowed_email_domains = sqlx::query_scalar::<_, String>(
+            "SELECT email_domain FROM oauth_identity_provider_allowed_domains WHERE identity_provider_id = $1"
+        )
+        .bind(&idp.id)
+        .fetch_all(&self.pool)
+        .await?;
         Ok(idp)
     }
 
+    /// Batch-hydrate allowed domains for multiple identity providers (avoids N+1)
+    async fn hydrate_all(&self, mut idps: Vec<IdentityProvider>) -> Result<Vec<IdentityProvider>> {
+        if idps.is_empty() {
+            return Ok(idps);
+        }
+
+        let ids: Vec<&str> = idps.iter().map(|i| i.id.as_str()).collect();
+
+        #[derive(sqlx::FromRow)]
+        struct DomainRow { identity_provider_id: String, email_domain: String }
+
+        let all_domains = sqlx::query_as::<_, DomainRow>(
+            "SELECT identity_provider_id, email_domain FROM oauth_identity_provider_allowed_domains WHERE identity_provider_id = ANY($1)"
+        )
+        .bind(&ids)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut domain_map: HashMap<String, Vec<String>> = HashMap::new();
+        for d in all_domains {
+            domain_map.entry(d.identity_provider_id).or_default().push(d.email_domain);
+        }
+
+        for idp in &mut idps {
+            if let Some(domains) = domain_map.remove(&idp.id) {
+                idp.allowed_email_domains = domains;
+            }
+        }
+
+        Ok(idps)
+    }
+
     pub async fn find_by_id(&self, id: &str) -> Result<Option<IdentityProvider>> {
-        let result = oauth_identity_providers::Entity::find_by_id(id).one(&self.db).await?;
-        match result {
-            Some(m) => Ok(Some(self.hydrate(m).await?)),
+        let row = sqlx::query_as::<_, IdentityProviderRow>(
+            "SELECT * FROM oauth_identity_providers WHERE id = $1"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        match row {
+            Some(r) => Ok(Some(self.hydrate(IdentityProvider::from(r)).await?)),
             None => Ok(None),
         }
     }
 
     pub async fn find_by_code(&self, code: &str) -> Result<Option<IdentityProvider>> {
-        let result = oauth_identity_providers::Entity::find()
-            .filter(oauth_identity_providers::Column::Code.eq(code))
-            .one(&self.db)
-            .await?;
-        match result {
-            Some(m) => Ok(Some(self.hydrate(m).await?)),
+        let row = sqlx::query_as::<_, IdentityProviderRow>(
+            "SELECT * FROM oauth_identity_providers WHERE code = $1"
+        )
+        .bind(code)
+        .fetch_optional(&self.pool)
+        .await?;
+        match row {
+            Some(r) => Ok(Some(self.hydrate(IdentityProvider::from(r)).await?)),
             None => Ok(None),
         }
     }
 
     pub async fn find_all(&self) -> Result<Vec<IdentityProvider>> {
-        let results = oauth_identity_providers::Entity::find()
-            .order_by_asc(oauth_identity_providers::Column::Code)
-            .all(&self.db)
-            .await?;
-        let mut idps = Vec::with_capacity(results.len());
-        for m in results {
-            idps.push(self.hydrate(m).await?);
-        }
-        Ok(idps)
+        let rows = sqlx::query_as::<_, IdentityProviderRow>(
+            "SELECT * FROM oauth_identity_providers ORDER BY code"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        let idps: Vec<IdentityProvider> = rows.into_iter().map(IdentityProvider::from).collect();
+        self.hydrate_all(idps).await
     }
 
     pub async fn insert(&self, idp: &IdentityProvider) -> Result<()> {
-        let model = oauth_identity_providers::ActiveModel {
-            id: Set(idp.id.clone()),
-            code: Set(idp.code.clone()),
-            name: Set(idp.name.clone()),
-            r#type: Set(idp.r#type.as_str().to_string()),
-            oidc_issuer_url: Set(idp.oidc_issuer_url.clone()),
-            oidc_client_id: Set(idp.oidc_client_id.clone()),
-            oidc_client_secret_ref: Set(idp.oidc_client_secret_ref.clone()),
-            oidc_multi_tenant: Set(idp.oidc_multi_tenant),
-            oidc_issuer_pattern: Set(idp.oidc_issuer_pattern.clone()),
-            created_at: Set(Utc::now().into()),
-            updated_at: Set(Utc::now().into()),
-        };
-        oauth_identity_providers::Entity::insert(model).exec(&self.db).await?;
+        sqlx::query(
+            r#"INSERT INTO oauth_identity_providers
+                (id, code, name, type, oidc_issuer_url, oidc_client_id,
+                 oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
+                 created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())"#
+        )
+        .bind(&idp.id)
+        .bind(&idp.code)
+        .bind(&idp.name)
+        .bind(idp.r#type.as_str())
+        .bind(&idp.oidc_issuer_url)
+        .bind(&idp.oidc_client_id)
+        .bind(&idp.oidc_client_secret_ref)
+        .bind(idp.oidc_multi_tenant)
+        .bind(&idp.oidc_issuer_pattern)
+        .execute(&self.pool)
+        .await?;
         self.save_allowed_domains(&idp.id, &idp.allowed_email_domains).await?;
         Ok(())
     }
 
     pub async fn update(&self, idp: &IdentityProvider) -> Result<()> {
-        let model = oauth_identity_providers::ActiveModel {
-            id: Set(idp.id.clone()),
-            code: Set(idp.code.clone()),
-            name: Set(idp.name.clone()),
-            r#type: Set(idp.r#type.as_str().to_string()),
-            oidc_issuer_url: Set(idp.oidc_issuer_url.clone()),
-            oidc_client_id: Set(idp.oidc_client_id.clone()),
-            oidc_client_secret_ref: Set(idp.oidc_client_secret_ref.clone()),
-            oidc_multi_tenant: Set(idp.oidc_multi_tenant),
-            oidc_issuer_pattern: Set(idp.oidc_issuer_pattern.clone()),
-            created_at: NotSet,
-            updated_at: Set(Utc::now().into()),
-        };
-        oauth_identity_providers::Entity::update(model).exec(&self.db).await?;
+        sqlx::query(
+            r#"UPDATE oauth_identity_providers SET
+                code = $2, name = $3, type = $4, oidc_issuer_url = $5,
+                oidc_client_id = $6, oidc_client_secret_ref = $7,
+                oidc_multi_tenant = $8, oidc_issuer_pattern = $9,
+                updated_at = NOW()
+            WHERE id = $1"#
+        )
+        .bind(&idp.id)
+        .bind(&idp.code)
+        .bind(&idp.name)
+        .bind(idp.r#type.as_str())
+        .bind(&idp.oidc_issuer_url)
+        .bind(&idp.oidc_client_id)
+        .bind(&idp.oidc_client_secret_ref)
+        .bind(idp.oidc_multi_tenant)
+        .bind(&idp.oidc_issuer_pattern)
+        .execute(&self.pool)
+        .await?;
         // Replace allowed domains
         self.delete_allowed_domains(&idp.id).await?;
         self.save_allowed_domains(&idp.id, &idp.allowed_email_domains).await?;
@@ -104,26 +181,30 @@ impl IdentityProviderRepository {
 
     pub async fn delete(&self, id: &str) -> Result<bool> {
         self.delete_allowed_domains(id).await?;
-        let result = oauth_identity_providers::Entity::delete_by_id(id).exec(&self.db).await?;
-        Ok(result.rows_affected > 0)
+        let result = sqlx::query("DELETE FROM oauth_identity_providers WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
     }
 
     async fn save_allowed_domains(&self, idp_id: &str, domains: &[String]) -> Result<()> {
         for domain in domains {
-            let model = oauth_identity_provider_allowed_domains::ActiveModel {
-                id: NotSet,
-                identity_provider_id: Set(idp_id.to_string()),
-                email_domain: Set(domain.clone()),
-            };
-            oauth_identity_provider_allowed_domains::Entity::insert(model).exec(&self.db).await?;
+            sqlx::query(
+                "INSERT INTO oauth_identity_provider_allowed_domains (identity_provider_id, email_domain) VALUES ($1, $2)"
+            )
+            .bind(idp_id)
+            .bind(domain)
+            .execute(&self.pool)
+            .await?;
         }
         Ok(())
     }
 
     async fn delete_allowed_domains(&self, idp_id: &str) -> Result<()> {
-        oauth_identity_provider_allowed_domains::Entity::delete_many()
-            .filter(oauth_identity_provider_allowed_domains::Column::IdentityProviderId.eq(idp_id))
-            .exec(&self.db)
+        sqlx::query("DELETE FROM oauth_identity_provider_allowed_domains WHERE identity_provider_id = $1")
+            .bind(idp_id)
+            .execute(&self.pool)
             .await?;
         Ok(())
     }

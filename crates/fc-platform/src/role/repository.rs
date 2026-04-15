@@ -1,44 +1,88 @@
 //! Role Repository
 //!
-//! PostgreSQL persistence for AuthRole entities using SeaORM.
+//! PostgreSQL persistence for AuthRole entities using SQLx.
 //! Permissions are stored in the iam_role_permissions junction table.
 
 use async_trait::async_trait;
-use sea_orm::*;
-use sea_orm::sea_query::OnConflict;
-use chrono::Utc;
+use sqlx::{PgPool, Postgres, QueryBuilder};
+use chrono::{DateTime, Utc};
 
 use super::entity::{AuthRole, RoleSource};
-use crate::entities::{iam_roles, iam_role_permissions};
 use crate::shared::error::Result;
 use crate::usecase::unit_of_work::{HasId, PgPersist};
 
+/// Row mapping for iam_roles table
+#[derive(sqlx::FromRow)]
+struct RoleRow {
+    id: String,
+    application_id: Option<String>,
+    application_code: Option<String>,
+    name: String,
+    display_name: String,
+    description: Option<String>,
+    source: String,
+    client_managed: bool,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+impl From<RoleRow> for AuthRole {
+    fn from(r: RoleRow) -> Self {
+        // Extract application_code from the role name (part before first colon) if not set
+        let application_code = r.application_code.unwrap_or_else(|| {
+            r.name.split(':').next().unwrap_or("unknown").to_string()
+        });
+
+        Self {
+            id: r.id,
+            application_id: r.application_id,
+            name: r.name,
+            display_name: r.display_name,
+            description: r.description,
+            application_code,
+            permissions: std::collections::HashSet::new(), // loaded from junction table
+            source: RoleSource::from_str(&r.source),
+            client_managed: r.client_managed,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        }
+    }
+}
+
+/// Row mapping for iam_role_permissions junction table
+#[derive(sqlx::FromRow)]
+struct RolePermissionRow {
+    role_id: String,
+    permission: String,
+}
+
 pub struct RoleRepository {
-    db: DatabaseConnection,
+    pool: PgPool,
 }
 
 impl RoleRepository {
-    pub fn new(db: &DatabaseConnection) -> Self {
-        Self { db: db.clone() }
+    pub fn new(pool: &PgPool) -> Self {
+        Self { pool: pool.clone() }
     }
 
     pub async fn insert(&self, role: &AuthRole) -> Result<()> {
-        let model = iam_roles::ActiveModel {
-            id: Set(role.id.clone()),
-            application_id: Set(role.application_id.clone()),
-            application_code: Set(Some(role.application_code.clone())),
-            name: Set(role.name.clone()),
-            display_name: Set(role.display_name.clone()),
-            description: Set(role.description.clone()),
-            source: Set(role.source.as_str().to_string()),
-            client_managed: Set(role.client_managed),
-            created_at: Set(Utc::now().into()),
-            updated_at: Set(Utc::now().into()),
-        };
-
-        iam_roles::Entity::insert(model)
-            .exec(&self.db)
-            .await?;
+        let now = Utc::now();
+        sqlx::query(
+            "INSERT INTO iam_roles (id, application_id, application_code, name, display_name, description, source, client_managed, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
+        )
+        .bind(&role.id)
+        .bind(&role.application_id)
+        .bind(Some(&role.application_code))
+        .bind(&role.name)
+        .bind(&role.display_name)
+        .bind(&role.description)
+        .bind(role.source.as_str())
+        .bind(role.client_managed)
+        .bind(now)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
 
         // Insert permissions into junction table
         self.insert_permissions(&role.id, &role.permissions).await?;
@@ -47,13 +91,16 @@ impl RoleRepository {
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<AuthRole>> {
-        let result = iam_roles::Entity::find_by_id(id)
-            .one(&self.db)
-            .await?;
+        let row = sqlx::query_as::<_, RoleRow>(
+            "SELECT * FROM iam_roles WHERE id = $1"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
 
-        match result {
-            Some(model) => {
-                let mut role = AuthRole::from(model);
+        match row {
+            Some(r) => {
+                let mut role = AuthRole::from(r);
                 role.permissions = self.load_permissions(&role.id).await?;
                 Ok(Some(role))
             }
@@ -63,14 +110,16 @@ impl RoleRepository {
 
     /// Find role by name (formerly find_by_code)
     pub async fn find_by_name(&self, name: &str) -> Result<Option<AuthRole>> {
-        let result = iam_roles::Entity::find()
-            .filter(iam_roles::Column::Name.eq(name))
-            .one(&self.db)
-            .await?;
+        let row = sqlx::query_as::<_, RoleRow>(
+            "SELECT * FROM iam_roles WHERE name = $1"
+        )
+        .bind(name)
+        .fetch_optional(&self.pool)
+        .await?;
 
-        match result {
-            Some(model) => {
-                let mut role = AuthRole::from(model);
+        match row {
+            Some(r) => {
+                let mut role = AuthRole::from(r);
                 role.permissions = self.load_permissions(&role.id).await?;
                 Ok(Some(role))
             }
@@ -84,103 +133,137 @@ impl RoleRepository {
     }
 
     pub async fn find_all(&self) -> Result<Vec<AuthRole>> {
-        let results = iam_roles::Entity::find()
-            .all(&self.db)
-            .await?;
+        let rows = sqlx::query_as::<_, RoleRow>(
+            "SELECT * FROM iam_roles"
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
-        self.hydrate_roles(results).await
+        self.hydrate_roles(rows).await
     }
 
     pub async fn find_by_application(&self, application_code: &str) -> Result<Vec<AuthRole>> {
-        let results = iam_roles::Entity::find()
-            .filter(iam_roles::Column::ApplicationCode.eq(application_code))
-            .all(&self.db)
-            .await?;
+        let rows = sqlx::query_as::<_, RoleRow>(
+            "SELECT * FROM iam_roles WHERE application_code = $1"
+        )
+        .bind(application_code)
+        .fetch_all(&self.pool)
+        .await?;
 
-        self.hydrate_roles(results).await
+        self.hydrate_roles(rows).await
     }
 
     pub async fn find_by_application_id(&self, application_id: &str) -> Result<Vec<AuthRole>> {
-        let results = iam_roles::Entity::find()
-            .filter(iam_roles::Column::ApplicationId.eq(application_id))
-            .all(&self.db)
-            .await?;
+        let rows = sqlx::query_as::<_, RoleRow>(
+            "SELECT * FROM iam_roles WHERE application_id = $1"
+        )
+        .bind(application_id)
+        .fetch_all(&self.pool)
+        .await?;
 
-        self.hydrate_roles(results).await
+        self.hydrate_roles(rows).await
     }
 
     pub async fn find_by_source(&self, source: RoleSource) -> Result<Vec<AuthRole>> {
-        let results = iam_roles::Entity::find()
-            .filter(iam_roles::Column::Source.eq(source.as_str()))
-            .all(&self.db)
-            .await?;
+        let rows = sqlx::query_as::<_, RoleRow>(
+            "SELECT * FROM iam_roles WHERE source = $1"
+        )
+        .bind(source.as_str())
+        .fetch_all(&self.pool)
+        .await?;
 
-        self.hydrate_roles(results).await
+        self.hydrate_roles(rows).await
     }
 
     pub async fn find_client_managed(&self) -> Result<Vec<AuthRole>> {
-        let results = iam_roles::Entity::find()
-            .filter(iam_roles::Column::ClientManaged.eq(true))
-            .all(&self.db)
-            .await?;
+        let rows = sqlx::query_as::<_, RoleRow>(
+            "SELECT * FROM iam_roles WHERE client_managed = true"
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
-        self.hydrate_roles(results).await
+        self.hydrate_roles(rows).await
+    }
+
+    /// Find roles with optional combined filters (AND logic).
+    pub async fn find_with_filters(
+        &self,
+        application_code: Option<&str>,
+        source: Option<&str>,
+        client_managed: Option<bool>,
+    ) -> Result<Vec<AuthRole>> {
+        let mut qb: QueryBuilder<Postgres> = QueryBuilder::new("SELECT * FROM iam_roles");
+        let mut has_where = false;
+        let push_where = |qb: &mut QueryBuilder<Postgres>, has_where: &mut bool| {
+            qb.push(if *has_where { " AND " } else { " WHERE " });
+            *has_where = true;
+        };
+
+        if let Some(app) = application_code {
+            push_where(&mut qb, &mut has_where);
+            qb.push("application_code = ").push_bind(app.to_string());
+        }
+        if let Some(s) = source {
+            push_where(&mut qb, &mut has_where);
+            qb.push("source = ").push_bind(s.to_string());
+        }
+        if let Some(cm) = client_managed {
+            push_where(&mut qb, &mut has_where);
+            qb.push("client_managed = ").push_bind(cm);
+        }
+
+        let rows: Vec<RoleRow> = qb.build_query_as().fetch_all(&self.pool).await?;
+        self.hydrate_roles(rows).await
     }
 
     pub async fn find_by_codes(&self, codes: &[String]) -> Result<Vec<AuthRole>> {
         if codes.is_empty() {
             return Ok(vec![]);
         }
-        let results = iam_roles::Entity::find()
-            .filter(iam_roles::Column::Name.is_in(codes.to_vec()))
-            .all(&self.db)
-            .await?;
+        let rows = sqlx::query_as::<_, RoleRow>(
+            "SELECT * FROM iam_roles WHERE name = ANY($1)"
+        )
+        .bind(codes)
+        .fetch_all(&self.pool)
+        .await?;
 
-        self.hydrate_roles(results).await
+        self.hydrate_roles(rows).await
     }
 
     /// Search roles by name or display_name (case-insensitive partial match)
     pub async fn search(&self, term: &str) -> Result<Vec<AuthRole>> {
         let pattern = format!("%{}%", term);
-        let results = iam_roles::Entity::find()
-            .filter(
-                Condition::any()
-                    .add(iam_roles::Column::Name.like(&pattern))
-                    .add(iam_roles::Column::DisplayName.like(&pattern))
-            )
-            .all(&self.db)
-            .await?;
+        let rows = sqlx::query_as::<_, RoleRow>(
+            "SELECT * FROM iam_roles WHERE name ILIKE $1 OR display_name ILIKE $1"
+        )
+        .bind(&pattern)
+        .fetch_all(&self.pool)
+        .await?;
 
-        self.hydrate_roles(results).await
+        self.hydrate_roles(rows).await
     }
 
     pub async fn find_with_permission(&self, permission: &str) -> Result<Vec<AuthRole>> {
-        // Find role_ids that have this permission
-        let role_ids: Vec<String> = iam_role_permissions::Entity::find()
-            .filter(iam_role_permissions::Column::Permission.eq(permission))
-            .all(&self.db)
-            .await?
-            .into_iter()
-            .map(|rp| rp.role_id)
-            .collect();
+        let rows = sqlx::query_as::<_, RoleRow>(
+            "SELECT r.* FROM iam_roles r
+             INNER JOIN iam_role_permissions rp ON rp.role_id = r.id
+             WHERE rp.permission = $1"
+        )
+        .bind(permission)
+        .fetch_all(&self.pool)
+        .await?;
 
-        if role_ids.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let results = iam_roles::Entity::find()
-            .filter(iam_roles::Column::Id.is_in(role_ids))
-            .all(&self.db)
-            .await?;
-
-        self.hydrate_roles(results).await
+        self.hydrate_roles(rows).await
     }
 
     pub async fn exists(&self, id: &str) -> Result<bool> {
-        let count = iam_roles::Entity::find_by_id(id)
-            .count(&self.db)
-            .await?;
-        Ok(count > 0)
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM iam_roles WHERE id = $1"
+        )
+        .bind(id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.0 > 0)
     }
 
     /// Check if a role with the given name exists
@@ -189,35 +272,39 @@ impl RoleRepository {
     }
 
     pub async fn exists_by_code(&self, code: &str) -> Result<bool> {
-        let count = iam_roles::Entity::find()
-            .filter(iam_roles::Column::Name.eq(code))
-            .count(&self.db)
-            .await?;
-        Ok(count > 0)
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM iam_roles WHERE name = $1"
+        )
+        .bind(code)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.0 > 0)
     }
 
     pub async fn update(&self, role: &AuthRole) -> Result<()> {
-        let model = iam_roles::ActiveModel {
-            id: Set(role.id.clone()),
-            application_id: Set(role.application_id.clone()),
-            application_code: Set(Some(role.application_code.clone())),
-            name: Set(role.name.clone()),
-            display_name: Set(role.display_name.clone()),
-            description: Set(role.description.clone()),
-            source: Set(role.source.as_str().to_string()),
-            client_managed: Set(role.client_managed),
-            created_at: NotSet,
-            updated_at: Set(Utc::now().into()),
-        };
-
-        iam_roles::Entity::update(model)
-            .exec(&self.db)
-            .await?;
+        let now = Utc::now();
+        sqlx::query(
+            "UPDATE iam_roles SET
+                application_id = $2, application_code = $3, name = $4, display_name = $5,
+                description = $6, source = $7, client_managed = $8, updated_at = $9
+             WHERE id = $1"
+        )
+        .bind(&role.id)
+        .bind(&role.application_id)
+        .bind(Some(&role.application_code))
+        .bind(&role.name)
+        .bind(&role.display_name)
+        .bind(&role.description)
+        .bind(role.source.as_str())
+        .bind(role.client_managed)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
 
         // Sync permissions: delete all then re-insert
-        iam_role_permissions::Entity::delete_many()
-            .filter(iam_role_permissions::Column::RoleId.eq(&role.id))
-            .exec(&self.db)
+        sqlx::query("DELETE FROM iam_role_permissions WHERE role_id = $1")
+            .bind(&role.id)
+            .execute(&self.pool)
             .await?;
 
         self.insert_permissions(&role.id, &role.permissions).await?;
@@ -227,74 +314,62 @@ impl RoleRepository {
 
     pub async fn delete(&self, id: &str) -> Result<bool> {
         // Permissions cascade due to ON DELETE CASCADE
-        let result = iam_roles::Entity::delete_by_id(id)
-            .exec(&self.db)
+        let result = sqlx::query("DELETE FROM iam_roles WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
             .await?;
-        Ok(result.rows_affected > 0)
+        Ok(result.rows_affected() > 0)
     }
 
     // ── Helpers ──────────────────────────────────────────────
 
     /// Load permissions for a role from the junction table
     async fn load_permissions(&self, role_id: &str) -> Result<std::collections::HashSet<String>> {
-        let perms = iam_role_permissions::Entity::find()
-            .filter(iam_role_permissions::Column::RoleId.eq(role_id))
-            .all(&self.db)
-            .await?;
+        let perms: Vec<String> = sqlx::query_scalar(
+            "SELECT permission FROM iam_role_permissions WHERE role_id = $1"
+        )
+        .bind(role_id)
+        .fetch_all(&self.pool)
+        .await?;
 
-        Ok(perms.into_iter().map(|p| p.permission).collect())
+        Ok(perms.into_iter().collect())
     }
 
-    /// Insert permissions into the junction table
+    /// Insert permissions into the junction table using UNNEST
     async fn insert_permissions(&self, role_id: &str, permissions: &std::collections::HashSet<String>) -> Result<()> {
         if permissions.is_empty() {
             return Ok(());
         }
 
-        let models: Vec<iam_role_permissions::ActiveModel> = permissions
-            .iter()
-            .map(|perm| iam_role_permissions::ActiveModel {
-                role_id: Set(role_id.to_string()),
-                permission: Set(perm.clone()),
-            })
-            .collect();
+        let role_ids: Vec<String> = std::iter::repeat(role_id.to_string()).take(permissions.len()).collect();
+        let perms: Vec<String> = permissions.iter().cloned().collect();
 
-        iam_role_permissions::Entity::insert_many(models)
-            .exec(&self.db)
-            .await?;
+        sqlx::query(
+            "INSERT INTO iam_role_permissions (role_id, permission)
+             SELECT * FROM UNNEST($1::text[], $2::text[])"
+        )
+        .bind(&role_ids)
+        .bind(&perms)
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }
 
-    pub(crate) async fn insert_permissions_txn(
-        role_id: &str,
-        permissions: &std::collections::HashSet<String>,
-        txn: &sea_orm::DatabaseTransaction,
-    ) -> Result<()> {
-        if permissions.is_empty() { return Ok(()); }
-        let models: Vec<iam_role_permissions::ActiveModel> = permissions
-            .iter()
-            .map(|perm| iam_role_permissions::ActiveModel {
-                role_id: Set(role_id.to_string()),
-                permission: Set(perm.clone()),
-            })
-            .collect();
-        iam_role_permissions::Entity::insert_many(models).exec(txn).await?;
-        Ok(())
-    }
-
-    /// Convert a list of DB models to domain entities with permissions loaded
-    async fn hydrate_roles(&self, models: Vec<iam_roles::Model>) -> Result<Vec<AuthRole>> {
-        if models.is_empty() {
+    /// Convert a list of DB rows to domain entities with permissions loaded (batch)
+    async fn hydrate_roles(&self, rows: Vec<RoleRow>) -> Result<Vec<AuthRole>> {
+        if rows.is_empty() {
             return Ok(vec![]);
         }
 
         // Batch-load all permissions for these roles
-        let role_ids: Vec<String> = models.iter().map(|m| m.id.clone()).collect();
-        let all_perms = iam_role_permissions::Entity::find()
-            .filter(iam_role_permissions::Column::RoleId.is_in(role_ids))
-            .all(&self.db)
-            .await?;
+        let role_ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
+        let all_perms = sqlx::query_as::<_, RolePermissionRow>(
+            "SELECT role_id, permission FROM iam_role_permissions WHERE role_id = ANY($1)"
+        )
+        .bind(&role_ids)
+        .fetch_all(&self.pool)
+        .await?;
 
         // Group permissions by role_id
         let mut perm_map: std::collections::HashMap<String, std::collections::HashSet<String>> =
@@ -307,11 +382,11 @@ impl RoleRepository {
         }
 
         // Build domain entities
-        let roles = models
+        let roles = rows
             .into_iter()
-            .map(|m| {
-                let id = m.id.clone();
-                let mut role = AuthRole::from(m);
+            .map(|r| {
+                let id = r.id.clone();
+                let mut role = AuthRole::from(r);
                 if let Some(perms) = perm_map.remove(&id) {
                     role.permissions = perms;
                 }
@@ -331,48 +406,58 @@ impl HasId for AuthRole {
 
 #[async_trait]
 impl PgPersist for AuthRole {
-    async fn pg_upsert(&self, txn: &sea_orm::DatabaseTransaction) -> Result<()> {
-        let model = iam_roles::ActiveModel {
-            id: Set(self.id.clone()),
-            application_id: Set(self.application_id.clone()),
-            application_code: Set(Some(self.application_code.clone())),
-            name: Set(self.name.clone()),
-            display_name: Set(self.display_name.clone()),
-            description: Set(self.description.clone()),
-            source: Set(self.source.as_str().to_string()),
-            client_managed: Set(self.client_managed),
-            created_at: Set(Utc::now().into()),
-            updated_at: Set(Utc::now().into()),
-        };
-        iam_roles::Entity::insert(model)
-            .on_conflict(
-                OnConflict::column(iam_roles::Column::Id)
-                    .update_columns([
-                        iam_roles::Column::ApplicationId,
-                        iam_roles::Column::ApplicationCode,
-                        iam_roles::Column::Name,
-                        iam_roles::Column::DisplayName,
-                        iam_roles::Column::Description,
-                        iam_roles::Column::Source,
-                        iam_roles::Column::ClientManaged,
-                        iam_roles::Column::UpdatedAt,
-                    ])
-                    .to_owned(),
-            )
-            .exec(txn)
-            .await?;
+    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+        let now = Utc::now();
 
-        // Sync permissions
-        iam_role_permissions::Entity::delete_many()
-            .filter(iam_role_permissions::Column::RoleId.eq(&self.id))
-            .exec(txn)
-            .await?;
-        RoleRepository::insert_permissions_txn(&self.id, &self.permissions, txn).await?;
+        // 1. Upsert main row
+        sqlx::query(
+            "INSERT INTO iam_roles (id, application_id, application_code, name, display_name, description, source, client_managed, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             ON CONFLICT (id) DO UPDATE SET
+                application_id = EXCLUDED.application_id,
+                application_code = EXCLUDED.application_code,
+                name = EXCLUDED.name,
+                display_name = EXCLUDED.display_name,
+                description = EXCLUDED.description,
+                source = EXCLUDED.source,
+                client_managed = EXCLUDED.client_managed,
+                updated_at = EXCLUDED.updated_at"
+        )
+        .bind(&self.id)
+        .bind(&self.application_id)
+        .bind(Some(&self.application_code))
+        .bind(&self.name)
+        .bind(&self.display_name)
+        .bind(&self.description)
+        .bind(self.source.as_str())
+        .bind(self.client_managed)
+        .bind(now)
+        .bind(now)
+        .execute(&mut **txn).await?;
+
+        // 2. Delete existing permissions
+        sqlx::query("DELETE FROM iam_role_permissions WHERE role_id = $1")
+            .bind(&self.id)
+            .execute(&mut **txn).await?;
+
+        // 3. Re-insert permissions
+        for perm in &self.permissions {
+            sqlx::query(
+                "INSERT INTO iam_role_permissions (role_id, permission) VALUES ($1, $2)"
+            )
+            .bind(&self.id)
+            .bind(perm)
+            .execute(&mut **txn).await?;
+        }
+
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &sea_orm::DatabaseTransaction) -> Result<()> {
-        iam_roles::Entity::delete_by_id(&self.id).exec(txn).await?;
+    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+        // Permissions cascade via ON DELETE CASCADE
+        sqlx::query("DELETE FROM iam_roles WHERE id = $1")
+            .bind(&self.id)
+            .execute(&mut **txn).await?;
         Ok(())
     }
 }

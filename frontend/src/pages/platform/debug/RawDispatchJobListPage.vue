@@ -93,11 +93,13 @@ function getSeverity(
 			return "info";
 		case "QUEUED":
 			return "info";
-		case "IN_PROGRESS":
+		case "PROCESSING":
 			return "warn";
-		case "ERROR":
+		case "FAILED":
 			return "danger";
 		case "CANCELLED":
+			return "secondary";
+		case "EXPIRED":
 			return "secondary";
 		default:
 			return "secondary";

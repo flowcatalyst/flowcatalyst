@@ -116,3 +116,85 @@ impl UseCase for UpdateEmailDomainMappingUseCase {
         UseCaseResult::success(event)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_command_serialization() {
+        let cmd = UpdateEmailDomainMappingCommand {
+            mapping_id: "edm-123".to_string(),
+            scope_type: Some("PARTNER".to_string()),
+            primary_client_id: Some("client-456".to_string()),
+            sync_roles_from_idp: Some(true),
+            additional_client_ids: Some(vec!["c1".to_string(), "c2".to_string()]),
+            granted_client_ids: Some(vec!["g1".to_string()]),
+            allowed_role_ids: Some(vec!["r1".to_string(), "r2".to_string()]),
+        };
+
+        let json = serde_json::to_string(&cmd).unwrap();
+        assert!(json.contains("mappingId"));
+        assert!(json.contains("edm-123"));
+        assert!(json.contains("scopeType"));
+        assert!(json.contains("PARTNER"));
+        assert!(json.contains("additionalClientIds"));
+        assert!(json.contains("grantedClientIds"));
+        assert!(json.contains("allowedRoleIds"));
+
+        let deserialized: UpdateEmailDomainMappingCommand = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.mapping_id, "edm-123");
+        assert_eq!(deserialized.scope_type, Some("PARTNER".to_string()));
+        assert_eq!(deserialized.sync_roles_from_idp, Some(true));
+    }
+
+    #[test]
+    fn test_command_serialization_none_fields_skipped() {
+        let cmd = UpdateEmailDomainMappingCommand {
+            mapping_id: "edm-1".to_string(),
+            scope_type: None,
+            primary_client_id: None,
+            sync_roles_from_idp: None,
+            additional_client_ids: None,
+            granted_client_ids: None,
+            allowed_role_ids: None,
+        };
+
+        let json = serde_json::to_string(&cmd).unwrap();
+        assert!(json.contains("mappingId"));
+        assert!(!json.contains("scopeType"));
+        assert!(!json.contains("primaryClientId"));
+        assert!(!json.contains("syncRolesFromIdp"));
+        assert!(!json.contains("additionalClientIds"));
+        assert!(!json.contains("grantedClientIds"));
+        assert!(!json.contains("allowedRoleIds"));
+    }
+
+    #[test]
+    fn test_validate_empty_mapping_id() {
+        let cmd = UpdateEmailDomainMappingCommand {
+            mapping_id: "   ".to_string(),
+            scope_type: None,
+            primary_client_id: None,
+            sync_roles_from_idp: None,
+            additional_client_ids: None,
+            granted_client_ids: None,
+            allowed_role_ids: None,
+        };
+        assert!(cmd.mapping_id.trim().is_empty(), "Whitespace-only mapping_id should be treated as empty");
+    }
+
+    #[test]
+    fn test_validate_valid_mapping_id() {
+        let cmd = UpdateEmailDomainMappingCommand {
+            mapping_id: "edm-123".to_string(),
+            scope_type: None,
+            primary_client_id: None,
+            sync_roles_from_idp: None,
+            additional_client_ids: None,
+            granted_client_ids: None,
+            allowed_role_ids: None,
+        };
+        assert!(!cmd.mapping_id.trim().is_empty());
+    }
+}

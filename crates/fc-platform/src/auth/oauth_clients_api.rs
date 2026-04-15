@@ -320,7 +320,7 @@ pub async fn list_oauth_clients(
     ),
     request_body = UpdateOAuthClientRequest,
     responses(
-        (status = 200, description = "OAuth client updated", body = OAuthClientResponse),
+        (status = 204, description = "OAuth client updated"),
         (status = 404, description = "OAuth client not found")
     ),
     security(("bearer_auth" = []))
@@ -330,7 +330,7 @@ pub async fn update_oauth_client(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateOAuthClientRequest>,
-) -> Result<Json<OAuthClientResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
     let mut client = state.oauth_client_repo.find_by_id(&id).await?
@@ -363,7 +363,7 @@ pub async fn update_oauth_client(
     client.updated_at = chrono::Utc::now();
     state.oauth_client_repo.update(&client).await?;
 
-    Ok(Json(client.into()))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Delete OAuth client

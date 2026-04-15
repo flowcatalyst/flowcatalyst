@@ -77,20 +77,97 @@ impl Connection {
     }
 }
 
-impl From<crate::entities::msg_connections::Model> for Connection {
-    fn from(m: crate::entities::msg_connections::Model) -> Self {
-        Self {
-            id: m.id,
-            code: m.code,
-            name: m.name,
-            description: m.description,
-            external_id: m.external_id,
-            status: ConnectionStatus::from_str(&m.status),
-            service_account_id: m.service_account_id,
-            client_id: m.client_id,
-            client_identifier: m.client_identifier,
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_connection() {
+        let conn = Connection::new("webhook-1", "Webhook Connection", "sa-123");
+
+        assert!(!conn.id.is_empty());
+        assert!(conn.id.starts_with("con_"), "ID should have con_ prefix, got: {}", conn.id);
+        assert_eq!(conn.code, "webhook-1");
+        assert_eq!(conn.name, "Webhook Connection");
+        assert_eq!(conn.service_account_id, "sa-123");
+        assert!(conn.description.is_none());
+        assert!(conn.external_id.is_none());
+        assert_eq!(conn.status, ConnectionStatus::Active);
+        assert!(conn.client_id.is_none());
+        assert!(conn.client_identifier.is_none());
+        assert_eq!(conn.created_at, conn.updated_at);
+    }
+
+    #[test]
+    fn test_connection_builder_methods() {
+        let conn = Connection::new("c1", "Connection 1", "sa-1")
+            .with_description("A test connection")
+            .with_external_id("ext-123")
+            .with_client_id("client-1")
+            .with_client_identifier("client-ident-1");
+
+        assert_eq!(conn.description, Some("A test connection".to_string()));
+        assert_eq!(conn.external_id, Some("ext-123".to_string()));
+        assert_eq!(conn.client_id, Some("client-1".to_string()));
+        assert_eq!(conn.client_identifier, Some("client-ident-1".to_string()));
+    }
+
+    #[test]
+    fn test_connection_pause_and_activate() {
+        let mut conn = Connection::new("c1", "Connection", "sa-1");
+        assert_eq!(conn.status, ConnectionStatus::Active);
+
+        conn.pause();
+        assert_eq!(conn.status, ConnectionStatus::Paused);
+
+        conn.activate();
+        assert_eq!(conn.status, ConnectionStatus::Active);
+    }
+
+    #[test]
+    fn test_connection_status_as_str() {
+        assert_eq!(ConnectionStatus::Active.as_str(), "ACTIVE");
+        assert_eq!(ConnectionStatus::Paused.as_str(), "PAUSED");
+    }
+
+    #[test]
+    fn test_connection_status_from_str() {
+        assert_eq!(ConnectionStatus::from_str("ACTIVE"), ConnectionStatus::Active);
+        assert_eq!(ConnectionStatus::from_str("PAUSED"), ConnectionStatus::Paused);
+        // Default/fallback is Active
+        assert_eq!(ConnectionStatus::from_str("unknown"), ConnectionStatus::Active);
+        assert_eq!(ConnectionStatus::from_str(""), ConnectionStatus::Active);
+    }
+
+    #[test]
+    fn test_connection_status_default() {
+        let status = ConnectionStatus::default();
+        assert_eq!(status, ConnectionStatus::Active);
+    }
+
+    #[test]
+    fn test_connection_status_serialization() {
+        let json = serde_json::to_string(&ConnectionStatus::Active).unwrap();
+        assert_eq!(json, "\"ACTIVE\"");
+
+        let json = serde_json::to_string(&ConnectionStatus::Paused).unwrap();
+        assert_eq!(json, "\"PAUSED\"");
+    }
+
+    #[test]
+    fn test_connection_unique_ids() {
+        let c1 = Connection::new("a", "A", "sa-1");
+        let c2 = Connection::new("b", "B", "sa-2");
+        assert_ne!(c1.id, c2.id);
+    }
+
+    #[test]
+    fn test_pause_updates_timestamp() {
+        let mut conn = Connection::new("c1", "C", "sa-1");
+        let original_updated_at = conn.updated_at;
+        // Small sleep not needed; Utc::now() granularity is sufficient for >=
+        conn.pause();
+        assert!(conn.updated_at >= original_updated_at);
     }
 }
+

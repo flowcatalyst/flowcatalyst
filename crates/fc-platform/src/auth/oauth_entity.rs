@@ -203,30 +203,3 @@ impl OAuthClient {
     }
 }
 
-/// Conversion from SeaORM model — redirect_uris, grant_types, application_ids loaded separately
-impl From<crate::entities::oauth_clients::Model> for OAuthClient {
-    fn from(m: crate::entities::oauth_clients::Model) -> Self {
-        let default_scopes: Vec<String> = m.default_scopes
-            .map(|s| s.split(',').filter(|v| !v.is_empty()).map(String::from).collect())
-            .unwrap_or_default();
-
-        Self {
-            id: m.id,
-            client_id: m.client_id,
-            client_name: m.client_name,
-            client_type: OAuthClientType::from_str(&m.client_type),
-            client_secret_ref: m.client_secret_ref,
-            redirect_uris: vec![], // loaded separately
-            grant_types: vec![],   // loaded separately
-            default_scopes,
-            pkce_required: m.pkce_required,
-            application_ids: vec![],
-            allowed_origins: vec![], // loaded separately
-            service_account_principal_id: m.service_account_principal_id,
-            active: m.active,
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
-            created_by: None,
-        }
-    }
-}

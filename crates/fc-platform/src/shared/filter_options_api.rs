@@ -414,11 +414,12 @@ pub async fn get_events_filter_options(
 /// Dispatch job status options
 const DISPATCH_JOB_STATUSES: &[(&str, &str)] = &[
     ("PENDING", "Pending"),
-    ("SCHEDULED", "Scheduled"),
-    ("IN_PROGRESS", "In Progress"),
+    ("QUEUED", "Queued"),
+    ("PROCESSING", "Processing"),
     ("COMPLETED", "Completed"),
     ("FAILED", "Failed"),
     ("CANCELLED", "Cancelled"),
+    ("EXPIRED", "Expired"),
 ];
 
 /// Get dispatch jobs filter options

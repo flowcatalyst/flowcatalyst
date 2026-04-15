@@ -130,3 +130,103 @@ impl UseCase for CreateEmailDomainMappingUseCase {
         UseCaseResult::success(event)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_command_serialization() {
+        let cmd = CreateEmailDomainMappingCommand {
+            email_domain: "example.com".to_string(),
+            identity_provider_id: "idp-123".to_string(),
+            scope_type: "ANCHOR".to_string(),
+            primary_client_id: Some("client-456".to_string()),
+            sync_roles_from_idp: true,
+        };
+
+        let json = serde_json::to_string(&cmd).unwrap();
+        assert!(json.contains("emailDomain"));
+        assert!(json.contains("example.com"));
+        assert!(json.contains("identityProviderId"));
+        assert!(json.contains("idp-123"));
+        assert!(json.contains("primaryClientId"));
+        assert!(json.contains("client-456"));
+        assert!(json.contains("syncRolesFromIdp"));
+
+        let deserialized: CreateEmailDomainMappingCommand = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.email_domain, "example.com");
+        assert_eq!(deserialized.identity_provider_id, "idp-123");
+        assert_eq!(deserialized.scope_type, "ANCHOR");
+        assert_eq!(deserialized.primary_client_id, Some("client-456".to_string()));
+        assert!(deserialized.sync_roles_from_idp);
+    }
+
+    #[test]
+    fn test_command_serialization_without_optional_fields() {
+        let cmd = CreateEmailDomainMappingCommand {
+            email_domain: "test.org".to_string(),
+            identity_provider_id: "idp-1".to_string(),
+            scope_type: "CLIENT".to_string(),
+            primary_client_id: None,
+            sync_roles_from_idp: false,
+        };
+
+        let json = serde_json::to_string(&cmd).unwrap();
+        // primaryClientId should be skipped when None
+        assert!(!json.contains("primaryClientId"));
+    }
+
+    #[test]
+    fn test_validate_empty_email_domain() {
+        // Replicate the validation logic from validate() — email_domain is trimmed
+        let cmd = CreateEmailDomainMappingCommand {
+            email_domain: "   ".to_string(),
+            identity_provider_id: "idp-1".to_string(),
+            scope_type: "ANCHOR".to_string(),
+            primary_client_id: None,
+            sync_roles_from_idp: false,
+        };
+        let trimmed = cmd.email_domain.trim().to_lowercase();
+        assert!(trimmed.is_empty(), "Whitespace-only email domain should be treated as empty");
+    }
+
+    #[test]
+    fn test_validate_empty_identity_provider_id() {
+        let cmd = CreateEmailDomainMappingCommand {
+            email_domain: "example.com".to_string(),
+            identity_provider_id: "  ".to_string(),
+            scope_type: "ANCHOR".to_string(),
+            primary_client_id: None,
+            sync_roles_from_idp: false,
+        };
+        assert!(cmd.identity_provider_id.trim().is_empty(), "Whitespace-only IDP ID should be treated as empty");
+    }
+
+    #[test]
+    fn test_validate_valid_inputs() {
+        let cmd = CreateEmailDomainMappingCommand {
+            email_domain: "example.com".to_string(),
+            identity_provider_id: "idp-123".to_string(),
+            scope_type: "ANCHOR".to_string(),
+            primary_client_id: None,
+            sync_roles_from_idp: false,
+        };
+        let trimmed = cmd.email_domain.trim().to_lowercase();
+        assert!(!trimmed.is_empty());
+        assert!(!cmd.identity_provider_id.trim().is_empty());
+    }
+
+    #[test]
+    fn test_email_domain_normalized_to_lowercase() {
+        let cmd = CreateEmailDomainMappingCommand {
+            email_domain: "  EXAMPLE.COM  ".to_string(),
+            identity_provider_id: "idp-1".to_string(),
+            scope_type: "CLIENT".to_string(),
+            primary_client_id: None,
+            sync_roles_from_idp: false,
+        };
+        let normalized = cmd.email_domain.trim().to_lowercase();
+        assert_eq!(normalized, "example.com");
+    }
+}

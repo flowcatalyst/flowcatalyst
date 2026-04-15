@@ -31,98 +31,19 @@ use tower_http::trace::TraceLayer;
 // SPA serving moved to PlatformRoutes
 use axum::http::{Method, HeaderValue, header as http_header};
 use anyhow::Result;
-use tracing::{info, warn};
-use tokio::{signal, net::TcpListener};
+use tracing::info;
+use tokio::net::TcpListener;
 
-use fc_platform::service::{AuthService, AuthConfig, AuthorizationService, AuditService};
 use fc_platform::api::middleware::{AppState, AuthLayer};
-use fc_platform::api::{
-    EventsState,
-    EventTypesState,
-    DispatchJobsState,
-    FilterOptionsState,
-    ClientsState,
-    PrincipalsState,
-    RolesState,
-    SubscriptionsState,
-    OAuthClientsState,
-    AuthConfigState,
-    AuditLogsState,
-    ApplicationsState,
-    DispatchPoolsState,
-    MonitoringState, LeaderState, CircuitBreakerRegistry, InFlightTracker,
-    DebugState,
-    AuthState,
-    OAuthState,
-    ServiceAccountsState,
-    // New domain APIs
-    ConnectionsState,
-    CorsState,
-    IdentityProvidersState,
-    EmailDomainMappingsState,
-    PlatformConfigState,
-    ConfigAccessState,
-    LoginAttemptsState,
-    MeState,
-    SdkEventsState,
-    SdkClientsState,
-    SdkPrincipalsState,
-    SdkRolesState,
-    WellKnownState,
-    ClientSelectionState,
-    ApplicationRolesSdkState,
-    PublicApiState,
-    PasswordResetApiState,
-    SdkSyncState,
-    SdkAuditBatchState,
-    SdkDispatchJobsState,
-    BffRolesState,
-    BffEventTypesState,
-};
-use fc_platform::router::PlatformRoutes;
 use fc_platform::repository::{
-    EventRepository, EventTypeRepository, DispatchJobRepository, DispatchPoolRepository,
-    SubscriptionRepository, ServiceAccountRepository, PrincipalRepository, ClientRepository,
-    ApplicationRepository, RoleRepository, OAuthClientRepository,
-    AnchorDomainRepository, ClientAuthConfigRepository, ClientAccessGrantRepository, IdpRoleMappingRepository,
-    AuditLogRepository, ApplicationClientConfigRepository, OidcLoginStateRepository, RefreshTokenRepository,
-    AuthorizationCodeRepository,
-    // New repos
-    ConnectionRepository, CorsOriginRepository, IdentityProviderRepository,
-    EmailDomainMappingRepository, PlatformConfigRepository, PlatformConfigAccessRepository,
-    LoginAttemptRepository,
-    PasswordResetTokenRepository,
+    Repositories,
+    CorsOriginRepository,
 };
 use fc_platform::usecase::PgUnitOfWork;
-use fc_platform::shared::encryption_service::EncryptionService;
-use fc_platform::operations::{
-    // Service Account use cases
-    CreateServiceAccountUseCase, UpdateServiceAccountUseCase, DeleteServiceAccountUseCase,
-    AssignRolesUseCase, RegenerateAuthTokenUseCase, RegenerateSigningSecretUseCase,
-    // Application use cases
-    CreateApplicationUseCase, UpdateApplicationUseCase,
-    ActivateApplicationUseCase, DeactivateApplicationUseCase,
-    // Dispatch Pool use cases
-    CreateDispatchPoolUseCase, UpdateDispatchPoolUseCase,
-    ArchiveDispatchPoolUseCase, DeleteDispatchPoolUseCase,
-};
-use fc_platform::service::PasswordService;
-use fc_platform::service::OidcSyncService;
-use fc_platform::service::OidcService;
-use fc_platform::api::OidcLoginApiState;
 use fc_platform::seed::DevDataSeeder;
 
 
-fn env_or(key: &str, default: &str) -> String {
-    std::env::var(key).unwrap_or_else(|_| default.to_string())
-}
-
-fn env_or_parse<T: std::str::FromStr>(key: &str, default: T) -> T {
-    std::env::var(key)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
-}
+use fc_common::config::{env_or, env_or_parse};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -141,11 +62,11 @@ async fn main() -> Result<()> {
 
     // Connect to PostgreSQL
     info!("Connecting to PostgreSQL...");
-    let pg_db = fc_platform::shared::database::create_connection(&database_url).await
+    let pg_pool = fc_platform::shared::database::create_pool(&database_url).await
         .map_err(|e| anyhow::anyhow!("PostgreSQL connection failed: {}", e))?;
 
     // Run PostgreSQL migrations
-    fc_platform::shared::database::run_migrations(&pg_db).await
+    fc_platform::shared::database::run_migrations(&pg_pool).await
         .map_err(|e| anyhow::anyhow!("PostgreSQL migrations failed: {}", e))?;
 
     // Seed development data if in dev mode
@@ -153,54 +74,21 @@ async fn main() -> Result<()> {
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false);
     if dev_mode {
-        let seeder = DevDataSeeder::new(pg_db.clone());
+        let seeder = DevDataSeeder::new(pg_pool.clone());
         if let Err(e) = seeder.seed().await {
             tracing::warn!("Dev data seeding skipped (data may already exist): {}", e);
         }
     }
 
-    // Create SQLx pool (for migrated repositories)
-    let pg_pool = fc_platform::shared::database::create_pool(&database_url).await
-        .map_err(|e| anyhow::anyhow!("SQLx pool creation failed: {}", e))?;
-
     // Initialize repositories
-    let event_repo = Arc::new(EventRepository::new(&pg_pool));
-    let event_type_repo = Arc::new(EventTypeRepository::new(&pg_db));
-    let dispatch_job_repo = Arc::new(DispatchJobRepository::new(&pg_db));
-    let dispatch_pool_repo = Arc::new(DispatchPoolRepository::new(&pg_db));
-    let subscription_repo = Arc::new(SubscriptionRepository::new(&pg_db));
-    let service_account_repo = Arc::new(ServiceAccountRepository::new(&pg_db));
-    let principal_repo = Arc::new(PrincipalRepository::new(&pg_db));
-    let client_repo = Arc::new(ClientRepository::new(&pg_db));
-    let application_repo = Arc::new(ApplicationRepository::new(&pg_db));
-    let role_repo = Arc::new(RoleRepository::new(&pg_db));
-    let oauth_client_repo = Arc::new(OAuthClientRepository::new(&pg_db));
-    let anchor_domain_repo = Arc::new(AnchorDomainRepository::new(&pg_db));
-    let client_auth_config_repo = Arc::new(ClientAuthConfigRepository::new(&pg_db));
-    let client_access_grant_repo = Arc::new(ClientAccessGrantRepository::new(&pg_db));
-    let idp_role_mapping_repo = Arc::new(IdpRoleMappingRepository::new(&pg_db));
-    let audit_log_repo = Arc::new(AuditLogRepository::new(&pg_db));
-    let application_client_config_repo = Arc::new(ApplicationClientConfigRepository::new(&pg_db));
-    let oidc_login_state_repo = Arc::new(OidcLoginStateRepository::new(&pg_db));
-    let refresh_token_repo = Arc::new(RefreshTokenRepository::new(&pg_db));
-    let auth_code_repo = Arc::new(AuthorizationCodeRepository::new(&pg_db));
-    // New domain repositories
-    let connection_repo = Arc::new(ConnectionRepository::new(&pg_db));
-    let cors_repo = Arc::new(CorsOriginRepository::new(&pg_db));
-    let idp_repo = Arc::new(IdentityProviderRepository::new(&pg_db));
-    let edm_repo = Arc::new(EmailDomainMappingRepository::new(&pg_db));
-    let platform_config_repo = Arc::new(PlatformConfigRepository::new(&pg_db));
-    let platform_config_access_repo = Arc::new(PlatformConfigAccessRepository::new(&pg_db));
-    let login_attempt_repo = Arc::new(LoginAttemptRepository::new(&pg_db));
-    let password_reset_repo = Arc::new(PasswordResetTokenRepository::new(&pg_db));
-    let pending_auth_repo = Arc::new(fc_platform::PendingAuthRepository::new(&pg_db));
+    let repos = Repositories::new(&pg_pool);
     info!("Repositories initialized");
 
     // Load CORS allowed origins from database into a shared cache
     let cors_origins_cache: Arc<std::sync::RwLock<std::collections::HashSet<String>>> =
         Arc::new(std::sync::RwLock::new(std::collections::HashSet::new()));
     {
-        match cors_repo.get_allowed_origins().await {
+        match repos.cors_repo.get_allowed_origins().await {
             Ok(origins) => {
                 let mut cache = cors_origins_cache.write().unwrap();
                 for origin in origins {
@@ -216,7 +104,7 @@ async fn main() -> Result<()> {
     // Spawn background task to refresh CORS origins every 60 seconds
     {
         let cache = cors_origins_cache.clone();
-        let cors_repo_bg = CorsOriginRepository::new(&pg_db);
+        let cors_repo_bg = CorsOriginRepository::new(&pg_pool);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
             interval.tick().await; // skip first immediate tick
@@ -241,378 +129,46 @@ async fn main() -> Result<()> {
     // Sync code-defined roles to database (always, not just in dev mode)
     {
         let role_sync = fc_platform::service::RoleSyncService::new(
-            fc_platform::repository::RoleRepository::new(&pg_db)
+            fc_platform::repository::RoleRepository::new(&pg_pool)
         );
         if let Err(e) = role_sync.sync_code_defined_roles().await {
             tracing::warn!("Role sync failed: {}", e);
         }
     }
 
-    // Initialize auth (load or generate RSA keys)
-    let private_key_path = std::env::var("FC_JWT_PRIVATE_KEY_PATH").ok();
-    let public_key_path = std::env::var("FC_JWT_PUBLIC_KEY_PATH").ok();
-
-    let (private_key, public_key) = AuthConfig::load_or_generate_rsa_keys(
-        private_key_path.as_deref(),
-        public_key_path.as_deref(),
-    )?;
-
-    // Load previous public key for JWT key rotation (optional)
-    let previous_public_key = std::env::var("FC_JWT_PUBLIC_KEY_PATH_PREVIOUS").ok()
-        .and_then(|p| std::fs::read_to_string(&p).ok())
-        .or_else(|| std::env::var("FLOWCATALYST_JWT_PUBLIC_KEY_PREVIOUS").ok());
-
-    let auth_config = AuthConfig {
-        rsa_private_key: Some(private_key),
-        rsa_public_key: Some(public_key),
-        rsa_public_key_previous: previous_public_key,
-        secret_key: String::new(),
-        audience: jwt_issuer.clone(),
+    // Initialize auth services (load or generate RSA keys, build services)
+    let auth_init_config = fc_platform::shared::server_setup::AuthInitConfig {
         issuer: jwt_issuer,
-        access_token_expiry_secs: env_or_parse("FC_ACCESS_TOKEN_EXPIRY_SECS", 3600),
-        session_token_expiry_secs: env_or_parse("FC_SESSION_TOKEN_EXPIRY_SECS", 28800),
-        refresh_token_expiry_secs: env_or_parse("FC_REFRESH_TOKEN_EXPIRY_SECS", 86400 * 30),
+        ..fc_platform::shared::server_setup::AuthInitConfig::from_env("http://localhost:3000")
     };
-    let auth_service = Arc::new(AuthService::new(auth_config));
-    let authz_service = Arc::new(AuthorizationService::new(role_repo.clone()));
-    let password_service = Arc::new(PasswordService::default());
-    let oidc_sync_service = Arc::new(OidcSyncService::new(
-        principal_repo.clone(),
-        idp_role_mapping_repo.clone(),
-    ));
-    let oidc_service = Arc::new(OidcService::new());
+    let auth_services = fc_platform::shared::server_setup::init_auth_services(&repos, auth_init_config)?;
     info!("Auth services initialized");
 
     // Create AppState
     let app_state = AppState {
-        auth_service: auth_service.clone(),
-        authz_service,
+        auth_service: auth_services.auth.clone(),
+        authz_service: auth_services.authz.clone(),
     };
 
-    // Build API states
-    let events_state = EventsState { event_repo: event_repo.clone() };
     // Create UnitOfWork for atomic commits with events and audit logs
-    let unit_of_work = Arc::new(PgUnitOfWork::new(pg_db.clone()));
+    let unit_of_work = Arc::new(PgUnitOfWork::new(pg_pool.clone()));
 
-    let sync_event_types_use_case = Arc::new(fc_platform::event_type::operations::SyncEventTypesUseCase::new(event_type_repo.clone()));
-    let event_types_state = EventTypesState { event_type_repo: event_type_repo.clone(), sync_use_case: sync_event_types_use_case.clone() };
-    let dispatch_jobs_state = DispatchJobsState { dispatch_job_repo: dispatch_job_repo.clone() };
-    let sdk_events_state = SdkEventsState { event_repo: event_repo.clone() };
-    let sdk_clients_state = SdkClientsState { client_repo: client_repo.clone(), unit_of_work: unit_of_work.clone() };
-    let sdk_principals_state = SdkPrincipalsState { principal_repo: principal_repo.clone(), role_repo: role_repo.clone(), unit_of_work: unit_of_work.clone() };
-    let sdk_roles_state = SdkRolesState {
-        role_repo: role_repo.clone(),
-        application_repo: application_repo.clone(),
-    };
-    let debug_state = DebugState {
-        event_repo,
-        dispatch_job_repo: dispatch_job_repo.clone(),
-    };
-    let filter_options_state = FilterOptionsState {
-        client_repo: client_repo.clone(),
-        event_type_repo: event_type_repo.clone(),
-        subscription_repo: subscription_repo.clone(),
-        dispatch_pool_repo: dispatch_pool_repo.clone(),
-        application_repo: application_repo.clone(),
-    };
-    let audit_service = Arc::new(AuditService::new(audit_log_repo.clone()));
-    let clients_state = ClientsState {
-        client_repo: client_repo.clone(),
-        application_repo: Some(application_repo.clone()),
-        application_client_config_repo: Some(application_client_config_repo.clone()),
-        audit_service: Some(audit_service.clone()),
-    };
-    let principals_state = PrincipalsState {
-        principal_repo: principal_repo.clone(),
-        audit_service: Some(audit_service),
-        password_service: None,
-        anchor_domain_repo: Some(anchor_domain_repo.clone()),
-        client_auth_config_repo: Some(client_auth_config_repo.clone()),
-        application_repo: Some(application_repo.clone()),
-        app_client_config_repo: Some(application_client_config_repo.clone()),
-    };
-    let roles_state = RolesState { role_repo: role_repo.clone(), application_repo: Some(application_repo.clone()) };
-    let sync_subscriptions_use_case = Arc::new(fc_platform::subscription::operations::SyncSubscriptionsUseCase::new(
-        subscription_repo.clone(), connection_repo.clone(), dispatch_pool_repo.clone(),
-    ));
-    let subscriptions_state = SubscriptionsState { subscription_repo, sync_use_case: sync_subscriptions_use_case.clone() };
-    let oauth_clients_state = OAuthClientsState { oauth_client_repo: oauth_client_repo.clone() };
-    let auth_config_state = AuthConfigState {
-        anchor_domain_repo: anchor_domain_repo.clone(),
-        client_auth_config_repo: client_auth_config_repo.clone(),
-        idp_role_mapping_repo: idp_role_mapping_repo.clone(),
-        principal_repo: Some(principal_repo.clone()),
-    };
-
-    let external_base_url = std::env::var("FC_EXTERNAL_BASE_URL").ok();
-    let oidc_login_state = OidcLoginApiState::new(
-        anchor_domain_repo,
-        idp_repo.clone(),
-        edm_repo.clone(),
-        oidc_login_state_repo,
-        oidc_sync_service,
-        auth_service.clone(),
-        unit_of_work.clone(),
-    ).with_session_cookie_settings("fc_session", false, "Lax", 86400);
-    let encryption_service = EncryptionService::from_env().map(Arc::new);
-    let oidc_login_state = if let Some(enc_svc) = encryption_service {
-        oidc_login_state.with_encryption_service(enc_svc)
-    } else {
-        warn!("FLOWCATALYST_APP_KEY not set — OIDC client secrets cannot be decrypted");
-        oidc_login_state
-    };
-    let oidc_login_state = if let Some(url) = external_base_url {
-        oidc_login_state.with_external_base_url(url)
-    } else {
-        oidc_login_state
-    };
-    let embedded_auth_state = AuthState::new(
-        auth_service.clone(),
-        principal_repo.clone(),
-        password_service.clone(),
-        refresh_token_repo.clone(),
-        edm_repo.clone(),
-        idp_repo.clone(),
-        login_attempt_repo.clone(),
+    // Build platform API router via shared builder (handles ~38 state structs)
+    let routes = fc_platform::shared::server_setup::build_platform_routes(
+        &repos,
+        &auth_services,
+        &unit_of_work,
+        fc_platform::shared::server_setup::PlatformRoutesConfig {
+            event_dispatch: None,
+            session_cookie_secure: false,
+            static_dir: std::env::var("FC_STATIC_DIR").ok(),
+            oidc_login_external_base_url: std::env::var("FC_EXTERNAL_BASE_URL").ok(),
+            well_known_external_base_url: std::env::var("FC_EXTERNAL_BASE_URL")
+                .unwrap_or_else(|_| format!("http://localhost:{}", api_port)),
+            password_reset_external_base_url: std::env::var("FC_EXTERNAL_BASE_URL")
+                .unwrap_or_else(|_| format!("http://localhost:{}", api_port)),
+        },
     );
-    let oauth_state = OAuthState::new(
-        oauth_client_repo.clone(),
-        principal_repo.clone(),
-        auth_service.clone(),
-        oidc_service,
-        auth_code_repo,
-        refresh_token_repo,
-        pending_auth_repo,
-        password_service.clone(),
-        login_attempt_repo.clone(),
-    );
-    let audit_logs_state = AuditLogsState { audit_log_repo: audit_log_repo.clone(), principal_repo: principal_repo.clone() };
-
-    // Create Service Account use cases
-    let create_sa_use_case = Arc::new(CreateServiceAccountUseCase::new(
-        service_account_repo.clone(),
-        unit_of_work.clone(),
-    ));
-    let update_sa_use_case = Arc::new(UpdateServiceAccountUseCase::new(
-        service_account_repo.clone(),
-        unit_of_work.clone(),
-    ));
-    let delete_sa_use_case = Arc::new(DeleteServiceAccountUseCase::new(
-        service_account_repo.clone(),
-        unit_of_work.clone(),
-    ));
-    let assign_roles_use_case = Arc::new(AssignRolesUseCase::new(
-        service_account_repo.clone(),
-        unit_of_work.clone(),
-    ));
-    let regenerate_token_use_case = Arc::new(RegenerateAuthTokenUseCase::new(
-        service_account_repo.clone(),
-        unit_of_work.clone(),
-    ));
-    let regenerate_secret_use_case = Arc::new(RegenerateSigningSecretUseCase::new(
-        service_account_repo.clone(),
-        unit_of_work.clone(),
-    ));
-
-    // Create Application use cases
-    let create_app_use_case = Arc::new(CreateApplicationUseCase::new(
-        application_repo.clone(),
-        unit_of_work.clone(),
-    ));
-    let update_app_use_case = Arc::new(UpdateApplicationUseCase::new(
-        application_repo.clone(),
-        unit_of_work.clone(),
-    ));
-    let activate_app_use_case = Arc::new(ActivateApplicationUseCase::new(
-        application_repo.clone(),
-        unit_of_work.clone(),
-    ));
-    let deactivate_app_use_case = Arc::new(DeactivateApplicationUseCase::new(
-        application_repo.clone(),
-        unit_of_work.clone(),
-    ));
-
-    // Create Dispatch Pool use cases
-    let create_pool_use_case = Arc::new(CreateDispatchPoolUseCase::new(
-        dispatch_pool_repo.clone(),
-        unit_of_work.clone(),
-    ));
-    let update_pool_use_case = Arc::new(UpdateDispatchPoolUseCase::new(
-        dispatch_pool_repo.clone(),
-        unit_of_work.clone(),
-    ));
-    let archive_pool_use_case = Arc::new(ArchiveDispatchPoolUseCase::new(
-        dispatch_pool_repo.clone(),
-        unit_of_work.clone(),
-    ));
-    let delete_pool_use_case = Arc::new(DeleteDispatchPoolUseCase::new(
-        dispatch_pool_repo.clone(),
-        unit_of_work.clone(),
-    ));
-
-    // New domain API states (before moves)
-    let connections_state = ConnectionsState { connection_repo };
-    let cors_state = CorsState { cors_repo };
-    let idp_state = IdentityProvidersState { idp_repo: idp_repo.clone() };
-    let edm_state = EmailDomainMappingsState { edm_repo, idp_repo };
-    let public_api_state = PublicApiState { config_repo: platform_config_repo.clone() };
-    let platform_config_state = PlatformConfigState { config_repo: platform_config_repo };
-    let config_access_state = ConfigAccessState { access_repo: platform_config_access_repo };
-    let login_attempts_state = LoginAttemptsState { login_attempt_repo };
-    let me_state = MeState {
-        client_repo: client_repo.clone(),
-        application_repo: application_repo.clone(),
-        app_client_config_repo: application_client_config_repo.clone(),
-    };
-    let well_known_state = WellKnownState {
-        auth_service: auth_service.clone(),
-        external_base_url: std::env::var("FC_EXTERNAL_BASE_URL")
-            .unwrap_or_else(|_| format!("http://localhost:{}", api_port)),
-    };
-    let client_selection_state = ClientSelectionState {
-        principal_repo: principal_repo.clone(),
-        client_repo: client_repo.clone(),
-        role_repo: role_repo.clone(),
-        grant_repo: client_access_grant_repo,
-        auth_service: auth_service.clone(),
-    };
-    let application_roles_sdk_state = ApplicationRolesSdkState {
-        application_repo: application_repo.clone(),
-        role_repo: role_repo.clone(),
-    };
-    let email_service: Arc<dyn fc_platform::shared::email_service::EmailService> =
-        Arc::from(fc_platform::shared::email_service::create_email_service());
-    let password_reset_state = PasswordResetApiState {
-        password_reset_repo,
-        principal_repo: principal_repo.clone(),
-        password_service: password_service.clone(),
-        unit_of_work: unit_of_work.clone(),
-        email_service: email_service.clone(),
-        external_base_url: std::env::var("FC_EXTERNAL_BASE_URL")
-            .unwrap_or_else(|_| format!("http://localhost:{}", api_port)),
-    };
-
-    // Build API states with use cases
-    let applications_state = ApplicationsState {
-        application_repo: application_repo.clone(),
-        service_account_repo: service_account_repo.clone(),
-        role_repo: role_repo.clone(),
-        client_config_repo: application_client_config_repo.clone(),
-        client_repo: client_repo.clone(),
-        create_use_case: create_app_use_case,
-        update_use_case: update_app_use_case,
-        activate_use_case: activate_app_use_case,
-        deactivate_use_case: deactivate_app_use_case,
-    };
-    let service_accounts_state = ServiceAccountsState {
-        repo: service_account_repo,
-        oauth_client_repo: oauth_client_repo.clone(),
-        create_use_case: create_sa_use_case,
-        update_use_case: update_sa_use_case,
-        delete_use_case: delete_sa_use_case,
-        assign_roles_use_case,
-        regenerate_token_use_case,
-        regenerate_secret_use_case,
-    };
-    let sync_dispatch_pools_use_case = Arc::new(fc_platform::dispatch_pool::operations::SyncDispatchPoolsUseCase::new(dispatch_pool_repo.clone()));
-    let dispatch_pools_state = DispatchPoolsState {
-        dispatch_pool_repo: dispatch_pool_repo.clone(),
-        create_use_case: create_pool_use_case,
-        update_use_case: update_pool_use_case,
-        archive_use_case: archive_pool_use_case,
-        delete_use_case: delete_pool_use_case,
-        sync_use_case: sync_dispatch_pools_use_case.clone(),
-    };
-
-    // SDK sync state (application-scoped sync endpoints)
-    let sync_roles_use_case = Arc::new(fc_platform::role::operations::SyncRolesUseCase::new(role_repo.clone(), application_repo.clone()));
-    let sync_principals_use_case = Arc::new(fc_platform::principal::operations::SyncPrincipalsUseCase::new(principal_repo.clone(), application_repo.clone()));
-    let sdk_sync_state = SdkSyncState {
-        sync_roles_use_case,
-        sync_event_types_use_case: sync_event_types_use_case.clone(),
-        sync_subscriptions_use_case: sync_subscriptions_use_case.clone(),
-        sync_dispatch_pools_use_case: sync_dispatch_pools_use_case.clone(),
-        sync_principals_use_case,
-    };
-
-    // SDK audit batch state
-    let sdk_audit_batch_state = SdkAuditBatchState {
-        audit_log_repo: audit_log_repo.clone(),
-        application_repo: application_repo.clone(),
-        client_repo: client_repo.clone(),
-    };
-
-    // SDK dispatch jobs batch state
-    let sdk_dispatch_jobs_state = SdkDispatchJobsState {
-        dispatch_job_repo: dispatch_job_repo.clone(),
-    };
-
-    // BFF states
-    let bff_roles_state = BffRolesState {
-        role_repo: role_repo.clone(),
-        application_repo: Some(application_repo.clone()),
-        unit_of_work: unit_of_work.clone(),
-    };
-    let bff_event_types_state = BffEventTypesState {
-        event_type_repo: event_type_repo.clone(),
-        application_repo: Some(application_repo.clone()),
-        sync_use_case: sync_event_types_use_case.clone(),
-        unit_of_work: unit_of_work.clone(),
-    };
-
-    let monitoring_state = MonitoringState {
-        leader_state: LeaderState::new(uuid::Uuid::new_v4().to_string()),
-        circuit_breakers: CircuitBreakerRegistry::new(),
-        in_flight: InFlightTracker::new(),
-        dispatch_job_repo,
-        start_time: std::time::Instant::now(),
-    };
-
-    // Build platform API router via centralized PlatformRoutes builder
-    let routes = PlatformRoutes {
-        events: events_state,
-        event_types: event_types_state,
-        dispatch_jobs: dispatch_jobs_state,
-        filter_options: filter_options_state,
-        clients: clients_state,
-        principals: principals_state,
-        roles: roles_state,
-        subscriptions: subscriptions_state,
-        oauth_clients: oauth_clients_state,
-        audit_logs: audit_logs_state,
-        monitoring: monitoring_state,
-        auth: embedded_auth_state,
-        bff_roles: bff_roles_state,
-        bff_event_types: bff_event_types_state,
-        debug: debug_state,
-        auth_config: auth_config_state,
-        applications: applications_state,
-        dispatch_pools: dispatch_pools_state,
-        service_accounts: service_accounts_state,
-        connections: connections_state,
-        cors: cors_state,
-        identity_providers: idp_state,
-        email_domain_mappings: edm_state,
-        platform_config: platform_config_state,
-        config_access: config_access_state,
-        login_attempts: login_attempts_state,
-        me: me_state,
-        sdk_events: sdk_events_state,
-        sdk_clients: sdk_clients_state,
-        sdk_principals: sdk_principals_state,
-        sdk_roles: sdk_roles_state,
-        sdk_dispatch_jobs: sdk_dispatch_jobs_state,
-        oidc_login: oidc_login_state,
-        oauth: oauth_state,
-        well_known: well_known_state,
-        client_selection: client_selection_state,
-        application_roles_sdk: application_roles_sdk_state,
-        sdk_sync: sdk_sync_state,
-        sdk_audit_batch: sdk_audit_batch_state,
-        public: public_api_state,
-        password_reset: password_reset_state,
-        static_dir: std::env::var("FC_STATIC_DIR").ok(),
-    };
     let (app, _openapi) = routes.build();
 
     // Add middleware layers
@@ -693,7 +249,7 @@ async fn main() -> Result<()> {
     info!("Press Ctrl+C to shutdown");
 
     // Wait for shutdown
-    shutdown_signal().await;
+    fc_platform::shared::server_setup::wait_for_shutdown_signal().await;
     info!("Shutdown signal received...");
 
     api_task.abort();
@@ -720,24 +276,3 @@ async fn ready_handler() -> Json<serde_json::Value> {
     }))
 }
 
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        signal::ctrl_c().await.expect("failed to install Ctrl+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
-    }
-}

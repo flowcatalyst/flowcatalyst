@@ -195,7 +195,7 @@ pub struct ApplicationsState<U: UnitOfWork + 'static> {
     operation_id = "postApiAdminApplications",
     request_body = CreateApplicationRequest,
     responses(
-        (status = 201, description = "Application created", body = ApplicationResponse),
+        (status = 201, description = "Application created", body = crate::shared::api_common::CreatedResponse),
         (status = 400, description = "Validation error"),
         (status = 409, description = "Duplicate code")
     ),
@@ -205,7 +205,7 @@ pub async fn create_application<U: UnitOfWork>(
     State(state): State<ApplicationsState<U>>,
     auth: Authenticated,
     Json(req): Json<CreateApplicationRequest>,
-) -> Result<(StatusCode, Json<ApplicationResponse>), PlatformError> {
+) -> Result<(StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
     // Only anchor users can manage applications
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
@@ -222,9 +222,7 @@ pub async fn create_application<U: UnitOfWork>(
 
     match state.create_use_case.run(command, ctx).await {
         UseCaseResult::Success(event) => {
-            let app = state.application_repo.find_by_id(&event.application_id).await?
-                .ok_or_else(|| PlatformError::internal("Application not found after create"))?;
-            Ok((StatusCode::CREATED, Json(ApplicationResponse::from(app))))
+            Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(event.application_id))))
         }
         UseCaseResult::Failure(err) => Err(err.into()),
     }
@@ -307,7 +305,7 @@ pub async fn list_applications<U: UnitOfWork>(
     ),
     request_body = UpdateApplicationRequest,
     responses(
-        (status = 200, description = "Application updated", body = ApplicationResponse),
+        (status = 204, description = "Application updated"),
         (status = 404, description = "Application not found")
     ),
     security(("bearer_auth" = []))
@@ -317,7 +315,7 @@ pub async fn update_application<U: UnitOfWork>(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateApplicationRequest>,
-) -> Result<Json<ApplicationResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
     let command = UpdateApplicationCommand {
@@ -331,12 +329,7 @@ pub async fn update_application<U: UnitOfWork>(
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
     match state.update_use_case.run(command, ctx).await {
-        UseCaseResult::Success(_event) => {
-            // Fetch the updated entity for response
-            let app = state.application_repo.find_by_id(&id).await?
-                .ok_or_else(|| PlatformError::not_found("Application", &id))?;
-            Ok(Json(app.into()))
-        }
+        UseCaseResult::Success(_event) => Ok(StatusCode::NO_CONTENT),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
 }
@@ -878,6 +871,223 @@ pub async fn disable_for_client<U: UnitOfWork>(
         effective_base_url: config.base_url_override.or(app.default_base_url),
         config: config.config_json,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::application::entity::{Application, ApplicationType};
+    use chrono::Utc;
+
+    fn make_test_application() -> Application {
+        let now = Utc::now();
+        Application {
+            id: "app_ABCDEFGHIJKLM".to_string(),
+            application_type: ApplicationType::Application,
+            code: "my-app".to_string(),
+            name: "My Application".to_string(),
+            description: Some("A test application".to_string()),
+            icon_url: Some("https://example.com/icon.png".to_string()),
+            website: None,
+            logo: None,
+            logo_mime_type: None,
+            default_base_url: Some("https://api.example.com".to_string()),
+            service_account_id: Some("sac_SERVICEID12345".to_string()),
+            active: true,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    // --- ApplicationResponse serialization ---
+
+    #[test]
+    fn test_application_response_serialization() {
+        let app = make_test_application();
+        let response = ApplicationResponse::from(app);
+
+        let json = serde_json::to_value(&response).unwrap();
+
+        assert_eq!(json["id"], "app_ABCDEFGHIJKLM");
+        assert_eq!(json["code"], "my-app");
+        assert_eq!(json["name"], "My Application");
+        assert_eq!(json["description"], "A test application");
+        assert_eq!(json["type"], "APPLICATION");
+        assert_eq!(json["defaultBaseUrl"], "https://api.example.com");
+        assert_eq!(json["iconUrl"], "https://example.com/icon.png");
+        assert_eq!(json["serviceAccountId"], "sac_SERVICEID12345");
+        assert_eq!(json["active"], true);
+        // Verify camelCase field names
+        assert!(json.get("createdAt").is_some());
+        assert!(json.get("updatedAt").is_some());
+        // Verify no snake_case leak
+        assert!(json.get("application_type").is_none());
+        assert!(json.get("default_base_url").is_none());
+        assert!(json.get("icon_url").is_none());
+        assert!(json.get("service_account_id").is_none());
+    }
+
+    #[test]
+    fn test_application_response_integration_type() {
+        let mut app = make_test_application();
+        app.application_type = ApplicationType::Integration;
+
+        let response = ApplicationResponse::from(app);
+        let json = serde_json::to_value(&response).unwrap();
+
+        assert_eq!(json["type"], "INTEGRATION");
+    }
+
+    #[test]
+    fn test_application_response_null_optionals() {
+        let now = Utc::now();
+        let app = Application {
+            id: "app_MINIMALAPPTEST".to_string(),
+            application_type: ApplicationType::Application,
+            code: "minimal".to_string(),
+            name: "Minimal".to_string(),
+            description: None,
+            icon_url: None,
+            website: None,
+            logo: None,
+            logo_mime_type: None,
+            default_base_url: None,
+            service_account_id: None,
+            active: false,
+            created_at: now,
+            updated_at: now,
+        };
+
+        let response = ApplicationResponse::from(app);
+        let json = serde_json::to_value(&response).unwrap();
+
+        assert!(json["description"].is_null());
+        assert!(json["defaultBaseUrl"].is_null());
+        assert!(json["iconUrl"].is_null());
+        assert!(json["serviceAccountId"].is_null());
+        assert_eq!(json["active"], false);
+    }
+
+    // --- CreateApplicationRequest deserialization ---
+
+    #[test]
+    fn test_create_application_request_deserialization() {
+        let json = serde_json::json!({
+            "code": "new-app",
+            "name": "New Application",
+            "description": "A new app",
+            "type": "INTEGRATION",
+            "defaultBaseUrl": "https://api.example.com",
+            "iconUrl": "https://example.com/icon.png"
+        });
+
+        let req: CreateApplicationRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.code, "new-app");
+        assert_eq!(req.name, "New Application");
+        assert_eq!(req.description, Some("A new app".to_string()));
+        assert_eq!(req.application_type, Some("INTEGRATION".to_string()));
+        assert_eq!(req.default_base_url, Some("https://api.example.com".to_string()));
+        assert_eq!(req.icon_url, Some("https://example.com/icon.png".to_string()));
+    }
+
+    #[test]
+    fn test_create_application_request_minimal() {
+        let json = serde_json::json!({
+            "code": "app",
+            "name": "App"
+        });
+
+        let req: CreateApplicationRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.code, "app");
+        assert_eq!(req.name, "App");
+        assert!(req.description.is_none());
+        assert!(req.application_type.is_none());
+        assert!(req.default_base_url.is_none());
+        assert!(req.icon_url.is_none());
+    }
+
+    #[test]
+    fn test_create_application_request_missing_code() {
+        let json = serde_json::json!({
+            "name": "Test"
+        });
+
+        let result = serde_json::from_value::<CreateApplicationRequest>(json);
+        assert!(result.is_err(), "Should fail without code");
+    }
+
+    #[test]
+    fn test_create_application_request_missing_name() {
+        let json = serde_json::json!({
+            "code": "test"
+        });
+
+        let result = serde_json::from_value::<CreateApplicationRequest>(json);
+        assert!(result.is_err(), "Should fail without name");
+    }
+
+    #[test]
+    fn test_create_application_request_empty_json() {
+        let json = serde_json::json!({});
+        let result = serde_json::from_value::<CreateApplicationRequest>(json);
+        assert!(result.is_err(), "Should fail with empty JSON");
+    }
+
+    // --- UpdateApplicationRequest ---
+
+    #[test]
+    fn test_update_application_request_deserialization() {
+        let json = serde_json::json!({
+            "name": "Updated Name",
+            "description": "Updated description"
+        });
+
+        let req: UpdateApplicationRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.name, Some("Updated Name".to_string()));
+        assert_eq!(req.description, Some("Updated description".to_string()));
+    }
+
+    #[test]
+    fn test_update_application_request_empty() {
+        let json = serde_json::json!({});
+        let req: UpdateApplicationRequest = serde_json::from_value(json).unwrap();
+        assert!(req.name.is_none());
+        assert!(req.description.is_none());
+        assert!(req.default_base_url.is_none());
+        assert!(req.icon_url.is_none());
+    }
+
+    // --- ApplicationListResponse ---
+
+    #[test]
+    fn test_application_list_response_serialization() {
+        let app = make_test_application();
+        let list = ApplicationListResponse {
+            applications: vec![ApplicationResponse::from(app)],
+            total: 1,
+        };
+
+        let json = serde_json::to_value(&list).unwrap();
+        assert!(json["applications"].is_array());
+        assert_eq!(json["applications"].as_array().unwrap().len(), 1);
+        assert_eq!(json["total"], 1);
+    }
+
+    // --- ClientConfigRequest ---
+
+    #[test]
+    fn test_client_config_request_deserialization() {
+        let json = serde_json::json!({
+            "enabled": true,
+            "baseUrlOverride": "https://custom.example.com",
+            "config": {"key": "value"}
+        });
+
+        let req: ClientConfigRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.enabled, Some(true));
+        assert_eq!(req.base_url_override, Some("https://custom.example.com".to_string()));
+        assert!(req.config.is_some());
+    }
 }
 
 /// Create applications router

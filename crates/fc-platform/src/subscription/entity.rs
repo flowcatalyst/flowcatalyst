@@ -194,37 +194,286 @@ impl Subscription {
     pub fn is_active(&self) -> bool { self.status == SubscriptionStatus::Active }
 }
 
-impl From<crate::entities::msg_subscriptions::Model> for Subscription {
-    fn from(m: crate::entities::msg_subscriptions::Model) -> Self {
-        Self {
-            id: m.id,
-            code: m.code,
-            application_code: m.application_code,
-            name: m.name,
-            description: m.description,
-            client_id: m.client_id,
-            client_identifier: m.client_identifier,
-            client_scoped: m.client_scoped,
-            event_types: vec![], // loaded separately
-            connection_id: m.connection_id,
-            endpoint: m.target,
-            queue: m.queue,
-            custom_config: vec![], // loaded separately
-            source: SubscriptionSource::from_str(&m.source),
-            status: SubscriptionStatus::from_str(&m.status),
-            max_age_seconds: m.max_age_seconds,
-            dispatch_pool_id: m.dispatch_pool_id,
-            dispatch_pool_code: m.dispatch_pool_code,
-            delay_seconds: m.delay_seconds,
-            sequence: m.sequence,
-            mode: DispatchMode::from_str(&m.mode),
-            timeout_seconds: m.timeout_seconds,
-            max_retries: m.max_retries,
-            service_account_id: m.service_account_id,
-            data_only: m.data_only,
-            created_by: None,
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_subscription() {
+        let sub = Subscription::new("order-events", "Order Events", "https://example.com/webhook");
+
+        assert!(!sub.id.is_empty());
+        assert!(sub.id.starts_with("sub_"), "ID should have sub_ prefix, got: {}", sub.id);
+        assert_eq!(sub.code, "order-events");
+        assert_eq!(sub.name, "Order Events");
+        assert_eq!(sub.endpoint, "https://example.com/webhook");
+        assert!(sub.application_code.is_none());
+        assert!(sub.description.is_none());
+        assert!(sub.client_id.is_none());
+        assert!(sub.client_identifier.is_none());
+        assert!(!sub.client_scoped);
+        assert!(sub.event_types.is_empty());
+        assert!(sub.connection_id.is_none());
+        assert!(sub.queue.is_none());
+        assert!(sub.custom_config.is_empty());
+        assert_eq!(sub.source, SubscriptionSource::Ui);
+        assert_eq!(sub.status, SubscriptionStatus::Active);
+        assert_eq!(sub.max_age_seconds, 86400);
+        assert!(sub.dispatch_pool_id.is_none());
+        assert!(sub.dispatch_pool_code.is_none());
+        assert_eq!(sub.delay_seconds, 0);
+        assert_eq!(sub.sequence, 99);
+        assert_eq!(sub.mode, DispatchMode::Immediate);
+        assert_eq!(sub.timeout_seconds, 30);
+        assert_eq!(sub.max_retries, 3);
+        assert!(sub.service_account_id.is_none());
+        assert!(sub.data_only);
+        assert!(sub.created_by.is_none());
+        assert_eq!(sub.created_at, sub.updated_at);
+    }
+
+    #[test]
+    fn test_subscription_builder_methods() {
+        let sub = Subscription::new("s1", "Sub 1", "https://a.com")
+            .with_endpoint("https://b.com")
+            .with_connection_id("conn-1")
+            .with_description("Test subscription")
+            .with_client_id("client-1")
+            .with_dispatch_pool_id("pool-1")
+            .with_service_account_id("sa-1")
+            .with_mode(DispatchMode::BlockOnError)
+            .with_data_only(false)
+            .with_event_type_binding(EventTypeBinding::new("orders:*:*:*"));
+
+        assert_eq!(sub.endpoint, "https://b.com");
+        assert_eq!(sub.connection_id, Some("conn-1".to_string()));
+        assert_eq!(sub.description, Some("Test subscription".to_string()));
+        assert_eq!(sub.client_id, Some("client-1".to_string()));
+        assert_eq!(sub.dispatch_pool_id, Some("pool-1".to_string()));
+        assert_eq!(sub.service_account_id, Some("sa-1".to_string()));
+        assert_eq!(sub.mode, DispatchMode::BlockOnError);
+        assert!(!sub.data_only);
+        assert_eq!(sub.event_types.len(), 1);
+    }
+
+    #[test]
+    fn test_subscription_pause_and_resume() {
+        let mut sub = Subscription::new("s1", "Sub 1", "https://a.com");
+        assert!(sub.is_active());
+        assert_eq!(sub.status, SubscriptionStatus::Active);
+
+        sub.pause();
+        assert!(!sub.is_active());
+        assert_eq!(sub.status, SubscriptionStatus::Paused);
+
+        sub.resume();
+        assert!(sub.is_active());
+        assert_eq!(sub.status, SubscriptionStatus::Active);
+    }
+
+    #[test]
+    fn test_subscription_matches_event_type() {
+        let sub = Subscription::new("s1", "Sub", "https://a.com")
+            .with_event_type_binding(EventTypeBinding::new("orders:fulfillment:shipment:shipped"))
+            .with_event_type_binding(EventTypeBinding::new("orders:*:*:*"));
+
+        // Exact match
+        assert!(sub.matches_event_type("orders:fulfillment:shipment:shipped"));
+        // Wildcard match
+        assert!(sub.matches_event_type("orders:billing:invoice:created"));
+        // Non-match
+        assert!(!sub.matches_event_type("payments:billing:invoice:created"));
+    }
+
+    #[test]
+    fn test_subscription_matches_client() {
+        let sub_no_client = Subscription::new("s1", "Sub", "https://a.com");
+        // No client_id on subscription means it matches any client
+        assert!(sub_no_client.matches_client(Some("client-1")));
+        assert!(sub_no_client.matches_client(None));
+
+        let sub_with_client = Subscription::new("s2", "Sub", "https://a.com")
+            .with_client_id("client-1");
+        assert!(sub_with_client.matches_client(Some("client-1")));
+        assert!(!sub_with_client.matches_client(Some("client-2")));
+        assert!(!sub_with_client.matches_client(None));
+    }
+
+    #[test]
+    fn test_event_type_binding_matches() {
+        let exact = EventTypeBinding::new("orders:fulfillment:shipment:shipped");
+        assert!(exact.matches("orders:fulfillment:shipment:shipped"));
+        assert!(!exact.matches("orders:fulfillment:shipment:created"));
+
+        let wildcard = EventTypeBinding::new("orders:*:*:*");
+        assert!(wildcard.matches("orders:fulfillment:shipment:shipped"));
+        assert!(wildcard.matches("orders:billing:invoice:created"));
+        assert!(!wildcard.matches("payments:billing:invoice:created"));
+
+        let partial_wildcard = EventTypeBinding::new("orders:fulfillment:*:*");
+        assert!(partial_wildcard.matches("orders:fulfillment:shipment:shipped"));
+        assert!(!partial_wildcard.matches("orders:billing:invoice:created"));
+
+        // Wrong part count
+        assert!(!exact.matches("orders:fulfillment:shipment"));
+        assert!(!exact.matches("orders:fulfillment:shipment:shipped:extra"));
+    }
+
+    #[test]
+    fn test_event_type_binding_with_filter() {
+        let binding = EventTypeBinding::new("orders:*:*:*")
+            .with_filter("$.data.status == 'shipped'");
+
+        assert_eq!(binding.filter, Some("$.data.status == 'shipped'".to_string()));
+    }
+
+    #[test]
+    fn test_subscription_status_as_str() {
+        assert_eq!(SubscriptionStatus::Active.as_str(), "ACTIVE");
+        assert_eq!(SubscriptionStatus::Paused.as_str(), "PAUSED");
+    }
+
+    #[test]
+    fn test_subscription_status_from_str() {
+        assert_eq!(SubscriptionStatus::from_str("ACTIVE"), SubscriptionStatus::Active);
+        assert_eq!(SubscriptionStatus::from_str("PAUSED"), SubscriptionStatus::Paused);
+        assert_eq!(SubscriptionStatus::from_str("unknown"), SubscriptionStatus::Active);
+    }
+
+    #[test]
+    fn test_subscription_status_default() {
+        assert_eq!(SubscriptionStatus::default(), SubscriptionStatus::Active);
+    }
+
+    #[test]
+    fn test_subscription_source_as_str() {
+        assert_eq!(SubscriptionSource::Code.as_str(), "CODE");
+        assert_eq!(SubscriptionSource::Api.as_str(), "API");
+        assert_eq!(SubscriptionSource::Ui.as_str(), "UI");
+    }
+
+    #[test]
+    fn test_subscription_source_from_str() {
+        assert_eq!(SubscriptionSource::from_str("CODE"), SubscriptionSource::Code);
+        assert_eq!(SubscriptionSource::from_str("API"), SubscriptionSource::Api);
+        assert_eq!(SubscriptionSource::from_str("UI"), SubscriptionSource::Ui);
+        assert_eq!(SubscriptionSource::from_str("unknown"), SubscriptionSource::Ui);
+    }
+
+    #[test]
+    fn test_subscription_source_default() {
+        assert_eq!(SubscriptionSource::default(), SubscriptionSource::Ui);
+    }
+
+    #[test]
+    fn test_subscription_unique_ids() {
+        let s1 = Subscription::new("a", "A", "https://a.com");
+        let s2 = Subscription::new("b", "B", "https://b.com");
+        assert_ne!(s1.id, s2.id);
+    }
+
+    // ── SubscriptionStatus transitions ────────────────────────────────────
+
+    #[test]
+    fn is_active_reflects_current_status() {
+        let mut s = Subscription::new("a", "A", "https://a.com");
+        assert!(s.is_active(), "new subscription is active by default");
+        s.pause();
+        assert!(!s.is_active());
+        s.resume();
+        assert!(s.is_active());
+    }
+
+    #[test]
+    fn pause_bumps_updated_at() {
+        let mut s = Subscription::new("a", "A", "https://a.com");
+        let before = s.updated_at;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        s.pause();
+        assert!(s.updated_at > before);
+    }
+
+    // ── EventTypeBinding::matches — wildcard edge cases ───────────────────
+
+    #[test]
+    fn all_wildcards_match_any_four_segment_code() {
+        let b = EventTypeBinding::new("*:*:*:*");
+        assert!(b.matches("orders:fulfillment:shipment:shipped"));
+        assert!(b.matches("payments:billing:invoice:created"));
+        assert!(b.matches("a:b:c:d"));
+    }
+
+    #[test]
+    fn wildcard_does_not_match_different_segment_count() {
+        // Matching requires same segment count; wildcards don't span segments.
+        let three_seg = EventTypeBinding::new("*:*:*");
+        assert!(!three_seg.matches("orders:fulfillment:shipment:shipped"));
+
+        let five_seg = EventTypeBinding::new("*:*:*:*:*");
+        assert!(!five_seg.matches("orders:fulfillment:shipment:shipped"));
+    }
+
+    #[test]
+    fn mixed_literal_and_wildcard_segments() {
+        let b = EventTypeBinding::new("orders:*:shipment:*");
+        assert!(b.matches("orders:fulfillment:shipment:shipped"));
+        assert!(b.matches("orders:billing:shipment:created"));
+        assert!(!b.matches("orders:fulfillment:invoice:created"), "segment 3 must equal 'shipment'");
+        assert!(!b.matches("payments:fulfillment:shipment:shipped"), "segment 1 must equal 'orders'");
+    }
+
+    #[test]
+    fn exact_code_without_wildcards_is_strict_match() {
+        let b = EventTypeBinding::new("orders:fulfillment:shipment:shipped");
+        assert!(b.matches("orders:fulfillment:shipment:shipped"));
+        assert!(!b.matches("orders:fulfillment:shipment:cancelled"));
+        assert!(!b.matches("orders:fulfillment:shipment:shippe")); // off-by-one
+    }
+
+    // ── Subscription::matches_event_type with multiple bindings ───────────
+
+    #[test]
+    fn matches_event_type_succeeds_if_any_binding_matches() {
+        let s = Subscription::new("multi", "Multi", "https://x.com")
+            .with_event_type_binding(EventTypeBinding::new("orders:*:*:*"))
+            .with_event_type_binding(EventTypeBinding::new("payments:billing:invoice:created"));
+
+        assert!(s.matches_event_type("orders:fulfillment:shipment:shipped"));
+        assert!(s.matches_event_type("payments:billing:invoice:created"));
+        assert!(!s.matches_event_type("inventory:stock:item:reserved"));
+    }
+
+    #[test]
+    fn matches_event_type_false_when_no_bindings() {
+        let s = Subscription::new("empty", "Empty", "https://x.com");
+        assert!(!s.matches_event_type("orders:fulfillment:shipment:shipped"));
+    }
+
+    // ── Subscription::matches_client — client scoping rules ───────────────
+
+    #[test]
+    fn global_subscription_matches_any_event_client() {
+        // No client_id set on the subscription → matches all event clients.
+        let s = Subscription::new("global", "Global", "https://x.com");
+        assert!(s.matches_client(Some("clt_a")));
+        assert!(s.matches_client(Some("clt_b")));
+        assert!(s.matches_client(None));
+    }
+
+    #[test]
+    fn client_scoped_subscription_matches_only_its_client() {
+        let s = Subscription::new("scoped", "Scoped", "https://x.com")
+            .with_client_id("clt_a");
+        assert!(s.matches_client(Some("clt_a")));
+        assert!(!s.matches_client(Some("clt_b")));
+        // Event without a client cannot match a client-scoped subscription.
+        assert!(!s.matches_client(None));
+    }
+
+    #[test]
+    fn subscription_status_from_str_falls_back_to_active() {
+        assert_eq!(SubscriptionStatus::from_str("UNKNOWN"), SubscriptionStatus::Active);
+        assert_eq!(SubscriptionStatus::from_str(""), SubscriptionStatus::Active);
     }
 }
+

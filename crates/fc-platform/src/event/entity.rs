@@ -146,7 +146,7 @@ impl Event {
 
 
 /// Event read projection — CQRS read model, matches msg_events_read table
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EventRead {
     pub id: String,
@@ -166,6 +166,133 @@ pub struct EventRead {
     pub projected_at: DateTime<Utc>,
 }
 
+
+/// Filter options for the events read model (cascading filters).
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct EventFilterOptions {
+    pub clients: Vec<String>,
+    pub applications: Vec<String>,
+    pub subdomains: Vec<String>,
+    pub aggregates: Vec<String>,
+    pub types: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_event() {
+        let data = serde_json::json!({"orderId": "123"});
+        let event = Event::new(
+            "orders:fulfillment:shipment:shipped",
+            "my-app",
+            data.clone(),
+        );
+
+        assert!(!event.id.is_empty());
+        assert_eq!(event.id.len(), 13, "Untyped ID should be 13 chars, got: {}", event.id.len());
+        assert!(!event.id.contains('_'), "Untyped ID should not have prefix underscore");
+        assert_eq!(event.event_type, "orders:fulfillment:shipment:shipped");
+        assert_eq!(event.source, "my-app");
+        assert!(event.subject.is_none());
+        assert_eq!(event.data, data);
+        assert_eq!(event.spec_version, "1.0");
+        assert!(event.message_group.is_none());
+        assert!(event.correlation_id.is_none());
+        assert!(event.causation_id.is_none());
+        assert!(event.deduplication_id.is_none());
+        assert!(event.client_id.is_none());
+        assert!(event.context_data.is_empty());
+    }
+
+    #[test]
+    fn test_event_unique_ids() {
+        let e1 = Event::new("t1", "s", serde_json::json!({}));
+        let e2 = Event::new("t2", "s", serde_json::json!({}));
+        assert_ne!(e1.id, e2.id);
+    }
+
+    #[test]
+    fn test_event_builder_methods() {
+        let event = Event::new("t", "s", serde_json::json!({}))
+            .with_subject("order-123")
+            .with_message_group("group-1")
+            .with_correlation_id("corr-1")
+            .with_causation_id("cause-1")
+            .with_client_id("client-1")
+            .with_deduplication_id("dedup-1")
+            .with_context("key1", "value1");
+
+        assert_eq!(event.subject, Some("order-123".to_string()));
+        assert_eq!(event.message_group, Some("group-1".to_string()));
+        assert_eq!(event.correlation_id, Some("corr-1".to_string()));
+        assert_eq!(event.causation_id, Some("cause-1".to_string()));
+        assert_eq!(event.client_id, Some("client-1".to_string()));
+        assert_eq!(event.deduplication_id, Some("dedup-1".to_string()));
+        assert_eq!(event.context_data.len(), 1);
+        assert_eq!(event.context_data[0].key, "key1");
+        assert_eq!(event.context_data[0].value, "value1");
+    }
+
+    #[test]
+    fn test_event_with_context_data() {
+        let ctx = vec![
+            ContextData { key: "a".to_string(), value: "1".to_string() },
+            ContextData { key: "b".to_string(), value: "2".to_string() },
+        ];
+        let event = Event::new("t", "s", serde_json::json!({}))
+            .with_context_data(ctx);
+
+        assert_eq!(event.context_data.len(), 2);
+    }
+
+    #[test]
+    fn test_event_code_parsing() {
+        let event = Event::new("orders:fulfillment:shipment:shipped", "app", serde_json::json!({}));
+        assert_eq!(event.application(), Some("orders"));
+        assert_eq!(event.subdomain(), Some("fulfillment"));
+        assert_eq!(event.aggregate(), Some("shipment"));
+        assert_eq!(event.event_name(), Some("shipped"));
+    }
+
+    #[test]
+    fn test_event_code_parsing_simple() {
+        let event = Event::new("simple-event", "app", serde_json::json!({}));
+        assert_eq!(event.application(), Some("simple-event"));
+        assert!(event.subdomain().is_none());
+        assert!(event.aggregate().is_none());
+        assert!(event.event_name().is_none());
+    }
+
+    #[test]
+    fn test_event_spec_version_constant() {
+        assert_eq!(CLOUDEVENTS_SPEC_VERSION, "1.0");
+    }
+
+    // --- EventRead projection ---
+
+    #[test]
+    fn test_event_read_from_event() {
+        let event = Event::new("orders:billing:invoice:created", "my-app", serde_json::json!({}))
+            .with_client_id("c1")
+            .with_message_group("g1")
+            .with_correlation_id("corr1");
+
+        let read = EventRead::from(&event);
+        assert_eq!(read.id, event.id);
+        assert_eq!(read.event_type, event.event_type);
+        assert_eq!(read.source, event.source);
+        assert_eq!(read.application, Some("orders".to_string()));
+        assert_eq!(read.subdomain, Some("billing".to_string()));
+        assert_eq!(read.aggregate, Some("invoice".to_string()));
+        assert_eq!(read.client_id, Some("c1".to_string()));
+        assert_eq!(read.message_group, Some("g1".to_string()));
+        assert_eq!(read.correlation_id, Some("corr1".to_string()));
+        assert!(read.client_name.is_none(), "client_name is not populated from Event");
+    }
+}
 
 impl From<&Event> for EventRead {
     fn from(event: &Event) -> Self {

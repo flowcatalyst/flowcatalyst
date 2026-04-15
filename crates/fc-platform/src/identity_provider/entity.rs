@@ -60,21 +60,86 @@ impl IdentityProvider {
     }
 }
 
-impl From<crate::entities::oauth_identity_providers::Model> for IdentityProvider {
-    fn from(m: crate::entities::oauth_identity_providers::Model) -> Self {
-        Self {
-            id: m.id,
-            code: m.code,
-            name: m.name,
-            r#type: IdentityProviderType::from_str(&m.r#type),
-            oidc_issuer_url: m.oidc_issuer_url,
-            oidc_client_id: m.oidc_client_id,
-            oidc_client_secret_ref: m.oidc_client_secret_ref,
-            oidc_multi_tenant: m.oidc_multi_tenant,
-            oidc_issuer_pattern: m.oidc_issuer_pattern,
-            allowed_email_domains: Vec::new(), // loaded separately
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_internal_identity_provider() {
+        let idp = IdentityProvider::new("internal", "Internal Provider", IdentityProviderType::Internal);
+
+        assert!(!idp.id.is_empty());
+        assert!(idp.id.starts_with("idp_"), "ID should have idp_ prefix, got: {}", idp.id);
+        assert_eq!(idp.code, "internal");
+        assert_eq!(idp.name, "Internal Provider");
+        assert_eq!(idp.r#type, IdentityProviderType::Internal);
+        assert!(idp.oidc_issuer_url.is_none());
+        assert!(idp.oidc_client_id.is_none());
+        assert!(idp.oidc_client_secret_ref.is_none());
+        assert!(!idp.oidc_multi_tenant);
+        assert!(idp.oidc_issuer_pattern.is_none());
+        assert!(idp.allowed_email_domains.is_empty());
+        assert_eq!(idp.created_at, idp.updated_at);
+    }
+
+    #[test]
+    fn test_new_oidc_identity_provider() {
+        let idp = IdentityProvider::new("azure-ad", "Azure AD", IdentityProviderType::Oidc);
+
+        assert_eq!(idp.code, "azure-ad");
+        assert_eq!(idp.name, "Azure AD");
+        assert_eq!(idp.r#type, IdentityProviderType::Oidc);
+    }
+
+    #[test]
+    fn test_has_client_secret() {
+        let mut idp = IdentityProvider::new("test", "Test", IdentityProviderType::Oidc);
+        assert!(!idp.has_client_secret());
+
+        idp.oidc_client_secret_ref = Some("secret-ref-123".to_string());
+        assert!(idp.has_client_secret());
+    }
+
+    #[test]
+    fn test_identity_provider_type_as_str() {
+        assert_eq!(IdentityProviderType::Internal.as_str(), "INTERNAL");
+        assert_eq!(IdentityProviderType::Oidc.as_str(), "OIDC");
+    }
+
+    #[test]
+    fn test_identity_provider_type_from_str() {
+        assert_eq!(IdentityProviderType::from_str("OIDC"), IdentityProviderType::Oidc);
+        assert_eq!(IdentityProviderType::from_str("INTERNAL"), IdentityProviderType::Internal);
+        // Default/fallback is Internal
+        assert_eq!(IdentityProviderType::from_str("unknown"), IdentityProviderType::Internal);
+        assert_eq!(IdentityProviderType::from_str(""), IdentityProviderType::Internal);
+    }
+
+    #[test]
+    fn test_identity_provider_type_serialization() {
+        let json = serde_json::to_string(&IdentityProviderType::Internal).unwrap();
+        assert_eq!(json, "\"INTERNAL\"");
+
+        let json = serde_json::to_string(&IdentityProviderType::Oidc).unwrap();
+        assert_eq!(json, "\"OIDC\"");
+    }
+
+    #[test]
+    fn test_identity_provider_unique_ids() {
+        let idp1 = IdentityProvider::new("a", "A", IdentityProviderType::Internal);
+        let idp2 = IdentityProvider::new("b", "B", IdentityProviderType::Oidc);
+        assert_ne!(idp1.id, idp2.id);
+    }
+
+    #[test]
+    fn test_identity_provider_serialization() {
+        let idp = IdentityProvider::new("okta", "Okta SSO", IdentityProviderType::Oidc);
+
+        let json = serde_json::to_string(&idp).unwrap();
+        assert!(json.contains("\"code\":\"okta\""));
+        assert!(json.contains("Okta SSO"));
+        assert!(json.contains("OIDC"));
+        assert!(json.contains("oidcMultiTenant"));
     }
 }
+

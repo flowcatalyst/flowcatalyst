@@ -164,6 +164,17 @@ export const usersApi = {
 		});
 	},
 
+	/**
+	 * Trigger a password reset email for an internal-auth user.
+	 * Sends the same single-use email as the user-initiated /auth/password-reset/request flow.
+	 * Rejects OIDC users and users without an email.
+	 */
+	sendPasswordReset(id: string): Promise<{ message: string }> {
+		return apiFetch(`/admin/principals/${id}/send-password-reset`, {
+			method: "POST",
+		});
+	},
+
 	// Client access grants
 	getClientAccess(id: string): Promise<{ grants: ClientAccessGrant[] }> {
 		return apiFetch(`/admin/principals/${id}/client-access`);

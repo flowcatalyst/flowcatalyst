@@ -12,59 +12,12 @@ use std::time::Duration;
 use redis::aio::ConnectionManager;
 use tokio::sync::{broadcast, watch};
 use tracing::{info, warn, error, debug};
-use uuid::Uuid;
 
 use crate::error::{StandbyError, Result};
 
-/// Configuration for leader election
-#[derive(Debug, Clone)]
-pub struct LeaderElectionConfig {
-    /// Redis connection URL
-    pub redis_url: String,
-
-    /// Key prefix for the lock
-    pub lock_key: String,
-
-    /// Lock TTL in seconds
-    pub lock_ttl_seconds: u64,
-
-    /// Heartbeat interval (should be less than TTL)
-    pub heartbeat_interval_seconds: u64,
-
-    /// Unique identifier for this instance
-    pub instance_id: String,
-}
-
-impl Default for LeaderElectionConfig {
-    fn default() -> Self {
-        Self {
-            redis_url: "redis://127.0.0.1:6379".to_string(),
-            lock_key: "fc:leader".to_string(),
-            lock_ttl_seconds: 30,
-            heartbeat_interval_seconds: 10,
-            instance_id: Uuid::new_v4().to_string(),
-        }
-    }
-}
-
-impl LeaderElectionConfig {
-    pub fn new(redis_url: String) -> Self {
-        Self {
-            redis_url,
-            ..Default::default()
-        }
-    }
-
-    pub fn with_lock_key(mut self, key: String) -> Self {
-        self.lock_key = key;
-        self
-    }
-
-    pub fn with_instance_id(mut self, id: String) -> Self {
-        self.instance_id = id;
-        self
-    }
-}
+/// Leader election configuration. Re-exported from `fc_common` — a single
+/// unified type replacing the previous per-crate duplicates in fc-outbox and fc-standby.
+pub use fc_common::LeaderElectionConfig;
 
 /// Leadership status
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

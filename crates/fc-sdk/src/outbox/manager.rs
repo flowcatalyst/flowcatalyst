@@ -242,3 +242,286 @@ impl OutboxManager {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    /// In-memory driver that captures inserted messages for assertion.
+    struct MockDriver {
+        messages: Arc<Mutex<Vec<OutboxMessage>>>,
+    }
+
+    impl MockDriver {
+        fn new() -> (Self, Arc<Mutex<Vec<OutboxMessage>>>) {
+            let messages = Arc::new(Mutex::new(Vec::new()));
+            (
+                Self {
+                    messages: messages.clone(),
+                },
+                messages,
+            )
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl OutboxDriver for MockDriver {
+        async fn insert(&self, message: OutboxMessage) -> anyhow::Result<()> {
+            self.messages.lock().unwrap().push(message);
+            Ok(())
+        }
+        async fn insert_batch(&self, messages: Vec<OutboxMessage>) -> anyhow::Result<()> {
+            self.messages.lock().unwrap().extend(messages);
+            Ok(())
+        }
+    }
+
+    fn make_manager(client_id: &str) -> (OutboxManager, Arc<Mutex<Vec<OutboxMessage>>>) {
+        let (driver, captured) = MockDriver::new();
+        let mgr = OutboxManager::new(Box::new(driver), client_id);
+        (mgr, captured)
+    }
+
+    #[tokio::test]
+    async fn create_event_inserts_message_with_correct_fields() {
+        let (mgr, captured) = make_manager("clt_test");
+        let dto = CreateEventDto::new("user.registered", serde_json::json!({"id": "u1"}))
+            .source("user-svc")
+            .message_group("users:user:u1");
+
+        let id = mgr.create_event(dto).await.unwrap();
+        assert!(!id.is_empty());
+
+        let msgs = captured.lock().unwrap();
+        assert_eq!(msgs.len(), 1);
+
+        let msg = &msgs[0];
+        assert_eq!(msg.id, id);
+        assert_eq!(msg.message_type, "EVENT");
+        assert_eq!(msg.message_group.as_deref(), Some("users:user:u1"));
+        assert_eq!(msg.status, OutboxStatus::PENDING);
+        assert_eq!(msg.client_id, "clt_test");
+        assert!(msg.payload_size > 0);
+        assert!(msg.headers.is_none()); // no headers on DTO
+
+        // Verify payload is valid JSON containing the event
+        let payload: serde_json::Value = serde_json::from_str(&msg.payload).unwrap();
+        assert_eq!(payload["type"], "user.registered");
+        assert_eq!(payload["source"], "user-svc");
+    }
+
+    #[tokio::test]
+    async fn create_event_with_headers_propagates_them() {
+        let (mgr, captured) = make_manager("clt_1");
+        let mut headers = std::collections::HashMap::new();
+        headers.insert("X-Trace".to_string(), "abc".to_string());
+
+        let dto = CreateEventDto::new("t", serde_json::json!({})).headers(headers);
+        mgr.create_event(dto).await.unwrap();
+
+        let msgs = captured.lock().unwrap();
+        let msg = &msgs[0];
+        let h = msg.headers.as_ref().unwrap();
+        assert_eq!(h.get("X-Trace").unwrap(), "abc");
+    }
+
+    #[tokio::test]
+    async fn create_events_batch_returns_ids_and_inserts_all() {
+        let (mgr, captured) = make_manager("clt_batch");
+        let events = vec![
+            CreateEventDto::new("e1", serde_json::json!({})),
+            CreateEventDto::new("e2", serde_json::json!({})),
+            CreateEventDto::new("e3", serde_json::json!({})),
+        ];
+
+        let ids = mgr.create_events(events).await.unwrap();
+        assert_eq!(ids.len(), 3);
+
+        let msgs = captured.lock().unwrap();
+        assert_eq!(msgs.len(), 3);
+        // IDs match
+        for (i, msg) in msgs.iter().enumerate() {
+            assert_eq!(msg.id, ids[i]);
+            assert_eq!(msg.message_type, "EVENT");
+            assert_eq!(msg.client_id, "clt_batch");
+        }
+    }
+
+    #[tokio::test]
+    async fn create_events_empty_returns_empty() {
+        let (mgr, captured) = make_manager("clt_x");
+        let ids = mgr.create_events(vec![]).await.unwrap();
+        assert!(ids.is_empty());
+        assert!(captured.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn create_dispatch_job_inserts_correct_type() {
+        let (mgr, captured) = make_manager("clt_dj");
+        let dto = CreateDispatchJobDto::new("svc", "code", "https://x.com", "{}", "pool_1")
+            .message_group("grp:1");
+
+        let id = mgr.create_dispatch_job(dto).await.unwrap();
+        assert!(!id.is_empty());
+
+        let msgs = captured.lock().unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].message_type, "DISPATCH_JOB");
+        assert_eq!(msgs[0].message_group.as_deref(), Some("grp:1"));
+        assert_eq!(msgs[0].client_id, "clt_dj");
+        // Dispatch jobs don't pass headers
+        assert!(msgs[0].headers.is_none());
+    }
+
+    #[tokio::test]
+    async fn create_dispatch_jobs_batch() {
+        let (mgr, captured) = make_manager("clt_djb");
+        let jobs = vec![
+            CreateDispatchJobDto::new("s", "c1", "u", "{}", "p"),
+            CreateDispatchJobDto::new("s", "c2", "u", "{}", "p"),
+        ];
+
+        let ids = mgr.create_dispatch_jobs(jobs).await.unwrap();
+        assert_eq!(ids.len(), 2);
+
+        let msgs = captured.lock().unwrap();
+        assert_eq!(msgs.len(), 2);
+        for msg in msgs.iter() {
+            assert_eq!(msg.message_type, "DISPATCH_JOB");
+        }
+    }
+
+    #[tokio::test]
+    async fn create_dispatch_jobs_empty() {
+        let (mgr, captured) = make_manager("clt_x");
+        let ids = mgr.create_dispatch_jobs(vec![]).await.unwrap();
+        assert!(ids.is_empty());
+        assert!(captured.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn create_audit_log_inserts_correct_type() {
+        let (mgr, captured) = make_manager("clt_al");
+        let dto = CreateAuditLogDto::new("Client", "clt_1", "CREATE")
+            .principal_id("prn_admin");
+
+        let id = mgr.create_audit_log(dto).await.unwrap();
+        assert!(!id.is_empty());
+
+        let msgs = captured.lock().unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].message_type, "AUDIT_LOG");
+        // Audit logs have no message_group
+        assert!(msgs[0].message_group.is_none());
+        assert_eq!(msgs[0].client_id, "clt_al");
+    }
+
+    #[tokio::test]
+    async fn create_audit_log_with_headers() {
+        let (mgr, captured) = make_manager("clt_al2");
+        let mut headers = std::collections::HashMap::new();
+        headers.insert("X-Audit".to_string(), "true".to_string());
+
+        let dto = CreateAuditLogDto::new("E", "e_1", "DELETE").headers(headers);
+        mgr.create_audit_log(dto).await.unwrap();
+
+        let msgs = captured.lock().unwrap();
+        assert!(msgs[0].headers.is_some());
+        assert_eq!(msgs[0].headers.as_ref().unwrap()["X-Audit"], "true");
+    }
+
+    #[tokio::test]
+    async fn create_audit_logs_batch() {
+        let (mgr, captured) = make_manager("clt_alb");
+        let audits = vec![
+            CreateAuditLogDto::new("A", "a_1", "CREATE"),
+            CreateAuditLogDto::new("B", "b_1", "UPDATE"),
+        ];
+
+        let ids = mgr.create_audit_logs(audits).await.unwrap();
+        assert_eq!(ids.len(), 2);
+
+        let msgs = captured.lock().unwrap();
+        assert_eq!(msgs.len(), 2);
+        for msg in msgs.iter() {
+            assert_eq!(msg.message_type, "AUDIT_LOG");
+        }
+    }
+
+    #[tokio::test]
+    async fn create_audit_logs_empty() {
+        let (mgr, captured) = make_manager("clt_x");
+        let ids = mgr.create_audit_logs(vec![]).await.unwrap();
+        assert!(ids.is_empty());
+        assert!(captured.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn empty_client_id_returns_error() {
+        let (mgr, _) = make_manager("");
+
+        let err = mgr
+            .create_event(CreateEventDto::new("t", serde_json::json!({})))
+            .await;
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("client_id is required"));
+
+        let (mgr2, _) = make_manager("");
+        let err2 = mgr2
+            .create_dispatch_job(CreateDispatchJobDto::new("s", "c", "u", "{}", "p"))
+            .await;
+        assert!(err2.is_err());
+
+        let (mgr3, _) = make_manager("");
+        let err3 = mgr3
+            .create_audit_log(CreateAuditLogDto::new("E", "e", "OP"))
+            .await;
+        assert!(err3.is_err());
+    }
+
+    #[tokio::test]
+    async fn payload_size_matches_payload_length() {
+        let (mgr, captured) = make_manager("clt_ps");
+        let dto = CreateEventDto::new(
+            "test.event",
+            serde_json::json!({"big_field": "a]".repeat(100)}),
+        );
+        mgr.create_event(dto).await.unwrap();
+
+        let msgs = captured.lock().unwrap();
+        let msg = &msgs[0];
+        assert_eq!(msg.payload_size, msg.payload.len() as i32);
+    }
+
+    #[tokio::test]
+    async fn created_at_and_updated_at_are_rfc3339() {
+        let (mgr, captured) = make_manager("clt_ts");
+        mgr.create_event(CreateEventDto::new("t", serde_json::json!({})))
+            .await
+            .unwrap();
+
+        let msgs = captured.lock().unwrap();
+        let msg = &msgs[0];
+        // Should parse as valid RFC3339
+        let _: chrono::DateTime<chrono::Utc> = msg.created_at.parse().unwrap();
+        let _: chrono::DateTime<chrono::Utc> = msg.updated_at.parse().unwrap();
+        assert_eq!(msg.created_at, msg.updated_at);
+    }
+
+    #[tokio::test]
+    async fn unique_ids_across_messages() {
+        let (mgr, captured) = make_manager("clt_uid");
+        let events = vec![
+            CreateEventDto::new("a", serde_json::json!({})),
+            CreateEventDto::new("b", serde_json::json!({})),
+            CreateEventDto::new("c", serde_json::json!({})),
+        ];
+        mgr.create_events(events).await.unwrap();
+
+        let msgs = captured.lock().unwrap();
+        let ids: Vec<&str> = msgs.iter().map(|m| m.id.as_str()).collect();
+        let unique: std::collections::HashSet<&&str> = ids.iter().collect();
+        assert_eq!(unique.len(), ids.len(), "all IDs must be unique");
+    }
+}

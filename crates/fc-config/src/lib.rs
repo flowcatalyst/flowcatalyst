@@ -33,11 +33,11 @@ pub struct AppConfig {
     pub http: HttpConfig,
     pub mongodb: MongoConfig,
     pub redis: RedisConfig,
-    pub queue: QueueConfig,
-    pub router: RouterConfig,
+    pub queue: QueueConfigFile,
+    pub router: RouterConfigFile,
     pub stream: StreamConfig,
     pub outbox: OutboxConfig,
-    pub scheduler: SchedulerConfig,
+    pub scheduler: SchedulerConfigFile,
     pub secrets: SecretsConfig,
     pub leader: LeaderConfig,
     pub auth: AuthConfig,
@@ -55,11 +55,11 @@ impl Default for AppConfig {
             http: HttpConfig::default(),
             mongodb: MongoConfig::default(),
             redis: RedisConfig::default(),
-            queue: QueueConfig::default(),
-            router: RouterConfig::default(),
+            queue: QueueConfigFile::default(),
+            router: RouterConfigFile::default(),
             stream: StreamConfig::default(),
             outbox: OutboxConfig::default(),
-            scheduler: SchedulerConfig::default(),
+            scheduler: SchedulerConfigFile::default(),
             secrets: SecretsConfig::default(),
             leader: LeaderConfig::default(),
             auth: AuthConfig::default(),
@@ -122,17 +122,17 @@ impl Default for RedisConfig {
     }
 }
 
-/// Queue configuration
+/// Queue configuration (TOML file format)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
-pub struct QueueConfig {
+pub struct QueueConfigFile {
     #[serde(rename = "type")]
     pub queue_type: String,
     pub nats: NatsConfig,
     pub sqs: SqsConfig,
 }
 
-impl Default for QueueConfig {
+impl Default for QueueConfigFile {
     fn default() -> Self {
         Self {
             queue_type: "embedded".to_string(),
@@ -180,10 +180,10 @@ impl Default for SqsConfig {
     }
 }
 
-/// Message router configuration
+/// Message router configuration (TOML file format)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
-pub struct RouterConfig {
+pub struct RouterConfigFile {
     /// HTTP client timeout in milliseconds
     pub timeout_ms: u64,
     /// Maximum connections per host
@@ -268,7 +268,7 @@ impl Default for StandbySettings {
     }
 }
 
-impl Default for RouterConfig {
+impl Default for RouterConfigFile {
     fn default() -> Self {
         Self {
             timeout_ms: 30000,
@@ -329,10 +329,10 @@ impl Default for OutboxConfig {
     }
 }
 
-/// Dispatch scheduler configuration
+/// Dispatch scheduler configuration (TOML file format)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
-pub struct SchedulerConfig {
+pub struct SchedulerConfigFile {
     /// Enable the dispatch scheduler
     pub enabled: bool,
     /// Polling interval in milliseconds
@@ -347,7 +347,7 @@ pub struct SchedulerConfig {
     pub app_key: String,
 }
 
-impl Default for SchedulerConfig {
+impl Default for SchedulerConfigFile {
     fn default() -> Self {
         Self {
             enabled: true,

@@ -379,6 +379,16 @@ pub async fn get_dispatch_job(
     Ok(Json(job.into()))
 }
 
+/// Paginated dispatch job list response
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PagedDispatchJobResponse {
+    pub items: Vec<DispatchJobResponse>,
+    pub page: u32,
+    pub size: u32,
+    pub total_items: u64,
+}
+
 /// List dispatch jobs
 #[utoipa::path(
     get,
@@ -387,7 +397,7 @@ pub async fn get_dispatch_job(
     operation_id = "getApiAdminDispatchJobs",
     params(DispatchJobsQuery),
     responses(
-        (status = 200, description = "List of dispatch jobs", body = Vec<DispatchJobResponse>)
+        (status = 200, description = "List of dispatch jobs", body = PagedDispatchJobResponse)
     ),
     security(("bearer_auth" = []))
 )]
@@ -395,35 +405,35 @@ pub async fn list_dispatch_jobs(
     State(state): State<DispatchJobsState>,
     auth: Authenticated,
     Query(query): Query<DispatchJobsQuery>,
-) -> Result<Json<Vec<DispatchJobResponse>>, PlatformError> {
+) -> Result<Json<PagedDispatchJobResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_dispatch_jobs(&auth.0)?;
 
-    let jobs = if let Some(ref event_id) = query.event_id {
-        state.dispatch_job_repo.find_by_event_id(event_id).await?
-    } else if let Some(ref corr_id) = query.correlation_id {
-        state.dispatch_job_repo.find_by_correlation_id(corr_id).await?
-    } else if let Some(ref sub_id) = query.subscription_id {
-        state.dispatch_job_repo.find_by_subscription_id(sub_id, query.pagination.size() as i64).await?
-    } else if let Some(ref client_id) = query.client_id {
+    // Validate client access if client_id filter is specified
+    if let Some(ref client_id) = query.client_id {
         if !auth.0.can_access_client(client_id) {
             return Err(PlatformError::forbidden(format!("No access to client: {}", client_id)));
         }
-        state.dispatch_job_repo.find_by_client(client_id, query.pagination.size() as i64).await?
-    } else if let Some(ref status_str) = query.status {
-        let status = match status_str.to_uppercase().as_str() {
-            "PENDING" => DispatchStatus::Pending,
-            "QUEUED" => DispatchStatus::Queued,
-            "IN_PROGRESS" => DispatchStatus::InProgress,
-            "COMPLETED" => DispatchStatus::Completed,
-            "FAILED" => DispatchStatus::Failed,
-            "EXPIRED" => DispatchStatus::Expired,
+    }
+
+    // Validate status filter if provided
+    if let Some(ref status_str) = query.status {
+        match status_str.to_uppercase().as_str() {
+            "PENDING" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED" | "EXPIRED" => {},
             _ => return Err(PlatformError::validation(format!("Invalid status: {}", status_str))),
-        };
-        state.dispatch_job_repo.find_by_status(status, query.pagination.size() as i64).await?
-    } else {
-        // Return empty for now - need proper listing
-        vec![]
-    };
+        }
+    }
+
+    let page = query.pagination.page();
+    let size = query.pagination.size();
+
+    let jobs = state.dispatch_job_repo.find_with_filters(
+        query.event_id.as_deref(),
+        query.correlation_id.as_deref(),
+        query.subscription_id.as_deref(),
+        query.client_id.as_deref(),
+        query.status.as_deref(),
+        size as i64,
+    ).await?;
 
     // Filter by client access
     let filtered: Vec<DispatchJobResponse> = jobs.into_iter()
@@ -436,7 +446,14 @@ pub async fn list_dispatch_jobs(
         .map(|j| j.into())
         .collect();
 
-    Ok(Json(filtered))
+    let total = filtered.len() as u64;
+
+    Ok(Json(PagedDispatchJobResponse {
+        items: filtered,
+        page,
+        size,
+        total_items: total,
+    }))
 }
 
 /// Get dispatch jobs for an event
@@ -490,7 +507,7 @@ pub async fn get_jobs_for_event(
     operation_id = "postApiAdminDispatchJobs",
     request_body = CreateDispatchJobRequest,
     responses(
-        (status = 201, description = "Dispatch job created", body = DispatchJobResponse),
+        (status = 201, description = "Dispatch job created", body = crate::shared::api_common::CreatedResponse),
         (status = 400, description = "Invalid request"),
         (status = 403, description = "No access to client")
     ),
@@ -500,7 +517,7 @@ pub async fn create_dispatch_job(
     State(state): State<DispatchJobsState>,
     auth: Authenticated,
     Json(req): Json<CreateDispatchJobRequest>,
-) -> Result<(axum::http::StatusCode, Json<DispatchJobResponse>), PlatformError> {
+) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
     crate::shared::authorization_service::checks::can_create_dispatch_jobs(&auth.0)?;
 
     // Validate client access if specified
@@ -597,9 +614,10 @@ pub async fn create_dispatch_job(
     job.mark_queued();
 
     // Insert into database
+    let id = job.id.clone();
     state.dispatch_job_repo.insert(&job).await?;
 
-    Ok((axum::http::StatusCode::CREATED, Json(job.into())))
+    Ok((axum::http::StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
 }
 
 /// Create multiple dispatch jobs in batch
@@ -757,19 +775,35 @@ pub async fn get_dispatch_job_attempts(
 // Filter Options Endpoint
 // ============================================================================
 
-/// Filter options for dispatch jobs dropdowns
+/// A filter option with value and label (matches TS FilterOption)
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FilterOption {
+    pub value: String,
+    pub label: String,
+}
+
+impl FilterOption {
+    fn from_value(v: String) -> Self {
+        Self { label: v.clone(), value: v }
+    }
+}
+
+/// Filter options for dispatch jobs dropdowns — cascading filter support.
+/// Matches the TS version: queries distinct values from the read projection.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DispatchJobFilterOptionsResponse {
-    pub statuses: Vec<String>,
-    pub modes: Vec<String>,
-    pub subscription_ids: Vec<String>,
-    pub event_type_codes: Vec<String>,
+    pub clients: Vec<FilterOption>,
+    pub applications: Vec<FilterOption>,
+    pub subdomains: Vec<FilterOption>,
+    pub aggregates: Vec<FilterOption>,
+    pub codes: Vec<FilterOption>,
+    pub statuses: Vec<FilterOption>,
 }
 
 /// Get filter options for dispatch jobs
 ///
-/// Returns distinct values for filter dropdowns (statuses, modes, subscriptionIds, eventTypeCodes).
+/// Returns distinct values from the read projection for cascading filter dropdowns.
 #[utoipa::path(
     get,
     path = "/filter-options",
@@ -786,30 +820,23 @@ pub async fn get_filter_options(
 ) -> Result<Json<DispatchJobFilterOptionsResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_dispatch_jobs(&auth.0)?;
 
-    // Statuses and modes are known enums
-    let statuses = vec![
-        "PENDING".to_string(),
-        "QUEUED".to_string(),
-        "IN_PROGRESS".to_string(),
-        "COMPLETED".to_string(),
-        "FAILED".to_string(),
-        "EXPIRED".to_string(),
-    ];
-    let modes = vec![
-        "IMMEDIATE".to_string(),
-        "NEXT_ON_ERROR".to_string(),
-        "BLOCK_ON_ERROR".to_string(),
-    ];
-
-    // Query distinct values from the database
-    let subscription_ids = state.dispatch_job_repo.find_distinct_subscription_ids().await?;
-    let event_type_codes = state.dispatch_job_repo.find_distinct_event_type_codes().await?;
+    // Query distinct values from the read projection table
+    let (clients, applications, subdomains, aggregates, codes, statuses) = tokio::try_join!(
+        state.dispatch_job_repo.find_distinct_client_ids(),
+        state.dispatch_job_repo.find_distinct_applications(),
+        state.dispatch_job_repo.find_distinct_subdomains(),
+        state.dispatch_job_repo.find_distinct_aggregates(),
+        state.dispatch_job_repo.find_distinct_codes(),
+        state.dispatch_job_repo.find_distinct_statuses(),
+    )?;
 
     Ok(Json(DispatchJobFilterOptionsResponse {
-        statuses,
-        modes,
-        subscription_ids,
-        event_type_codes,
+        clients: clients.into_iter().map(FilterOption::from_value).collect(),
+        applications: applications.into_iter().map(FilterOption::from_value).collect(),
+        subdomains: subdomains.into_iter().map(FilterOption::from_value).collect(),
+        aggregates: aggregates.into_iter().map(FilterOption::from_value).collect(),
+        codes: codes.into_iter().map(FilterOption::from_value).collect(),
+        statuses: statuses.into_iter().map(FilterOption::from_value).collect(),
     }))
 }
 
@@ -884,8 +911,10 @@ pub async fn list_dispatch_jobs_raw(
 
     let page = pagination.page();
     let size = pagination.size().min(500);
+    let limit = size as i64;
+    let offset = (page as i64) * (size as i64);
     let jobs = state.dispatch_job_repo
-        .find_recent_paged(page, size)
+        .find_recent_paged(limit, offset)
         .await?;
 
     Ok(Json(PaginatedDispatchJobsResponse {

@@ -31,29 +31,6 @@ pub use http_dispatcher::{
 pub use enhanced_processor::{EnhancedOutboxProcessor, EnhancedProcessorConfig, ProcessorMetrics};
 pub use repository::{OutboxRepository, OutboxTableConfig, OutboxRepositoryExt};
 
-/// Configuration for leader election in outbox processor
-#[derive(Debug, Clone)]
-pub struct LeaderElectionConfig {
-    /// Whether leader election is enabled
-    pub enabled: bool,
-    /// Redis URL for leader election
-    pub redis_url: String,
-    /// Lock key for this processor
-    pub lock_key: String,
-    /// Lock TTL in seconds
-    pub lock_ttl_seconds: u64,
-    /// Heartbeat interval in seconds
-    pub heartbeat_interval_seconds: u64,
-}
-
-impl Default for LeaderElectionConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            redis_url: "redis://127.0.0.1:6379".to_string(),
-            lock_key: "fc:outbox-processor-leader".to_string(),
-            lock_ttl_seconds: 30,
-            heartbeat_interval_seconds: 10,
-        }
-    }
-}
+/// Leader election configuration. Re-exported from `fc_common` — a single
+/// unified type replacing the previous per-crate duplicates in fc-outbox and fc-standby.
+pub use fc_common::LeaderElectionConfig;

@@ -5,6 +5,7 @@ use super::{FlowCatalystClient, ClientError};
 
 /// Request to create an application.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateApplicationRequest {
     /// Unique code for the application
     pub code: String,
@@ -13,8 +14,8 @@ pub struct CreateApplicationRequest {
     /// Optional description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Application type (e.g., "service", "web", "mobile")
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Application type (e.g., "APPLICATION", "INTEGRATION")
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub application_type: Option<String>,
     /// Default base URL for the application
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -26,6 +27,7 @@ pub struct CreateApplicationRequest {
 
 /// Request to update an application.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateApplicationRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -39,6 +41,7 @@ pub struct UpdateApplicationRequest {
 
 /// Client config for an application (per-client overrides).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct ClientConfigRequest {
     /// Whether the application is enabled for this client
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -53,30 +56,29 @@ pub struct ClientConfigRequest {
 
 /// Application response from the platform API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApplicationResponse {
     pub id: String,
     pub code: String,
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
-    #[serde(default)]
-    pub application_type: Option<String>,
+    #[serde(rename = "type")]
+    pub application_type: String,
     #[serde(default)]
     pub default_base_url: Option<String>,
     #[serde(default)]
     pub icon_url: Option<String>,
     #[serde(default)]
     pub service_account_id: Option<String>,
-    #[serde(default)]
     pub active: bool,
-    #[serde(default)]
-    pub created_at: Option<String>,
-    #[serde(default)]
-    pub updated_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 /// Application list response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApplicationListResponse {
     pub applications: Vec<ApplicationResponse>,
     #[serde(default)]
@@ -85,41 +87,39 @@ pub struct ApplicationListResponse {
 
 /// Service account response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ServiceAccountResponse {
     pub id: String,
     pub code: String,
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
-    #[serde(default)]
     pub active: bool,
     #[serde(default)]
     pub application_id: Option<String>,
-    #[serde(default)]
-    pub created_at: Option<String>,
+    pub created_at: String,
 }
 
 /// Application role response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApplicationRoleResponse {
     pub id: String,
     pub code: String,
-    #[serde(default)]
-    pub display_name: Option<String>,
+    pub display_name: String,
     #[serde(default)]
     pub description: Option<String>,
-    #[serde(default)]
-    pub application_code: Option<String>,
+    pub application_code: String,
     #[serde(default)]
     pub permissions: Vec<String>,
-    #[serde(default)]
-    pub source: Option<String>,
+    pub source: String,
     #[serde(default)]
     pub client_managed: bool,
 }
 
 /// Client config for an application.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClientConfigResponse {
     pub id: String,
     pub application_id: String,
@@ -140,6 +140,7 @@ pub struct ClientConfigResponse {
 
 /// Client configs list response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClientConfigsResponse {
     pub client_configs: Vec<ClientConfigResponse>,
     #[serde(default)]
@@ -148,6 +149,7 @@ pub struct ClientConfigsResponse {
 
 /// Created response (returns the new entity's ID).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreatedResponse {
     pub id: String,
     #[serde(default)]
@@ -156,6 +158,7 @@ pub struct CreatedResponse {
 
 /// Generic success response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SuccessResponse {
     #[serde(default)]
     pub message: Option<String>,
@@ -169,7 +172,7 @@ impl FlowCatalystClient {
         &self,
         req: &CreateApplicationRequest,
     ) -> Result<CreatedResponse, ClientError> {
-        self.post("/api/applications", req).await
+        self.post("/api/admin/applications", req).await
     }
 
     /// List applications with optional pagination and filters.
@@ -196,12 +199,12 @@ impl FlowCatalystClient {
             format!("?{}", params.join("&"))
         };
 
-        self.get(&format!("/api/applications{}", query)).await
+        self.get(&format!("/api/admin/applications{}", query)).await
     }
 
     /// Get an application by ID.
     pub async fn get_application(&self, id: &str) -> Result<ApplicationResponse, ClientError> {
-        self.get(&format!("/api/applications/{}", id)).await
+        self.get(&format!("/api/admin/applications/{}", id)).await
     }
 
     /// Get an application by code.
@@ -209,7 +212,7 @@ impl FlowCatalystClient {
         &self,
         code: &str,
     ) -> Result<ApplicationResponse, ClientError> {
-        self.get(&format!("/api/applications/by-code/{}", code))
+        self.get(&format!("/api/admin/applications/by-code/{}", code))
             .await
     }
 
@@ -219,17 +222,17 @@ impl FlowCatalystClient {
         id: &str,
         req: &UpdateApplicationRequest,
     ) -> Result<ApplicationResponse, ClientError> {
-        self.put(&format!("/api/applications/{}", id), req).await
+        self.put(&format!("/api/admin/applications/{}", id), req).await
     }
 
     /// Delete (deactivate) an application.
     pub async fn delete_application(&self, id: &str) -> Result<(), ClientError> {
-        self.delete_req(&format!("/api/applications/{}", id)).await
+        self.delete_req(&format!("/api/admin/applications/{}", id)).await
     }
 
     /// Activate an application.
     pub async fn activate_application(&self, id: &str) -> Result<ApplicationResponse, ClientError> {
-        self.post_action(&format!("/api/applications/{}/activate", id))
+        self.post_action(&format!("/api/admin/applications/{}/activate", id))
             .await
     }
 
@@ -238,7 +241,7 @@ impl FlowCatalystClient {
         &self,
         id: &str,
     ) -> Result<ApplicationResponse, ClientError> {
-        self.post_action(&format!("/api/applications/{}/deactivate", id))
+        self.post_action(&format!("/api/admin/applications/{}/deactivate", id))
             .await
     }
 
@@ -248,7 +251,7 @@ impl FlowCatalystClient {
         application_id: &str,
     ) -> Result<ServiceAccountResponse, ClientError> {
         self.post_action(&format!(
-            "/api/applications/{}/provision-service-account",
+            "/api/admin/applications/{}/provision-service-account",
             application_id
         ))
         .await
@@ -260,7 +263,7 @@ impl FlowCatalystClient {
         application_id: &str,
     ) -> Result<ServiceAccountResponse, ClientError> {
         self.get(&format!(
-            "/api/applications/{}/service-account",
+            "/api/admin/applications/{}/service-account",
             application_id
         ))
         .await
@@ -271,7 +274,7 @@ impl FlowCatalystClient {
         &self,
         application_id: &str,
     ) -> Result<Vec<ApplicationRoleResponse>, ClientError> {
-        self.get(&format!("/api/applications/{}/roles", application_id))
+        self.get(&format!("/api/admin/applications/{}/roles", application_id))
             .await
     }
 
@@ -280,7 +283,7 @@ impl FlowCatalystClient {
         &self,
         application_id: &str,
     ) -> Result<ClientConfigsResponse, ClientError> {
-        self.get(&format!("/api/applications/{}/clients", application_id))
+        self.get(&format!("/api/admin/applications/{}/clients", application_id))
             .await
     }
 
@@ -293,7 +296,7 @@ impl FlowCatalystClient {
     ) -> Result<ClientConfigResponse, ClientError> {
         self.put(
             &format!(
-                "/api/applications/{}/clients/{}",
+                "/api/admin/applications/{}/clients/{}",
                 application_id, client_id
             ),
             req,
@@ -308,7 +311,7 @@ impl FlowCatalystClient {
         client_id: &str,
     ) -> Result<ClientConfigResponse, ClientError> {
         self.post_action(&format!(
-            "/api/applications/{}/clients/{}/enable",
+            "/api/admin/applications/{}/clients/{}/enable",
             application_id, client_id
         ))
         .await
@@ -321,7 +324,7 @@ impl FlowCatalystClient {
         client_id: &str,
     ) -> Result<ClientConfigResponse, ClientError> {
         self.post_action(&format!(
-            "/api/applications/{}/clients/{}/disable",
+            "/api/admin/applications/{}/clients/{}/disable",
             application_id, client_id
         ))
         .await

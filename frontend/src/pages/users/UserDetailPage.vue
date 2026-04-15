@@ -66,6 +66,15 @@ const savingApps = ref(false);
 const showDeleteDialog = ref(false);
 const deleteLoading = ref(false);
 
+// Send password reset email
+const showSendResetDialog = ref(false);
+const sendingReset = ref(false);
+
+// Internal-auth users only — OIDC users manage credentials at their IDP.
+const canSendPasswordReset = computed(() =>
+	user.value?.idpType === "INTERNAL" && !!user.value?.email,
+);
+
 const isAnchorUser = computed(() => user.value?.isAnchorUser ?? false);
 
 const userType = computed(() => {
@@ -342,6 +351,30 @@ async function toggleUserStatus() {
 		});
 	} finally {
 		saving.value = false;
+	}
+}
+
+async function sendPasswordReset() {
+	if (!user.value) return;
+	sendingReset.value = true;
+	try {
+		const result = await usersApi.sendPasswordReset(userId);
+		showSendResetDialog.value = false;
+		toast.add({
+			severity: "success",
+			summary: "Reset email sent",
+			detail: result.message,
+			life: 4000,
+		});
+	} catch (e: unknown) {
+		toast.add({
+			severity: "error",
+			summary: "Could not send reset email",
+			detail: getErrorMessage(e, "Failed to send password reset email"),
+			life: 5000,
+		});
+	} finally {
+		sendingReset.value = false;
 	}
 }
 
@@ -647,6 +680,15 @@ function goBack() {
           />
         </div>
         <div class="header-right">
+          <Button
+            v-if="canSendPasswordReset"
+            label="Send Password Reset"
+            icon="pi pi-envelope"
+            severity="secondary"
+            outlined
+            @click="showSendResetDialog = true"
+            v-tooltip.bottom="'Email the user a single-use link to set a new password'"
+          />
           <Button
             :label="user.active ? 'Deactivate' : 'Activate'"
             :icon="user.active ? 'pi pi-ban' : 'pi pi-check'"
@@ -1062,6 +1104,36 @@ function goBack() {
           :disabled="!hasAppChanges"
           :loading="savingApps"
           @click="saveApps"
+        />
+      </template>
+    </Dialog>
+
+    <!-- Send Password Reset Confirmation Dialog -->
+    <Dialog
+      v-model:visible="showSendResetDialog"
+      header="Send Password Reset Email"
+      modal
+      :style="{ width: '480px' }"
+    >
+      <div class="dialog-content">
+        <p>
+          Send a password reset email to <strong>{{ user?.name }}</strong>
+          (<code>{{ user?.email }}</code>)?
+        </p>
+        <Message severity="info" :closable="false">
+          The user will receive a single-use link valid for 15 minutes. They will set their own
+          password — you will not see or handle it.
+          Any previously-issued reset tokens for this user will be invalidated.
+        </Message>
+      </div>
+
+      <template #footer>
+        <Button label="Cancel" text @click="showSendResetDialog = false" :disabled="sendingReset" />
+        <Button
+          label="Send Email"
+          icon="pi pi-envelope"
+          :loading="sendingReset"
+          @click="sendPasswordReset"
         />
       </template>
     </Dialog>

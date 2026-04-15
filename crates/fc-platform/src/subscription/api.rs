@@ -322,7 +322,7 @@ fn parse_mode(s: &str) -> Result<DispatchMode, PlatformError> {
     operation_id = "postApiAdminSubscriptions",
     request_body = CreateSubscriptionRequest,
     responses(
-        (status = 201, description = "Subscription created", body = SubscriptionResponse),
+        (status = 201, description = "Subscription created", body = crate::shared::api_common::CreatedResponse),
         (status = 400, description = "Validation error"),
         (status = 409, description = "Duplicate code")
     ),
@@ -332,7 +332,7 @@ pub async fn create_subscription(
     State(state): State<SubscriptionsState>,
     auth: Authenticated,
     Json(req): Json<CreateSubscriptionRequest>,
-) -> Result<(StatusCode, Json<SubscriptionResponse>), PlatformError> {
+) -> Result<(StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
     crate::shared::authorization_service::checks::can_write_subscriptions(&auth.0)?;
 
     // Validate client access if specified
@@ -388,9 +388,10 @@ pub async fn create_subscription(
         subscription = subscription.with_event_type_binding(eb);
     }
 
+    let id = subscription.id.clone();
     state.subscription_repo.insert(&subscription).await?;
 
-    Ok((StatusCode::CREATED, Json(SubscriptionResponse::from(subscription))))
+    Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
 }
 
 /// Get subscription by ID
@@ -482,7 +483,7 @@ pub async fn list_subscriptions(
     ),
     request_body = UpdateSubscriptionRequest,
     responses(
-        (status = 200, description = "Subscription updated", body = SubscriptionResponse),
+        (status = 204, description = "Subscription updated"),
         (status = 404, description = "Subscription not found")
     ),
     security(("bearer_auth" = []))
@@ -492,7 +493,7 @@ pub async fn update_subscription(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateSubscriptionRequest>,
-) -> Result<Json<SubscriptionResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     crate::shared::authorization_service::checks::can_write_subscriptions(&auth.0)?;
 
     let mut subscription = state.subscription_repo.find_by_id(&id).await?
@@ -530,7 +531,7 @@ pub async fn update_subscription(
     subscription.updated_at = chrono::Utc::now();
     state.subscription_repo.update(&subscription).await?;
 
-    Ok(Json(subscription.into()))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Pause subscription

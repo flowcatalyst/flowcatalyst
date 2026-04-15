@@ -3538,7 +3538,7 @@
         ]
       }
     },
-    "/api/monitoring/circuit-breakers": {
+    "/api/admin/monitoring/circuit-breakers": {
       "get": {
         "tags": [
           "monitoring"
@@ -3564,7 +3564,7 @@
         ]
       }
     },
-    "/api/monitoring/dashboard": {
+    "/api/admin/monitoring/dashboard": {
       "get": {
         "tags": [
           "monitoring"
@@ -3590,7 +3590,7 @@
         ]
       }
     },
-    "/api/monitoring/in-flight-messages": {
+    "/api/admin/monitoring/in-flight-messages": {
       "get": {
         "tags": [
           "monitoring"
@@ -3616,7 +3616,7 @@
         ]
       }
     },
-    "/api/monitoring/pool-stats": {
+    "/api/admin/monitoring/pool-stats": {
       "get": {
         "tags": [
           "monitoring"
@@ -3642,7 +3642,7 @@
         ]
       }
     },
-    "/api/monitoring/standby-status": {
+    "/api/admin/monitoring/standby-status": {
       "get": {
         "tags": [
           "monitoring"

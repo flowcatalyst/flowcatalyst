@@ -12,6 +12,8 @@ pub struct CreateDispatchPoolRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rate_limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub concurrency: Option<u32>,
@@ -48,17 +50,14 @@ pub struct DispatchPoolResponse {
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
-    pub status: Option<String>,
+    pub client_id: Option<String>,
+    pub status: String,
     #[serde(default)]
     pub rate_limit: Option<u32>,
     #[serde(default)]
     pub concurrency: Option<u32>,
-    #[serde(default)]
-    pub client_id: Option<String>,
-    #[serde(default)]
-    pub created_at: Option<String>,
-    #[serde(default)]
-    pub updated_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 impl FlowCatalystClient {

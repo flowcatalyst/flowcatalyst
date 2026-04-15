@@ -71,18 +71,49 @@ impl LoginAttempt {
     }
 }
 
-impl From<crate::entities::iam_login_attempts::Model> for LoginAttempt {
-    fn from(m: crate::entities::iam_login_attempts::Model) -> Self {
-        Self {
-            id: m.id,
-            attempt_type: AttemptType::from_str(&m.attempt_type),
-            outcome: LoginOutcome::from_str(&m.outcome),
-            failure_reason: m.failure_reason,
-            identifier: m.identifier,
-            principal_id: m.principal_id,
-            ip_address: m.ip_address,
-            user_agent: m.user_agent,
-            attempted_at: m.attempted_at.with_timezone(&Utc),
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attempt_type_roundtrip_with_fallback() {
+        assert_eq!(AttemptType::from_str("USER_LOGIN"), AttemptType::UserLogin);
+        assert_eq!(AttemptType::from_str("SERVICE_ACCOUNT_TOKEN"), AttemptType::ServiceAccountToken);
+        // Unknown falls back to UserLogin
+        assert_eq!(AttemptType::from_str("UNKNOWN"), AttemptType::UserLogin);
+        for t in [AttemptType::UserLogin, AttemptType::ServiceAccountToken] {
+            assert_eq!(AttemptType::from_str(t.as_str()), t);
         }
+    }
+
+    #[test]
+    fn login_outcome_roundtrip_with_fallback() {
+        assert_eq!(LoginOutcome::from_str("SUCCESS"), LoginOutcome::Success);
+        assert_eq!(LoginOutcome::from_str("FAILURE"), LoginOutcome::Failure);
+        // Unknown falls back to Success
+        assert_eq!(LoginOutcome::from_str("UNKNOWN"), LoginOutcome::Success);
+        for o in [LoginOutcome::Success, LoginOutcome::Failure] {
+            assert_eq!(LoginOutcome::from_str(o.as_str()), o);
+        }
+    }
+
+    #[test]
+    fn new_populates_type_and_outcome_with_defaults_elsewhere() {
+        let a = LoginAttempt::new(AttemptType::UserLogin, LoginOutcome::Failure);
+        assert_eq!(a.attempt_type, AttemptType::UserLogin);
+        assert_eq!(a.outcome, LoginOutcome::Failure);
+        assert!(a.failure_reason.is_none());
+        assert!(a.identifier.is_none());
+        assert!(a.principal_id.is_none());
+        assert!(a.ip_address.is_none());
+        assert!(a.user_agent.is_none());
+        assert!(!a.id.is_empty());
+    }
+
+    #[test]
+    fn new_attempts_get_distinct_ids() {
+        let a = LoginAttempt::new(AttemptType::UserLogin, LoginOutcome::Success);
+        let b = LoginAttempt::new(AttemptType::UserLogin, LoginOutcome::Success);
+        assert_ne!(a.id, b.id);
     }
 }

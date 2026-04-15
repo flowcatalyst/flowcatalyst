@@ -4,7 +4,11 @@ use std::sync::Arc;
 use std::time::Instant;
 use utoipa::ToSchema;
 
+pub mod config;
 pub mod logging;
+pub mod tsid;
+
+pub use tsid::{TsidGenerator, EntityType};
 
 // ============================================================================
 // Core Message Types
@@ -75,6 +79,65 @@ impl DispatchMode {
     /// Whether this mode requires sequential (FIFO) processing within a message group
     pub fn requires_ordering(&self) -> bool {
         matches!(self, Self::NextOnError | Self::BlockOnError)
+    }
+}
+
+/// Dispatch job status lifecycle.
+/// Shared across platform, scheduler, and router.
+///
+/// Matches TypeScript: `"PENDING" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED" | "EXPIRED"`
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum DispatchStatus {
+    /// Job created, waiting to be queued
+    #[default]
+    Pending,
+    /// Job queued for processing
+    Queued,
+    /// Job is being processed (webhook delivery in progress)
+    Processing,
+    /// Job completed successfully
+    Completed,
+    /// Job failed after all retries
+    Failed,
+    /// Job manually cancelled
+    Cancelled,
+    /// Job expired (TTL exceeded)
+    Expired,
+}
+
+impl DispatchStatus {
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Completed | Self::Failed | Self::Cancelled | Self::Expired)
+    }
+
+    pub fn is_successful(&self) -> bool {
+        matches!(self, Self::Completed)
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Pending => "PENDING",
+            Self::Queued => "QUEUED",
+            Self::Processing => "PROCESSING",
+            Self::Completed => "COMPLETED",
+            Self::Failed => "FAILED",
+            Self::Cancelled => "CANCELLED",
+            Self::Expired => "EXPIRED",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s.to_uppercase().as_str() {
+            "PENDING" => Self::Pending,
+            "QUEUED" => Self::Queued,
+            "PROCESSING" | "IN_PROGRESS" => Self::Processing,
+            "COMPLETED" => Self::Completed,
+            "FAILED" | "ERROR" => Self::Failed,
+            "CANCELLED" => Self::Cancelled,
+            "EXPIRED" => Self::Expired,
+            _ => Self::Pending,
+        }
     }
 }
 
@@ -221,6 +284,63 @@ impl Default for StandbyConfig {
             lock_ttl_seconds: 30,
             refresh_interval_seconds: 10,
         }
+    }
+}
+
+/// Unified leader election configuration used by fc-outbox and fc-standby.
+///
+/// Union of the fields previously duplicated across those crates:
+/// - `enabled`: whether leader election is active (fc-outbox semantics; fc-standby ignores)
+/// - `redis_url`, `lock_key`, `lock_ttl_seconds`, `heartbeat_interval_seconds`: Redis-based lock
+/// - `instance_id`: unique identifier for this process (auto-generated via uuid v4 by default)
+#[derive(Debug, Clone)]
+pub struct LeaderElectionConfig {
+    /// Whether leader election is enabled
+    pub enabled: bool,
+    /// Redis connection URL
+    pub redis_url: String,
+    /// Key prefix for the lock
+    pub lock_key: String,
+    /// Lock TTL in seconds
+    pub lock_ttl_seconds: u64,
+    /// Heartbeat interval (should be less than TTL)
+    pub heartbeat_interval_seconds: u64,
+    /// Unique identifier for this instance
+    pub instance_id: String,
+}
+
+impl LeaderElectionConfig {
+    /// Create a new config with the given Redis URL and sensible defaults.
+    pub fn new(redis_url: impl Into<String>) -> Self {
+        Self {
+            enabled: true,
+            redis_url: redis_url.into(),
+            lock_key: "fc:leader".to_string(),
+            lock_ttl_seconds: 30,
+            heartbeat_interval_seconds: 10,
+            instance_id: uuid::Uuid::new_v4().to_string(),
+        }
+    }
+
+    pub fn with_lock_key(mut self, key: impl Into<String>) -> Self {
+        self.lock_key = key.into();
+        self
+    }
+
+    pub fn with_instance_id(mut self, id: impl Into<String>) -> Self {
+        self.instance_id = id.into();
+        self
+    }
+
+    pub fn with_enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+}
+
+impl Default for LeaderElectionConfig {
+    fn default() -> Self {
+        Self::new("redis://127.0.0.1:6379")
     }
 }
 

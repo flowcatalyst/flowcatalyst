@@ -8,7 +8,7 @@
 //!   Client Admin:   alice@acme.com / DevPassword123!
 //!   Regular User:   bob@acme.com / DevPassword123!
 
-use sea_orm::DatabaseConnection;
+use sqlx::PgPool;
 use tracing::info;
 
 use crate::{
@@ -30,18 +30,18 @@ const DEV_PASSWORD: &str = "DevPassword123!";
 
 /// Development data seeder
 pub struct DevDataSeeder {
-    pg_db: DatabaseConnection,
+    pg_pool: PgPool,
     password_service: PasswordService,
 }
 
 impl DevDataSeeder {
-    pub fn new(pg_db: DatabaseConnection) -> Self {
+    pub fn new(pg_pool: PgPool) -> Self {
         // Use testing config for faster seeding, but still Argon2id
         let password_service = PasswordService::new(
             Argon2Config::testing(),
             PasswordPolicy::lenient(),
         );
-        Self { pg_db, password_service }
+        Self { pg_pool, password_service }
     }
 
     /// Seed all development data
@@ -70,7 +70,7 @@ impl DevDataSeeder {
     }
 
     async fn seed_anchor_domain(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = AnchorDomainRepository::new(&self.pg_db);
+        let repo = AnchorDomainRepository::new(&self.pg_pool);
 
         if repo.find_by_domain("flowcatalyst.local").await?.is_some() {
             return Ok(());
@@ -85,7 +85,7 @@ impl DevDataSeeder {
 
     /// Ensure the "internal" identity provider exists (for password-based auth).
     async fn seed_internal_identity_provider(&self) -> Result<String, Box<dyn std::error::Error>> {
-        let repo = IdentityProviderRepository::new(&self.pg_db);
+        let repo = IdentityProviderRepository::new(&self.pg_pool);
 
         if let Some(existing) = repo.find_by_code("internal").await? {
             return Ok(existing.id);
@@ -103,7 +103,7 @@ impl DevDataSeeder {
         internal_idp_id: &str,
         clients: &SeedClients,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = EmailDomainMappingRepository::new(&self.pg_db);
+        let repo = EmailDomainMappingRepository::new(&self.pg_pool);
 
         // Anchor domain
         self.create_edm_if_not_exists(&repo, "flowcatalyst.local", internal_idp_id, ScopeType::Anchor, None).await?;
@@ -145,7 +145,7 @@ impl DevDataSeeder {
     }
 
     async fn seed_clients(&self) -> Result<SeedClients, Box<dyn std::error::Error>> {
-        let repo = ClientRepository::new(&self.pg_db);
+        let repo = ClientRepository::new(&self.pg_pool);
 
         let acme = self.create_client_if_not_exists(&repo, "Acme Corporation", "acme", ClientStatus::Active).await?;
         let globex = self.create_client_if_not_exists(&repo, "Globex Industries", "globex", ClientStatus::Active).await?;
@@ -175,7 +175,7 @@ impl DevDataSeeder {
     }
 
     async fn seed_auth_configs(&self, _clients: &SeedClients) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = ClientAuthConfigRepository::new(&self.pg_db);
+        let repo = ClientAuthConfigRepository::new(&self.pg_pool);
 
         self.create_auth_config_if_not_exists(&repo, "flowcatalyst.local").await?;
         self.create_auth_config_if_not_exists(&repo, "acme.com").await?;
@@ -203,8 +203,8 @@ impl DevDataSeeder {
     }
 
     async fn seed_users(&self, clients: &SeedClients) -> Result<(), Box<dyn std::error::Error>> {
-        let principal_repo = PrincipalRepository::new(&self.pg_db);
-        let grant_repo = ClientAccessGrantRepository::new(&self.pg_db);
+        let principal_repo = PrincipalRepository::new(&self.pg_pool);
+        let grant_repo = ClientAccessGrantRepository::new(&self.pg_pool);
 
         let password_hash = self.password_service.hash_password(DEV_PASSWORD)
             .map_err(|e| format!("Failed to hash password: {}", e))?;
@@ -332,7 +332,7 @@ impl DevDataSeeder {
     }
 
     async fn seed_applications(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = ApplicationRepository::new(&self.pg_db);
+        let repo = ApplicationRepository::new(&self.pg_pool);
 
         self.create_application_if_not_exists(&repo, "tms", "Transport Management System",
             "End-to-end transportation planning, execution, and optimization").await?;
@@ -369,7 +369,7 @@ impl DevDataSeeder {
     }
 
     async fn seed_event_types(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = EventTypeRepository::new(&self.pg_db);
+        let repo = EventTypeRepository::new(&self.pg_pool);
 
         // TMS - Transport Management Events
         self.create_event_type(&repo, "tms:planning:load:created", "Load Created",

@@ -163,24 +163,160 @@ impl Client {
     }
 }
 
-/// Conversion from SeaORM database model to domain entity
-impl From<crate::entities::tnt_clients::Model> for Client {
-    fn from(model: crate::entities::tnt_clients::Model) -> Self {
-        let notes: Vec<ClientNote> = model
-            .notes
-            .and_then(|v| serde_json::from_value(v).ok())
-            .unwrap_or_default();
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        Self {
-            id: model.id,
-            name: model.name,
-            identifier: model.identifier,
-            status: ClientStatus::from_str(&model.status),
-            status_reason: model.status_reason,
-            status_changed_at: model.status_changed_at.map(|dt| dt.with_timezone(&Utc)),
-            notes,
-            created_at: model.created_at.with_timezone(&Utc),
-            updated_at: model.updated_at.with_timezone(&Utc),
+    #[test]
+    fn test_new_client() {
+        let client = Client::new("Acme Corp", "acme-corp");
+
+        assert!(!client.id.is_empty());
+        assert!(client.id.starts_with("clt_"), "ID should have clt_ prefix, got: {}", client.id);
+        assert_eq!(client.id.len(), 17, "Typed ID should be 17 chars, got: {}", client.id.len());
+        assert_eq!(client.name, "Acme Corp");
+        assert_eq!(client.identifier, "acme-corp");
+        assert_eq!(client.status, ClientStatus::Active);
+        assert!(client.status_reason.is_none());
+        assert!(client.status_changed_at.is_none());
+        assert!(client.notes.is_empty());
+        assert_eq!(client.created_at, client.updated_at);
+    }
+
+    #[test]
+    fn test_client_unique_ids() {
+        let c1 = Client::new("A", "a");
+        let c2 = Client::new("B", "b");
+        assert_ne!(c1.id, c2.id);
+    }
+
+    #[test]
+    fn test_client_status_as_str() {
+        assert_eq!(ClientStatus::Active.as_str(), "ACTIVE");
+        assert_eq!(ClientStatus::Inactive.as_str(), "INACTIVE");
+        assert_eq!(ClientStatus::Suspended.as_str(), "SUSPENDED");
+    }
+
+    #[test]
+    fn test_client_status_from_str() {
+        assert_eq!(ClientStatus::from_str("ACTIVE"), ClientStatus::Active);
+        assert_eq!(ClientStatus::from_str("INACTIVE"), ClientStatus::Inactive);
+        assert_eq!(ClientStatus::from_str("SUSPENDED"), ClientStatus::Suspended);
+        // Unknown values default to Active
+        assert_eq!(ClientStatus::from_str("unknown"), ClientStatus::Active);
+        assert_eq!(ClientStatus::from_str(""), ClientStatus::Active);
+    }
+
+    #[test]
+    fn test_client_status_default() {
+        assert_eq!(ClientStatus::default(), ClientStatus::Active);
+    }
+
+    #[test]
+    fn test_client_status_roundtrip() {
+        for status in [ClientStatus::Active, ClientStatus::Inactive, ClientStatus::Suspended] {
+            let s = status.as_str();
+            assert_eq!(ClientStatus::from_str(s), status, "Roundtrip failed for {:?}", status);
         }
     }
+
+    #[test]
+    fn test_client_suspend() {
+        let mut client = Client::new("Test", "test");
+        assert!(client.is_active());
+        assert!(!client.is_suspended());
+
+        client.suspend("Payment overdue");
+        assert!(!client.is_active());
+        assert!(client.is_suspended());
+        assert_eq!(client.status, ClientStatus::Suspended);
+        assert_eq!(client.status_reason, Some("Payment overdue".to_string()));
+        assert!(client.status_changed_at.is_some());
+    }
+
+    #[test]
+    fn test_client_activate() {
+        let mut client = Client::new("Test", "test");
+        client.suspend("Test reason");
+
+        client.activate();
+        assert!(client.is_active());
+        assert!(!client.is_suspended());
+        assert_eq!(client.status, ClientStatus::Active);
+        assert!(client.status_reason.is_none());
+        assert!(client.status_changed_at.is_some());
+    }
+
+    #[test]
+    fn test_client_deactivate() {
+        let mut client = Client::new("Test", "test");
+
+        client.deactivate(Some("No longer needed".to_string()));
+        assert!(client.is_inactive());
+        assert!(!client.is_active());
+        assert_eq!(client.status, ClientStatus::Inactive);
+        assert_eq!(client.status_reason, Some("No longer needed".to_string()));
+    }
+
+    #[test]
+    fn test_client_deactivate_no_reason() {
+        let mut client = Client::new("Test", "test");
+        client.deactivate(None);
+        assert!(client.is_inactive());
+        assert!(client.status_reason.is_none());
+    }
+
+    #[test]
+    fn test_client_status_transitions() {
+        let mut client = Client::new("Test", "test");
+        assert!(client.is_active());
+
+        // Active -> Suspended
+        client.suspend("billing");
+        assert!(client.is_suspended());
+
+        // Suspended -> Active
+        client.activate();
+        assert!(client.is_active());
+
+        // Active -> Inactive
+        client.deactivate(Some("done".to_string()));
+        assert!(client.is_inactive());
+
+        // Inactive -> Active
+        client.activate();
+        assert!(client.is_active());
+    }
+
+    #[test]
+    fn test_client_add_note() {
+        let mut client = Client::new("Test", "test");
+        assert!(client.notes.is_empty());
+
+        let note = ClientNote::new("general", "First note");
+        client.add_note(note);
+        assert_eq!(client.notes.len(), 1);
+        assert_eq!(client.notes[0].category, "general");
+        assert_eq!(client.notes[0].text, "First note");
+    }
+
+    #[test]
+    fn test_client_note_with_author() {
+        let note = ClientNote::new("billing", "Payment received")
+            .with_author("admin@example.com");
+        assert_eq!(note.added_by, Some("admin@example.com".to_string()));
+    }
+
+    #[test]
+    fn test_client_set_status() {
+        let mut client = Client::new("Test", "test");
+        let before = client.updated_at;
+
+        client.set_status(ClientStatus::Suspended, Some("reason".to_string()));
+        assert_eq!(client.status, ClientStatus::Suspended);
+        assert_eq!(client.status_reason, Some("reason".to_string()));
+        assert!(client.status_changed_at.is_some());
+        assert!(client.updated_at >= before);
+    }
 }
+

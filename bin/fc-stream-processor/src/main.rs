@@ -24,23 +24,7 @@ use tokio::signal;
 
 use fc_stream::{StreamProcessorConfig, StreamHealthService, start_stream_processor};
 
-fn env_or(key: &str, default: &str) -> String {
-    std::env::var(key).unwrap_or_else(|_| default.to_string())
-}
-
-fn env_bool(key: &str, default: bool) -> bool {
-    std::env::var(key)
-        .ok()
-        .map(|v| v == "true" || v == "1")
-        .unwrap_or(default)
-}
-
-fn env_u32(key: &str, default: u32) -> u32 {
-    std::env::var(key)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
-}
+use fc_common::config::{env_or, env_or_parse, env_bool};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -50,13 +34,13 @@ async fn main() -> Result<()> {
 
     // Configuration
     let database_url = env_or("FC_DATABASE_URL", "postgresql://localhost:5432/flowcatalyst");
-    let metrics_port: u16 = env_u32("FC_METRICS_PORT", 9090) as u16;
+    let metrics_port: u16 = env_or_parse("FC_METRICS_PORT", 9090);
 
     let config = StreamProcessorConfig {
         events_enabled: env_bool("FC_STREAM_EVENTS_ENABLED", true),
-        events_batch_size: env_u32("FC_STREAM_EVENTS_BATCH_SIZE", 100),
+        events_batch_size: env_or_parse("FC_STREAM_EVENTS_BATCH_SIZE", 100),
         dispatch_jobs_enabled: env_bool("FC_STREAM_DISPATCH_JOBS_ENABLED", true),
-        dispatch_jobs_batch_size: env_u32("FC_STREAM_DISPATCH_JOBS_BATCH_SIZE", 100),
+        dispatch_jobs_batch_size: env_or_parse("FC_STREAM_DISPATCH_JOBS_BATCH_SIZE", 100),
     };
 
     // Connect to PostgreSQL

@@ -22,30 +22,19 @@ pub struct AuditLogFilters {
 #[serde(rename_all = "camelCase")]
 pub struct AuditLogResponse {
     pub id: String,
-    #[serde(default)]
-    pub entity_type: Option<String>,
+    pub operation: String,
+    pub entity_type: String,
     #[serde(default)]
     pub entity_id: Option<String>,
-    #[serde(default)]
-    pub operation: Option<String>,
-    #[serde(default)]
-    pub operation_data: Option<serde_json::Value>,
     #[serde(default)]
     pub principal_id: Option<String>,
     #[serde(default)]
     pub principal_name: Option<String>,
     #[serde(default)]
+    pub application_id: Option<String>,
+    #[serde(default)]
     pub client_id: Option<String>,
-    #[serde(default)]
-    pub source: Option<String>,
-    #[serde(default)]
-    pub correlation_id: Option<String>,
-    #[serde(default)]
-    pub metadata: Option<serde_json::Value>,
-    #[serde(default)]
-    pub performed_at: Option<String>,
-    #[serde(default)]
-    pub created_at: Option<String>,
+    pub performed_at: String,
 }
 
 impl FlowCatalystClient {

@@ -1,58 +1,162 @@
-//! Principal Repository
+//! Principal Repository — PostgreSQL via SQLx
 //!
-//! PostgreSQL persistence for Principal entities using SeaORM.
 //! Roles are loaded from iam_principal_roles junction table.
 //! Assigned clients are loaded from iam_client_access_grants.
 
 use async_trait::async_trait;
-use sea_orm::*;
-use sea_orm::sea_query::OnConflict;
-use chrono::Utc;
+use sqlx::{PgPool, Postgres, QueryBuilder};
+use chrono::{DateTime, Utc};
 
-use super::entity::{Principal, UserScope};
+use super::entity::{ExternalIdentity, Principal, PrincipalType, UserIdentity, UserScope};
 use crate::service_account::entity::RoleAssignment;
-use crate::entities::{iam_principals, iam_principal_roles, iam_client_access_grants, iam_principal_application_access, tnt_clients};
 use crate::shared::error::Result;
 use crate::usecase::unit_of_work::{HasId, PgPersist};
 
+// ── Row types ────────────────────────────────────────────────────────────────
+
+#[derive(sqlx::FromRow)]
+struct PrincipalRow {
+    id: String,
+    #[sqlx(rename = "type")]
+    principal_type: String,
+    scope: Option<String>,
+    client_id: Option<String>,
+    application_id: Option<String>,
+    name: String,
+    active: bool,
+    email: Option<String>,
+    #[allow(dead_code)]
+    email_domain: Option<String>,
+    idp_type: Option<String>,
+    external_idp_id: Option<String>,
+    password_hash: Option<String>,
+    last_login_at: Option<DateTime<Utc>>,
+    service_account_id: Option<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+impl From<PrincipalRow> for Principal {
+    fn from(r: PrincipalRow) -> Self {
+        let principal_type = PrincipalType::from_str(&r.principal_type);
+        let scope = r.scope.as_deref().map(UserScope::from_str).unwrap_or(UserScope::Client);
+
+        let user_identity = if principal_type == PrincipalType::User {
+            r.email.as_ref().map(|email| UserIdentity {
+                email: email.clone(),
+                email_verified: false,
+                first_name: None,
+                last_name: None,
+                picture_url: None,
+                phone: None,
+                external_id: r.external_idp_id.clone(),
+                provider: r.idp_type.clone(),
+                password_hash: r.password_hash.clone(),
+                last_login_at: r.last_login_at,
+            })
+        } else {
+            None
+        };
+
+        let external_identity = r.external_idp_id.as_ref().map(|ext_id| ExternalIdentity {
+            provider_id: r.idp_type.clone().unwrap_or_default(),
+            external_id: ext_id.clone(),
+        });
+
+        Self {
+            id: r.id,
+            principal_type,
+            scope,
+            client_id: r.client_id,
+            application_id: r.application_id,
+            name: r.name,
+            active: r.active,
+            user_identity,
+            service_account_id: r.service_account_id,
+            roles: vec![],
+            assigned_clients: vec![],
+            client_identifier_map: std::collections::HashMap::new(),
+            accessible_application_ids: vec![],
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+            external_identity,
+        }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct PrincipalRoleRow {
+    principal_id: String,
+    role_name: String,
+    assignment_source: Option<String>,
+    assigned_at: DateTime<Utc>,
+}
+
+#[derive(sqlx::FromRow)]
+struct ClientAccessGrantRow {
+    principal_id: String,
+    client_id: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct ClientIdentifierRow {
+    id: String,
+    identifier: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct PrincipalApplicationAccessRow {
+    principal_id: String,
+    application_id: String,
+}
+
+// ── Repository ───────────────────────────────────────────────────────────────
+
 pub struct PrincipalRepository {
-    db: DatabaseConnection,
+    pool: PgPool,
 }
 
 impl PrincipalRepository {
-    pub fn new(db: &DatabaseConnection) -> Self {
-        Self { db: db.clone() }
+    pub fn new(pool: &PgPool) -> Self {
+        Self { pool: pool.clone() }
     }
 
     pub async fn insert(&self, principal: &Principal) -> Result<()> {
-        // Extract email domain from email
+        let now = Utc::now();
         let email_domain = principal.user_identity.as_ref()
             .map(|i| i.email.split('@').nth(1).unwrap_or("").to_string());
+        let email = principal.user_identity.as_ref().map(|i| i.email.clone());
+        let idp_type = principal.user_identity.as_ref().and_then(|i| i.provider.clone())
+            .or_else(|| if principal.is_user() { Some("INTERNAL".to_string()) } else { None });
+        let external_idp_id = principal.external_identity.as_ref().map(|e| e.external_id.clone());
+        let password_hash = principal.user_identity.as_ref().and_then(|i| i.password_hash.clone());
+        let last_login_at = principal.user_identity.as_ref().and_then(|i| i.last_login_at);
 
-        let model = iam_principals::ActiveModel {
-            id: Set(principal.id.clone()),
-            principal_type: Set(principal.principal_type.as_str().to_string()),
-            scope: Set(Some(principal.scope.as_str().to_string())),
-            client_id: Set(principal.client_id.clone()),
-            application_id: Set(principal.application_id.clone()),
-            name: Set(principal.name.clone()),
-            active: Set(principal.active),
-            email: Set(principal.user_identity.as_ref().map(|i| i.email.clone())),
-            email_domain: Set(email_domain),
-            idp_type: Set(principal.user_identity.as_ref().and_then(|i| i.provider.clone())
-                .or_else(|| if principal.is_user() { Some("INTERNAL".to_string()) } else { None })),
-            external_idp_id: Set(principal.external_identity.as_ref().map(|e| e.external_id.clone())),
-            password_hash: Set(principal.user_identity.as_ref().and_then(|i| i.password_hash.clone())),
-            last_login_at: Set(principal.user_identity.as_ref()
-                .and_then(|i| i.last_login_at.map(|dt| dt.into()))),
-            service_account_id: Set(principal.service_account_id.clone()),
-            created_at: Set(Utc::now().into()),
-            updated_at: Set(Utc::now().into()),
-        };
-
-        iam_principals::Entity::insert(model)
-            .exec(&self.db)
-            .await?;
+        sqlx::query(
+            "INSERT INTO iam_principals
+                (id, type, scope, client_id, application_id, name, active, email, email_domain,
+                 idp_type, external_idp_id, password_hash, last_login_at, service_account_id,
+                 created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)"
+        )
+        .bind(&principal.id)
+        .bind(principal.principal_type.as_str())
+        .bind(Some(principal.scope.as_str()))
+        .bind(&principal.client_id)
+        .bind(&principal.application_id)
+        .bind(&principal.name)
+        .bind(principal.active)
+        .bind(&email)
+        .bind(&email_domain)
+        .bind(&idp_type)
+        .bind(&external_idp_id)
+        .bind(&password_hash)
+        .bind(last_login_at)
+        .bind(&principal.service_account_id)
+        .bind(now)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
 
         // Insert roles into junction table
         self.insert_roles(&principal.id, &principal.roles).await?;
@@ -61,231 +165,287 @@ impl PrincipalRepository {
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<Principal>> {
-        let result = iam_principals::Entity::find_by_id(id)
-            .one(&self.db)
-            .await?;
+        let row = sqlx::query_as::<_, PrincipalRow>(
+            "SELECT * FROM iam_principals WHERE id = $1"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
 
-        match result {
-            Some(model) => Ok(Some(self.hydrate_principal(model).await?)),
+        match row {
+            Some(r) => Ok(Some(self.hydrate_principal(r).await?)),
             None => Ok(None),
         }
     }
 
     pub async fn find_by_email(&self, email: &str) -> Result<Option<Principal>> {
-        let result = iam_principals::Entity::find()
-            .filter(iam_principals::Column::PrincipalType.eq("USER"))
-            .filter(iam_principals::Column::Email.eq(email))
-            .one(&self.db)
-            .await?;
+        let row = sqlx::query_as::<_, PrincipalRow>(
+            "SELECT * FROM iam_principals WHERE type = 'USER' AND email = $1"
+        )
+        .bind(email)
+        .fetch_optional(&self.pool)
+        .await?;
 
-        match result {
-            Some(model) => Ok(Some(self.hydrate_principal(model).await?)),
+        match row {
+            Some(r) => Ok(Some(self.hydrate_principal(r).await?)),
             None => Ok(None),
         }
     }
 
     pub async fn find_by_service_account(&self, service_account_id: &str) -> Result<Option<Principal>> {
-        let result = iam_principals::Entity::find()
-            .filter(iam_principals::Column::PrincipalType.eq("SERVICE"))
-            .filter(iam_principals::Column::ServiceAccountId.eq(service_account_id))
-            .one(&self.db)
-            .await?;
+        let row = sqlx::query_as::<_, PrincipalRow>(
+            "SELECT * FROM iam_principals WHERE type = 'SERVICE' AND service_account_id = $1"
+        )
+        .bind(service_account_id)
+        .fetch_optional(&self.pool)
+        .await?;
 
-        match result {
-            Some(model) => Ok(Some(self.hydrate_principal(model).await?)),
+        match row {
+            Some(r) => Ok(Some(self.hydrate_principal(r).await?)),
             None => Ok(None),
         }
     }
 
     pub async fn find_all(&self) -> Result<Vec<Principal>> {
-        let results = iam_principals::Entity::find()
-            .all(&self.db)
-            .await?;
-
-        self.hydrate_principals(results).await
+        let rows = sqlx::query_as::<_, PrincipalRow>(
+            "SELECT * FROM iam_principals"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        self.hydrate_principals(rows).await
     }
 
     pub async fn find_active(&self) -> Result<Vec<Principal>> {
-        let results = iam_principals::Entity::find()
-            .filter(iam_principals::Column::Active.eq(true))
-            .all(&self.db)
-            .await?;
-
-        self.hydrate_principals(results).await
+        let rows = sqlx::query_as::<_, PrincipalRow>(
+            "SELECT * FROM iam_principals WHERE active = true"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        self.hydrate_principals(rows).await
     }
 
     pub async fn find_users(&self) -> Result<Vec<Principal>> {
-        let results = iam_principals::Entity::find()
-            .filter(iam_principals::Column::PrincipalType.eq("USER"))
-            .filter(iam_principals::Column::Active.eq(true))
-            .all(&self.db)
-            .await?;
-
-        self.hydrate_principals(results).await
+        let rows = sqlx::query_as::<_, PrincipalRow>(
+            "SELECT * FROM iam_principals WHERE type = 'USER' AND active = true"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        self.hydrate_principals(rows).await
     }
 
     pub async fn find_services(&self) -> Result<Vec<Principal>> {
-        let results = iam_principals::Entity::find()
-            .filter(iam_principals::Column::PrincipalType.eq("SERVICE"))
-            .filter(iam_principals::Column::Active.eq(true))
-            .all(&self.db)
-            .await?;
-
-        self.hydrate_principals(results).await
+        let rows = sqlx::query_as::<_, PrincipalRow>(
+            "SELECT * FROM iam_principals WHERE type = 'SERVICE' AND active = true"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        self.hydrate_principals(rows).await
     }
 
     pub async fn find_by_client(&self, client_id: &str) -> Result<Vec<Principal>> {
         // Find principals that either have this client_id OR have a grant for it
-        let grant_principal_ids: Vec<String> = iam_client_access_grants::Entity::find()
-            .filter(iam_client_access_grants::Column::ClientId.eq(client_id))
-            .all(&self.db)
-            .await?
-            .into_iter()
-            .map(|g| g.principal_id)
-            .collect();
-
-        let results = iam_principals::Entity::find()
-            .filter(iam_principals::Column::Active.eq(true))
-            .filter(
-                Condition::any()
-                    .add(iam_principals::Column::ClientId.eq(client_id))
-                    .add(iam_principals::Column::Id.is_in(grant_principal_ids))
-            )
-            .all(&self.db)
-            .await?;
-
-        self.hydrate_principals(results).await
+        let rows = sqlx::query_as::<_, PrincipalRow>(
+            "SELECT DISTINCT p.* FROM iam_principals p
+             LEFT JOIN iam_client_access_grants g ON g.principal_id = p.id
+             WHERE p.active = true AND (p.client_id = $1 OR g.client_id = $1)"
+        )
+        .bind(client_id)
+        .fetch_all(&self.pool)
+        .await?;
+        self.hydrate_principals(rows).await
     }
 
     pub async fn find_by_scope(&self, scope: UserScope) -> Result<Vec<Principal>> {
-        let results = iam_principals::Entity::find()
-            .filter(iam_principals::Column::Scope.eq(scope.as_str()))
-            .filter(iam_principals::Column::Active.eq(true))
-            .all(&self.db)
-            .await?;
+        let rows = sqlx::query_as::<_, PrincipalRow>(
+            "SELECT * FROM iam_principals WHERE scope = $1 AND active = true"
+        )
+        .bind(scope.as_str())
+        .fetch_all(&self.pool)
+        .await?;
+        self.hydrate_principals(rows).await
+    }
 
-        self.hydrate_principals(results).await
+    /// Combinable filter query — applies all provided filters at the DB level (AND logic).
+    /// For `client_id`, includes principals whose home client matches OR who have a grant for it.
+    /// For `search`, applies ILIKE on name and email (OR).
+    pub async fn find_with_filters(
+        &self,
+        client_id: Option<&str>,
+        scope: Option<&str>,
+        principal_type: Option<&str>,
+        active: Option<bool>,
+        search: Option<&str>,
+    ) -> Result<Vec<Principal>> {
+        let needs_join = client_id.is_some();
+        let mut qb: QueryBuilder<Postgres> = QueryBuilder::new(if needs_join {
+            "SELECT DISTINCT p.* FROM iam_principals p \
+             LEFT JOIN iam_client_access_grants g ON g.principal_id = p.id"
+        } else {
+            "SELECT p.* FROM iam_principals p"
+        });
+
+        let mut has_where = false;
+        let push_where = |qb: &mut QueryBuilder<Postgres>, has_where: &mut bool| {
+            qb.push(if *has_where { " AND " } else { " WHERE " });
+            *has_where = true;
+        };
+
+        if let Some(cid) = client_id {
+            push_where(&mut qb, &mut has_where);
+            let cid_owned = cid.to_string();
+            qb.push("(p.client_id = ")
+                .push_bind(cid_owned.clone())
+                .push(" OR g.client_id = ")
+                .push_bind(cid_owned)
+                .push(")");
+        }
+        if let Some(s) = scope {
+            push_where(&mut qb, &mut has_where);
+            qb.push("p.scope = ").push_bind(s.to_uppercase());
+        }
+        if let Some(pt) = principal_type {
+            push_where(&mut qb, &mut has_where);
+            qb.push("p.type = ").push_bind(pt.to_uppercase());
+        }
+        if let Some(a) = active {
+            push_where(&mut qb, &mut has_where);
+            qb.push("p.active = ").push_bind(a);
+        }
+        if let Some(q) = search {
+            if !q.is_empty() {
+                push_where(&mut qb, &mut has_where);
+                let pattern = format!("%{}%", q);
+                qb.push("(p.name LIKE ")
+                    .push_bind(pattern.clone())
+                    .push(" OR p.email LIKE ")
+                    .push_bind(pattern)
+                    .push(")");
+            }
+        }
+
+        let rows: Vec<PrincipalRow> = qb.build_query_as().fetch_all(&self.pool).await?;
+        self.hydrate_principals(rows).await
     }
 
     pub async fn find_anchors(&self) -> Result<Vec<Principal>> {
-        let results = iam_principals::Entity::find()
-            .filter(iam_principals::Column::Scope.eq("ANCHOR"))
-            .filter(iam_principals::Column::Active.eq(true))
-            .all(&self.db)
-            .await?;
-
-        self.hydrate_principals(results).await
+        let rows = sqlx::query_as::<_, PrincipalRow>(
+            "SELECT * FROM iam_principals WHERE scope = 'ANCHOR' AND active = true"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        self.hydrate_principals(rows).await
     }
 
     pub async fn find_by_application(&self, application_id: &str) -> Result<Vec<Principal>> {
-        let results = iam_principals::Entity::find()
-            .filter(iam_principals::Column::ApplicationId.eq(application_id))
-            .all(&self.db)
-            .await?;
-
-        self.hydrate_principals(results).await
+        let rows = sqlx::query_as::<_, PrincipalRow>(
+            "SELECT * FROM iam_principals WHERE application_id = $1"
+        )
+        .bind(application_id)
+        .fetch_all(&self.pool)
+        .await?;
+        self.hydrate_principals(rows).await
     }
 
     pub async fn find_with_role(&self, role: &str) -> Result<Vec<Principal>> {
-        // Find principal_ids that have this role
-        let principal_ids: Vec<String> = iam_principal_roles::Entity::find()
-            .filter(iam_principal_roles::Column::RoleName.eq(role))
-            .all(&self.db)
-            .await?
-            .into_iter()
-            .map(|pr| pr.principal_id)
-            .collect();
-
-        if principal_ids.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let results = iam_principals::Entity::find()
-            .filter(iam_principals::Column::Id.is_in(principal_ids))
-            .filter(iam_principals::Column::Active.eq(true))
-            .all(&self.db)
-            .await?;
-
-        self.hydrate_principals(results).await
+        let rows = sqlx::query_as::<_, PrincipalRow>(
+            "SELECT p.* FROM iam_principals p
+             INNER JOIN iam_principal_roles r ON r.principal_id = p.id
+             WHERE r.role_name = $1 AND p.active = true"
+        )
+        .bind(role)
+        .fetch_all(&self.pool)
+        .await?;
+        self.hydrate_principals(rows).await
     }
 
     pub async fn update(&self, principal: &Principal) -> Result<()> {
+        let now = Utc::now();
         let email_domain = principal.user_identity.as_ref()
             .map(|i| i.email.split('@').nth(1).unwrap_or("").to_string());
+        let email = principal.user_identity.as_ref().map(|i| i.email.clone());
+        let idp_type = principal.user_identity.as_ref().and_then(|i| i.provider.clone())
+            .or_else(|| if principal.is_user() { Some("INTERNAL".to_string()) } else { None });
+        let external_idp_id = principal.external_identity.as_ref().map(|e| e.external_id.clone());
+        let password_hash = principal.user_identity.as_ref().and_then(|i| i.password_hash.clone());
+        let last_login_at = principal.user_identity.as_ref().and_then(|i| i.last_login_at);
 
-        let model = iam_principals::ActiveModel {
-            id: Set(principal.id.clone()),
-            principal_type: Set(principal.principal_type.as_str().to_string()),
-            scope: Set(Some(principal.scope.as_str().to_string())),
-            client_id: Set(principal.client_id.clone()),
-            application_id: Set(principal.application_id.clone()),
-            name: Set(principal.name.clone()),
-            active: Set(principal.active),
-            email: Set(principal.user_identity.as_ref().map(|i| i.email.clone())),
-            email_domain: Set(email_domain),
-            idp_type: Set(principal.user_identity.as_ref().and_then(|i| i.provider.clone())
-                .or_else(|| if principal.is_user() { Some("INTERNAL".to_string()) } else { None })),
-            external_idp_id: Set(principal.external_identity.as_ref().map(|e| e.external_id.clone())),
-            password_hash: Set(principal.user_identity.as_ref().and_then(|i| i.password_hash.clone())),
-            last_login_at: Set(principal.user_identity.as_ref()
-                .and_then(|i| i.last_login_at.map(|dt| dt.into()))),
-            service_account_id: Set(principal.service_account_id.clone()),
-            created_at: NotSet,
-            updated_at: Set(Utc::now().into()),
-        };
-
-        iam_principals::Entity::update(model)
-            .exec(&self.db)
-            .await?;
+        sqlx::query(
+            "UPDATE iam_principals SET
+                type = $2, scope = $3, client_id = $4, application_id = $5, name = $6,
+                active = $7, email = $8, email_domain = $9, idp_type = $10,
+                external_idp_id = $11, password_hash = $12, last_login_at = $13,
+                service_account_id = $14, updated_at = $15
+             WHERE id = $1"
+        )
+        .bind(&principal.id)
+        .bind(principal.principal_type.as_str())
+        .bind(Some(principal.scope.as_str()))
+        .bind(&principal.client_id)
+        .bind(&principal.application_id)
+        .bind(&principal.name)
+        .bind(principal.active)
+        .bind(&email)
+        .bind(&email_domain)
+        .bind(&idp_type)
+        .bind(&external_idp_id)
+        .bind(&password_hash)
+        .bind(last_login_at)
+        .bind(&principal.service_account_id)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
 
         // Sync roles: delete all then re-insert
-        iam_principal_roles::Entity::delete_many()
-            .filter(iam_principal_roles::Column::PrincipalId.eq(&principal.id))
-            .exec(&self.db)
+        sqlx::query("DELETE FROM iam_principal_roles WHERE principal_id = $1")
+            .bind(&principal.id)
+            .execute(&self.pool)
             .await?;
-
         self.insert_roles(&principal.id, &principal.roles).await?;
 
-        // Sync application access: delete all then re-insert
-        iam_principal_application_access::Entity::delete_many()
-            .filter(iam_principal_application_access::Column::PrincipalId.eq(&principal.id))
-            .exec(&self.db)
+        // Sync application access
+        sqlx::query("DELETE FROM iam_principal_application_access WHERE principal_id = $1")
+            .bind(&principal.id)
+            .execute(&self.pool)
             .await?;
 
-        for app_id in &principal.accessible_application_ids {
-            let model = iam_principal_application_access::ActiveModel {
-                principal_id: Set(principal.id.clone()),
-                application_id: Set(app_id.clone()),
-                granted_at: Set(Utc::now().into()),
-            };
-            iam_principal_application_access::Entity::insert(model)
-                .exec(&self.db)
-                .await?;
+        if !principal.accessible_application_ids.is_empty() {
+            let count = principal.accessible_application_ids.len();
+            let principal_ids: Vec<String> = std::iter::repeat(principal.id.clone()).take(count).collect();
+            let app_ids: Vec<String> = principal.accessible_application_ids.clone();
+            let granted_ats: Vec<DateTime<Utc>> = std::iter::repeat(now).take(count).collect();
+
+            sqlx::query(
+                "INSERT INTO iam_principal_application_access (principal_id, application_id, granted_at)
+                 SELECT * FROM UNNEST($1::varchar[], $2::varchar[], $3::timestamptz[])"
+            )
+            .bind(&principal_ids)
+            .bind(&app_ids)
+            .bind(&granted_ats)
+            .execute(&self.pool)
+            .await?;
         }
 
         Ok(())
     }
 
     pub async fn delete(&self, id: &str) -> Result<bool> {
-        let result = iam_principals::Entity::delete_by_id(id)
-            .exec(&self.db)
+        let result = sqlx::query("DELETE FROM iam_principals WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
             .await?;
-        Ok(result.rows_affected > 0)
+        Ok(result.rows_affected() > 0)
     }
 
     /// Search principals by name or email (case-insensitive partial match)
     pub async fn search(&self, term: &str) -> Result<Vec<Principal>> {
         let pattern = format!("%{}%", term);
-        let results = iam_principals::Entity::find()
-            .filter(
-                Condition::any()
-                    .add(iam_principals::Column::Name.like(&pattern))
-                    .add(iam_principals::Column::Email.like(&pattern))
-            )
-            .all(&self.db)
-            .await?;
-
-        self.hydrate_principals(results).await
+        let rows = sqlx::query_as::<_, PrincipalRow>(
+            "SELECT * FROM iam_principals WHERE name LIKE $1 OR email LIKE $1"
+        )
+        .bind(&pattern)
+        .fetch_all(&self.pool)
+        .await?;
+        self.hydrate_principals(rows).await
     }
 
     /// Batch-lookup principal names by IDs. Returns a map of id -> name.
@@ -293,158 +453,136 @@ impl PrincipalRepository {
         if ids.is_empty() {
             return Ok(std::collections::HashMap::new());
         }
-        use sea_orm::QuerySelect;
-        let results: Vec<(String, String)> = iam_principals::Entity::find()
-            .select_only()
-            .column(iam_principals::Column::Id)
-            .column(iam_principals::Column::Name)
-            .filter(iam_principals::Column::Id.is_in(ids.to_vec()))
-            .into_tuple()
-            .all(&self.db)
-            .await?;
-        Ok(results.into_iter().collect())
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, name FROM iam_principals WHERE id = ANY($1)"
+        )
+        .bind(ids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().collect())
     }
 
     /// Count principals with email ending in the given domain
     pub async fn count_by_email_domain(&self, domain: &str) -> Result<i64> {
-        let count = iam_principals::Entity::find()
-            .filter(iam_principals::Column::PrincipalType.eq("USER"))
-            .filter(iam_principals::Column::EmailDomain.eq(domain.to_lowercase()))
-            .count(&self.db)
-            .await?;
-        Ok(count as i64)
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM iam_principals WHERE type = 'USER' AND email_domain = $1"
+        )
+        .bind(domain.to_lowercase())
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.0)
     }
 
-    // ── Helpers ──────────────────────────────────────────────
-
-    pub(crate) async fn insert_roles_txn(
-        principal_id: &str,
-        roles: &[RoleAssignment],
-        txn: &sea_orm::DatabaseTransaction,
-    ) -> Result<()> {
-        if roles.is_empty() { return Ok(()); }
-        let models: Vec<iam_principal_roles::ActiveModel> = roles
-            .iter()
-            .map(|r| iam_principal_roles::ActiveModel {
-                principal_id: Set(principal_id.to_string()),
-                role_name: Set(r.role.clone()),
-                assignment_source: Set(r.assignment_source.clone()),
-                assigned_at: Set(r.assigned_at.into()),
-            })
-            .collect();
-        iam_principal_roles::Entity::insert_many(models).exec(txn).await?;
-        Ok(())
-    }
-
-    /// Insert roles into the junction table
+    /// Insert roles into the junction table via UNNEST
     async fn insert_roles(&self, principal_id: &str, roles: &[RoleAssignment]) -> Result<()> {
         if roles.is_empty() {
             return Ok(());
         }
 
-        let models: Vec<iam_principal_roles::ActiveModel> = roles
-            .iter()
-            .map(|r| iam_principal_roles::ActiveModel {
-                principal_id: Set(principal_id.to_string()),
-                role_name: Set(r.role.clone()),
-                assignment_source: Set(r.assignment_source.clone()),
-                assigned_at: Set(r.assigned_at.into()),
-            })
-            .collect();
+        let count = roles.len();
+        let pids: Vec<String> = std::iter::repeat(principal_id.to_string()).take(count).collect();
+        let role_names: Vec<String> = roles.iter().map(|r| r.role.clone()).collect();
+        let sources: Vec<Option<String>> = roles.iter().map(|r| r.assignment_source.clone()).collect();
+        let assigned_ats: Vec<DateTime<Utc>> = roles.iter().map(|r| r.assigned_at).collect();
 
-        iam_principal_roles::Entity::insert_many(models)
-            .exec(&self.db)
-            .await?;
+        sqlx::query(
+            "INSERT INTO iam_principal_roles (principal_id, role_name, assignment_source, assigned_at)
+             SELECT * FROM UNNEST($1::varchar[], $2::varchar[], $3::varchar[], $4::timestamptz[])"
+        )
+        .bind(&pids)
+        .bind(&role_names)
+        .bind(&sources as &[Option<String>])
+        .bind(&assigned_ats)
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }
 
-    /// Load roles for a principal from the junction table
-    async fn load_roles(&self, principal_id: &str) -> Result<Vec<RoleAssignment>> {
-        let role_models = iam_principal_roles::Entity::find()
-            .filter(iam_principal_roles::Column::PrincipalId.eq(principal_id))
-            .all(&self.db)
-            .await?;
+    /// Hydrate a single principal with roles, client grants, and application access
+    async fn hydrate_principal(&self, row: PrincipalRow) -> Result<Principal> {
+        let id = row.id.clone();
+        let home_client_id = row.client_id.clone();
+        let mut principal = Principal::from(row);
 
-        Ok(role_models.into_iter().map(|m| RoleAssignment {
-            role: m.role_name,
+        // Load roles
+        let role_rows = sqlx::query_as::<_, PrincipalRoleRow>(
+            "SELECT principal_id, role_name, assignment_source, assigned_at
+             FROM iam_principal_roles WHERE principal_id = $1"
+        )
+        .bind(&id)
+        .fetch_all(&self.pool)
+        .await?;
+        principal.roles = role_rows.into_iter().map(|r| RoleAssignment {
+            role: r.role_name,
             client_id: None,
-            assignment_source: m.assignment_source,
-            assigned_at: m.assigned_at.naive_utc().and_utc(),
+            assignment_source: r.assignment_source,
+            assigned_at: r.assigned_at,
             assigned_by: None,
-        }).collect())
-    }
+        }).collect();
 
-    /// Load assigned client IDs and identifiers from iam_client_access_grants + tnt_clients
-    async fn load_assigned_clients(&self, principal_id: &str) -> Result<(Vec<String>, std::collections::HashMap<String, String>)> {
-        let grants = iam_client_access_grants::Entity::find()
-            .filter(iam_client_access_grants::Column::PrincipalId.eq(principal_id))
-            .all(&self.db)
+        // Load client access grants
+        let grant_rows = sqlx::query_as::<_, ClientAccessGrantRow>(
+            "SELECT principal_id, client_id FROM iam_client_access_grants WHERE principal_id = $1"
+        )
+        .bind(&id)
+        .fetch_all(&self.pool)
+        .await?;
+        let client_ids: Vec<String> = grant_rows.into_iter().map(|g| g.client_id).collect();
+
+        // Collect all client IDs for identifier lookup (grant + home)
+        let mut all_client_ids: std::collections::HashSet<String> =
+            client_ids.iter().cloned().collect();
+        if let Some(ref cid) = home_client_id {
+            all_client_ids.insert(cid.clone());
+        }
+
+        // Batch-load client identifiers
+        let mut identifier_map: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        if !all_client_ids.is_empty() {
+            let ids_vec: Vec<String> = all_client_ids.into_iter().collect();
+            let client_rows = sqlx::query_as::<_, ClientIdentifierRow>(
+                "SELECT id, identifier FROM tnt_clients WHERE id = ANY($1)"
+            )
+            .bind(&ids_vec)
+            .fetch_all(&self.pool)
             .await?;
-
-        let client_ids: Vec<String> = grants.iter().map(|g| g.client_id.clone()).collect();
-
-        // Batch-load client identifiers for JWT "id:identifier" claim format
-        let mut identifier_map = std::collections::HashMap::new();
-        if !client_ids.is_empty() {
-            let clients = tnt_clients::Entity::find()
-                .filter(tnt_clients::Column::Id.is_in(client_ids.clone()))
-                .all(&self.db)
-                .await?;
-            for c in clients {
+            for c in client_rows {
                 identifier_map.insert(c.id, c.identifier);
             }
         }
-
-        Ok((client_ids, identifier_map))
-    }
-
-    /// Hydrate a single principal with roles, client grants, and application access
-    async fn hydrate_principal(&self, model: iam_principals::Model) -> Result<Principal> {
-        let id = model.id.clone();
-        let mut principal = Principal::from(model);
-        principal.roles = self.load_roles(&id).await?;
-        let (clients, mut identifier_map) = self.load_assigned_clients(&id).await?;
-        principal.assigned_clients = clients;
-
-        // Also look up the home client's identifier so Client-scoped users
-        // get "id:identifier" in the JWT clients claim (not just the bare ID).
-        if let Some(ref home_client_id) = principal.client_id {
-            if !identifier_map.contains_key(home_client_id) {
-                if let Some(client) = tnt_clients::Entity::find_by_id(home_client_id)
-                    .one(&self.db)
-                    .await?
-                {
-                    identifier_map.insert(client.id, client.identifier);
-                }
-            }
-        }
-
+        principal.assigned_clients = client_ids;
         principal.client_identifier_map = identifier_map;
 
         // Load application access
-        let app_access = iam_principal_application_access::Entity::find()
-            .filter(iam_principal_application_access::Column::PrincipalId.eq(&id))
-            .all(&self.db)
-            .await?;
-        principal.accessible_application_ids = app_access.into_iter().map(|a| a.application_id).collect();
+        let app_rows = sqlx::query_as::<_, PrincipalApplicationAccessRow>(
+            "SELECT principal_id, application_id FROM iam_principal_application_access WHERE principal_id = $1"
+        )
+        .bind(&id)
+        .fetch_all(&self.pool)
+        .await?;
+        principal.accessible_application_ids = app_rows.into_iter().map(|a| a.application_id).collect();
 
         Ok(principal)
     }
 
-    /// Hydrate multiple principals with roles and client grants (batch)
-    async fn hydrate_principals(&self, models: Vec<iam_principals::Model>) -> Result<Vec<Principal>> {
-        if models.is_empty() {
+    /// Hydrate multiple principals with roles, client grants, and application access (batch)
+    async fn hydrate_principals(&self, rows: Vec<PrincipalRow>) -> Result<Vec<Principal>> {
+        if rows.is_empty() {
             return Ok(vec![]);
         }
 
-        let principal_ids: Vec<String> = models.iter().map(|m| m.id.clone()).collect();
+        let principal_ids: Vec<String> = rows.iter().map(|m| m.id.clone()).collect();
 
         // Batch-load roles
-        let all_roles = iam_principal_roles::Entity::find()
-            .filter(iam_principal_roles::Column::PrincipalId.is_in(principal_ids.clone()))
-            .all(&self.db)
-            .await?;
+        let all_roles = sqlx::query_as::<_, PrincipalRoleRow>(
+            "SELECT principal_id, role_name, assignment_source, assigned_at
+             FROM iam_principal_roles WHERE principal_id = ANY($1)"
+        )
+        .bind(&principal_ids)
+        .fetch_all(&self.pool)
+        .await?;
 
         let mut role_map: std::collections::HashMap<String, Vec<RoleAssignment>> =
             std::collections::HashMap::new();
@@ -453,25 +591,28 @@ impl PrincipalRepository {
                 role: r.role_name,
                 client_id: None,
                 assignment_source: r.assignment_source,
-                assigned_at: r.assigned_at.naive_utc().and_utc(),
+                assigned_at: r.assigned_at,
                 assigned_by: None,
             });
         }
 
         // Batch-load client access grants
-        let all_grants = iam_client_access_grants::Entity::find()
-            .filter(iam_client_access_grants::Column::PrincipalId.is_in(principal_ids.clone()))
-            .all(&self.db)
-            .await?;
+        let all_grants = sqlx::query_as::<_, ClientAccessGrantRow>(
+            "SELECT principal_id, client_id FROM iam_client_access_grants WHERE principal_id = ANY($1)"
+        )
+        .bind(&principal_ids)
+        .fetch_all(&self.pool)
+        .await?;
 
         let mut grant_map: std::collections::HashMap<String, Vec<String>> =
             std::collections::HashMap::new();
-        let mut all_client_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut all_client_ids: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
         for g in &all_grants {
             all_client_ids.insert(g.client_id.clone());
         }
         // Also include home client IDs so Client-scoped users get "id:identifier"
-        for m in &models {
+        for m in &rows {
             if let Some(ref cid) = m.client_id {
                 all_client_ids.insert(cid.clone());
             }
@@ -480,24 +621,29 @@ impl PrincipalRepository {
             grant_map.entry(g.principal_id).or_default().push(g.client_id);
         }
 
-        // Batch-load client identifiers for JWT claims
+        // Batch-load client identifiers
         let mut client_id_to_identifier: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
         if !all_client_ids.is_empty() {
-            let clients = tnt_clients::Entity::find()
-                .filter(tnt_clients::Column::Id.is_in(all_client_ids.into_iter().collect::<Vec<_>>()))
-                .all(&self.db)
-                .await?;
-            for c in clients {
+            let ids_vec: Vec<String> = all_client_ids.into_iter().collect();
+            let client_rows = sqlx::query_as::<_, ClientIdentifierRow>(
+                "SELECT id, identifier FROM tnt_clients WHERE id = ANY($1)"
+            )
+            .bind(&ids_vec)
+            .fetch_all(&self.pool)
+            .await?;
+            for c in client_rows {
                 client_id_to_identifier.insert(c.id, c.identifier);
             }
         }
 
         // Batch-load application access
-        let all_app_access = iam_principal_application_access::Entity::find()
-            .filter(iam_principal_application_access::Column::PrincipalId.is_in(principal_ids))
-            .all(&self.db)
-            .await?;
+        let all_app_access = sqlx::query_as::<_, PrincipalApplicationAccessRow>(
+            "SELECT principal_id, application_id FROM iam_principal_application_access WHERE principal_id = ANY($1)"
+        )
+        .bind(&principal_ids)
+        .fetch_all(&self.pool)
+        .await?;
 
         let mut app_access_map: std::collections::HashMap<String, Vec<String>> =
             std::collections::HashMap::new();
@@ -506,7 +652,7 @@ impl PrincipalRepository {
         }
 
         // Build domain entities
-        let principals = models
+        let principals = rows
             .into_iter()
             .map(|m| {
                 let id = m.id.clone();
@@ -549,69 +695,121 @@ impl HasId for Principal {
 
 #[async_trait]
 impl PgPersist for Principal {
-    async fn pg_upsert(&self, txn: &sea_orm::DatabaseTransaction) -> Result<()> {
+    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+        let now = Utc::now();
         let email_domain = self.user_identity.as_ref()
             .map(|i| i.email.split('@').nth(1).unwrap_or("").to_string());
+        let email = self.user_identity.as_ref().map(|i| i.email.clone());
+        let idp_type = self.user_identity.as_ref().and_then(|i| i.provider.clone())
+            .or_else(|| if self.is_user() { Some("INTERNAL".to_string()) } else { None });
+        let external_idp_id = self.external_identity.as_ref().map(|e| e.external_id.clone());
+        let password_hash = self.user_identity.as_ref().and_then(|i| i.password_hash.clone());
+        let last_login_at = self.user_identity.as_ref().and_then(|i| i.last_login_at);
 
-        let model = iam_principals::ActiveModel {
-            id: Set(self.id.clone()),
-            principal_type: Set(self.principal_type.as_str().to_string()),
-            scope: Set(Some(self.scope.as_str().to_string())),
-            client_id: Set(self.client_id.clone()),
-            application_id: Set(self.application_id.clone()),
-            name: Set(self.name.clone()),
-            active: Set(self.active),
-            email: Set(self.user_identity.as_ref().map(|i| i.email.clone())),
-            email_domain: Set(email_domain),
-            idp_type: Set(self.user_identity.as_ref().and_then(|i| i.provider.clone())
-                .or_else(|| if self.is_user() { Some("INTERNAL".to_string()) } else { None })),
-            external_idp_id: Set(self.external_identity.as_ref().map(|e| e.external_id.clone())),
-            password_hash: Set(self.user_identity.as_ref().and_then(|i| i.password_hash.clone())),
-            last_login_at: Set(self.user_identity.as_ref()
-                .and_then(|i| i.last_login_at.map(|dt| dt.into()))),
-            service_account_id: Set(self.service_account_id.clone()),
-            created_at: Set(Utc::now().into()),
-            updated_at: Set(Utc::now().into()),
-        };
-        iam_principals::Entity::insert(model)
-            .on_conflict(
-                OnConflict::column(iam_principals::Column::Id)
-                    .update_columns([
-                        iam_principals::Column::PrincipalType,
-                        iam_principals::Column::Scope,
-                        iam_principals::Column::ClientId,
-                        iam_principals::Column::ApplicationId,
-                        iam_principals::Column::Name,
-                        iam_principals::Column::Active,
-                        iam_principals::Column::Email,
-                        iam_principals::Column::EmailDomain,
-                        iam_principals::Column::IdpType,
-                        iam_principals::Column::ExternalIdpId,
-                        iam_principals::Column::PasswordHash,
-                        iam_principals::Column::LastLoginAt,
-                        iam_principals::Column::ServiceAccountId,
-                        iam_principals::Column::UpdatedAt,
-                    ])
-                    .to_owned(),
+        // 1. Upsert main row
+        sqlx::query(
+            "INSERT INTO iam_principals (id, type, scope, client_id, application_id, name, active, email, email_domain, idp_type, external_idp_id, password_hash, last_login_at, service_account_id, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+             ON CONFLICT (id) DO UPDATE SET
+                type = EXCLUDED.type,
+                scope = EXCLUDED.scope,
+                client_id = EXCLUDED.client_id,
+                application_id = EXCLUDED.application_id,
+                name = EXCLUDED.name,
+                active = EXCLUDED.active,
+                email = EXCLUDED.email,
+                email_domain = EXCLUDED.email_domain,
+                idp_type = EXCLUDED.idp_type,
+                external_idp_id = EXCLUDED.external_idp_id,
+                password_hash = EXCLUDED.password_hash,
+                last_login_at = EXCLUDED.last_login_at,
+                service_account_id = EXCLUDED.service_account_id,
+                updated_at = EXCLUDED.updated_at"
+        )
+        .bind(&self.id)
+        .bind(self.principal_type.as_str())
+        .bind(Some(self.scope.as_str()))
+        .bind(&self.client_id)
+        .bind(&self.application_id)
+        .bind(&self.name)
+        .bind(self.active)
+        .bind(&email)
+        .bind(&email_domain)
+        .bind(&idp_type)
+        .bind(&external_idp_id)
+        .bind(&password_hash)
+        .bind(last_login_at)
+        .bind(&self.service_account_id)
+        .bind(now)
+        .bind(now)
+        .execute(&mut **txn).await?;
+
+        // 2. Sync roles: delete then re-insert
+        sqlx::query("DELETE FROM iam_principal_roles WHERE principal_id = $1")
+            .bind(&self.id)
+            .execute(&mut **txn).await?;
+        for r in &self.roles {
+            sqlx::query(
+                "INSERT INTO iam_principal_roles (principal_id, role_name, assignment_source, assigned_at)
+                 VALUES ($1, $2, $3, $4)"
             )
-            .exec(txn)
-            .await?;
+            .bind(&self.id)
+            .bind(&r.role)
+            .bind(&r.assignment_source)
+            .bind(r.assigned_at)
+            .execute(&mut **txn).await?;
+        }
 
-        // Sync roles
-        iam_principal_roles::Entity::delete_many()
-            .filter(iam_principal_roles::Column::PrincipalId.eq(&self.id))
-            .exec(txn)
-            .await?;
-        PrincipalRepository::insert_roles_txn(&self.id, &self.roles, txn).await?;
+        // 3. Sync client access grants: delete then re-insert
+        sqlx::query("DELETE FROM iam_client_access_grants WHERE principal_id = $1")
+            .bind(&self.id)
+            .execute(&mut **txn).await?;
+        for client_id in &self.assigned_clients {
+            sqlx::query(
+                "INSERT INTO iam_client_access_grants (id, principal_id, client_id, granted_by, granted_at, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)"
+            )
+            .bind(crate::TsidGenerator::generate(crate::EntityType::Principal))
+            .bind(&self.id)
+            .bind(client_id)
+            .bind(&self.id) // granted_by = self
+            .bind(now)
+            .bind(now)
+            .bind(now)
+            .execute(&mut **txn).await?;
+        }
+
+        // 4. Sync application access: delete then re-insert
+        sqlx::query("DELETE FROM iam_principal_application_access WHERE principal_id = $1")
+            .bind(&self.id)
+            .execute(&mut **txn).await?;
+        for app_id in &self.accessible_application_ids {
+            sqlx::query(
+                "INSERT INTO iam_principal_application_access (principal_id, application_id, granted_at)
+                 VALUES ($1, $2, $3)"
+            )
+            .bind(&self.id)
+            .bind(app_id)
+            .bind(now)
+            .execute(&mut **txn).await?;
+        }
+
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &sea_orm::DatabaseTransaction) -> Result<()> {
-        iam_principal_roles::Entity::delete_many()
-            .filter(iam_principal_roles::Column::PrincipalId.eq(&self.id))
-            .exec(txn)
-            .await?;
-        iam_principals::Entity::delete_by_id(&self.id).exec(txn).await?;
+    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+        sqlx::query("DELETE FROM iam_principal_roles WHERE principal_id = $1")
+            .bind(&self.id)
+            .execute(&mut **txn).await?;
+        sqlx::query("DELETE FROM iam_client_access_grants WHERE principal_id = $1")
+            .bind(&self.id)
+            .execute(&mut **txn).await?;
+        sqlx::query("DELETE FROM iam_principal_application_access WHERE principal_id = $1")
+            .bind(&self.id)
+            .execute(&mut **txn).await?;
+        sqlx::query("DELETE FROM iam_principals WHERE id = $1")
+            .bind(&self.id)
+            .execute(&mut **txn).await?;
         Ok(())
     }
 }

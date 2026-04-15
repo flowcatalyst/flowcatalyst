@@ -1,27 +1,29 @@
 //! FlowCatalyst Dispatch Scheduler
 //!
-//! This crate provides the dispatch scheduler functionality:
-//! - PendingJobPoller: Polls for PENDING dispatch jobs
-//! - BlockOnErrorChecker: Checks for blocked message groups (batch query)
-//! - MessageGroupQueue: Per-group FIFO queue (1 in-flight at a time)
-//! - MessageGroupDispatcher: Concurrency coordinator with semaphore
-//! - JobDispatcher: Dispatches jobs to the message queue
-//! - StaleQueuedJobPoller: Recovers jobs stuck in QUEUED status
+//! Polls PENDING dispatch jobs from the database, groups them by message_group,
+//! applies ordering/blocking rules, and publishes to the message queue via
+//! `fc_queue::QueuePublisher`. The message router then delivers via the
+//! `/api/dispatch/process` callback.
+//!
+//! Components:
+//! - `PendingJobPoller`: Polls for PENDING dispatch jobs
+//! - `BlockOnErrorChecker`: Checks for blocked message groups (batch query)
+//! - `MessageGroupQueue`: Per-group FIFO queue (1 in-flight at a time)
+//! - `MessageGroupDispatcher`: Concurrency coordinator with semaphore
+//! - `StaleQueuedJobPoller`: Recovers jobs stuck in QUEUED status
+//! - `DispatchAuthService`: HMAC-SHA256 auth tokens for dispatch jobs
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement,
-};
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use thiserror::Error;
 use tokio::sync::{RwLock, Semaphore};
 use tokio::time::interval;
-use tracing::{error, info, warn, debug};
+use tracing::{debug, error, info, warn};
 
 pub mod auth;
 pub mod dispatcher;
@@ -30,32 +32,29 @@ pub mod stale_recovery;
 
 pub use auth::{AuthError, DispatchAuthService};
 pub use dispatcher::JobDispatcher;
-pub use poller::{PendingJobPoller, PausedConnectionCache};
+pub use poller::{PausedConnectionCache, PendingJobPoller};
 pub use stale_recovery::StaleQueuedJobPoller;
+
+pub use fc_common::DispatchMode;
+pub use fc_common::DispatchStatus;
 
 #[derive(Error, Debug)]
 pub enum SchedulerError {
     #[error("Database error: {0}")]
-    DatabaseError(#[from] sea_orm::DbErr),
+    DatabaseError(#[from] sqlx::Error),
     #[error("Queue error: {0}")]
-    QueueError(String),
+    QueueError(#[from] fc_queue::QueueError),
     #[error("Configuration error: {0}")]
     ConfigError(String),
     #[error("Serialization error: {0}")]
     SerializationError(#[from] serde_json::Error),
 }
 
-pub use fc_common::DispatchMode;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum DispatchStatus {
-    Pending, Queued, Processing, Completed, Error,
-}
-
-/// Dispatch job row from msg_dispatch_jobs table
-#[derive(Debug, Clone, Serialize, Deserialize, FromQueryResult)]
-pub struct DispatchJob {
+/// Lightweight dispatch job row for scheduler queries.
+/// This is a projection of msg_dispatch_jobs — only the fields the scheduler needs.
+/// The full domain entity lives in `crate::dispatch_job::entity::DispatchJob`.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct SchedulerJobRow {
     pub id: String,
     pub message_group: Option<String>,
     pub dispatch_pool_id: Option<String>,
@@ -71,19 +70,13 @@ pub struct DispatchJob {
     pub subscription_id: Option<String>,
 }
 
-impl DispatchJob {
+impl SchedulerJobRow {
     pub fn dispatch_mode(&self) -> DispatchMode {
         DispatchMode::from_str(&self.mode)
     }
 
     pub fn dispatch_status(&self) -> DispatchStatus {
-        match self.status.as_str() {
-            "QUEUED" => DispatchStatus::Queued,
-            "PROCESSING" | "IN_PROGRESS" => DispatchStatus::Processing,
-            "COMPLETED" => DispatchStatus::Completed,
-            "ERROR" | "FAILED" => DispatchStatus::Error,
-            _ => DispatchStatus::Pending,
-        }
+        DispatchStatus::from_str(&self.status)
     }
 }
 
@@ -91,43 +84,34 @@ impl DispatchJob {
 // Block on Error Checker (batch query)
 // ============================================================================
 
-/// Helper to query for blocked message groups — single batched query
-#[derive(Debug, FromQueryResult)]
-struct MessageGroupRow {
-    pub message_group: String,
-}
-
 pub struct BlockOnErrorChecker {
-    db: DatabaseConnection,
+    pool: PgPool,
 }
 
 impl BlockOnErrorChecker {
-    pub fn new(db: DatabaseConnection) -> Self { Self { db } }
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
 
     /// Get blocked groups from a set of candidate groups using a single batch query
-    pub async fn get_blocked_groups(&self, groups: &HashSet<String>) -> Result<HashSet<String>, SchedulerError> {
-        if groups.is_empty() { return Ok(HashSet::new()); }
+    pub async fn get_blocked_groups(
+        &self,
+        groups: &HashSet<String>,
+    ) -> Result<HashSet<String>, SchedulerError> {
+        if groups.is_empty() {
+            return Ok(HashSet::new());
+        }
 
-        // Build a single IN(...) query for all groups at once
         let group_list: Vec<String> = groups.iter().cloned().collect();
-        let placeholders: Vec<String> = (1..=group_list.len()).map(|i| format!("${}", i)).collect();
-        let sql = format!(
-            "SELECT DISTINCT message_group FROM msg_dispatch_jobs \
-             WHERE message_group IN ({}) AND status IN ('FAILED', 'ERROR')",
-            placeholders.join(", ")
-        );
+        let sql = "SELECT DISTINCT message_group FROM msg_dispatch_jobs \
+                   WHERE message_group = ANY($1) AND status IN ('FAILED', 'ERROR')";
 
-        let values: Vec<sea_orm::Value> = group_list.iter()
-            .map(|g| sea_orm::Value::from(g.clone()))
-            .collect();
+        let rows: Vec<Option<String>> = sqlx::query_scalar(sql)
+            .bind(&group_list)
+            .fetch_all(&self.pool)
+            .await?;
 
-        let rows = MessageGroupRow::find_by_statement(
-            Statement::from_sql_and_values(DatabaseBackend::Postgres, &sql, values),
-        )
-        .all(&self.db)
-        .await?;
-
-        Ok(rows.into_iter().map(|r| r.message_group).collect())
+        Ok(rows.into_iter().flatten().collect())
     }
 }
 
@@ -135,11 +119,8 @@ impl BlockOnErrorChecker {
 // Message Group Queue (1-in-flight per group)
 // ============================================================================
 
-/// In-memory queue for a single message group.
-/// Ensures only 1 job is dispatched to the queue at a time per group.
-/// Jobs are sorted by sequence number and creation time.
 pub struct MessageGroupQueue {
-    pending_jobs: VecDeque<DispatchJob>,
+    pending_jobs: VecDeque<SchedulerJobRow>,
     job_in_flight: bool,
 }
 
@@ -151,8 +132,7 @@ impl MessageGroupQueue {
         }
     }
 
-    /// Add jobs to this queue (sorted by sequence, createdAt).
-    pub fn add_jobs(&mut self, jobs: Vec<DispatchJob>) {
+    pub fn add_jobs(&mut self, jobs: Vec<SchedulerJobRow>) {
         let mut sorted = jobs;
         sorted.sort_by(|a, b| {
             a.sequence.cmp(&b.sequence)
@@ -161,9 +141,7 @@ impl MessageGroupQueue {
         self.pending_jobs.extend(sorted);
     }
 
-    /// Try to take the next job for dispatch.
-    /// Returns None if a job is already in flight or no jobs are pending.
-    pub fn try_take_next(&mut self) -> Option<DispatchJob> {
+    pub fn try_take_next(&mut self) -> Option<SchedulerJobRow> {
         if self.job_in_flight {
             return None;
         }
@@ -172,7 +150,6 @@ impl MessageGroupQueue {
         Some(job)
     }
 
-    /// Called when the current in-flight job has been dispatched.
     pub fn on_current_job_dispatched(&mut self) {
         self.job_in_flight = false;
     }
@@ -187,17 +164,14 @@ impl MessageGroupQueue {
 }
 
 // ============================================================================
-// Message Group Dispatcher (concurrency coordinator with semaphore)
+// Message Group Dispatcher (concurrency coordinator)
 // ============================================================================
 
-/// Coordinates dispatch across message groups with semaphore-based concurrency control.
-/// Each group has at most 1 job in-flight; the semaphore limits how many groups
-/// dispatch concurrently.
 #[derive(Clone)]
 pub struct MessageGroupDispatcher {
     inner: Arc<Mutex<HashMap<String, MessageGroupQueue>>>,
-    db: DatabaseConnection,
-    queue_publisher: Arc<dyn QueuePublisher>,
+    pool: PgPool,
+    queue_publisher: Arc<dyn fc_queue::QueuePublisher>,
     config: SchedulerConfig,
     semaphore: Arc<Semaphore>,
 }
@@ -205,21 +179,20 @@ pub struct MessageGroupDispatcher {
 impl MessageGroupDispatcher {
     pub fn new(
         config: SchedulerConfig,
-        db: DatabaseConnection,
-        queue_publisher: Arc<dyn QueuePublisher>,
+        pool: PgPool,
+        queue_publisher: Arc<dyn fc_queue::QueuePublisher>,
     ) -> Self {
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_groups));
         Self {
             inner: Arc::new(Mutex::new(HashMap::new())),
-            db,
+            pool,
             queue_publisher,
             config,
             semaphore,
         }
     }
 
-    /// Submit jobs for a message group.
-    pub fn submit_jobs(&self, message_group: &str, jobs: Vec<DispatchJob>) {
+    pub fn submit_jobs(&self, message_group: &str, jobs: Vec<SchedulerJobRow>) {
         if jobs.is_empty() {
             return;
         }
@@ -237,8 +210,7 @@ impl MessageGroupDispatcher {
         }
     }
 
-    /// Spawn an async task to dispatch a job with semaphore-based concurrency limiting.
-    fn spawn_dispatch(&self, message_group: String, job: DispatchJob) {
+    fn spawn_dispatch(&self, message_group: String, job: SchedulerJobRow) {
         let this = self.clone();
 
         tokio::spawn(async move {
@@ -252,10 +224,8 @@ impl MessageGroupDispatcher {
                 warn!(job_id = %job.id, message_group = %message_group, "Failed to dispatch job");
             }
 
-            // Release permit before triggering next
             drop(_permit);
 
-            // Trigger next job in this group
             let next_job = {
                 let mut queues = this.inner.lock().unwrap();
                 if let Some(queue) = queues.get_mut(&message_group) {
@@ -272,29 +242,19 @@ impl MessageGroupDispatcher {
         });
     }
 
-    /// Dispatch a single job to the queue. Returns true on success.
-    async fn dispatch_single_job(&self, job: &DispatchJob) -> bool {
-        let pointer = MessagePointer {
+    /// Build an fc_common::Message directly and publish via fc_queue::QueuePublisher.
+    async fn dispatch_single_job(&self, job: &SchedulerJobRow) -> bool {
+        let message = fc_common::Message {
             id: job.id.clone(),
             pool_code: job.dispatch_pool_id.clone()
                 .unwrap_or_else(|| self.config.default_pool_code.clone()),
-            message_group_id: job.message_group.clone().unwrap_or_else(|| "default".to_string()),
-            mediation_type: "HTTP".to_string(),
+            auth_token: None,
+            signing_secret: None,
+            mediation_type: fc_common::MediationType::HTTP,
             mediation_target: self.config.processing_endpoint.clone(),
+            message_group_id: job.message_group.clone(),
+            high_priority: false,
             dispatch_mode: job.dispatch_mode(),
-        };
-
-        let message = QueueMessage {
-            id: job.id.clone(),
-            message_group: job.message_group.clone(),
-            deduplication_id: job.id.clone(),
-            body: match serde_json::to_string(&pointer) {
-                Ok(b) => b,
-                Err(e) => {
-                    error!(job_id = %job.id, error = %e, "Failed to serialize message pointer");
-                    return false;
-                }
-            },
         };
 
         metrics::counter!("scheduler.jobs.dispatched_total").increment(1);
@@ -326,34 +286,24 @@ impl MessageGroupDispatcher {
         }
     }
 
-    /// Batch-update job statuses to QUEUED using a single query with ANY($1).
-    async fn batch_update_status_queued(&self, job_ids: &[&str]) -> Result<(), sea_orm::DbErr> {
+    async fn batch_update_status_queued(&self, job_ids: &[&str]) -> Result<(), sqlx::Error> {
         if job_ids.is_empty() {
             return Ok(());
         }
 
-        // Single query: UPDATE ... WHERE id = ANY($1::text[])
-        let ids: Vec<sea_orm::Value> = job_ids.iter()
-            .map(|id| sea_orm::Value::from(id.to_string()))
-            .collect();
+        let ids: Vec<String> = job_ids.iter().map(|id| id.to_string()).collect();
 
-        // SeaORM doesn't natively support array binds, so use a parameterized IN clause
-        let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("${}", i)).collect();
-        let sql = format!(
-            "UPDATE msg_dispatch_jobs SET status = 'QUEUED', queued_at = NOW(), updated_at = NOW() WHERE id IN ({})",
-            placeholders.join(", ")
-        );
-
-        self.db.execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            &sql,
-            ids,
-        )).await?;
+        sqlx::query(
+            "UPDATE msg_dispatch_jobs SET status = 'QUEUED', queued_at = NOW(), updated_at = NOW() \
+             WHERE id = ANY($1)",
+        )
+        .bind(&ids)
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }
 
-    /// Clean up empty queues.
     pub fn cleanup_empty_queues(&self) {
         let mut queues = self.inner.lock().unwrap();
         queues.retain(|_, queue| {
@@ -375,11 +325,8 @@ pub struct SchedulerConfig {
     pub default_dispatch_mode: DispatchMode,
     pub default_pool_code: String,
     pub processing_endpoint: String,
-    /// App key for HMAC auth token generation
     pub app_key: Option<String>,
-    /// Maximum concurrent message group dispatches (semaphore size)
     pub max_concurrent_groups: usize,
-    /// Whether to filter out jobs for paused connections
     pub connection_filter_enabled: bool,
 }
 
@@ -401,57 +348,28 @@ impl Default for SchedulerConfig {
 }
 
 // ============================================================================
-// Queue types
-// ============================================================================
-
-#[async_trait]
-pub trait QueuePublisher: Send + Sync {
-    async fn publish(&self, message: QueueMessage) -> Result<(), SchedulerError>;
-    /// Publish a batch of messages. Default implementation publishes sequentially.
-    async fn publish_batch(&self, messages: Vec<QueueMessage>) -> Vec<Result<(), SchedulerError>> {
-        let mut results = Vec::with_capacity(messages.len());
-        for msg in messages {
-            results.push(self.publish(msg).await);
-        }
-        results
-    }
-    fn is_healthy(&self) -> bool;
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QueueMessage {
-    pub id: String,
-    pub message_group: Option<String>,
-    pub deduplication_id: String,
-    pub body: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MessagePointer {
-    pub id: String,
-    pub pool_code: String,
-    pub message_group_id: String,
-    pub mediation_type: String,
-    pub mediation_target: String,
-    #[serde(default)]
-    pub dispatch_mode: DispatchMode,
-}
-
-// ============================================================================
 // Dispatch Scheduler (Orchestrator)
 // ============================================================================
 
 pub struct DispatchScheduler {
     config: SchedulerConfig,
-    db: DatabaseConnection,
-    queue_publisher: Arc<dyn QueuePublisher>,
+    pool: PgPool,
+    queue_publisher: Arc<dyn fc_queue::QueuePublisher>,
     running: Arc<RwLock<bool>>,
 }
 
 impl DispatchScheduler {
-    pub fn new(config: SchedulerConfig, db: DatabaseConnection, queue_publisher: Arc<dyn QueuePublisher>) -> Self {
-        Self { config, db, queue_publisher, running: Arc::new(RwLock::new(false)) }
+    pub fn new(
+        config: SchedulerConfig,
+        pool: PgPool,
+        queue_publisher: Arc<dyn fc_queue::QueuePublisher>,
+    ) -> Self {
+        Self {
+            config,
+            pool,
+            queue_publisher,
+            running: Arc::new(RwLock::new(false)),
+        }
     }
 
     pub async fn start(&self) {
@@ -477,15 +395,18 @@ impl DispatchScheduler {
 
         let group_dispatcher = Arc::new(MessageGroupDispatcher::new(
             self.config.clone(),
-            self.db.clone(),
+            self.pool.clone(),
             self.queue_publisher.clone(),
         ));
 
-        let poller = PendingJobPoller::new(self.config.clone(), self.db.clone(), group_dispatcher.clone());
+        let poller = PendingJobPoller::new(
+            self.config.clone(),
+            self.pool.clone(),
+            group_dispatcher.clone(),
+        );
         let batch_size = self.config.batch_size;
         let running_clone = self.running.clone();
 
-        // Spawn background refresh for paused connection cache
         let (shutdown_tx, _) = tokio::sync::broadcast::channel::<()>(1);
         poller.paused_cache().spawn_refresh_task(shutdown_tx);
 
@@ -502,12 +423,7 @@ impl DispatchScheduler {
                 };
                 group_dispatcher.cleanup_empty_queues();
 
-                // Adaptive polling:
-                // - Full batch → re-poll immediately, more jobs likely waiting
-                // - Partial batch → brief pause (500ms), queue is draining
-                // - Empty → longer pause (1s), nothing to do
                 if job_count >= batch_size {
-                    // Yield to let other tasks run, but don't sleep
                     tokio::task::yield_now().await;
                 } else if job_count > 0 {
                     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -517,7 +433,7 @@ impl DispatchScheduler {
             }
         });
 
-        let stale_poller = StaleQueuedJobPoller::new(self.config.clone(), self.db.clone());
+        let stale_poller = StaleQueuedJobPoller::new(self.config.clone(), self.pool.clone());
         let running_clone2 = self.running.clone();
 
         tokio::spawn(async move {
@@ -557,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_dispatch_status() {
-        let job = DispatchJob {
+        let job = SchedulerJobRow {
             id: "test".to_string(),
             message_group: None,
             dispatch_pool_id: None,
@@ -582,14 +498,14 @@ mod tests {
         assert!(!queue.has_job_in_flight());
 
         let now = Utc::now();
-        let job1 = DispatchJob {
+        let job1 = SchedulerJobRow {
             id: "job1".to_string(), message_group: Some("g1".to_string()),
             dispatch_pool_id: None, status: "PENDING".to_string(),
             mode: "IMMEDIATE".to_string(), target_url: "http://a".to_string(),
             payload: None, sequence: 2, created_at: now, updated_at: now,
             queued_at: None, last_error: None, subscription_id: None,
         };
-        let job2 = DispatchJob {
+        let job2 = SchedulerJobRow {
             id: "job2".to_string(), message_group: Some("g1".to_string()),
             dispatch_pool_id: None, status: "PENDING".to_string(),
             mode: "IMMEDIATE".to_string(), target_url: "http://b".to_string(),
@@ -600,19 +516,15 @@ mod tests {
         queue.add_jobs(vec![job1, job2]);
         assert!(queue.has_pending_jobs());
 
-        // First job should be sequence 1 (job2)
         let first = queue.try_take_next().unwrap();
         assert_eq!(first.id, "job2");
         assert!(queue.has_job_in_flight());
 
-        // Can't take another while in-flight
         assert!(queue.try_take_next().is_none());
 
-        // After dispatch completes
         queue.on_current_job_dispatched();
         assert!(!queue.has_job_in_flight());
 
-        // Now can take sequence 2 (job1)
         let second = queue.try_take_next().unwrap();
         assert_eq!(second.id, "job1");
     }

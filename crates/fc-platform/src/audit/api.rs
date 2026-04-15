@@ -305,16 +305,16 @@ pub async fn list_audit_logs(
 
     let page = query.page;
     let page_size = query.page_size;
-    let skip = (page * page_size) as u64;
     let limit = page_size as i64;
+    let offset = (page as i64) * (page_size as i64);
 
     let mut logs = state.audit_log_repo.search(
         query.entity_type.as_deref(),
         query.entity_id.as_deref(),
         query.operation.as_deref(),
         query.principal_id.as_deref(),
-        skip,
         limit,
+        offset,
     ).await?;
 
     // Get total count for pagination

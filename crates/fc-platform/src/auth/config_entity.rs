@@ -70,17 +70,6 @@ impl AnchorDomain {
     }
 }
 
-impl From<crate::entities::tnt_anchor_domains::Model> for AnchorDomain {
-    fn from(m: crate::entities::tnt_anchor_domains::Model) -> Self {
-        Self {
-            id: m.id,
-            domain: m.domain,
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
-        }
-    }
-}
-
 /// ClientAuthConfig — matches TypeScript ClientAuthConfig interface
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -199,40 +188,3 @@ impl IdpRoleMapping {
     }
 }
 
-impl From<crate::entities::oauth_idp_role_mappings::Model> for IdpRoleMapping {
-    fn from(m: crate::entities::oauth_idp_role_mappings::Model) -> Self {
-        Self {
-            id: m.id,
-            idp_type: "OIDC".to_string(), // DB table doesn't store idp_type separately
-            idp_role_name: m.idp_role_name,
-            platform_role_name: m.internal_role_name,
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
-        }
-    }
-}
-
-impl From<crate::entities::tnt_client_auth_configs::Model> for ClientAuthConfig {
-    fn from(m: crate::entities::tnt_client_auth_configs::Model) -> Self {
-        let additional_client_ids: Vec<String> =
-            serde_json::from_value(m.additional_client_ids.into()).unwrap_or_default();
-        let granted_client_ids: Vec<String> =
-            serde_json::from_value(m.granted_client_ids.into()).unwrap_or_default();
-        Self {
-            id: m.id,
-            email_domain: m.email_domain,
-            config_type: AuthConfigType::from_str(&m.config_type),
-            primary_client_id: m.primary_client_id,
-            additional_client_ids,
-            granted_client_ids,
-            auth_provider: AuthProvider::from_str(&m.auth_provider),
-            oidc_issuer_url: m.oidc_issuer_url,
-            oidc_client_id: m.oidc_client_id,
-            oidc_multi_tenant: m.oidc_multi_tenant,
-            oidc_issuer_pattern: m.oidc_issuer_pattern,
-            oidc_client_secret_ref: m.oidc_client_secret_ref,
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
-        }
-    }
-}

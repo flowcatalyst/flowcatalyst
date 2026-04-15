@@ -7,15 +7,21 @@ use super::{FlowCatalystClient, ClientError, ListResponse};
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateRoleRequest {
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
+    /// Application code this role belongs to
+    pub application_code: String,
+    /// Role name (will be combined with app code to form code)
+    pub role_name: String,
+    /// Display name
+    pub display_name: String,
+    /// Description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub permissions: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_managed: Option<bool>,
+    /// Initial permissions
+    #[serde(default)]
+    pub permissions: Vec<String>,
+    /// Whether clients can manage this role
+    #[serde(default)]
+    pub client_managed: bool,
 }
 
 /// Request to update a role.
@@ -27,8 +33,6 @@ pub struct UpdateRoleRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub permissions: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub client_managed: Option<bool>,
 }
 
@@ -36,36 +40,32 @@ pub struct UpdateRoleRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoleResponse {
+    pub id: String,
     pub name: String,
-    #[serde(default)]
-    pub display_name: Option<String>,
+    pub short_name: String,
+    pub display_name: String,
     #[serde(default)]
     pub description: Option<String>,
+    pub application_code: String,
     #[serde(default)]
-    pub source: Option<String>,
+    pub permissions: Vec<String>,
+    pub source: String,
     #[serde(default)]
-    pub application_id: Option<String>,
-    #[serde(default)]
-    pub permissions: Option<Vec<String>>,
-    #[serde(default)]
-    pub client_managed: Option<bool>,
-    #[serde(default)]
-    pub created_at: Option<String>,
-    #[serde(default)]
-    pub updated_at: Option<String>,
+    pub client_managed: bool,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 /// Permission response from the platform API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionResponse {
-    pub name: String,
-    #[serde(default)]
-    pub display_name: Option<String>,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub category: Option<String>,
+    pub permission: String,
+    pub application: String,
+    pub context: String,
+    pub aggregate: String,
+    pub action: String,
+    pub description: String,
 }
 
 impl FlowCatalystClient {

@@ -105,6 +105,8 @@ async fn list_login_attempts(
 ) -> Result<Json<LoginAttemptsListResponse>, PlatformError> {
     let page = query.page.unwrap_or(0);
     let page_size = query.page_size.unwrap_or(100).min(500);
+    let limit = page_size as i64;
+    let offset = (page as i64) * (page_size as i64);
 
     let (items, total) = state.login_attempt_repo.find_paged(
         query.attempt_type.as_deref(),
@@ -113,8 +115,8 @@ async fn list_login_attempts(
         query.principal_id.as_deref(),
         query.date_from.as_deref(),
         query.date_to.as_deref(),
-        page,
-        page_size,
+        limit,
+        offset,
         query.sort_field.as_deref(),
         query.sort_order.as_deref(),
     ).await?;

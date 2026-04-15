@@ -46,17 +46,3 @@ impl ApplicationClientConfig {
     }
 }
 
-impl From<crate::entities::app_client_configs::Model> for ApplicationClientConfig {
-    fn from(m: crate::entities::app_client_configs::Model) -> Self {
-        Self {
-            id: m.id,
-            application_id: m.application_id,
-            client_id: m.client_id,
-            enabled: m.enabled,
-            base_url_override: None,
-            config_json: None,
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
-        }
-    }
-}

@@ -532,7 +532,7 @@ pub struct UpdateAnchorDomainRequest {
     ),
     request_body = UpdateAnchorDomainRequest,
     responses(
-        (status = 200, description = "Anchor domain updated", body = AnchorDomainResponse),
+        (status = 204, description = "Anchor domain updated"),
         (status = 404, description = "Anchor domain not found")
     ),
     security(("bearer_auth" = []))
@@ -542,7 +542,7 @@ pub async fn update_anchor_domain(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateAnchorDomainRequest>,
-) -> Result<Json<AnchorDomainResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
     let mut domain = state.anchor_domain_repo.find_by_id(&id).await?
@@ -553,13 +553,7 @@ pub async fn update_anchor_domain(
 
     state.anchor_domain_repo.update(&domain).await?;
 
-    let user_count = if let Some(ref principal_repo) = state.principal_repo {
-        principal_repo.count_by_email_domain(&domain.domain).await.unwrap_or(0)
-    } else {
-        0
-    };
-
-    Ok(Json(AnchorDomainResponse::from_domain(domain, user_count)))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ============================================================================
@@ -687,7 +681,7 @@ pub async fn list_client_auth_configs(
     ),
     request_body = UpdateClientAuthConfigRequest,
     responses(
-        (status = 200, description = "Client auth config updated", body = ClientAuthConfigResponse),
+        (status = 204, description = "Client auth config updated"),
         (status = 404, description = "Client auth config not found")
     ),
     security(("bearer_auth" = []))
@@ -697,7 +691,7 @@ pub async fn update_client_auth_config(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateClientAuthConfigRequest>,
-) -> Result<Json<ClientAuthConfigResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
     let mut config = state.client_auth_config_repo.find_by_id(&id).await?
@@ -722,7 +716,7 @@ pub async fn update_client_auth_config(
     config.updated_at = chrono::Utc::now();
     state.client_auth_config_repo.update(&config).await?;
 
-    Ok(Json(config.into()))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Delete client auth config
@@ -776,7 +770,7 @@ pub struct UpdateConfigTypeRequest {
     ),
     request_body = UpdateConfigTypeRequest,
     responses(
-        (status = 200, description = "Config type updated", body = ClientAuthConfigResponse),
+        (status = 204, description = "Config type updated"),
         (status = 404, description = "Client auth config not found")
     ),
     security(("bearer_auth" = []))
@@ -786,7 +780,7 @@ pub async fn update_config_type(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateConfigTypeRequest>,
-) -> Result<Json<ClientAuthConfigResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
     let mut config = state.client_auth_config_repo.find_by_id(&id).await?
@@ -797,7 +791,7 @@ pub async fn update_config_type(
 
     state.client_auth_config_repo.update(&config).await?;
 
-    Ok(Json(config.into()))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Get client auth config by email domain
@@ -925,7 +919,7 @@ pub async fn create_oidc_auth_config(
     ),
     request_body = UpdateOidcConfigRequest,
     responses(
-        (status = 200, description = "OIDC config updated", body = ClientAuthConfigResponse),
+        (status = 204, description = "OIDC config updated"),
         (status = 404, description = "Client auth config not found")
     ),
     security(("bearer_auth" = []))
@@ -935,7 +929,7 @@ pub async fn update_oidc_config(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateOidcConfigRequest>,
-) -> Result<Json<ClientAuthConfigResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
     let mut config = state.client_auth_config_repo.find_by_id(&id).await?
@@ -952,7 +946,7 @@ pub async fn update_oidc_config(
 
     state.client_auth_config_repo.update(&config).await?;
 
-    Ok(Json(config.into()))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Update client binding
@@ -966,7 +960,7 @@ pub async fn update_oidc_config(
     ),
     request_body = UpdateClientBindingRequest,
     responses(
-        (status = 200, description = "Client binding updated", body = ClientAuthConfigResponse),
+        (status = 204, description = "Client binding updated"),
         (status = 404, description = "Client auth config not found")
     ),
     security(("bearer_auth" = []))
@@ -976,7 +970,7 @@ pub async fn update_client_binding(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateClientBindingRequest>,
-) -> Result<Json<ClientAuthConfigResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
     let mut config = state.client_auth_config_repo.find_by_id(&id).await?
@@ -987,7 +981,7 @@ pub async fn update_client_binding(
 
     state.client_auth_config_repo.update(&config).await?;
 
-    Ok(Json(config.into()))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Update additional clients
@@ -1001,7 +995,7 @@ pub async fn update_client_binding(
     ),
     request_body = UpdateAdditionalClientsRequest,
     responses(
-        (status = 200, description = "Additional clients updated", body = ClientAuthConfigResponse),
+        (status = 204, description = "Additional clients updated"),
         (status = 404, description = "Client auth config not found")
     ),
     security(("bearer_auth" = []))
@@ -1011,7 +1005,7 @@ pub async fn update_additional_clients(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateAdditionalClientsRequest>,
-) -> Result<Json<ClientAuthConfigResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
     let mut config = state.client_auth_config_repo.find_by_id(&id).await?
@@ -1022,7 +1016,7 @@ pub async fn update_additional_clients(
 
     state.client_auth_config_repo.update(&config).await?;
 
-    Ok(Json(config.into()))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Update granted clients
@@ -1036,7 +1030,7 @@ pub async fn update_additional_clients(
     ),
     request_body = UpdateGrantedClientsRequest,
     responses(
-        (status = 200, description = "Granted clients updated", body = ClientAuthConfigResponse),
+        (status = 204, description = "Granted clients updated"),
         (status = 404, description = "Client auth config not found")
     ),
     security(("bearer_auth" = []))
@@ -1046,7 +1040,7 @@ pub async fn update_granted_clients(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateGrantedClientsRequest>,
-) -> Result<Json<ClientAuthConfigResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
     let mut config = state.client_auth_config_repo.find_by_id(&id).await?
@@ -1057,7 +1051,7 @@ pub async fn update_granted_clients(
 
     state.client_auth_config_repo.update(&config).await?;
 
-    Ok(Json(config.into()))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Validate secret reference

@@ -199,3 +199,184 @@ impl std::fmt::Display for UseCaseError {
 }
 
 impl std::error::Error for UseCaseError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── Constructor Helpers ────────────────────────────────────────────
+
+    #[test]
+    fn validation_error() {
+        let err = UseCaseError::validation("INVALID_EMAIL", "Email is invalid");
+        assert_eq!(err.code(), "INVALID_EMAIL");
+        assert_eq!(err.message(), "Email is invalid");
+        assert_eq!(err.http_status_code(), 400);
+        assert!(matches!(err, UseCaseError::ValidationError { .. }));
+    }
+
+    #[test]
+    fn validation_error_with_details() {
+        let details = crate::details! { "field" => "email", "value" => "bad@" };
+        let err = UseCaseError::validation_with_details("INVALID", "bad input", details);
+        assert_eq!(err.code(), "INVALID");
+        assert_eq!(err.http_status_code(), 400);
+        if let UseCaseError::ValidationError { details, .. } = &err {
+            assert_eq!(details["field"], "email");
+            assert_eq!(details["value"], "bad@");
+        } else {
+            panic!("expected ValidationError");
+        }
+    }
+
+    #[test]
+    fn business_rule_violation() {
+        let err = UseCaseError::business_rule("DUPLICATE", "Already exists");
+        assert_eq!(err.code(), "DUPLICATE");
+        assert_eq!(err.message(), "Already exists");
+        assert_eq!(err.http_status_code(), 409);
+        assert!(matches!(err, UseCaseError::BusinessRuleViolation { .. }));
+    }
+
+    #[test]
+    fn business_rule_with_details() {
+        let details = crate::details! { "existing_id" => "clt_123" };
+        let err = UseCaseError::business_rule_with_details("DUP", "duplicate", details);
+        assert_eq!(err.http_status_code(), 409);
+        if let UseCaseError::BusinessRuleViolation { details, .. } = &err {
+            assert_eq!(details["existing_id"], "clt_123");
+        } else {
+            panic!("expected BusinessRuleViolation");
+        }
+    }
+
+    #[test]
+    fn not_found_error() {
+        let err = UseCaseError::not_found("CLIENT_NOT_FOUND", "Client not found");
+        assert_eq!(err.code(), "CLIENT_NOT_FOUND");
+        assert_eq!(err.message(), "Client not found");
+        assert_eq!(err.http_status_code(), 404);
+        assert!(matches!(err, UseCaseError::NotFoundError { .. }));
+    }
+
+    #[test]
+    fn not_found_with_details() {
+        let details = crate::details! { "id" => "clt_missing" };
+        let err = UseCaseError::not_found_with_details("NF", "not found", details);
+        assert_eq!(err.http_status_code(), 404);
+        if let UseCaseError::NotFoundError { details, .. } = &err {
+            assert_eq!(details["id"], "clt_missing");
+        } else {
+            panic!("expected NotFoundError");
+        }
+    }
+
+    #[test]
+    fn concurrency_error() {
+        let err = UseCaseError::concurrency("STALE", "Stale data");
+        assert_eq!(err.code(), "STALE");
+        assert_eq!(err.message(), "Stale data");
+        assert_eq!(err.http_status_code(), 409);
+        assert!(matches!(err, UseCaseError::ConcurrencyError { .. }));
+    }
+
+    #[test]
+    fn commit_error() {
+        let err = UseCaseError::commit("database connection lost");
+        assert_eq!(err.code(), "COMMIT_FAILED");
+        assert_eq!(err.message(), "database connection lost");
+        assert_eq!(err.http_status_code(), 500);
+        assert!(matches!(err, UseCaseError::CommitError { .. }));
+    }
+
+    // ─── Display / Error ────────────────────────────────────────────────
+
+    #[test]
+    fn display_format() {
+        let err = UseCaseError::validation("CODE", "some message");
+        let display = format!("{}", err);
+        assert_eq!(display, "[CODE] some message");
+    }
+
+    #[test]
+    fn implements_std_error() {
+        let err = UseCaseError::not_found("NF", "gone");
+        let _: &dyn std::error::Error = &err;
+    }
+
+    // ─── Serialization ─────────────────────────────────────────────────
+
+    #[test]
+    fn serialization_includes_type_tag() {
+        let err = UseCaseError::validation("V", "invalid");
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["type"], "ValidationError");
+        assert_eq!(json["code"], "V");
+        assert_eq!(json["message"], "invalid");
+    }
+
+    #[test]
+    fn deserialization_round_trip() {
+        let err = UseCaseError::business_rule("BR", "rule violated");
+        let json = serde_json::to_string(&err).unwrap();
+        let deserialized: UseCaseError = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.code(), "BR");
+        assert_eq!(deserialized.message(), "rule violated");
+        assert!(matches!(deserialized, UseCaseError::BusinessRuleViolation { .. }));
+    }
+
+    #[test]
+    fn serialization_with_details() {
+        let details = crate::details! { "count" => 42 };
+        let err = UseCaseError::validation_with_details("V", "msg", details);
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["details"]["count"], 42);
+    }
+
+    #[test]
+    fn serialization_empty_details() {
+        let err = UseCaseError::validation("V", "msg");
+        let json = serde_json::to_value(&err).unwrap();
+        // Empty details may or may not be present; just verify it's not a non-empty object
+        if let Some(d) = json.get("details") {
+            assert!(d.as_object().unwrap().is_empty());
+        }
+    }
+
+    // ─── details! macro ─────────────────────────────────────────────────
+
+    #[test]
+    fn details_macro_empty() {
+        let empty: HashMap<String, serde_json::Value> = crate::details!();
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn details_macro_single() {
+        let d = crate::details! { "key" => "value" };
+        assert_eq!(d.len(), 1);
+        assert_eq!(d["key"], "value");
+    }
+
+    #[test]
+    fn details_macro_multiple_types() {
+        let d = crate::details! {
+            "name" => "test",
+            "count" => 42,
+            "active" => true,
+        };
+        assert_eq!(d.len(), 3);
+        assert_eq!(d["name"], "test");
+        assert_eq!(d["count"], 42);
+        assert_eq!(d["active"], true);
+    }
+
+    // ─── Clone ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn use_case_error_is_clone() {
+        let err = UseCaseError::validation("V", "msg");
+        let cloned = err.clone();
+        assert_eq!(cloned.code(), "V");
+    }
+}

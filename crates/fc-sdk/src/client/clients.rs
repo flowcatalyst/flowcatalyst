@@ -6,6 +6,7 @@ use super::applications::{CreatedResponse, SuccessResponse};
 
 /// Request to create a client (tenant).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateClientRequest {
     /// Unique identifier for the client (e.g., slug or domain)
     pub identifier: String,
@@ -15,21 +16,23 @@ pub struct CreateClientRequest {
 
 /// Request to update a client.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateClientRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
 
 /// Request for status change operations (suspend, deactivate).
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StatusChangeRequest {
     /// Reason for the status change
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reason: Option<String>,
+    pub reason: String,
 }
 
 /// Request to add a note to a client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AddNoteRequest {
     /// Note category
     pub category: String,
@@ -39,6 +42,7 @@ pub struct AddNoteRequest {
 
 /// Request to update client applications (bulk enable/disable).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateClientApplicationsRequest {
     /// Application IDs to enable for this client
     pub enabled_application_ids: Vec<String>,
@@ -46,6 +50,7 @@ pub struct UpdateClientApplicationsRequest {
 
 /// Client response from the platform API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClientResponse {
     pub id: String,
     pub name: String,
@@ -55,14 +60,13 @@ pub struct ClientResponse {
     pub status_reason: Option<String>,
     #[serde(default)]
     pub status_changed_at: Option<String>,
-    #[serde(default)]
-    pub created_at: Option<String>,
-    #[serde(default)]
-    pub updated_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 /// Client list response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClientListResponse {
     pub clients: Vec<ClientResponse>,
     #[serde(default)]
@@ -71,20 +75,21 @@ pub struct ClientListResponse {
 
 /// Status change response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StatusChangeResponse {
-    #[serde(default)]
-    pub message: Option<String>,
+    pub message: String,
 }
 
 /// Add note response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AddNoteResponse {
-    #[serde(default)]
-    pub message: Option<String>,
+    pub message: String,
 }
 
 /// Client application status response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClientApplicationResponse {
     pub id: String,
     pub code: String,
@@ -101,6 +106,7 @@ pub struct ClientApplicationResponse {
 
 /// Client applications list response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClientApplicationsResponse {
     pub applications: Vec<ClientApplicationResponse>,
     #[serde(default)]
@@ -115,7 +121,7 @@ impl FlowCatalystClient {
         &self,
         req: &CreateClientRequest,
     ) -> Result<CreatedResponse, ClientError> {
-        self.post("/api/clients", req).await
+        self.post("/api/admin/clients", req).await
     }
 
     /// List clients with optional pagination and status filter.
@@ -142,12 +148,12 @@ impl FlowCatalystClient {
             format!("?{}", params.join("&"))
         };
 
-        self.get(&format!("/api/clients{}", query)).await
+        self.get(&format!("/api/admin/clients{}", query)).await
     }
 
     /// Get a client by ID.
     pub async fn get_client(&self, id: &str) -> Result<ClientResponse, ClientError> {
-        self.get(&format!("/api/clients/{}", id)).await
+        self.get(&format!("/api/admin/clients/{}", id)).await
     }
 
     /// Get a client by identifier (slug/domain).
@@ -155,13 +161,13 @@ impl FlowCatalystClient {
         &self,
         identifier: &str,
     ) -> Result<ClientResponse, ClientError> {
-        self.get(&format!("/api/clients/by-identifier/{}", identifier))
+        self.get(&format!("/api/admin/clients/by-identifier/{}", identifier))
             .await
     }
 
     /// Search clients by name or identifier.
     pub async fn search_clients(&self, query: &str) -> Result<ClientListResponse, ClientError> {
-        self.get(&format!("/api/clients/search?q={}", query)).await
+        self.get(&format!("/api/admin/clients/search?q={}", query)).await
     }
 
     /// Update a client.
@@ -170,17 +176,17 @@ impl FlowCatalystClient {
         id: &str,
         req: &UpdateClientRequest,
     ) -> Result<ClientResponse, ClientError> {
-        self.put(&format!("/api/clients/{}", id), req).await
+        self.put(&format!("/api/admin/clients/{}", id), req).await
     }
 
     /// Delete (deactivate) a client.
     pub async fn delete_client(&self, id: &str) -> Result<(), ClientError> {
-        self.delete_req(&format!("/api/clients/{}", id)).await
+        self.delete_req(&format!("/api/admin/clients/{}", id)).await
     }
 
     /// Activate a client.
     pub async fn activate_client(&self, id: &str) -> Result<StatusChangeResponse, ClientError> {
-        self.post_action(&format!("/api/clients/{}/activate", id))
+        self.post_action(&format!("/api/admin/clients/{}/activate", id))
             .await
     }
 
@@ -190,7 +196,7 @@ impl FlowCatalystClient {
         id: &str,
         req: &StatusChangeRequest,
     ) -> Result<StatusChangeResponse, ClientError> {
-        self.post(&format!("/api/clients/{}/suspend", id), req)
+        self.post(&format!("/api/admin/clients/{}/suspend", id), req)
             .await
     }
 
@@ -200,7 +206,7 @@ impl FlowCatalystClient {
         id: &str,
         req: &StatusChangeRequest,
     ) -> Result<StatusChangeResponse, ClientError> {
-        self.post(&format!("/api/clients/{}/deactivate", id), req)
+        self.post(&format!("/api/admin/clients/{}/deactivate", id), req)
             .await
     }
 
@@ -210,7 +216,7 @@ impl FlowCatalystClient {
         id: &str,
         req: &AddNoteRequest,
     ) -> Result<AddNoteResponse, ClientError> {
-        self.post(&format!("/api/clients/{}/notes", id), req).await
+        self.post(&format!("/api/admin/clients/{}/notes", id), req).await
     }
 
     /// List applications for a client (with enabled status).
@@ -218,7 +224,7 @@ impl FlowCatalystClient {
         &self,
         client_id: &str,
     ) -> Result<ClientApplicationsResponse, ClientError> {
-        self.get(&format!("/api/clients/{}/applications", client_id))
+        self.get(&format!("/api/admin/clients/{}/applications", client_id))
             .await
     }
 
@@ -229,7 +235,7 @@ impl FlowCatalystClient {
         application_id: &str,
     ) -> Result<SuccessResponse, ClientError> {
         self.post_action(&format!(
-            "/api/clients/{}/applications/{}/enable",
+            "/api/admin/clients/{}/applications/{}/enable",
             client_id, application_id
         ))
         .await
@@ -242,7 +248,7 @@ impl FlowCatalystClient {
         application_id: &str,
     ) -> Result<SuccessResponse, ClientError> {
         self.post_action(&format!(
-            "/api/clients/{}/applications/{}/disable",
+            "/api/admin/clients/{}/applications/{}/disable",
             client_id, application_id
         ))
         .await
@@ -255,7 +261,7 @@ impl FlowCatalystClient {
         req: &UpdateClientApplicationsRequest,
     ) -> Result<SuccessResponse, ClientError> {
         self.put(
-            &format!("/api/clients/{}/applications", client_id),
+            &format!("/api/admin/clients/{}/applications", client_id),
             req,
         )
         .await

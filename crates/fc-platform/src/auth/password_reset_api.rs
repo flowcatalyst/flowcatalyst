@@ -14,6 +14,7 @@ use tracing::{info, warn};
 
 use crate::password_reset::entity::PasswordResetToken;
 use crate::password_reset::repository::PasswordResetTokenRepository;
+use crate::principal::entity::Principal;
 use crate::principal::repository::PrincipalRepository;
 use crate::principal::operations::events::{PasswordResetCompleted, PasswordResetRequested};
 use crate::auth::password_service::PasswordService;
@@ -21,15 +22,89 @@ use crate::shared::error::PlatformError;
 use crate::shared::email_service::{EmailService, EmailMessage};
 use crate::{PgUnitOfWork, UnitOfWork};
 
+/// Shared service that creates a single-use reset token and emails the
+/// recipient with a link back to the SPA. Used by both the user-initiated
+/// `/auth/password-reset/request` flow and the admin-initiated
+/// `/api/admin/principals/{id}/send-password-reset` action.
+#[derive(Clone)]
+pub struct PasswordResetEmailer {
+    pub password_reset_repo: Arc<PasswordResetTokenRepository>,
+    pub email_service: Arc<dyn EmailService>,
+    pub unit_of_work: Arc<PgUnitOfWork>,
+    /// Base URL for constructing reset links (e.g. "https://app.flowcatalyst.io")
+    pub external_base_url: String,
+}
+
+impl PasswordResetEmailer {
+    /// Generate a single-use token, persist it (15 min TTL), and email the
+    /// principal a reset link. Email failures are logged but not propagated
+    /// (best-effort delivery; the token is still valid for direct use).
+    ///
+    /// Caller is responsible for validating that `principal` is eligible for
+    /// password reset (USER type, has email, not OIDC-federated). This method
+    /// expects `principal.user_identity.email` to be present.
+    pub async fn send_reset_email(&self, principal: &Principal) -> Result<(), PlatformError> {
+        let email = principal.user_identity.as_ref()
+            .map(|i| i.email.clone())
+            .ok_or_else(|| PlatformError::validation(
+                "Principal does not have an email address for password reset",
+            ))?;
+
+        // Invalidate any outstanding tokens for this principal.
+        self.password_reset_repo.delete_by_principal_id(&principal.id).await?;
+
+        let raw_token = generate_raw_token();
+        let token_hash = hash_token(&raw_token);
+        let expires_at = Utc::now() + Duration::minutes(15);
+
+        let reset_token = PasswordResetToken::new(&principal.id, token_hash, expires_at);
+        self.password_reset_repo.create(&reset_token).await?;
+
+        // Email link must match the SPA's `/auth/reset-password` route
+        // (frontend/src/router/index.ts). The API namespace
+        // `/auth/password-reset/*` is *not* a frontend route.
+        let reset_link = format!(
+            "{}/auth/reset-password?token={}",
+            self.external_base_url, raw_token
+        );
+        let message = EmailMessage {
+            to: email.clone(),
+            subject: "Reset your password".to_string(),
+            html_body: format!(
+                "<p>You requested a password reset.</p>\
+                 <p><a href=\"{}\">Click here to reset your password</a></p>\
+                 <p>This link expires in 15 minutes.</p>\
+                 <p>If you did not request this, you can safely ignore this email.</p>",
+                reset_link
+            ),
+            text_body: Some(format!(
+                "You requested a password reset.\n\nReset link: {}\n\nThis link expires in 15 minutes.",
+                reset_link
+            )),
+        };
+        if let Err(e) = self.email_service.send(&message).await {
+            warn!(principal_id = %principal.id, error = %e, "Failed to send password reset email");
+        }
+
+        // Best-effort domain event.
+        let event = PasswordResetRequested::new(&principal.id, &email);
+        let command = serde_json::json!({ "principalId": principal.id, "email": email });
+        if let Err(e) = self.unit_of_work.emit_event(event, &command).await.into_result() {
+            warn!("Failed to emit PasswordResetRequested event: {}", e);
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Clone)]
 pub struct PasswordResetApiState {
-    pub password_reset_repo: Arc<PasswordResetTokenRepository>,
     pub principal_repo: Arc<PrincipalRepository>,
     pub password_service: Arc<PasswordService>,
     pub unit_of_work: Arc<PgUnitOfWork>,
-    pub email_service: Arc<dyn EmailService>,
-    /// Base URL for constructing reset links (e.g. "https://app.flowcatalyst.io")
-    pub external_base_url: String,
+    pub emailer: Arc<PasswordResetEmailer>,
+    /// Direct repo access for the validate/confirm endpoints which look up by token.
+    pub password_reset_repo: Arc<PasswordResetTokenRepository>,
 }
 
 // -- Request / Response DTOs --
@@ -95,60 +170,17 @@ async fn request_reset(
     State(state): State<PasswordResetApiState>,
     Json(body): Json<RequestResetBody>,
 ) -> Json<MessageResponse> {
-    // Silent success pattern: always return the same message regardless of whether the email exists
+    // Silent success pattern: always return the same message regardless of
+    // whether the email exists, so the endpoint can't be used to enumerate
+    // accounts.
     let result: Result<(), PlatformError> = async {
-        let principal = state.principal_repo.find_by_email(&body.email).await?;
-        if let Some(principal) = principal {
-            // Delete any existing tokens for this principal
-            state.password_reset_repo.delete_by_principal_id(&principal.id).await?;
-
-            // Create a new token
-            let raw_token = generate_raw_token();
-            let token_hash = hash_token(&raw_token);
-            let expires_at = Utc::now() + Duration::minutes(15);
-
-            let reset_token = PasswordResetToken::new(
-                &principal.id,
-                token_hash,
-                expires_at,
-            );
-            state.password_reset_repo.create(&reset_token).await?;
-
-            // Send password reset email
-            let reset_link = format!(
-                "{}/auth/password-reset?token={}",
-                state.external_base_url, raw_token
-            );
-            let email = EmailMessage {
-                to: body.email.clone(),
-                subject: "Reset your password".to_string(),
-                html_body: format!(
-                    "<p>You requested a password reset.</p>\
-                     <p><a href=\"{}\">Click here to reset your password</a></p>\
-                     <p>This link expires in 15 minutes.</p>\
-                     <p>If you did not request this, you can safely ignore this email.</p>",
-                    reset_link
-                ),
-                text_body: Some(format!(
-                    "You requested a password reset.\n\nReset link: {}\n\nThis link expires in 15 minutes.",
-                    reset_link
-                )),
-            };
-            if let Err(e) = state.email_service.send(&email).await {
-                warn!(principal_id = %principal.id, error = %e, "Failed to send password reset email");
+        match state.principal_repo.find_by_email(&body.email).await? {
+            Some(principal) => state.emailer.send_reset_email(&principal).await,
+            None => {
+                warn!(email = %body.email, "Password reset requested for unknown email");
+                Ok(())
             }
-
-            // Emit domain event (best-effort)
-            let event = PasswordResetRequested::new(&principal.id, &body.email);
-            let command = serde_json::json!({ "principalId": principal.id, "email": body.email });
-            if let Err(e) = state.unit_of_work.emit_event(event, &command).await.into_result() {
-                warn!("Failed to emit PasswordResetRequested event: {}", e);
-            }
-        } else {
-            // Principal not found — do nothing (silent success)
-            warn!(email = %body.email, "Password reset requested for unknown email");
         }
-        Ok(())
     }.await;
 
     if let Err(e) = result {
@@ -274,4 +306,141 @@ pub fn password_reset_router(state: PasswordResetApiState) -> Router {
         .route("/validate", get(validate_token))
         .route("/confirm", post(confirm_reset))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── hash_token tests ──
+
+    #[test]
+    fn hash_token_produces_hex_sha256() {
+        let hash = hash_token("test-token-value");
+        // SHA-256 hex is always 64 characters
+        assert_eq!(hash.len(), 64);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn hash_token_is_deterministic() {
+        let h1 = hash_token("same-input");
+        let h2 = hash_token("same-input");
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn hash_token_different_inputs_differ() {
+        let h1 = hash_token("token-a");
+        let h2 = hash_token("token-b");
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn hash_token_empty_input() {
+        let hash = hash_token("");
+        // SHA-256 of empty string is e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        assert_eq!(hash, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    }
+
+    // ── generate_raw_token tests ──
+
+    #[test]
+    fn generate_raw_token_produces_non_empty_string() {
+        let token = generate_raw_token();
+        assert!(!token.is_empty());
+    }
+
+    #[test]
+    fn generate_raw_token_is_url_safe_base64() {
+        let token = generate_raw_token();
+        // URL-safe base64 chars: A-Z, a-z, 0-9, -, _
+        assert!(
+            token.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+            "Token contains non-URL-safe characters: {token}"
+        );
+    }
+
+    #[test]
+    fn generate_raw_token_has_correct_length() {
+        let token = generate_raw_token();
+        // 32 bytes -> base64 no-pad -> ceil(32 * 4/3) = 43 characters
+        assert_eq!(token.len(), 43, "Expected 43 chars for 32 bytes base64 no-pad, got {}", token.len());
+    }
+
+    #[test]
+    fn generate_raw_token_is_unique() {
+        let t1 = generate_raw_token();
+        let t2 = generate_raw_token();
+        assert_ne!(t1, t2);
+    }
+
+    #[test]
+    fn generated_token_hashes_to_valid_sha256() {
+        let raw = generate_raw_token();
+        let hashed = hash_token(&raw);
+        assert_eq!(hashed.len(), 64);
+        assert!(hashed.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    // ── DTO deserialization tests ──
+
+    #[test]
+    fn request_reset_body_deserializes() {
+        let json = r#"{"email": "user@example.com"}"#;
+        let body: RequestResetBody = serde_json::from_str(json).unwrap();
+        assert_eq!(body.email, "user@example.com");
+    }
+
+    #[test]
+    fn request_reset_body_missing_email_fails() {
+        let json = r#"{}"#;
+        let result = serde_json::from_str::<RequestResetBody>(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn confirm_reset_body_deserializes() {
+        let json = r#"{"token": "abc123", "password": "NewP@ssw0rd!!"}"#;
+        let body: ConfirmResetBody = serde_json::from_str(json).unwrap();
+        assert_eq!(body.token, "abc123");
+        assert_eq!(body.password, "NewP@ssw0rd!!");
+    }
+
+    #[test]
+    fn confirm_reset_body_missing_password_fails() {
+        let json = r#"{"token": "abc123"}"#;
+        let result = serde_json::from_str::<ConfirmResetBody>(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn confirm_reset_body_missing_token_fails() {
+        let json = r#"{"password": "NewP@ssw0rd!!"}"#;
+        let result = serde_json::from_str::<ConfirmResetBody>(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_token_query_deserializes() {
+        let json = r#"{"token": "my-token"}"#;
+        let q: ValidateTokenQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(q.token, "my-token");
+    }
+
+    #[test]
+    fn validate_token_response_serializes_valid() {
+        let resp = ValidateTokenResponse { valid: true, reason: None };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["valid"], true);
+        assert!(json["reason"].is_null());
+    }
+
+    #[test]
+    fn validate_token_response_serializes_invalid() {
+        let resp = ValidateTokenResponse { valid: false, reason: Some("expired".to_string()) };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["valid"], false);
+        assert_eq!(json["reason"], "expired");
+    }
 }

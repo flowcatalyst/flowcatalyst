@@ -107,7 +107,7 @@ pub struct EmailDomainMappingsState {
     operation_id = "postApiAdminEmailDomainMappings",
     request_body = CreateEmailDomainMappingRequest,
     responses(
-        (status = 201, description = "Email domain mapping created", body = EmailDomainMappingResponse),
+        (status = 201, description = "Email domain mapping created", body = crate::shared::api_common::CreatedResponse),
         (status = 409, description = "Duplicate email domain")
     ),
     security(("bearer_auth" = []))
@@ -116,7 +116,7 @@ pub async fn create_email_domain_mapping(
     State(state): State<EmailDomainMappingsState>,
     _auth: Authenticated,
     Json(req): Json<CreateEmailDomainMappingRequest>,
-) -> Result<(axum::http::StatusCode, Json<EmailDomainMappingResponse>), PlatformError> {
+) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
     if state.edm_repo.find_by_email_domain(&req.email_domain).await?.is_some() {
         return Err(PlatformError::duplicate("EmailDomainMapping", "emailDomain", &req.email_domain));
     }
@@ -130,8 +130,9 @@ pub async fn create_email_domain_mapping(
     edm.allowed_role_ids = req.allowed_role_ids.unwrap_or_default();
     edm.sync_roles_from_idp = req.sync_roles_from_idp.unwrap_or(false);
 
+    let id = edm.id.clone();
     state.edm_repo.insert(&edm).await?;
-    Ok((axum::http::StatusCode::CREATED, Json(edm.into())))
+    Ok((axum::http::StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
 }
 
 /// List all email domain mappings
@@ -239,7 +240,7 @@ pub async fn lookup_email_domain_mapping(
     ),
     request_body = UpdateEmailDomainMappingRequest,
     responses(
-        (status = 200, description = "Email domain mapping updated", body = EmailDomainMappingResponse),
+        (status = 204, description = "Email domain mapping updated"),
         (status = 404, description = "Email domain mapping not found")
     ),
     security(("bearer_auth" = []))
@@ -249,7 +250,7 @@ pub async fn update_email_domain_mapping(
     _auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateEmailDomainMappingRequest>,
-) -> Result<Json<EmailDomainMappingResponse>, PlatformError> {
+) -> Result<axum::http::StatusCode, PlatformError> {
     let mut edm = state.edm_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("EmailDomainMapping", &id))?;
 
@@ -264,7 +265,7 @@ pub async fn update_email_domain_mapping(
     edm.updated_at = chrono::Utc::now();
 
     state.edm_repo.update(&edm).await?;
-    Ok(Json(edm.into()))
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
 /// Delete an email domain mapping

@@ -1677,3 +1677,303 @@ pub fn oauth_router(state: OAuthState) -> Router {
         .route("/revoke", post(revoke))
         .with_state(state)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── matches_redirect_uri ──────────────────────────────────────────
+
+    #[test]
+    fn test_exact_redirect_uri_match() {
+        let registered = vec!["https://app.example.com/callback".to_string()];
+        assert!(matches_redirect_uri("https://app.example.com/callback", &registered));
+    }
+
+    #[test]
+    fn test_redirect_uri_no_match() {
+        let registered = vec!["https://app.example.com/callback".to_string()];
+        assert!(!matches_redirect_uri("https://evil.example.com/callback", &registered));
+    }
+
+    #[test]
+    fn test_redirect_uri_multiple_registered() {
+        let registered = vec![
+            "https://app.example.com/callback".to_string(),
+            "https://staging.example.com/callback".to_string(),
+        ];
+        assert!(matches_redirect_uri("https://staging.example.com/callback", &registered));
+        assert!(!matches_redirect_uri("https://prod.example.com/callback", &registered));
+    }
+
+    #[test]
+    fn test_redirect_uri_empty_registered() {
+        let registered: Vec<String> = vec![];
+        assert!(!matches_redirect_uri("https://app.example.com/callback", &registered));
+    }
+
+    // ── wildcard_matches ──────────────────────────────────────────────
+
+    #[test]
+    fn test_wildcard_single_subdomain() {
+        // * matches a single subdomain segment (no dots)
+        assert!(wildcard_matches(
+            "https://tenant1.example.com/callback",
+            "https://*.example.com/callback"
+        ));
+    }
+
+    #[test]
+    fn test_wildcard_does_not_match_dots() {
+        // * should NOT match segments with dots
+        assert!(!wildcard_matches(
+            "https://a.b.example.com/callback",
+            "https://*.example.com/callback"
+        ));
+    }
+
+    #[test]
+    fn test_wildcard_at_end_of_pattern() {
+        assert!(wildcard_matches(
+            "https://example.com/tenant1",
+            "https://example.com/*"
+        ));
+    }
+
+    #[test]
+    fn test_wildcard_empty_segment_rejected() {
+        // Empty wildcard segment should not match
+        assert!(!wildcard_matches(
+            "https://.example.com/callback",
+            "https://*.example.com/callback"
+        ));
+    }
+
+    #[test]
+    fn test_no_wildcard_requires_exact() {
+        // matches_redirect_uri only enters wildcard_matches if pattern contains *
+        let registered = vec!["https://app.example.com/callback".to_string()];
+        assert!(!matches_redirect_uri("https://app.example.com/callback2", &registered));
+    }
+
+    #[test]
+    fn test_wildcard_pattern_prefix_mismatch() {
+        assert!(!wildcard_matches(
+            "http://tenant.example.com/callback",
+            "https://*.example.com/callback"
+        ));
+    }
+
+    // ── generate_random_string ────────────────────────────────────────
+
+    #[test]
+    fn test_random_string_length() {
+        let s = generate_random_string(32);
+        assert_eq!(s.len(), 32);
+    }
+
+    #[test]
+    fn test_random_string_zero_length() {
+        let s = generate_random_string(0);
+        assert!(s.is_empty());
+    }
+
+    #[test]
+    fn test_random_string_alphanumeric_only() {
+        let s = generate_random_string(1000);
+        assert!(s.chars().all(|c| c.is_ascii_alphanumeric()));
+    }
+
+    #[test]
+    fn test_random_string_uniqueness() {
+        let a = generate_random_string(64);
+        let b = generate_random_string(64);
+        assert_ne!(a, b, "Two random strings of length 64 should differ");
+    }
+
+    // ── DTO serialization ─────────────────────────────────────────────
+
+    #[test]
+    fn test_token_response_serialization_full() {
+        let resp = TokenResponse {
+            access_token: "tok_abc".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_in: 3600,
+            refresh_token: Some("rt_xyz".to_string()),
+            id_token: Some("id_123".to_string()),
+            scope: Some("openid profile".to_string()),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["access_token"], "tok_abc");
+        assert_eq!(json["token_type"], "Bearer");
+        assert_eq!(json["expires_in"], 3600);
+        assert_eq!(json["refresh_token"], "rt_xyz");
+        assert_eq!(json["id_token"], "id_123");
+        assert_eq!(json["scope"], "openid profile");
+    }
+
+    #[test]
+    fn test_token_response_skips_none_fields() {
+        let resp = TokenResponse {
+            access_token: "tok".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_in: 900,
+            refresh_token: None,
+            id_token: None,
+            scope: None,
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert!(json.get("refresh_token").is_none());
+        assert!(json.get("id_token").is_none());
+        assert!(json.get("scope").is_none());
+    }
+
+    #[test]
+    fn test_error_response_serialization() {
+        let resp = ErrorResponse {
+            error: "invalid_request".to_string(),
+            error_description: Some("Missing field".to_string()),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["error"], "invalid_request");
+        assert_eq!(json["error_description"], "Missing field");
+    }
+
+    #[test]
+    fn test_error_response_skips_none_description() {
+        let resp = ErrorResponse {
+            error: "server_error".to_string(),
+            error_description: None,
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["error"], "server_error");
+        assert!(json.get("error_description").is_none());
+    }
+
+    #[test]
+    fn test_introspect_response_active_true() {
+        let resp = IntrospectResponse {
+            active: true,
+            sub: Some("user123".to_string()),
+            scope: Some("openid".to_string()),
+            client_id: Some("client1".to_string()),
+            email: Some("user@test.com".to_string()),
+            name: Some("Test User".to_string()),
+            principal_type: Some("USER".to_string()),
+            exp: Some(1700000000),
+            iat: Some(1699996400),
+            iss: Some("https://auth.example.com".to_string()),
+            token_type: Some("Bearer".to_string()),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["active"], true);
+        assert_eq!(json["sub"], "user123");
+        // "type" rename
+        assert_eq!(json["type"], "USER");
+        assert!(json.get("principal_type").is_none(), "should be renamed to 'type'");
+    }
+
+    #[test]
+    fn test_introspect_response_inactive() {
+        let resp = IntrospectResponse {
+            active: false,
+            sub: None,
+            scope: None,
+            client_id: None,
+            email: None,
+            name: None,
+            principal_type: None,
+            exp: None,
+            iat: None,
+            iss: None,
+            token_type: None,
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["active"], false);
+        // All optional fields should be absent
+        assert!(json.get("sub").is_none());
+        assert!(json.get("scope").is_none());
+        assert!(json.get("client_id").is_none());
+    }
+
+    #[test]
+    fn test_userinfo_response_serialization() {
+        let resp = UserInfoResponse {
+            sub: "principal_abc".to_string(),
+            email: Some("user@example.com".to_string()),
+            name: Some("Alice".to_string()),
+            scope: Some("ANCHOR".to_string()),
+            principal_type: Some("USER".to_string()),
+            client_id: Some("clt_123".to_string()),
+            clients: Some(vec!["clt_123".to_string()]),
+            roles: Some(vec!["admin".to_string()]),
+            applications: Some(vec!["app1".to_string()]),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["sub"], "principal_abc");
+        assert_eq!(json["email"], "user@example.com");
+        // principal_type is renamed to "type"
+        assert_eq!(json["type"], "USER");
+    }
+
+    #[test]
+    fn test_userinfo_response_minimal() {
+        let resp = UserInfoResponse {
+            sub: "svc_001".to_string(),
+            email: None,
+            name: None,
+            scope: None,
+            principal_type: None,
+            client_id: None,
+            clients: None,
+            roles: None,
+            applications: None,
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["sub"], "svc_001");
+        assert!(json.get("email").is_none());
+        assert!(json.get("clients").is_none());
+    }
+
+    #[test]
+    fn test_token_request_deserialization() {
+        let json = r#"{
+            "grant_type": "authorization_code",
+            "code": "abc123",
+            "redirect_uri": "https://app.example.com/callback",
+            "client_id": "clt_1"
+        }"#;
+        let req: TokenRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.grant_type, "authorization_code");
+        assert_eq!(req.code, Some("abc123".to_string()));
+        assert_eq!(req.redirect_uri, Some("https://app.example.com/callback".to_string()));
+        assert_eq!(req.client_id, Some("clt_1".to_string()));
+        assert!(req.client_secret.is_none());
+        assert!(req.code_verifier.is_none());
+    }
+
+    #[test]
+    fn test_token_request_minimal() {
+        let json = r#"{"grant_type": "client_credentials"}"#;
+        let req: TokenRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.grant_type, "client_credentials");
+        assert!(req.code.is_none());
+        assert!(req.refresh_token.is_none());
+    }
+
+    #[test]
+    fn test_revoke_request_deserialization() {
+        let json = r#"{"token": "rt_abc123", "token_type_hint": "refresh_token"}"#;
+        let req: RevokeRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.token, "rt_abc123");
+        assert_eq!(req.token_type_hint, Some("refresh_token".to_string()));
+    }
+
+    #[test]
+    fn test_introspect_request_deserialization() {
+        let json = r#"{"token": "access_token_xyz"}"#;
+        let req: IntrospectRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.token, "access_token_xyz");
+        assert!(req.token_type_hint.is_none());
+    }
+}

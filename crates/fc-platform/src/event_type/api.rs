@@ -18,7 +18,7 @@ use crate::event_type::operations::{
     SyncEventTypesCommand, SyncEventTypesUseCase, SyncEventTypeInput,
 };
 use crate::usecase::{ExecutionContext, UseCase, UseCaseResult};
-use crate::shared::error::PlatformError;
+use crate::shared::error::{PlatformError, NotFoundExt};
 use crate::shared::api_common::PaginationParams;
 use crate::shared::middleware::Authenticated;
 
@@ -205,7 +205,7 @@ pub struct EventTypesState {
     operation_id = "postApiAdminEventTypes",
     request_body = CreateEventTypeRequest,
     responses(
-        (status = 201, description = "Event type created", body = EventTypeResponse),
+        (status = 201, description = "Event type created", body = crate::shared::api_common::CreatedResponse),
         (status = 400, description = "Validation error"),
         (status = 409, description = "Duplicate code")
     ),
@@ -215,7 +215,7 @@ pub async fn create_event_type(
     State(state): State<EventTypesState>,
     auth: Authenticated,
     Json(req): Json<CreateEventTypeRequest>,
-) -> Result<(StatusCode, Json<EventTypeResponse>), PlatformError> {
+) -> Result<(StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
     // Validate client access if specified
@@ -247,9 +247,10 @@ pub async fn create_event_type(
         event_type.add_schema_version(spec);
     }
 
+    let id = event_type.id.clone();
     state.event_type_repo.insert(&event_type).await?;
 
-    Ok((StatusCode::CREATED, Json(EventTypeResponse::from(event_type))))
+    Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
 }
 
 /// Get event type by ID
@@ -275,7 +276,7 @@ pub async fn get_event_type(
     crate::shared::authorization_service::checks::can_read_event_types(&auth.0)?;
 
     let event_type = state.event_type_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
+        .or_not_found("EventType", &id)?;
 
     // Check client access
     if let Some(ref cid) = event_type.client_id {
@@ -341,11 +342,18 @@ pub async fn list_event_types(
 ) -> Result<Json<EventTypeListResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_event_types(&auth.0)?;
 
-    let event_types = if let Some(ref app) = query.application {
-        state.event_type_repo.find_by_application(app).await?
+    // Default to CURRENT status when no filters are provided (matches find_active behavior)
+    let default_status = if query.application.is_none() && query.client_id.is_none() && query.status.is_none() {
+        Some("CURRENT".to_string())
     } else {
-        state.event_type_repo.find_active().await?
+        query.status.clone()
     };
+
+    let event_types = state.event_type_repo.find_with_filters(
+        query.application.as_deref(),
+        query.client_id.as_deref(),
+        default_status.as_deref(),
+    ).await?;
 
     // Filter by client access
     let items: Vec<EventTypeResponse> = event_types.into_iter()
@@ -372,7 +380,7 @@ pub async fn list_event_types(
     ),
     request_body = UpdateEventTypeRequest,
     responses(
-        (status = 200, description = "Event type updated", body = EventTypeResponse),
+        (status = 204, description = "Event type updated"),
         (status = 404, description = "Event type not found")
     ),
     security(("bearer_auth" = []))
@@ -382,11 +390,11 @@ pub async fn update_event_type(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateEventTypeRequest>,
-) -> Result<Json<EventTypeResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
     let mut event_type = state.event_type_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
+        .or_not_found("EventType", &id)?;
 
     // Check client access
     if let Some(ref cid) = event_type.client_id {
@@ -408,7 +416,7 @@ pub async fn update_event_type(
 
     state.event_type_repo.update(&event_type).await?;
 
-    Ok(Json(event_type.into()))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Add schema version to event type
@@ -436,7 +444,7 @@ pub async fn add_schema_version(
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
     let mut event_type = state.event_type_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
+        .or_not_found("EventType", &id)?;
 
     // Check client access
     if let Some(ref cid) = event_type.client_id {
@@ -476,7 +484,7 @@ pub async fn delete_event_type(
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
     let mut event_type = state.event_type_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
+        .or_not_found("EventType", &id)?;
 
     // Check client access
     if let Some(ref cid) = event_type.client_id {

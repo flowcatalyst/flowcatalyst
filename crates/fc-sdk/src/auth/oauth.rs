@@ -435,3 +435,314 @@ fn urlencoded(s: &str) -> String {
         .replace('+', "%2B")
         .replace('#', "%23")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── OAuthConfig ────────────────────────────────────────────────────
+
+    #[test]
+    fn oauth_config_default_scopes() {
+        let config = OAuthConfig::default();
+        assert_eq!(config.scopes, vec!["openid", "profile", "email"]);
+        assert!(config.issuer_url.is_empty());
+        assert!(config.client_id.is_empty());
+        assert!(config.client_secret.is_none());
+        assert!(config.redirect_uri.is_empty());
+    }
+
+    // ─── PkceChallenge ──────────────────────────────────────────────────
+
+    #[test]
+    fn pkce_challenge_generates_values() {
+        let pkce = PkceChallenge::generate();
+
+        assert!(!pkce.code_verifier.is_empty());
+        assert!(!pkce.code_challenge.is_empty());
+        assert_eq!(pkce.code_challenge_method, "S256");
+        // Verifier and challenge should be different
+        assert_ne!(pkce.code_verifier, pkce.code_challenge);
+    }
+
+    #[test]
+    fn pkce_challenge_is_sha256_of_verifier() {
+        let pkce = PkceChallenge::generate();
+
+        // Recompute the challenge from the verifier
+        let mut hasher = sha2::Sha256::new();
+        sha2::Digest::update(&mut hasher, pkce.code_verifier.as_bytes());
+        let hash = hasher.finalize();
+        let expected = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash);
+
+        assert_eq!(pkce.code_challenge, expected);
+    }
+
+    #[test]
+    fn pkce_challenges_are_unique() {
+        let a = PkceChallenge::generate();
+        let b = PkceChallenge::generate();
+        assert_ne!(a.code_verifier, b.code_verifier);
+        assert_ne!(a.code_challenge, b.code_challenge);
+    }
+
+    // ─── OAuthClient::authorize_url ─────────────────────────────────────
+
+    #[test]
+    fn authorize_url_structure() {
+        let client = OAuthClient::new(OAuthConfig {
+            issuer_url: "https://auth.example.com".to_string(),
+            client_id: "my-app".to_string(),
+            client_secret: None,
+            redirect_uri: "https://myapp.com/callback".to_string(),
+            scopes: vec!["openid".to_string(), "profile".to_string()],
+        });
+
+        let (url, params) = client.authorize_url();
+
+        assert!(url.starts_with("https://auth.example.com/oauth/authorize?"));
+        assert!(url.contains("response_type=code"));
+        assert!(url.contains("client_id=my-app"));
+        assert!(url.contains("redirect_uri="));
+        assert!(url.contains("scope=openid%20profile"));
+        assert!(url.contains("code_challenge_method=S256"));
+        assert!(url.contains(&format!("code_challenge={}", urlencoded(&params.pkce.code_challenge))));
+        assert!(url.contains(&format!("state={}", urlencoded(&params.state))));
+        assert!(url.contains(&format!("nonce={}", urlencoded(&params.nonce))));
+
+        // Params are populated
+        assert!(!params.state.is_empty());
+        assert!(!params.nonce.is_empty());
+        assert_eq!(params.pkce.code_challenge_method, "S256");
+    }
+
+    #[test]
+    fn authorize_url_strips_trailing_slash() {
+        let client = OAuthClient::new(OAuthConfig {
+            issuer_url: "https://auth.example.com/".to_string(),
+            client_id: "app".to_string(),
+            redirect_uri: "https://cb.com".to_string(),
+            ..OAuthConfig::default()
+        });
+
+        let (url, _) = client.authorize_url();
+        assert!(url.starts_with("https://auth.example.com/oauth/authorize?"));
+        assert!(!url.contains("//oauth"));
+    }
+
+    #[test]
+    fn authorize_url_unique_per_call() {
+        let client = OAuthClient::new(OAuthConfig {
+            issuer_url: "https://auth.example.com".to_string(),
+            client_id: "app".to_string(),
+            redirect_uri: "https://cb.com".to_string(),
+            ..OAuthConfig::default()
+        });
+
+        let (url1, params1) = client.authorize_url();
+        let (url2, params2) = client.authorize_url();
+
+        assert_ne!(url1, url2);
+        assert_ne!(params1.state, params2.state);
+        assert_ne!(params1.nonce, params2.nonce);
+        assert_ne!(params1.pkce.code_verifier, params2.pkce.code_verifier);
+    }
+
+    // ─── OAuthClient::logout_url ────────────────────────────────────────
+
+    #[test]
+    fn logout_url_no_params() {
+        let client = OAuthClient::new(OAuthConfig {
+            issuer_url: "https://auth.example.com".to_string(),
+            client_id: "app".to_string(),
+            ..OAuthConfig::default()
+        });
+
+        let url = client.logout_url(None, None);
+        assert_eq!(url, "https://auth.example.com/auth/oidc/session/end");
+    }
+
+    #[test]
+    fn logout_url_with_redirect() {
+        let client = OAuthClient::new(OAuthConfig {
+            issuer_url: "https://auth.example.com".to_string(),
+            client_id: "app".to_string(),
+            ..OAuthConfig::default()
+        });
+
+        let url = client.logout_url(Some("https://myapp.com"), None);
+        assert!(url.contains("post_logout_redirect_uri="));
+        assert!(url.contains("myapp.com"));
+    }
+
+    #[test]
+    fn logout_url_with_state() {
+        let client = OAuthClient::new(OAuthConfig {
+            issuer_url: "https://auth.example.com".to_string(),
+            client_id: "app".to_string(),
+            ..OAuthConfig::default()
+        });
+
+        let url = client.logout_url(None, Some("my-state"));
+        assert!(url.contains("state=my-state"));
+    }
+
+    #[test]
+    fn logout_url_with_both_params() {
+        let client = OAuthClient::new(OAuthConfig {
+            issuer_url: "https://auth.example.com/".to_string(),
+            client_id: "app".to_string(),
+            ..OAuthConfig::default()
+        });
+
+        let url = client.logout_url(Some("https://myapp.com"), Some("s1"));
+        assert!(url.contains("post_logout_redirect_uri="));
+        assert!(url.contains("state=s1"));
+        assert!(url.contains('&'));
+    }
+
+    // ─── urlencoded helper ──────────────────────────────────────────────
+
+    #[test]
+    fn urlencoded_encodes_special_chars() {
+        assert_eq!(urlencoded("hello world"), "hello%20world");
+        assert_eq!(urlencoded("a&b"), "a%26b");
+        assert_eq!(urlencoded("a=b"), "a%3Db");
+        assert_eq!(urlencoded("a+b"), "a%2Bb");
+        assert_eq!(urlencoded("a#b"), "a%23b");
+        assert_eq!(urlencoded("100%"), "100%25");
+    }
+
+    #[test]
+    fn urlencoded_passthrough_safe_chars() {
+        assert_eq!(urlencoded("hello"), "hello");
+        assert_eq!(urlencoded("abc123"), "abc123");
+        assert_eq!(urlencoded("a-b_c.d~e"), "a-b_c.d~e");
+    }
+
+    // ─── Response DTOs serialization ────────────────────────────────────
+
+    #[test]
+    fn token_response_deserialization() {
+        let json = r#"{
+            "access_token": "eyJ...",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "refresh_token": "ref_123",
+            "id_token": "id_456",
+            "scope": "openid profile"
+        }"#;
+        let resp: TokenResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.access_token, "eyJ...");
+        assert_eq!(resp.token_type, "Bearer");
+        assert_eq!(resp.expires_in, 3600);
+        assert_eq!(resp.refresh_token.as_deref(), Some("ref_123"));
+        assert_eq!(resp.id_token.as_deref(), Some("id_456"));
+        assert_eq!(resp.scope.as_deref(), Some("openid profile"));
+    }
+
+    #[test]
+    fn token_response_minimal() {
+        let json = r#"{
+            "access_token": "tok",
+            "token_type": "Bearer",
+            "expires_in": 60
+        }"#;
+        let resp: TokenResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.refresh_token.is_none());
+        assert!(resp.id_token.is_none());
+        assert!(resp.scope.is_none());
+    }
+
+    #[test]
+    fn token_response_skip_serializing_none() {
+        let resp = TokenResponse {
+            access_token: "tok".into(),
+            token_type: "Bearer".into(),
+            expires_in: 60,
+            refresh_token: None,
+            id_token: None,
+            scope: None,
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert!(json.get("refresh_token").is_none());
+        assert!(json.get("id_token").is_none());
+        assert!(json.get("scope").is_none());
+    }
+
+    #[test]
+    fn introspection_response_active() {
+        let json = r#"{
+            "active": true,
+            "scope": "openid",
+            "client_id": "my-app",
+            "username": "user@example.com",
+            "token_type": "access_token",
+            "exp": 9999999999,
+            "iat": 1000000000,
+            "sub": "prn_123"
+        }"#;
+        let resp: IntrospectionResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.active);
+        assert_eq!(resp.sub.as_deref(), Some("prn_123"));
+        assert_eq!(resp.client_id.as_deref(), Some("my-app"));
+    }
+
+    #[test]
+    fn introspection_response_inactive() {
+        let json = r#"{"active": false}"#;
+        let resp: IntrospectionResponse = serde_json::from_str(json).unwrap();
+        assert!(!resp.active);
+        assert!(resp.scope.is_none());
+        assert!(resp.sub.is_none());
+    }
+
+    #[test]
+    fn userinfo_response_with_extra_claims() {
+        let json = r#"{
+            "sub": "prn_123",
+            "name": "Alice",
+            "email": "alice@example.com",
+            "email_verified": true,
+            "custom_claim": "custom_value",
+            "org_id": 42
+        }"#;
+        let resp: UserInfoResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.sub, "prn_123");
+        assert_eq!(resp.name.as_deref(), Some("Alice"));
+        assert_eq!(resp.email.as_deref(), Some("alice@example.com"));
+        assert_eq!(resp.email_verified, Some(true));
+        assert_eq!(resp.extra["custom_claim"], "custom_value");
+        assert_eq!(resp.extra["org_id"], 42);
+    }
+
+    #[test]
+    fn userinfo_response_minimal() {
+        let json = r#"{"sub": "prn_456"}"#;
+        let resp: UserInfoResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.sub, "prn_456");
+        assert!(resp.name.is_none());
+        assert!(resp.email.is_none());
+        assert!(resp.email_verified.is_none());
+        assert!(resp.extra.is_empty());
+    }
+
+    // ─── generate_random_string ─────────────────────────────────────────
+
+    #[test]
+    fn random_strings_are_nonempty_and_unique() {
+        let a = generate_random_string(32);
+        let b = generate_random_string(32);
+        assert!(!a.is_empty());
+        assert!(!b.is_empty());
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn random_string_length_scales() {
+        // base64 encoding of N bytes yields ceil(N*4/3) characters (no padding)
+        let short = generate_random_string(8);
+        let long = generate_random_string(64);
+        assert!(long.len() > short.len());
+    }
+}

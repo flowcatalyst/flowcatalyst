@@ -2,10 +2,10 @@
 //!
 //! Direct SQL queries with explicit control over what's fetched.
 
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, QueryBuilder};
 use chrono::{DateTime, Utc};
 
-use super::entity::{Event, EventRead, ContextData, CLOUDEVENTS_SPEC_VERSION};
+use super::entity::{Event, EventRead, EventFilterOptions, ContextData, CLOUDEVENTS_SPEC_VERSION};
 use crate::shared::error::Result;
 
 /// Row mapping for msg_events table
@@ -217,24 +217,24 @@ impl EventRepository {
         Ok(row.map(Event::from))
     }
 
-    pub async fn find_by_type(&self, event_type: &str, limit: u64) -> Result<Vec<Event>> {
+    pub async fn find_by_type(&self, event_type: &str, limit: i64) -> Result<Vec<Event>> {
         let rows = sqlx::query_as::<_, EventRow>(
             "SELECT * FROM msg_events WHERE type = $1 ORDER BY time DESC LIMIT $2"
         )
         .bind(event_type)
-        .bind(limit as i64)
+        .bind(limit)
         .fetch_all(&self.pool)
         .await?;
 
         Ok(rows.into_iter().map(Event::from).collect())
     }
 
-    pub async fn find_by_client(&self, client_id: &str, limit: u64) -> Result<Vec<Event>> {
+    pub async fn find_by_client(&self, client_id: &str, limit: i64) -> Result<Vec<Event>> {
         let rows = sqlx::query_as::<_, EventRow>(
             "SELECT * FROM msg_events WHERE client_id = $1 ORDER BY time DESC LIMIT $2"
         )
         .bind(client_id)
-        .bind(limit as i64)
+        .bind(limit)
         .fetch_all(&self.pool)
         .await?;
 
@@ -263,12 +263,12 @@ impl EventRepository {
         Ok(row.map(Event::from))
     }
 
-    pub async fn find_recent_paged(&self, page: u64, size: u64) -> Result<Vec<Event>> {
+    pub async fn find_recent_paged(&self, limit: i64, offset: i64) -> Result<Vec<Event>> {
         let rows = sqlx::query_as::<_, EventRow>(
             "SELECT * FROM msg_events ORDER BY created_at DESC LIMIT $1 OFFSET $2"
         )
-        .bind(size as i64)
-        .bind((page * size) as i64)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
         .await?;
 
@@ -298,6 +298,142 @@ impl EventRepository {
         .await?;
 
         Ok(row.map(EventRead::from))
+    }
+
+    /// List events from the read model with optional combinable filters.
+    pub async fn find_read_with_filters(
+        &self,
+        client_id: Option<&str>,
+        application: Option<&str>,
+        subdomain: Option<&str>,
+        aggregate: Option<&str>,
+        event_type: Option<&str>,
+        correlation_id: Option<&str>,
+        search: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(Vec<EventRead>, i64)> {
+        fn push_where(qb: &mut QueryBuilder<Postgres>, has_where: &mut bool) {
+            qb.push(if *has_where { " AND " } else { " WHERE " });
+            *has_where = true;
+        }
+
+        fn apply_filters(
+            qb: &mut QueryBuilder<Postgres>,
+            client_id: Option<&str>,
+            application: Option<&str>,
+            subdomain: Option<&str>,
+            aggregate: Option<&str>,
+            event_type: Option<&str>,
+            correlation_id: Option<&str>,
+            search_pattern: Option<String>,
+        ) {
+            let mut has_where = false;
+            if let Some(v) = client_id {
+                push_where(qb, &mut has_where);
+                qb.push("client_id = ").push_bind(v.to_string());
+            }
+            if let Some(v) = application {
+                push_where(qb, &mut has_where);
+                qb.push("application = ").push_bind(v.to_string());
+            }
+            if let Some(v) = subdomain {
+                push_where(qb, &mut has_where);
+                qb.push("subdomain = ").push_bind(v.to_string());
+            }
+            if let Some(v) = aggregate {
+                push_where(qb, &mut has_where);
+                qb.push("aggregate = ").push_bind(v.to_string());
+            }
+            if let Some(v) = event_type {
+                push_where(qb, &mut has_where);
+                qb.push("type = ").push_bind(v.to_string());
+            }
+            if let Some(v) = correlation_id {
+                push_where(qb, &mut has_where);
+                qb.push("correlation_id = ").push_bind(v.to_string());
+            }
+            if let Some(pattern) = search_pattern {
+                push_where(qb, &mut has_where);
+                qb.push("(type ILIKE ")
+                    .push_bind(pattern.clone())
+                    .push(" OR source ILIKE ")
+                    .push_bind(pattern.clone())
+                    .push(" OR subject ILIKE ")
+                    .push_bind(pattern)
+                    .push(")");
+            }
+        }
+
+        let search_pattern = search.and_then(|v| {
+            if v.is_empty() { None } else { Some(format!("%{}%", v)) }
+        });
+
+        // Count query
+        let mut count_qb: QueryBuilder<Postgres> =
+            QueryBuilder::new("SELECT COUNT(*) FROM msg_events_read");
+        apply_filters(
+            &mut count_qb,
+            client_id,
+            application,
+            subdomain,
+            aggregate,
+            event_type,
+            correlation_id,
+            search_pattern.clone(),
+        );
+        let total: i64 = count_qb.build_query_scalar().fetch_one(&self.pool).await?;
+
+        // Data query
+        let mut data_qb: QueryBuilder<Postgres> = QueryBuilder::new(
+            "SELECT id, type, source, subject, time, application, subdomain, \
+             aggregate, message_group, correlation_id, client_id, projected_at \
+             FROM msg_events_read",
+        );
+        apply_filters(
+            &mut data_qb,
+            client_id,
+            application,
+            subdomain,
+            aggregate,
+            event_type,
+            correlation_id,
+            search_pattern,
+        );
+        data_qb
+            .push(" ORDER BY time DESC LIMIT ")
+            .push_bind(limit)
+            .push(" OFFSET ")
+            .push_bind(offset);
+
+        let rows: Vec<EventReadRow> = data_qb.build_query_as().fetch_all(&self.pool).await?;
+
+        Ok((rows.into_iter().map(EventRead::from).collect(), total))
+    }
+
+    /// Get distinct filter option values from the read model.
+    pub async fn read_filter_options(&self) -> Result<EventFilterOptions> {
+        let clients = sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT client_id FROM msg_events_read WHERE client_id IS NOT NULL ORDER BY client_id"
+        ).fetch_all(&self.pool).await?;
+
+        let applications = sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT application FROM msg_events_read WHERE application IS NOT NULL ORDER BY application"
+        ).fetch_all(&self.pool).await?;
+
+        let subdomains = sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT subdomain FROM msg_events_read WHERE subdomain IS NOT NULL ORDER BY subdomain"
+        ).fetch_all(&self.pool).await?;
+
+        let aggregates = sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT aggregate FROM msg_events_read WHERE aggregate IS NOT NULL ORDER BY aggregate"
+        ).fetch_all(&self.pool).await?;
+
+        let types = sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT type FROM msg_events_read ORDER BY type"
+        ).fetch_all(&self.pool).await?;
+
+        Ok(EventFilterOptions { clients, applications, subdomains, aggregates, types })
     }
 
     pub async fn insert_read_projection(&self, p: &EventRead) -> Result<()> {

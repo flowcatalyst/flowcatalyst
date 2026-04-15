@@ -1,18 +1,17 @@
-//! Unit of Work — PostgreSQL via SeaORM
+//! Unit of Work — PostgreSQL via SQLx
 //!
 //! Atomic commit of entity state changes, domain events, and audit logs
 //! within a single PostgreSQL transaction.
 
 use async_trait::async_trait;
 use chrono::Utc;
-use sea_orm::{DatabaseConnection, DatabaseTransaction, EntityTrait, TransactionTrait, Set};
 use serde::Serialize;
+use sqlx::{PgPool, Postgres, Transaction};
 use tracing::{debug, error};
 
 use super::domain_event::DomainEvent;
 use super::error::UseCaseError;
 use super::result::UseCaseResult;
-use crate::entities::{msg_events, aud_logs};
 
 // ─── Traits ──────────────────────────────────────────────────────────────────
 
@@ -29,10 +28,10 @@ pub trait HasId {
 #[async_trait]
 pub trait PgPersist: HasId + Send + Sync {
     /// Upsert the entity into the database within the given transaction.
-    async fn pg_upsert(&self, txn: &DatabaseTransaction) -> crate::shared::error::Result<()>;
+    async fn pg_upsert(&self, txn: &mut Transaction<'_, Postgres>) -> crate::shared::error::Result<()>;
 
     /// Delete the entity from the database within the given transaction.
-    async fn pg_delete(&self, txn: &DatabaseTransaction) -> crate::shared::error::Result<()>;
+    async fn pg_delete(&self, txn: &mut Transaction<'_, Postgres>) -> crate::shared::error::Result<()>;
 }
 
 /// Trait for aggregates passed by value to `commit_all`.
@@ -40,7 +39,7 @@ pub trait PgPersist: HasId + Send + Sync {
 #[async_trait]
 pub trait PgAggregate: Send + Sync {
     fn id(&self) -> &str;
-    async fn pg_upsert(&self, txn: &DatabaseTransaction) -> crate::shared::error::Result<()>;
+    async fn pg_upsert(&self, txn: &mut Transaction<'_, Postgres>) -> crate::shared::error::Result<()>;
 }
 
 // ─── UnitOfWork trait ────────────────────────────────────────────────────────
@@ -101,24 +100,24 @@ pub trait UnitOfWork: Send + Sync {
 
 // ─── PgUnitOfWork ────────────────────────────────────────────────────────────
 
-/// PostgreSQL implementation of `UnitOfWork` using SeaORM transactions.
+/// PostgreSQL implementation of `UnitOfWork` using SQLx transactions.
 #[derive(Clone)]
 pub struct PgUnitOfWork {
-    db: DatabaseConnection,
+    pool: PgPool,
 }
 
 impl PgUnitOfWork {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
     }
 
-    pub fn from_ref(db: &DatabaseConnection) -> Self {
-        Self { db: db.clone() }
+    pub fn from_ref(pool: &PgPool) -> Self {
+        Self { pool: pool.clone() }
     }
 
     // ── Subject parsing helpers ───────────────────────────────
 
-    /// "platform.eventtype.123" → "Eventtype"
+    /// "platform.eventtype.123" -> "Eventtype"
     fn extract_aggregate_type(subject: &str) -> String {
         subject
             .split('.')
@@ -133,14 +132,17 @@ impl PgUnitOfWork {
             .unwrap_or_else(|| "Unknown".to_string())
     }
 
-    /// "platform.eventtype.123" → Some("123")
+    /// "platform.eventtype.123" -> Some("123")
     fn extract_entity_id(subject: &str) -> String {
         subject.split('.').nth(2).unwrap_or("").to_string()
     }
 
-    // ── Builder helpers ───────────────────────────────────────
+    // ── Persist helpers ──────────────────────────────────────
 
-    fn build_event_model<E: DomainEvent>(event: &E) -> msg_events::ActiveModel {
+    async fn persist_event<E: DomainEvent>(
+        txn: &mut Transaction<'_, Postgres>,
+        event: &E,
+    ) -> Result<(), UseCaseError> {
         let data_json: serde_json::Value = serde_json::from_str(&event.to_data_json())
             .unwrap_or(serde_json::json!({}));
 
@@ -149,63 +151,89 @@ impl PgUnitOfWork {
             {"key": "aggregateType", "value": Self::extract_aggregate_type(event.subject())},
         ]);
 
-        msg_events::ActiveModel {
-            id: Set(event.event_id().to_string()),
-            spec_version: Set(Some(event.spec_version().to_string())),
-            event_type: Set(event.event_type().to_string()),
-            source: Set(event.source().to_string()),
-            subject: Set(Some(event.subject().to_string())),
-            time: Set(event.time().into()),
-            data: Set(Some(sea_orm::JsonValue::from(data_json))),
-            correlation_id: Set(Some(event.correlation_id().to_string())),
-            causation_id: Set(event.causation_id().map(String::from)),
-            deduplication_id: Set(Some(format!("{}-{}", event.event_type(), event.event_id()))),
-            message_group: Set(Some(event.message_group().to_string())),
-            client_id: Set(None),
-            context_data: Set(Some(sea_orm::JsonValue::from(context_data))),
-            created_at: Set(Utc::now().into()),
+        let deduplication_id = format!("{}-{}", event.event_type(), event.event_id());
+        let now = Utc::now();
+
+        let result = sqlx::query(
+            r#"INSERT INTO msg_events
+                (id, spec_version, type, source, subject,
+                 time, data, correlation_id, causation_id,
+                 deduplication_id, message_group, client_id,
+                 context_data, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)"#,
+        )
+        .bind(event.event_id())
+        .bind(event.spec_version())
+        .bind(event.event_type())
+        .bind(event.source())
+        .bind(event.subject())
+        .bind(event.time())
+        .bind(&data_json)
+        .bind(event.correlation_id())
+        .bind(event.causation_id())
+        .bind(&deduplication_id)
+        .bind(event.message_group())
+        .bind(None::<String>) // client_id
+        .bind(&context_data)
+        .bind(now)
+        .execute(&mut **txn)
+        .await;
+
+        if let Err(e) = result {
+            error!("Failed to insert domain event: {}", e);
+            return Err(UseCaseError::commit(format!("Failed to insert domain event: {}", e)));
         }
+
+        Ok(())
     }
 
-    fn build_audit_model<E: DomainEvent, C: Serialize>(event: &E, command: &C) -> aud_logs::ActiveModel {
+    async fn persist_audit_log<E: DomainEvent, C: Serialize>(
+        txn: &mut Transaction<'_, Postgres>,
+        event: &E,
+        command: &C,
+    ) -> Result<(), UseCaseError> {
         let command_name = std::any::type_name::<C>()
             .rsplit("::")
             .next()
             .unwrap_or("Unknown")
             .to_string();
 
-        let operation_json = serde_json::to_value(command).ok().map(sea_orm::JsonValue::from);
+        let operation_json: Option<serde_json::Value> = serde_json::to_value(command).ok();
 
-        aud_logs::ActiveModel {
-            id: Set(crate::TsidGenerator::generate_untyped()),
-            entity_type: Set(Self::extract_aggregate_type(event.subject())),
-            entity_id: Set(Self::extract_entity_id(event.subject())),
-            operation: Set(command_name),
-            operation_json: Set(operation_json),
-            principal_id: Set(Some(event.principal_id().to_string())),
-            application_id: Set(None),
-            client_id: Set(None),
-            performed_at: Set(event.time().into()),
-        }
-    }
+        let result = sqlx::query(
+            r#"INSERT INTO aud_logs
+                (id, entity_type, entity_id, operation,
+                 operation_json, principal_id, application_id,
+                 client_id, performed_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"#,
+        )
+        .bind(crate::TsidGenerator::generate_untyped())
+        .bind(Self::extract_aggregate_type(event.subject()))
+        .bind(Self::extract_entity_id(event.subject()))
+        .bind(&command_name)
+        .bind(&operation_json)
+        .bind(event.principal_id())
+        .bind(None::<String>) // application_id
+        .bind(None::<String>) // client_id
+        .bind(event.time())
+        .execute(&mut **txn)
+        .await;
 
-    async fn persist_event_and_audit<E: DomainEvent, C: Serialize>(
-        txn: &DatabaseTransaction,
-        event: &E,
-        command: &C,
-    ) -> Result<(), UseCaseError> {
-        let event_model = Self::build_event_model(event);
-        if let Err(e) = msg_events::Entity::insert(event_model).exec(txn).await {
-            error!("Failed to insert domain event: {}", e);
-            return Err(UseCaseError::commit(format!("Failed to insert domain event: {}", e)));
-        }
-
-        let audit_model = Self::build_audit_model(event, command);
-        if let Err(e) = aud_logs::Entity::insert(audit_model).exec(txn).await {
+        if let Err(e) = result {
             error!("Failed to insert audit log: {}", e);
             return Err(UseCaseError::commit(format!("Failed to insert audit log: {}", e)));
         }
 
+        Ok(())
+    }
+
+    async fn persist_event_and_audit<E: DomainEvent, C: Serialize>(
+        txn: &mut Transaction<'_, Postgres>,
+        event: &E,
+        command: &C,
+    ) -> Result<(), UseCaseError> {
+        Self::persist_event(&mut *txn, event).await?;
+        Self::persist_audit_log(&mut *txn, event, command).await?;
         Ok(())
     }
 }
@@ -223,7 +251,7 @@ impl UnitOfWork for PgUnitOfWork {
         T: Serialize + HasId + PgPersist + Send + Sync,
         C: Serialize + Send + Sync,
     {
-        let txn = match self.db.begin().await {
+        let mut txn = match self.pool.begin().await {
             Ok(t) => t,
             Err(e) => {
                 error!("Failed to start transaction: {}", e);
@@ -231,13 +259,13 @@ impl UnitOfWork for PgUnitOfWork {
             }
         };
 
-        if let Err(e) = aggregate.pg_upsert(&txn).await {
+        if let Err(e) = aggregate.pg_upsert(&mut txn).await {
             let _ = txn.rollback().await;
             error!("Failed to persist aggregate: {}", e);
             return UseCaseResult::failure(UseCaseError::commit(format!("Failed to persist aggregate: {}", e)));
         }
 
-        if let Err(e) = Self::persist_event_and_audit(&txn, &event, command).await {
+        if let Err(e) = Self::persist_event_and_audit(&mut txn, &event, command).await {
             let _ = txn.rollback().await;
             return UseCaseResult::failure(e);
         }
@@ -267,7 +295,7 @@ impl UnitOfWork for PgUnitOfWork {
         T: Serialize + HasId + PgPersist + Send + Sync,
         C: Serialize + Send + Sync,
     {
-        let txn = match self.db.begin().await {
+        let mut txn = match self.pool.begin().await {
             Ok(t) => t,
             Err(e) => {
                 error!("Failed to start transaction: {}", e);
@@ -275,13 +303,13 @@ impl UnitOfWork for PgUnitOfWork {
             }
         };
 
-        if let Err(e) = aggregate.pg_delete(&txn).await {
+        if let Err(e) = aggregate.pg_delete(&mut txn).await {
             let _ = txn.rollback().await;
             error!("Failed to delete aggregate: {}", e);
             return UseCaseResult::failure(UseCaseError::commit(format!("Failed to delete aggregate: {}", e)));
         }
 
-        if let Err(e) = Self::persist_event_and_audit(&txn, &event, command).await {
+        if let Err(e) = Self::persist_event_and_audit(&mut txn, &event, command).await {
             let _ = txn.rollback().await;
             return UseCaseResult::failure(e);
         }
@@ -309,7 +337,7 @@ impl UnitOfWork for PgUnitOfWork {
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync,
     {
-        let txn = match self.db.begin().await {
+        let mut txn = match self.pool.begin().await {
             Ok(t) => t,
             Err(e) => {
                 error!("Failed to start transaction: {}", e);
@@ -317,7 +345,7 @@ impl UnitOfWork for PgUnitOfWork {
             }
         };
 
-        if let Err(e) = Self::persist_event_and_audit(&txn, &event, command).await {
+        if let Err(e) = Self::persist_event_and_audit(&mut txn, &event, command).await {
             let _ = txn.rollback().await;
             return UseCaseResult::failure(e);
         }
@@ -346,7 +374,7 @@ impl UnitOfWork for PgUnitOfWork {
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync,
     {
-        let txn = match self.db.begin().await {
+        let mut txn = match self.pool.begin().await {
             Ok(t) => t,
             Err(e) => {
                 error!("Failed to start transaction: {}", e);
@@ -355,14 +383,14 @@ impl UnitOfWork for PgUnitOfWork {
         };
 
         for aggregate in &aggregates {
-            if let Err(e) = aggregate.pg_upsert(&txn).await {
+            if let Err(e) = aggregate.pg_upsert(&mut txn).await {
                 let _ = txn.rollback().await;
                 error!("Failed to persist aggregate: {}", e);
                 return UseCaseResult::failure(UseCaseError::commit(format!("Failed to persist aggregate: {}", e)));
             }
         }
 
-        if let Err(e) = Self::persist_event_and_audit(&txn, &event, command).await {
+        if let Err(e) = Self::persist_event_and_audit(&mut txn, &event, command).await {
             let _ = txn.rollback().await;
             return UseCaseResult::failure(e);
         }

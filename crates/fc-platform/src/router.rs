@@ -11,7 +11,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::api::{
     // OpenApiRouter routes
-    events_router, EventsState,
+    events_router, admin_events_router, EventsState,
     event_types_router, EventTypesState,
     dispatch_jobs_router, DispatchJobsState,
     filter_options_router, FilterOptionsState,
@@ -54,6 +54,7 @@ use crate::api::{
     platform_config_router,
     public_router, PublicApiState,
     password_reset_router, PasswordResetApiState,
+    dispatch_process_router, DispatchProcessState,
 };
 use crate::usecase::UnitOfWork;
 
@@ -71,6 +72,7 @@ pub const PATH_BFF_DEBUG_EVENTS: &str = "/bff/debug/events";
 pub const PATH_BFF_DEBUG_DISPATCH_JOBS: &str = "/bff/debug/dispatch-jobs";
 
 // Admin API routes
+pub const PATH_ADMIN_EVENTS: &str = "/api/admin/events";
 pub const PATH_ADMIN_EVENT_TYPES: &str = "/api/admin/event-types";
 pub const PATH_ADMIN_CLIENTS: &str = "/api/admin/clients";
 pub const PATH_ADMIN_PRINCIPALS: &str = "/api/admin/principals";
@@ -114,6 +116,9 @@ pub const PATH_SDK_CLIENTS: &str = "/api/sdk/clients";
 pub const PATH_SDK_PRINCIPALS: &str = "/api/sdk/principals";
 pub const PATH_SDK_ROLES: &str = "/api/sdk/roles";
 pub const PATH_SDK_DISPATCH_JOBS: &str = "/api/sdk/dispatch-jobs";
+
+// Dispatch processing (internal callback from message router)
+pub const PATH_API_DISPATCH: &str = "/api/dispatch";
 
 // Public / shared API routes
 pub const PATH_API_APPLICATIONS: &str = "/api/applications";
@@ -180,6 +185,9 @@ pub struct PlatformRoutes<U: UnitOfWork + Clone + 'static> {
     pub sdk_audit_batch: SdkAuditBatchState,
     pub public: PublicApiState,
     pub password_reset: PasswordResetApiState,
+    /// Optional — dispatch processing endpoint state. None when dispatch processing
+    /// is not needed (e.g., tests or standalone platform server without router).
+    pub dispatch_process: Option<DispatchProcessState>,
 
     /// Optional static directory for SPA serving. When set, serves:
     /// - `/assets/*` with immutable cache headers (Vite hashed assets)
@@ -197,6 +205,7 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
     pub fn build(self) -> (Router, utoipa::openapi::OpenApi) {
         // 1. OpenApiRouter routes (auto-collected in Swagger spec)
         let (router, mut openapi) = OpenApiRouter::new()
+            .nest(PATH_ADMIN_EVENTS, admin_events_router(self.events.clone()).into())
             .nest(PATH_BFF_EVENTS, events_router(self.events))
             .nest(PATH_ADMIN_EVENT_TYPES, event_types_router(self.event_types))
             .nest(PATH_BFF_DISPATCH_JOBS, dispatch_jobs_router(self.dispatch_jobs))
@@ -270,7 +279,16 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
             .nest(PATH_API_AUDIT_LOGS, sdk_audit_batch_router(self.sdk_audit_batch))
             .nest(PATH_API_CONFIG, platform_config_router())
             // Public
-            .nest(PATH_API_PUBLIC, public_router(self.public))
+            .nest(PATH_API_PUBLIC, public_router(self.public));
+
+        // Dispatch processing (optional — only when message router callback is needed)
+        let app = if let Some(dispatch_process) = self.dispatch_process {
+            app.nest(PATH_API_DISPATCH, dispatch_process_router(dispatch_process))
+        } else {
+            app
+        };
+
+        let app = app
             // Health
             .route(PATH_HEALTH, get(health_handler))
             // Swagger UI

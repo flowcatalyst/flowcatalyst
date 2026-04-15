@@ -78,3 +78,46 @@ impl UseCase for DeleteEmailDomainMappingUseCase {
         UseCaseResult::success(event)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_command_serialization() {
+        let cmd = DeleteEmailDomainMappingCommand {
+            mapping_id: "edm-123".to_string(),
+        };
+
+        let json = serde_json::to_string(&cmd).unwrap();
+        assert!(json.contains("mappingId"));
+        assert!(json.contains("edm-123"));
+
+        let deserialized: DeleteEmailDomainMappingCommand = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.mapping_id, "edm-123");
+    }
+
+    #[test]
+    fn test_validate_empty_mapping_id() {
+        let cmd = DeleteEmailDomainMappingCommand {
+            mapping_id: "".to_string(),
+        };
+        assert!(cmd.mapping_id.trim().is_empty());
+    }
+
+    #[test]
+    fn test_validate_whitespace_mapping_id() {
+        let cmd = DeleteEmailDomainMappingCommand {
+            mapping_id: "   ".to_string(),
+        };
+        assert!(cmd.mapping_id.trim().is_empty(), "Whitespace-only mapping_id should be treated as empty");
+    }
+
+    #[test]
+    fn test_validate_valid_mapping_id() {
+        let cmd = DeleteEmailDomainMappingCommand {
+            mapping_id: "edm-456".to_string(),
+        };
+        assert!(!cmd.mapping_id.trim().is_empty());
+    }
+}

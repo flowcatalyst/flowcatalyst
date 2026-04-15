@@ -5,29 +5,28 @@ use super::{FlowCatalystClient, ClientError, ListResponse};
 
 /// Request to create a user principal.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateUserRequest {
     pub email: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub first_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
+    pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_id: Option<String>,
 }
 
 /// Request to update a principal.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdatePrincipalRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
+    pub active: Option<bool>,
 }
 
 /// Filters for listing principals.
@@ -44,23 +43,25 @@ pub struct PrincipalFilters {
 #[serde(rename_all = "camelCase")]
 pub struct PrincipalResponse {
     pub id: String,
-    pub r#type: String,
+    #[serde(rename = "type")]
+    pub principal_type: String,
+    pub scope: String,
+    #[serde(default)]
+    pub client_id: Option<String>,
+    pub name: String,
+    pub active: bool,
     #[serde(default)]
     pub email: Option<String>,
     #[serde(default)]
-    pub first_name: Option<String>,
+    pub idp_type: Option<String>,
     #[serde(default)]
-    pub last_name: Option<String>,
+    pub roles: Vec<String>,
     #[serde(default)]
-    pub display_name: Option<String>,
+    pub is_anchor_user: bool,
     #[serde(default)]
-    pub active: Option<bool>,
-    #[serde(default)]
-    pub client_id: Option<String>,
-    #[serde(default)]
-    pub created_at: Option<String>,
-    #[serde(default)]
-    pub updated_at: Option<String>,
+    pub granted_client_ids: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 /// Role reference returned by principal role queries.
@@ -96,6 +97,7 @@ pub struct AssignRoleRequest {
 
 /// Request to replace all roles.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReplaceRolesRequest {
     pub roles: Vec<String>,
 }

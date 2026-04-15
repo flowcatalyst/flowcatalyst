@@ -26,9 +26,6 @@ pub enum PlatformError {
     #[error("Forbidden: {message}")]
     Forbidden { message: String },
 
-    #[error("Database error: {0}")]
-    Database(#[from] sea_orm::DbErr),
-
     #[error("SQL error: {0}")]
     Sqlx(#[from] sqlx::Error),
 
@@ -122,6 +119,27 @@ impl PlatformError {
 
 pub type Result<T> = std::result::Result<T, PlatformError>;
 
+/// Extension trait for `Option<T>` to convert `None` into `PlatformError::not_found`.
+///
+/// Replaces the verbose `.ok_or_else(|| PlatformError::not_found("Entity", &id))?` pattern.
+///
+/// # Example
+/// ```ignore
+/// use crate::shared::error::NotFoundExt;
+///
+/// let client = state.repo.find_by_id(&id).await?
+///     .or_not_found("Client", &id)?;
+/// ```
+pub trait NotFoundExt<T> {
+    fn or_not_found(self, entity_type: &str, id: &str) -> Result<T>;
+}
+
+impl<T> NotFoundExt<T> for Option<T> {
+    fn or_not_found(self, entity_type: &str, id: &str) -> Result<T> {
+        self.ok_or_else(|| PlatformError::not_found(entity_type, id))
+    }
+}
+
 /// Error response body
 #[derive(Debug, serde::Serialize, ToSchema)]
 pub struct ErrorResponse {
@@ -166,27 +184,35 @@ impl IntoResponse for PlatformError {
 impl From<UseCaseError> for PlatformError {
     fn from(err: UseCaseError) -> Self {
         match err {
-            UseCaseError::ValidationError { message, .. } => {
-                PlatformError::Validation { message }
+            UseCaseError::ValidationError { code, message, .. } => {
+                PlatformError::Validation {
+                    message: format!("{}: {}", code, message),
+                }
             }
-            UseCaseError::BusinessRuleViolation { message, .. } => {
+            UseCaseError::BusinessRuleViolation { code, message, .. } => {
                 PlatformError::Duplicate {
-                    entity_type: "Entity".to_string(),
+                    entity_type: code,
                     field: "constraint".to_string(),
                     value: message,
                 }
             }
-            UseCaseError::NotFoundError { message, .. } => {
+            UseCaseError::NotFoundError { code, message, .. } => {
                 PlatformError::NotFound {
-                    entity_type: "Entity".to_string(),
+                    entity_type: code,
                     id: message,
                 }
             }
-            UseCaseError::ConcurrencyError { message, .. } => {
-                PlatformError::Internal { message }
+            UseCaseError::ConcurrencyError { code, message, .. } => {
+                PlatformError::Duplicate {
+                    entity_type: code,
+                    field: "version".to_string(),
+                    value: message,
+                }
             }
-            UseCaseError::CommitError { message, .. } => {
-                PlatformError::Internal { message }
+            UseCaseError::CommitError { code, message, .. } => {
+                PlatformError::Internal {
+                    message: format!("{}: {}", code, message),
+                }
             }
         }
     }

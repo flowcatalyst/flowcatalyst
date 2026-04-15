@@ -27,15 +27,3 @@ impl PlatformConfigAccess {
     }
 }
 
-impl From<crate::entities::app_platform_config_access::Model> for PlatformConfigAccess {
-    fn from(m: crate::entities::app_platform_config_access::Model) -> Self {
-        Self {
-            id: m.id,
-            application_code: m.application_code,
-            role_code: m.role_code,
-            can_read: m.can_read,
-            can_write: m.can_write,
-            created_at: m.created_at.with_timezone(&Utc),
-        }
-    }
-}

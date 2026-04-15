@@ -5,24 +5,35 @@ use super::{FlowCatalystClient, ClientError, ListResponse};
 
 /// Request to create a subscription.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateSubscriptionRequest {
     /// Unique code for this subscription
     pub code: String,
     /// Human-readable name
     pub name: String,
-    /// Connection ID (webhook endpoint)
-    pub connection_id: String,
-    /// Event type bindings (patterns with optional filters)
-    pub event_types: Vec<EventTypeBinding>,
-    /// Dispatch mode: "immediate" or "block_on_error"
+    /// Optional description
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mode: Option<String>,
-    /// Dispatch pool for rate limiting
+    pub description: Option<String>,
+    /// Webhook endpoint URL
+    pub endpoint: String,
+    /// Connection ID (references msg_connections, optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_id: Option<String>,
+    /// Event type bindings (patterns with optional filters)
+    #[serde(default)]
+    pub event_types: Vec<EventTypeBinding>,
+    /// Client ID for multi-tenant scoping
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// Dispatch pool ID for rate limiting
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dispatch_pool_id: Option<String>,
-    /// Service account for authentication
+    /// Service account ID for authentication
     #[serde(skip_serializing_if = "Option::is_none")]
     pub service_account_id: Option<String>,
+    /// Dispatch mode
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
     /// Webhook timeout in seconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout_seconds: Option<u32>,
@@ -32,21 +43,13 @@ pub struct CreateSubscriptionRequest {
     /// Send raw data only (no envelope)
     #[serde(default)]
     pub data_only: bool,
-    /// Client ID for multi-tenant scoping
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_id: Option<String>,
-    /// Optional description
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    /// Message group for FIFO ordering
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message_group: Option<String>,
 }
 
 /// Event type binding with wildcard pattern support.
 ///
 /// Supports patterns like `"orders:*:*:*"` to match all events from the orders app.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EventTypeBinding {
     /// Event type code or pattern (supports `*` wildcard per segment)
     pub event_type_code: String,
@@ -57,11 +60,14 @@ pub struct EventTypeBinding {
 
 /// Request to update a subscription.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateSubscriptionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub connection_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -72,30 +78,52 @@ pub struct UpdateSubscriptionRequest {
 
 /// Subscription response from the platform API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SubscriptionResponse {
     pub id: String,
     pub code: String,
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
-    pub connection_id: String,
-    pub status: String,
     #[serde(default)]
-    pub mode: Option<String>,
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub client_identifier: Option<String>,
     #[serde(default)]
     pub event_types: Vec<EventTypeBinding>,
+    pub endpoint: String,
+    #[serde(default)]
+    pub connection_id: Option<String>,
+    #[serde(default)]
+    pub queue: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
+    pub status: String,
+    #[serde(default)]
+    pub max_age_seconds: u32,
     #[serde(default)]
     pub dispatch_pool_id: Option<String>,
     #[serde(default)]
+    pub dispatch_pool_code: Option<String>,
+    #[serde(default)]
+    pub delay_seconds: u32,
+    #[serde(default)]
+    pub sequence: i32,
+    pub mode: String,
+    #[serde(default)]
+    pub timeout_seconds: u32,
+    #[serde(default)]
+    pub max_retries: u32,
+    #[serde(default)]
     pub service_account_id: Option<String>,
-    #[serde(default)]
-    pub timeout_seconds: Option<u32>,
-    #[serde(default)]
-    pub max_retries: Option<u32>,
     #[serde(default)]
     pub data_only: bool,
     #[serde(default)]
-    pub client_id: Option<String>,
+    pub application_code: Option<String>,
+    #[serde(default)]
+    pub client_scoped: bool,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 impl FlowCatalystClient {
@@ -104,12 +132,12 @@ impl FlowCatalystClient {
         &self,
         req: &CreateSubscriptionRequest,
     ) -> Result<SubscriptionResponse, ClientError> {
-        self.post("/api/subscriptions", req).await
+        self.post("/api/admin/subscriptions", req).await
     }
 
     /// Get a subscription by ID.
     pub async fn get_subscription(&self, id: &str) -> Result<SubscriptionResponse, ClientError> {
-        self.get(&format!("/api/subscriptions/{}", id)).await
+        self.get(&format!("/api/admin/subscriptions/{}", id)).await
     }
 
     /// List subscriptions with optional filters.
@@ -132,7 +160,7 @@ impl FlowCatalystClient {
             format!("?{}", params.join("&"))
         };
 
-        self.get(&format!("/api/subscriptions{}", query)).await
+        self.get(&format!("/api/admin/subscriptions{}", query)).await
     }
 
     /// Update a subscription.
@@ -141,23 +169,23 @@ impl FlowCatalystClient {
         id: &str,
         req: &UpdateSubscriptionRequest,
     ) -> Result<SubscriptionResponse, ClientError> {
-        self.put(&format!("/api/subscriptions/{}", id), req).await
+        self.put(&format!("/api/admin/subscriptions/{}", id), req).await
     }
 
     /// Pause a subscription.
     pub async fn pause_subscription(&self, id: &str) -> Result<(), ClientError> {
-        self.post_empty(&format!("/api/subscriptions/{}/pause", id))
+        self.post_empty(&format!("/api/admin/subscriptions/{}/pause", id))
             .await
     }
 
     /// Resume a subscription.
     pub async fn resume_subscription(&self, id: &str) -> Result<(), ClientError> {
-        self.post_empty(&format!("/api/subscriptions/{}/resume", id))
+        self.post_empty(&format!("/api/admin/subscriptions/{}/resume", id))
             .await
     }
 
     /// Delete a subscription.
     pub async fn delete_subscription(&self, id: &str) -> Result<(), ClientError> {
-        self.delete_req(&format!("/api/subscriptions/{}", id)).await
+        self.delete_req(&format!("/api/admin/subscriptions/{}", id)).await
     }
 }

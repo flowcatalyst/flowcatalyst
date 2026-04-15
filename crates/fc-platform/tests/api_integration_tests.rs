@@ -19,12 +19,11 @@ use tower::ServiceExt; // for oneshot
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
-use sea_orm::DatabaseConnection;
 use serde_json::json;
 
 use fc_platform::auth::auth_service::{AuthConfig, AuthService};
 use fc_platform::domain::{Principal, UserScope};
-use fc_platform::shared::database::{create_connection, run_migrations};
+use fc_platform::shared::database::{create_pool, run_migrations};
 use fc_platform::{
     ClientRepository, DispatchJobRepository, EventRepository, RoleRepository,
 };
@@ -37,8 +36,8 @@ use fc_platform::AuthorizationService;
 
 // ─── Test Helpers ──────────────────────────────────────────────────────────
 
-/// Start a PostgreSQL testcontainer and return the database connection.
-async fn setup_test_db() -> (DatabaseConnection, testcontainers::ContainerAsync<Postgres>) {
+/// Start a PostgreSQL testcontainer and return both connection types.
+async fn setup_test_db() -> (sqlx::PgPool, testcontainers::ContainerAsync<Postgres>) {
     let container = Postgres::default()
         .with_db_name("flowcatalyst_test")
         .with_user("test")
@@ -58,15 +57,15 @@ async fn setup_test_db() -> (DatabaseConnection, testcontainers::ContainerAsync<
         host, port
     );
 
-    let db = create_connection(&database_url)
+    let pool = create_pool(&database_url)
         .await
         .expect("Failed to connect to test database");
 
-    run_migrations(&db)
+    run_migrations(&pool)
         .await
         .expect("Failed to run migrations");
 
-    (db, container)
+    (pool, container)
 }
 
 /// Returns an AuthService configured with a symmetric HS256 test key.
@@ -86,9 +85,9 @@ fn test_auth_service() -> AuthService {
 
 /// Build a minimal Axum router wired to the test database, returning the
 /// router and the AuthService (for token generation).
-fn build_test_router(db: &DatabaseConnection) -> (Router, Arc<AuthService>) {
+fn build_test_router(pool: &sqlx::PgPool) -> (Router, Arc<AuthService>) {
     let auth_service = Arc::new(test_auth_service());
-    let role_repo = Arc::new(RoleRepository::new(db));
+    let role_repo = Arc::new(RoleRepository::new(pool));
     let authz_service = Arc::new(AuthorizationService::new(role_repo));
 
     let app_state = AppState {
@@ -97,18 +96,19 @@ fn build_test_router(db: &DatabaseConnection) -> (Router, Arc<AuthService>) {
     };
 
     let clients_state = ClientsState {
-        client_repo: Arc::new(ClientRepository::new(db)),
+        client_repo: Arc::new(ClientRepository::new(pool)),
         application_repo: None,
         application_client_config_repo: None,
         audit_service: None,
     };
 
     let sdk_events_state = SdkEventsState {
-        event_repo: Arc::new(EventRepository::new(db)),
+        event_repo: Arc::new(EventRepository::new(pool)),
+        dispatch: None,
     };
 
     let sdk_dispatch_jobs_state = SdkDispatchJobsState {
-        dispatch_job_repo: Arc::new(DispatchJobRepository::new(db)),
+        dispatch_job_repo: Arc::new(DispatchJobRepository::new(pool)),
     };
 
     let router: Router = Router::new()
@@ -142,8 +142,8 @@ fn generate_anchor_token(auth_service: &AuthService) -> String {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_create_client_via_api() {
-    let (db, _container) = setup_test_db().await;
-    let (app, auth_service) = build_test_router(&db);
+    let (pool, _container) = setup_test_db().await;
+    let (app, auth_service) = build_test_router(&pool);
     let token = generate_anchor_token(&auth_service);
 
     let response = app
@@ -178,8 +178,8 @@ async fn test_create_client_via_api() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_list_clients_via_api() {
-    let (db, _container) = setup_test_db().await;
-    let client_repo = ClientRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let client_repo = ClientRepository::new(&pool);
 
     // Seed a client directly via the repository
     let client = Client::new("List Test Client", "list-test");
@@ -188,7 +188,7 @@ async fn test_list_clients_via_api() {
         .await
         .expect("Failed to insert test client");
 
-    let (app, auth_service) = build_test_router(&db);
+    let (app, auth_service) = build_test_router(&pool);
     let token = generate_anchor_token(&auth_service);
 
     let response = app
@@ -221,8 +221,8 @@ async fn test_list_clients_via_api() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_get_client_by_id_via_api() {
-    let (db, _container) = setup_test_db().await;
-    let client_repo = ClientRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let client_repo = ClientRepository::new(&pool);
 
     // Seed a client directly via the repository
     let client = Client::new("Get By ID Client", "get-by-id");
@@ -231,7 +231,7 @@ async fn test_get_client_by_id_via_api() {
         .await
         .expect("Failed to insert test client");
 
-    let (app, auth_service) = build_test_router(&db);
+    let (app, auth_service) = build_test_router(&pool);
     let token = generate_anchor_token(&auth_service);
 
     let response = app
@@ -259,8 +259,8 @@ async fn test_get_client_by_id_via_api() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_unauthorized_request() {
-    let (db, _container) = setup_test_db().await;
-    let (app, _auth_service) = build_test_router(&db);
+    let (pool, _container) = setup_test_db().await;
+    let (app, _auth_service) = build_test_router(&pool);
 
     // Send a request WITHOUT an Authorization header
     let response = app
@@ -282,8 +282,8 @@ async fn test_unauthorized_request() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_batch_events_via_api() {
-    let (db, _container) = setup_test_db().await;
-    let (app, auth_service) = build_test_router(&db);
+    let (pool, _container) = setup_test_db().await;
+    let (app, auth_service) = build_test_router(&pool);
     let token = generate_anchor_token(&auth_service);
 
     let response = app
@@ -326,8 +326,8 @@ async fn test_batch_events_via_api() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_batch_events_exceeds_limit() {
-    let (db, _container) = setup_test_db().await;
-    let (app, auth_service) = build_test_router(&db);
+    let (pool, _container) = setup_test_db().await;
+    let (app, auth_service) = build_test_router(&pool);
     let token = generate_anchor_token(&auth_service);
 
     // Build a batch with 101 items (exceeds the 100-item limit)
@@ -363,8 +363,8 @@ async fn test_batch_events_exceeds_limit() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_batch_dispatch_jobs_via_api() {
-    let (db, _container) = setup_test_db().await;
-    let (app, auth_service) = build_test_router(&db);
+    let (pool, _container) = setup_test_db().await;
+    let (app, auth_service) = build_test_router(&pool);
     let token = generate_anchor_token(&auth_service);
 
     let response = app

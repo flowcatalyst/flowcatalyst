@@ -71,7 +71,7 @@ pub struct CorsState {
     operation_id = "postApiAdminPlatformCors",
     request_body = CreateCorsOriginRequest,
     responses(
-        (status = 201, description = "CORS origin created", body = CorsOriginResponse),
+        (status = 201, description = "CORS origin created", body = crate::shared::api_common::CreatedResponse),
         (status = 409, description = "Duplicate origin")
     ),
     security(("bearer_auth" = []))
@@ -80,7 +80,7 @@ pub async fn create_cors_origin(
     State(state): State<CorsState>,
     auth: Authenticated,
     Json(req): Json<CreateCorsOriginRequest>,
-) -> Result<(axum::http::StatusCode, Json<CorsOriginResponse>), PlatformError> {
+) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
     if state.cors_repo.find_by_origin(&req.origin).await?.is_some() {
         return Err(PlatformError::duplicate("CorsAllowedOrigin", "origin", &req.origin));
     }
@@ -90,8 +90,9 @@ pub async fn create_cors_origin(
         req.description,
         Some(auth.0.principal_id.clone()),
     );
+    let id = origin.id.clone();
     state.cors_repo.insert(&origin).await?;
-    Ok((axum::http::StatusCode::CREATED, Json(origin.into())))
+    Ok((axum::http::StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
 }
 
 /// List all CORS allowed origins

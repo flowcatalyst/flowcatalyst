@@ -1,64 +1,101 @@
-//! CORS Origin Repository — PostgreSQL via SeaORM
+//! CORS Origin Repository — PostgreSQL via SQLx
 
-use sea_orm::*;
-use chrono::Utc;
+use sqlx::PgPool;
+use chrono::{DateTime, Utc};
 
 use super::entity::CorsAllowedOrigin;
-use crate::entities::tnt_cors_allowed_origins;
 use crate::shared::error::Result;
 
+#[derive(sqlx::FromRow)]
+struct CorsOriginRow {
+    id: String,
+    origin: String,
+    description: Option<String>,
+    created_by: Option<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+impl From<CorsOriginRow> for CorsAllowedOrigin {
+    fn from(r: CorsOriginRow) -> Self {
+        Self {
+            id: r.id,
+            origin: r.origin,
+            description: r.description,
+            created_by: r.created_by,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        }
+    }
+}
+
 pub struct CorsOriginRepository {
-    db: DatabaseConnection,
+    pool: PgPool,
 }
 
 impl CorsOriginRepository {
-    pub fn new(db: &DatabaseConnection) -> Self {
-        Self { db: db.clone() }
+    pub fn new(pool: &PgPool) -> Self {
+        Self { pool: pool.clone() }
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<CorsAllowedOrigin>> {
-        let result = tnt_cors_allowed_origins::Entity::find_by_id(id).one(&self.db).await?;
-        Ok(result.map(CorsAllowedOrigin::from))
+        let row = sqlx::query_as::<_, CorsOriginRow>(
+            "SELECT * FROM tnt_cors_allowed_origins WHERE id = $1"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(CorsAllowedOrigin::from))
     }
 
     pub async fn find_by_origin(&self, origin: &str) -> Result<Option<CorsAllowedOrigin>> {
-        let result = tnt_cors_allowed_origins::Entity::find()
-            .filter(tnt_cors_allowed_origins::Column::Origin.eq(origin))
-            .one(&self.db)
-            .await?;
-        Ok(result.map(CorsAllowedOrigin::from))
+        let row = sqlx::query_as::<_, CorsOriginRow>(
+            "SELECT * FROM tnt_cors_allowed_origins WHERE origin = $1"
+        )
+        .bind(origin)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(CorsAllowedOrigin::from))
     }
 
     pub async fn find_all(&self) -> Result<Vec<CorsAllowedOrigin>> {
-        let results = tnt_cors_allowed_origins::Entity::find()
-            .order_by_asc(tnt_cors_allowed_origins::Column::Origin)
-            .all(&self.db)
-            .await?;
-        Ok(results.into_iter().map(CorsAllowedOrigin::from).collect())
+        let rows = sqlx::query_as::<_, CorsOriginRow>(
+            "SELECT * FROM tnt_cors_allowed_origins ORDER BY origin"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(CorsAllowedOrigin::from).collect())
     }
 
     pub async fn get_allowed_origins(&self) -> Result<Vec<String>> {
-        let results = tnt_cors_allowed_origins::Entity::find()
-            .all(&self.db)
-            .await?;
-        Ok(results.into_iter().map(|m| m.origin).collect())
+        let rows = sqlx::query_scalar::<_, String>(
+            "SELECT origin FROM tnt_cors_allowed_origins"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
     }
 
     pub async fn insert(&self, origin: &CorsAllowedOrigin) -> Result<()> {
-        let model = tnt_cors_allowed_origins::ActiveModel {
-            id: Set(origin.id.clone()),
-            origin: Set(origin.origin.clone()),
-            description: Set(origin.description.clone()),
-            created_by: Set(origin.created_by.clone()),
-            created_at: Set(Utc::now().into()),
-            updated_at: Set(Utc::now().into()),
-        };
-        tnt_cors_allowed_origins::Entity::insert(model).exec(&self.db).await?;
+        sqlx::query(
+            r#"INSERT INTO tnt_cors_allowed_origins
+                (id, origin, description, created_by, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, NOW(), NOW())"#
+        )
+        .bind(&origin.id)
+        .bind(&origin.origin)
+        .bind(&origin.description)
+        .bind(&origin.created_by)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
     pub async fn delete(&self, id: &str) -> Result<bool> {
-        let result = tnt_cors_allowed_origins::Entity::delete_by_id(id).exec(&self.db).await?;
-        Ok(result.rows_affected > 0)
+        let result = sqlx::query("DELETE FROM tnt_cors_allowed_origins WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
     }
 }

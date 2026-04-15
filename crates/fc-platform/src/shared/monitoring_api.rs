@@ -319,18 +319,18 @@ pub async fn get_dashboard(
     // Get job counts by status
     let pending = state.dispatch_job_repo.count_by_status(DispatchStatus::Pending).await.unwrap_or(0);
     let queued = state.dispatch_job_repo.count_by_status(DispatchStatus::Queued).await.unwrap_or(0);
-    let in_progress = state.dispatch_job_repo.count_by_status(DispatchStatus::InProgress).await.unwrap_or(0);
+    let processing = state.dispatch_job_repo.count_by_status(DispatchStatus::Processing).await.unwrap_or(0);
     let completed = state.dispatch_job_repo.count_by_status(DispatchStatus::Completed).await.unwrap_or(0);
     let failed = state.dispatch_job_repo.count_by_status(DispatchStatus::Failed).await.unwrap_or(0);
 
     let mut jobs_by_status = HashMap::new();
     jobs_by_status.insert("PENDING".to_string(), pending);
     jobs_by_status.insert("QUEUED".to_string(), queued);
-    jobs_by_status.insert("IN_PROGRESS".to_string(), in_progress);
+    jobs_by_status.insert("PROCESSING".to_string(), processing);
     jobs_by_status.insert("COMPLETED".to_string(), completed);
     jobs_by_status.insert("FAILED".to_string(), failed);
 
-    let total_jobs = pending + queued + in_progress + completed + failed;
+    let total_jobs = pending + queued + processing + completed + failed;
 
     Ok(Json(DashboardMetrics {
         total_events: 0, // Would need event repo
@@ -472,14 +472,14 @@ pub async fn get_platform_stats(
     let total_dispatch_jobs = state.dispatch_job_repo.count_all().await.unwrap_or(0);
     let pending = state.dispatch_job_repo.count_by_status(DispatchStatus::Pending).await.unwrap_or(0);
     let queued = state.dispatch_job_repo.count_by_status(DispatchStatus::Queued).await.unwrap_or(0);
-    let in_progress = state.dispatch_job_repo.count_by_status(DispatchStatus::InProgress).await.unwrap_or(0);
+    let processing = state.dispatch_job_repo.count_by_status(DispatchStatus::Processing).await.unwrap_or(0);
     let completed = state.dispatch_job_repo.count_by_status(DispatchStatus::Completed).await.unwrap_or(0);
     let failed = state.dispatch_job_repo.count_by_status(DispatchStatus::Failed).await.unwrap_or(0);
 
     let mut jobs_by_status = HashMap::new();
     jobs_by_status.insert("PENDING".to_string(), pending);
     jobs_by_status.insert("QUEUED".to_string(), queued);
-    jobs_by_status.insert("IN_PROGRESS".to_string(), in_progress);
+    jobs_by_status.insert("PROCESSING".to_string(), processing);
     jobs_by_status.insert("COMPLETED".to_string(), completed);
     jobs_by_status.insert("FAILED".to_string(), failed);
 

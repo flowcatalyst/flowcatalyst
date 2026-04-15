@@ -286,6 +286,7 @@ impl EventMetadataBuilder {
 ///
 /// fc_sdk::impl_domain_event!(OrderShipped);
 /// ```
+///
 #[macro_export]
 macro_rules! impl_domain_event {
     ($event_type:ty) => {
@@ -339,4 +340,355 @@ macro_rules! impl_domain_event {
             }
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::Serialize;
+
+    // ─── EventMetadata ──────────────────────────────────────────────────
+
+    #[test]
+    fn event_metadata_new_sets_all_fields() {
+        let meta = EventMetadata::new(
+            "evt_1".into(),
+            "orders:order:created",
+            "1.0",
+            "shop:orders",
+            "orders.order.42".into(),
+            "orders:order:42".into(),
+            "exec-1".into(),
+            "corr-1".into(),
+            Some("cause-1".into()),
+            "prn_user".into(),
+        );
+
+        assert_eq!(meta.event_id, "evt_1");
+        assert_eq!(meta.event_type, "orders:order:created");
+        assert_eq!(meta.spec_version, "1.0");
+        assert_eq!(meta.source, "shop:orders");
+        assert_eq!(meta.subject, "orders.order.42");
+        assert_eq!(meta.message_group, "orders:order:42");
+        assert_eq!(meta.execution_id, "exec-1");
+        assert_eq!(meta.correlation_id, "corr-1");
+        assert_eq!(meta.causation_id.as_deref(), Some("cause-1"));
+        assert_eq!(meta.principal_id, "prn_user");
+        // time is set to Utc::now()
+        assert!(meta.time <= Utc::now());
+    }
+
+    #[test]
+    fn event_metadata_new_without_causation() {
+        let meta = EventMetadata::new(
+            "evt_2".into(),
+            "t",
+            "1.0",
+            "s",
+            "sub".into(),
+            "grp".into(),
+            "exec".into(),
+            "corr".into(),
+            None,
+            "prn".into(),
+        );
+        assert!(meta.causation_id.is_none());
+    }
+
+    #[test]
+    fn event_metadata_serialization_round_trip() {
+        let meta = EventMetadata::new(
+            "evt_rt".into(),
+            "test.event",
+            "2.0",
+            "test-src",
+            "test.sub.1".into(),
+            "test:sub:1".into(),
+            "exec-rt".into(),
+            "corr-rt".into(),
+            Some("cause-rt".into()),
+            "prn_rt".into(),
+        );
+
+        let json = serde_json::to_string(&meta).unwrap();
+        let deserialized: EventMetadata = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(meta.event_id, deserialized.event_id);
+        assert_eq!(meta.event_type, deserialized.event_type);
+        assert_eq!(meta.spec_version, deserialized.spec_version);
+        assert_eq!(meta.source, deserialized.source);
+        assert_eq!(meta.subject, deserialized.subject);
+        assert_eq!(meta.message_group, deserialized.message_group);
+        assert_eq!(meta.execution_id, deserialized.execution_id);
+        assert_eq!(meta.correlation_id, deserialized.correlation_id);
+        assert_eq!(meta.causation_id, deserialized.causation_id);
+        assert_eq!(meta.principal_id, deserialized.principal_id);
+    }
+
+    #[test]
+    fn event_metadata_causation_id_skipped_when_none() {
+        let meta = EventMetadata::new(
+            "e".into(), "t", "1", "s", "sub".into(), "grp".into(),
+            "exec".into(), "corr".into(), None, "prn".into(),
+        );
+        let json = serde_json::to_string(&meta).unwrap();
+        assert!(!json.contains("causation_id"));
+    }
+
+    // ─── EventMetadataBuilder ───────────────────────────────────────────
+
+    #[test]
+    fn builder_sets_all_fields() {
+        let meta = EventMetadataBuilder::new()
+            .event_id("evt_b")
+            .event_type("shop:orders:order:created")
+            .spec_version("1.0")
+            .source("shop:orders")
+            .subject("orders.order.1")
+            .message_group("orders:order:1")
+            .execution_id("exec-b")
+            .correlation_id("corr-b")
+            .causation_id("cause-b")
+            .principal_id("prn_b")
+            .build();
+
+        assert_eq!(meta.event_id, "evt_b");
+        assert_eq!(meta.event_type, "shop:orders:order:created");
+        assert_eq!(meta.spec_version, "1.0");
+        assert_eq!(meta.source, "shop:orders");
+        assert_eq!(meta.subject, "orders.order.1");
+        assert_eq!(meta.message_group, "orders:order:1");
+        assert_eq!(meta.execution_id, "exec-b");
+        assert_eq!(meta.correlation_id, "corr-b");
+        assert_eq!(meta.causation_id.as_deref(), Some("cause-b"));
+        assert_eq!(meta.principal_id, "prn_b");
+    }
+
+    #[test]
+    fn builder_generates_event_id_if_not_set() {
+        let meta = EventMetadataBuilder::new()
+            .event_type("t")
+            .spec_version("1")
+            .source("s")
+            .subject("sub")
+            .message_group("grp")
+            .execution_id("exec")
+            .correlation_id("corr")
+            .principal_id("prn")
+            .build();
+
+        assert!(!meta.event_id.is_empty());
+    }
+
+    #[test]
+    fn builder_causation_id_is_none_by_default() {
+        let meta = EventMetadataBuilder::new()
+            .event_id("e")
+            .event_type("t")
+            .spec_version("1")
+            .source("s")
+            .subject("sub")
+            .message_group("grp")
+            .execution_id("exec")
+            .correlation_id("corr")
+            .principal_id("prn")
+            .build();
+
+        assert!(meta.causation_id.is_none());
+    }
+
+    #[test]
+    fn builder_from_execution_context() {
+        let ctx = super::super::ExecutionContext::with_correlation("prn_test", "corr_from_ctx");
+        let meta = EventMetadataBuilder::new()
+            .from(&ctx)
+            .event_type("test.event")
+            .spec_version("1.0")
+            .source("test")
+            .subject("sub.1")
+            .message_group("grp:1")
+            .build();
+
+        assert!(!meta.event_id.is_empty());
+        assert_eq!(meta.execution_id, ctx.execution_id);
+        assert_eq!(meta.correlation_id, "corr_from_ctx");
+        assert_eq!(meta.principal_id, "prn_test");
+        assert!(meta.causation_id.is_none());
+    }
+
+    #[test]
+    fn builder_from_ctx_with_causation() {
+        let ctx = super::super::ExecutionContext::with_correlation("prn", "corr");
+        let child_ctx = ctx.with_causation("evt_parent");
+
+        let meta = EventMetadataBuilder::new()
+            .from(&child_ctx)
+            .event_type("t")
+            .spec_version("1")
+            .source("s")
+            .subject("sub")
+            .message_group("grp")
+            .build();
+
+        assert_eq!(meta.causation_id.as_deref(), Some("evt_parent"));
+    }
+
+    #[test]
+    #[should_panic(expected = "event_type is required")]
+    fn builder_panics_without_event_type() {
+        EventMetadataBuilder::new()
+            .spec_version("1")
+            .source("s")
+            .subject("sub")
+            .message_group("grp")
+            .execution_id("exec")
+            .correlation_id("corr")
+            .principal_id("prn")
+            .build();
+    }
+
+    #[test]
+    #[should_panic(expected = "spec_version is required")]
+    fn builder_panics_without_spec_version() {
+        EventMetadataBuilder::new()
+            .event_type("t")
+            .source("s")
+            .subject("sub")
+            .message_group("grp")
+            .execution_id("exec")
+            .correlation_id("corr")
+            .principal_id("prn")
+            .build();
+    }
+
+    #[test]
+    #[should_panic(expected = "source is required")]
+    fn builder_panics_without_source() {
+        EventMetadataBuilder::new()
+            .event_type("t")
+            .spec_version("1")
+            .subject("sub")
+            .message_group("grp")
+            .execution_id("exec")
+            .correlation_id("corr")
+            .principal_id("prn")
+            .build();
+    }
+
+    #[test]
+    #[should_panic(expected = "message_group is required")]
+    fn builder_panics_without_message_group() {
+        EventMetadataBuilder::new()
+            .event_type("t")
+            .spec_version("1")
+            .source("s")
+            .subject("sub")
+            .execution_id("exec")
+            .correlation_id("corr")
+            .principal_id("prn")
+            .build();
+    }
+
+    #[test]
+    fn try_build_returns_error_for_missing_fields() {
+        let result = EventMetadataBuilder::new().try_build();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "event_type is required");
+    }
+
+    #[test]
+    fn try_build_succeeds_with_all_fields() {
+        let result = EventMetadataBuilder::new()
+            .event_type("t")
+            .spec_version("1")
+            .source("s")
+            .subject("sub")
+            .message_group("grp")
+            .execution_id("exec")
+            .correlation_id("corr")
+            .principal_id("prn")
+            .try_build();
+
+        assert!(result.is_ok());
+        let meta = result.unwrap();
+        assert_eq!(meta.event_type, "t");
+    }
+
+    // ─── impl_domain_event! macro ───────────────────────────────────────
+
+    #[derive(Debug, Clone, Serialize)]
+    struct TestEvent {
+        pub metadata: EventMetadata,
+        pub order_id: String,
+        pub amount: f64,
+    }
+
+    crate::impl_domain_event!(TestEvent);
+
+    #[test]
+    fn impl_domain_event_delegates_to_metadata() {
+        let meta = EventMetadata::new(
+            "evt_macro".into(),
+            "test:event",
+            "1.0",
+            "test-src",
+            "sub.1".into(),
+            "grp:1".into(),
+            "exec-m".into(),
+            "corr-m".into(),
+            Some("cause-m".into()),
+            "prn_m".into(),
+        );
+
+        let event = TestEvent {
+            metadata: meta,
+            order_id: "ord_1".into(),
+            amount: 99.99,
+        };
+
+        assert_eq!(event.event_id(), "evt_macro");
+        assert_eq!(event.event_type(), "test:event");
+        assert_eq!(event.spec_version(), "1.0");
+        assert_eq!(event.source(), "test-src");
+        assert_eq!(event.subject(), "sub.1");
+        assert_eq!(event.execution_id(), "exec-m");
+        assert_eq!(event.correlation_id(), "corr-m");
+        assert_eq!(event.causation_id(), Some("cause-m"));
+        assert_eq!(event.principal_id(), "prn_m");
+        assert_eq!(event.message_group(), "grp:1");
+    }
+
+    #[test]
+    fn impl_domain_event_to_data_json() {
+        let meta = EventMetadata::new(
+            "e".into(), "t", "1", "s", "sub".into(), "grp".into(),
+            "exec".into(), "corr".into(), None, "prn".into(),
+        );
+        let event = TestEvent {
+            metadata: meta,
+            order_id: "ord_42".into(),
+            amount: 123.45,
+        };
+
+        let json = event.to_data_json();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["order_id"], "ord_42");
+        assert_eq!(parsed["amount"], 123.45);
+        // Metadata is also serialized
+        assert!(parsed["metadata"].is_object());
+    }
+
+    #[test]
+    fn impl_domain_event_no_causation() {
+        let meta = EventMetadata::new(
+            "e".into(), "t", "1", "s", "sub".into(), "grp".into(),
+            "exec".into(), "corr".into(), None, "prn".into(),
+        );
+        let event = TestEvent {
+            metadata: meta,
+            order_id: "x".into(),
+            amount: 0.0,
+        };
+        assert!(event.causation_id().is_none());
+    }
 }

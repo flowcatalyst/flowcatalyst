@@ -1,31 +1,22 @@
 //! Stale job recovery - finds jobs stuck in QUEUED status and resets them
 
 use chrono::Utc;
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement,
-};
+use sqlx::PgPool;
 use tracing::{debug, info, warn};
 
-use crate::{SchedulerConfig, SchedulerError};
-
-/// Count result from SQL
-#[derive(Debug, FromQueryResult)]
-struct CountResult {
-    pub count: i64,
-}
+use crate::scheduler::{SchedulerConfig, SchedulerError};
 
 #[derive(Clone)]
 pub struct StaleQueuedJobPoller {
     config: SchedulerConfig,
-    db: DatabaseConnection,
+    pool: PgPool,
 }
 
 impl StaleQueuedJobPoller {
-    pub fn new(config: SchedulerConfig, db: DatabaseConnection) -> Self {
-        Self { config, db }
+    pub fn new(config: SchedulerConfig, pool: PgPool) -> Self {
+        Self { config, pool }
     }
 
-    /// Recover jobs stuck in QUEUED status beyond the stale threshold
     pub async fn recover_stale_jobs(&self) -> Result<usize, SchedulerError> {
         let threshold = Utc::now() - chrono::Duration::from_std(self.config.stale_threshold)
             .unwrap_or_else(|_| chrono::Duration::minutes(15));
@@ -33,15 +24,13 @@ impl StaleQueuedJobPoller {
         let sql = "UPDATE msg_dispatch_jobs SET status = 'PENDING', queued_at = NULL, updated_at = NOW() \
                     WHERE status = 'QUEUED' AND queued_at < $1";
 
-        let result = self.db.execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            sql,
-            vec![sea_orm::Value::from(threshold)],
-        )).await?;
+        let result = sqlx::query(sql)
+            .bind(threshold)
+            .execute(&self.pool)
+            .await?;
 
         let count = result.rows_affected() as usize;
 
-        // Record metrics
         metrics::counter!("scheduler.stale_jobs.recovered_total").increment(count as u64);
         metrics::gauge!("scheduler.stale_jobs.last_recovery_count").set(count as f64);
 
@@ -54,39 +43,28 @@ impl StaleQueuedJobPoller {
         Ok(count)
     }
 
-    /// Count jobs currently in QUEUED status (for monitoring)
     pub async fn count_queued_jobs(&self) -> Result<u64, SchedulerError> {
-        let sql = "SELECT COUNT(*) as count FROM msg_dispatch_jobs WHERE status = 'QUEUED'";
+        let sql = "SELECT COUNT(*) FROM msg_dispatch_jobs WHERE status = 'QUEUED'";
 
-        let result = CountResult::find_by_statement(
-            Statement::from_string(DatabaseBackend::Postgres, sql),
-        )
-        .one(&self.db)
-        .await?;
+        let count: i64 = sqlx::query_scalar(sql).fetch_one(&self.pool).await?;
 
-        let count = result.map(|r| r.count as u64).unwrap_or(0);
+        let count = count as u64;
         metrics::gauge!("scheduler.queued_jobs_total").set(count as f64);
         Ok(count)
     }
 
-    /// Count jobs that are approaching stale threshold (early warning)
     pub async fn count_near_stale_jobs(&self) -> Result<u64, SchedulerError> {
         let warning_threshold = Utc::now() - chrono::Duration::from_std(self.config.stale_threshold / 2)
             .unwrap_or_else(|_| chrono::Duration::minutes(7));
 
-        let sql = "SELECT COUNT(*) as count FROM msg_dispatch_jobs WHERE status = 'QUEUED' AND queued_at < $1";
+        let sql = "SELECT COUNT(*) FROM msg_dispatch_jobs WHERE status = 'QUEUED' AND queued_at < $1";
 
-        let result = CountResult::find_by_statement(
-            Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                sql,
-                vec![sea_orm::Value::from(warning_threshold)],
-            ),
-        )
-        .one(&self.db)
-        .await?;
+        let count: i64 = sqlx::query_scalar(sql)
+            .bind(warning_threshold)
+            .fetch_one(&self.pool)
+            .await?;
 
-        let count = result.map(|r| r.count as u64).unwrap_or(0);
+        let count = count as u64;
 
         if count > 0 {
             warn!(count = count, "Jobs approaching stale threshold");
@@ -108,8 +86,6 @@ mod tests {
             stale_threshold: Duration::from_secs(15 * 60),
             ..Default::default()
         };
-
-        // Verify threshold is 15 minutes
         assert_eq!(config.stale_threshold.as_secs(), 15 * 60);
     }
 }

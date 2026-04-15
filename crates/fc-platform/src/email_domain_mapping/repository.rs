@@ -1,115 +1,190 @@
-//! EmailDomainMapping Repository — PostgreSQL via SeaORM
+//! EmailDomainMapping Repository — PostgreSQL via SQLx
 
-use sea_orm::*;
-use chrono::Utc;
+use std::collections::HashMap;
+use sqlx::PgPool;
+use chrono::{DateTime, Utc};
 
-use super::entity::EmailDomainMapping;
-use crate::entities::{
-    tnt_email_domain_mappings,
-    tnt_email_domain_mapping_clients,
-    tnt_email_domain_mapping_granted_clients,
-    tnt_email_domain_mapping_allowed_roles,
-};
+use super::entity::{EmailDomainMapping, ScopeType};
 use crate::shared::error::Result;
 
+// ── Row structs ─────────────────────────────────────────────────────
+
+#[derive(sqlx::FromRow)]
+struct EmailDomainMappingRow {
+    id: String,
+    email_domain: String,
+    identity_provider_id: String,
+    scope_type: String,
+    primary_client_id: Option<String>,
+    required_oidc_tenant_id: Option<String>,
+    sync_roles_from_idp: bool,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+impl From<EmailDomainMappingRow> for EmailDomainMapping {
+    fn from(r: EmailDomainMappingRow) -> Self {
+        Self {
+            id: r.id,
+            email_domain: r.email_domain,
+            identity_provider_id: r.identity_provider_id,
+            scope_type: ScopeType::from_str(&r.scope_type),
+            primary_client_id: r.primary_client_id,
+            additional_client_ids: Vec::new(), // loaded separately
+            granted_client_ids: Vec::new(),    // loaded separately
+            required_oidc_tenant_id: r.required_oidc_tenant_id,
+            allowed_role_ids: Vec::new(),      // loaded separately
+            sync_roles_from_idp: r.sync_roles_from_idp,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        }
+    }
+}
+
 pub struct EmailDomainMappingRepository {
-    db: DatabaseConnection,
+    pool: PgPool,
 }
 
 impl EmailDomainMappingRepository {
-    pub fn new(db: &DatabaseConnection) -> Self {
-        Self { db: db.clone() }
+    pub fn new(pool: &PgPool) -> Self {
+        Self { pool: pool.clone() }
     }
 
-    async fn hydrate(&self, model: tnt_email_domain_mappings::Model) -> Result<EmailDomainMapping> {
-        let id = model.id.clone();
-        let mut edm = EmailDomainMapping::from(model);
-
-        // Load additional clients
-        let additional = tnt_email_domain_mapping_clients::Entity::find()
-            .filter(tnt_email_domain_mapping_clients::Column::EmailDomainMappingId.eq(&id))
-            .all(&self.db)
-            .await?;
-        edm.additional_client_ids = additional.into_iter().map(|r| r.client_id).collect();
-
-        // Load granted clients
-        let granted = tnt_email_domain_mapping_granted_clients::Entity::find()
-            .filter(tnt_email_domain_mapping_granted_clients::Column::EmailDomainMappingId.eq(&id))
-            .all(&self.db)
-            .await?;
-        edm.granted_client_ids = granted.into_iter().map(|r| r.client_id).collect();
-
-        // Load allowed roles
-        let roles = tnt_email_domain_mapping_allowed_roles::Entity::find()
-            .filter(tnt_email_domain_mapping_allowed_roles::Column::EmailDomainMappingId.eq(&id))
-            .all(&self.db)
-            .await?;
-        edm.allowed_role_ids = roles.into_iter().map(|r| r.role_id).collect();
-
+    async fn hydrate(&self, mut edm: EmailDomainMapping) -> Result<EmailDomainMapping> {
+        let (additional, granted, roles) = tokio::try_join!(
+            sqlx::query_scalar::<_, String>(
+                "SELECT client_id FROM tnt_email_domain_mapping_additional_clients WHERE email_domain_mapping_id = $1"
+            ).bind(&edm.id).fetch_all(&self.pool),
+            sqlx::query_scalar::<_, String>(
+                "SELECT client_id FROM tnt_email_domain_mapping_granted_clients WHERE email_domain_mapping_id = $1"
+            ).bind(&edm.id).fetch_all(&self.pool),
+            sqlx::query_scalar::<_, String>(
+                "SELECT role_id FROM tnt_email_domain_mapping_allowed_roles WHERE email_domain_mapping_id = $1"
+            ).bind(&edm.id).fetch_all(&self.pool),
+        )?;
+        edm.additional_client_ids = additional;
+        edm.granted_client_ids = granted;
+        edm.allowed_role_ids = roles;
         Ok(edm)
     }
 
+    /// Batch-hydrate junction tables for multiple email domain mappings (avoids N+1)
+    async fn hydrate_all(&self, mut edms: Vec<EmailDomainMapping>) -> Result<Vec<EmailDomainMapping>> {
+        if edms.is_empty() {
+            return Ok(edms);
+        }
+
+        let ids: Vec<&str> = edms.iter().map(|e| e.id.as_str()).collect();
+
+        #[derive(sqlx::FromRow)]
+        struct ClientRow { email_domain_mapping_id: String, client_id: String }
+        #[derive(sqlx::FromRow)]
+        struct RoleRow { email_domain_mapping_id: String, role_id: String }
+
+        let (additional_rows, granted_rows, role_rows) = tokio::try_join!(
+            sqlx::query_as::<_, ClientRow>(
+                "SELECT email_domain_mapping_id, client_id FROM tnt_email_domain_mapping_additional_clients WHERE email_domain_mapping_id = ANY($1)"
+            ).bind(&ids).fetch_all(&self.pool),
+            sqlx::query_as::<_, ClientRow>(
+                "SELECT email_domain_mapping_id, client_id FROM tnt_email_domain_mapping_granted_clients WHERE email_domain_mapping_id = ANY($1)"
+            ).bind(&ids).fetch_all(&self.pool),
+            sqlx::query_as::<_, RoleRow>(
+                "SELECT email_domain_mapping_id, role_id FROM tnt_email_domain_mapping_allowed_roles WHERE email_domain_mapping_id = ANY($1)"
+            ).bind(&ids).fetch_all(&self.pool),
+        )?;
+
+        let mut additional_map: HashMap<String, Vec<String>> = HashMap::new();
+        for r in additional_rows { additional_map.entry(r.email_domain_mapping_id).or_default().push(r.client_id); }
+
+        let mut granted_map: HashMap<String, Vec<String>> = HashMap::new();
+        for r in granted_rows { granted_map.entry(r.email_domain_mapping_id).or_default().push(r.client_id); }
+
+        let mut roles_map: HashMap<String, Vec<String>> = HashMap::new();
+        for r in role_rows { roles_map.entry(r.email_domain_mapping_id).or_default().push(r.role_id); }
+
+        for edm in &mut edms {
+            if let Some(v) = additional_map.remove(&edm.id) { edm.additional_client_ids = v; }
+            if let Some(v) = granted_map.remove(&edm.id) { edm.granted_client_ids = v; }
+            if let Some(v) = roles_map.remove(&edm.id) { edm.allowed_role_ids = v; }
+        }
+
+        Ok(edms)
+    }
+
     pub async fn find_by_id(&self, id: &str) -> Result<Option<EmailDomainMapping>> {
-        let result = tnt_email_domain_mappings::Entity::find_by_id(id).one(&self.db).await?;
-        match result {
-            Some(m) => Ok(Some(self.hydrate(m).await?)),
+        let row = sqlx::query_as::<_, EmailDomainMappingRow>(
+            "SELECT * FROM tnt_email_domain_mappings WHERE id = $1"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        match row {
+            Some(r) => Ok(Some(self.hydrate(EmailDomainMapping::from(r)).await?)),
             None => Ok(None),
         }
     }
 
     pub async fn find_by_email_domain(&self, domain: &str) -> Result<Option<EmailDomainMapping>> {
-        let result = tnt_email_domain_mappings::Entity::find()
-            .filter(tnt_email_domain_mappings::Column::EmailDomain.eq(domain))
-            .one(&self.db)
-            .await?;
-        match result {
-            Some(m) => Ok(Some(self.hydrate(m).await?)),
+        let row = sqlx::query_as::<_, EmailDomainMappingRow>(
+            "SELECT * FROM tnt_email_domain_mappings WHERE email_domain = $1"
+        )
+        .bind(domain)
+        .fetch_optional(&self.pool)
+        .await?;
+        match row {
+            Some(r) => Ok(Some(self.hydrate(EmailDomainMapping::from(r)).await?)),
             None => Ok(None),
         }
     }
 
     pub async fn find_all(&self) -> Result<Vec<EmailDomainMapping>> {
-        let results = tnt_email_domain_mappings::Entity::find()
-            .order_by_asc(tnt_email_domain_mappings::Column::EmailDomain)
-            .all(&self.db)
-            .await?;
-        let mut mappings = Vec::with_capacity(results.len());
-        for m in results {
-            mappings.push(self.hydrate(m).await?);
-        }
-        Ok(mappings)
+        let rows = sqlx::query_as::<_, EmailDomainMappingRow>(
+            "SELECT * FROM tnt_email_domain_mappings ORDER BY email_domain"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        let edms: Vec<EmailDomainMapping> = rows.into_iter().map(EmailDomainMapping::from).collect();
+        self.hydrate_all(edms).await
     }
 
     pub async fn insert(&self, edm: &EmailDomainMapping) -> Result<()> {
-        let model = tnt_email_domain_mappings::ActiveModel {
-            id: Set(edm.id.clone()),
-            email_domain: Set(edm.email_domain.clone()),
-            identity_provider_id: Set(edm.identity_provider_id.clone()),
-            scope_type: Set(edm.scope_type.as_str().to_string()),
-            primary_client_id: Set(edm.primary_client_id.clone()),
-            required_oidc_tenant_id: Set(edm.required_oidc_tenant_id.clone()),
-            sync_roles_from_idp: Set(edm.sync_roles_from_idp),
-            created_at: Set(Utc::now().into()),
-            updated_at: Set(Utc::now().into()),
-        };
-        tnt_email_domain_mappings::Entity::insert(model).exec(&self.db).await?;
+        sqlx::query(
+            r#"INSERT INTO tnt_email_domain_mappings
+                (id, email_domain, identity_provider_id, scope_type,
+                 primary_client_id, required_oidc_tenant_id, sync_roles_from_idp,
+                 created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())"#
+        )
+        .bind(&edm.id)
+        .bind(&edm.email_domain)
+        .bind(&edm.identity_provider_id)
+        .bind(edm.scope_type.as_str())
+        .bind(&edm.primary_client_id)
+        .bind(&edm.required_oidc_tenant_id)
+        .bind(edm.sync_roles_from_idp)
+        .execute(&self.pool)
+        .await?;
         self.save_junctions(&edm.id, edm).await?;
         Ok(())
     }
 
     pub async fn update(&self, edm: &EmailDomainMapping) -> Result<()> {
-        let model = tnt_email_domain_mappings::ActiveModel {
-            id: Set(edm.id.clone()),
-            email_domain: Set(edm.email_domain.clone()),
-            identity_provider_id: Set(edm.identity_provider_id.clone()),
-            scope_type: Set(edm.scope_type.as_str().to_string()),
-            primary_client_id: Set(edm.primary_client_id.clone()),
-            required_oidc_tenant_id: Set(edm.required_oidc_tenant_id.clone()),
-            sync_roles_from_idp: Set(edm.sync_roles_from_idp),
-            created_at: NotSet,
-            updated_at: Set(Utc::now().into()),
-        };
-        tnt_email_domain_mappings::Entity::update(model).exec(&self.db).await?;
+        sqlx::query(
+            r#"UPDATE tnt_email_domain_mappings SET
+                email_domain = $2, identity_provider_id = $3, scope_type = $4,
+                primary_client_id = $5, required_oidc_tenant_id = $6,
+                sync_roles_from_idp = $7, updated_at = NOW()
+            WHERE id = $1"#
+        )
+        .bind(&edm.id)
+        .bind(&edm.email_domain)
+        .bind(&edm.identity_provider_id)
+        .bind(edm.scope_type.as_str())
+        .bind(&edm.primary_client_id)
+        .bind(&edm.required_oidc_tenant_id)
+        .bind(edm.sync_roles_from_idp)
+        .execute(&self.pool)
+        .await?;
         self.delete_junctions(&edm.id).await?;
         self.save_junctions(&edm.id, edm).await?;
         Ok(())
@@ -117,48 +192,51 @@ impl EmailDomainMappingRepository {
 
     pub async fn delete(&self, id: &str) -> Result<bool> {
         self.delete_junctions(id).await?;
-        let result = tnt_email_domain_mappings::Entity::delete_by_id(id).exec(&self.db).await?;
-        Ok(result.rows_affected > 0)
+        let result = sqlx::query("DELETE FROM tnt_email_domain_mappings WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
     }
 
     async fn save_junctions(&self, id: &str, edm: &EmailDomainMapping) -> Result<()> {
         for cid in &edm.additional_client_ids {
-            let model = tnt_email_domain_mapping_clients::ActiveModel {
-                id: NotSet,
-                email_domain_mapping_id: Set(id.to_string()),
-                client_id: Set(cid.clone()),
-            };
-            tnt_email_domain_mapping_clients::Entity::insert(model).exec(&self.db).await?;
+            sqlx::query(
+                "INSERT INTO tnt_email_domain_mapping_additional_clients (email_domain_mapping_id, client_id) VALUES ($1, $2)"
+            )
+            .bind(id)
+            .bind(cid)
+            .execute(&self.pool)
+            .await?;
         }
         for cid in &edm.granted_client_ids {
-            let model = tnt_email_domain_mapping_granted_clients::ActiveModel {
-                id: NotSet,
-                email_domain_mapping_id: Set(id.to_string()),
-                client_id: Set(cid.clone()),
-            };
-            tnt_email_domain_mapping_granted_clients::Entity::insert(model).exec(&self.db).await?;
+            sqlx::query(
+                "INSERT INTO tnt_email_domain_mapping_granted_clients (email_domain_mapping_id, client_id) VALUES ($1, $2)"
+            )
+            .bind(id)
+            .bind(cid)
+            .execute(&self.pool)
+            .await?;
         }
         for rid in &edm.allowed_role_ids {
-            let model = tnt_email_domain_mapping_allowed_roles::ActiveModel {
-                id: NotSet,
-                email_domain_mapping_id: Set(id.to_string()),
-                role_id: Set(rid.clone()),
-            };
-            tnt_email_domain_mapping_allowed_roles::Entity::insert(model).exec(&self.db).await?;
+            sqlx::query(
+                "INSERT INTO tnt_email_domain_mapping_allowed_roles (email_domain_mapping_id, role_id) VALUES ($1, $2)"
+            )
+            .bind(id)
+            .bind(rid)
+            .execute(&self.pool)
+            .await?;
         }
         Ok(())
     }
 
     async fn delete_junctions(&self, id: &str) -> Result<()> {
-        tnt_email_domain_mapping_clients::Entity::delete_many()
-            .filter(tnt_email_domain_mapping_clients::Column::EmailDomainMappingId.eq(id))
-            .exec(&self.db).await?;
-        tnt_email_domain_mapping_granted_clients::Entity::delete_many()
-            .filter(tnt_email_domain_mapping_granted_clients::Column::EmailDomainMappingId.eq(id))
-            .exec(&self.db).await?;
-        tnt_email_domain_mapping_allowed_roles::Entity::delete_many()
-            .filter(tnt_email_domain_mapping_allowed_roles::Column::EmailDomainMappingId.eq(id))
-            .exec(&self.db).await?;
+        sqlx::query("DELETE FROM tnt_email_domain_mapping_additional_clients WHERE email_domain_mapping_id = $1")
+            .bind(id).execute(&self.pool).await?;
+        sqlx::query("DELETE FROM tnt_email_domain_mapping_granted_clients WHERE email_domain_mapping_id = $1")
+            .bind(id).execute(&self.pool).await?;
+        sqlx::query("DELETE FROM tnt_email_domain_mapping_allowed_roles WHERE email_domain_mapping_id = $1")
+            .bind(id).execute(&self.pool).await?;
         Ok(())
     }
 }

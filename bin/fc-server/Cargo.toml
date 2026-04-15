@@ -14,7 +14,6 @@ fc-platform = { path = "../../crates/fc-platform" }
 fc-router = { path = "../../crates/fc-router" }
 fc-queue = { path = "../../crates/fc-queue", features = ["sqs"] }
 fc-standby = { path = "../../crates/fc-standby" }
-fc-scheduler = { path = "../../crates/fc-scheduler" }
 fc-stream = { path = "../../crates/fc-stream" }
 fc-outbox = { path = "../../crates/fc-outbox", features = ["sqlite", "postgres"] }
 fc-config = { path = "../../crates/fc-config" }
@@ -29,12 +28,12 @@ anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
-sea-orm = { workspace = true }
 sqlx = { workspace = true }
 async-trait = { workspace = true }
 aws-config = { workspace = true }
 aws-sdk-sqs = { workspace = true }
 aws-sdk-secretsmanager = { workspace = true }
+reqwest = { workspace = true }
 urlencoding = "2.1"
 regex = { workspace = true }
 utoipa = { workspace = true }

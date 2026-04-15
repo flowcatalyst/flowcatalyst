@@ -1,56 +1,34 @@
-//! Refresh Token Repository — PostgreSQL via SeaORM
+//! Refresh Token Repository — PostgreSQL via SQLx
 //!
 //! Stores refresh tokens in `oauth_oidc_payloads` (type = "RefreshToken")
 //! for compatibility with the TypeScript oidc-provider implementation.
 
-use sea_orm::*;
-use sea_orm::prelude::Expr;
-use chrono::{Utc, Duration};
-use serde_json::json;
+use sqlx::PgPool;
+use chrono::{DateTime, Duration, Utc};
+use serde_json::{json, Value};
 use crate::RefreshToken;
-use crate::entities::oauth_oidc_payloads;
 use crate::shared::error::Result;
 
 const PAYLOAD_TYPE: &str = "RefreshToken";
 
-/// Repository for refresh token management via oauth_oidc_payloads
-pub struct RefreshTokenRepository {
-    db: DatabaseConnection,
+/// Row struct matching oauth_oidc_payloads columns
+#[derive(sqlx::FromRow)]
+#[allow(dead_code)]
+struct PayloadRow {
+    id: String,
+    #[sqlx(rename = "type")]
+    r#type: String,
+    payload: Value,
+    grant_id: Option<String>,
+    user_code: Option<String>,
+    uid: Option<String>,
+    expires_at: Option<DateTime<Utc>>,
+    consumed_at: Option<DateTime<Utc>>,
+    created_at: DateTime<Utc>,
 }
 
-impl RefreshTokenRepository {
-    pub fn new(db: &DatabaseConnection) -> Self {
-        Self { db: db.clone() }
-    }
-
-    /// Build the composite ID: "RefreshToken:{id}"
-    fn make_id(id: &str) -> String {
-        format!("{}:{}", PAYLOAD_TYPE, id)
-    }
-
-    /// Build JSONB payload from domain entity
-    fn to_payload(token: &RefreshToken) -> serde_json::Value {
-        json!({
-            "accountId": token.principal_id,
-            "clientId": token.oauth_client_id,
-            "tokenHash": token.token_hash,
-            "scope": token.scopes.join(" "),
-            "accessibleClients": token.accessible_clients,
-            "revoked": token.revoked,
-            "revokedAt": token.revoked_at.map(|dt| dt.to_rfc3339()),
-            "tokenFamily": token.token_family,
-            "replacedBy": token.replaced_by,
-            "lastUsedAt": token.last_used_at.map(|dt| dt.to_rfc3339()),
-            "createdFromIp": token.created_from_ip,
-            "userAgent": token.user_agent,
-            "iat": token.created_at.timestamp(),
-            "exp": token.expires_at.timestamp(),
-            "kind": PAYLOAD_TYPE,
-        })
-    }
-
-    /// Convert from SeaORM model back to domain entity
-    fn from_model(m: oauth_oidc_payloads::Model) -> RefreshToken {
+impl From<PayloadRow> for RefreshToken {
+    fn from(m: PayloadRow) -> Self {
         let p = &m.payload;
         let id = m.id.strip_prefix("RefreshToken:").unwrap_or(&m.id).to_string();
 
@@ -82,9 +60,8 @@ impl RefreshTokenRepository {
         let created_from_ip = p.get("createdFromIp").and_then(|v| v.as_str()).map(String::from);
         let user_agent = p.get("userAgent").and_then(|v| v.as_str()).map(String::from);
 
-        let created_at = m.created_at.with_timezone(&Utc);
+        let created_at = m.created_at;
         let expires_at = m.expires_at
-            .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|| created_at + Duration::days(30));
 
         RefreshToken {
@@ -105,65 +82,92 @@ impl RefreshTokenRepository {
             user_agent,
         }
     }
+}
+
+/// Repository for refresh token management via oauth_oidc_payloads
+pub struct RefreshTokenRepository {
+    pool: PgPool,
+}
+
+impl RefreshTokenRepository {
+    pub fn new(pool: &PgPool) -> Self {
+        Self { pool: pool.clone() }
+    }
+
+    /// Build the composite ID: "RefreshToken:{id}"
+    fn make_id(id: &str) -> String {
+        format!("{}:{}", PAYLOAD_TYPE, id)
+    }
+
+    /// Build JSONB payload from domain entity
+    fn to_payload(token: &RefreshToken) -> Value {
+        json!({
+            "accountId": token.principal_id,
+            "clientId": token.oauth_client_id,
+            "tokenHash": token.token_hash,
+            "scope": token.scopes.join(" "),
+            "accessibleClients": token.accessible_clients,
+            "revoked": token.revoked,
+            "revokedAt": token.revoked_at.map(|dt| dt.to_rfc3339()),
+            "tokenFamily": token.token_family,
+            "replacedBy": token.replaced_by,
+            "lastUsedAt": token.last_used_at.map(|dt| dt.to_rfc3339()),
+            "createdFromIp": token.created_from_ip,
+            "userAgent": token.user_agent,
+            "iat": token.created_at.timestamp(),
+            "exp": token.expires_at.timestamp(),
+            "kind": PAYLOAD_TYPE,
+        })
+    }
 
     /// Insert a new refresh token
     pub async fn insert(&self, token: &RefreshToken) -> Result<()> {
-        let model = oauth_oidc_payloads::ActiveModel {
-            id: Set(Self::make_id(&token.id)),
-            r#type: Set(PAYLOAD_TYPE.to_string()),
-            payload: Set(Self::to_payload(token)),
-            grant_id: Set(token.token_family.clone()),
-            user_code: Set(None),
-            uid: Set(None),
-            expires_at: Set(Some(token.expires_at.into())),
-            consumed_at: Set(None),
-            created_at: Set(token.created_at.into()),
-        };
-        oauth_oidc_payloads::Entity::insert(model)
-            .on_conflict(
-                sea_query::OnConflict::column(oauth_oidc_payloads::Column::Id)
-                    .update_columns([
-                        oauth_oidc_payloads::Column::Payload,
-                        oauth_oidc_payloads::Column::GrantId,
-                        oauth_oidc_payloads::Column::ExpiresAt,
-                    ])
-                    .to_owned()
-            )
-            .exec(&self.db)
-            .await?;
+        sqlx::query(
+            r#"INSERT INTO oauth_oidc_payloads
+                (id, type, payload, grant_id, user_code, uid, expires_at, consumed_at, created_at)
+            VALUES ($1, $2, $3, $4, NULL, NULL, $5, NULL, $6)
+            ON CONFLICT (id) DO UPDATE SET payload = $3, grant_id = $4, expires_at = $5"#,
+        )
+        .bind(Self::make_id(&token.id))
+        .bind(PAYLOAD_TYPE)
+        .bind(Self::to_payload(token))
+        .bind(&token.token_family)
+        .bind(Some(token.expires_at))
+        .bind(token.created_at)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
     /// Find a refresh token by its hash
     pub async fn find_by_hash(&self, token_hash: &str) -> Result<Option<RefreshToken>> {
-        // Query payloads of type RefreshToken where payload->>'tokenHash' matches
-        let result = oauth_oidc_payloads::Entity::find()
-            .filter(oauth_oidc_payloads::Column::Type.eq(PAYLOAD_TYPE))
-            .filter(Expr::cust_with_values(
-                "payload->>'tokenHash' = $1",
-                [token_hash.to_string()],
-            ))
-            .one(&self.db)
-            .await?;
-        Ok(result.map(Self::from_model))
+        let row = sqlx::query_as::<_, PayloadRow>(
+            r#"SELECT * FROM oauth_oidc_payloads
+            WHERE type = $1 AND payload->>'tokenHash' = $2"#,
+        )
+        .bind(PAYLOAD_TYPE)
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(RefreshToken::from))
     }
 
     /// Find a valid (non-expired, non-revoked) refresh token by its hash
     pub async fn find_valid_by_hash(&self, token_hash: &str) -> Result<Option<RefreshToken>> {
-        let now: chrono::DateTime<chrono::FixedOffset> = Utc::now().into();
-        let result = oauth_oidc_payloads::Entity::find()
-            .filter(oauth_oidc_payloads::Column::Type.eq(PAYLOAD_TYPE))
-            .filter(Expr::cust_with_values(
-                "payload->>'tokenHash' = $1",
-                [token_hash.to_string()],
-            ))
-            .filter(oauth_oidc_payloads::Column::ExpiresAt.gt(now))
-            .filter(oauth_oidc_payloads::Column::ConsumedAt.is_null())
-            .one(&self.db)
-            .await?;
-        match result {
+        let row = sqlx::query_as::<_, PayloadRow>(
+            r#"SELECT * FROM oauth_oidc_payloads
+            WHERE type = $1
+              AND payload->>'tokenHash' = $2
+              AND expires_at > NOW()
+              AND consumed_at IS NULL"#,
+        )
+        .bind(PAYLOAD_TYPE)
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+        match row {
             Some(m) => {
-                let token = Self::from_model(m);
+                let token = RefreshToken::from(m);
                 if token.revoked { Ok(None) } else { Ok(Some(token)) }
             }
             None => Ok(None),
@@ -172,184 +176,256 @@ impl RefreshTokenRepository {
 
     /// Find all tokens for a principal
     pub async fn find_by_principal(&self, principal_id: &str) -> Result<Vec<RefreshToken>> {
-        let rows = oauth_oidc_payloads::Entity::find()
-            .filter(oauth_oidc_payloads::Column::Type.eq(PAYLOAD_TYPE))
-            .filter(Expr::cust_with_values(
-                "payload->>'accountId' = $1",
-                [principal_id.to_string()],
-            ))
-            .all(&self.db)
-            .await?;
-        Ok(rows.into_iter().map(Self::from_model).collect())
+        let rows = sqlx::query_as::<_, PayloadRow>(
+            r#"SELECT * FROM oauth_oidc_payloads
+            WHERE type = $1 AND payload->>'accountId' = $2"#,
+        )
+        .bind(PAYLOAD_TYPE)
+        .bind(principal_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(RefreshToken::from).collect())
     }
 
     /// Find all active tokens for a principal
     pub async fn find_active_by_principal(&self, principal_id: &str) -> Result<Vec<RefreshToken>> {
-        let now: chrono::DateTime<chrono::FixedOffset> = Utc::now().into();
-        let rows = oauth_oidc_payloads::Entity::find()
-            .filter(oauth_oidc_payloads::Column::Type.eq(PAYLOAD_TYPE))
-            .filter(Expr::cust_with_values(
-                "payload->>'accountId' = $1",
-                [principal_id.to_string()],
-            ))
-            .filter(oauth_oidc_payloads::Column::ExpiresAt.gt(now))
-            .filter(oauth_oidc_payloads::Column::ConsumedAt.is_null())
-            .all(&self.db)
-            .await?;
-        Ok(rows.into_iter().map(Self::from_model).filter(|t| !t.revoked).collect())
+        let rows = sqlx::query_as::<_, PayloadRow>(
+            r#"SELECT * FROM oauth_oidc_payloads
+            WHERE type = $1
+              AND payload->>'accountId' = $2
+              AND expires_at > NOW()
+              AND consumed_at IS NULL"#,
+        )
+        .bind(PAYLOAD_TYPE)
+        .bind(principal_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(RefreshToken::from).filter(|t| !t.revoked).collect())
     }
 
-    /// Revoke a token by its ID
+    /// Revoke a token by its ID.
+    ///
+    /// Atomically sets the revoked flag in the JSONB payload and marks consumed_at.
     pub async fn revoke_by_id(&self, id: &str) -> Result<bool> {
         let composite_id = Self::make_id(id);
-        if let Some(model) = oauth_oidc_payloads::Entity::find_by_id(&composite_id).one(&self.db).await? {
-            let mut token = Self::from_model(model);
-            token.revoke();
-            let update = oauth_oidc_payloads::ActiveModel {
-                id: Set(composite_id),
-                payload: Set(Self::to_payload(&token)),
-                consumed_at: Set(Some(Utc::now().into())),
-                ..Default::default()
-            };
-            oauth_oidc_payloads::Entity::update(update).exec(&self.db).await?;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        let now = Utc::now();
+        let result = sqlx::query(
+            r#"UPDATE oauth_oidc_payloads
+            SET payload = jsonb_set(
+                jsonb_set(payload, '{revoked}', 'true'::jsonb),
+                '{revokedAt}', to_jsonb($2::text)
+            ),
+            consumed_at = $2
+            WHERE id = $1"#,
+        )
+        .bind(&composite_id)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
     }
 
     /// Revoke a token by its hash
     pub async fn revoke_by_hash(&self, token_hash: &str) -> Result<bool> {
-        if let Some(token) = self.find_by_hash(token_hash).await? {
-            self.revoke_by_id(&token.id).await
-        } else {
-            Ok(false)
-        }
+        let now = Utc::now();
+        let result = sqlx::query(
+            r#"UPDATE oauth_oidc_payloads
+            SET payload = jsonb_set(
+                jsonb_set(payload, '{revoked}', 'true'::jsonb),
+                '{revokedAt}', to_jsonb($3::text)
+            ),
+            consumed_at = $3
+            WHERE type = $1 AND payload->>'tokenHash' = $2"#,
+        )
+        .bind(PAYLOAD_TYPE)
+        .bind(token_hash)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
     }
 
-    /// Revoke all tokens for a principal (logout all devices)
+    /// Revoke all tokens for a principal (logout all devices).
+    ///
+    /// Single UPDATE instead of N individual revocations.
     pub async fn revoke_all_for_principal(&self, principal_id: &str) -> Result<u64> {
-        let tokens = self.find_active_by_principal(principal_id).await?;
-        let count = tokens.len() as u64;
-        for token in tokens {
-            self.revoke_by_id(&token.id).await?;
-        }
-        Ok(count)
+        let now = Utc::now();
+        let result = sqlx::query(
+            r#"UPDATE oauth_oidc_payloads
+            SET payload = jsonb_set(
+                jsonb_set(payload, '{revoked}', 'true'::jsonb),
+                '{revokedAt}', to_jsonb($3::text)
+            ),
+            consumed_at = $3
+            WHERE type = $1
+              AND payload->>'accountId' = $2
+              AND consumed_at IS NULL
+              AND expires_at > NOW()
+              AND (payload->>'revoked' IS NULL OR payload->>'revoked' = 'false')"#,
+        )
+        .bind(PAYLOAD_TYPE)
+        .bind(principal_id)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
     }
 
     /// Find all tokens in a token family (by grant_id)
     pub async fn find_by_family(&self, family_id: &str) -> Result<Vec<RefreshToken>> {
-        let rows = oauth_oidc_payloads::Entity::find()
-            .filter(oauth_oidc_payloads::Column::Type.eq(PAYLOAD_TYPE))
-            .filter(oauth_oidc_payloads::Column::GrantId.eq(family_id))
-            .all(&self.db)
-            .await?;
-        Ok(rows.into_iter().map(Self::from_model).collect())
+        let rows = sqlx::query_as::<_, PayloadRow>(
+            r#"SELECT * FROM oauth_oidc_payloads
+            WHERE type = $1 AND grant_id = $2"#,
+        )
+        .bind(PAYLOAD_TYPE)
+        .bind(family_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(RefreshToken::from).collect())
     }
 
-    /// Revoke all tokens in a token family
+    /// Revoke all tokens in a token family.
+    ///
+    /// Single UPDATE instead of N individual revocations.
     pub async fn revoke_all_in_family(&self, family_id: &str) -> Result<u64> {
-        let tokens = self.find_by_family(family_id).await?;
-        let count = tokens.iter().filter(|t| !t.revoked).count() as u64;
-        for token in tokens {
-            if !token.revoked {
-                self.revoke_by_id(&token.id).await?;
-            }
-        }
-        Ok(count)
+        let now = Utc::now();
+        let result = sqlx::query(
+            r#"UPDATE oauth_oidc_payloads
+            SET payload = jsonb_set(
+                jsonb_set(payload, '{revoked}', 'true'::jsonb),
+                '{revokedAt}', to_jsonb($3::text)
+            ),
+            consumed_at = $3
+            WHERE type = $1
+              AND grant_id = $2
+              AND (payload->>'revoked' IS NULL OR payload->>'revoked' = 'false')"#,
+        )
+        .bind(PAYLOAD_TYPE)
+        .bind(family_id)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
     }
 
-    /// Mark a token as replaced during token rotation
+    /// Mark a token as replaced during token rotation.
+    ///
+    /// Atomically sets the replacedBy field in the JSONB payload.
     pub async fn mark_as_replaced(&self, token_hash: &str, new_token_hash: &str) -> Result<bool> {
-        if let Some(mut token) = self.find_by_hash(token_hash).await? {
-            token.mark_replaced(new_token_hash);
-            let composite_id = Self::make_id(&token.id);
-            let update = oauth_oidc_payloads::ActiveModel {
-                id: Set(composite_id),
-                payload: Set(Self::to_payload(&token)),
-                ..Default::default()
-            };
-            oauth_oidc_payloads::Entity::update(update).exec(&self.db).await?;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        let result = sqlx::query(
+            r#"UPDATE oauth_oidc_payloads
+            SET payload = jsonb_set(payload, '{replacedBy}', to_jsonb($3::text))
+            WHERE type = $1 AND payload->>'tokenHash' = $2"#,
+        )
+        .bind(PAYLOAD_TYPE)
+        .bind(token_hash)
+        .bind(new_token_hash)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
     }
 
     /// Check if a token was replaced
     pub async fn was_replaced(&self, token_hash: &str) -> Result<bool> {
-        if let Some(token) = self.find_by_hash(token_hash).await? {
-            Ok(token.was_replaced())
-        } else {
-            Ok(false)
-        }
+        let (exists,) = sqlx::query_as::<_, (bool,)>(
+            r#"SELECT EXISTS(
+                SELECT 1 FROM oauth_oidc_payloads
+                WHERE type = $1
+                  AND payload->>'tokenHash' = $2
+                  AND payload->>'replacedBy' IS NOT NULL
+            )"#,
+        )
+        .bind(PAYLOAD_TYPE)
+        .bind(token_hash)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(exists)
     }
 
-    /// Update last used timestamp
+    /// Update last used timestamp.
+    ///
+    /// Atomically sets the lastUsedAt field in the JSONB payload.
     pub async fn update_last_used(&self, id: &str) -> Result<bool> {
-        let composite_id = Self::make_id(id);
-        if let Some(model) = oauth_oidc_payloads::Entity::find_by_id(&composite_id).one(&self.db).await? {
-            let mut token = Self::from_model(model);
-            token.mark_used();
-            let update = oauth_oidc_payloads::ActiveModel {
-                id: Set(composite_id),
-                payload: Set(Self::to_payload(&token)),
-                ..Default::default()
-            };
-            oauth_oidc_payloads::Entity::update(update).exec(&self.db).await?;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        let now = Utc::now();
+        let result = sqlx::query(
+            r#"UPDATE oauth_oidc_payloads
+            SET payload = jsonb_set(payload, '{lastUsedAt}', to_jsonb($2::text))
+            WHERE id = $1"#,
+        )
+        .bind(Self::make_id(id))
+        .bind(now.to_rfc3339())
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
     }
 
     /// Delete expired tokens (cleanup job)
     pub async fn delete_expired(&self) -> Result<u64> {
-        let now: chrono::DateTime<chrono::FixedOffset> = Utc::now().into();
-        let result = oauth_oidc_payloads::Entity::delete_many()
-            .filter(oauth_oidc_payloads::Column::Type.eq(PAYLOAD_TYPE))
-            .filter(oauth_oidc_payloads::Column::ExpiresAt.lt(now))
-            .exec(&self.db)
-            .await?;
-        Ok(result.rows_affected)
+        let result = sqlx::query(
+            r#"DELETE FROM oauth_oidc_payloads
+            WHERE type = $1 AND expires_at < NOW()"#,
+        )
+        .bind(PAYLOAD_TYPE)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
     }
 
     /// Delete revoked tokens older than a given date (cleanup job)
-    pub async fn delete_revoked_before(&self, cutoff: chrono::DateTime<Utc>) -> Result<u64> {
-        let cutoff_fixed: chrono::DateTime<chrono::FixedOffset> = cutoff.into();
-        let result = oauth_oidc_payloads::Entity::delete_many()
-            .filter(oauth_oidc_payloads::Column::Type.eq(PAYLOAD_TYPE))
-            .filter(oauth_oidc_payloads::Column::ConsumedAt.is_not_null())
-            .filter(oauth_oidc_payloads::Column::CreatedAt.lt(cutoff_fixed))
-            .exec(&self.db)
-            .await?;
-        Ok(result.rows_affected)
+    pub async fn delete_revoked_before(&self, cutoff: DateTime<Utc>) -> Result<u64> {
+        let result = sqlx::query(
+            r#"DELETE FROM oauth_oidc_payloads
+            WHERE type = $1
+              AND consumed_at IS NOT NULL
+              AND created_at < $2"#,
+        )
+        .bind(PAYLOAD_TYPE)
+        .bind(cutoff)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
     }
 
-    /// Count active tokens for a principal
+    /// Count active tokens for a principal.
+    ///
+    /// Uses a single COUNT query instead of loading all tokens into memory.
     pub async fn count_active_for_principal(&self, principal_id: &str) -> Result<u64> {
-        let tokens = self.find_active_by_principal(principal_id).await?;
-        Ok(tokens.len() as u64)
+        let (count,) = sqlx::query_as::<_, (i64,)>(
+            r#"SELECT COUNT(*) FROM oauth_oidc_payloads
+            WHERE type = $1
+              AND payload->>'accountId' = $2
+              AND expires_at > NOW()
+              AND consumed_at IS NULL
+              AND (payload->>'revoked' IS NULL OR payload->>'revoked' = 'false')"#,
+        )
+        .bind(PAYLOAD_TYPE)
+        .bind(principal_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count as u64)
     }
 
     /// Count all refresh token payloads
     pub async fn count(&self) -> Result<u64> {
-        let count = oauth_oidc_payloads::Entity::find()
-            .filter(oauth_oidc_payloads::Column::Type.eq(PAYLOAD_TYPE))
-            .count(&self.db)
-            .await?;
-        Ok(count)
+        let (count,) = sqlx::query_as::<_, (i64,)>(
+            "SELECT COUNT(*) FROM oauth_oidc_payloads WHERE type = $1",
+        )
+        .bind(PAYLOAD_TYPE)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count as u64)
     }
 
     /// Count expired refresh tokens
     pub async fn count_expired(&self) -> Result<u64> {
-        let now: chrono::DateTime<chrono::FixedOffset> = Utc::now().into();
-        let count = oauth_oidc_payloads::Entity::find()
-            .filter(oauth_oidc_payloads::Column::Type.eq(PAYLOAD_TYPE))
-            .filter(oauth_oidc_payloads::Column::ExpiresAt.lt(now))
-            .count(&self.db)
-            .await?;
-        Ok(count)
+        let (count,) = sqlx::query_as::<_, (i64,)>(
+            r#"SELECT COUNT(*) FROM oauth_oidc_payloads
+            WHERE type = $1 AND expires_at < NOW()"#,
+        )
+        .bind(PAYLOAD_TYPE)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count as u64)
     }
 }
 

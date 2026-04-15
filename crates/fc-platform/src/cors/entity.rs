@@ -28,15 +28,3 @@ impl CorsAllowedOrigin {
     }
 }
 
-impl From<crate::entities::tnt_cors_allowed_origins::Model> for CorsAllowedOrigin {
-    fn from(m: crate::entities::tnt_cors_allowed_origins::Model) -> Self {
-        Self {
-            id: m.id,
-            origin: m.origin,
-            description: m.description,
-            created_by: m.created_by,
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
-        }
-    }
-}

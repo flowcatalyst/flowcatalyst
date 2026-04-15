@@ -476,4 +476,294 @@ mod tests {
         assert!(ctx.can_access_client("any_client"));
         assert!(ctx.can_access_client("another_client"));
     }
+
+    // ── Wildcard permission edge cases ────────────────────────────────
+
+    #[test]
+    fn test_wildcard_single_level() {
+        // Wildcard at only one level
+        let ctx = create_test_context(vec!["platform:admin:event:*"], "CLIENT", vec![]);
+        assert!(ctx.has_permission("platform:admin:event:read"));
+        assert!(ctx.has_permission("platform:admin:event:create"));
+        assert!(ctx.has_permission("platform:admin:event:delete"));
+        // Different aggregate should not match
+        assert!(!ctx.has_permission("platform:admin:client:read"));
+    }
+
+    #[test]
+    fn test_wildcard_context_level() {
+        let ctx = create_test_context(vec!["platform:*:event:read"], "CLIENT", vec![]);
+        assert!(ctx.has_permission("platform:admin:event:read"));
+        assert!(ctx.has_permission("platform:iam:event:read"));
+        assert!(!ctx.has_permission("platform:admin:event:create"));
+    }
+
+    #[test]
+    fn test_non_four_level_permission_no_match() {
+        // Permissions with != 4 parts should never match wildcard patterns
+        let ctx = create_test_context(vec!["platform:*:*:*"], "ANCHOR", vec!["*"]);
+        assert!(!ctx.has_permission("platform:admin"));
+        assert!(!ctx.has_permission("platform:admin:event"));
+        assert!(!ctx.has_permission("a:b:c:d:e"));
+        assert!(!ctx.has_permission(""));
+    }
+
+    #[test]
+    fn test_no_wildcard_in_permission_itself() {
+        // The permission being checked should not use wildcards — only patterns do
+        let ctx = create_test_context(vec!["platform:admin:event:read"], "CLIENT", vec![]);
+        // Checking a wildcard as a "permission" — should only match the literal string
+        assert!(!ctx.has_permission("platform:admin:*:read"));
+    }
+
+    // ── Empty roles / permissions ─────────────────────────────────────
+
+    #[test]
+    fn test_empty_permissions_denies_all() {
+        let ctx = create_test_context(vec![], "CLIENT", vec!["client1"]);
+        assert!(!ctx.has_permission("platform:admin:event:read"));
+        assert!(!ctx.has_permission("anything"));
+    }
+
+    #[test]
+    fn test_empty_roles_list() {
+        let ctx = AuthContext {
+            principal_id: "p1".to_string(),
+            principal_type: "USER".to_string(),
+            scope: "CLIENT".to_string(),
+            email: None,
+            name: "No Roles".to_string(),
+            accessible_clients: vec![],
+            permissions: HashSet::new(),
+            roles: vec![],
+        };
+        assert!(!ctx.has_role("admin"));
+        assert!(!ctx.has_permission("anything"));
+    }
+
+    // ── has_all_permissions / has_any_permission ──────────────────────
+
+    #[test]
+    fn test_has_all_permissions_all_present() {
+        let ctx = create_test_context(
+            vec!["platform:admin:event:read", "platform:admin:client:read"],
+            "CLIENT",
+            vec![],
+        );
+        assert!(ctx.has_all_permissions(&[
+            "platform:admin:event:read",
+            "platform:admin:client:read",
+        ]));
+    }
+
+    #[test]
+    fn test_has_all_permissions_one_missing() {
+        let ctx = create_test_context(
+            vec!["platform:admin:event:read"],
+            "CLIENT",
+            vec![],
+        );
+        assert!(!ctx.has_all_permissions(&[
+            "platform:admin:event:read",
+            "platform:admin:client:read",
+        ]));
+    }
+
+    #[test]
+    fn test_has_all_permissions_empty_required() {
+        let ctx = create_test_context(vec![], "CLIENT", vec![]);
+        // Empty required set — trivially true
+        assert!(ctx.has_all_permissions(&[]));
+    }
+
+    #[test]
+    fn test_has_any_permission_one_present() {
+        let ctx = create_test_context(
+            vec!["platform:admin:event:read"],
+            "CLIENT",
+            vec![],
+        );
+        assert!(ctx.has_any_permission(&[
+            "platform:admin:event:read",
+            "platform:admin:client:read",
+        ]));
+    }
+
+    #[test]
+    fn test_has_any_permission_none_present() {
+        let ctx = create_test_context(vec![], "CLIENT", vec![]);
+        assert!(!ctx.has_any_permission(&[
+            "platform:admin:event:read",
+        ]));
+    }
+
+    #[test]
+    fn test_has_any_permission_empty_required() {
+        let ctx = create_test_context(vec![], "CLIENT", vec![]);
+        // Empty required set — none match
+        assert!(!ctx.has_any_permission(&[]));
+    }
+
+    // ── has_role ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_has_role_present() {
+        let ctx = create_test_context(vec![], "CLIENT", vec![]);
+        assert!(ctx.has_role("test:admin"));
+    }
+
+    #[test]
+    fn test_has_role_absent() {
+        let ctx = create_test_context(vec![], "CLIENT", vec![]);
+        assert!(!ctx.has_role("nonexistent:role"));
+    }
+
+    // ── is_anchor ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_is_anchor_true() {
+        let ctx = create_test_context(vec![], "ANCHOR", vec!["*"]);
+        assert!(ctx.is_anchor());
+    }
+
+    #[test]
+    fn test_is_anchor_false_for_client_scope() {
+        let ctx = create_test_context(vec![], "CLIENT", vec![]);
+        assert!(!ctx.is_anchor());
+    }
+
+    #[test]
+    fn test_is_anchor_false_for_partner_scope() {
+        let ctx = create_test_context(vec![], "PARTNER", vec![]);
+        assert!(!ctx.is_anchor());
+    }
+
+    // ── Client access edge cases ──────────────────────────────────────
+
+    #[test]
+    fn test_no_clients_denies_all() {
+        let ctx = create_test_context(vec![], "CLIENT", vec![]);
+        assert!(!ctx.can_access_client("anything"));
+    }
+
+    #[test]
+    fn test_client_access_exact_match_only() {
+        let ctx = create_test_context(vec![], "CLIENT", vec!["client1"]);
+        assert!(ctx.can_access_client("client1"));
+        assert!(!ctx.can_access_client("client10")); // no prefix matching
+        assert!(!ctx.can_access_client("client")); // no partial matching
+    }
+
+    // ── from_claims_with_permissions ──────────────────────────────────
+
+    #[test]
+    fn test_from_claims_preserves_all_fields() {
+        let claims = AccessTokenClaims {
+            sub: "principal_1".to_string(),
+            iss: "https://auth.example.com".to_string(),
+            aud: "api".to_string(),
+            exp: 1700000000,
+            iat: 1699996400,
+            nbf: 1699996400,
+            jti: "jwt-id-1".to_string(),
+            principal_type: "SERVICE".to_string(),
+            scope: "ANCHOR".to_string(),
+            email: Some("svc@test.com".to_string()),
+            name: "Service Account".to_string(),
+            clients: vec!["*".to_string()],
+            roles: vec!["platform:super-admin".to_string()],
+            applications: vec!["app1".to_string()],
+        };
+        let mut perms = HashSet::new();
+        perms.insert("platform:*:*:*".to_string());
+
+        let ctx = AuthContext::from_claims_with_permissions(&claims, perms);
+        assert_eq!(ctx.principal_id, "principal_1");
+        assert_eq!(ctx.principal_type, "SERVICE");
+        assert_eq!(ctx.scope, "ANCHOR");
+        assert_eq!(ctx.email, Some("svc@test.com".to_string()));
+        assert_eq!(ctx.name, "Service Account");
+        assert!(ctx.can_access_client("any_client"));
+        assert!(ctx.is_anchor());
+        assert!(ctx.has_permission("platform:admin:event:read"));
+    }
+
+    // ── Authorization checks module ───────────────────────────────────
+
+    #[test]
+    fn test_check_require_anchor_passes() {
+        let ctx = create_test_context(vec![], "ANCHOR", vec!["*"]);
+        assert!(checks::require_anchor(&ctx).is_ok());
+    }
+
+    #[test]
+    fn test_check_require_anchor_fails() {
+        let ctx = create_test_context(vec![], "CLIENT", vec![]);
+        assert!(checks::require_anchor(&ctx).is_err());
+    }
+
+    #[test]
+    fn test_check_is_admin_with_superuser() {
+        let ctx = create_test_context(vec![permissions::ADMIN_ALL], "ANCHOR", vec!["*"]);
+        assert!(checks::is_admin(&ctx).is_ok());
+    }
+
+    #[test]
+    fn test_check_is_admin_anchor_scope_only() {
+        // Anchor scope alone is sufficient for is_admin
+        let ctx = create_test_context(vec![], "ANCHOR", vec!["*"]);
+        assert!(checks::is_admin(&ctx).is_ok());
+    }
+
+    #[test]
+    fn test_check_is_admin_fails_for_normal_user() {
+        let ctx = create_test_context(vec!["platform:admin:event:read"], "CLIENT", vec!["c1"]);
+        assert!(checks::is_admin(&ctx).is_err());
+    }
+
+    #[test]
+    fn test_can_read_events_with_permission() {
+        let ctx = create_test_context(
+            vec![permissions::admin::EVENT_READ],
+            "CLIENT",
+            vec!["c1"],
+        );
+        assert!(checks::can_read_events(&ctx).is_ok());
+    }
+
+    #[test]
+    fn test_can_read_events_without_permission() {
+        let ctx = create_test_context(vec![], "CLIENT", vec!["c1"]);
+        assert!(checks::can_read_events(&ctx).is_err());
+    }
+
+    #[test]
+    fn test_can_write_events_with_batch_permission() {
+        let ctx = create_test_context(
+            vec![permissions::admin::BATCH_EVENTS_WRITE],
+            "CLIENT",
+            vec!["c1"],
+        );
+        assert!(checks::can_write_events(&ctx).is_ok());
+    }
+
+    #[test]
+    fn test_can_write_events_with_app_permission() {
+        let ctx = create_test_context(
+            vec![permissions::application_service::EVENT_CREATE],
+            "CLIENT",
+            vec!["c1"],
+        );
+        assert!(checks::can_write_events(&ctx).is_ok());
+    }
+
+    #[test]
+    fn test_wildcard_permission_satisfies_check() {
+        // platform:*:*:* should satisfy any specific permission check
+        let ctx = create_test_context(vec!["platform:*:*:*"], "ANCHOR", vec!["*"]);
+        assert!(checks::can_read_events(&ctx).is_ok());
+        assert!(checks::can_read_event_types(&ctx).is_ok());
+        assert!(checks::can_read_subscriptions(&ctx).is_ok());
+        assert!(checks::can_read_dispatch_jobs(&ctx).is_ok());
+    }
 }

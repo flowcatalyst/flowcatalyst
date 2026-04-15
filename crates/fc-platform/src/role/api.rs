@@ -189,7 +189,7 @@ fn parse_source(s: &str) -> Result<RoleSource, PlatformError> {
     operation_id = "postApiAdminRoles",
     request_body = CreateRoleRequest,
     responses(
-        (status = 201, description = "Role created", body = RoleResponse),
+        (status = 201, description = "Role created", body = crate::shared::api_common::CreatedResponse),
         (status = 400, description = "Validation error"),
         (status = 409, description = "Duplicate role code")
     ),
@@ -199,7 +199,7 @@ pub async fn create_role(
     State(state): State<RolesState>,
     auth: Authenticated,
     Json(req): Json<CreateRoleRequest>,
-) -> Result<(StatusCode, Json<RoleResponse>), PlatformError> {
+) -> Result<(StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
     // Only anchor users can create roles
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
@@ -219,9 +219,10 @@ pub async fn create_role(
     role = role.with_permissions(req.permissions);
     role = role.with_client_managed(req.client_managed);
 
+    let id = role.id.clone();
     state.role_repo.insert(&role).await?;
 
-    Ok((StatusCode::CREATED, Json(RoleResponse::from(role))))
+    Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
 }
 
 /// Get role by ID or name (code)
@@ -302,16 +303,16 @@ pub async fn list_roles(
     _auth: Authenticated,
     Query(query): Query<RolesQuery>,
 ) -> Result<Json<RoleListResponse>, PlatformError> {
-    let roles = if let Some(ref app) = query.application_code {
-        state.role_repo.find_by_application(app).await?
-    } else if let Some(ref source) = query.source {
-        let s = parse_source(source)?;
-        state.role_repo.find_by_source(s).await?
-    } else if query.client_managed == Some(true) {
-        state.role_repo.find_client_managed().await?
-    } else {
-        state.role_repo.find_all().await?
-    };
+    // Validate source filter if provided
+    if let Some(ref source) = query.source {
+        let _ = parse_source(source)?;
+    }
+
+    let roles = state.role_repo.find_with_filters(
+        query.application_code.as_deref(),
+        query.source.as_deref(),
+        query.client_managed,
+    ).await?;
 
     let roles: Vec<RoleResponse> = roles.into_iter()
         .map(|r| r.into())
@@ -332,7 +333,7 @@ pub async fn list_roles(
     ),
     request_body = UpdateRoleRequest,
     responses(
-        (status = 200, description = "Role updated", body = RoleResponse),
+        (status = 204, description = "Role updated"),
         (status = 404, description = "Role not found")
     ),
     security(("bearer_auth" = []))
@@ -342,7 +343,7 @@ pub async fn update_role(
     auth: Authenticated,
     Path(role_name): Path<String>,
     Json(req): Json<UpdateRoleRequest>,
-) -> Result<Json<RoleResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
     // Try by code first if it looks like a role code (contains ":")
@@ -373,7 +374,7 @@ pub async fn update_role(
     role.updated_at = chrono::Utc::now();
     state.role_repo.update(&role).await?;
 
-    Ok(Json(role.into()))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Grant permission to role

@@ -13,11 +13,10 @@
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
-use sea_orm::DatabaseConnection;
 
 use fc_platform::auth::auth_service::{AuthConfig, AuthService};
 use fc_platform::domain::{Principal, UserScope};
-use fc_platform::shared::database::{create_connection, run_migrations};
+use fc_platform::shared::database::{create_pool, run_migrations};
 use fc_platform::{
     ClientRepository, PrincipalRepository, RoleRepository,
     EventTypeRepository, ApplicationRepository,
@@ -30,8 +29,8 @@ use fc_platform::subscription::entity::EventTypeBinding;
 
 // ─── Test Helpers ──────────────────────────────────────────────────────────
 
-/// Start a PostgreSQL testcontainer and return the database connection.
-async fn setup_test_db() -> (DatabaseConnection, testcontainers::ContainerAsync<Postgres>) {
+/// Start a PostgreSQL testcontainer and return the connection pool.
+async fn setup_test_db() -> (sqlx::PgPool, testcontainers::ContainerAsync<Postgres>) {
     let container = Postgres::default()
         .with_db_name("flowcatalyst_test")
         .with_user("test")
@@ -48,15 +47,15 @@ async fn setup_test_db() -> (DatabaseConnection, testcontainers::ContainerAsync<
         host, port
     );
 
-    let db = create_connection(&database_url)
+    let pool = create_pool(&database_url)
         .await
         .expect("Failed to connect to test database");
 
-    run_migrations(&db)
+    run_migrations(&pool)
         .await
         .expect("Failed to run migrations");
 
-    (db, container)
+    (pool, container)
 }
 
 fn test_auth_service() -> AuthService {
@@ -78,8 +77,8 @@ fn test_auth_service() -> AuthService {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_client_crud() {
-    let (db, _container) = setup_test_db().await;
-    let repo = ClientRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = ClientRepository::new(&pool);
 
     // Create
     let client = Client::new("Acme Corp", "acme-corp");
@@ -115,8 +114,8 @@ async fn test_client_crud() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_client_not_found() {
-    let (db, _container) = setup_test_db().await;
-    let repo = ClientRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = ClientRepository::new(&pool);
 
     let result = repo.find_by_id("nonexistent-id").await.expect("Query should succeed");
     assert!(result.is_none());
@@ -127,8 +126,8 @@ async fn test_client_not_found() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_principal_user_crud() {
-    let (db, _container) = setup_test_db().await;
-    let repo = PrincipalRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = PrincipalRepository::new(&pool);
 
     // Create user principal
     let mut principal = Principal::new_user("alice@example.com", UserScope::Anchor);
@@ -161,8 +160,8 @@ async fn test_principal_user_crud() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_principal_service_account() {
-    let (db, _container) = setup_test_db().await;
-    let repo = PrincipalRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = PrincipalRepository::new(&pool);
 
     let principal = Principal::new_service("svc-abc", "My Service");
     repo.insert(&principal).await.expect("Failed to insert service principal");
@@ -175,9 +174,9 @@ async fn test_principal_service_account() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_principal_with_client_access() {
-    let (db, _container) = setup_test_db().await;
-    let client_repo = ClientRepository::new(&db);
-    let principal_repo = PrincipalRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let client_repo = ClientRepository::new(&pool);
+    let principal_repo = PrincipalRepository::new(&pool);
 
     // Create a client first
     let client = Client::new("Test Client", "test-client");
@@ -199,8 +198,8 @@ async fn test_principal_with_client_access() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_role_crud() {
-    let (db, _container) = setup_test_db().await;
-    let repo = RoleRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = RoleRepository::new(&pool);
 
     // AuthRole::new takes (application_code, role_name, display_name)
     let role = AuthRole::new("platform", "test-admin", "Test Admin");
@@ -221,8 +220,8 @@ async fn test_role_crud() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_event_type_crud() {
-    let (db, _container) = setup_test_db().await;
-    let repo = EventTypeRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = EventTypeRepository::new(&pool);
 
     let event_type = EventType::new("orders:fulfillment:shipment:shipped", "Shipment Shipped")
         .expect("Failed to create event type");
@@ -245,8 +244,8 @@ async fn test_event_type_crud() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_application_crud() {
-    let (db, _container) = setup_test_db().await;
-    let repo = ApplicationRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = ApplicationRepository::new(&pool);
 
     let app = Application::new("my-app", "My Application");
     repo.insert(&app).await.expect("Failed to insert application");
@@ -268,8 +267,8 @@ async fn test_application_crud() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_audit_log_insert_and_query() {
-    let (db, _container) = setup_test_db().await;
-    let repo = AuditLogRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = AuditLogRepository::new(&pool);
 
     // AuditLog::new(entity_type, entity_id, operation, operation_json, principal_id)
     let log = AuditLog::new(
@@ -294,8 +293,8 @@ async fn test_audit_log_insert_and_query() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_event_insert_and_query() {
-    let (db, _container) = setup_test_db().await;
-    let repo = EventRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = EventRepository::new(&pool);
 
     // Event::new(event_type, source, data)
     let event = Event::new(
@@ -317,8 +316,8 @@ async fn test_event_insert_and_query() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_token_generation_from_db_principal() {
-    let (db, _container) = setup_test_db().await;
-    let principal_repo = PrincipalRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let principal_repo = PrincipalRepository::new(&pool);
     let auth_service = test_auth_service();
 
     // Create and persist a principal
@@ -345,9 +344,9 @@ async fn test_token_generation_from_db_principal() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_multiple_clients_with_partner_principal() {
-    let (db, _container) = setup_test_db().await;
-    let client_repo = ClientRepository::new(&db);
-    let principal_repo = PrincipalRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let client_repo = ClientRepository::new(&pool);
+    let principal_repo = PrincipalRepository::new(&pool);
 
     // Create two clients
     let client1 = Client::new("Client Alpha", "alpha");
@@ -377,13 +376,13 @@ async fn test_multiple_clients_with_partner_principal() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_migrations_are_idempotent() {
-    let (db, _container) = setup_test_db().await;
+    let (pool, _container) = setup_test_db().await;
 
     // Run migrations again — should succeed (IF NOT EXISTS)
-    run_migrations(&db).await.expect("Second migration run should succeed");
+    run_migrations(&pool).await.expect("Second migration run should succeed");
 
     // Run a third time for good measure
-    run_migrations(&db).await.expect("Third migration run should succeed");
+    run_migrations(&pool).await.expect("Third migration run should succeed");
 }
 
 // ─── Cross-Repository Transaction Test ────────────────────────────────────
@@ -391,8 +390,8 @@ async fn test_migrations_are_idempotent() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_unit_of_work_commit() {
-    let (db, _container) = setup_test_db().await;
-    let client_repo = ClientRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let client_repo = ClientRepository::new(&pool);
 
     use fc_platform::{PgUnitOfWork, UnitOfWork};
     use fc_platform::client::operations::events::ClientCreated;
@@ -403,7 +402,7 @@ async fn test_unit_of_work_commit() {
     client_repo.insert(&client).await.expect("Failed to insert client");
 
     // Commit an event via UnitOfWork
-    let uow = PgUnitOfWork::new(db.clone());
+    let uow = PgUnitOfWork::new(pool.clone());
     let ctx = ExecutionContext::create("test-principal-id");
     let event = ClientCreated::new(&ctx, &client.id, &client.name, &client.identifier, None);
 
@@ -415,13 +414,13 @@ async fn test_unit_of_work_commit() {
     assert!(result.into_result().is_ok(), "UnitOfWork commit should succeed");
 
     // Verify event was persisted (use find_by_type since find_all doesn't exist)
-    let event_repo = EventRepository::new(&db);
+    let event_repo = EventRepository::new(&pool);
     let events = event_repo.find_by_type("platform:iam:client:created", 10).await
         .expect("Failed to query events");
     assert!(!events.is_empty(), "At least one event should exist");
 
     // Verify audit log was persisted
-    let audit_repo = AuditLogRepository::new(&db);
+    let audit_repo = AuditLogRepository::new(&pool);
     let logs = audit_repo.find_by_entity("Client", &client.id, 10).await
         .expect("Failed to query audit logs");
     assert!(!logs.is_empty(), "At least one audit log should exist");
@@ -432,8 +431,8 @@ async fn test_unit_of_work_commit() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_dispatch_pool_crud() {
-    let (db, _container) = setup_test_db().await;
-    let repo = DispatchPoolRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = DispatchPoolRepository::new(&pool);
 
     // Create with builder methods
     let pool = DispatchPool::new("test-pool", "Test Pool")
@@ -465,8 +464,8 @@ async fn test_dispatch_pool_crud() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_service_account_crud() {
-    let (db, _container) = setup_test_db().await;
-    let repo = ServiceAccountRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = ServiceAccountRepository::new(&pool);
 
     // Create
     let svc = ServiceAccount::new("test-svc", "Test Service");
@@ -486,9 +485,9 @@ async fn test_service_account_crud() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_connection_crud() {
-    let (db, _container) = setup_test_db().await;
-    let svc_repo = ServiceAccountRepository::new(&db);
-    let conn_repo = ConnectionRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let svc_repo = ServiceAccountRepository::new(&pool);
+    let conn_repo = ConnectionRepository::new(&pool);
 
     // Create a service account first (needed for FK)
     let svc = ServiceAccount::new("conn-test-svc", "Connection Test Service");
@@ -529,8 +528,8 @@ async fn test_connection_crud() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_subscription_crud() {
-    let (db, _container) = setup_test_db().await;
-    let repo = SubscriptionRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = SubscriptionRepository::new(&pool);
 
     // Create
     let sub = Subscription::new("test-sub", "Test Subscription", "con_dummy0000000");
@@ -559,8 +558,8 @@ async fn test_subscription_crud() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_dispatch_job_lifecycle() {
-    let (db, _container) = setup_test_db().await;
-    let repo = DispatchJobRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = DispatchJobRepository::new(&pool);
 
     // Create
     let job = DispatchJob::for_event("evt-123", "order:created", "platform", "https://example.com/webhook", "{}");
@@ -591,8 +590,8 @@ async fn test_dispatch_job_lifecycle() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_dispatch_job_batch_insert() {
-    let (db, _container) = setup_test_db().await;
-    let repo = DispatchJobRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = DispatchJobRepository::new(&pool);
 
     // Create 5 dispatch jobs
     let jobs: Vec<DispatchJob> = (0..5)
@@ -623,8 +622,8 @@ async fn test_dispatch_job_batch_insert() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_subscription_with_event_types() {
-    let (db, _container) = setup_test_db().await;
-    let repo = SubscriptionRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = SubscriptionRepository::new(&pool);
 
     // Create subscription with event type binding
     let sub = Subscription::new("sub-with-events", "Sub With Events", "con_dummy0000000")

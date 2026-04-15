@@ -139,22 +139,6 @@ impl SpecVersion {
     pub fn is_deprecated(&self) -> bool { self.status == SpecVersionStatus::Deprecated }
 }
 
-impl From<crate::entities::msg_event_type_spec_versions::Model> for SpecVersion {
-    fn from(m: crate::entities::msg_event_type_spec_versions::Model) -> Self {
-        Self {
-            id: m.id,
-            event_type_id: m.event_type_id,
-            version: m.version,
-            mime_type: m.mime_type,
-            schema_content: m.schema_content.map(Into::into),
-            schema_type: SchemaType::from_str(&m.schema_type),
-            status: SpecVersionStatus::from_str(&m.status),
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
-        }
-    }
-}
-
 /// EventType domain entity — matches TypeScript EventType interface
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -235,26 +219,127 @@ impl EventType {
     }
 }
 
-impl From<crate::entities::msg_event_types::Model> for EventType {
-    fn from(m: crate::entities::msg_event_types::Model) -> Self {
-        let event_name = m.code.split(':').nth(3).unwrap_or("").to_string();
-        Self {
-            id: m.id,
-            code: m.code,
-            name: m.name,
-            description: m.description,
-            spec_versions: vec![], // loaded separately
-            status: EventTypeStatus::from_str(&m.status),
-            source: EventTypeSource::from_str(&m.source),
-            client_scoped: m.client_scoped,
-            application: m.application,
-            subdomain: m.subdomain,
-            aggregate: m.aggregate,
-            event_name,
-            client_id: None, // not stored in DB; derived from context
-            created_by: None, // not stored in msg_event_types
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── EventType::new validation ────────────────────────────────────────
+
+    #[test]
+    fn new_accepts_valid_four_part_code() {
+        let et = EventType::new("orders:fulfillment:shipment:shipped", "Shipment Shipped")
+            .expect("valid code");
+        assert_eq!(et.code, "orders:fulfillment:shipment:shipped");
+        assert_eq!(et.application, "orders");
+        assert_eq!(et.subdomain, "fulfillment");
+        assert_eq!(et.aggregate, "shipment");
+        assert_eq!(et.event_name, "shipped");
+        assert_eq!(et.status, EventTypeStatus::Current);
+        assert!(!et.client_scoped);
+        assert!(et.spec_versions.is_empty());
+    }
+
+    #[test]
+    fn new_rejects_too_few_segments() {
+        assert!(EventType::new("orders:fulfillment:shipment", "x").is_err());
+        assert!(EventType::new("orders:fulfillment", "x").is_err());
+        assert!(EventType::new("orders", "x").is_err());
+        assert!(EventType::new("", "x").is_err());
+    }
+
+    #[test]
+    fn new_rejects_too_many_segments() {
+        assert!(EventType::new("orders:fulfillment:shipment:shipped:extra", "x").is_err());
+    }
+
+    #[test]
+    fn new_rejects_empty_segment() {
+        assert!(EventType::new("orders::shipment:shipped", "x").is_err());
+        assert!(EventType::new(":fulfillment:shipment:shipped", "x").is_err());
+        assert!(EventType::new("orders:fulfillment:shipment:", "x").is_err());
+    }
+
+    #[test]
+    fn new_rejects_whitespace_only_segment() {
+        assert!(EventType::new("orders: :shipment:shipped", "x").is_err());
+    }
+
+    // ── State transitions ─────────────────────────────────────────────────
+
+    #[test]
+    fn archive_flips_status_and_bumps_updated_at() {
+        let mut et = EventType::new("a:b:c:d", "Name").unwrap();
+        let before = et.updated_at;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        et.archive();
+        assert_eq!(et.status, EventTypeStatus::Archived);
+        assert!(et.updated_at > before);
+    }
+
+    #[test]
+    fn add_schema_version_appends_and_bumps_updated_at() {
+        let mut et = EventType::new("a:b:c:d", "Name").unwrap();
+        let before = et.updated_at;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let sv = SpecVersion::new(&et.id, "1.0.0", None);
+        et.add_schema_version(sv);
+        assert_eq!(et.spec_versions.len(), 1);
+        assert_eq!(et.spec_versions[0].version, "1.0.0");
+        assert!(et.updated_at > before);
+    }
+
+    // ── SpecVersion status helpers ────────────────────────────────────────
+
+    #[test]
+    fn spec_version_status_helpers() {
+        let mut sv = SpecVersion::new("et_1", "1.0", None);
+        assert!(!sv.is_current());
+        assert!(!sv.is_deprecated());
+        sv.status = SpecVersionStatus::Current;
+        assert!(sv.is_current());
+        sv.status = SpecVersionStatus::Deprecated;
+        assert!(sv.is_deprecated());
+    }
+
+    // ── Enum roundtrips with fallback ─────────────────────────────────────
+
+    #[test]
+    fn event_type_status_roundtrip_with_fallback() {
+        assert_eq!(EventTypeStatus::from_str("CURRENT"), EventTypeStatus::Current);
+        assert_eq!(EventTypeStatus::from_str("ARCHIVED"), EventTypeStatus::Archived);
+        // Unknown falls back to Current
+        assert_eq!(EventTypeStatus::from_str("UNKNOWN"), EventTypeStatus::Current);
+        for s in [EventTypeStatus::Current, EventTypeStatus::Archived] {
+            assert_eq!(EventTypeStatus::from_str(s.as_str()), s);
         }
+    }
+
+    #[test]
+    fn event_type_source_roundtrip_with_fallback() {
+        assert_eq!(EventTypeSource::from_str("CODE"), EventTypeSource::Code);
+        assert_eq!(EventTypeSource::from_str("API"), EventTypeSource::Api);
+        assert_eq!(EventTypeSource::from_str("UI"), EventTypeSource::Ui);
+        // Unknown falls back to Ui
+        assert_eq!(EventTypeSource::from_str("UNKNOWN"), EventTypeSource::Ui);
+    }
+
+    #[test]
+    fn spec_version_status_roundtrip_with_fallback() {
+        assert_eq!(SpecVersionStatus::from_str("CURRENT"), SpecVersionStatus::Current);
+        assert_eq!(SpecVersionStatus::from_str("DEPRECATED"), SpecVersionStatus::Deprecated);
+        assert_eq!(SpecVersionStatus::from_str("FINALISING"), SpecVersionStatus::Finalising);
+        // Unknown falls back to Finalising
+        assert_eq!(SpecVersionStatus::from_str("UNKNOWN"), SpecVersionStatus::Finalising);
+    }
+
+    #[test]
+    fn schema_type_accepts_aliases() {
+        assert_eq!(SchemaType::from_str("JSON_SCHEMA"), SchemaType::JsonSchema);
+        assert_eq!(SchemaType::from_str("XSD"), SchemaType::Xsd);
+        assert_eq!(SchemaType::from_str("XML_SCHEMA"), SchemaType::Xsd);
+        assert_eq!(SchemaType::from_str("PROTO"), SchemaType::Proto);
+        assert_eq!(SchemaType::from_str("PROTOBUF"), SchemaType::Proto);
+        // Unknown falls back to JsonSchema
+        assert_eq!(SchemaType::from_str("UNKNOWN"), SchemaType::JsonSchema);
     }
 }

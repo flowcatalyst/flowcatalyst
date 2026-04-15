@@ -215,29 +215,6 @@ impl AuthRole {
 
 /// Convert from SeaORM model to domain entity
 /// Note: permissions must be loaded separately from iam_role_permissions
-impl From<crate::entities::iam_roles::Model> for AuthRole {
-    fn from(m: crate::entities::iam_roles::Model) -> Self {
-        // Extract application_code from the role name (part before first colon)
-        let application_code = m.application_code.unwrap_or_else(|| {
-            m.name.split(':').next().unwrap_or("unknown").to_string()
-        });
-
-        Self {
-            id: m.id,
-            application_id: m.application_id,
-            name: m.name,
-            display_name: m.display_name,
-            description: m.description,
-            application_code,
-            permissions: HashSet::new(), // Must be loaded from junction table
-            source: RoleSource::from_str(&m.source),
-            client_managed: m.client_managed,
-            created_at: m.created_at.naive_utc().and_utc(),
-            updated_at: m.updated_at.naive_utc().and_utc(),
-        }
-    }
-}
-
 /// Match a required permission against a pattern (4-level: subdomain:context:aggregate:action).
 /// Each level in the pattern can be '*' to match any value at that level.
 pub fn matches_pattern(permission: &str, pattern: &str) -> bool {

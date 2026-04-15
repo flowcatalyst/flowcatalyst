@@ -186,7 +186,7 @@ fn parse_status(s: &str) -> Option<DispatchPoolStatus> {
     operation_id = "postApiAdminDispatchPools",
     request_body = CreateDispatchPoolRequest,
     responses(
-        (status = 201, description = "Dispatch pool created", body = DispatchPoolResponse),
+        (status = 201, description = "Dispatch pool created", body = crate::shared::api_common::CreatedResponse),
         (status = 400, description = "Validation error"),
         (status = 409, description = "Duplicate code")
     ),
@@ -196,7 +196,7 @@ pub async fn create_dispatch_pool<U: UnitOfWork>(
     State(state): State<DispatchPoolsState<U>>,
     auth: Authenticated,
     Json(req): Json<CreateDispatchPoolRequest>,
-) -> Result<(StatusCode, Json<DispatchPoolResponse>), PlatformError> {
+) -> Result<(StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
     // Check access - anchor or client admin
     if !auth.0.is_anchor() {
         if let Some(ref client_id) = req.client_id {
@@ -221,9 +221,7 @@ pub async fn create_dispatch_pool<U: UnitOfWork>(
 
     match state.create_use_case.run(command, ctx).await {
         UseCaseResult::Success(event) => {
-            let pool = state.dispatch_pool_repo.find_by_id(&event.dispatch_pool_id).await?
-                .ok_or_else(|| PlatformError::internal("Dispatch pool not found after create"))?;
-            Ok((StatusCode::CREATED, Json(DispatchPoolResponse::from(pool))))
+            Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(event.dispatch_pool_id))))
         }
         UseCaseResult::Failure(err) => Err(err.into()),
     }
@@ -331,7 +329,7 @@ pub async fn list_dispatch_pools<U: UnitOfWork>(
     ),
     request_body = UpdateDispatchPoolRequest,
     responses(
-        (status = 200, description = "Dispatch pool updated", body = DispatchPoolResponse),
+        (status = 204, description = "Dispatch pool updated"),
         (status = 404, description = "Dispatch pool not found")
     ),
     security(("bearer_auth" = []))
@@ -341,7 +339,7 @@ pub async fn update_dispatch_pool<U: UnitOfWork>(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateDispatchPoolRequest>,
-) -> Result<Json<DispatchPoolResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     // Check access first
     let pool = state.dispatch_pool_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("DispatchPool", &id))?;
@@ -367,12 +365,7 @@ pub async fn update_dispatch_pool<U: UnitOfWork>(
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
     match state.update_use_case.run(command, ctx).await {
-        UseCaseResult::Success(_event) => {
-            // Fetch updated pool for response
-            let pool = state.dispatch_pool_repo.find_by_id(&id).await?
-                .ok_or_else(|| PlatformError::not_found("DispatchPool", &id))?;
-            Ok(Json(pool.into()))
-        }
+        UseCaseResult::Success(_event) => Ok(StatusCode::NO_CONTENT),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
 }

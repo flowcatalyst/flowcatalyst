@@ -5,6 +5,7 @@ use super::{FlowCatalystClient, ClientError, ListResponse};
 
 /// Request to create an event type.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateEventTypeRequest {
     /// Code in format `{app}:{domain}:{aggregate}:{event}` (e.g., "orders:fulfillment:shipment:shipped")
     pub code: String,
@@ -13,12 +14,9 @@ pub struct CreateEventTypeRequest {
     /// Optional description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Optional initial schema content (JSON Schema, XSD, or Proto)
+    /// Optional initial JSON schema
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub schema_content: Option<String>,
-    /// Schema type: "json_schema", "xsd", "proto" (default: "json_schema")
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub schema_type: Option<String>,
+    pub schema: Option<serde_json::Value>,
     /// Client ID for multi-tenant scoping
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_id: Option<String>,
@@ -26,6 +24,7 @@ pub struct CreateEventTypeRequest {
 
 /// Request to update an event type.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateEventTypeRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -35,16 +34,15 @@ pub struct UpdateEventTypeRequest {
 
 /// Request to add a schema version to an event type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AddSchemaVersionRequest {
-    pub version: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub schema_content: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub schema_type: Option<String>,
+    /// JSON schema for this version
+    pub schema: serde_json::Value,
 }
 
 /// Event type response from the platform API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EventTypeResponse {
     pub id: String,
     pub code: String,
@@ -53,28 +51,27 @@ pub struct EventTypeResponse {
     pub description: Option<String>,
     pub status: String,
     #[serde(default)]
-    pub application: Option<String>,
+    pub application: String,
     #[serde(default)]
-    pub subdomain: Option<String>,
+    pub subdomain: String,
     #[serde(default)]
-    pub aggregate: Option<String>,
-    #[serde(default)]
-    pub event_name: Option<String>,
+    pub aggregate: String,
+    #[serde(default, rename = "event")]
+    pub event_name: String,
     #[serde(default)]
     pub spec_versions: Vec<SpecVersionResponse>,
-    #[serde(default)]
-    pub client_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 /// Schema version response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpecVersionResponse {
     pub version: String,
     pub status: String,
     #[serde(default)]
-    pub schema_content: Option<String>,
-    #[serde(default)]
-    pub schema_type: Option<String>,
+    pub schema: Option<serde_json::Value>,
 }
 
 impl FlowCatalystClient {
@@ -83,12 +80,12 @@ impl FlowCatalystClient {
         &self,
         req: &CreateEventTypeRequest,
     ) -> Result<EventTypeResponse, ClientError> {
-        self.post("/api/event-types", req).await
+        self.post("/api/admin/event-types", req).await
     }
 
     /// Get an event type by ID.
     pub async fn get_event_type(&self, id: &str) -> Result<EventTypeResponse, ClientError> {
-        self.get(&format!("/api/event-types/{}", id)).await
+        self.get(&format!("/api/admin/event-types/{}", id)).await
     }
 
     /// Get an event type by code.
@@ -96,7 +93,7 @@ impl FlowCatalystClient {
         &self,
         code: &str,
     ) -> Result<EventTypeResponse, ClientError> {
-        self.get(&format!("/api/event-types/by-code/{}", code)).await
+        self.get(&format!("/api/admin/event-types/by-code/{}", code)).await
     }
 
     /// List event types with optional filters.
@@ -123,7 +120,7 @@ impl FlowCatalystClient {
             format!("?{}", params.join("&"))
         };
 
-        self.get(&format!("/api/event-types{}", query)).await
+        self.get(&format!("/api/admin/event-types{}", query)).await
     }
 
     /// Update an event type.
@@ -132,7 +129,7 @@ impl FlowCatalystClient {
         id: &str,
         req: &UpdateEventTypeRequest,
     ) -> Result<EventTypeResponse, ClientError> {
-        self.put(&format!("/api/event-types/{}", id), req).await
+        self.put(&format!("/api/admin/event-types/{}", id), req).await
     }
 
     /// Add a schema version to an event type.
@@ -141,12 +138,12 @@ impl FlowCatalystClient {
         id: &str,
         req: &AddSchemaVersionRequest,
     ) -> Result<EventTypeResponse, ClientError> {
-        self.post(&format!("/api/event-types/{}/versions", id), req)
+        self.post(&format!("/api/admin/event-types/{}/versions", id), req)
             .await
     }
 
     /// Archive (soft-delete) an event type.
     pub async fn archive_event_type(&self, id: &str) -> Result<(), ClientError> {
-        self.delete_req(&format!("/api/event-types/{}", id)).await
+        self.delete_req(&format!("/api/admin/event-types/{}", id)).await
     }
 }

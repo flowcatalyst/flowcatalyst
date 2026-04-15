@@ -152,3 +152,73 @@ fn adaptive_sleep(count: u32, batch_size: u32) -> u64 {
         1000
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- adaptive_sleep tests ---
+
+    #[test]
+    fn adaptive_sleep_idle_when_no_rows() {
+        // count == 0 → long sleep (1000ms)
+        assert_eq!(adaptive_sleep(0, 100), 1000);
+        assert_eq!(adaptive_sleep(0, 1), 1000);
+        assert_eq!(adaptive_sleep(0, 500), 1000);
+    }
+
+    #[test]
+    fn adaptive_sleep_short_when_partial_batch() {
+        // 0 < count < batch_size → short sleep (100ms)
+        assert_eq!(adaptive_sleep(1, 100), 100);
+        assert_eq!(adaptive_sleep(50, 100), 100);
+        assert_eq!(adaptive_sleep(99, 100), 100);
+    }
+
+    #[test]
+    fn adaptive_sleep_immediate_when_full_batch() {
+        // count >= batch_size → no sleep (0ms), more rows likely waiting
+        assert_eq!(adaptive_sleep(100, 100), 0);
+        assert_eq!(adaptive_sleep(200, 100), 0); // over batch_size
+        assert_eq!(adaptive_sleep(1, 1), 0);     // exactly batch_size of 1
+    }
+
+    #[test]
+    fn adaptive_sleep_boundary_at_batch_size() {
+        let batch = 50;
+        assert_eq!(adaptive_sleep(batch - 1, batch), 100); // just under
+        assert_eq!(adaptive_sleep(batch, batch), 0);        // exactly at
+        assert_eq!(adaptive_sleep(batch + 1, batch), 0);    // just over
+    }
+
+    // --- Service construction tests ---
+
+    #[tokio::test]
+    async fn service_health_has_correct_name() {
+        let pool = sqlx::PgPool::connect_lazy("postgres://localhost/fake").unwrap();
+        let svc = EventProjectionService::new(pool, 200);
+        assert_eq!(svc.health().name(), "event-projection");
+    }
+
+    #[tokio::test]
+    async fn service_health_starts_not_running() {
+        let pool = sqlx::PgPool::connect_lazy("postgres://localhost/fake").unwrap();
+        let svc = EventProjectionService::new(pool, 100);
+        assert!(!svc.health().is_running());
+        assert!(!svc.health().is_healthy());
+    }
+
+    #[tokio::test]
+    async fn service_stop_signals_shutdown() {
+        let pool = sqlx::PgPool::connect_lazy("postgres://localhost/fake").unwrap();
+        let svc = EventProjectionService::new(pool, 100);
+
+        // Before stop, shutdown_rx should be false
+        assert!(!*svc.shutdown_rx.borrow());
+
+        svc.stop();
+
+        // After stop, shutdown_rx should be true
+        assert!(*svc.shutdown_rx.borrow());
+    }
+}

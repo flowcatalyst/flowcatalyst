@@ -413,73 +413,228 @@ impl ClientAccessGrant {
     }
 }
 
-impl From<crate::entities::iam_client_access_grants::Model> for ClientAccessGrant {
-    fn from(m: crate::entities::iam_client_access_grants::Model) -> Self {
-        Self {
-            id: m.id,
-            principal_id: m.principal_id,
-            client_id: m.client_id,
-            granted_by: m.granted_by,
-            granted_at: m.granted_at.with_timezone(&Utc),
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── PrincipalType / UserScope enum roundtrips ─────────────────────────
+
+    #[test]
+    fn principal_type_roundtrip_with_fallback() {
+        assert_eq!(PrincipalType::from_str("USER"), PrincipalType::User);
+        assert_eq!(PrincipalType::from_str("SERVICE"), PrincipalType::Service);
+        // Unknown falls back to User
+        assert_eq!(PrincipalType::from_str("UNKNOWN"), PrincipalType::User);
     }
-}
 
-/// Convert from SeaORM model to domain entity
-/// Note: roles and assigned_clients must be loaded separately from junction tables
-impl From<crate::entities::iam_principals::Model> for Principal {
-    fn from(m: crate::entities::iam_principals::Model) -> Self {
-        let principal_type = PrincipalType::from_str(&m.principal_type);
-        let scope = m.scope.as_deref().map(UserScope::from_str).unwrap_or(UserScope::Client);
+    #[test]
+    fn user_scope_roundtrip_with_fallback() {
+        assert_eq!(UserScope::from_str("ANCHOR"), UserScope::Anchor);
+        assert_eq!(UserScope::from_str("PARTNER"), UserScope::Partner);
+        assert_eq!(UserScope::from_str("CLIENT"), UserScope::Client);
+        // Unknown falls back to Client
+        assert_eq!(UserScope::from_str("UNKNOWN"), UserScope::Client);
+    }
 
-        // Reconstruct UserIdentity from flat columns (only for USER type)
-        let user_identity = if principal_type == PrincipalType::User {
-            m.email.as_ref().map(|email| {
-                let _email_domain = email.split('@').nth(1).unwrap_or("").to_string();
-                UserIdentity {
-                    email: email.clone(),
-                    email_verified: false,
-                    first_name: None,
-                    last_name: None,
-                    picture_url: None,
-                    phone: None,
-                    external_id: m.external_idp_id.clone(),
-                    provider: m.idp_type.clone(),
-                    password_hash: m.password_hash.clone(),
-                    last_login_at: m.last_login_at.map(|dt| dt.naive_utc().and_utc()),
-                }
-            })
-        } else {
-            None
-        };
+    #[test]
+    fn user_scope_is_anchor_helper() {
+        assert!(UserScope::Anchor.is_anchor());
+        assert!(!UserScope::Partner.is_anchor());
+        assert!(!UserScope::Client.is_anchor());
+    }
 
-        // Reconstruct ExternalIdentity from columns
-        let external_identity = m.external_idp_id.as_ref().map(|ext_id| {
-            ExternalIdentity {
-                provider_id: m.idp_type.clone().unwrap_or_default(),
-                external_id: ext_id.clone(),
-            }
-        });
+    // ── UserScope::can_access_client — core authorization invariant ───────
 
-        Self {
-            id: m.id,
-            principal_type,
-            scope,
-            client_id: m.client_id,
-            application_id: m.application_id,
-            name: m.name,
-            active: m.active,
-            user_identity,
-            service_account_id: m.service_account_id,
-            roles: vec![], // Must be loaded from iam_principal_roles
-            assigned_clients: vec![], // Must be loaded from iam_client_access_grants
-            client_identifier_map: std::collections::HashMap::new(), // Populated during hydration
-            accessible_application_ids: vec![], // Must be loaded from junction table
-            created_at: m.created_at.naive_utc().and_utc(),
-            updated_at: m.updated_at.naive_utc().and_utc(),
-            external_identity,
-        }
+    #[test]
+    fn anchor_scope_can_access_any_client() {
+        let scope = UserScope::Anchor;
+        assert!(scope.can_access_client("clt_any", None, &[]));
+        assert!(scope.can_access_client("clt_foo", Some("clt_bar"), &[]));
+    }
+
+    #[test]
+    fn partner_scope_requires_assigned_clients_membership() {
+        let scope = UserScope::Partner;
+        let assigned = vec!["clt_a".to_string(), "clt_b".to_string()];
+        assert!(scope.can_access_client("clt_a", None, &assigned));
+        assert!(scope.can_access_client("clt_b", None, &assigned));
+        assert!(!scope.can_access_client("clt_other", None, &assigned));
+        // home_client_id is ignored for Partner
+        assert!(!scope.can_access_client("clt_home", Some("clt_home"), &assigned));
+    }
+
+    #[test]
+    fn client_scope_matches_only_home_client() {
+        let scope = UserScope::Client;
+        assert!(scope.can_access_client("clt_home", Some("clt_home"), &[]));
+        assert!(!scope.can_access_client("clt_other", Some("clt_home"), &[]));
+        assert!(!scope.can_access_client("clt_x", None, &[]));
+        // assigned_clients is ignored for Client scope
+        assert!(!scope.can_access_client("clt_x", Some("clt_home"), &["clt_x".to_string()]));
+    }
+
+    // ── UserIdentity ──────────────────────────────────────────────────────
+
+    #[test]
+    fn user_identity_display_name_uses_first_last_when_both_present() {
+        let id = UserIdentity::new("alice@example.com").with_name("Alice", "Smith");
+        assert_eq!(id.display_name(), "Alice Smith");
+    }
+
+    #[test]
+    fn user_identity_display_name_handles_partial_names() {
+        let mut id = UserIdentity::new("bob@example.com");
+        id.first_name = Some("Bob".to_string());
+        assert_eq!(id.display_name(), "Bob");
+
+        id.first_name = None;
+        id.last_name = Some("Jones".to_string());
+        assert_eq!(id.display_name(), "Jones");
+    }
+
+    #[test]
+    fn user_identity_display_name_falls_back_to_email() {
+        let id = UserIdentity::new("eve@example.com");
+        assert_eq!(id.display_name(), "eve@example.com");
+    }
+
+    // ── Principal constructors ────────────────────────────────────────────
+
+    #[test]
+    fn new_user_sets_user_type_and_identity() {
+        let p = Principal::new_user("alice@example.com", UserScope::Anchor);
+        assert_eq!(p.principal_type, PrincipalType::User);
+        assert_eq!(p.scope, UserScope::Anchor);
+        assert!(p.active);
+        assert!(p.user_identity.is_some());
+        assert!(p.service_account_id.is_none());
+        assert_eq!(p.email(), Some("alice@example.com"));
+        assert!(p.is_user());
+        assert!(!p.is_service());
+    }
+
+    #[test]
+    fn new_service_sets_service_type_and_anchor_scope() {
+        let p = Principal::new_service("svc_123", "Outbox Processor");
+        assert_eq!(p.principal_type, PrincipalType::Service);
+        assert_eq!(p.scope, UserScope::Anchor);
+        assert!(p.user_identity.is_none());
+        assert_eq!(p.service_account_id, Some("svc_123".to_string()));
+        assert_eq!(p.name, "Outbox Processor");
+        assert!(p.is_service());
+        assert!(!p.is_user());
+        assert!(p.email().is_none());
+    }
+
+    // ── Role assignment state changes ─────────────────────────────────────
+
+    #[test]
+    fn assign_role_appends_and_updates_timestamp() {
+        let mut p = Principal::new_user("a@b.com", UserScope::Client);
+        let before = p.updated_at;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        p.assign_role("admin");
+        assert_eq!(p.roles.len(), 1);
+        assert_eq!(p.roles[0].role, "admin");
+        assert!(p.updated_at > before);
+    }
+
+    #[test]
+    fn has_role_returns_true_for_assigned_role() {
+        let mut p = Principal::new_user("a@b.com", UserScope::Client);
+        p.assign_role("editor");
+        p.assign_role("viewer");
+        assert!(p.has_role("editor"));
+        assert!(p.has_role("viewer"));
+        assert!(!p.has_role("admin"));
+    }
+
+    #[test]
+    fn remove_roles_by_source_only_removes_matching_source() {
+        let mut p = Principal::new_user("a@b.com", UserScope::Client);
+        p.assign_role_with_source("role-idp-1", "IDP_SYNC");
+        p.assign_role_with_source("role-idp-2", "IDP_SYNC");
+        p.assign_role_with_source("role-manual", "ADMIN");
+
+        let removed = p.remove_roles_by_source("IDP_SYNC");
+        assert_eq!(removed, 2);
+        assert_eq!(p.roles.len(), 1);
+        assert_eq!(p.roles[0].role, "role-manual");
+    }
+
+    #[test]
+    fn remove_roles_by_source_is_noop_when_no_match() {
+        let mut p = Principal::new_user("a@b.com", UserScope::Client);
+        p.assign_role_with_source("role-manual", "ADMIN");
+        let before = p.updated_at;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+
+        let removed = p.remove_roles_by_source("IDP_SYNC");
+        assert_eq!(removed, 0);
+        // Timestamp should NOT update when nothing changed
+        assert_eq!(p.updated_at, before);
+    }
+
+    // ── Client access grants ──────────────────────────────────────────────
+
+    #[test]
+    fn grant_client_access_is_idempotent() {
+        let mut p = Principal::new_user("a@b.com", UserScope::Partner);
+        p.grant_client_access("clt_1");
+        p.grant_client_access("clt_1"); // duplicate
+        p.grant_client_access("clt_2");
+        assert_eq!(p.assigned_clients.len(), 2);
+        assert!(p.assigned_clients.contains(&"clt_1".to_string()));
+        assert!(p.assigned_clients.contains(&"clt_2".to_string()));
+    }
+
+    #[test]
+    fn revoke_client_access_removes_only_that_client() {
+        let mut p = Principal::new_user("a@b.com", UserScope::Partner);
+        p.grant_client_access("clt_1");
+        p.grant_client_access("clt_2");
+        p.revoke_client_access("clt_1");
+        assert_eq!(p.assigned_clients, vec!["clt_2".to_string()]);
+    }
+
+    // ── can_access_client delegation ──────────────────────────────────────
+
+    #[test]
+    fn principal_can_access_client_uses_its_scope() {
+        // Client-scoped user with home client
+        let p = Principal::new_user("u@c.com", UserScope::Client)
+            .with_client_id("clt_home");
+        assert!(p.can_access_client("clt_home"));
+        assert!(!p.can_access_client("clt_other"));
+
+        // Partner-scoped user with assigned clients
+        let mut partner = Principal::new_user("p@co.com", UserScope::Partner);
+        partner.grant_client_access("clt_a");
+        assert!(partner.can_access_client("clt_a"));
+        assert!(!partner.can_access_client("clt_b"));
+
+        // Anchor can access everything
+        let anchor = Principal::new_user("admin@fc.com", UserScope::Anchor);
+        assert!(anchor.can_access_client("clt_any"));
+    }
+
+    // ── Activate / deactivate ─────────────────────────────────────────────
+
+    #[test]
+    fn deactivate_and_activate_flip_active_and_bump_updated_at() {
+        let mut p = Principal::new_user("a@b.com", UserScope::Client);
+        assert!(p.active);
+        let t0 = p.updated_at;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+
+        p.deactivate();
+        assert!(!p.active);
+        assert!(p.updated_at > t0);
+
+        let t1 = p.updated_at;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        p.activate();
+        assert!(p.active);
+        assert!(p.updated_at > t1);
     }
 }

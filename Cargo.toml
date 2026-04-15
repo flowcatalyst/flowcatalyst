@@ -8,7 +8,6 @@ members = [
     "crates/fc-outbox",
     "crates/fc-stream",
     "crates/fc-platform",
-    "crates/fc-scheduler",
     "crates/fc-secrets",
     "crates/fc-sdk",
     "bin/fc-dev",
@@ -16,7 +15,6 @@ members = [
     "bin/fc-platform-server",
     "bin/fc-outbox-processor",
     "bin/fc-stream-processor",
-    "bin/fc-scheduler-server",
     "bin/fc-server",
 ]
 resolver = "2"
@@ -35,8 +33,6 @@ axum = "0.8"
 axum-extra = { version = "0.10", features = ["cookie"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "postgres", "mysql", "chrono", "uuid"] }
-sea-orm = { version = "1.1", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-chrono", "with-json"] }
-sea-orm-migration = { version = "1.1", features = ["sqlx-postgres", "runtime-tokio-rustls"] }
 mongodb = "3.2"
 bson = { version = "2.15", features = ["chrono-0_4"] }
 aws-sdk-sqs = "1.91"

@@ -353,4 +353,133 @@ mod tests {
         assert!(!token.is_expired());
         assert!(!token.token.is_empty());
     }
+
+    #[test]
+    fn test_password_reset_token_expiry_duration() {
+        let before = chrono::Utc::now();
+        let token = PasswordResetToken::new("prn_test", 1); // 1 hour
+        let after = chrono::Utc::now();
+
+        // expires_at should be ~1 hour from now
+        let diff_from_before = (token.expires_at - before).num_seconds();
+        let diff_from_after = (token.expires_at - after).num_seconds();
+        assert!(diff_from_before >= 3599 && diff_from_before <= 3601);
+        assert!(diff_from_after >= 3599 && diff_from_after <= 3601);
+    }
+
+    #[test]
+    fn test_password_reset_token_zero_hours_is_immediately_expired() {
+        let token = PasswordResetToken::new("prn_test", 0);
+        // With 0 hours, expires_at == creation time, so should be expired
+        // (or very nearly so — allow a tiny margin)
+        assert!(token.is_expired() || token.expires_at <= chrono::Utc::now());
+    }
+
+    #[test]
+    fn test_empty_password_fails_default_policy() {
+        let service = PasswordService::new(
+            Argon2Config::testing(),
+            PasswordPolicy::default(),
+        );
+        let result = service.hash_password("");
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("at least"), "Expected length error, got: {err_msg}");
+    }
+
+    #[test]
+    fn test_empty_password_fails_lenient_policy() {
+        let service = PasswordService::new(
+            Argon2Config::testing(),
+            PasswordPolicy::lenient(),
+        );
+        let result = service.hash_password("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_password_too_long_fails() {
+        let service = PasswordService::new(
+            Argon2Config::testing(),
+            PasswordPolicy::default(),
+        );
+        let long_password = "A".repeat(200) + "a1!";
+        let result = service.hash_password(&long_password);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("at most"), "Expected max length error, got: {err_msg}");
+    }
+
+    #[test]
+    fn test_verify_wrong_password_returns_false() {
+        let service = PasswordService::new(
+            Argon2Config::testing(),
+            PasswordPolicy::lenient(),
+        );
+        let hash = service.hash_password("correctpassword").unwrap();
+        let result = service.verify_password("wrongpassword", &hash).unwrap();
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_verify_empty_password_returns_false() {
+        let service = PasswordService::new(
+            Argon2Config::testing(),
+            PasswordPolicy::lenient(),
+        );
+        let hash = service.hash_password("realpassword").unwrap();
+        let result = service.verify_password("", &hash).unwrap();
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_verify_against_invalid_hash_format_returns_error() {
+        let service = PasswordService::new(
+            Argon2Config::testing(),
+            PasswordPolicy::lenient(),
+        );
+        let result = service.verify_password("anything", "not-a-valid-hash");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_password_standalone() {
+        let service = PasswordService::new(
+            Argon2Config::testing(),
+            PasswordPolicy::default(),
+        );
+        // Valid
+        assert!(service.validate_password("SecureP@ss123!").is_ok());
+        // Invalid (too short)
+        assert!(service.validate_password("Sh0!").is_err());
+    }
+
+    #[test]
+    fn test_needs_rehash_valid_argon2id_hash() {
+        let service = PasswordService::new(
+            Argon2Config::testing(),
+            PasswordPolicy::lenient(),
+        );
+        let hash = service.hash_password("testpassword").unwrap();
+        assert!(!service.needs_rehash(&hash));
+    }
+
+    #[test]
+    fn test_needs_rehash_garbage_input() {
+        let service = PasswordService::new(
+            Argon2Config::testing(),
+            PasswordPolicy::lenient(),
+        );
+        assert!(service.needs_rehash("not-a-hash"));
+    }
+
+    #[test]
+    fn test_password_policy_multiple_errors() {
+        let policy = PasswordPolicy::default();
+        let result = policy.validate(""); // empty: fails length + all requirements
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        // Should report at least length + uppercase + lowercase + digit + special
+        assert!(errors.len() >= 5, "Expected >=5 errors, got {}: {:?}", errors.len(), errors);
+    }
 }

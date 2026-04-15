@@ -368,7 +368,7 @@ pub async fn create_role(
     ),
     request_body = BffUpdateRoleRequest,
     responses(
-        (status = 200, description = "Role updated", body = BffRoleResponse),
+        (status = 204, description = "Role updated"),
         (status = 404, description = "Role not found")
     ),
     security(("bearer_auth" = []))
@@ -378,7 +378,7 @@ pub async fn update_role(
     auth: Authenticated,
     Path(role_name): Path<String>,
     Json(req): Json<BffUpdateRoleRequest>,
-) -> Result<Json<BffRoleResponse>, PlatformError> {
+) -> Result<axum::http::StatusCode, PlatformError> {
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
     // Resolve role name to ID
@@ -403,11 +403,7 @@ pub async fn update_role(
     let use_case = UpdateRoleUseCase::new(state.role_repo.clone(), state.unit_of_work.clone());
     use_case.run(cmd, ctx).await.into_result()?;
 
-    // Re-fetch the updated role for the response
-    let updated_role = state.role_repo.find_by_id(&role_id).await?
-        .ok_or_else(|| PlatformError::not_found("Role", &role_id))?;
-
-    Ok(Json(updated_role.into()))
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
 /// Delete role

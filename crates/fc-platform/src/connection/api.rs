@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use super::entity::{Connection, ConnectionStatus};
 use super::repository::ConnectionRepository;
-use crate::shared::error::PlatformError;
+use crate::shared::error::{PlatformError, NotFoundExt};
 use crate::shared::middleware::Authenticated;
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -96,7 +96,7 @@ pub struct ConnectionsState {
     operation_id = "postApiAdminConnections",
     request_body = CreateConnectionRequest,
     responses(
-        (status = 201, description = "Connection created", body = ConnectionResponse),
+        (status = 201, description = "Connection created", body = crate::shared::api_common::CreatedResponse),
         (status = 400, description = "Validation error"),
         (status = 409, description = "Duplicate code")
     ),
@@ -106,7 +106,7 @@ pub async fn create_connection(
     State(state): State<ConnectionsState>,
     _auth: Authenticated,
     Json(req): Json<CreateConnectionRequest>,
-) -> Result<(axum::http::StatusCode, Json<ConnectionResponse>), PlatformError> {
+) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
     if let Some(existing) = state.connection_repo.find_by_code_and_client(&req.code, req.client_id.as_deref()).await? {
         return Err(PlatformError::duplicate("Connection", "code", &existing.code));
     }
@@ -116,8 +116,9 @@ pub async fn create_connection(
     if let Some(ext) = req.external_id { conn = conn.with_external_id(ext); }
     if let Some(cid) = req.client_id { conn = conn.with_client_id(cid); }
 
+    let id = conn.id.clone();
     state.connection_repo.insert(&conn).await?;
-    Ok((axum::http::StatusCode::CREATED, Json(conn.into())))
+    Ok((axum::http::StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
 }
 
 /// List connections
@@ -174,7 +175,7 @@ pub async fn get_connection(
     Path(id): Path<String>,
 ) -> Result<Json<ConnectionResponse>, PlatformError> {
     let conn = state.connection_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Connection", &id))?;
+        .or_not_found("Connection", &id)?;
     Ok(Json(conn.into()))
 }
 
@@ -189,7 +190,7 @@ pub async fn get_connection(
     ),
     request_body = UpdateConnectionRequest,
     responses(
-        (status = 200, description = "Connection updated", body = ConnectionResponse),
+        (status = 204, description = "Connection updated"),
         (status = 404, description = "Connection not found")
     ),
     security(("bearer_auth" = []))
@@ -199,9 +200,9 @@ pub async fn update_connection(
     _auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateConnectionRequest>,
-) -> Result<Json<ConnectionResponse>, PlatformError> {
+) -> Result<axum::http::StatusCode, PlatformError> {
     let mut conn = state.connection_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Connection", &id))?;
+        .or_not_found("Connection", &id)?;
 
     if let Some(name) = req.name { conn.name = name; }
     if let Some(desc) = req.description { conn.description = Some(desc); }
@@ -212,7 +213,7 @@ pub async fn update_connection(
     conn.updated_at = chrono::Utc::now();
 
     state.connection_repo.update(&conn).await?;
-    Ok(Json(conn.into()))
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
 /// Delete connection by ID
@@ -236,7 +237,7 @@ pub async fn delete_connection(
     Path(id): Path<String>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
     let _ = state.connection_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Connection", &id))?;
+        .or_not_found("Connection", &id)?;
     state.connection_repo.delete(&id).await?;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
@@ -262,7 +263,7 @@ pub async fn pause_connection(
     Path(id): Path<String>,
 ) -> Result<Json<ConnectionResponse>, PlatformError> {
     let mut conn = state.connection_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Connection", &id))?;
+        .or_not_found("Connection", &id)?;
     conn.pause();
     state.connection_repo.update(&conn).await?;
     Ok(Json(conn.into()))
@@ -289,7 +290,7 @@ pub async fn activate_connection(
     Path(id): Path<String>,
 ) -> Result<Json<ConnectionResponse>, PlatformError> {
     let mut conn = state.connection_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Connection", &id))?;
+        .or_not_found("Connection", &id)?;
     conn.activate();
     state.connection_repo.update(&conn).await?;
     Ok(Json(conn.into()))

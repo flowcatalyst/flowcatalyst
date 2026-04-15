@@ -313,7 +313,6 @@ CREATE TABLE IF NOT EXISTS msg_connections (
     code VARCHAR(100) NOT NULL,
     name VARCHAR(255) NOT NULL,
     description VARCHAR(500),
-    endpoint VARCHAR(500) NOT NULL,
     external_id VARCHAR(100),
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     service_account_id VARCHAR(17) NOT NULL,

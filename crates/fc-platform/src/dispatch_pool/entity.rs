@@ -87,20 +87,114 @@ impl DispatchPool {
     }
 }
 
-impl From<crate::entities::msg_dispatch_pools::Model> for DispatchPool {
-    fn from(m: crate::entities::msg_dispatch_pools::Model) -> Self {
-        Self {
-            id: m.id,
-            code: m.code,
-            name: m.name,
-            description: m.description,
-            rate_limit: m.rate_limit,
-            concurrency: m.concurrency,
-            client_id: m.client_id,
-            client_identifier: m.client_identifier,
-            status: DispatchPoolStatus::from_str(&m.status),
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_dispatch_pool() {
+        let pool = DispatchPool::new("default-pool", "Default Pool");
+
+        assert!(!pool.id.is_empty());
+        assert!(pool.id.starts_with("dpl_"), "ID should have dpl_ prefix, got: {}", pool.id);
+        assert_eq!(pool.id.len(), 17, "Typed ID should be 17 chars, got: {}", pool.id.len());
+        assert_eq!(pool.code, "default-pool");
+        assert_eq!(pool.name, "Default Pool");
+        assert!(pool.description.is_none());
+        assert_eq!(pool.rate_limit, 100);
+        assert_eq!(pool.concurrency, 10);
+        assert!(pool.client_id.is_none());
+        assert!(pool.client_identifier.is_none());
+        assert_eq!(pool.status, DispatchPoolStatus::Active);
+        assert_eq!(pool.created_at, pool.updated_at);
+    }
+
+    #[test]
+    fn test_dispatch_pool_unique_ids() {
+        let p1 = DispatchPool::new("a", "A");
+        let p2 = DispatchPool::new("b", "B");
+        assert_ne!(p1.id, p2.id);
+    }
+
+    #[test]
+    fn test_dispatch_pool_status_as_str() {
+        assert_eq!(DispatchPoolStatus::Active.as_str(), "ACTIVE");
+        assert_eq!(DispatchPoolStatus::Suspended.as_str(), "SUSPENDED");
+        assert_eq!(DispatchPoolStatus::Archived.as_str(), "ARCHIVED");
+    }
+
+    #[test]
+    fn test_dispatch_pool_status_from_str() {
+        assert_eq!(DispatchPoolStatus::from_str("ACTIVE"), DispatchPoolStatus::Active);
+        assert_eq!(DispatchPoolStatus::from_str("SUSPENDED"), DispatchPoolStatus::Suspended);
+        assert_eq!(DispatchPoolStatus::from_str("ARCHIVED"), DispatchPoolStatus::Archived);
+        assert_eq!(DispatchPoolStatus::from_str("unknown"), DispatchPoolStatus::Active);
+    }
+
+    #[test]
+    fn test_dispatch_pool_status_default() {
+        assert_eq!(DispatchPoolStatus::default(), DispatchPoolStatus::Active);
+    }
+
+    #[test]
+    fn test_dispatch_pool_status_roundtrip() {
+        for s in [DispatchPoolStatus::Active, DispatchPoolStatus::Suspended, DispatchPoolStatus::Archived] {
+            assert_eq!(DispatchPoolStatus::from_str(s.as_str()), s, "Roundtrip failed for {:?}", s);
         }
     }
+
+    #[test]
+    fn test_dispatch_pool_builder_methods() {
+        let pool = DispatchPool::new("pool", "Pool")
+            .with_description("A test pool")
+            .with_client_id("client-1")
+            .with_rate_limit(200)
+            .with_concurrency(20);
+
+        assert_eq!(pool.description, Some("A test pool".to_string()));
+        assert_eq!(pool.client_id, Some("client-1".to_string()));
+        assert_eq!(pool.rate_limit, 200);
+        assert_eq!(pool.concurrency, 20);
+    }
+
+    #[test]
+    fn test_dispatch_pool_suspend() {
+        let mut pool = DispatchPool::new("pool", "Pool");
+        assert_eq!(pool.status, DispatchPoolStatus::Active);
+
+        pool.suspend();
+        assert_eq!(pool.status, DispatchPoolStatus::Suspended);
+    }
+
+    #[test]
+    fn test_dispatch_pool_activate() {
+        let mut pool = DispatchPool::new("pool", "Pool");
+        pool.suspend();
+
+        pool.activate();
+        assert_eq!(pool.status, DispatchPoolStatus::Active);
+    }
+
+    #[test]
+    fn test_dispatch_pool_archive() {
+        let mut pool = DispatchPool::new("pool", "Pool");
+        pool.archive();
+        assert_eq!(pool.status, DispatchPoolStatus::Archived);
+    }
+
+    #[test]
+    fn test_dispatch_pool_status_transitions() {
+        let mut pool = DispatchPool::new("pool", "Pool");
+        assert_eq!(pool.status, DispatchPoolStatus::Active);
+
+        pool.suspend();
+        assert_eq!(pool.status, DispatchPoolStatus::Suspended);
+
+        pool.activate();
+        assert_eq!(pool.status, DispatchPoolStatus::Active);
+
+        pool.archive();
+        assert_eq!(pool.status, DispatchPoolStatus::Archived);
+    }
 }
+

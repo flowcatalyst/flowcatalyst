@@ -58,6 +58,7 @@ impl StandbyRouterConfig {
     /// Convert to fc-standby's LeaderElectionConfig
     pub fn to_leader_config(&self) -> LeaderElectionConfig {
         LeaderElectionConfig {
+            enabled: self.enabled,
             redis_url: self.redis_url.clone(),
             lock_key: self.lock_key.clone(),
             lock_ttl_seconds: self.lock_ttl_seconds,

@@ -18,7 +18,7 @@ use crate::principal::repository::PrincipalRepository;
 use crate::application::entity::Application;
 use crate::application::repository::ApplicationRepository;
 use crate::application::client_config_repository::ApplicationClientConfigRepository;
-use crate::shared::error::PlatformError;
+use crate::shared::error::{PlatformError, NotFoundExt};
 use crate::shared::api_common::{PaginationParams, CreatedResponse};
 use crate::shared::middleware::Authenticated;
 use crate::{AuditService, PasswordService};
@@ -387,16 +387,12 @@ pub struct PrincipalsState {
     pub client_auth_config_repo: Option<Arc<crate::ClientAuthConfigRepository>>,
     pub application_repo: Option<Arc<ApplicationRepository>>,
     pub app_client_config_repo: Option<Arc<ApplicationClientConfigRepository>>,
+    /// When configured, enables `POST /api/admin/principals/{id}/send-password-reset`
+    /// which emails the user a single-use reset link (same flow as
+    /// user-initiated `/auth/password-reset/request`).
+    pub password_reset_emailer: Option<Arc<crate::auth::password_reset_api::PasswordResetEmailer>>,
 }
 
-fn parse_scope(s: &str) -> Result<UserScope, PlatformError> {
-    match s.to_uppercase().as_str() {
-        "ANCHOR" => Ok(UserScope::Anchor),
-        "PARTNER" => Ok(UserScope::Partner),
-        "CLIENT" => Ok(UserScope::Client),
-        _ => Err(PlatformError::validation(format!("Invalid scope: {}", s))),
-    }
-}
 
 /// Create a new user principal
 #[utoipa::path(
@@ -471,7 +467,7 @@ pub async fn get_principal(
     Path(id): Path<String>,
 ) -> Result<Json<PrincipalResponse>, PlatformError> {
     let principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     // Check access - anchor can see all, others only their client
     if !auth.0.is_anchor() {
@@ -508,23 +504,23 @@ pub async fn list_principals(
     auth: Authenticated,
     Query(query): Query<PrincipalsQuery>,
 ) -> Result<Json<PrincipalListResponse>, PlatformError> {
-    let principals = if let Some(ref client_id) = query.client_id {
+    // Validate client_id access upfront
+    if let Some(ref client_id) = query.client_id {
         if !auth.0.can_access_client(client_id) {
             return Err(PlatformError::forbidden(format!("No access to client: {}", client_id)));
         }
-        state.principal_repo.find_by_client(client_id).await?
-    } else if let Some(ref scope) = query.scope {
-        let s = parse_scope(scope)?;
-        state.principal_repo.find_by_scope(s).await?
-    } else if query.principal_type.as_deref() == Some("USER") {
-        state.principal_repo.find_users().await?
-    } else if query.principal_type.as_deref() == Some("SERVICE") {
-        state.principal_repo.find_services().await?
-    } else {
-        state.principal_repo.find_active().await?
-    };
+    }
 
-    // Convert to response DTOs and apply filters
+    // Apply all combinable filters at the DB level
+    let principals = state.principal_repo.find_with_filters(
+        query.client_id.as_deref(),
+        query.scope.as_deref(),
+        query.principal_type.as_deref(),
+        query.active,
+        query.q.as_deref(),
+    ).await?;
+
+    // Post-filter: access control + roles (requires hydrated data)
     let mut filtered: Vec<PrincipalResponse> = principals.into_iter()
         // Access control
         .filter(|p| {
@@ -537,25 +533,7 @@ pub async fn list_principals(
             }
         })
         .map(|p| p.into())
-        // Active status filter
-        .filter(|p: &PrincipalResponse| {
-            match query.active {
-                Some(active) => p.active == active,
-                None => true,
-            }
-        })
-        // Search filter (name or email)
-        .filter(|p: &PrincipalResponse| {
-            match &query.q {
-                Some(q) if !q.is_empty() => {
-                    let q = q.to_lowercase();
-                    p.name.to_lowercase().contains(&q)
-                        || p.email.as_ref().map_or(false, |e| e.to_lowercase().contains(&q))
-                }
-                _ => true,
-            }
-        })
-        // Roles filter
+        // Roles filter (requires checking hydrated roles, stays in-memory)
         .filter(|p: &PrincipalResponse| {
             match &query.roles {
                 Some(roles_str) if !roles_str.is_empty() => {
@@ -599,7 +577,7 @@ pub async fn list_principals(
     ),
     request_body = UpdatePrincipalRequest,
     responses(
-        (status = 200, description = "Principal updated", body = PrincipalResponse),
+        (status = 204, description = "Principal updated"),
         (status = 404, description = "Principal not found")
     ),
     security(("bearer_auth" = []))
@@ -609,9 +587,9 @@ pub async fn update_principal(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdatePrincipalRequest>,
-) -> Result<Json<PrincipalResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     let mut principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     // Check access
     if !auth.0.is_anchor() {
@@ -656,7 +634,7 @@ pub async fn update_principal(
         let _ = audit.log_update(&auth.0, "Principal", &id, format!("Updated principal {}", principal.name)).await;
     }
 
-    Ok(Json(principal.into()))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Get roles assigned to a principal
@@ -680,7 +658,7 @@ pub async fn get_roles(
     Path(id): Path<String>,
 ) -> Result<Json<RolesListResponse>, PlatformError> {
     let principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     // Check access
     if !auth.0.is_anchor() {
@@ -730,7 +708,7 @@ pub async fn assign_role(
     crate::checks::require_anchor(&auth.0)?;
 
     let mut principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     let role = req.role.clone();
     let client_id = req.client_id.clone();
@@ -776,7 +754,7 @@ pub async fn batch_assign_roles(
     crate::checks::require_anchor(&auth.0)?;
 
     let mut principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     // Track what was added/removed
     let old_roles: std::collections::HashSet<String> = principal.roles.iter()
@@ -838,7 +816,7 @@ pub async fn remove_role(
     crate::checks::require_anchor(&auth.0)?;
 
     let mut principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     principal.roles.retain(|r| r.role != role);
     principal.updated_at = chrono::Utc::now();
@@ -874,7 +852,7 @@ pub async fn get_client_access(
     Path(id): Path<String>,
 ) -> Result<Json<ClientAccessListResponse>, PlatformError> {
     let principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     // Check access
     if !auth.0.is_anchor() {
@@ -924,7 +902,7 @@ pub async fn grant_client_access(
     crate::checks::require_anchor(&auth.0)?;
 
     let mut principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     let client_id = req.client_id.clone();
     let granted_at = chrono::Utc::now();
@@ -968,7 +946,7 @@ pub async fn revoke_client_access(
     crate::checks::require_anchor(&auth.0)?;
 
     let mut principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     principal.revoke_client_access(&client_id);
     state.principal_repo.update(&principal).await?;
@@ -1004,7 +982,7 @@ pub async fn delete_principal(
     crate::checks::require_anchor(&auth.0)?;
 
     let mut principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     principal.deactivate();
     state.principal_repo.update(&principal).await?;
@@ -1047,7 +1025,7 @@ pub async fn activate_principal(
     crate::checks::require_anchor(&auth.0)?;
 
     let mut principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     principal.activate();
     state.principal_repo.update(&principal).await?;
@@ -1090,7 +1068,7 @@ pub async fn deactivate_principal(
     crate::checks::require_anchor(&auth.0)?;
 
     let mut principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     principal.deactivate();
     state.principal_repo.update(&principal).await?;
@@ -1143,7 +1121,7 @@ pub async fn reset_password(
     password_service.validate_password(&req.new_password)?;
 
     let mut principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     // Check that this is a user with internal auth
     if !principal.is_user() {
@@ -1177,6 +1155,81 @@ pub async fn reset_password(
 
     Ok(Json(StatusChangeResponse {
         message: "Password reset successfully".to_string(),
+    }))
+}
+
+/// Trigger a password reset email for an internal-auth user.
+///
+/// Sends the same single-use email as the user-initiated
+/// `/auth/password-reset/request` flow. The user clicks the link and sets
+/// their own password; the admin never sees or handles the password.
+///
+/// Rejects OIDC-federated users (they manage credentials at their IDP) and
+/// users without an email address.
+#[utoipa::path(
+    post,
+    path = "/{id}/send-password-reset",
+    tag = "principals",
+    operation_id = "postApiAdminPrincipalsByIdSendPasswordReset",
+    params(
+        ("id" = String, Path, description = "Principal ID")
+    ),
+    responses(
+        (status = 200, description = "Reset email queued", body = StatusChangeResponse),
+        (status = 400, description = "User is not eligible (OIDC, service account, or no email)"),
+        (status = 404, description = "Principal not found"),
+        (status = 403, description = "Insufficient permissions")
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn send_password_reset(
+    State(state): State<PrincipalsState>,
+    auth: Authenticated,
+    Path(id): Path<String>,
+) -> Result<Json<StatusChangeResponse>, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
+
+    let emailer = state.password_reset_emailer.as_ref()
+        .ok_or_else(|| PlatformError::internal("Password reset emailer not configured"))?;
+
+    let principal = state.principal_repo.find_by_id(&id).await?
+        .or_not_found("Principal", &id)?;
+
+    if !principal.is_user() {
+        return Err(PlatformError::validation(
+            "Password reset only applies to user accounts",
+        ));
+    }
+    if principal.external_identity.is_some() {
+        return Err(PlatformError::validation(
+            "Cannot send password reset for OIDC-federated users — they manage credentials at their IDP",
+        ));
+    }
+    if principal.user_identity.as_ref().map(|i| i.email.is_empty()).unwrap_or(true) {
+        return Err(PlatformError::validation(
+            "User does not have an email address on file",
+        ));
+    }
+
+    emailer.send_reset_email(&principal).await?;
+
+    tracing::info!(
+        principal_id = %id,
+        admin_id = %auth.0.principal_id,
+        "Admin triggered password reset email"
+    );
+
+    if let Some(ref audit) = state.audit_service {
+        let _ = audit.log_update(
+            &auth.0,
+            "Principal",
+            &id,
+            "Password reset email sent by admin".to_string(),
+        ).await;
+    }
+
+    Ok(Json(StatusChangeResponse {
+        message: "Password reset email sent".to_string(),
     }))
 }
 
@@ -1284,7 +1337,7 @@ pub async fn get_application_access(
     Path(id): Path<String>,
 ) -> Result<Json<ApplicationAccessListResponse>, PlatformError> {
     let principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     // Check access
     if !auth.0.is_anchor() {
@@ -1341,7 +1394,7 @@ pub async fn set_application_access(
     crate::checks::require_anchor(&auth.0)?;
 
     let mut principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     let app_repo = state.application_repo.as_ref()
         .ok_or_else(|| PlatformError::internal("Application repository not configured"))?;
@@ -1429,7 +1482,7 @@ pub async fn get_available_applications(
     Path(id): Path<String>,
 ) -> Result<Json<AvailableApplicationsResponse>, PlatformError> {
     let principal = state.principal_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Principal", &id))?;
+        .or_not_found("Principal", &id)?;
 
     // Check access
     if !auth.0.is_anchor() {
@@ -1485,6 +1538,187 @@ pub async fn get_available_applications(
     Ok(Json(AvailableApplicationsResponse { applications, total }))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::principal::entity::{Principal, PrincipalType, UserScope, UserIdentity};
+    use crate::service_account::entity::RoleAssignment;
+    use chrono::Utc;
+
+    fn make_test_principal() -> Principal {
+        let now = Utc::now();
+        Principal {
+            id: "prn_ABCDEFGHIJKLM".to_string(),
+            principal_type: PrincipalType::User,
+            scope: UserScope::Anchor,
+            client_id: None,
+            application_id: None,
+            name: "Jane Admin".to_string(),
+            active: true,
+            user_identity: Some(UserIdentity::new("jane@example.com")),
+            service_account_id: None,
+            roles: vec![
+                RoleAssignment::new("platform:admin"),
+            ],
+            assigned_clients: vec!["clt_CLIENT1234567".to_string()],
+            client_identifier_map: std::collections::HashMap::new(),
+            accessible_application_ids: vec![],
+            created_at: now,
+            updated_at: now,
+            external_identity: None,
+        }
+    }
+
+    // --- PrincipalResponse serialization ---
+
+    #[test]
+    fn test_principal_response_serialization() {
+        let principal = make_test_principal();
+        let response = PrincipalResponse::from(principal);
+
+        let json = serde_json::to_value(&response).unwrap();
+
+        assert_eq!(json["id"], "prn_ABCDEFGHIJKLM");
+        assert_eq!(json["type"], "USER");
+        assert_eq!(json["scope"], "ANCHOR");
+        assert_eq!(json["name"], "Jane Admin");
+        assert_eq!(json["active"], true);
+        assert_eq!(json["email"], "jane@example.com");
+        assert_eq!(json["idpType"], "INTERNAL");
+        assert_eq!(json["isAnchorUser"], true);
+        assert!(json["roles"].is_array());
+        assert_eq!(json["roles"][0], "platform:admin");
+        assert!(json["grantedClientIds"].is_array());
+        assert_eq!(json["grantedClientIds"][0], "clt_CLIENT1234567");
+        // Verify camelCase field names
+        assert!(json.get("createdAt").is_some());
+        assert!(json.get("updatedAt").is_some());
+        // Verify no snake_case leak
+        assert!(json.get("principal_type").is_none());
+        assert!(json.get("client_id").is_none());
+        assert!(json.get("is_anchor_user").is_none());
+        assert!(json.get("granted_client_ids").is_none());
+    }
+
+    #[test]
+    fn test_principal_response_without_user_identity() {
+        let now = Utc::now();
+        let principal = Principal {
+            id: "prn_SERVICEID12345".to_string(),
+            principal_type: PrincipalType::Service,
+            scope: UserScope::Client,
+            client_id: Some("clt_CLIENT1234567".to_string()),
+            application_id: None,
+            name: "My Service Account".to_string(),
+            active: true,
+            user_identity: None,
+            service_account_id: None,
+            roles: vec![],
+            assigned_clients: vec![],
+            client_identifier_map: std::collections::HashMap::new(),
+            accessible_application_ids: vec![],
+            created_at: now,
+            updated_at: now,
+            external_identity: None,
+        };
+
+        let response = PrincipalResponse::from(principal);
+        let json = serde_json::to_value(&response).unwrap();
+
+        assert_eq!(json["type"], "SERVICE");
+        assert_eq!(json["scope"], "CLIENT");
+        assert!(json["email"].is_null());
+        assert!(json["idpType"].is_null());
+        assert_eq!(json["isAnchorUser"], false);
+        assert_eq!(json["clientId"], "clt_CLIENT1234567");
+    }
+
+    // --- CreateUserRequest deserialization ---
+
+    #[test]
+    fn test_create_user_request_deserialization() {
+        let json = serde_json::json!({
+            "email": "user@example.com",
+            "name": "Test User",
+            "password": "secret123456"
+        });
+
+        let req: CreateUserRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.email, "user@example.com");
+        assert_eq!(req.name, "Test User");
+        assert_eq!(req.password, Some("secret123456".to_string()));
+        assert!(req.client_id.is_none());
+    }
+
+    #[test]
+    fn test_create_user_request_with_client_id() {
+        let json = serde_json::json!({
+            "email": "user@example.com",
+            "name": "Client User",
+            "clientId": "clt_ABCDEFGHIJKLM"
+        });
+
+        let req: CreateUserRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.client_id, Some("clt_ABCDEFGHIJKLM".to_string()));
+        assert!(req.password.is_none());
+    }
+
+    #[test]
+    fn test_create_user_request_missing_email() {
+        let json = serde_json::json!({
+            "name": "Test User"
+        });
+
+        let result = serde_json::from_value::<CreateUserRequest>(json);
+        assert!(result.is_err(), "Should fail without email");
+    }
+
+    #[test]
+    fn test_create_user_request_missing_name() {
+        let json = serde_json::json!({
+            "email": "user@example.com"
+        });
+
+        let result = serde_json::from_value::<CreateUserRequest>(json);
+        assert!(result.is_err(), "Should fail without name");
+    }
+
+    // --- UserIdentityResponse ---
+
+    #[test]
+    fn test_user_identity_response_serialization() {
+        let identity = UserIdentity::new("user@example.com");
+        let response = UserIdentityResponse::from(&identity);
+        let json = serde_json::to_value(&response).unwrap();
+
+        assert_eq!(json["email"], "user@example.com");
+        assert_eq!(json["emailVerified"], false);
+        assert!(json["firstName"].is_null());
+        assert!(json["lastName"].is_null());
+    }
+
+    // --- AssignRoleRequest ---
+
+    #[test]
+    fn test_assign_role_request_deserialization() {
+        let json = serde_json::json!({
+            "role": "platform:admin",
+            "clientId": "clt_123"
+        });
+
+        let req: AssignRoleRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.role, "platform:admin");
+        assert_eq!(req.client_id, Some("clt_123".to_string()));
+    }
+
+    #[test]
+    fn test_assign_role_request_missing_role() {
+        let json = serde_json::json!({});
+        let result = serde_json::from_value::<AssignRoleRequest>(json);
+        assert!(result.is_err(), "Should fail without role");
+    }
+}
+
 /// Create principals router
 pub fn principals_router(state: PrincipalsState) -> OpenApiRouter {
     OpenApiRouter::new()
@@ -1494,6 +1728,7 @@ pub fn principals_router(state: PrincipalsState) -> OpenApiRouter {
         .routes(routes!(activate_principal))
         .routes(routes!(deactivate_principal))
         .routes(routes!(reset_password))
+        .routes(routes!(send_password_reset))
         .routes(routes!(get_roles, assign_role, batch_assign_roles))
         .routes(routes!(remove_role))
         .routes(routes!(get_client_access, grant_client_access))

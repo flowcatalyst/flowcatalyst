@@ -208,7 +208,9 @@ async fn list_raw_events(
     let page = query.page.unwrap_or(0);
     let size = query.size.unwrap_or(20).clamp(1, 100);
 
-    let events = state.event_repo.find_recent_paged(page as u64, size as u64).await?;
+    let limit = size as i64;
+    let offset = (page as i64) * (size as i64);
+    let events = state.event_repo.find_recent_paged(limit, offset).await?;
     let total_count = state.event_repo.count_all().await?;
 
     let responses: Vec<RawEventResponse> = events.iter().map(RawEventResponse::from).collect();
@@ -247,7 +249,9 @@ async fn list_raw_dispatch_jobs(
     let page = query.page.unwrap_or(0);
     let size = query.size.unwrap_or(20).clamp(1, 100);
 
-    let jobs = state.dispatch_job_repo.find_recent_paged(page, size).await?;
+    let limit = size as i64;
+    let offset = (page as i64) * (size as i64);
+    let jobs = state.dispatch_job_repo.find_recent_paged(limit, offset).await?;
     let total_count = state.dispatch_job_repo.count_all().await?;
 
     let responses: Vec<RawDispatchJobResponse> = jobs.iter().map(RawDispatchJobResponse::from).collect();

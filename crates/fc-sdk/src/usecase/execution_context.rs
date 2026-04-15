@@ -157,3 +157,143 @@ impl ExecutionContext {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_generates_ids_and_sets_principal() {
+        // Clear any thread-local tracing context to ensure isolated test
+        TracingContext::clear_current();
+
+        let ctx = ExecutionContext::create("prn_user1");
+
+        assert!(ctx.execution_id.starts_with("exec-"));
+        assert!(!ctx.execution_id.is_empty());
+        // Without tracing context, correlation_id equals execution_id
+        assert_eq!(ctx.correlation_id, ctx.execution_id);
+        assert!(ctx.causation_id.is_none());
+        assert_eq!(ctx.principal_id, "prn_user1");
+        assert!(ctx.initiated_at <= chrono::Utc::now());
+    }
+
+    #[test]
+    fn create_picks_up_tracing_context() {
+        TracingContext::run_with_context("trace-corr-123", Some("cause-evt-1".into()), || {
+            let ctx = ExecutionContext::create("prn_test");
+
+            assert!(ctx.execution_id.starts_with("exec-"));
+            assert_eq!(ctx.correlation_id, "trace-corr-123");
+            assert_eq!(ctx.causation_id.as_deref(), Some("cause-evt-1"));
+            assert_eq!(ctx.principal_id, "prn_test");
+        });
+    }
+
+    #[test]
+    fn create_picks_up_tracing_context_without_causation() {
+        TracingContext::run_with_context("corr-only", None, || {
+            let ctx = ExecutionContext::create("prn");
+            assert_eq!(ctx.correlation_id, "corr-only");
+            assert!(ctx.causation_id.is_none());
+        });
+    }
+
+    #[test]
+    fn with_correlation_sets_specific_correlation_id() {
+        let ctx = ExecutionContext::with_correlation("prn_gw", "gateway-trace-456");
+
+        assert!(ctx.execution_id.starts_with("exec-"));
+        assert_eq!(ctx.correlation_id, "gateway-trace-456");
+        assert!(ctx.causation_id.is_none());
+        assert_eq!(ctx.principal_id, "prn_gw");
+    }
+
+    #[test]
+    fn from_tracing_context() {
+        let tc = TracingContext::new("tc-corr".into(), Some("tc-cause".into()));
+        let ctx = ExecutionContext::from_tracing_context(&tc, "prn_tc");
+
+        assert!(ctx.execution_id.starts_with("exec-"));
+        assert_eq!(ctx.correlation_id, "tc-corr");
+        assert_eq!(ctx.causation_id.as_deref(), Some("tc-cause"));
+        assert_eq!(ctx.principal_id, "prn_tc");
+    }
+
+    #[test]
+    fn with_causation_creates_child_context() {
+        let parent = ExecutionContext::with_correlation("prn_parent", "corr-parent");
+        let child = parent.with_causation("evt_parent_id");
+
+        // execution_id and correlation_id are preserved
+        assert_eq!(child.execution_id, parent.execution_id);
+        assert_eq!(child.correlation_id, parent.correlation_id);
+        // causation_id is set to the parent event
+        assert_eq!(child.causation_id.as_deref(), Some("evt_parent_id"));
+        // principal is preserved
+        assert_eq!(child.principal_id, parent.principal_id);
+    }
+
+    #[test]
+    fn with_principal_creates_context_with_different_principal() {
+        let ctx = ExecutionContext::with_correlation("prn_original", "corr-1");
+        let switched = ctx.with_principal("prn_delegate");
+
+        assert_eq!(switched.execution_id, ctx.execution_id);
+        assert_eq!(switched.correlation_id, ctx.correlation_id);
+        assert_eq!(switched.causation_id, ctx.causation_id);
+        assert_eq!(switched.principal_id, "prn_delegate");
+        // initiated_at is preserved
+        assert_eq!(switched.initiated_at, ctx.initiated_at);
+    }
+
+    #[test]
+    fn from_parent_event_chains_correlation_and_causation() {
+        use crate::usecase::EventMetadata;
+        use serde::Serialize;
+
+        #[derive(Debug, Clone, Serialize)]
+        struct FakeEvent {
+            pub metadata: EventMetadata,
+        }
+        crate::impl_domain_event!(FakeEvent);
+
+        let parent_meta = EventMetadata::new(
+            "evt_parent_123".into(),
+            "shop:order:created",
+            "1.0",
+            "shop",
+            "orders.order.1".into(),
+            "orders:order:1".into(),
+            "exec-parent".into(),
+            "corr-chain".into(),
+            None,
+            "prn_orig".into(),
+        );
+        let parent_event = FakeEvent { metadata: parent_meta };
+
+        let ctx = ExecutionContext::from_parent_event(&parent_event, "prn_handler");
+
+        assert!(ctx.execution_id.starts_with("exec-"));
+        assert_ne!(ctx.execution_id, "exec-parent"); // new execution
+        assert_eq!(ctx.correlation_id, "corr-chain"); // preserved
+        assert_eq!(ctx.causation_id.as_deref(), Some("evt_parent_123")); // parent's ID
+        assert_eq!(ctx.principal_id, "prn_handler");
+    }
+
+    #[test]
+    fn unique_execution_ids() {
+        TracingContext::clear_current();
+        let a = ExecutionContext::create("prn");
+        let b = ExecutionContext::create("prn");
+        assert_ne!(a.execution_id, b.execution_id);
+    }
+
+    #[test]
+    fn clone_is_independent() {
+        let ctx = ExecutionContext::with_correlation("prn", "corr");
+        let cloned = ctx.clone();
+        assert_eq!(ctx.execution_id, cloned.execution_id);
+        assert_eq!(ctx.principal_id, cloned.principal_id);
+    }
+}

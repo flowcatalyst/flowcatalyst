@@ -123,3 +123,88 @@ impl EmailDomainMappingDeleted {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::usecase::DomainEvent;
+
+    #[test]
+    fn test_email_domain_mapping_created_event() {
+        let ctx = ExecutionContext::create("admin-123");
+        let event = EmailDomainMappingCreated::new(
+            &ctx,
+            "edm-1",
+            "example.com",
+            "idp-456",
+            "ANCHOR",
+        );
+
+        assert_eq!(event.event_type(), "platform:admin:edm:created");
+        assert_eq!(event.mapping_id, "edm-1");
+        assert_eq!(event.email_domain, "example.com");
+        assert_eq!(event.identity_provider_id, "idp-456");
+        assert_eq!(event.scope_type, "ANCHOR");
+        assert_eq!(event.subject(), "platform.edm.edm-1");
+        assert_eq!(event.message_group(), "platform:edm:edm-1");
+        assert_eq!(event.principal_id(), "admin-123");
+    }
+
+    #[test]
+    fn test_email_domain_mapping_created_serialization() {
+        let ctx = ExecutionContext::create("user-1");
+        let event = EmailDomainMappingCreated::new(
+            &ctx, "edm-2", "test.org", "idp-1", "CLIENT",
+        );
+
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("edm-2"));
+        assert!(json.contains("test.org"));
+        assert!(json.contains("idp-1"));
+        assert!(json.contains("CLIENT"));
+    }
+
+    #[test]
+    fn test_email_domain_mapping_updated_event() {
+        let ctx = ExecutionContext::create("admin-456");
+        let event = EmailDomainMappingUpdated::new(
+            &ctx,
+            "edm-2",
+            "updated.com",
+        );
+
+        assert_eq!(event.event_type(), "platform:admin:edm:updated");
+        assert_eq!(event.mapping_id, "edm-2");
+        assert_eq!(event.email_domain, "updated.com");
+        assert_eq!(event.subject(), "platform.edm.edm-2");
+        assert_eq!(event.message_group(), "platform:edm:edm-2");
+        assert_eq!(event.principal_id(), "admin-456");
+    }
+
+    #[test]
+    fn test_email_domain_mapping_deleted_event() {
+        let ctx = ExecutionContext::create("admin-789");
+        let event = EmailDomainMappingDeleted::new(
+            &ctx,
+            "edm-3",
+            "deleted.com",
+        );
+
+        assert_eq!(event.event_type(), "platform:admin:edm:deleted");
+        assert_eq!(event.mapping_id, "edm-3");
+        assert_eq!(event.email_domain, "deleted.com");
+        assert_eq!(event.subject(), "platform.edm.edm-3");
+        assert_eq!(event.message_group(), "platform:edm:edm-3");
+        assert_eq!(event.principal_id(), "admin-789");
+    }
+
+    #[test]
+    fn test_event_metadata_ids_are_unique() {
+        let ctx = ExecutionContext::create("user-1");
+        let event1 = EmailDomainMappingCreated::new(&ctx, "edm-1", "a.com", "idp-1", "ANCHOR");
+        let event2 = EmailDomainMappingCreated::new(&ctx, "edm-2", "b.com", "idp-2", "CLIENT");
+
+        // Each event should get a unique event_id
+        assert_ne!(event1.metadata.event_id, event2.metadata.event_id);
+    }
+}

@@ -163,31 +163,6 @@ impl OidcLoginState {
     }
 }
 
-/// Conversion from SeaORM model
-impl From<crate::entities::iam_oidc_login_states::Model> for OidcLoginState {
-    fn from(m: crate::entities::iam_oidc_login_states::Model) -> Self {
-        Self {
-            state: m.state,
-            email_domain: m.email_domain,
-            identity_provider_id: m.identity_provider_id,
-            email_domain_mapping_id: m.email_domain_mapping_id,
-            nonce: m.nonce,
-            code_verifier: m.code_verifier,
-            return_url: m.return_url,
-            oauth_client_id: m.oauth_client_id,
-            oauth_redirect_uri: m.oauth_redirect_uri,
-            oauth_scope: m.oauth_scope,
-            oauth_state: m.oauth_state,
-            oauth_code_challenge: m.oauth_code_challenge,
-            oauth_code_challenge_method: m.oauth_code_challenge_method,
-            oauth_nonce: m.oauth_nonce,
-            interaction_uid: m.interaction_uid,
-            created_at: m.created_at.with_timezone(&Utc),
-            expires_at: m.expires_at.with_timezone(&Utc),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

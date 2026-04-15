@@ -17,6 +17,7 @@ webhook = ["dep:hmac", "dep:sha2", "dep:hex"]
 
 [dependencies]
 # Core (always included)
+fc-common = { path = "../fc-common" }
 serde = { workspace = true }
 serde_json = "1.0"
 chrono = { workspace = true }

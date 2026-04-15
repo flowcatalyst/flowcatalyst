@@ -96,7 +96,7 @@ pub struct IdentityProvidersState {
     operation_id = "postApiAdminIdentityProviders",
     request_body = CreateIdentityProviderRequest,
     responses(
-        (status = 201, description = "Identity provider created", body = IdentityProviderResponse),
+        (status = 201, description = "Identity provider created", body = crate::shared::api_common::CreatedResponse),
         (status = 400, description = "Validation error"),
         (status = 409, description = "Duplicate code")
     ),
@@ -106,7 +106,7 @@ async fn create_identity_provider(
     State(state): State<IdentityProvidersState>,
     _auth: Authenticated,
     Json(req): Json<CreateIdentityProviderRequest>,
-) -> Result<(axum::http::StatusCode, Json<IdentityProviderResponse>), PlatformError> {
+) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
     if state.idp_repo.find_by_code(&req.code).await?.is_some() {
         return Err(PlatformError::duplicate("IdentityProvider", "code", &req.code));
     }
@@ -120,8 +120,9 @@ async fn create_identity_provider(
     idp.oidc_issuer_pattern = req.oidc_issuer_pattern;
     idp.allowed_email_domains = req.allowed_email_domains.unwrap_or_default();
 
+    let id = idp.id.clone();
     state.idp_repo.insert(&idp).await?;
-    Ok((axum::http::StatusCode::CREATED, Json(idp.into())))
+    Ok((axum::http::StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
 }
 
 #[utoipa::path(
@@ -180,7 +181,7 @@ async fn get_identity_provider(
     ),
     request_body = UpdateIdentityProviderRequest,
     responses(
-        (status = 200, description = "Identity provider updated", body = IdentityProviderResponse),
+        (status = 204, description = "Identity provider updated"),
         (status = 404, description = "Identity provider not found")
     ),
     security(("bearer_auth" = []))
@@ -190,7 +191,7 @@ async fn update_identity_provider(
     _auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateIdentityProviderRequest>,
-) -> Result<Json<IdentityProviderResponse>, PlatformError> {
+) -> Result<axum::http::StatusCode, PlatformError> {
     let mut idp = state.idp_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("IdentityProvider", &id))?;
 
@@ -204,7 +205,7 @@ async fn update_identity_provider(
     idp.updated_at = chrono::Utc::now();
 
     state.idp_repo.update(&idp).await?;
-    Ok(Json(idp.into()))
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
 #[utoipa::path(

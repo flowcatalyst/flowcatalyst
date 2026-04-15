@@ -182,7 +182,7 @@ pub struct ClientsState {
     operation_id = "postApiAdminClients",
     request_body = CreateClientRequest,
     responses(
-        (status = 201, description = "Client created", body = ClientResponse),
+        (status = 201, description = "Client created", body = crate::shared::api_common::CreatedResponse),
         (status = 400, description = "Validation error"),
         (status = 409, description = "Duplicate identifier")
     ),
@@ -192,7 +192,7 @@ pub async fn create_client(
     State(state): State<ClientsState>,
     auth: Authenticated,
     Json(req): Json<CreateClientRequest>,
-) -> Result<(StatusCode, Json<ClientResponse>), PlatformError> {
+) -> Result<(StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
     // Only anchor users can create clients
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
@@ -202,10 +202,11 @@ pub async fn create_client(
     }
 
     let client = Client::new(&req.name, &req.identifier);
+    let id = client.id.clone();
 
     state.client_repo.insert(&client).await?;
 
-    Ok((StatusCode::CREATED, Json(ClientResponse::from(client))))
+    Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
 }
 
 /// Get client by ID
@@ -283,7 +284,7 @@ pub async fn list_clients(
     ),
     request_body = UpdateClientRequest,
     responses(
-        (status = 200, description = "Client updated", body = ClientResponse),
+        (status = 204, description = "Client updated"),
         (status = 404, description = "Client not found")
     ),
     security(("bearer_auth" = []))
@@ -293,7 +294,7 @@ pub async fn update_client(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateClientRequest>,
-) -> Result<Json<ClientResponse>, PlatformError> {
+) -> Result<StatusCode, PlatformError> {
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
     let mut client = state.client_repo.find_by_id(&id).await?
@@ -306,7 +307,7 @@ pub async fn update_client(
 
     state.client_repo.update(&client).await?;
 
-    Ok(Json(client.into()))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Delete client (soft delete)
@@ -786,6 +787,193 @@ pub async fn update_client_applications(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::entity::{Client, ClientStatus};
+    use chrono::Utc;
+
+    fn make_test_client() -> Client {
+        let now = Utc::now();
+        Client {
+            id: "clt_ABCDEFGHIJKLM".to_string(),
+            name: "Acme Corporation".to_string(),
+            identifier: "acme-corp".to_string(),
+            status: ClientStatus::Active,
+            status_reason: None,
+            status_changed_at: None,
+            notes: vec![],
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    // --- ClientResponse serialization ---
+
+    #[test]
+    fn test_client_response_serialization() {
+        let client = make_test_client();
+        let response = ClientResponse::from(client);
+
+        let json = serde_json::to_value(&response).unwrap();
+
+        assert_eq!(json["id"], "clt_ABCDEFGHIJKLM");
+        assert_eq!(json["name"], "Acme Corporation");
+        assert_eq!(json["identifier"], "acme-corp");
+        assert_eq!(json["status"], "ACTIVE");
+        assert!(json["statusReason"].is_null());
+        assert!(json["statusChangedAt"].is_null());
+        // Verify camelCase field names
+        assert!(json.get("createdAt").is_some());
+        assert!(json.get("updatedAt").is_some());
+        // Verify no snake_case leak
+        assert!(json.get("status_reason").is_none());
+        assert!(json.get("status_changed_at").is_none());
+        assert!(json.get("created_at").is_none());
+    }
+
+    #[test]
+    fn test_client_response_with_suspension() {
+        let mut client = make_test_client();
+        client.suspend("Payment overdue");
+
+        let response = ClientResponse::from(client);
+        let json = serde_json::to_value(&response).unwrap();
+
+        assert_eq!(json["status"], "SUSPENDED");
+        assert_eq!(json["statusReason"], "Payment overdue");
+        assert!(json["statusChangedAt"].is_string(), "statusChangedAt should be ISO 8601 string");
+    }
+
+    // --- CreateClientRequest deserialization ---
+
+    #[test]
+    fn test_create_client_request_deserialization() {
+        let json = serde_json::json!({
+            "identifier": "new-client",
+            "name": "New Client"
+        });
+
+        let req: CreateClientRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.identifier, "new-client");
+        assert_eq!(req.name, "New Client");
+    }
+
+    #[test]
+    fn test_create_client_request_camel_case() {
+        // Verify that camelCase deserialization works (not just exact match)
+        let json = serde_json::json!({
+            "identifier": "test-id",
+            "name": "Test Name"
+        });
+
+        let req: CreateClientRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.identifier, "test-id");
+    }
+
+    #[test]
+    fn test_create_client_request_missing_identifier() {
+        let json = serde_json::json!({
+            "name": "Test"
+        });
+
+        let result = serde_json::from_value::<CreateClientRequest>(json);
+        assert!(result.is_err(), "Should fail without identifier");
+    }
+
+    #[test]
+    fn test_create_client_request_missing_name() {
+        let json = serde_json::json!({
+            "identifier": "test"
+        });
+
+        let result = serde_json::from_value::<CreateClientRequest>(json);
+        assert!(result.is_err(), "Should fail without name");
+    }
+
+    #[test]
+    fn test_create_client_request_empty_json() {
+        let json = serde_json::json!({});
+        let result = serde_json::from_value::<CreateClientRequest>(json);
+        assert!(result.is_err(), "Should fail with empty JSON");
+    }
+
+    // --- UpdateClientRequest ---
+
+    #[test]
+    fn test_update_client_request_deserialization() {
+        let json = serde_json::json!({
+            "name": "Updated Name"
+        });
+
+        let req: UpdateClientRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.name, Some("Updated Name".to_string()));
+    }
+
+    #[test]
+    fn test_update_client_request_empty() {
+        let json = serde_json::json!({});
+        let req: UpdateClientRequest = serde_json::from_value(json).unwrap();
+        assert!(req.name.is_none());
+    }
+
+    // --- StatusChangeRequest ---
+
+    #[test]
+    fn test_status_change_request_deserialization() {
+        let json = serde_json::json!({
+            "reason": "Payment issue"
+        });
+
+        let req: StatusChangeRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.reason, "Payment issue");
+    }
+
+    #[test]
+    fn test_status_change_request_missing_reason() {
+        let json = serde_json::json!({});
+        let result = serde_json::from_value::<StatusChangeRequest>(json);
+        assert!(result.is_err(), "Should fail without reason");
+    }
+
+    // --- ClientListResponse ---
+
+    #[test]
+    fn test_client_list_response_serialization() {
+        let client = make_test_client();
+        let list = ClientListResponse {
+            clients: vec![ClientResponse::from(client)],
+            total: 1,
+        };
+
+        let json = serde_json::to_value(&list).unwrap();
+        assert!(json["clients"].is_array());
+        assert_eq!(json["clients"].as_array().unwrap().len(), 1);
+        assert_eq!(json["total"], 1);
+    }
+
+    // --- AddNoteRequest ---
+
+    #[test]
+    fn test_add_note_request_deserialization() {
+        let json = serde_json::json!({
+            "category": "billing",
+            "text": "Payment received"
+        });
+
+        let req: AddNoteRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.category, "billing");
+        assert_eq!(req.text, "Payment received");
+    }
+
+    #[test]
+    fn test_add_note_request_missing_fields() {
+        let json = serde_json::json!({ "category": "billing" });
+        let result = serde_json::from_value::<AddNoteRequest>(json);
+        assert!(result.is_err(), "Should fail without text");
+    }
 }
 
 /// Create clients router

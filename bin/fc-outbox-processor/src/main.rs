@@ -42,20 +42,7 @@ use fc_outbox::repository::OutboxRepository;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::postgres::PgPoolOptions;
 
-fn env_or(key: &str, default: &str) -> String {
-    std::env::var(key).unwrap_or_else(|_| default.to_string())
-}
-
-fn env_or_parse<T: std::str::FromStr>(key: &str, default: T) -> T {
-    std::env::var(key)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
-}
-
-fn env_required(key: &str) -> Result<String> {
-    std::env::var(key).map_err(|_| anyhow::anyhow!("{} environment variable is required", key))
-}
+use fc_common::config::{env_or, env_or_parse, env_required};
 
 /// Build table config from environment variables
 fn build_table_config() -> OutboxTableConfig {

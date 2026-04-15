@@ -91,3 +91,46 @@ pub enum AuthError {
     #[error("Token exchange error: {0}")]
     TokenExchange(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auth_error_token_expired_display() {
+        let err = AuthError::TokenExpired;
+        assert_eq!(format!("{}", err), "Token has expired");
+    }
+
+    #[test]
+    fn auth_error_invalid_token_display() {
+        let err = AuthError::InvalidToken("bad signature".to_string());
+        assert_eq!(format!("{}", err), "Invalid token: bad signature");
+    }
+
+    #[test]
+    fn auth_error_discovery_display() {
+        let err = AuthError::Discovery("connection refused".to_string());
+        assert_eq!(format!("{}", err), "Discovery error: connection refused");
+    }
+
+    #[test]
+    fn auth_error_token_exchange_display() {
+        let err = AuthError::TokenExchange("HTTP 500".to_string());
+        assert_eq!(format!("{}", err), "Token exchange error: HTTP 500");
+    }
+
+    #[test]
+    fn auth_error_is_std_error() {
+        let err = AuthError::TokenExpired;
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
+    fn auth_error_debug() {
+        let err = AuthError::InvalidToken("test".to_string());
+        let debug = format!("{:?}", err);
+        assert!(debug.contains("InvalidToken"));
+        assert!(debug.contains("test"));
+    }
+}

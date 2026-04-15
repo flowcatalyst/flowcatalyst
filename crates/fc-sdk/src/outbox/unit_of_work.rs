@@ -768,3 +768,283 @@ impl UnitOfWork for InMemoryUnitOfWork {
         UseCaseResult::success(event)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::usecase::EventMetadata;
+
+    // ─── OutboxConfig ───────────────────────────────────────────────────
+
+    #[test]
+    fn outbox_config_default() {
+        let config = OutboxConfig::default();
+        assert_eq!(config.table_name, "outbox_messages");
+        assert!(config.client_id.is_none());
+        assert!(!config.audit_enabled);
+    }
+
+    #[test]
+    fn outbox_config_custom() {
+        let config = OutboxConfig {
+            table_name: "custom_outbox".to_string(),
+            client_id: Some("clt_123".to_string()),
+            audit_enabled: true,
+        };
+        assert_eq!(config.table_name, "custom_outbox");
+        assert_eq!(config.client_id.as_deref(), Some("clt_123"));
+        assert!(config.audit_enabled);
+    }
+
+    #[test]
+    fn outbox_config_clone() {
+        let config = OutboxConfig {
+            table_name: "t".into(),
+            client_id: Some("c".into()),
+            audit_enabled: true,
+        };
+        let cloned = config.clone();
+        assert_eq!(cloned.table_name, "t");
+        assert_eq!(cloned.client_id.as_deref(), Some("c"));
+        assert!(cloned.audit_enabled);
+    }
+
+    // ─── extract_aggregate_type ─────────────────────────────────────────
+
+    #[test]
+    fn extract_aggregate_type_standard_subject() {
+        assert_eq!(
+            OutboxUnitOfWork::extract_aggregate_type("orders.order.123"),
+            "Order"
+        );
+    }
+
+    #[test]
+    fn extract_aggregate_type_capitalizes_first_letter() {
+        assert_eq!(
+            OutboxUnitOfWork::extract_aggregate_type("fulfillment.shipment.abc"),
+            "Shipment"
+        );
+    }
+
+    #[test]
+    fn extract_aggregate_type_single_segment() {
+        assert_eq!(
+            OutboxUnitOfWork::extract_aggregate_type("single"),
+            "Unknown"
+        );
+    }
+
+    #[test]
+    fn extract_aggregate_type_empty_second_segment() {
+        assert_eq!(
+            OutboxUnitOfWork::extract_aggregate_type("a..c"),
+            ""
+        );
+    }
+
+    #[test]
+    fn extract_aggregate_type_empty_string() {
+        assert_eq!(
+            OutboxUnitOfWork::extract_aggregate_type(""),
+            "Unknown"
+        );
+    }
+
+    // ─── extract_entity_id ──────────────────────────────────────────────
+
+    #[test]
+    fn extract_entity_id_standard_subject() {
+        assert_eq!(
+            OutboxUnitOfWork::extract_entity_id("orders.order.ord_123"),
+            "ord_123"
+        );
+    }
+
+    #[test]
+    fn extract_entity_id_no_third_segment() {
+        assert_eq!(
+            OutboxUnitOfWork::extract_entity_id("orders.order"),
+            ""
+        );
+    }
+
+    #[test]
+    fn extract_entity_id_single_segment() {
+        assert_eq!(
+            OutboxUnitOfWork::extract_entity_id("single"),
+            ""
+        );
+    }
+
+    #[test]
+    fn extract_entity_id_empty() {
+        assert_eq!(
+            OutboxUnitOfWork::extract_entity_id(""),
+            ""
+        );
+    }
+
+    #[test]
+    fn extract_entity_id_many_segments() {
+        assert_eq!(
+            OutboxUnitOfWork::extract_entity_id("a.b.c.d.e"),
+            "c"
+        );
+    }
+
+    // ─── InMemoryUnitOfWork ─────────────────────────────────────────────
+
+    #[derive(Debug, Clone, Serialize)]
+    struct FakeEvent {
+        pub metadata: EventMetadata,
+    }
+    crate::impl_domain_event!(FakeEvent);
+
+    fn make_fake_event(event_id: &str) -> FakeEvent {
+        FakeEvent {
+            metadata: EventMetadata::new(
+                event_id.into(),
+                "test:event",
+                "1.0",
+                "test",
+                "test.entity.1".into(),
+                "test:entity:1".into(),
+                "exec-1".into(),
+                "corr-1".into(),
+                None,
+                "prn_test".into(),
+            ),
+        }
+    }
+
+    #[derive(Serialize)]
+    struct FakeCommand {
+        name: String,
+    }
+
+    #[derive(Serialize)]
+    struct FakeEntity {
+        id: String,
+    }
+
+    impl HasId for FakeEntity {
+        fn id(&self) -> &str {
+            &self.id
+        }
+    }
+
+    #[async_trait]
+    impl PgPersist for FakeEntity {
+        async fn pg_upsert(&self, _txn: &mut Transaction<'_, Postgres>) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn pg_delete(&self, _txn: &mut Transaction<'_, Postgres>) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn in_memory_uow_new_is_empty() {
+        let uow = InMemoryUnitOfWork::new();
+        assert!(uow.committed_events().is_empty());
+        assert!(!uow.has_commits());
+    }
+
+    #[test]
+    fn in_memory_uow_default_is_empty() {
+        let uow = InMemoryUnitOfWork::default();
+        assert!(uow.committed_events().is_empty());
+    }
+
+    #[tokio::test]
+    async fn in_memory_uow_commit_records_event() {
+        let uow = InMemoryUnitOfWork::new();
+        let event = make_fake_event("evt_commit_1");
+        let entity = FakeEntity { id: "e_1".into() };
+        let cmd = FakeCommand { name: "test".into() };
+
+        let result = uow.commit(&entity, event, &cmd).await;
+        assert!(result.is_success());
+        assert!(uow.has_commits());
+        assert_eq!(uow.committed_events(), vec!["evt_commit_1"]);
+    }
+
+    #[tokio::test]
+    async fn in_memory_uow_commit_delete_records_event() {
+        let uow = InMemoryUnitOfWork::new();
+        let event = make_fake_event("evt_delete_1");
+        let entity = FakeEntity { id: "e_1".into() };
+        let cmd = FakeCommand { name: "del".into() };
+
+        let result = uow.commit_delete(&entity, event, &cmd).await;
+        assert!(result.is_success());
+        assert_eq!(uow.committed_events(), vec!["evt_delete_1"]);
+    }
+
+    #[tokio::test]
+    async fn in_memory_uow_emit_event_records_event() {
+        let uow = InMemoryUnitOfWork::new();
+        let event = make_fake_event("evt_emit_1");
+        let cmd = FakeCommand { name: "emit".into() };
+
+        let result = uow.emit_event(event, &cmd).await;
+        assert!(result.is_success());
+        assert_eq!(uow.committed_events(), vec!["evt_emit_1"]);
+    }
+
+    #[tokio::test]
+    async fn in_memory_uow_commit_all_records_event() {
+        let uow = InMemoryUnitOfWork::new();
+        let event = make_fake_event("evt_all_1");
+        let cmd = FakeCommand { name: "all".into() };
+        let aggregates: Vec<Box<dyn PgAggregate>> = vec![];
+
+        let result = uow.commit_all(aggregates, event, &cmd).await;
+        assert!(result.is_success());
+        assert_eq!(uow.committed_events(), vec!["evt_all_1"]);
+    }
+
+    #[tokio::test]
+    async fn in_memory_uow_multiple_commits() {
+        let uow = InMemoryUnitOfWork::new();
+        let entity = FakeEntity { id: "e_1".into() };
+        let cmd = FakeCommand { name: "t".into() };
+
+        uow.commit(&entity, make_fake_event("a"), &cmd).await;
+        uow.commit(&entity, make_fake_event("b"), &cmd).await;
+        uow.emit_event(make_fake_event("c"), &cmd).await;
+
+        assert_eq!(uow.committed_events().len(), 3);
+        assert_eq!(uow.committed_events(), vec!["a", "b", "c"]);
+    }
+
+    #[tokio::test]
+    async fn in_memory_uow_clear() {
+        let uow = InMemoryUnitOfWork::new();
+        let entity = FakeEntity { id: "e_1".into() };
+        let cmd = FakeCommand { name: "t".into() };
+
+        uow.commit(&entity, make_fake_event("x"), &cmd).await;
+        assert!(uow.has_commits());
+
+        uow.clear();
+        assert!(!uow.has_commits());
+        assert!(uow.committed_events().is_empty());
+    }
+
+    #[tokio::test]
+    async fn in_memory_uow_returns_event_on_success() {
+        let uow = InMemoryUnitOfWork::new();
+        let entity = FakeEntity { id: "e_1".into() };
+        let cmd = FakeCommand { name: "t".into() };
+
+        let result = uow
+            .commit(&entity, make_fake_event("evt_return"), &cmd)
+            .await;
+
+        let event = result.unwrap();
+        assert_eq!(event.event_id(), "evt_return");
+        assert_eq!(event.event_type(), "test:event");
+    }
+}

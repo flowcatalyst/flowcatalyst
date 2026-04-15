@@ -11,7 +11,7 @@ class GetApiAdminMonitoringPoolStats extends \FlowCatalyst\Generated\Runtime\Cli
     }
     public function getUri(): string
     {
-        return '/api/monitoring/pool-stats';
+        return '/api/admin/monitoring/pool-stats';
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {

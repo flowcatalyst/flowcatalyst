@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 pub use fc_common::DispatchMode;
+pub use fc_common::DispatchStatus;
 
 /// Dispatch job kind
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,63 +30,6 @@ impl DispatchKind {
     }
     pub fn from_str(s: &str) -> Self {
         match s { "TASK" => Self::Task, _ => Self::Event }
-    }
-}
-
-/// Dispatch job status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum DispatchStatus {
-    /// Job created, waiting to be queued
-    Pending,
-    /// Job queued for processing
-    Queued,
-    /// Job is being processed
-    InProgress,
-    /// Job completed successfully
-    Completed,
-    /// Job failed after all retries
-    Failed,
-    /// Job expired (TTL exceeded)
-    Expired,
-}
-
-impl Default for DispatchStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
-}
-
-impl DispatchStatus {
-    pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Completed | Self::Failed | Self::Expired)
-    }
-
-    pub fn is_successful(&self) -> bool {
-        matches!(self, Self::Completed)
-    }
-
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Pending => "PENDING",
-            Self::Queued => "QUEUED",
-            Self::InProgress => "IN_PROGRESS",
-            Self::Completed => "COMPLETED",
-            Self::Failed => "FAILED",
-            Self::Expired => "EXPIRED",
-        }
-    }
-
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "PENDING" => Self::Pending,
-            "QUEUED" => Self::Queued,
-            "IN_PROGRESS" => Self::InProgress,
-            "COMPLETED" => Self::Completed,
-            "FAILED" => Self::Failed,
-            "EXPIRED" => Self::Expired,
-            _ => Self::Pending,
-        }
     }
 }
 
@@ -143,7 +87,7 @@ impl RetryStrategy {
     }
 }
 
-/// Error type classification
+/// Error type classification — matches TS DispatchErrorType
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ErrorType {
@@ -151,14 +95,34 @@ pub enum ErrorType {
     Connection,
     /// Timeout (retriable)
     Timeout,
-    /// Client error 4xx (not retriable)
-    ClientError,
-    /// Server error 5xx (retriable)
-    ServerError,
-    /// Configuration error (not retriable)
-    Configuration,
+    /// HTTP error (4xx or 5xx)
+    HttpError,
+    /// Validation/configuration error (not retriable)
+    Validation,
     /// Unknown error
     Unknown,
+}
+
+impl ErrorType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Connection => "CONNECTION",
+            Self::Timeout => "TIMEOUT",
+            Self::HttpError => "HTTP_ERROR",
+            Self::Validation => "VALIDATION",
+            Self::Unknown => "UNKNOWN",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "CONNECTION" => Self::Connection,
+            "TIMEOUT" => Self::Timeout,
+            "HTTP_ERROR" => Self::HttpError,
+            "VALIDATION" => Self::Validation,
+            _ => Self::Unknown,
+        }
+    }
 }
 
 /// Dispatch attempt record
@@ -410,12 +374,12 @@ pub struct DispatchJob {
     pub duration_millis: Option<i64>,
 }
 
-fn default_content_type() -> String {
+pub(crate) fn default_content_type() -> String {
     "application/json".to_string()
 }
 
 fn default_data_only() -> bool {
-    true
+    false
 }
 
 fn default_sequence() -> i32 {
@@ -451,7 +415,7 @@ impl DispatchJob {
             protocol: DispatchProtocol::HttpWebhook,
             payload: Some(payload.into()),
             payload_content_type: default_content_type(),
-            data_only: true,
+            data_only: false,
             event_id: Some(event_id.into()),
             correlation_id: None,
             client_id: None,
@@ -554,7 +518,7 @@ impl DispatchJob {
 
     /// Mark the job as in progress
     pub fn mark_in_progress(&mut self) {
-        self.status = DispatchStatus::InProgress;
+        self.status = DispatchStatus::Processing;
         self.updated_at = Utc::now();
     }
 
@@ -623,52 +587,533 @@ impl DispatchJob {
     }
 }
 
-/// Conversion from SeaORM model
-impl From<crate::entities::msg_dispatch_jobs::Model> for DispatchJob {
-    fn from(m: crate::entities::msg_dispatch_jobs::Model) -> Self {
-        let metadata: Vec<DispatchMetadata> = serde_json::from_value(m.metadata).unwrap_or_default();
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        Self {
-            id: m.id,
-            external_id: m.external_id,
-            kind: DispatchKind::from_str(&m.kind),
-            code: m.code,
-            source: m.source,
-            subject: m.subject,
-            target_url: m.target_url,
-            protocol: DispatchProtocol::from_str(&m.protocol),
-            payload: m.payload,
-            payload_content_type: m.payload_content_type.unwrap_or_else(default_content_type),
-            data_only: m.data_only,
-            event_id: m.event_id,
-            correlation_id: m.correlation_id,
-            client_id: m.client_id,
-            subscription_id: m.subscription_id,
-            service_account_id: m.service_account_id,
-            dispatch_pool_id: m.dispatch_pool_id,
-            message_group: m.message_group,
-            mode: DispatchMode::from_str(&m.mode),
-            sequence: m.sequence,
-            timeout_seconds: m.timeout_seconds as u32,
-            schema_id: m.schema_id,
-            max_retries: m.max_retries as u32,
-            retry_strategy: RetryStrategy::from_str(&m.retry_strategy),
-            status: DispatchStatus::from_str(&m.status),
-            attempt_count: m.attempt_count as u32,
-            last_error: m.last_error,
-            attempts: vec![], // Loaded separately from msg_dispatch_job_attempts table
-            metadata,
-            idempotency_key: m.idempotency_key,
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
-            scheduled_for: m.scheduled_for.map(|dt| dt.with_timezone(&Utc)),
-            expires_at: m.expires_at.map(|dt| dt.with_timezone(&Utc)),
-            last_attempt_at: m.last_attempt_at.map(|dt| dt.with_timezone(&Utc)),
-            completed_at: m.completed_at.map(|dt| dt.with_timezone(&Utc)),
-            duration_millis: m.duration_millis,
+    #[test]
+    fn test_dispatch_job_for_event() {
+        let job = DispatchJob::for_event(
+            "evt123",
+            "orders:fulfillment:shipment:shipped",
+            "my-app",
+            "https://example.com/webhook",
+            r#"{"orderId":"123"}"#,
+        );
+
+        assert!(!job.id.is_empty());
+        assert_eq!(job.id.len(), 13, "Untyped ID should be 13 chars, got: {}", job.id.len());
+        assert!(!job.id.contains('_'), "Untyped ID should not contain underscore prefix");
+        assert_eq!(job.kind, DispatchKind::Event);
+        assert_eq!(job.code, "orders:fulfillment:shipment:shipped");
+        assert_eq!(job.source, Some("my-app".to_string()));
+        assert_eq!(job.target_url, "https://example.com/webhook");
+        assert_eq!(job.payload, Some(r#"{"orderId":"123"}"#.to_string()));
+        assert_eq!(job.event_id, Some("evt123".to_string()));
+        assert_eq!(job.status, DispatchStatus::Pending);
+        assert_eq!(job.attempt_count, 0);
+        assert_eq!(job.max_retries, 3);
+        assert_eq!(job.timeout_seconds, 30);
+        assert_eq!(job.retry_strategy, RetryStrategy::ExponentialBackoff);
+        assert_eq!(job.protocol, DispatchProtocol::HttpWebhook);
+        assert_eq!(job.mode, DispatchMode::Immediate);
+        assert_eq!(job.sequence, 99);
+        assert!(!job.data_only);
+        assert_eq!(job.payload_content_type, "application/json");
+        assert!(job.attempts.is_empty());
+        assert!(job.metadata.is_empty());
+    }
+
+    #[test]
+    fn test_dispatch_job_for_task() {
+        let job = DispatchJob::for_task(
+            "process-order",
+            "task-runner",
+            "https://example.com/tasks",
+            r#"{"taskId":"t1"}"#,
+        );
+
+        assert_eq!(job.kind, DispatchKind::Task);
+        assert!(job.event_id.is_none(), "Task should not have event_id");
+        assert_eq!(job.code, "process-order");
+        assert_eq!(job.source, Some("task-runner".to_string()));
+    }
+
+    #[test]
+    fn test_dispatch_job_unique_ids() {
+        let j1 = DispatchJob::for_event("e1", "t1", "s", "u", "p");
+        let j2 = DispatchJob::for_event("e2", "t2", "s", "u", "p");
+        assert_ne!(j1.id, j2.id);
+    }
+
+    // --- DispatchKind ---
+
+    #[test]
+    fn test_dispatch_kind_as_str() {
+        assert_eq!(DispatchKind::Event.as_str(), "EVENT");
+        assert_eq!(DispatchKind::Task.as_str(), "TASK");
+    }
+
+    #[test]
+    fn test_dispatch_kind_from_str() {
+        assert_eq!(DispatchKind::from_str("EVENT"), DispatchKind::Event);
+        assert_eq!(DispatchKind::from_str("TASK"), DispatchKind::Task);
+        assert_eq!(DispatchKind::from_str("unknown"), DispatchKind::Event);
+    }
+
+    #[test]
+    fn test_dispatch_kind_default() {
+        assert_eq!(DispatchKind::default(), DispatchKind::Event);
+    }
+
+    #[test]
+    fn test_dispatch_kind_roundtrip() {
+        for kind in [DispatchKind::Event, DispatchKind::Task] {
+            assert_eq!(DispatchKind::from_str(kind.as_str()), kind);
         }
     }
+
+    // --- DispatchStatus ---
+
+    #[test]
+    fn test_dispatch_status_as_str() {
+        assert_eq!(DispatchStatus::Pending.as_str(), "PENDING");
+        assert_eq!(DispatchStatus::Queued.as_str(), "QUEUED");
+        assert_eq!(DispatchStatus::Processing.as_str(), "PROCESSING");
+        assert_eq!(DispatchStatus::Completed.as_str(), "COMPLETED");
+        assert_eq!(DispatchStatus::Failed.as_str(), "FAILED");
+        assert_eq!(DispatchStatus::Cancelled.as_str(), "CANCELLED");
+        assert_eq!(DispatchStatus::Expired.as_str(), "EXPIRED");
+    }
+
+    #[test]
+    fn test_dispatch_status_from_str() {
+        assert_eq!(DispatchStatus::from_str("PENDING"), DispatchStatus::Pending);
+        assert_eq!(DispatchStatus::from_str("QUEUED"), DispatchStatus::Queued);
+        assert_eq!(DispatchStatus::from_str("PROCESSING"), DispatchStatus::Processing);
+        assert_eq!(DispatchStatus::from_str("IN_PROGRESS"), DispatchStatus::Processing);
+        assert_eq!(DispatchStatus::from_str("COMPLETED"), DispatchStatus::Completed);
+        assert_eq!(DispatchStatus::from_str("FAILED"), DispatchStatus::Failed);
+        assert_eq!(DispatchStatus::from_str("CANCELLED"), DispatchStatus::Cancelled);
+        assert_eq!(DispatchStatus::from_str("EXPIRED"), DispatchStatus::Expired);
+        assert_eq!(DispatchStatus::from_str("unknown"), DispatchStatus::Pending);
+    }
+
+    #[test]
+    fn test_dispatch_status_default() {
+        assert_eq!(DispatchStatus::default(), DispatchStatus::Pending);
+    }
+
+    #[test]
+    fn test_dispatch_status_roundtrip() {
+        for s in [
+            DispatchStatus::Pending,
+            DispatchStatus::Queued,
+            DispatchStatus::Processing,
+            DispatchStatus::Completed,
+            DispatchStatus::Failed,
+            DispatchStatus::Cancelled,
+            DispatchStatus::Expired,
+        ] {
+            assert_eq!(DispatchStatus::from_str(s.as_str()), s, "Roundtrip failed for {:?}", s);
+        }
+    }
+
+    #[test]
+    fn test_dispatch_status_is_terminal() {
+        assert!(!DispatchStatus::Pending.is_terminal());
+        assert!(!DispatchStatus::Queued.is_terminal());
+        assert!(!DispatchStatus::Processing.is_terminal());
+        assert!(DispatchStatus::Completed.is_terminal());
+        assert!(DispatchStatus::Failed.is_terminal());
+        assert!(DispatchStatus::Cancelled.is_terminal());
+        assert!(DispatchStatus::Expired.is_terminal());
+    }
+
+    #[test]
+    fn test_dispatch_status_is_successful() {
+        assert!(!DispatchStatus::Pending.is_successful());
+        assert!(!DispatchStatus::Failed.is_successful());
+        assert!(DispatchStatus::Completed.is_successful());
+    }
+
+    // --- DispatchProtocol ---
+
+    #[test]
+    fn test_dispatch_protocol_as_str() {
+        assert_eq!(DispatchProtocol::HttpWebhook.as_str(), "HTTP_WEBHOOK");
+    }
+
+    #[test]
+    fn test_dispatch_protocol_from_str() {
+        assert_eq!(DispatchProtocol::from_str("HTTP_WEBHOOK"), DispatchProtocol::HttpWebhook);
+        assert_eq!(DispatchProtocol::from_str("anything"), DispatchProtocol::HttpWebhook);
+    }
+
+    #[test]
+    fn test_dispatch_protocol_default() {
+        assert_eq!(DispatchProtocol::default(), DispatchProtocol::HttpWebhook);
+    }
+
+    // --- RetryStrategy ---
+
+    #[test]
+    fn test_retry_strategy_as_str() {
+        assert_eq!(RetryStrategy::Immediate.as_str(), "immediate");
+        assert_eq!(RetryStrategy::FixedDelay.as_str(), "fixed");
+        assert_eq!(RetryStrategy::ExponentialBackoff.as_str(), "exponential");
+    }
+
+    #[test]
+    fn test_retry_strategy_from_str() {
+        assert_eq!(RetryStrategy::from_str("immediate"), RetryStrategy::Immediate);
+        assert_eq!(RetryStrategy::from_str("IMMEDIATE"), RetryStrategy::Immediate);
+        assert_eq!(RetryStrategy::from_str("fixed"), RetryStrategy::FixedDelay);
+        assert_eq!(RetryStrategy::from_str("FIXED_DELAY"), RetryStrategy::FixedDelay);
+        assert_eq!(RetryStrategy::from_str("exponential"), RetryStrategy::ExponentialBackoff);
+        assert_eq!(RetryStrategy::from_str("EXPONENTIAL_BACKOFF"), RetryStrategy::ExponentialBackoff);
+        assert_eq!(RetryStrategy::from_str("unknown"), RetryStrategy::ExponentialBackoff);
+    }
+
+    #[test]
+    fn test_retry_strategy_default() {
+        assert_eq!(RetryStrategy::default(), RetryStrategy::ExponentialBackoff);
+    }
+
+    // --- DispatchMode (from fc_common) ---
+
+    #[test]
+    fn test_dispatch_mode_roundtrip() {
+        for mode in [DispatchMode::Immediate, DispatchMode::BlockOnError] {
+            let s = mode.as_str();
+            assert_eq!(DispatchMode::from_str(s), mode, "Roundtrip failed for {:?}", mode);
+        }
+    }
+
+    // --- Lifecycle methods ---
+
+    #[test]
+    fn test_mark_queued() {
+        let mut job = DispatchJob::for_event("e1", "t", "s", "u", "p");
+        job.mark_queued();
+        assert_eq!(job.status, DispatchStatus::Queued);
+        assert!(job.scheduled_for.is_some());
+    }
+
+    #[test]
+    fn test_mark_in_progress() {
+        let mut job = DispatchJob::for_event("e1", "t", "s", "u", "p");
+        job.mark_in_progress();
+        assert_eq!(job.status, DispatchStatus::Processing);
+    }
+
+    #[test]
+    fn test_complete_success() {
+        let mut job = DispatchJob::for_event("e1", "t", "s", "u", "p");
+        job.mark_in_progress();
+        job.complete_success(200, Some("OK".to_string()));
+
+        assert_eq!(job.status, DispatchStatus::Completed);
+        assert_eq!(job.attempt_count, 1);
+        assert!(job.completed_at.is_some());
+        assert!(job.last_attempt_at.is_some());
+        assert!(job.duration_millis.is_some());
+        assert_eq!(job.attempts.len(), 1);
+        assert!(job.attempts[0].success);
+        assert_eq!(job.attempts[0].response_code, Some(200));
+    }
+
+    #[test]
+    fn test_record_failure_with_retry() {
+        let mut job = DispatchJob::for_event("e1", "t", "s", "u", "p");
+        // max_retries = 3, so first failure should schedule retry
+        job.record_failure("Connection timeout".to_string(), ErrorType::Timeout, None);
+
+        assert_eq!(job.status, DispatchStatus::Pending, "Should be back to Pending for retry");
+        assert_eq!(job.attempt_count, 1);
+        assert_eq!(job.last_error, Some("Connection timeout".to_string()));
+        assert!(job.scheduled_for.is_some(), "Should have scheduled retry");
+        assert!(job.completed_at.is_none(), "Should not be completed yet");
+    }
+
+    #[test]
+    fn test_record_failure_exhausted_retries() {
+        let mut job = DispatchJob::for_event("e1", "t", "s", "u", "p");
+        // Exhaust all retries (max_retries = 3)
+        job.record_failure("err".to_string(), ErrorType::HttpError, Some(500));
+        job.record_failure("err".to_string(), ErrorType::HttpError, Some(500));
+        job.record_failure("err".to_string(), ErrorType::HttpError, Some(500));
+
+        assert_eq!(job.status, DispatchStatus::Failed);
+        assert_eq!(job.attempt_count, 3);
+        assert!(job.completed_at.is_some());
+        assert!(job.duration_millis.is_some());
+    }
+
+    #[test]
+    fn test_can_retry() {
+        let mut job = DispatchJob::for_event("e1", "t", "s", "u", "p");
+        assert!(job.can_retry());
+
+        job.complete_success(200, None);
+        assert!(!job.can_retry(), "Completed job cannot be retried");
+    }
+
+    // --- Builder methods ---
+
+    #[test]
+    fn test_dispatch_job_builder_methods() {
+        let job = DispatchJob::for_event("e1", "t", "s", "u", "p")
+            .with_client_id("client-1")
+            .with_subscription_id("sub-1")
+            .with_service_account_id("sa-1")
+            .with_dispatch_pool_id("pool-1")
+            .with_message_group("group-1")
+            .with_mode(DispatchMode::BlockOnError)
+            .with_correlation_id("corr-1")
+            .with_data_only(false);
+
+        assert_eq!(job.client_id, Some("client-1".to_string()));
+        assert_eq!(job.subscription_id, Some("sub-1".to_string()));
+        assert_eq!(job.service_account_id, Some("sa-1".to_string()));
+        assert_eq!(job.dispatch_pool_id, Some("pool-1".to_string()));
+        assert_eq!(job.message_group, Some("group-1".to_string()));
+        assert_eq!(job.mode, DispatchMode::BlockOnError);
+        assert_eq!(job.correlation_id, Some("corr-1".to_string()));
+        assert!(!job.data_only);
+    }
+
+    // --- parse_code_parts ---
+
+    #[test]
+    fn test_parse_code_parts() {
+        let job = DispatchJob::for_event("e1", "orders:fulfillment:shipment:shipped", "s", "u", "p");
+        let (app, sub, agg) = job.parse_code_parts();
+        assert_eq!(app, Some("orders".to_string()));
+        assert_eq!(sub, Some("fulfillment".to_string()));
+        assert_eq!(agg, Some("shipment".to_string()));
+    }
+
+    #[test]
+    fn test_parse_code_parts_single() {
+        let job = DispatchJob::for_event("e1", "simple", "s", "u", "p");
+        let (app, sub, agg) = job.parse_code_parts();
+        assert_eq!(app, Some("simple".to_string()));
+        assert!(sub.is_none());
+        assert!(agg.is_none());
+    }
+
+    // --- DispatchAttempt ---
+
+    #[test]
+    fn test_dispatch_attempt_new() {
+        let attempt = DispatchAttempt::new(1);
+        assert_eq!(attempt.attempt_number, 1);
+        assert!(!attempt.success);
+        assert!(attempt.completed_at.is_none());
+        assert!(attempt.response_code.is_none());
+        assert!(attempt.error_message.is_none());
+    }
+
+    #[test]
+    fn test_dispatch_attempt_complete_success() {
+        let attempt = DispatchAttempt::new(1)
+            .complete_success(200, Some("OK".to_string()));
+        assert!(attempt.success);
+        assert!(attempt.completed_at.is_some());
+        assert_eq!(attempt.response_code, Some(200));
+        assert_eq!(attempt.response_body, Some("OK".to_string()));
+        assert!(attempt.duration_millis.is_some());
+    }
+
+    #[test]
+    fn test_dispatch_attempt_complete_failure() {
+        let attempt = DispatchAttempt::new(2)
+            .complete_failure("timeout".to_string(), ErrorType::Timeout, Some(504));
+        assert!(!attempt.success);
+        assert!(attempt.completed_at.is_some());
+        assert_eq!(attempt.error_message, Some("timeout".to_string()));
+        assert_eq!(attempt.error_type, Some(ErrorType::Timeout));
+        assert_eq!(attempt.response_code, Some(504));
+    }
+
+    // --- DispatchJobRead projection ---
+
+    #[test]
+    fn test_dispatch_job_read_from_job() {
+        let job = DispatchJob::for_event("e1", "orders:billing:invoice:created", "app", "https://x.com", "{}")
+            .with_client_id("c1");
+        let read = DispatchJobRead::from(&job);
+
+        assert_eq!(read.id, job.id);
+        assert_eq!(read.code, job.code);
+        assert_eq!(read.application, Some("orders".to_string()));
+        assert_eq!(read.subdomain, Some("billing".to_string()));
+        assert_eq!(read.aggregate, Some("invoice".to_string()));
+        assert!(!read.is_completed);
+        assert!(!read.is_terminal);
+        assert_eq!(read.status, DispatchStatus::Pending);
+    }
+
+    #[test]
+    fn test_dispatch_job_read_completed_flags() {
+        let mut job = DispatchJob::for_event("e1", "t", "s", "u", "p");
+        job.complete_success(200, None);
+        let read = DispatchJobRead::from(&job);
+
+        assert!(read.is_completed);
+        assert!(read.is_terminal);
+    }
+
+    // --- add_metadata ---
+
+    #[test]
+    fn test_add_metadata() {
+        let mut job = DispatchJob::for_event("e1", "t", "s", "u", "p");
+        job.add_metadata("key1", "value1");
+        job.add_metadata("key2", "value2");
+
+        assert_eq!(job.metadata.len(), 2);
+        assert_eq!(job.metadata[0].key, "key1");
+        assert_eq!(job.metadata[0].value, "value1");
+    }
+
+    // ── Retry delay computation per strategy ──────────────────────────────
+    // calculate_next_retry is private; observe its output via scheduled_for
+    // after record_failure.
+
+    fn make_retryable_job(strategy: RetryStrategy, max_retries: u32) -> DispatchJob {
+        let mut job = DispatchJob::for_event("e1", "a:b:c:d", "src", "https://x.com", "{}");
+        job.retry_strategy = strategy;
+        job.max_retries = max_retries;
+        job
+    }
+
+    #[test]
+    fn immediate_retry_strategy_schedules_for_now() {
+        let mut job = make_retryable_job(RetryStrategy::Immediate, 3);
+        let before = Utc::now();
+        job.record_failure("boom".into(), ErrorType::HttpError, Some(500));
+        let scheduled = job.scheduled_for.expect("retry scheduled");
+        // Immediate → delay 0. Allow 5s slack for test clock.
+        let diff = (scheduled - before).num_seconds();
+        assert!(diff >= 0 && diff < 5, "immediate delay should be ~0, got {}s", diff);
+    }
+
+    #[test]
+    fn fixed_delay_strategy_schedules_5s_out() {
+        let mut job = make_retryable_job(RetryStrategy::FixedDelay, 3);
+        let before = Utc::now();
+        job.record_failure("boom".into(), ErrorType::HttpError, Some(500));
+        let scheduled = job.scheduled_for.expect("retry scheduled");
+        let diff = (scheduled - before).num_seconds();
+        // FixedDelay = 5s. Allow 1s slack either side.
+        assert!(diff >= 4 && diff <= 7, "fixed delay should be ~5s, got {}s", diff);
+    }
+
+    #[test]
+    fn exponential_backoff_grows_by_powers_of_five() {
+        // attempt_count starts at 0, record_failure increments it, then computes delay as 5^attempt_count.
+        // So after 1st failure (attempt_count=1): delay ≈ 5s
+        //    after 2nd failure (attempt_count=2): delay ≈ 25s
+        //    after 3rd failure (attempt_count=3): delay ≈ 125s
+        let mut job = make_retryable_job(RetryStrategy::ExponentialBackoff, 10);
+
+        let t0 = Utc::now();
+        job.record_failure("boom".into(), ErrorType::HttpError, None);
+        let d1 = (job.scheduled_for.unwrap() - t0).num_seconds();
+        assert!(d1 >= 4 && d1 <= 7, "attempt 1 delay should be ~5s, got {}s", d1);
+
+        let t1 = Utc::now();
+        job.record_failure("boom".into(), ErrorType::HttpError, None);
+        let d2 = (job.scheduled_for.unwrap() - t1).num_seconds();
+        assert!(d2 >= 23 && d2 <= 28, "attempt 2 delay should be ~25s, got {}s", d2);
+
+        let t2 = Utc::now();
+        job.record_failure("boom".into(), ErrorType::HttpError, None);
+        let d3 = (job.scheduled_for.unwrap() - t2).num_seconds();
+        assert!(d3 >= 120 && d3 <= 130, "attempt 3 delay should be ~125s, got {}s", d3);
+    }
+
+    #[test]
+    fn exponential_backoff_caps_at_attempt_count_5() {
+        // 5^5 = 3125 seconds; any further increase in attempt_count stops growing the exponent.
+        let mut job = make_retryable_job(RetryStrategy::ExponentialBackoff, 100);
+        // Push attempt_count to 6 before measuring the 7th failure's delay.
+        for _ in 0..6 {
+            job.record_failure("boom".into(), ErrorType::HttpError, None);
+        }
+        let t = Utc::now();
+        job.record_failure("boom".into(), ErrorType::HttpError, None);
+        let d = (job.scheduled_for.unwrap() - t).num_seconds();
+        // After 7 failures, attempt_count=7 but .min(5) keeps delay at 5^5 = 3125s.
+        assert!(d >= 3100 && d <= 3150, "capped delay should be ~3125s, got {}s", d);
+    }
+
+    // ── Attempt-list integrity through a failure→success sequence ─────────
+
+    #[test]
+    fn attempts_list_grows_with_each_record_and_preserves_order() {
+        let mut job = make_retryable_job(RetryStrategy::Immediate, 5);
+        job.record_failure("e1".into(), ErrorType::Connection, None);
+        job.record_failure("e2".into(), ErrorType::Timeout, Some(504));
+        job.complete_success(200, Some("ok".into()));
+
+        assert_eq!(job.attempts.len(), 3);
+        assert_eq!(job.attempt_count, 3);
+        assert_eq!(job.attempts[0].attempt_number, 1);
+        assert_eq!(job.attempts[1].attempt_number, 2);
+        assert_eq!(job.attempts[2].attempt_number, 3);
+        assert_eq!(job.attempts[0].error_message, Some("e1".into()));
+        assert_eq!(job.attempts[1].error_message, Some("e2".into()));
+        assert!(job.attempts[2].success);
+        assert_eq!(job.status, DispatchStatus::Completed);
+        assert!(job.completed_at.is_some());
+    }
+
+    // ── Terminal states block can_retry ───────────────────────────────────
+
+    #[test]
+    fn terminal_statuses_block_retry_regardless_of_attempts() {
+        let mut job = make_retryable_job(RetryStrategy::Immediate, 10);
+        // Still has budget, but status forced to terminal
+        job.status = DispatchStatus::Completed;
+        assert!(!job.can_retry(), "Completed must not be retryable");
+        job.status = DispatchStatus::Cancelled;
+        assert!(!job.can_retry(), "Cancelled must not be retryable");
+        job.status = DispatchStatus::Expired;
+        assert!(!job.can_retry(), "Expired must not be retryable");
+        job.status = DispatchStatus::Failed;
+        assert!(!job.can_retry(), "Failed must not be retryable");
+    }
+
+    #[test]
+    fn can_retry_false_when_attempts_exhausted_even_if_pending() {
+        let mut job = make_retryable_job(RetryStrategy::Immediate, 2);
+        job.status = DispatchStatus::Pending;
+        job.attempt_count = 2;
+        assert!(!job.can_retry(), "exhausted attempts must block retry");
+
+        job.attempt_count = 1;
+        assert!(job.can_retry(), "with budget remaining, retry should be allowed");
+    }
+
+    // ── Exhaustion transitions status to Failed, not Pending ──────────────
+
+    #[test]
+    fn record_failure_transitions_to_failed_when_budget_exhausted() {
+        let mut job = make_retryable_job(RetryStrategy::Immediate, 2);
+        job.record_failure("first".into(), ErrorType::HttpError, Some(500));
+        assert_eq!(job.status, DispatchStatus::Pending, "first failure retries");
+        assert!(job.completed_at.is_none());
+
+        job.record_failure("second".into(), ErrorType::HttpError, Some(500));
+        assert_eq!(job.status, DispatchStatus::Failed, "final failure is terminal");
+        assert!(job.completed_at.is_some());
+        assert_eq!(job.last_error, Some("second".into()));
+    }
 }
+
 
 /// Dispatch job read projection - optimized for queries (matches Java DispatchJobRead)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -767,47 +1212,3 @@ impl From<&DispatchJob> for DispatchJobRead {
     }
 }
 
-/// Conversion from SeaORM read projection model
-impl From<crate::entities::msg_dispatch_jobs_read::Model> for DispatchJobRead {
-    fn from(m: crate::entities::msg_dispatch_jobs_read::Model) -> Self {
-        Self {
-            id: m.id,
-            external_id: m.external_id,
-            source: m.source,
-            kind: DispatchKind::from_str(&m.kind),
-            code: m.code,
-            subject: m.subject,
-            event_id: m.event_id,
-            correlation_id: m.correlation_id,
-            target_url: m.target_url,
-            protocol: DispatchProtocol::from_str(&m.protocol),
-            client_id: m.client_id,
-            subscription_id: m.subscription_id,
-            service_account_id: m.service_account_id,
-            dispatch_pool_id: m.dispatch_pool_id,
-            message_group: m.message_group,
-            mode: DispatchMode::from_str(&m.mode),
-            sequence: m.sequence,
-            status: DispatchStatus::from_str(&m.status),
-            attempt_count: m.attempt_count as u32,
-            max_retries: m.max_retries as u32,
-            last_error: m.last_error,
-            timeout_seconds: m.timeout_seconds as u32,
-            retry_strategy: RetryStrategy::from_str(&m.retry_strategy),
-            application: m.application,
-            subdomain: m.subdomain,
-            aggregate: m.aggregate,
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
-            scheduled_for: m.scheduled_for.map(|dt| dt.with_timezone(&Utc)),
-            expires_at: m.expires_at.map(|dt| dt.with_timezone(&Utc)),
-            completed_at: m.completed_at.map(|dt| dt.with_timezone(&Utc)),
-            last_attempt_at: m.last_attempt_at.map(|dt| dt.with_timezone(&Utc)),
-            duration_millis: m.duration_millis,
-            idempotency_key: m.idempotency_key,
-            is_completed: m.is_completed.unwrap_or_default(),
-            is_terminal: m.is_terminal.unwrap_or_default(),
-            projected_at: m.projected_at.map(|dt| dt.with_timezone(&Utc)),
-        }
-    }
-}

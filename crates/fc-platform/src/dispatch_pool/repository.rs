@@ -1,137 +1,202 @@
-//! DispatchPool Repository — PostgreSQL via SeaORM
+//! DispatchPool Repository — PostgreSQL via SQLx
 
 use async_trait::async_trait;
-use sea_orm::*;
-use sea_orm::sea_query::OnConflict;
-use chrono::Utc;
+use sqlx::PgPool;
+use sqlx::Postgres;
+use chrono::{DateTime, Utc};
 
 use super::entity::{DispatchPool, DispatchPoolStatus};
-use crate::entities::msg_dispatch_pools;
 use crate::shared::error::Result;
 use crate::usecase::unit_of_work::{HasId, PgPersist};
 
+/// Row mapping for msg_dispatch_pools table
+#[derive(sqlx::FromRow)]
+struct DispatchPoolRow {
+    id: String,
+    code: String,
+    name: String,
+    description: Option<String>,
+    rate_limit: i32,
+    concurrency: i32,
+    client_id: Option<String>,
+    client_identifier: Option<String>,
+    status: String,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+impl From<DispatchPoolRow> for DispatchPool {
+    fn from(r: DispatchPoolRow) -> Self {
+        Self {
+            id: r.id,
+            code: r.code,
+            name: r.name,
+            description: r.description,
+            rate_limit: r.rate_limit,
+            concurrency: r.concurrency,
+            client_id: r.client_id,
+            client_identifier: r.client_identifier,
+            status: DispatchPoolStatus::from_str(&r.status),
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        }
+    }
+}
+
 pub struct DispatchPoolRepository {
-    db: DatabaseConnection,
+    pool: PgPool,
 }
 
 impl DispatchPoolRepository {
-    pub fn new(db: &DatabaseConnection) -> Self {
-        Self { db: db.clone() }
+    pub fn new(pool: &PgPool) -> Self {
+        Self { pool: pool.clone() }
     }
 
     pub async fn insert(&self, pool: &DispatchPool) -> Result<()> {
-        let model = msg_dispatch_pools::ActiveModel {
-            id: Set(pool.id.clone()),
-            code: Set(pool.code.clone()),
-            name: Set(pool.name.clone()),
-            description: Set(pool.description.clone()),
-            rate_limit: Set(pool.rate_limit),
-            concurrency: Set(pool.concurrency),
-            client_id: Set(pool.client_id.clone()),
-            client_identifier: Set(pool.client_identifier.clone()),
-            status: Set(pool.status.as_str().to_string()),
-            created_at: Set(Utc::now().into()),
-            updated_at: Set(Utc::now().into()),
-        };
-        msg_dispatch_pools::Entity::insert(model).exec(&self.db).await?;
+        let now = Utc::now();
+        sqlx::query(
+            "INSERT INTO msg_dispatch_pools (id, code, name, description, rate_limit, concurrency, client_id, client_identifier, status, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)"
+        )
+        .bind(&pool.id)
+        .bind(&pool.code)
+        .bind(&pool.name)
+        .bind(&pool.description)
+        .bind(pool.rate_limit)
+        .bind(pool.concurrency)
+        .bind(&pool.client_id)
+        .bind(&pool.client_identifier)
+        .bind(pool.status.as_str())
+        .bind(now)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<DispatchPool>> {
-        let result = msg_dispatch_pools::Entity::find_by_id(id).one(&self.db).await?;
-        Ok(result.map(DispatchPool::from))
+        let row = sqlx::query_as::<_, DispatchPoolRow>(
+            "SELECT * FROM msg_dispatch_pools WHERE id = $1"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(DispatchPool::from))
     }
 
     pub async fn find_by_code(&self, code: &str, client_id: Option<&str>) -> Result<Option<DispatchPool>> {
-        let mut q = msg_dispatch_pools::Entity::find()
-            .filter(msg_dispatch_pools::Column::Code.eq(code));
-        if let Some(cid) = client_id {
-            q = q.filter(msg_dispatch_pools::Column::ClientId.eq(cid));
+        let row = if let Some(cid) = client_id {
+            sqlx::query_as::<_, DispatchPoolRow>(
+                "SELECT * FROM msg_dispatch_pools WHERE code = $1 AND client_id = $2"
+            )
+            .bind(code)
+            .bind(cid)
+            .fetch_optional(&self.pool)
+            .await?
         } else {
-            q = q.filter(msg_dispatch_pools::Column::ClientId.is_null());
-        }
-        Ok(q.one(&self.db).await?.map(DispatchPool::from))
+            sqlx::query_as::<_, DispatchPoolRow>(
+                "SELECT * FROM msg_dispatch_pools WHERE code = $1 AND client_id IS NULL"
+            )
+            .bind(code)
+            .fetch_optional(&self.pool)
+            .await?
+        };
+        Ok(row.map(DispatchPool::from))
     }
 
     pub async fn find_all(&self) -> Result<Vec<DispatchPool>> {
-        let results = msg_dispatch_pools::Entity::find()
-            .order_by_asc(msg_dispatch_pools::Column::Code)
-            .all(&self.db)
-            .await?;
-        Ok(results.into_iter().map(DispatchPool::from).collect())
+        let rows = sqlx::query_as::<_, DispatchPoolRow>(
+            "SELECT * FROM msg_dispatch_pools ORDER BY code ASC"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(DispatchPool::from).collect())
     }
 
     pub async fn find_by_status(&self, status: DispatchPoolStatus) -> Result<Vec<DispatchPool>> {
-        let results = msg_dispatch_pools::Entity::find()
-            .filter(msg_dispatch_pools::Column::Status.eq(status.as_str()))
-            .order_by_asc(msg_dispatch_pools::Column::Code)
-            .all(&self.db)
-            .await?;
-        Ok(results.into_iter().map(DispatchPool::from).collect())
+        let rows = sqlx::query_as::<_, DispatchPoolRow>(
+            "SELECT * FROM msg_dispatch_pools WHERE status = $1 ORDER BY code ASC"
+        )
+        .bind(status.as_str())
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(DispatchPool::from).collect())
     }
 
     /// Search dispatch pools by code or name (case-insensitive partial match)
     pub async fn search(&self, term: &str) -> Result<Vec<DispatchPool>> {
         let pattern = format!("%{}%", term);
-        let results = msg_dispatch_pools::Entity::find()
-            .filter(
-                Condition::any()
-                    .add(msg_dispatch_pools::Column::Code.like(&pattern))
-                    .add(msg_dispatch_pools::Column::Name.like(&pattern))
-            )
-            .all(&self.db)
-            .await?;
-        Ok(results.into_iter().map(DispatchPool::from).collect())
+        let rows = sqlx::query_as::<_, DispatchPoolRow>(
+            "SELECT * FROM msg_dispatch_pools WHERE code ILIKE $1 OR name ILIKE $1"
+        )
+        .bind(&pattern)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(DispatchPool::from).collect())
     }
 
     pub async fn find_active(&self) -> Result<Vec<DispatchPool>> {
-        let results = msg_dispatch_pools::Entity::find()
-            .filter(msg_dispatch_pools::Column::Status.eq("ACTIVE"))
-            .all(&self.db)
-            .await?;
-        Ok(results.into_iter().map(DispatchPool::from).collect())
+        let rows = sqlx::query_as::<_, DispatchPoolRow>(
+            "SELECT * FROM msg_dispatch_pools WHERE status = 'ACTIVE'"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(DispatchPool::from).collect())
     }
 
     pub async fn find_by_client(&self, client_id: Option<&str>) -> Result<Vec<DispatchPool>> {
-        let results = if let Some(cid) = client_id {
-            msg_dispatch_pools::Entity::find()
-                .filter(
-                    Condition::any()
-                        .add(msg_dispatch_pools::Column::ClientId.eq(cid))
-                        .add(msg_dispatch_pools::Column::ClientId.is_null()),
-                )
-                .all(&self.db)
-                .await?
+        let rows = if let Some(cid) = client_id {
+            sqlx::query_as::<_, DispatchPoolRow>(
+                "SELECT * FROM msg_dispatch_pools WHERE client_id = $1 OR client_id IS NULL"
+            )
+            .bind(cid)
+            .fetch_all(&self.pool)
+            .await?
         } else {
-            msg_dispatch_pools::Entity::find()
-                .filter(msg_dispatch_pools::Column::ClientId.is_null())
-                .all(&self.db)
-                .await?
+            sqlx::query_as::<_, DispatchPoolRow>(
+                "SELECT * FROM msg_dispatch_pools WHERE client_id IS NULL"
+            )
+            .fetch_all(&self.pool)
+            .await?
         };
-        Ok(results.into_iter().map(DispatchPool::from).collect())
+        Ok(rows.into_iter().map(DispatchPool::from).collect())
     }
 
     pub async fn update(&self, pool: &DispatchPool) -> Result<()> {
-        let model = msg_dispatch_pools::ActiveModel {
-            id: Set(pool.id.clone()),
-            code: Set(pool.code.clone()),
-            name: Set(pool.name.clone()),
-            description: Set(pool.description.clone()),
-            rate_limit: Set(pool.rate_limit),
-            concurrency: Set(pool.concurrency),
-            client_id: Set(pool.client_id.clone()),
-            client_identifier: Set(pool.client_identifier.clone()),
-            status: Set(pool.status.as_str().to_string()),
-            created_at: NotSet,
-            updated_at: Set(Utc::now().into()),
-        };
-        msg_dispatch_pools::Entity::update(model).exec(&self.db).await?;
+        sqlx::query(
+            "UPDATE msg_dispatch_pools SET
+                code = $2,
+                name = $3,
+                description = $4,
+                rate_limit = $5,
+                concurrency = $6,
+                client_id = $7,
+                client_identifier = $8,
+                status = $9,
+                updated_at = $10
+             WHERE id = $1"
+        )
+        .bind(&pool.id)
+        .bind(&pool.code)
+        .bind(&pool.name)
+        .bind(&pool.description)
+        .bind(pool.rate_limit)
+        .bind(pool.concurrency)
+        .bind(&pool.client_id)
+        .bind(&pool.client_identifier)
+        .bind(pool.status.as_str())
+        .bind(Utc::now())
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
     pub async fn delete(&self, id: &str) -> Result<bool> {
-        let result = msg_dispatch_pools::Entity::delete_by_id(id).exec(&self.db).await?;
-        Ok(result.rows_affected > 0)
+        let result = sqlx::query("DELETE FROM msg_dispatch_pools WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
     }
 }
 
@@ -143,43 +208,43 @@ impl HasId for DispatchPool {
 
 #[async_trait]
 impl PgPersist for DispatchPool {
-    async fn pg_upsert(&self, txn: &sea_orm::DatabaseTransaction) -> Result<()> {
-        let model = msg_dispatch_pools::ActiveModel {
-            id: Set(self.id.clone()),
-            code: Set(self.code.clone()),
-            name: Set(self.name.clone()),
-            description: Set(self.description.clone()),
-            rate_limit: Set(self.rate_limit),
-            concurrency: Set(self.concurrency),
-            client_id: Set(self.client_id.clone()),
-            client_identifier: Set(self.client_identifier.clone()),
-            status: Set(self.status.as_str().to_string()),
-            created_at: Set(Utc::now().into()),
-            updated_at: Set(Utc::now().into()),
-        };
-        msg_dispatch_pools::Entity::insert(model)
-            .on_conflict(
-                OnConflict::column(msg_dispatch_pools::Column::Id)
-                    .update_columns([
-                        msg_dispatch_pools::Column::Code,
-                        msg_dispatch_pools::Column::Name,
-                        msg_dispatch_pools::Column::Description,
-                        msg_dispatch_pools::Column::RateLimit,
-                        msg_dispatch_pools::Column::Concurrency,
-                        msg_dispatch_pools::Column::ClientId,
-                        msg_dispatch_pools::Column::ClientIdentifier,
-                        msg_dispatch_pools::Column::Status,
-                        msg_dispatch_pools::Column::UpdatedAt,
-                    ])
-                    .to_owned(),
-            )
-            .exec(txn)
-            .await?;
+    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, Postgres>) -> Result<()> {
+        let now = Utc::now();
+        sqlx::query(
+            "INSERT INTO msg_dispatch_pools (id, code, name, description, rate_limit, concurrency, client_id, client_identifier, status, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             ON CONFLICT (id) DO UPDATE SET
+                code = EXCLUDED.code,
+                name = EXCLUDED.name,
+                description = EXCLUDED.description,
+                rate_limit = EXCLUDED.rate_limit,
+                concurrency = EXCLUDED.concurrency,
+                client_id = EXCLUDED.client_id,
+                client_identifier = EXCLUDED.client_identifier,
+                status = EXCLUDED.status,
+                updated_at = EXCLUDED.updated_at"
+        )
+        .bind(&self.id)
+        .bind(&self.code)
+        .bind(&self.name)
+        .bind(&self.description)
+        .bind(self.rate_limit)
+        .bind(self.concurrency)
+        .bind(&self.client_id)
+        .bind(&self.client_identifier)
+        .bind(self.status.as_str())
+        .bind(now)
+        .bind(now)
+        .execute(&mut **txn)
+        .await?;
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &sea_orm::DatabaseTransaction) -> Result<()> {
-        msg_dispatch_pools::Entity::delete_by_id(&self.id).exec(txn).await?;
+    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, Postgres>) -> Result<()> {
+        sqlx::query("DELETE FROM msg_dispatch_pools WHERE id = $1")
+            .bind(&self.id)
+            .execute(&mut **txn)
+            .await?;
         Ok(())
     }
 }

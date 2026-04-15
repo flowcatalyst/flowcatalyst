@@ -2,6 +2,7 @@
 //!
 //! REST endpoints for event management.
 
+use axum::Router;
 use axum::{
     extract::{State, Path, Query},
     Json,
@@ -365,12 +366,12 @@ pub async fn list_events(
     let events = if let Some(ref corr_id) = query.correlation_id {
         state.event_repo.find_by_correlation_id(corr_id).await?
     } else if let Some(ref event_type) = query.event_type {
-        state.event_repo.find_by_type(event_type, query.pagination.size() as u64).await?
+        state.event_repo.find_by_type(event_type, query.pagination.limit()).await?
     } else if let Some(ref client_id) = query.client_id {
         if !auth.0.can_access_client(client_id) {
             return Err(PlatformError::forbidden(format!("No access to client: {}", client_id)));
         }
-        state.event_repo.find_by_client(client_id, query.pagination.size() as u64).await?
+        state.event_repo.find_by_client(client_id, query.pagination.limit()).await?
     } else {
         // Return empty for now - need proper listing with pagination
         vec![]
@@ -588,8 +589,10 @@ pub async fn list_events_raw(
 
     let page = pagination.page();
     let size = pagination.size().min(500);
+    let limit = size as i64;
+    let offset = (page as i64) * (size as i64);
     let events = state.event_repo
-        .find_recent_paged(page as u64, size as u64)
+        .find_recent_paged(limit, offset)
         .await?;
 
     Ok(Json(PaginatedEventsResponse {
@@ -599,12 +602,133 @@ pub async fn list_events_raw(
     }))
 }
 
-/// Create events router
+// ── Admin events (read model) ────────────────────────────────────────────────
+
+/// Query params for admin events list (read model)
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminEventsQuery {
+    /// Filter by client IDs (comma-separated)
+    pub clients: Option<String>,
+    /// Filter by application codes (comma-separated)
+    pub apps: Option<String>,
+    /// Filter by subdomains (comma-separated)
+    pub subs: Option<String>,
+    /// Filter by aggregates (comma-separated)
+    pub aggs: Option<String>,
+    /// Filter by event types (comma-separated)
+    pub types: Option<String>,
+    /// Free-text search across type, source, subject
+    pub q: Option<String>,
+    /// Page number (1-based)
+    pub page: Option<u32>,
+    /// Page size
+    pub size: Option<u32>,
+}
+
+/// Paginated response for admin events list
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminEventsResponse {
+    pub items: Vec<super::entity::EventRead>,
+    pub total: i64,
+    pub page: u32,
+    pub size: u32,
+}
+
+/// List events from the read model with filters and pagination.
+#[utoipa::path(
+    get,
+    path = "",
+    tag = "admin-events",
+    params(AdminEventsQuery),
+    responses((status = 200, body = AdminEventsResponse)),
+    security(("bearer_auth" = []))
+)]
+pub async fn admin_list_events(
+    State(state): State<EventsState>,
+    auth: Authenticated,
+    Query(query): Query<AdminEventsQuery>,
+) -> Result<Json<AdminEventsResponse>, PlatformError> {
+    crate::shared::authorization_service::checks::can_read_events(&auth.0)?;
+
+    let page = query.page.unwrap_or(1).max(1);
+    let size = query.size.unwrap_or(100).min(500);
+    let offset = ((page - 1) * size) as i64;
+
+    // Take first value from comma-separated lists for now
+    let client_id = query.clients.as_deref().and_then(|s| s.split(',').next());
+    let application = query.apps.as_deref().and_then(|s| s.split(',').next());
+    let subdomain = query.subs.as_deref().and_then(|s| s.split(',').next());
+    let aggregate = query.aggs.as_deref().and_then(|s| s.split(',').next());
+    let event_type = query.types.as_deref().and_then(|s| s.split(',').next());
+
+    let (events, total) = state.event_repo.find_read_with_filters(
+        client_id,
+        application,
+        subdomain,
+        aggregate,
+        event_type,
+        None, // correlation_id not in admin query
+        query.q.as_deref(),
+        size as i64,
+        offset,
+    ).await?;
+
+    Ok(Json(AdminEventsResponse { items: events, total, page, size }))
+}
+
+/// Get filter options for the events read model.
+#[utoipa::path(
+    get,
+    path = "/filter-options",
+    tag = "admin-events",
+    responses((status = 200, body = super::entity::EventFilterOptions)),
+    security(("bearer_auth" = []))
+)]
+pub async fn admin_event_filter_options(
+    State(state): State<EventsState>,
+    auth: Authenticated,
+) -> Result<Json<super::entity::EventFilterOptions>, PlatformError> {
+    crate::shared::authorization_service::checks::can_read_events(&auth.0)?;
+    let options = state.event_repo.read_filter_options().await?;
+    Ok(Json(options))
+}
+
+/// Get a single event from the read model.
+#[utoipa::path(
+    get,
+    path = "/{id}",
+    tag = "admin-events",
+    responses((status = 200, body = super::entity::EventRead)),
+    security(("bearer_auth" = []))
+)]
+pub async fn admin_get_event(
+    State(state): State<EventsState>,
+    auth: Authenticated,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<super::entity::EventRead>, PlatformError> {
+    crate::shared::authorization_service::checks::can_read_events(&auth.0)?;
+    let event = state.event_repo.find_read_by_id(&id).await?
+        .ok_or_else(|| PlatformError::not_found("Event", &id))?;
+    Ok(Json(event))
+}
+
+/// Create events router (BFF)
 pub fn events_router(state: EventsState) -> OpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(create_event, list_events))
         .routes(routes!(batch_create_events))
         .routes(routes!(list_events_raw))
         .routes(routes!(get_event))
+        .with_state(state)
+}
+
+/// Admin events router — reads from msg_events_read (projected read model)
+pub fn admin_events_router(state: EventsState) -> Router {
+    Router::new()
+        .route("/", axum::routing::get(admin_list_events))
+        .route("/filter-options", axum::routing::get(admin_event_filter_options))
+        .route("/{id}", axum::routing::get(admin_get_event))
         .with_state(state)
 }

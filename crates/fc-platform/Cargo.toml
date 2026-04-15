@@ -19,8 +19,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 # Database (PostgreSQL)
-sea-orm = { workspace = true }
-sea-orm-migration = { workspace = true }
 sqlx = { workspace = true }
 
 # Web framework
@@ -64,6 +62,12 @@ regex = { workspace = true }
 
 # Concurrent cache
 dashmap = { workspace = true }
+
+# Scheduler dependencies
+parking_lot = { workspace = true }
+subtle = { workspace = true }
+hex = { workspace = true }
+metrics = { workspace = true }
 
 # AWS Secrets Manager (for DB credential refresh)
 aws-config = { workspace = true }

@@ -68,19 +68,98 @@ impl AuditLog {
     }
 }
 
-impl From<crate::entities::aud_logs::Model> for AuditLog {
-    fn from(m: crate::entities::aud_logs::Model) -> Self {
-        Self {
-            id: m.id,
-            entity_type: m.entity_type,
-            entity_id: m.entity_id,
-            operation: m.operation,
-            operation_json: m.operation_json.map(Into::into),
-            principal_id: m.principal_id,
-            principal_name: None,
-            application_id: m.application_id,
-            client_id: m.client_id,
-            performed_at: m.performed_at.with_timezone(&Utc),
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_audit_log() {
+        let log = AuditLog::new(
+            "Client",
+            "clt_0HZXEQ5Y8JY5Z",
+            "CreateClient",
+            Some(serde_json::json!({"name": "Test"})),
+            Some("prn_ABCDEFGHIJKLM".to_string()),
+        );
+
+        assert!(!log.id.is_empty());
+        assert_eq!(log.id.len(), 13, "Untyped ID should be 13 chars, got: {}", log.id.len());
+        assert!(!log.id.contains('_'), "Untyped ID should not have prefix underscore");
+        assert_eq!(log.entity_type, "Client");
+        assert_eq!(log.entity_id, "clt_0HZXEQ5Y8JY5Z");
+        assert_eq!(log.operation, "CreateClient");
+        assert!(log.operation_json.is_some());
+        assert_eq!(log.principal_id, Some("prn_ABCDEFGHIJKLM".to_string()));
+        assert!(log.principal_name.is_none());
+        assert!(log.application_id.is_none());
+        assert!(log.client_id.is_none());
+    }
+
+    #[test]
+    fn test_audit_log_unique_ids() {
+        let l1 = AuditLog::new("A", "1", "Op", None, None);
+        let l2 = AuditLog::new("B", "2", "Op", None, None);
+        assert_ne!(l1.id, l2.id);
+    }
+
+    #[test]
+    fn test_audit_log_no_principal() {
+        let log = AuditLog::new("Client", "c1", "Delete", None, None);
+        assert!(log.principal_id.is_none());
+        assert!(log.operation_json.is_none());
+    }
+
+    #[test]
+    fn test_audit_log_with_application_id() {
+        let log = AuditLog::new("EventType", "evt1", "Create", None, None)
+            .with_application_id("app_ABCDEFGHIJKLM");
+        assert_eq!(log.application_id, Some("app_ABCDEFGHIJKLM".to_string()));
+    }
+
+    #[test]
+    fn test_audit_log_with_client_id() {
+        let log = AuditLog::new("EventType", "evt1", "Create", None, None)
+            .with_client_id("clt_ABCDEFGHIJKLM");
+        assert_eq!(log.client_id, Some("clt_ABCDEFGHIJKLM".to_string()));
+    }
+
+    #[test]
+    fn test_audit_log_from_command() {
+        #[derive(serde::Serialize)]
+        struct CreateClientCommand {
+            name: String,
+            identifier: String,
         }
+
+        let cmd = CreateClientCommand {
+            name: "Test".to_string(),
+            identifier: "test".to_string(),
+        };
+
+        let log = AuditLog::from_command(
+            "Client",
+            "clt_123",
+            &cmd,
+            Some("prn_456".to_string()),
+        );
+
+        assert_eq!(log.entity_type, "Client");
+        assert_eq!(log.entity_id, "clt_123");
+        assert!(log.operation.contains("CreateClientCommand"));
+        assert!(log.operation_json.is_some());
+        let json = log.operation_json.unwrap();
+        assert_eq!(json["name"], "Test");
+        assert_eq!(json["identifier"], "test");
+    }
+
+    #[test]
+    fn test_audit_log_builder_chain() {
+        let log = AuditLog::new("Role", "rol1", "AssignPermission", None, None)
+            .with_application_id("app1")
+            .with_client_id("clt1");
+
+        assert_eq!(log.application_id, Some("app1".to_string()));
+        assert_eq!(log.client_id, Some("clt1".to_string()));
     }
 }
+

@@ -13,9 +13,8 @@ use std::time::Instant;
 
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
-use sea_orm::DatabaseConnection;
 
-use fc_platform::shared::database::{create_connection, run_migrations};
+use fc_platform::shared::database::{create_pool, run_migrations};
 use fc_platform::{
     ClientRepository, EventRepository, DispatchJobRepository,
     Client, Event, DispatchJob,
@@ -23,7 +22,7 @@ use fc_platform::{
 
 // ─── Test Helpers ──────────────────────────────────────────────────────────
 
-async fn setup_test_db() -> (DatabaseConnection, testcontainers::ContainerAsync<Postgres>) {
+async fn setup_test_db() -> (sqlx::PgPool, testcontainers::ContainerAsync<Postgres>) {
     let container = Postgres::default()
         .with_db_name("flowcatalyst_test")
         .with_user("test")
@@ -40,15 +39,15 @@ async fn setup_test_db() -> (DatabaseConnection, testcontainers::ContainerAsync<
         host, port
     );
 
-    let db = create_connection(&database_url)
+    let pool = create_pool(&database_url)
         .await
         .expect("Failed to connect to test database");
 
-    run_migrations(&db)
+    run_migrations(&pool)
         .await
         .expect("Failed to run migrations");
 
-    (db, container)
+    (pool, container)
 }
 
 // ─── Sequential Insert Throughput ────────────────────────────────────────
@@ -56,8 +55,8 @@ async fn setup_test_db() -> (DatabaseConnection, testcontainers::ContainerAsync<
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_client_sequential_insert_throughput() {
-    let (db, _container) = setup_test_db().await;
-    let repo = ClientRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = ClientRepository::new(&pool);
     let count = 100;
 
     let start = Instant::now();
@@ -75,8 +74,8 @@ async fn test_client_sequential_insert_throughput() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_event_sequential_insert_throughput() {
-    let (db, _container) = setup_test_db().await;
-    let repo = EventRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = EventRepository::new(&pool);
     let count = 500;
 
     let start = Instant::now();
@@ -100,8 +99,8 @@ async fn test_event_sequential_insert_throughput() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_dispatch_job_batch_insert_throughput() {
-    let (db, _container) = setup_test_db().await;
-    let repo = DispatchJobRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = DispatchJobRepository::new(&pool);
 
     // Batch of 100
     let jobs: Vec<DispatchJob> = (0..100)
@@ -157,8 +156,8 @@ async fn test_dispatch_job_batch_insert_throughput() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_concurrent_event_inserts() {
-    let (db, _container) = setup_test_db().await;
-    let repo = Arc::new(EventRepository::new(&db));
+    let (pool, _container) = setup_test_db().await;
+    let repo = Arc::new(EventRepository::new(&pool));
     let concurrency = 10;
     let per_task = 50;
     let total = concurrency * per_task;
@@ -195,8 +194,8 @@ async fn test_concurrent_event_inserts() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_concurrent_client_inserts() {
-    let (db, _container) = setup_test_db().await;
-    let repo = Arc::new(ClientRepository::new(&db));
+    let (pool, _container) = setup_test_db().await;
+    let repo = Arc::new(ClientRepository::new(&pool));
     let concurrency = 5;
     let per_task = 20;
     let total = concurrency * per_task;
@@ -234,8 +233,8 @@ async fn test_concurrent_client_inserts() {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn test_dispatch_job_query_performance() {
-    let (db, _container) = setup_test_db().await;
-    let repo = DispatchJobRepository::new(&db);
+    let (pool, _container) = setup_test_db().await;
+    let repo = DispatchJobRepository::new(&pool);
 
     // Seed 500 jobs (5 batches of 100)
     for batch in 0..5 {
@@ -295,7 +294,7 @@ async fn test_api_batch_events_throughput() {
     use fc_platform::{RoleRepository, AuthorizationService};
     use fc_platform::api::{AppState, AuthLayer, SdkEventsState, sdk_events_batch_router};
 
-    let (db, _container) = setup_test_db().await;
+    let (pool, _container) = setup_test_db().await;
 
     let auth_service = Arc::new(AuthService::new(AuthConfig {
         secret_key: "test-secret-key-for-integration-tests-minimum-32-chars!!".to_string(),
@@ -309,15 +308,15 @@ async fn test_api_batch_events_throughput() {
         rsa_public_key_previous: None,
     }));
 
-    let role_repo = Arc::new(RoleRepository::new(&db));
+    let role_repo = Arc::new(RoleRepository::new(&pool));
     let authz_service = Arc::new(AuthorizationService::new(role_repo));
     let app_state = AppState {
         auth_service: auth_service.clone(),
         authz_service,
     };
 
-    let event_repo = Arc::new(EventRepository::new(&db));
-    let sdk_events_state = SdkEventsState { event_repo };
+    let event_repo = Arc::new(EventRepository::new(&pool));
+    let sdk_events_state = SdkEventsState { event_repo, dispatch: None };
     let app: Router = Router::new()
         .nest("/api/sdk/events", sdk_events_batch_router(sdk_events_state))
         .layer(AuthLayer::new(app_state));

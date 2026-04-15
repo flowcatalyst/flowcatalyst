@@ -225,11 +225,13 @@ function getSeverity(
 			return "info";
 		case "QUEUED":
 			return "info";
-		case "IN_PROGRESS":
+		case "PROCESSING":
 			return "warn";
-		case "ERROR":
+		case "FAILED":
 			return "danger";
 		case "CANCELLED":
+			return "secondary";
+		case "EXPIRED":
 			return "secondary";
 		default:
 			return "secondary";
@@ -430,16 +432,19 @@ function formatCode(code: string | undefined): {
             <span class="text-sm">{{ formatDate(data.createdAt) }}</span>
           </template>
         </Column>
-        <Column header="Actions" style="width: 6rem">
+        <Column header="Actions" style="width: 8rem">
           <template #body="{ data }">
-            <Button icon="pi pi-eye" text rounded v-tooltip="'View details'" />
-            <Button
-              icon="pi pi-replay"
-              text
-              rounded
-              v-tooltip="'Retry'"
-              :disabled="data.status === 'COMPLETED' || data.status === 'IN_PROGRESS'"
-            />
+            <div class="action-buttons">
+              <Button icon="pi pi-eye" text rounded size="small" v-tooltip="'View details'" />
+              <Button
+                icon="pi pi-replay"
+                text
+                rounded
+                size="small"
+                v-tooltip="'Retry'"
+                :disabled="data.status === 'COMPLETED' || data.status === 'PROCESSING'"
+              />
+            </div>
           </template>
         </Column>
       </DataTable>
@@ -478,5 +483,11 @@ function formatCode(code: string | undefined): {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
 }
 </style>

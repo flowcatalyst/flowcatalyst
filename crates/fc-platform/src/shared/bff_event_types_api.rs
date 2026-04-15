@@ -434,7 +434,7 @@ pub async fn create_event_type(
     ),
     request_body = BffUpdateEventTypeRequest,
     responses(
-        (status = 200, description = "Event type updated", body = BffEventTypeResponse),
+        (status = 204, description = "Event type updated"),
         (status = 404, description = "Event type not found")
     ),
     security(("bearer_auth" = []))
@@ -444,7 +444,7 @@ pub async fn update_event_type(
     auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<BffUpdateEventTypeRequest>,
-) -> Result<Json<BffEventTypeResponse>, PlatformError> {
+) -> Result<axum::http::StatusCode, PlatformError> {
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
     // Fetch to check client access before calling the use case
@@ -477,14 +477,7 @@ pub async fn update_event_type(
     );
     use_case.run(cmd, ctx).await.into_result()?;
 
-    // Re-fetch for the response
-    let updated = state
-        .event_type_repo
-        .find_by_id(&id)
-        .await?
-        .ok_or_else(|| PlatformError::not_found("EventType", &id))?;
-
-    Ok(Json(updated.into()))
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
 /// Delete event type

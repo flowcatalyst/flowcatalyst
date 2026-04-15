@@ -27,17 +27,20 @@ pub mod sdk_dispatch_jobs_api;
 pub mod public_api;
 pub mod bff_roles_api;
 pub mod bff_event_types_api;
+pub mod dispatch_process_api;
+
+// Server setup helpers (shared across fc-server, fc-platform-server, fc-dev)
+pub mod server_setup;
 
 // Services
 pub mod email_service;
 pub mod encryption_service;
 pub mod authorization_service;
-pub mod dispatch_service;
 pub mod projections_service;
 pub mod role_sync_service;
 
 // Re-export commonly used items
-pub use error::{PlatformError, Result};
+pub use error::{PlatformError, Result, NotFoundExt};
 pub use tsid::{TsidGenerator, EntityType};
 pub use middleware::{Authenticated, AppState, ClientIp};
 pub use api_common::{PaginationParams, PaginatedResponse};
@@ -49,4 +52,3 @@ pub use filter_options_api::filter_options_router;
 pub use client_selection_api::client_selection_router;
 pub use application_roles_sdk_api::application_roles_sdk_router;
 pub use authorization_service::AuthorizationService;
-pub use dispatch_service::{DispatchScheduler, DispatchSchedulerConfig, EventDispatcher};

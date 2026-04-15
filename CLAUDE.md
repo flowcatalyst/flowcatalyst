@@ -136,3 +136,51 @@ All UseCase operations emit both. The UnitOfWork handles this automatically.
 ### Reads Are Fine in Handlers
 Read operations (list, get, filter) can call repositories directly from handlers.
 Only writes need the use case layer.
+
+## Permission Check Naming Convention
+
+Authorization checks live in `shared::authorization_service::checks`. The following naming convention applies:
+
+### Existing Functions (do not rename)
+
+| Function | Purpose | HTTP Methods |
+|---|---|---|
+| `require_anchor(ctx)` | Anchor-only endpoints | Any |
+| `is_admin(ctx)` | Requires anchor scope or `ADMIN_ALL` permission | Any |
+| `can_read_events(ctx)` | Read events | GET |
+| `can_read_events_raw(ctx)` | Read event payloads | GET |
+| `can_read_event_types(ctx)` | Read event types | GET |
+| `can_create_event_types(ctx)` | Create event types | POST |
+| `can_update_event_types(ctx)` | Update event types | PUT/PATCH |
+| `can_delete_event_types(ctx)` | Delete event types | DELETE |
+| `can_write_event_types(ctx)` | Any write on event types (create/update/delete) | POST/PUT/DELETE |
+| `can_read_subscriptions(ctx)` | Read subscriptions | GET |
+| `can_create_subscriptions(ctx)` | Create subscriptions | POST |
+| `can_update_subscriptions(ctx)` | Update subscriptions | PUT/PATCH |
+| `can_delete_subscriptions(ctx)` | Delete subscriptions | DELETE |
+| `can_write_subscriptions(ctx)` | Any write on subscriptions | POST/PUT/DELETE |
+| `can_read_dispatch_jobs(ctx)` | Read dispatch jobs | GET |
+| `can_read_dispatch_jobs_raw(ctx)` | Read dispatch job payloads | GET |
+| `can_create_dispatch_jobs(ctx)` | Create dispatch jobs | POST |
+| `can_retry_dispatch_jobs(ctx)` | Retry dispatch jobs | POST |
+| `can_write_dispatch_jobs(ctx)` | Batch write dispatch jobs | POST |
+| `can_write_events(ctx)` | Create/batch events | POST |
+
+### Convention for New Check Functions
+
+- **`can_read_<resource>(ctx)`** — for GET endpoints (list, get by id, filters)
+- **`can_read_<resource>_raw(ctx)`** — for GET endpoints that expose sensitive payloads
+- **`can_create_<resource>(ctx)`** — for POST endpoints that create a single entity
+- **`can_update_<resource>(ctx)`** — for PUT/PATCH endpoints
+- **`can_delete_<resource>(ctx)`** — for DELETE endpoints
+- **`can_write_<resource>(ctx)`** — for endpoints that accept any write (create, update, or delete); checks if the caller has *any* of the three granular permissions
+- **`require_anchor(ctx)`** — for anchor-only endpoints (platform settings, identity providers, etc.)
+- **`is_admin(ctx)`** — for endpoints requiring full admin access
+
+### Service-Level Methods on `AuthorizationService`
+
+The `AuthorizationService` struct also provides general-purpose methods:
+- `authorize(ctx, permission, client_id)` — check a single permission + optional client access
+- `require_anchor(ctx)` — require anchor scope
+- `require_permission(ctx, permission)` — require a specific permission string
+- `require_client_access(ctx, client_id)` — require access to a specific client

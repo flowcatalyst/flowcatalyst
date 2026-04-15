@@ -47,13 +47,14 @@ pub mod password_reset;
 // Shared infrastructure
 pub mod shared;
 
-// SeaORM entity models (database table mappings)
-pub mod entities;
 
 // Cross-cutting concerns
 pub mod usecase;
 pub mod seed;
 pub mod idp;
+
+// Dispatch scheduler (polls PENDING jobs → queue → router → webhook)
+pub mod scheduler;
 
 // Centralized router builder
 pub mod router;
@@ -172,6 +173,84 @@ pub mod repository {
     pub use crate::platform_config::access_repository::PlatformConfigAccessRepository;
     pub use crate::login_attempt::repository::LoginAttemptRepository;
     pub use crate::password_reset::repository::PasswordResetTokenRepository;
+
+    use std::sync::Arc;
+    use sqlx::PgPool;
+
+    /// Holds all Arc-wrapped repository instances. Replaces the ~30 lines of
+    /// `Arc::new(XRepository::new(&pool))` duplicated across binaries.
+    ///
+    /// ```rust,ignore
+    /// let repos = Repositories::new(&pool);
+    /// // then use repos.event_repo, repos.client_repo, etc.
+    /// ```
+    pub struct Repositories {
+        pub event_repo: Arc<EventRepository>,
+        pub dispatch_job_repo: Arc<DispatchJobRepository>,
+        pub event_type_repo: Arc<EventTypeRepository>,
+        pub role_repo: Arc<RoleRepository>,
+        pub service_account_repo: Arc<ServiceAccountRepository>,
+        pub dispatch_pool_repo: Arc<DispatchPoolRepository>,
+        pub subscription_repo: Arc<SubscriptionRepository>,
+        pub principal_repo: Arc<PrincipalRepository>,
+        pub client_repo: Arc<ClientRepository>,
+        pub application_repo: Arc<ApplicationRepository>,
+        pub oauth_client_repo: Arc<OAuthClientRepository>,
+        pub anchor_domain_repo: Arc<AnchorDomainRepository>,
+        pub client_auth_config_repo: Arc<ClientAuthConfigRepository>,
+        pub client_access_grant_repo: Arc<ClientAccessGrantRepository>,
+        pub idp_role_mapping_repo: Arc<IdpRoleMappingRepository>,
+        pub audit_log_repo: Arc<AuditLogRepository>,
+        pub application_client_config_repo: Arc<ApplicationClientConfigRepository>,
+        pub oidc_login_state_repo: Arc<OidcLoginStateRepository>,
+        pub refresh_token_repo: Arc<RefreshTokenRepository>,
+        pub auth_code_repo: Arc<AuthorizationCodeRepository>,
+        pub connection_repo: Arc<ConnectionRepository>,
+        pub cors_repo: Arc<CorsOriginRepository>,
+        pub idp_repo: Arc<IdentityProviderRepository>,
+        pub edm_repo: Arc<EmailDomainMappingRepository>,
+        pub platform_config_repo: Arc<PlatformConfigRepository>,
+        pub platform_config_access_repo: Arc<PlatformConfigAccessRepository>,
+        pub login_attempt_repo: Arc<LoginAttemptRepository>,
+        pub password_reset_repo: Arc<PasswordResetTokenRepository>,
+        pub pending_auth_repo: Arc<PendingAuthRepository>,
+    }
+
+    impl Repositories {
+        pub fn new(pool: &PgPool) -> Self {
+            Self {
+                event_repo: Arc::new(EventRepository::new(pool)),
+                dispatch_job_repo: Arc::new(DispatchJobRepository::new(pool)),
+                cors_repo: Arc::new(CorsOriginRepository::new(pool)),
+                password_reset_repo: Arc::new(PasswordResetTokenRepository::new(pool)),
+                platform_config_access_repo: Arc::new(PlatformConfigAccessRepository::new(pool)),
+                login_attempt_repo: Arc::new(LoginAttemptRepository::new(pool)),
+                platform_config_repo: Arc::new(PlatformConfigRepository::new(pool)),
+                audit_log_repo: Arc::new(AuditLogRepository::new(pool)),
+                connection_repo: Arc::new(ConnectionRepository::new(pool)),
+                dispatch_pool_repo: Arc::new(DispatchPoolRepository::new(pool)),
+                client_repo: Arc::new(ClientRepository::new(pool)),
+                application_repo: Arc::new(ApplicationRepository::new(pool)),
+                application_client_config_repo: Arc::new(ApplicationClientConfigRepository::new(pool)),
+                event_type_repo: Arc::new(EventTypeRepository::new(pool)),
+                role_repo: Arc::new(RoleRepository::new(pool)),
+                service_account_repo: Arc::new(ServiceAccountRepository::new(pool)),
+                subscription_repo: Arc::new(SubscriptionRepository::new(pool)),
+                principal_repo: Arc::new(PrincipalRepository::new(pool)),
+                anchor_domain_repo: Arc::new(AnchorDomainRepository::new(pool)),
+                client_auth_config_repo: Arc::new(ClientAuthConfigRepository::new(pool)),
+                client_access_grant_repo: Arc::new(ClientAccessGrantRepository::new(pool)),
+                idp_role_mapping_repo: Arc::new(IdpRoleMappingRepository::new(pool)),
+                oauth_client_repo: Arc::new(OAuthClientRepository::new(pool)),
+                oidc_login_state_repo: Arc::new(OidcLoginStateRepository::new(pool)),
+                refresh_token_repo: Arc::new(RefreshTokenRepository::new(pool)),
+                auth_code_repo: Arc::new(AuthorizationCodeRepository::new(pool)),
+                idp_repo: Arc::new(IdentityProviderRepository::new(pool)),
+                edm_repo: Arc::new(EmailDomainMappingRepository::new(pool)),
+                pending_auth_repo: Arc::new(PendingAuthRepository::new(pool)),
+            }
+        }
+    }
 }
 
 /// Backward-compatible service re-exports
@@ -184,7 +263,7 @@ pub mod service {
     pub use crate::shared::authorization_service::{AuthorizationService, AuthContext, checks};
     pub use crate::shared::role_sync_service::RoleSyncService;
     pub use crate::shared::projections_service::{EventProjectionWriter, DispatchJobProjectionWriter};
-    pub use crate::shared::dispatch_service::{DispatchScheduler, DispatchSchedulerConfig, EventDispatcher};
+    pub use crate::scheduler::{DispatchScheduler, SchedulerConfig, SchedulerError};
 }
 
 /// Backward-compatible API re-exports
@@ -194,7 +273,7 @@ pub mod api {
     pub use crate::shared::api_common::{PaginationParams, PaginatedResponse, SuccessResponse, CreatedResponse, ApiError};
 
     // API state and router exports from each aggregate
-    pub use crate::event::api::{events_router, EventsState};
+    pub use crate::event::api::{events_router, admin_events_router, EventsState};
     pub use crate::event_type::api::{event_types_router, EventTypesState};
     pub use crate::dispatch_job::api::{dispatch_jobs_router, DispatchJobsState};
     pub use crate::dispatch_pool::api::{dispatch_pools_router, DispatchPoolsState};
@@ -221,7 +300,7 @@ pub mod api {
     pub use crate::platform_config::access_api::{config_access_router, ConfigAccessState};
     pub use crate::login_attempt::api::{login_attempts_router, LoginAttemptsState};
     pub use crate::shared::me_api::{me_router, MeState};
-    pub use crate::shared::batch_api::{sdk_events_batch_router, SdkEventsState};
+    pub use crate::shared::batch_api::{sdk_events_batch_router, SdkEventsState, EventDispatchDeps};
     pub use crate::shared::sdk_clients_api::{sdk_clients_router, SdkClientsState};
     pub use crate::shared::sdk_principals_api::{sdk_principals_router, SdkPrincipalsState};
     pub use crate::shared::sdk_roles_api::{sdk_roles_router, SdkRolesState};
@@ -231,6 +310,7 @@ pub mod api {
     pub use crate::shared::sdk_dispatch_jobs_api::{sdk_dispatch_jobs_batch_router, SdkDispatchJobsState};
     pub use crate::shared::bff_roles_api::{bff_roles_router, BffRolesState};
     pub use crate::shared::bff_event_types_api::{bff_event_types_router, BffEventTypesState};
+    pub use crate::shared::dispatch_process_api::{dispatch_process_router, DispatchProcessState};
 
     // Shared APIs
     pub use crate::shared::filter_options_api::{filter_options_router, event_type_filters_router, FilterOptionsState};

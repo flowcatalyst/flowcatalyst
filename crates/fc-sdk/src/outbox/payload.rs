@@ -324,3 +324,280 @@ impl AuditLogPayload {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::usecase::EventMetadata;
+
+    // ─── DispatchJobPayload ─────────────────────────────────────────────
+
+    #[test]
+    fn dispatch_job_payload_default_values() {
+        let djp = DispatchJobPayload::default();
+
+        assert!(djp.code.is_empty());
+        assert!(djp.target_url.is_empty());
+        assert_eq!(djp.payload, serde_json::json!({}));
+        assert!(djp.subscription_id.is_empty());
+        assert!(djp.event_id.is_none());
+        assert!(djp.service_account_id.is_none());
+        assert!(djp.dispatch_pool_id.is_none());
+        assert!(djp.message_group.is_none());
+        assert_eq!(djp.mode, "immediate");
+        assert!(!djp.data_only);
+        assert_eq!(djp.timeout_seconds, 30);
+        assert_eq!(djp.max_retries, 3);
+        assert_eq!(djp.retry_strategy, "exponential_backoff");
+        assert!(djp.idempotency_key.is_none());
+    }
+
+    #[test]
+    fn dispatch_job_payload_serialization_required_fields() {
+        let djp = DispatchJobPayload {
+            code: "order.created".to_string(),
+            target_url: "https://hook.example.com".to_string(),
+            payload: serde_json::json!({"orderId": "123"}),
+            subscription_id: "sub_abc".to_string(),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_value(&djp).unwrap();
+
+        assert_eq!(json["code"], "order.created");
+        assert_eq!(json["target_url"], "https://hook.example.com");
+        assert_eq!(json["payload"]["orderId"], "123");
+        assert_eq!(json["subscription_id"], "sub_abc");
+        assert_eq!(json["mode"], "immediate");
+        assert_eq!(json["timeout_seconds"], 30);
+        assert_eq!(json["max_retries"], 3);
+        assert_eq!(json["retry_strategy"], "exponential_backoff");
+    }
+
+    #[test]
+    fn dispatch_job_payload_skip_serializing_none_fields() {
+        let djp = DispatchJobPayload::default();
+        let json = serde_json::to_value(&djp).unwrap();
+
+        // Optional fields with skip_serializing_if should be absent
+        assert!(json.get("event_id").is_none());
+        assert!(json.get("service_account_id").is_none());
+        assert!(json.get("dispatch_pool_id").is_none());
+        assert!(json.get("message_group").is_none());
+        assert!(json.get("idempotency_key").is_none());
+    }
+
+    #[test]
+    fn dispatch_job_payload_with_optional_fields() {
+        let djp = DispatchJobPayload {
+            code: "test".to_string(),
+            target_url: "https://x.com".to_string(),
+            payload: serde_json::json!({}),
+            subscription_id: "sub_1".to_string(),
+            event_id: Some("evt_123".to_string()),
+            service_account_id: Some("svc_456".to_string()),
+            dispatch_pool_id: Some("pool_789".to_string()),
+            message_group: Some("grp:1".to_string()),
+            idempotency_key: Some("idem_abc".to_string()),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_value(&djp).unwrap();
+
+        assert_eq!(json["event_id"], "evt_123");
+        assert_eq!(json["service_account_id"], "svc_456");
+        assert_eq!(json["dispatch_pool_id"], "pool_789");
+        assert_eq!(json["message_group"], "grp:1");
+        assert_eq!(json["idempotency_key"], "idem_abc");
+    }
+
+    #[test]
+    fn dispatch_job_payload_clone() {
+        let djp = DispatchJobPayload {
+            code: "test".into(),
+            ..Default::default()
+        };
+        let cloned = djp.clone();
+        assert_eq!(cloned.code, "test");
+    }
+
+    // ─── AuditLogPayload ────────────────────────────────────────────────
+
+    #[test]
+    fn audit_log_payload_serialization() {
+        let alp = AuditLogPayload {
+            entity_type: "Order".to_string(),
+            entity_id: "ord_123".to_string(),
+            operation: "CreateOrder".to_string(),
+            operation_json: Some(serde_json::json!({"customer_id": "cust_1"})),
+            principal_id: "prn_admin".to_string(),
+            application_id: Some("app_1".to_string()),
+            client_id: Some("clt_1".to_string()),
+            performed_at: "2026-01-01T00:00:00+00:00".to_string(),
+            message_group: Some("orders:order:ord_123".to_string()),
+        };
+
+        let json = serde_json::to_value(&alp).unwrap();
+
+        assert_eq!(json["entity_type"], "Order");
+        assert_eq!(json["entity_id"], "ord_123");
+        assert_eq!(json["operation"], "CreateOrder");
+        assert_eq!(json["operation_json"]["customer_id"], "cust_1");
+        assert_eq!(json["principal_id"], "prn_admin");
+        assert_eq!(json["application_id"], "app_1");
+        assert_eq!(json["client_id"], "clt_1");
+        assert_eq!(json["message_group"], "orders:order:ord_123");
+    }
+
+    #[test]
+    fn audit_log_payload_skip_serializing_none() {
+        let alp = AuditLogPayload {
+            entity_type: "X".into(),
+            entity_id: "x_1".into(),
+            operation: "Op".into(),
+            operation_json: None,
+            principal_id: "prn".into(),
+            application_id: None,
+            client_id: None,
+            performed_at: "t".into(),
+            message_group: None,
+        };
+        let json = serde_json::to_value(&alp).unwrap();
+
+        assert!(json.get("operation_json").is_none());
+        assert!(json.get("application_id").is_none());
+        assert!(json.get("client_id").is_none());
+        assert!(json.get("message_group").is_none());
+    }
+
+    #[test]
+    fn audit_log_payload_clone() {
+        let alp = AuditLogPayload {
+            entity_type: "Order".into(),
+            entity_id: "ord_1".into(),
+            operation: "Create".into(),
+            operation_json: None,
+            principal_id: "prn".into(),
+            application_id: None,
+            client_id: None,
+            performed_at: "t".into(),
+            message_group: None,
+        };
+        let cloned = alp.clone();
+        assert_eq!(cloned.entity_type, "Order");
+        assert_eq!(cloned.entity_id, "ord_1");
+    }
+
+    // ─── AuditLogPayload::from_event ────────────────────────────────────
+
+    #[derive(Debug, Clone, serde::Serialize)]
+    struct TestEvent {
+        pub metadata: EventMetadata,
+        pub order_id: String,
+    }
+
+    crate::impl_domain_event!(TestEvent);
+
+    #[derive(serde::Serialize)]
+    struct CreateOrderCommand {
+        pub customer_id: String,
+        pub items: Vec<String>,
+    }
+
+    #[test]
+    fn audit_log_from_event_extracts_entity_type() {
+        let meta = EventMetadata::new(
+            "evt_1".into(),
+            "shop:orders:order:created",
+            "1.0",
+            "shop:orders",
+            "orders.order.ord_123".into(),
+            "orders:order:ord_123".into(),
+            "exec-1".into(),
+            "corr-1".into(),
+            None,
+            "prn_user".into(),
+        );
+        let event = TestEvent {
+            metadata: meta,
+            order_id: "ord_123".into(),
+        };
+        let cmd = CreateOrderCommand {
+            customer_id: "cust_1".into(),
+            items: vec!["item_a".into()],
+        };
+
+        let audit = AuditLogPayload::from_event(&event, &cmd);
+
+        // "orders.order.ord_123" -> entity_type = "Order" (capitalized 2nd segment)
+        assert_eq!(audit.entity_type, "Order");
+        // entity_id = 3rd segment
+        assert_eq!(audit.entity_id, "ord_123");
+        // operation = type name of command (last segment)
+        assert_eq!(audit.operation, "CreateOrderCommand");
+        // principal from event
+        assert_eq!(audit.principal_id, "prn_user");
+        // message_group from event
+        assert_eq!(
+            audit.message_group.as_deref(),
+            Some("orders:order:ord_123")
+        );
+        // operation_json should serialize the command
+        let op_json = audit.operation_json.unwrap();
+        assert_eq!(op_json["customer_id"], "cust_1");
+        assert_eq!(op_json["items"][0], "item_a");
+        // application_id and client_id are None
+        assert!(audit.application_id.is_none());
+        assert!(audit.client_id.is_none());
+    }
+
+    #[test]
+    fn audit_log_from_event_short_subject() {
+        let meta = EventMetadata::new(
+            "e".into(),
+            "t",
+            "1",
+            "s",
+            "single".into(), // only one segment
+            "grp".into(),
+            "exec".into(),
+            "corr".into(),
+            None,
+            "prn".into(),
+        );
+        let event = TestEvent {
+            metadata: meta,
+            order_id: "x".into(),
+        };
+
+        #[derive(serde::Serialize)]
+        struct Cmd;
+
+        let audit = AuditLogPayload::from_event(&event, &Cmd);
+
+        // No 2nd segment -> "Unknown"
+        assert_eq!(audit.entity_type, "Unknown");
+        // No 3rd segment -> ""
+        assert_eq!(audit.entity_id, "");
+    }
+
+    #[test]
+    fn audit_log_from_event_performed_at_is_rfc3339() {
+        let meta = EventMetadata::new(
+            "e".into(), "t", "1", "s", "a.b.c".into(), "grp".into(),
+            "exec".into(), "corr".into(), None, "prn".into(),
+        );
+        let event = TestEvent {
+            metadata: meta,
+            order_id: "x".into(),
+        };
+
+        #[derive(serde::Serialize)]
+        struct Cmd;
+
+        let audit = AuditLogPayload::from_event(&event, &Cmd);
+
+        // Should be parseable as RFC3339
+        let _: chrono::DateTime<chrono::Utc> = audit.performed_at.parse().unwrap();
+    }
+}

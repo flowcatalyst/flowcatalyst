@@ -79,20 +79,92 @@ impl PlatformConfig {
     }
 }
 
-impl From<crate::entities::app_platform_configs::Model> for PlatformConfig {
-    fn from(m: crate::entities::app_platform_configs::Model) -> Self {
-        Self {
-            id: m.id,
-            application_code: m.application_code,
-            section: m.section,
-            property: m.property,
-            scope: ConfigScope::from_str(&m.scope),
-            client_id: m.client_id,
-            value_type: ConfigValueType::from_str(&m.value_type),
-            value: m.value,
-            description: m.description,
-            created_at: m.created_at.with_timezone(&Utc),
-            updated_at: m.updated_at.with_timezone(&Utc),
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_platform_config() {
+        let config = PlatformConfig::new("my-app", "email", "smtp_host", "smtp.example.com");
+
+        assert!(!config.id.is_empty());
+        assert!(config.id.starts_with("pcf_"), "ID should have pcf_ prefix, got: {}", config.id);
+        assert_eq!(config.id.len(), 17, "Typed ID should be 17 chars, got: {}", config.id.len());
+        assert_eq!(config.application_code, "my-app");
+        assert_eq!(config.section, "email");
+        assert_eq!(config.property, "smtp_host");
+        assert_eq!(config.value, "smtp.example.com");
+        assert_eq!(config.scope, ConfigScope::Global);
+        assert!(config.client_id.is_none());
+        assert_eq!(config.value_type, ConfigValueType::Plain);
+        assert!(config.description.is_none());
+        assert_eq!(config.created_at, config.updated_at);
+    }
+
+    #[test]
+    fn test_platform_config_unique_ids() {
+        let c1 = PlatformConfig::new("a", "s", "p", "v1");
+        let c2 = PlatformConfig::new("a", "s", "p", "v2");
+        assert_ne!(c1.id, c2.id);
+    }
+
+    // --- ConfigScope ---
+
+    #[test]
+    fn test_config_scope_as_str() {
+        assert_eq!(ConfigScope::Global.as_str(), "GLOBAL");
+        assert_eq!(ConfigScope::Client.as_str(), "CLIENT");
+    }
+
+    #[test]
+    fn test_config_scope_from_str() {
+        assert_eq!(ConfigScope::from_str("GLOBAL"), ConfigScope::Global);
+        assert_eq!(ConfigScope::from_str("CLIENT"), ConfigScope::Client);
+        assert_eq!(ConfigScope::from_str("unknown"), ConfigScope::Global);
+    }
+
+    #[test]
+    fn test_config_scope_roundtrip() {
+        for s in [ConfigScope::Global, ConfigScope::Client] {
+            assert_eq!(ConfigScope::from_str(s.as_str()), s, "Roundtrip failed for {:?}", s);
         }
     }
+
+    // --- ConfigValueType ---
+
+    #[test]
+    fn test_config_value_type_as_str() {
+        assert_eq!(ConfigValueType::Plain.as_str(), "PLAIN");
+        assert_eq!(ConfigValueType::Secret.as_str(), "SECRET");
+    }
+
+    #[test]
+    fn test_config_value_type_from_str() {
+        assert_eq!(ConfigValueType::from_str("PLAIN"), ConfigValueType::Plain);
+        assert_eq!(ConfigValueType::from_str("SECRET"), ConfigValueType::Secret);
+        assert_eq!(ConfigValueType::from_str("unknown"), ConfigValueType::Plain);
+    }
+
+    #[test]
+    fn test_config_value_type_roundtrip() {
+        for t in [ConfigValueType::Plain, ConfigValueType::Secret] {
+            assert_eq!(ConfigValueType::from_str(t.as_str()), t, "Roundtrip failed for {:?}", t);
+        }
+    }
+
+    // --- masked_value ---
+
+    #[test]
+    fn test_masked_value_plain() {
+        let config = PlatformConfig::new("app", "s", "p", "my-value");
+        assert_eq!(config.masked_value(), "my-value");
+    }
+
+    #[test]
+    fn test_masked_value_secret() {
+        let mut config = PlatformConfig::new("app", "s", "p", "super-secret");
+        config.value_type = ConfigValueType::Secret;
+        assert_eq!(config.masked_value(), "***");
+    }
 }
+

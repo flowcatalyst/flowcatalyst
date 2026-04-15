@@ -6,7 +6,7 @@
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS iam_login_attempts (
     id VARCHAR(17) PRIMARY KEY,
-    attempt_type VARCHAR(20) NOT NULL,
+    attempt_type VARCHAR(30) NOT NULL,
     outcome VARCHAR(20) NOT NULL,
     failure_reason VARCHAR(100),
     identifier VARCHAR(255),
