@@ -19,7 +19,7 @@ use crate::application::entity::Application;
 use crate::application::repository::ApplicationRepository;
 use crate::application::client_config_repository::ApplicationClientConfigRepository;
 use crate::shared::error::{PlatformError, NotFoundExt};
-use crate::shared::api_common::{PaginationParams, CreatedResponse};
+use crate::shared::api_common::PaginationParams;
 use crate::shared::middleware::Authenticated;
 use crate::{AuditService, PasswordService};
 
@@ -425,7 +425,7 @@ pub struct PrincipalsState {
     operation_id = "postApiAdminPrincipalsUsers",
     request_body = CreateUserRequest,
     responses(
-        (status = 201, description = "User created", body = CreatedResponse),
+        (status = 201, description = "User created", body = PrincipalResponse),
         (status = 400, description = "Validation error"),
         (status = 409, description = "Duplicate email")
     ),
@@ -435,7 +435,7 @@ pub async fn create_user(
     State(state): State<PrincipalsState>,
     auth: Authenticated,
     Json(req): Json<CreateUserRequest>,
-) -> Result<Json<CreatedResponse>, PlatformError> {
+) -> Result<Json<PrincipalResponse>, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
     let enforce_complexity = req.enforce_password_complexity.unwrap_or(true);
@@ -476,7 +476,7 @@ pub async fn create_user(
         if let Some(ref audit) = state.audit_service {
             let _ = audit.log_create(&auth.0, "Principal", &id, format!("Created anchor user {}", req.email)).await;
         }
-        return Ok(Json(CreatedResponse::new(id)));
+        return Ok(Json(principal.into()));
     }
 
     let mapping = if let Some(ref edm_repo) = state.email_domain_mapping_repo {
@@ -499,7 +499,7 @@ pub async fn create_user(
                 )));
             }
 
-            if let Some(existing) = state.principal_repo.find_by_email(&req.email).await? {
+            if let Some(mut existing) = state.principal_repo.find_by_email(&req.email).await? {
                 let already_linked = existing.client_id.as_deref() == Some(client_id)
                     || existing.assigned_clients.iter().any(|c| c == client_id);
                 if already_linked {
@@ -509,7 +509,8 @@ pub async fn create_user(
                 if let Some(ref audit) = state.audit_service {
                     let _ = audit.log_client_access_granted(&auth.0, &existing.id, client_id).await;
                 }
-                return Ok(Json(CreatedResponse::new(existing.id)));
+                existing.assigned_clients.push(client_id.to_string());
+                return Ok(Json(existing.into()));
             }
 
             let mut principal = Principal::new_user(&req.email, UserScope::Partner)
@@ -527,7 +528,7 @@ pub async fn create_user(
             if let Some(ref audit) = state.audit_service {
                 let _ = audit.log_create(&auth.0, "Principal", &id, format!("Created partner user {}", req.email)).await;
             }
-            return Ok(Json(CreatedResponse::new(id)));
+            return Ok(Json(principal.into()));
         }
     }
 
@@ -568,7 +569,7 @@ pub async fn create_user(
         let _ = audit.log_create(&auth.0, "Principal", &id, format!("Created user {}", req.email)).await;
     }
 
-    Ok(Json(CreatedResponse::new(id)))
+    Ok(Json(principal.into()))
 }
 
 /// Get principal by ID

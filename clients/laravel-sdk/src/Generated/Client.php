@@ -516,7 +516,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsUsersBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsUsersConflictException
      *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\CreatedResponse : \Psr\Http\Message\ResponseInterface)
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PrincipalResponse : \Psr\Http\Message\ResponseInterface)
      */
     public function postApiAdminPrincipalsUsers(?\FlowCatalyst\Generated\Model\CreateUserRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {

@@ -2807,7 +2807,7 @@ export type PostApiAdminPrincipalsUsersResponses = {
     /**
      * User created
      */
-    201: CreatedResponse;
+    201: PrincipalResponse;
 };
 export type PostApiAdminPrincipalsUsersResponse = PostApiAdminPrincipalsUsersResponses[keyof PostApiAdminPrincipalsUsersResponses];
 export type GetApiAdminPrincipalsCheckEmailDomainData = {

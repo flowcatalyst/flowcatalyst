@@ -1889,7 +1889,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreatedResponse"
+                  "$ref": "#/components/schemas/PrincipalResponse"
                 }
               }
             }

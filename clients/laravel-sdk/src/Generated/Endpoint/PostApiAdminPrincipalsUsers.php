@@ -37,14 +37,14 @@ class PostApiAdminPrincipalsUsers extends \FlowCatalyst\Generated\Runtime\Client
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsUsersBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsUsersConflictException
      *
-     * @return null|\FlowCatalyst\Generated\Model\CreatedResponse
+     * @return null|\FlowCatalyst\Generated\Model\PrincipalResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (201 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\CreatedResponse', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\PrincipalResponse', 'json');
         }
         if (400 === $status) {
             throw new \FlowCatalyst\Generated\Exception\PostApiAdminPrincipalsUsersBadRequestException($response);
