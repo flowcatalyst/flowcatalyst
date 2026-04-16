@@ -186,3 +186,160 @@ impl AuthConfigDeleted {
         }
     }
 }
+
+// ── AnchorDomain update event ────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnchorDomainUpdated {
+    #[serde(flatten)]
+    pub metadata: EventMetadata,
+
+    pub anchor_domain_id: String,
+    pub domain: String,
+}
+
+impl_domain_event!(AnchorDomainUpdated);
+
+impl AnchorDomainUpdated {
+    const EVENT_TYPE: &'static str = "platform:iam:anchor-domain:updated";
+    const SPEC_VERSION: &'static str = "1.0";
+    const SOURCE: &'static str = "platform:iam";
+
+    pub fn new(ctx: &ExecutionContext, id: &str, domain: &str) -> Self {
+        let event_id = TsidGenerator::generate_untyped();
+        let subject = format!("platform.anchordomain.{}", id);
+        let message_group = format!("platform:anchordomain:{}", id);
+
+        Self {
+            metadata: EventMetadata::new(
+                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
+                subject, message_group,
+                ctx.execution_id.clone(), ctx.correlation_id.clone(),
+                ctx.causation_id.clone(), ctx.principal_id.clone(),
+            ),
+            anchor_domain_id: id.to_string(),
+            domain: domain.to_string(),
+        }
+    }
+}
+
+// ── IdpRoleMapping events ────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IdpRoleMappingCreated {
+    #[serde(flatten)]
+    pub metadata: EventMetadata,
+
+    pub idp_role_mapping_id: String,
+    pub idp_role: String,
+    pub mapped_role: String,
+}
+
+impl_domain_event!(IdpRoleMappingCreated);
+
+impl IdpRoleMappingCreated {
+    const EVENT_TYPE: &'static str = "platform:iam:idp-role-mapping:created";
+    const SPEC_VERSION: &'static str = "1.0";
+    const SOURCE: &'static str = "platform:iam";
+
+    pub fn new(ctx: &ExecutionContext, id: &str, idp_role: &str, mapped_role: &str) -> Self {
+        let event_id = TsidGenerator::generate_untyped();
+        let subject = format!("platform.idprolemapping.{}", id);
+        let message_group = format!("platform:idprolemapping:{}", id);
+
+        Self {
+            metadata: EventMetadata::new(
+                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
+                subject, message_group,
+                ctx.execution_id.clone(), ctx.correlation_id.clone(),
+                ctx.causation_id.clone(), ctx.principal_id.clone(),
+            ),
+            idp_role_mapping_id: id.to_string(),
+            idp_role: idp_role.to_string(),
+            mapped_role: mapped_role.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IdpRoleMappingDeleted {
+    #[serde(flatten)]
+    pub metadata: EventMetadata,
+
+    pub idp_role_mapping_id: String,
+}
+
+impl_domain_event!(IdpRoleMappingDeleted);
+
+impl IdpRoleMappingDeleted {
+    const EVENT_TYPE: &'static str = "platform:iam:idp-role-mapping:deleted";
+    const SPEC_VERSION: &'static str = "1.0";
+    const SOURCE: &'static str = "platform:iam";
+
+    pub fn new(ctx: &ExecutionContext, id: &str) -> Self {
+        let event_id = TsidGenerator::generate_untyped();
+        let subject = format!("platform.idprolemapping.{}", id);
+        let message_group = format!("platform:idprolemapping:{}", id);
+
+        Self {
+            metadata: EventMetadata::new(
+                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
+                subject, message_group,
+                ctx.execution_id.clone(), ctx.correlation_id.clone(),
+                ctx.causation_id.clone(), ctx.principal_id.clone(),
+            ),
+            idp_role_mapping_id: id.to_string(),
+        }
+    }
+}
+
+// ── OAuthClient events ───────────────────────────────────────────────────────
+
+macro_rules! oauth_client_event {
+    ($name:ident, $event_type:expr) => {
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct $name {
+            #[serde(flatten)]
+            pub metadata: EventMetadata,
+
+            pub oauth_client_id: String,
+            pub client_id: String,
+        }
+
+        impl_domain_event!($name);
+
+        impl $name {
+            const EVENT_TYPE: &'static str = $event_type;
+            const SPEC_VERSION: &'static str = "1.0";
+            const SOURCE: &'static str = "platform:iam";
+
+            pub fn new(ctx: &ExecutionContext, id: &str, client_id: &str) -> Self {
+                let event_id = TsidGenerator::generate_untyped();
+                let subject = format!("platform.oauthclient.{}", id);
+                let message_group = format!("platform:oauthclient:{}", id);
+
+                Self {
+                    metadata: EventMetadata::new(
+                        event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
+                        subject, message_group,
+                        ctx.execution_id.clone(), ctx.correlation_id.clone(),
+                        ctx.causation_id.clone(), ctx.principal_id.clone(),
+                    ),
+                    oauth_client_id: id.to_string(),
+                    client_id: client_id.to_string(),
+                }
+            }
+        }
+    };
+}
+
+oauth_client_event!(OAuthClientCreated, "platform:iam:oauth-client:created");
+oauth_client_event!(OAuthClientUpdated, "platform:iam:oauth-client:updated");
+oauth_client_event!(OAuthClientDeleted, "platform:iam:oauth-client:deleted");
+oauth_client_event!(OAuthClientActivated, "platform:iam:oauth-client:activated");
+oauth_client_event!(OAuthClientDeactivated, "platform:iam:oauth-client:deactivated");
+oauth_client_event!(OAuthClientSecretRotated, "platform:iam:oauth-client:secret-rotated");

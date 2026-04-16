@@ -29,6 +29,14 @@ pub struct UpdateSubscriptionCommand {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 
+    /// New webhook endpoint URL (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
+
+    /// New connection ID (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_id: Option<String>,
+
     /// New event types (replaces existing if provided)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event_types: Option<Vec<EventTypeBindingInput>>,
@@ -88,6 +96,8 @@ impl<U: UnitOfWork> UseCase for UpdateSubscriptionUseCase<U> {
 
         if command.name.is_none()
             && command.description.is_none()
+            && command.endpoint.is_none()
+            && command.connection_id.is_none()
             && command.event_types.is_none()
             && command.dispatch_pool_id.is_none()
             && command.service_account_id.is_none()
@@ -150,6 +160,14 @@ impl<U: UnitOfWork> UseCase for UpdateSubscriptionUseCase<U> {
             if changed {
                 subscription.description = Some(desc.clone());
             }
+        }
+
+        if let Some(ref ep) = command.endpoint {
+            subscription.endpoint = ep.clone();
+        }
+
+        if let Some(ref conn_id) = command.connection_id {
+            subscription.connection_id = Some(conn_id.clone());
         }
 
         if let Some(ref new_event_types) = command.event_types {
@@ -233,6 +251,8 @@ mod tests {
             subscription_id: "sub-123".to_string(),
             name: Some("New Name".to_string()),
             description: None,
+            endpoint: None,
+            connection_id: None,
             event_types: None,
             dispatch_pool_id: None,
             service_account_id: None,

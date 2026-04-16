@@ -87,6 +87,9 @@ pub struct IdentityProvidersListResponse {
 #[derive(Clone)]
 pub struct IdentityProvidersState {
     pub idp_repo: Arc<IdentityProviderRepository>,
+    pub create_use_case: Arc<crate::identity_provider::operations::CreateIdentityProviderUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_use_case: Arc<crate::identity_provider::operations::UpdateIdentityProviderUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_use_case: Arc<crate::identity_provider::operations::DeleteIdentityProviderUseCase<crate::usecase::PgUnitOfWork>>,
 }
 
 #[utoipa::path(
@@ -107,23 +110,28 @@ async fn create_identity_provider(
     auth: Authenticated,
     Json(req): Json<CreateIdentityProviderRequest>,
 ) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
+    use crate::identity_provider::operations::CreateIdentityProviderCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
-    if state.idp_repo.find_by_code(&req.code).await?.is_some() {
-        return Err(PlatformError::duplicate("IdentityProvider", "code", &req.code));
-    }
 
-    let idp_type = IdentityProviderType::from_str(&req.r#type);
-    let mut idp = IdentityProvider::new(&req.code, &req.name, idp_type);
-    idp.oidc_issuer_url = req.oidc_issuer_url;
-    idp.oidc_client_id = req.oidc_client_id;
-    idp.oidc_client_secret_ref = req.oidc_client_secret_ref;
-    idp.oidc_multi_tenant = req.oidc_multi_tenant.unwrap_or(false);
-    idp.oidc_issuer_pattern = req.oidc_issuer_pattern;
-    idp.allowed_email_domains = req.allowed_email_domains.unwrap_or_default();
-
-    let id = idp.id.clone();
-    state.idp_repo.insert(&idp).await?;
-    Ok((axum::http::StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
+    let cmd = CreateIdentityProviderCommand {
+        code: req.code,
+        name: req.name,
+        idp_type: req.r#type,
+        oidc_issuer_url: req.oidc_issuer_url,
+        oidc_client_id: req.oidc_client_id,
+        oidc_client_secret_ref: req.oidc_client_secret_ref,
+        oidc_multi_tenant: req.oidc_multi_tenant.unwrap_or(false),
+        oidc_issuer_pattern: req.oidc_issuer_pattern,
+        allowed_email_domains: req.allowed_email_domains.unwrap_or_default(),
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = state.create_use_case.run(cmd, ctx).await.into_result()?;
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(crate::shared::api_common::CreatedResponse::new(event.idp_id)),
+    ))
 }
 
 #[utoipa::path(
@@ -193,20 +201,23 @@ async fn update_identity_provider(
     Path(id): Path<String>,
     Json(req): Json<UpdateIdentityProviderRequest>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
+    use crate::identity_provider::operations::UpdateIdentityProviderCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
-    let mut idp = state.idp_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("IdentityProvider", &id))?;
 
-    if let Some(name) = req.name { idp.name = name; }
-    if let Some(url) = req.oidc_issuer_url { idp.oidc_issuer_url = Some(url); }
-    if let Some(cid) = req.oidc_client_id { idp.oidc_client_id = Some(cid); }
-    if let Some(secret) = req.oidc_client_secret_ref { idp.oidc_client_secret_ref = Some(secret); }
-    if let Some(mt) = req.oidc_multi_tenant { idp.oidc_multi_tenant = mt; }
-    if let Some(pattern) = req.oidc_issuer_pattern { idp.oidc_issuer_pattern = Some(pattern); }
-    if let Some(domains) = req.allowed_email_domains { idp.allowed_email_domains = domains; }
-    idp.updated_at = chrono::Utc::now();
-
-    state.idp_repo.update(&idp).await?;
+    let cmd = UpdateIdentityProviderCommand {
+        idp_id: id,
+        name: req.name,
+        oidc_issuer_url: req.oidc_issuer_url,
+        oidc_client_id: req.oidc_client_id,
+        oidc_client_secret_ref: req.oidc_client_secret_ref,
+        oidc_multi_tenant: req.oidc_multi_tenant,
+        oidc_issuer_pattern: req.oidc_issuer_pattern,
+        allowed_email_domains: req.allowed_email_domains,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.update_use_case.run(cmd, ctx).await.into_result()?;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
@@ -229,10 +240,14 @@ async fn delete_identity_provider(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
+    use crate::identity_provider::operations::DeleteIdentityProviderCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
-    let _ = state.idp_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("IdentityProvider", &id))?;
-    state.idp_repo.delete(&id).await?;
+
+    let cmd = DeleteIdentityProviderCommand { idp_id: id };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.delete_use_case.run(cmd, ctx).await.into_result()?;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 

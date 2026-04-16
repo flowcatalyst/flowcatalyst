@@ -18,6 +18,32 @@ The platform exposes exactly two programmable tiers and an internal one:
 no longer provides a second line of defense. Missing a permission call on a
 write handler is a privilege-escalation bug.
 
+## UoW Invariant (Sealed)
+
+`UseCaseResult::success` is sealed (`pub(in crate::usecase)`). The only code
+that can construct a success is `UnitOfWork::commit` / `commit_delete` /
+`emit_event` / `commit_all`, plus the `.map()` combinator inside the usecase
+module. A use case that tries to `return UseCaseResult::success(event)` without
+routing through UoW fails to compile. This is **stronger than the TS runtime
+token** — compile-time guaranteed, zero cost.
+
+What this means for every `*UseCase::execute`:
+1. The happy path must end in `unit_of_work.commit(...)`, `commit_delete(...)`,
+   `emit_event(...)`, or `commit_all(...)` — or in `.map(|_| ...)` chained onto
+   one of those.
+2. The only other legal tail is `UseCaseResult::failure(...)`.
+3. You cannot skip UoW and return a hand-built success. It's a type error.
+
+Direct repository writes (`repo.insert/update/delete`) inside a use case body
+are *not yet* prevented — Phase 2 (handler + repo audit) will narrow those.
+For now, `tests/uow_convention_test.rs` asserts that every use case's
+`execute` body reaches a `unit_of_work.*` call on the happy path, catching
+any regressions.
+
+**Consequence:** if you see a write action with no corresponding row in
+`msg_events` / `iam_audit_logs`, the bug is almost certainly in the handler
+bypassing the use case, not in the use case itself.
+
 
 ## Database Access Rules
 

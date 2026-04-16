@@ -392,6 +392,7 @@ pub async fn create_event_type(
         name: req.name,
         description: req.description,
         client_id: req.client_id,
+        schema: None,
     };
 
     let use_case = CreateEventTypeUseCase::new(

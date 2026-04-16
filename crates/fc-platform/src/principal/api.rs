@@ -419,6 +419,18 @@ pub struct PrincipalsState {
     pub create_user_use_case: Arc<crate::principal::operations::CreateUserUseCase<crate::usecase::PgUnitOfWork>>,
     pub grant_client_access_use_case: Arc<crate::principal::operations::GrantClientAccessUseCase<crate::usecase::PgUnitOfWork>>,
     pub reset_password_use_case: Arc<crate::principal::operations::ResetPasswordUseCase<crate::usecase::PgUnitOfWork>>,
+    pub activate_use_case: Arc<crate::principal::operations::ActivateUserUseCase<crate::usecase::PgUnitOfWork>>,
+    pub deactivate_use_case: Arc<crate::principal::operations::DeactivateUserUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_use_case: Arc<crate::principal::operations::DeleteUserUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_use_case: Arc<crate::principal::operations::UpdateUserUseCase<crate::usecase::PgUnitOfWork>>,
+    pub assign_roles_use_case: Arc<crate::principal::operations::AssignUserRolesUseCase<crate::usecase::PgUnitOfWork>>,
+    pub revoke_client_access_use_case: Arc<crate::principal::operations::RevokeClientAccessUseCase<crate::usecase::PgUnitOfWork>>,
+    pub assign_app_access_use_case: Arc<crate::principal::operations::AssignApplicationAccessUseCase<crate::usecase::PgUnitOfWork>>,
+    /// Direct UoW handle used by legacy handlers that mutate the principal in
+    /// ways not yet captured by a dedicated use case (e.g. updating
+    /// first_name/last_name or toggling client_id). Writes go via repo and
+    /// then emit the event/audit through this UoW.
+    pub unit_of_work: Arc<crate::usecase::PgUnitOfWork>,
 }
 
 
@@ -777,10 +789,22 @@ pub async fn update_principal(
     principal.updated_at = chrono::Utc::now();
     state.principal_repo.update(&principal).await?;
 
-    // Audit log
-    if let Some(ref audit) = state.audit_service {
-        let _ = audit.log_update(&auth.0, "Principal", &id, format!("Updated principal {}", principal.name)).await;
-    }
+    // Emit event + audit log atomically via UoW. The write itself happens
+    // above (update_principal mutates a mix of fields not captured by any
+    // single existing use case); a follow-up refactor could migrate this to
+    // a fully-fledged UpdatePrincipalUseCase with an extended command.
+    let event = crate::principal::operations::UserUpdated::new(
+        &crate::usecase::ExecutionContext::create(&auth.0.principal_id),
+        &principal.id,
+        Some(&principal.name),
+        None,
+    );
+    let cmd = serde_json::json!({
+        "principalId": id,
+        "name": principal.name,
+    });
+    use crate::usecase::UnitOfWork;
+    let _ = state.unit_of_work.emit_event(event, &cmd).await;
 
     Ok(Json(PrincipalResponse::from(principal)))
 }
@@ -853,28 +877,26 @@ pub async fn assign_role(
     Path(id): Path<String>,
     Json(req): Json<AssignRoleRequest>,
 ) -> Result<Json<PrincipalResponse>, PlatformError> {
+    use crate::principal::operations::AssignUserRolesCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
 
-    let mut principal = state.principal_repo.find_by_id(&id).await?
+    // Additive assign: take existing roles + new role, run through UoW.
+    let principal = state.principal_repo.find_by_id(&id).await?
         .or_not_found("Principal", &id)?;
-
-    let role = req.role.clone();
-    let client_id = req.client_id.clone();
-
-    if let Some(cid) = req.client_id {
-        principal.assign_role_for_client(req.role, cid);
-    } else {
-        principal.assign_role(req.role);
+    let mut roles: Vec<String> = principal.roles.iter().map(|r| r.role.clone()).collect();
+    if !roles.iter().any(|r| r == &req.role) {
+        roles.push(req.role.clone());
     }
 
-    state.principal_repo.update(&principal).await?;
+    let cmd = AssignUserRolesCommand { user_id: id.clone(), roles };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.assign_roles_use_case.run(cmd, ctx).await.into_result()?;
 
-    // Audit log
-    if let Some(ref audit) = state.audit_service {
-        let _ = audit.log_role_assigned(&auth.0, &id, &role, client_id.as_deref()).await;
-    }
-
-    Ok(Json(principal.into()))
+    let refreshed = state.principal_repo.find_by_id(&id).await?
+        .or_not_found("Principal", &id)?;
+    Ok(Json(refreshed.into()))
 }
 
 /// Batch assign roles to principal (declarative - replaces all roles)
@@ -899,31 +921,31 @@ pub async fn batch_assign_roles(
     Path(id): Path<String>,
     Json(req): Json<BatchAssignRolesRequest>,
 ) -> Result<Json<BatchAssignRolesResponse>, PlatformError> {
+    use crate::principal::operations::AssignUserRolesCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
 
-    let mut principal = state.principal_repo.find_by_id(&id).await?
+    let principal = state.principal_repo.find_by_id(&id).await?
         .or_not_found("Principal", &id)?;
 
-    // Track what was added/removed
     let old_roles: std::collections::HashSet<String> = principal.roles.iter()
         .map(|r| r.role.clone())
         .collect();
-    let new_roles: std::collections::HashSet<String> = req.roles.iter().cloned().collect();
+    let new_roles_set: std::collections::HashSet<String> = req.roles.iter().cloned().collect();
+    let added: Vec<String> = new_roles_set.difference(&old_roles).cloned().collect();
+    let removed: Vec<String> = old_roles.difference(&new_roles_set).cloned().collect();
 
-    let added: Vec<String> = new_roles.difference(&old_roles).cloned().collect();
-    let removed: Vec<String> = old_roles.difference(&new_roles).cloned().collect();
+    let cmd = AssignUserRolesCommand {
+        user_id: id.clone(),
+        roles: req.roles,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.assign_roles_use_case.run(cmd, ctx).await.into_result()?;
 
-    // Clear existing roles and assign new ones
-    principal.roles.clear();
-    for role in req.roles {
-        principal.assign_role(role);
-    }
-    principal.updated_at = chrono::Utc::now();
-
-    state.principal_repo.update(&principal).await?;
-
-    // Build response with role DTOs
-    let roles: Vec<RoleAssignmentDto> = principal.roles.iter()
+    let refreshed = state.principal_repo.find_by_id(&id).await?
+        .or_not_found("Principal", &id)?;
+    let roles: Vec<RoleAssignmentDto> = refreshed.roles.iter()
         .enumerate()
         .map(|(i, r)| RoleAssignmentDto {
             id: format!("{}-role-{}", id, i),
@@ -961,22 +983,25 @@ pub async fn remove_role(
     auth: Authenticated,
     Path((id, role)): Path<(String, String)>,
 ) -> Result<Json<PrincipalResponse>, PlatformError> {
+    use crate::principal::operations::AssignUserRolesCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
 
-    let mut principal = state.principal_repo.find_by_id(&id).await?
+    let principal = state.principal_repo.find_by_id(&id).await?
         .or_not_found("Principal", &id)?;
+    let roles: Vec<String> = principal.roles.iter()
+        .filter(|r| r.role != role)
+        .map(|r| r.role.clone())
+        .collect();
 
-    principal.roles.retain(|r| r.role != role);
-    principal.updated_at = chrono::Utc::now();
+    let cmd = AssignUserRolesCommand { user_id: id.clone(), roles };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.assign_roles_use_case.run(cmd, ctx).await.into_result()?;
 
-    state.principal_repo.update(&principal).await?;
-
-    // Audit log
-    if let Some(ref audit) = state.audit_service {
-        let _ = audit.log_role_unassigned(&auth.0, &id, &role).await;
-    }
-
-    Ok(Json(principal.into()))
+    let refreshed = state.principal_repo.find_by_id(&id).await?
+        .or_not_found("Principal", &id)?;
+    Ok(Json(refreshed.into()))
 }
 
 /// Get client access grants for a principal
@@ -1047,23 +1072,24 @@ pub async fn grant_client_access(
     Path(id): Path<String>,
     Json(req): Json<GrantClientAccessRequest>,
 ) -> Result<Json<ClientAccessGrantResponse>, PlatformError> {
-    crate::checks::require_anchor(&auth.0)?;
+    use crate::principal::operations::GrantClientAccessCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
 
-    let mut principal = state.principal_repo.find_by_id(&id).await?
-        .or_not_found("Principal", &id)?;
+    crate::checks::require_anchor(&auth.0)?;
 
     let client_id = req.client_id.clone();
     let granted_at = chrono::Utc::now();
-    principal.grant_client_access(req.client_id);
-    state.principal_repo.update(&principal).await?;
+    let cmd = GrantClientAccessCommand {
+        user_id: id.clone(),
+        client_id: client_id.clone(),
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.grant_client_access_use_case.run(cmd, ctx).await.into_result()?;
 
-    // Audit log
-    if let Some(ref audit) = state.audit_service {
-        let _ = audit.log_client_access_granted(&auth.0, &id, &client_id).await;
-    }
-
+    let refreshed = state.principal_repo.find_by_id(&id).await?
+        .or_not_found("Principal", &id)?;
     Ok(Json(ClientAccessGrantResponse {
-        id: format!("{}-{}", id, principal.assigned_clients.len() - 1),
+        id: format!("{}-{}", id, refreshed.assigned_clients.len().saturating_sub(1)),
         client_id,
         granted_at: granted_at.to_rfc3339(),
         expires_at: None,
@@ -1091,20 +1117,21 @@ pub async fn revoke_client_access(
     auth: Authenticated,
     Path((id, client_id)): Path<(String, String)>,
 ) -> Result<Json<PrincipalResponse>, PlatformError> {
+    use crate::principal::operations::RevokeClientAccessCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
 
-    let mut principal = state.principal_repo.find_by_id(&id).await?
+    let cmd = RevokeClientAccessCommand {
+        user_id: id.clone(),
+        client_id,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.revoke_client_access_use_case.run(cmd, ctx).await.into_result()?;
+
+    let refreshed = state.principal_repo.find_by_id(&id).await?
         .or_not_found("Principal", &id)?;
-
-    principal.revoke_client_access(&client_id);
-    state.principal_repo.update(&principal).await?;
-
-    // Audit log
-    if let Some(ref audit) = state.audit_service {
-        let _ = audit.log_client_access_revoked(&auth.0, &id, &client_id).await;
-    }
-
-    Ok(Json(principal.into()))
+    Ok(Json(refreshed.into()))
 }
 
 /// Delete principal (deactivate)
@@ -1127,18 +1154,14 @@ pub async fn delete_principal(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<StatusCode, PlatformError> {
+    use crate::principal::operations::DeleteUserCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
 
-    let mut principal = state.principal_repo.find_by_id(&id).await?
-        .or_not_found("Principal", &id)?;
-
-    principal.deactivate();
-    state.principal_repo.update(&principal).await?;
-
-    // Audit log
-    if let Some(ref audit) = state.audit_service {
-        let _ = audit.log_archive(&auth.0, "Principal", &id, format!("Deactivated principal {}", principal.name)).await;
-    }
+    let cmd = DeleteUserCommand { principal_id: id };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.delete_use_case.run(cmd, ctx).await.into_result()?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1170,20 +1193,16 @@ pub async fn activate_principal(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<StatusChangeResponse>, PlatformError> {
+    use crate::principal::operations::ActivateUserCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
 
-    let mut principal = state.principal_repo.find_by_id(&id).await?
-        .or_not_found("Principal", &id)?;
-
-    principal.activate();
-    state.principal_repo.update(&principal).await?;
+    let cmd = ActivateUserCommand { principal_id: id.clone() };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.activate_use_case.run(cmd, ctx).await.into_result()?;
 
     tracing::info!(principal_id = %id, admin_id = %auth.0.principal_id, "Principal activated");
-
-    // Audit log
-    if let Some(ref audit) = state.audit_service {
-        let _ = audit.log_update(&auth.0, "Principal", &id, "Activated principal".to_string()).await;
-    }
 
     Ok(Json(StatusChangeResponse {
         message: "Principal activated".to_string(),
@@ -1213,20 +1232,19 @@ pub async fn deactivate_principal(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<StatusChangeResponse>, PlatformError> {
+    use crate::principal::operations::DeactivateUserCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
 
-    let mut principal = state.principal_repo.find_by_id(&id).await?
-        .or_not_found("Principal", &id)?;
-
-    principal.deactivate();
-    state.principal_repo.update(&principal).await?;
+    let cmd = DeactivateUserCommand {
+        principal_id: id.clone(),
+        reason: Some("Admin deactivated principal".to_string()),
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.deactivate_use_case.run(cmd, ctx).await.into_result()?;
 
     tracing::info!(principal_id = %id, admin_id = %auth.0.principal_id, "Principal deactivated");
-
-    // Audit log
-    if let Some(ref audit) = state.audit_service {
-        let _ = audit.log_update(&auth.0, "Principal", &id, "Deactivated principal".to_string()).await;
-    }
 
     Ok(Json(StatusChangeResponse {
         message: "Principal deactivated".to_string(),
@@ -1527,15 +1545,18 @@ pub async fn set_application_access(
     Path(id): Path<String>,
     Json(req): Json<SetApplicationAccessRequest>,
 ) -> Result<Json<SetApplicationAccessResponse>, PlatformError> {
+    use crate::principal::operations::AssignApplicationAccessCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
 
-    let mut principal = state.principal_repo.find_by_id(&id).await?
+    let principal = state.principal_repo.find_by_id(&id).await?
         .or_not_found("Principal", &id)?;
 
     let app_repo = state.application_repo.as_ref()
         .ok_or_else(|| PlatformError::internal("Application repository not configured"))?;
 
-    // Validate all requested applications exist and are active
+    // Validate applications exist and are active (kept in handler for 400 mapping).
     for app_id in &req.application_ids {
         match app_repo.find_by_id(app_id).await? {
             Some(app) => {
@@ -1553,23 +1574,22 @@ pub async fn set_application_access(
         }
     }
 
-    // Compute delta
     let old_set: std::collections::HashSet<&str> = principal.accessible_application_ids
         .iter().map(|s| s.as_str()).collect();
     let new_set: std::collections::HashSet<&str> = req.application_ids
         .iter().map(|s| s.as_str()).collect();
-
     let added_count = new_set.difference(&old_set).count();
     let removed_count = old_set.difference(&new_set).count();
 
-    // Update principal
-    principal.accessible_application_ids = req.application_ids;
-    principal.updated_at = chrono::Utc::now();
-    state.principal_repo.update(&principal).await?;
+    let cmd = AssignApplicationAccessCommand {
+        user_id: id.clone(),
+        application_ids: req.application_ids.clone(),
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.assign_app_access_use_case.run(cmd, ctx).await.into_result()?;
 
-    // Build response with resolved application details
     let mut applications = Vec::new();
-    for app_id in &principal.accessible_application_ids {
+    for app_id in &req.application_ids {
         if let Some(app) = app_repo.find_by_id(app_id).await? {
             applications.push(ApplicationAccessResponse {
                 application_id: app.id,
@@ -1577,14 +1597,6 @@ pub async fn set_application_access(
                 application_name: app.name,
             });
         }
-    }
-
-    // Audit log
-    if let Some(ref audit) = state.audit_service {
-        let _ = audit.log_update(
-            &auth.0, "Principal", &id,
-            format!("Updated application access: +{} -{}", added_count, removed_count),
-        ).await;
     }
 
     Ok(Json(SetApplicationAccessResponse {

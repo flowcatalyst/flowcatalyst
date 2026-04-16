@@ -20,6 +20,14 @@ pub struct CreateEmailDomainMappingCommand {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub primary_client_id: Option<String>,
     #[serde(default)]
+    pub additional_client_ids: Vec<String>,
+    #[serde(default)]
+    pub granted_client_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_oidc_tenant_id: Option<String>,
+    #[serde(default)]
+    pub allowed_role_ids: Vec<String>,
+    #[serde(default)]
     pub sync_roles_from_idp: bool,
 }
 
@@ -113,6 +121,10 @@ impl<U: UnitOfWork> UseCase for CreateEmailDomainMappingUseCase<U> {
 
         let mut mapping = EmailDomainMapping::new(&email_domain, &command.identity_provider_id, scope_type);
         mapping.primary_client_id = command.primary_client_id.clone();
+        mapping.additional_client_ids = command.additional_client_ids.clone();
+        mapping.granted_client_ids = command.granted_client_ids.clone();
+        mapping.required_oidc_tenant_id = command.required_oidc_tenant_id.clone();
+        mapping.allowed_role_ids = command.allowed_role_ids.clone();
         mapping.sync_roles_from_idp = command.sync_roles_from_idp;
 
         if let Err(e) = self.edm_repo.insert(&mapping).await {
@@ -149,6 +161,10 @@ mod tests {
             scope_type: "ANCHOR".to_string(),
             primary_client_id: Some("client-456".to_string()),
             sync_roles_from_idp: true,
+            additional_client_ids: vec![],
+            granted_client_ids: vec![],
+            required_oidc_tenant_id: None,
+            allowed_role_ids: vec![],
         };
 
         let json = serde_json::to_string(&cmd).unwrap();
@@ -176,6 +192,10 @@ mod tests {
             scope_type: "CLIENT".to_string(),
             primary_client_id: None,
             sync_roles_from_idp: false,
+            additional_client_ids: vec![],
+            granted_client_ids: vec![],
+            required_oidc_tenant_id: None,
+            allowed_role_ids: vec![],
         };
 
         let json = serde_json::to_string(&cmd).unwrap();
@@ -192,6 +212,10 @@ mod tests {
             scope_type: "ANCHOR".to_string(),
             primary_client_id: None,
             sync_roles_from_idp: false,
+            additional_client_ids: vec![],
+            granted_client_ids: vec![],
+            required_oidc_tenant_id: None,
+            allowed_role_ids: vec![],
         };
         let trimmed = cmd.email_domain.trim().to_lowercase();
         assert!(trimmed.is_empty(), "Whitespace-only email domain should be treated as empty");
@@ -205,6 +229,10 @@ mod tests {
             scope_type: "ANCHOR".to_string(),
             primary_client_id: None,
             sync_roles_from_idp: false,
+            additional_client_ids: vec![],
+            granted_client_ids: vec![],
+            required_oidc_tenant_id: None,
+            allowed_role_ids: vec![],
         };
         assert!(cmd.identity_provider_id.trim().is_empty(), "Whitespace-only IDP ID should be treated as empty");
     }
@@ -217,6 +245,10 @@ mod tests {
             scope_type: "ANCHOR".to_string(),
             primary_client_id: None,
             sync_roles_from_idp: false,
+            additional_client_ids: vec![],
+            granted_client_ids: vec![],
+            required_oidc_tenant_id: None,
+            allowed_role_ids: vec![],
         };
         let trimmed = cmd.email_domain.trim().to_lowercase();
         assert!(!trimmed.is_empty());
@@ -231,6 +263,10 @@ mod tests {
             scope_type: "CLIENT".to_string(),
             primary_client_id: None,
             sync_roles_from_idp: false,
+            additional_client_ids: vec![],
+            granted_client_ids: vec![],
+            required_oidc_tenant_id: None,
+            allowed_role_ids: vec![],
         };
         let normalized = cmd.email_domain.trim().to_lowercase();
         assert_eq!(normalized, "example.com");

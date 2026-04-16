@@ -172,6 +172,12 @@ pub struct ClientsState {
     pub application_repo: Option<Arc<crate::application::repository::ApplicationRepository>>,
     pub application_client_config_repo: Option<Arc<crate::application::ApplicationClientConfigRepository>>,
     pub audit_service: Option<Arc<crate::audit::AuditService>>,
+    pub create_use_case: Arc<crate::client::operations::CreateClientUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_use_case: Arc<crate::client::operations::UpdateClientUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_use_case: Arc<crate::client::operations::DeleteClientUseCase<crate::usecase::PgUnitOfWork>>,
+    pub activate_use_case: Arc<crate::client::operations::ActivateClientUseCase<crate::usecase::PgUnitOfWork>>,
+    pub suspend_use_case: Arc<crate::client::operations::SuspendClientUseCase<crate::usecase::PgUnitOfWork>>,
+    pub add_note_use_case: Arc<crate::client::operations::AddClientNoteUseCase<crate::usecase::PgUnitOfWork>>,
 }
 
 /// Create a new client
@@ -193,20 +199,19 @@ pub async fn create_client(
     auth: Authenticated,
     Json(req): Json<CreateClientRequest>,
 ) -> Result<(StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
-    // Only anchor users can create clients
+    use crate::client::operations::CreateClientCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    // Check for duplicate identifier
-    if let Some(_) = state.client_repo.find_by_identifier(&req.identifier).await? {
-        return Err(PlatformError::duplicate("Client", "identifier", &req.identifier));
-    }
+    let cmd = CreateClientCommand {
+        name: req.name,
+        identifier: req.identifier,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = state.create_use_case.run(cmd, ctx).await.into_result()?;
 
-    let client = Client::new(&req.name, &req.identifier);
-    let id = client.id.clone();
-
-    state.client_repo.insert(&client).await?;
-
-    Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
+    Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(event.client_id))))
 }
 
 /// Get client by ID
@@ -295,17 +300,17 @@ pub async fn update_client(
     Path(id): Path<String>,
     Json(req): Json<UpdateClientRequest>,
 ) -> Result<StatusCode, PlatformError> {
+    use crate::client::operations::UpdateClientCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    let mut client = state.client_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Client", &id))?;
-
-    if let Some(name) = req.name {
-        client.name = name;
-    }
-    client.updated_at = chrono::Utc::now();
-
-    state.client_repo.update(&client).await?;
+    let cmd = UpdateClientCommand {
+        client_id: id,
+        name: req.name,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.update_use_case.run(cmd, ctx).await.into_result()?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -330,13 +335,14 @@ pub async fn delete_client(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<StatusCode, PlatformError> {
+    use crate::client::operations::DeleteClientCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    let mut client = state.client_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Client", &id))?;
-
-    client.deactivate(None);
-    state.client_repo.update(&client).await?;
+    let cmd = DeleteClientCommand { client_id: id };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.delete_use_case.run(cmd, ctx).await.into_result()?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -368,13 +374,14 @@ pub async fn activate_client(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<StatusChangeResponse>, PlatformError> {
+    use crate::client::operations::ActivateClientCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    let mut client = state.client_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Client", &id))?;
-
-    client.activate();
-    state.client_repo.update(&client).await?;
+    let cmd = ActivateClientCommand { client_id: id.clone() };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.activate_use_case.run(cmd, ctx).await.into_result()?;
 
     tracing::info!(client_id = %id, principal_id = %auth.0.principal_id, "Client activated");
 
@@ -408,18 +415,23 @@ pub async fn suspend_client(
     Path(id): Path<String>,
     Json(req): Json<StatusChangeRequest>,
 ) -> Result<Json<StatusChangeResponse>, PlatformError> {
+    use crate::client::operations::SuspendClientCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    let mut client = state.client_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Client", &id))?;
-
-    client.suspend(&req.reason);
-    state.client_repo.update(&client).await?;
+    let reason_for_log = req.reason.clone();
+    let cmd = SuspendClientCommand {
+        client_id: id.clone(),
+        reason: req.reason,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.suspend_use_case.run(cmd, ctx).await.into_result()?;
 
     tracing::info!(
         client_id = %id,
         principal_id = %auth.0.principal_id,
-        reason = %req.reason,
+        reason = %reason_for_log,
         "Client suspended"
     );
 
@@ -453,18 +465,23 @@ pub async fn deactivate_client(
     Path(id): Path<String>,
     Json(req): Json<StatusChangeRequest>,
 ) -> Result<Json<StatusChangeResponse>, PlatformError> {
+    // Deactivation is a soft delete — `DeleteClientUseCase` handles it.
+    // The reason string is retained in logs; the use case emits the
+    // `ClientDeleted` domain event + audit record.
+    use crate::client::operations::DeleteClientCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    let mut client = state.client_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Client", &id))?;
-
-    client.deactivate(Some(req.reason.clone()));
-    state.client_repo.update(&client).await?;
+    let reason_for_log = req.reason.clone();
+    let cmd = DeleteClientCommand { client_id: id.clone() };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.delete_use_case.run(cmd, ctx).await.into_result()?;
 
     tracing::info!(
         client_id = %id,
         principal_id = %auth.0.principal_id,
-        reason = %req.reason,
+        reason = %reason_for_log,
         "Client deactivated"
     );
 
@@ -570,16 +587,18 @@ pub async fn add_note(
     Path(id): Path<String>,
     Json(req): Json<AddNoteRequest>,
 ) -> Result<Json<AddNoteResponse>, PlatformError> {
+    use crate::client::operations::AddClientNoteCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    // Verify client exists
-    let _client = state.client_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Client", &id))?;
-
-    // Log the note via audit service
-    if let Some(ref audit) = state.audit_service {
-        let _ = audit.log_update(&auth.0, "Client", &id, format!("[{}] {}", req.category, req.text)).await;
-    }
+    let cmd = AddClientNoteCommand {
+        client_id: id.clone(),
+        category: req.category,
+        text: req.text,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.add_note_use_case.run(cmd, ctx).await.into_result()?;
 
     tracing::info!(
         client_id = %id,

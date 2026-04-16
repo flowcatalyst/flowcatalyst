@@ -22,6 +22,12 @@ pub struct CreateIdentityProviderCommand {
     pub oidc_client_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oidc_client_secret_ref: Option<String>,
+    #[serde(default)]
+    pub oidc_multi_tenant: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oidc_issuer_pattern: Option<String>,
+    #[serde(default)]
+    pub allowed_email_domains: Vec<String>,
 }
 
 /// Use case for creating a new identity provider.
@@ -95,7 +101,10 @@ impl<U: UnitOfWork> UseCase for CreateIdentityProviderUseCase<U> {
             idp.oidc_issuer_url = command.oidc_issuer_url.clone();
             idp.oidc_client_id = command.oidc_client_id.clone();
             idp.oidc_client_secret_ref = command.oidc_client_secret_ref.clone();
+            idp.oidc_multi_tenant = command.oidc_multi_tenant;
+            idp.oidc_issuer_pattern = command.oidc_issuer_pattern.clone();
         }
+        idp.allowed_email_domains = command.allowed_email_domains.clone();
 
         // Create domain event
         let event = IdentityProviderCreated::new(
@@ -130,6 +139,9 @@ mod tests {
             oidc_issuer_url: Some("https://accounts.google.com".to_string()),
             oidc_client_id: Some("client-123".to_string()),
             oidc_client_secret_ref: None,
+            oidc_multi_tenant: false,
+            oidc_issuer_pattern: None,
+            allowed_email_domains: vec![],
         };
 
         let json = serde_json::to_string(&cmd).unwrap();

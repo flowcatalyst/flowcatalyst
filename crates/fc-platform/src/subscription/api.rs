@@ -304,6 +304,11 @@ pub struct SyncResultResponse {
 pub struct SubscriptionsState {
     pub subscription_repo: Arc<SubscriptionRepository>,
     pub sync_use_case: Arc<SyncSubscriptionsUseCase<crate::usecase::PgUnitOfWork>>,
+    pub create_use_case: Arc<crate::subscription::operations::CreateSubscriptionUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_use_case: Arc<crate::subscription::operations::UpdateSubscriptionUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_use_case: Arc<crate::subscription::operations::DeleteSubscriptionUseCase<crate::usecase::PgUnitOfWork>>,
+    pub pause_use_case: Arc<crate::subscription::operations::PauseSubscriptionUseCase<crate::usecase::PgUnitOfWork>>,
+    pub resume_use_case: Arc<crate::subscription::operations::ResumeSubscriptionUseCase<crate::usecase::PgUnitOfWork>>,
 }
 
 fn parse_mode(s: &str) -> Result<DispatchMode, PlatformError> {
@@ -333,9 +338,11 @@ pub async fn create_subscription(
     auth: Authenticated,
     Json(req): Json<CreateSubscriptionRequest>,
 ) -> Result<(StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
+    use crate::subscription::operations::{CreateSubscriptionCommand, EventTypeBindingInput};
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::can_write_subscriptions(&auth.0)?;
 
-    // Validate client access if specified
     if let Some(ref cid) = req.client_id {
         if !auth.0.can_access_client(cid) {
             return Err(PlatformError::forbidden(format!("No access to client: {}", cid)));
@@ -344,54 +351,33 @@ pub async fn create_subscription(
         return Err(PlatformError::forbidden("Only anchor users can create anchor-level subscriptions"));
     }
 
-    // Check for duplicate code
-    if let Some(_) = state.subscription_repo.find_by_code(&req.code).await? {
-        return Err(PlatformError::duplicate("Subscription", "code", &req.code));
-    }
+    let mode = match req.mode {
+        Some(ref m) => Some(parse_mode(m)?),
+        None => None,
+    };
 
-    let mut subscription = Subscription::new(&req.code, &req.name, &req.endpoint);
+    let cmd = CreateSubscriptionCommand {
+        code: req.code,
+        name: req.name,
+        description: req.description,
+        client_id: req.client_id,
+        endpoint: req.endpoint,
+        connection_id: req.connection_id,
+        event_types: req.event_types.into_iter().map(|b| EventTypeBindingInput {
+            event_type_code: b.event_type_code,
+            filter: b.filter,
+        }).collect(),
+        dispatch_pool_id: req.dispatch_pool_id,
+        service_account_id: req.service_account_id,
+        mode,
+        max_retries: req.max_retries,
+        timeout_seconds: req.timeout_seconds,
+        data_only: req.data_only,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = state.create_use_case.run(cmd, ctx).await.into_result()?;
 
-    if let Some(conn_id) = req.connection_id {
-        subscription = subscription.with_connection_id(conn_id);
-    }
-    if let Some(desc) = req.description {
-        subscription = subscription.with_description(desc);
-    }
-    if let Some(cid) = req.client_id {
-        subscription = subscription.with_client_id(cid);
-    }
-    if let Some(pool_id) = req.dispatch_pool_id {
-        subscription = subscription.with_dispatch_pool_id(pool_id);
-    }
-    if let Some(account_id) = req.service_account_id {
-        subscription = subscription.with_service_account_id(account_id);
-    }
-    if let Some(mode_str) = req.mode {
-        subscription = subscription.with_mode(parse_mode(&mode_str)?);
-    }
-
-    subscription = subscription.with_data_only(req.data_only);
-
-    if let Some(timeout) = req.timeout_seconds {
-        subscription.timeout_seconds = timeout as i32;
-    }
-    if let Some(retries) = req.max_retries {
-        subscription.max_retries = retries as i32;
-    }
-
-    // Add event type bindings
-    for binding in req.event_types {
-        let mut eb = EventTypeBinding::new(&binding.event_type_code);
-        if let Some(filter) = binding.filter {
-            eb = eb.with_filter(filter);
-        }
-        subscription = subscription.with_event_type_binding(eb);
-    }
-
-    let id = subscription.id.clone();
-    state.subscription_repo.insert(&subscription).await?;
-
-    Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
+    Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(event.subscription_id))))
 }
 
 /// Get subscription by ID
@@ -494,12 +480,13 @@ pub async fn update_subscription(
     Path(id): Path<String>,
     Json(req): Json<UpdateSubscriptionRequest>,
 ) -> Result<StatusCode, PlatformError> {
+    use crate::subscription::operations::UpdateSubscriptionCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::can_write_subscriptions(&auth.0)?;
 
-    let mut subscription = state.subscription_repo.find_by_id(&id).await?
+    let subscription = state.subscription_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("Subscription", &id))?;
-
-    // Check client access
     if let Some(ref cid) = subscription.client_id {
         if !auth.0.can_access_client(cid) {
             return Err(PlatformError::forbidden("No access to this subscription"));
@@ -508,28 +495,22 @@ pub async fn update_subscription(
         return Err(PlatformError::forbidden("Only anchor users can modify anchor-level subscriptions"));
     }
 
-    // Update fields
-    if let Some(name) = req.name {
-        subscription.name = name;
-    }
-    if let Some(desc) = req.description {
-        subscription.description = Some(desc);
-    }
-    if let Some(ep) = req.endpoint {
-        subscription.endpoint = ep;
-    }
-    if let Some(conn_id) = req.connection_id {
-        subscription.connection_id = Some(conn_id);
-    }
-    if let Some(timeout) = req.timeout_seconds {
-        subscription.timeout_seconds = timeout as i32;
-    }
-    if let Some(retries) = req.max_retries {
-        subscription.max_retries = retries as i32;
-    }
-
-    subscription.updated_at = chrono::Utc::now();
-    state.subscription_repo.update(&subscription).await?;
+    let cmd = UpdateSubscriptionCommand {
+        subscription_id: id,
+        name: req.name,
+        description: req.description,
+        endpoint: req.endpoint,
+        connection_id: req.connection_id,
+        event_types: None,
+        dispatch_pool_id: None,
+        service_account_id: None,
+        mode: None,
+        max_retries: req.max_retries,
+        timeout_seconds: req.timeout_seconds,
+        data_only: None,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.update_use_case.run(cmd, ctx).await.into_result()?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -554,22 +535,26 @@ pub async fn pause_subscription(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<SubscriptionResponse>, PlatformError> {
+    use crate::subscription::operations::PauseSubscriptionCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::can_write_subscriptions(&auth.0)?;
 
-    let mut subscription = state.subscription_repo.find_by_id(&id).await?
+    let subscription = state.subscription_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("Subscription", &id))?;
-
-    // Check client access
     if let Some(ref cid) = subscription.client_id {
         if !auth.0.can_access_client(cid) {
             return Err(PlatformError::forbidden("No access to this subscription"));
         }
     }
 
-    subscription.pause();
-    state.subscription_repo.update(&subscription).await?;
+    let cmd = PauseSubscriptionCommand { subscription_id: id.clone() };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.pause_use_case.run(cmd, ctx).await.into_result()?;
 
-    Ok(Json(subscription.into()))
+    let refreshed = state.subscription_repo.find_by_id(&id).await?
+        .ok_or_else(|| PlatformError::not_found("Subscription", &id))?;
+    Ok(Json(refreshed.into()))
 }
 
 /// Resume subscription
@@ -592,22 +577,26 @@ pub async fn resume_subscription(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<SubscriptionResponse>, PlatformError> {
+    use crate::subscription::operations::ResumeSubscriptionCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::can_write_subscriptions(&auth.0)?;
 
-    let mut subscription = state.subscription_repo.find_by_id(&id).await?
+    let subscription = state.subscription_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("Subscription", &id))?;
-
-    // Check client access
     if let Some(ref cid) = subscription.client_id {
         if !auth.0.can_access_client(cid) {
             return Err(PlatformError::forbidden("No access to this subscription"));
         }
     }
 
-    subscription.resume();
-    state.subscription_repo.update(&subscription).await?;
+    let cmd = ResumeSubscriptionCommand { subscription_id: id.clone() };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.resume_use_case.run(cmd, ctx).await.into_result()?;
 
-    Ok(Json(subscription.into()))
+    let refreshed = state.subscription_repo.find_by_id(&id).await?
+        .ok_or_else(|| PlatformError::not_found("Subscription", &id))?;
+    Ok(Json(refreshed.into()))
 }
 
 /// Delete subscription (archive)
@@ -630,12 +619,13 @@ pub async fn delete_subscription(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<StatusCode, PlatformError> {
+    use crate::subscription::operations::DeleteSubscriptionCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::can_delete_subscriptions(&auth.0)?;
 
     let subscription = state.subscription_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("Subscription", &id))?;
-
-    // Check client access
     if let Some(ref cid) = subscription.client_id {
         if !auth.0.can_access_client(cid) {
             return Err(PlatformError::forbidden("No access to this subscription"));
@@ -644,7 +634,9 @@ pub async fn delete_subscription(
         return Err(PlatformError::forbidden("Only anchor users can delete anchor-level subscriptions"));
     }
 
-    state.subscription_repo.delete(&id).await?;
+    let cmd = DeleteSubscriptionCommand { subscription_id: id };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.delete_use_case.run(cmd, ctx).await.into_result()?;
 
     Ok(StatusCode::NO_CONTENT)
 }

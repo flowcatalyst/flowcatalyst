@@ -21,6 +21,12 @@ pub struct UpdateIdentityProviderCommand {
     pub oidc_client_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oidc_client_secret_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oidc_multi_tenant: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oidc_issuer_pattern: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allowed_email_domains: Option<Vec<String>>,
 }
 
 /// Use case for updating an existing identity provider.
@@ -93,6 +99,16 @@ impl<U: UnitOfWork> UseCase for UpdateIdentityProviderUseCase<U> {
             idp.oidc_client_secret_ref = Some(secret_ref.clone());
         }
 
+        if let Some(mt) = command.oidc_multi_tenant {
+            idp.oidc_multi_tenant = mt;
+        }
+        if let Some(ref pattern) = command.oidc_issuer_pattern {
+            idp.oidc_issuer_pattern = Some(pattern.clone());
+        }
+        if let Some(ref domains) = command.allowed_email_domains {
+            idp.allowed_email_domains = domains.clone();
+        }
+
         idp.updated_at = chrono::Utc::now();
 
         // Create domain event
@@ -125,6 +141,9 @@ mod tests {
             oidc_issuer_url: None,
             oidc_client_id: None,
             oidc_client_secret_ref: None,
+            oidc_multi_tenant: None,
+            oidc_issuer_pattern: None,
+            allowed_email_domains: None,
         };
 
         let json = serde_json::to_string(&cmd).unwrap();

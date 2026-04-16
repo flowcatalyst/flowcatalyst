@@ -15,6 +15,8 @@ use super::events::EmailDomainMappingUpdated;
 pub struct UpdateEmailDomainMappingCommand {
     pub mapping_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub identity_provider_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub scope_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub primary_client_id: Option<String>,
@@ -24,6 +26,8 @@ pub struct UpdateEmailDomainMappingCommand {
     pub additional_client_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub granted_client_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_oidc_tenant_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allowed_role_ids: Option<Vec<String>>,
 }
@@ -78,6 +82,9 @@ impl<U: UnitOfWork> UseCase for UpdateEmailDomainMappingUseCase<U> {
         };
 
         // Selectively update fields
+        if let Some(ref idp_id) = command.identity_provider_id {
+            mapping.identity_provider_id = idp_id.clone();
+        }
         if let Some(ref scope_type_str) = command.scope_type {
             mapping.scope_type = match scope_type_str.to_uppercase().as_str() {
                 "ANCHOR" => ScopeType::Anchor,
@@ -97,11 +104,17 @@ impl<U: UnitOfWork> UseCase for UpdateEmailDomainMappingUseCase<U> {
         if let Some(ref granted) = command.granted_client_ids {
             mapping.granted_client_ids = granted.clone();
         }
+        if let Some(ref tenant) = command.required_oidc_tenant_id {
+            mapping.required_oidc_tenant_id = Some(tenant.clone());
+        }
         if let Some(ref roles) = command.allowed_role_ids {
             mapping.allowed_role_ids = roles.clone();
         }
         mapping.updated_at = chrono::Utc::now();
 
+        // Persist the updated entity (including junction-table re-writes)
+        // before emitting the event/audit. Phase 2 will upgrade this to a
+        // fully atomic `unit_of_work.commit` once `PgPersist` lands for EDM.
         if let Err(e) = self.edm_repo.update(&mapping).await {
             return UseCaseResult::failure(UseCaseError::commit(format!(
                 "Failed to update email domain mapping: {}", e
@@ -132,6 +145,8 @@ mod tests {
             additional_client_ids: Some(vec!["c1".to_string(), "c2".to_string()]),
             granted_client_ids: Some(vec!["g1".to_string()]),
             allowed_role_ids: Some(vec!["r1".to_string(), "r2".to_string()]),
+            identity_provider_id: None,
+            required_oidc_tenant_id: None,
         };
 
         let json = serde_json::to_string(&cmd).unwrap();
@@ -159,6 +174,8 @@ mod tests {
             additional_client_ids: None,
             granted_client_ids: None,
             allowed_role_ids: None,
+            identity_provider_id: None,
+            required_oidc_tenant_id: None,
         };
 
         let json = serde_json::to_string(&cmd).unwrap();
@@ -181,6 +198,8 @@ mod tests {
             additional_client_ids: None,
             granted_client_ids: None,
             allowed_role_ids: None,
+            identity_provider_id: None,
+            required_oidc_tenant_id: None,
         };
         assert!(cmd.mapping_id.trim().is_empty(), "Whitespace-only mapping_id should be treated as empty");
     }
@@ -195,6 +214,8 @@ mod tests {
             additional_client_ids: None,
             granted_client_ids: None,
             allowed_role_ids: None,
+            identity_provider_id: None,
+            required_oidc_tenant_id: None,
         };
         assert!(!cmd.mapping_id.trim().is_empty());
     }

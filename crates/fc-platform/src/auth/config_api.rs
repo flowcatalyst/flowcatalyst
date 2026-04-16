@@ -29,7 +29,7 @@ use crate::shared::middleware::Authenticated;
 // ============================================================================
 
 /// Create anchor domain request
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateAnchorDomainRequest {
     /// Email domain (e.g., "flowcatalyst.tech")
@@ -72,7 +72,7 @@ impl AnchorDomainResponse {
 // ============================================================================
 
 /// Create client auth config request
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateClientAuthConfigRequest {
     /// Email domain this config applies to
@@ -97,7 +97,7 @@ pub struct CreateClientAuthConfigRequest {
 }
 
 /// Update client auth config request
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateClientAuthConfigRequest {
     /// Primary client ID
@@ -117,7 +117,7 @@ pub struct UpdateClientAuthConfigRequest {
 }
 
 /// Create internal auth config request
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateInternalAuthConfigRequest {
     /// Email domain
@@ -129,7 +129,7 @@ pub struct CreateInternalAuthConfigRequest {
 }
 
 /// Create OIDC auth config request
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateOidcAuthConfigRequest {
     /// Email domain
@@ -147,7 +147,7 @@ pub struct CreateOidcAuthConfigRequest {
 }
 
 /// Update OIDC config request
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateOidcConfigRequest {
     /// OIDC issuer URL
@@ -159,7 +159,7 @@ pub struct UpdateOidcConfigRequest {
 }
 
 /// Update client binding request
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateClientBindingRequest {
     /// Primary client ID
@@ -167,7 +167,7 @@ pub struct UpdateClientBindingRequest {
 }
 
 /// Update additional clients request
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateAdditionalClientsRequest {
     /// Additional client IDs
@@ -175,7 +175,7 @@ pub struct UpdateAdditionalClientsRequest {
 }
 
 /// Update granted clients request
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateGrantedClientsRequest {
     /// Granted client IDs
@@ -263,7 +263,7 @@ impl From<ClientAuthConfig> for ClientAuthConfigResponse {
 // ============================================================================
 
 /// Create IDP role mapping request
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateIdpRoleMappingRequest {
     /// IDP type (e.g., "OIDC", "AZURE_AD")
@@ -319,6 +319,10 @@ pub struct AuthConfigState {
     pub idp_role_mapping_repo: Arc<IdpRoleMappingRepository>,
     /// Optional - needed for counting users by email domain
     pub principal_repo: Option<Arc<crate::PrincipalRepository>>,
+    /// UoW used to emit domain events + audit logs after direct repo writes
+    /// from handlers that manipulate fields not captured by a single use case
+    /// (client_auth_config has many variant update paths).
+    pub unit_of_work: Arc<crate::usecase::PgUnitOfWork>,
 }
 
 fn parse_config_type(s: &str) -> AuthConfigType {
@@ -372,6 +376,12 @@ pub async fn create_anchor_domain(
     let id = anchor_domain.id.clone();
 
     state.anchor_domain_repo.insert(&anchor_domain).await?;
+
+    use crate::usecase::{UnitOfWork, ExecutionContext};
+    use crate::auth::operations::AnchorDomainCreated;
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = AnchorDomainCreated::new(&ctx, &id, &anchor_domain.domain);
+    let _ = state.unit_of_work.emit_event(event, &req).await;
 
     Ok(Json(CreatedResponse::new(id)))
 }
@@ -503,18 +513,24 @@ pub async fn delete_anchor_domain(
 ) -> Result<StatusCode, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
-    let exists = state.anchor_domain_repo.find_by_id(&id).await?.is_some();
-    if !exists {
-        return Err(PlatformError::not_found("AnchorDomain", &id));
-    }
+    let existing = state.anchor_domain_repo.find_by_id(&id).await?
+        .ok_or_else(|| PlatformError::not_found("AnchorDomain", &id))?;
+    let domain_value = existing.domain.clone();
 
     state.anchor_domain_repo.delete(&id).await?;
+
+    use crate::usecase::{UnitOfWork, ExecutionContext};
+    use crate::auth::operations::AnchorDomainDeleted;
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = AnchorDomainDeleted::new(&ctx, &id, &domain_value);
+    let cmd = serde_json::json!({ "anchorDomainId": id });
+    let _ = state.unit_of_work.emit_event(event, &cmd).await;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
 /// Update anchor domain request
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateAnchorDomainRequest {
     /// New domain value
@@ -552,6 +568,12 @@ pub async fn update_anchor_domain(
     domain.updated_at = chrono::Utc::now();
 
     state.anchor_domain_repo.update(&domain).await?;
+
+    use crate::usecase::{UnitOfWork, ExecutionContext};
+    use crate::auth::operations::AnchorDomainUpdated;
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = AnchorDomainUpdated::new(&ctx, &id, &domain.domain);
+    let _ = state.unit_of_work.emit_event(event, &req).await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -595,7 +617,7 @@ pub async fn create_client_auth_config(
     let mut config = match config_type {
         AuthConfigType::Partner => ClientAuthConfig::new_partner(&email_domain),
         _ => {
-            let client_id = req.primary_client_id.unwrap_or_default();
+            let client_id = req.primary_client_id.clone().unwrap_or_default();
             ClientAuthConfig::new_client(&email_domain, &client_id)
         }
     };
@@ -612,6 +634,13 @@ pub async fn create_client_auth_config(
 
     let id = config.id.clone();
     state.client_auth_config_repo.insert(&config).await?;
+
+    use crate::usecase::{UnitOfWork, ExecutionContext};
+    use crate::auth::operations::AuthConfigCreated;
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let config_type_str = format!("{:?}", config.config_type);
+    let event = AuthConfigCreated::new(&ctx, &id, &config.email_domain, &config_type_str);
+    let _ = state.unit_of_work.emit_event(event, &req).await;
 
     Ok(Json(CreatedResponse::new(id)))
 }
@@ -697,24 +726,30 @@ pub async fn update_client_auth_config(
     let mut config = state.client_auth_config_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("ClientAuthConfig", &id))?;
 
-    if let Some(client_id) = req.primary_client_id {
-        config.primary_client_id = Some(client_id);
+    if let Some(ref client_id) = req.primary_client_id {
+        config.primary_client_id = Some(client_id.clone());
     }
     if let Some(ref provider) = req.auth_provider {
         config.auth_provider = parse_auth_provider(provider);
     }
-    if let Some(issuer) = req.oidc_issuer_url {
-        config.oidc_issuer_url = Some(issuer);
+    if let Some(ref issuer) = req.oidc_issuer_url {
+        config.oidc_issuer_url = Some(issuer.clone());
     }
-    if let Some(client_id) = req.oidc_client_id {
-        config.oidc_client_id = Some(client_id);
+    if let Some(ref client_id) = req.oidc_client_id {
+        config.oidc_client_id = Some(client_id.clone());
     }
-    if let Some(additional) = req.additional_client_ids {
-        config.additional_client_ids = additional;
+    if let Some(ref additional) = req.additional_client_ids {
+        config.additional_client_ids = additional.clone();
     }
 
     config.updated_at = chrono::Utc::now();
     state.client_auth_config_repo.update(&config).await?;
+
+    use crate::usecase::{UnitOfWork, ExecutionContext};
+    use crate::auth::operations::AuthConfigUpdated;
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = AuthConfigUpdated::new(&ctx, &id, &config.email_domain);
+    let _ = state.unit_of_work.emit_event(event, &req).await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -741,18 +776,24 @@ pub async fn delete_client_auth_config(
 ) -> Result<StatusCode, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
-    let exists = state.client_auth_config_repo.find_by_id(&id).await?.is_some();
-    if !exists {
-        return Err(PlatformError::not_found("ClientAuthConfig", &id));
-    }
+    let existing = state.client_auth_config_repo.find_by_id(&id).await?
+        .ok_or_else(|| PlatformError::not_found("ClientAuthConfig", &id))?;
+    let email_domain = existing.email_domain.clone();
 
     state.client_auth_config_repo.delete(&id).await?;
+
+    use crate::usecase::{UnitOfWork, ExecutionContext};
+    use crate::auth::operations::AuthConfigDeleted;
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = AuthConfigDeleted::new(&ctx, &id, &email_domain);
+    let cmd = serde_json::json!({ "authConfigId": id });
+    let _ = state.unit_of_work.emit_event(event, &cmd).await;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
 /// Update config type request
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateConfigTypeRequest {
     /// Config type: ANCHOR, PARTNER, or CLIENT
@@ -790,6 +831,12 @@ pub async fn update_config_type(
     config.updated_at = chrono::Utc::now();
 
     state.client_auth_config_repo.update(&config).await?;
+
+    use crate::usecase::{UnitOfWork, ExecutionContext};
+    use crate::auth::operations::AuthConfigUpdated;
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = AuthConfigUpdated::new(&ctx, &id, &config.email_domain);
+    let _ = state.unit_of_work.emit_event(event, &req).await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -853,13 +900,20 @@ pub async fn create_internal_auth_config(
     let config = match config_type {
         AuthConfigType::Partner => ClientAuthConfig::new_partner(&email_domain),
         _ => {
-            let client_id = req.primary_client_id.unwrap_or_default();
+            let client_id = req.primary_client_id.clone().unwrap_or_default();
             ClientAuthConfig::new_client(&email_domain, &client_id)
         }
     };
 
     let id = config.id.clone();
     state.client_auth_config_repo.insert(&config).await?;
+
+    use crate::usecase::{UnitOfWork, ExecutionContext};
+    use crate::auth::operations::AuthConfigCreated;
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let config_type_str = format!("{:?}", config.config_type);
+    let event = AuthConfigCreated::new(&ctx, &id, &config.email_domain, &config_type_str);
+    let _ = state.unit_of_work.emit_event(event, &req).await;
 
     Ok(Json(CreatedResponse::new(id)))
 }
@@ -895,7 +949,7 @@ pub async fn create_oidc_auth_config(
     let mut config = match config_type {
         AuthConfigType::Partner => ClientAuthConfig::new_partner(&email_domain),
         _ => {
-            let client_id = req.primary_client_id.unwrap_or_default();
+            let client_id = req.primary_client_id.clone().unwrap_or_default();
             ClientAuthConfig::new_client(&email_domain, &client_id)
         }
     };
@@ -904,6 +958,13 @@ pub async fn create_oidc_auth_config(
 
     let id = config.id.clone();
     state.client_auth_config_repo.insert(&config).await?;
+
+    use crate::usecase::{UnitOfWork, ExecutionContext};
+    use crate::auth::operations::AuthConfigCreated;
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let config_type_str = format!("{:?}", config.config_type);
+    let event = AuthConfigCreated::new(&ctx, &id, &config.email_domain, &config_type_str);
+    let _ = state.unit_of_work.emit_event(event, &req).await;
 
     Ok(Json(CreatedResponse::new(id)))
 }
@@ -935,16 +996,22 @@ pub async fn update_oidc_config(
     let mut config = state.client_auth_config_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("ClientAuthConfig", &id))?;
 
-    if let Some(issuer) = req.oidc_issuer_url {
-        config.oidc_issuer_url = Some(issuer);
+    if let Some(ref issuer) = req.oidc_issuer_url {
+        config.oidc_issuer_url = Some(issuer.clone());
     }
-    if let Some(client_id) = req.oidc_client_id {
-        config.oidc_client_id = Some(client_id);
+    if let Some(ref client_id) = req.oidc_client_id {
+        config.oidc_client_id = Some(client_id.clone());
     }
     config.auth_provider = AuthProvider::Oidc;
     config.updated_at = chrono::Utc::now();
 
     state.client_auth_config_repo.update(&config).await?;
+
+    use crate::usecase::{UnitOfWork, ExecutionContext};
+    use crate::auth::operations::AuthConfigUpdated;
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = AuthConfigUpdated::new(&ctx, &id, &config.email_domain);
+    let _ = state.unit_of_work.emit_event(event, &req).await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -976,10 +1043,16 @@ pub async fn update_client_binding(
     let mut config = state.client_auth_config_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("ClientAuthConfig", &id))?;
 
-    config.primary_client_id = Some(req.primary_client_id);
+    config.primary_client_id = Some(req.primary_client_id.clone());
     config.updated_at = chrono::Utc::now();
 
     state.client_auth_config_repo.update(&config).await?;
+
+    use crate::usecase::{UnitOfWork, ExecutionContext};
+    use crate::auth::operations::AuthConfigUpdated;
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = AuthConfigUpdated::new(&ctx, &id, &config.email_domain);
+    let _ = state.unit_of_work.emit_event(event, &req).await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1011,10 +1084,16 @@ pub async fn update_additional_clients(
     let mut config = state.client_auth_config_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("ClientAuthConfig", &id))?;
 
-    config.additional_client_ids = req.additional_client_ids;
+    config.additional_client_ids = req.additional_client_ids.clone();
     config.updated_at = chrono::Utc::now();
 
     state.client_auth_config_repo.update(&config).await?;
+
+    use crate::usecase::{UnitOfWork, ExecutionContext};
+    use crate::auth::operations::AuthConfigUpdated;
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = AuthConfigUpdated::new(&ctx, &id, &config.email_domain);
+    let _ = state.unit_of_work.emit_event(event, &req).await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1046,10 +1125,16 @@ pub async fn update_granted_clients(
     let mut config = state.client_auth_config_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("ClientAuthConfig", &id))?;
 
-    config.additional_client_ids = req.granted_client_ids;
+    config.additional_client_ids = req.granted_client_ids.clone();
     config.updated_at = chrono::Utc::now();
 
     state.client_auth_config_repo.update(&config).await?;
+
+    use crate::usecase::{UnitOfWork, ExecutionContext};
+    use crate::auth::operations::AuthConfigUpdated;
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = AuthConfigUpdated::new(&ctx, &id, &config.email_domain);
+    let _ = state.unit_of_work.emit_event(event, &req).await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1117,6 +1202,13 @@ pub async fn create_idp_role_mapping(
     let id = mapping.id.clone();
 
     state.idp_role_mapping_repo.insert(&mapping).await?;
+
+    use crate::usecase::{UnitOfWork, ExecutionContext};
+    use crate::auth::operations::IdpRoleMappingCreated;
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let idp_role = format!("{}:{}", mapping.idp_type, mapping.idp_role_name);
+    let event = IdpRoleMappingCreated::new(&ctx, &id, &idp_role, &mapping.platform_role_name);
+    let _ = state.unit_of_work.emit_event(event, &req).await;
 
     Ok(Json(CreatedResponse::new(id)))
 }
@@ -1190,6 +1282,13 @@ pub async fn delete_idp_role_mapping(
     }
 
     state.idp_role_mapping_repo.delete(&id).await?;
+
+    use crate::usecase::{UnitOfWork, ExecutionContext};
+    use crate::auth::operations::IdpRoleMappingDeleted;
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = IdpRoleMappingDeleted::new(&ctx, &id);
+    let cmd = serde_json::json!({ "idpRoleMappingId": id });
+    let _ = state.unit_of_work.emit_event(event, &cmd).await;
 
     Ok(StatusCode::NO_CONTENT)
 }

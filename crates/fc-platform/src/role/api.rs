@@ -134,6 +134,9 @@ pub struct RolesQuery {
 pub struct RolesState {
     pub role_repo: Arc<RoleRepository>,
     pub application_repo: Option<Arc<ApplicationRepository>>,
+    pub create_use_case: Arc<crate::role::operations::CreateRoleUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_use_case: Arc<crate::role::operations::UpdateRoleUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_use_case: Arc<crate::role::operations::DeleteRoleUseCase<crate::usecase::PgUnitOfWork>>,
 }
 
 /// Application option for filter dropdown
@@ -200,29 +203,23 @@ pub async fn create_role(
     auth: Authenticated,
     Json(req): Json<CreateRoleRequest>,
 ) -> Result<(StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
-    // Only anchor users can create roles
+    use crate::role::operations::CreateRoleCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    let role_name = format!("{}:{}", req.application_code, req.role_name);
+    let cmd = CreateRoleCommand {
+        application_code: req.application_code,
+        role_name: req.role_name,
+        display_name: req.display_name,
+        description: req.description,
+        permissions: req.permissions,
+        client_managed: req.client_managed,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = state.create_use_case.run(cmd, ctx).await.into_result()?;
 
-    // Check for duplicate name
-    if let Some(_) = state.role_repo.find_by_name(&role_name).await? {
-        return Err(PlatformError::duplicate("Role", "name", &role_name));
-    }
-
-    let mut role = AuthRole::new(&req.application_code, &req.role_name, &req.display_name);
-
-    if let Some(desc) = req.description {
-        role = role.with_description(desc);
-    }
-
-    role = role.with_permissions(req.permissions);
-    role = role.with_client_managed(req.client_managed);
-
-    let id = role.id.clone();
-    state.role_repo.insert(&role).await?;
-
-    Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
+    Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(event.role_id))))
 }
 
 /// Get role by ID or name (code)
@@ -344,35 +341,26 @@ pub async fn update_role(
     Path(role_name): Path<String>,
     Json(req): Json<UpdateRoleRequest>,
 ) -> Result<StatusCode, PlatformError> {
+    use crate::role::operations::UpdateRoleCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    // Try by code first if it looks like a role code (contains ":")
-    let mut role = if role_name.contains(':') {
+    let role = if role_name.contains(':') {
         state.role_repo.find_by_name(&role_name).await?
     } else {
         state.role_repo.find_by_id(&role_name).await?
     }.ok_or_else(|| PlatformError::not_found("Role", &role_name))?;
 
-    // Check if role can be modified
-    if !role.can_modify() {
-        return Err(PlatformError::validation(format!(
-            "Role {} is from source {} and cannot be modified",
-            role.name, role.source.as_str()
-        )));
-    }
-
-    if let Some(display_name) = req.display_name {
-        role.display_name = display_name;
-    }
-    if let Some(desc) = req.description {
-        role.description = Some(desc);
-    }
-    if let Some(client_managed) = req.client_managed {
-        role.client_managed = client_managed;
-    }
-
-    role.updated_at = chrono::Utc::now();
-    state.role_repo.update(&role).await?;
+    let cmd = UpdateRoleCommand {
+        role_id: role.id,
+        display_name: req.display_name,
+        description: req.description,
+        permissions: None,
+        client_managed: req.client_managed,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.update_use_case.run(cmd, ctx).await.into_result()?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -399,6 +387,9 @@ pub async fn grant_permission(
     Path(role_name): Path<String>,
     Json(req): Json<GrantPermissionRequest>,
 ) -> Result<Json<RoleResponse>, PlatformError> {
+    use crate::role::operations::UpdateRoleCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
     let mut role = if role_name.contains(':') {
@@ -407,14 +398,20 @@ pub async fn grant_permission(
         state.role_repo.find_by_id(&role_name).await?
     }.ok_or_else(|| PlatformError::not_found("Role", &role_name))?;
 
-    if !role.can_modify() {
-        return Err(PlatformError::validation("This role cannot be modified"));
-    }
-
     role.grant_permission(req.permission);
-    state.role_repo.update(&role).await?;
+    let cmd = UpdateRoleCommand {
+        role_id: role.id.clone(),
+        display_name: None,
+        description: None,
+        permissions: Some(role.permissions.iter().cloned().collect()),
+        client_managed: None,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.update_use_case.run(cmd, ctx).await.into_result()?;
 
-    Ok(Json(role.into()))
+    let refreshed = state.role_repo.find_by_id(&role.id).await?
+        .ok_or_else(|| PlatformError::not_found("Role", &role.id))?;
+    Ok(Json(refreshed.into()))
 }
 
 /// Revoke permission from role
@@ -438,6 +435,9 @@ pub async fn revoke_permission(
     auth: Authenticated,
     Path((role_name, permission)): Path<(String, String)>,
 ) -> Result<Json<RoleResponse>, PlatformError> {
+    use crate::role::operations::UpdateRoleCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
     let mut role = if role_name.contains(':') {
@@ -446,14 +446,20 @@ pub async fn revoke_permission(
         state.role_repo.find_by_id(&role_name).await?
     }.ok_or_else(|| PlatformError::not_found("Role", &role_name))?;
 
-    if !role.can_modify() {
-        return Err(PlatformError::validation("This role cannot be modified"));
-    }
-
     role.revoke_permission(&permission);
-    state.role_repo.update(&role).await?;
+    let cmd = UpdateRoleCommand {
+        role_id: role.id.clone(),
+        display_name: None,
+        description: None,
+        permissions: Some(role.permissions.iter().cloned().collect()),
+        client_managed: None,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.update_use_case.run(cmd, ctx).await.into_result()?;
 
-    Ok(Json(role.into()))
+    let refreshed = state.role_repo.find_by_id(&role.id).await?
+        .ok_or_else(|| PlatformError::not_found("Role", &role.id))?;
+    Ok(Json(refreshed.into()))
 }
 
 /// Delete role
@@ -476,20 +482,20 @@ pub async fn delete_role(
     auth: Authenticated,
     Path(role_name): Path<String>,
 ) -> Result<StatusCode, PlatformError> {
+    use crate::role::operations::DeleteRoleCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    // Try by code first if it looks like a role code (contains ":")
     let role = if role_name.contains(':') {
         state.role_repo.find_by_name(&role_name).await?
     } else {
         state.role_repo.find_by_id(&role_name).await?
     }.ok_or_else(|| PlatformError::not_found("Role", &role_name))?;
 
-    if !role.can_modify() {
-        return Err(PlatformError::validation("This role cannot be deleted"));
-    }
-
-    state.role_repo.delete(&role.id).await?;
+    let cmd = DeleteRoleCommand { role_id: role.id };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.delete_use_case.run(cmd, ctx).await.into_result()?;
 
     Ok(StatusCode::NO_CONTENT)
 }

@@ -95,11 +95,37 @@ fn build_test_router(pool: &sqlx::PgPool) -> (Router, Arc<AuthService>) {
         authz_service,
     };
 
+    let client_repo = Arc::new(ClientRepository::new(pool));
+    let unit_of_work = Arc::new(fc_platform::usecase::PgUnitOfWork::new(pool.clone()));
     let clients_state = ClientsState {
-        client_repo: Arc::new(ClientRepository::new(pool)),
+        client_repo: client_repo.clone(),
         application_repo: None,
         application_client_config_repo: None,
         audit_service: None,
+        create_use_case: Arc::new(fc_platform::client::operations::CreateClientUseCase::new(
+            client_repo.clone(),
+            unit_of_work.clone(),
+        )),
+        update_use_case: Arc::new(fc_platform::client::operations::UpdateClientUseCase::new(
+            client_repo.clone(),
+            unit_of_work.clone(),
+        )),
+        delete_use_case: Arc::new(fc_platform::client::operations::DeleteClientUseCase::new(
+            client_repo.clone(),
+            unit_of_work.clone(),
+        )),
+        activate_use_case: Arc::new(fc_platform::client::operations::ActivateClientUseCase::new(
+            client_repo.clone(),
+            unit_of_work.clone(),
+        )),
+        suspend_use_case: Arc::new(fc_platform::client::operations::SuspendClientUseCase::new(
+            client_repo.clone(),
+            unit_of_work.clone(),
+        )),
+        add_note_use_case: Arc::new(fc_platform::client::operations::AddClientNoteUseCase::new(
+            client_repo.clone(),
+            unit_of_work.clone(),
+        )),
     };
 
     let sdk_events_state = SdkEventsState {

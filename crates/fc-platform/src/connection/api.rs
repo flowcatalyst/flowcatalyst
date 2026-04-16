@@ -86,6 +86,9 @@ pub struct ConnectionsQuery {
 #[derive(Clone)]
 pub struct ConnectionsState {
     pub connection_repo: Arc<ConnectionRepository>,
+    pub create_use_case: Arc<crate::connection::operations::CreateConnectionUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_use_case: Arc<crate::connection::operations::UpdateConnectionUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_use_case: Arc<crate::connection::operations::DeleteConnectionUseCase<crate::usecase::PgUnitOfWork>>,
 }
 
 /// Create a new connection
@@ -107,19 +110,25 @@ pub async fn create_connection(
     auth: Authenticated,
     Json(req): Json<CreateConnectionRequest>,
 ) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
+    use crate::connection::operations::CreateConnectionCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
-    if let Some(existing) = state.connection_repo.find_by_code_and_client(&req.code, req.client_id.as_deref()).await? {
-        return Err(PlatformError::duplicate("Connection", "code", &existing.code));
-    }
 
-    let mut conn = Connection::new(&req.code, &req.name, &req.service_account_id);
-    if let Some(desc) = req.description { conn = conn.with_description(desc); }
-    if let Some(ext) = req.external_id { conn = conn.with_external_id(ext); }
-    if let Some(cid) = req.client_id { conn = conn.with_client_id(cid); }
-
-    let id = conn.id.clone();
-    state.connection_repo.insert(&conn).await?;
-    Ok((axum::http::StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
+    let cmd = CreateConnectionCommand {
+        code: req.code,
+        name: req.name,
+        description: req.description,
+        service_account_id: req.service_account_id,
+        external_id: req.external_id,
+        client_id: req.client_id,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = state.create_use_case.run(cmd, ctx).await.into_result()?;
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(crate::shared::api_common::CreatedResponse::new(event.connection_id)),
+    ))
 }
 
 /// List connections
@@ -202,19 +211,21 @@ pub async fn update_connection(
     Path(id): Path<String>,
     Json(req): Json<UpdateConnectionRequest>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
+    use crate::connection::operations::UpdateConnectionCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
-    let mut conn = state.connection_repo.find_by_id(&id).await?
-        .or_not_found("Connection", &id)?;
 
-    if let Some(name) = req.name { conn.name = name; }
-    if let Some(desc) = req.description { conn.description = Some(desc); }
-    if let Some(ext) = req.external_id { conn.external_id = Some(ext); }
-    if let Some(status) = req.status {
-        conn.status = ConnectionStatus::from_str(&status);
-    }
-    conn.updated_at = chrono::Utc::now();
-
-    state.connection_repo.update(&conn).await?;
+    let cmd = UpdateConnectionCommand {
+        connection_id: id,
+        name: req.name,
+        description: req.description,
+        external_id: req.external_id,
+        status: req.status,
+        service_account_id: None,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.update_use_case.run(cmd, ctx).await.into_result()?;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
@@ -238,10 +249,14 @@ pub async fn delete_connection(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
+    use crate::connection::operations::DeleteConnectionCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
-    let _ = state.connection_repo.find_by_id(&id).await?
-        .or_not_found("Connection", &id)?;
-    state.connection_repo.delete(&id).await?;
+
+    let cmd = DeleteConnectionCommand { connection_id: id };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.delete_use_case.run(cmd, ctx).await.into_result()?;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
@@ -265,11 +280,23 @@ pub async fn pause_connection(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<ConnectionResponse>, PlatformError> {
+    use crate::connection::operations::UpdateConnectionCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
-    let mut conn = state.connection_repo.find_by_id(&id).await?
+
+    let cmd = UpdateConnectionCommand {
+        connection_id: id.clone(),
+        name: None,
+        description: None,
+        external_id: None,
+        status: Some("PAUSED".to_string()),
+        service_account_id: None,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.update_use_case.run(cmd, ctx).await.into_result()?;
+    let conn = state.connection_repo.find_by_id(&id).await?
         .or_not_found("Connection", &id)?;
-    conn.pause();
-    state.connection_repo.update(&conn).await?;
     Ok(Json(conn.into()))
 }
 
@@ -293,11 +320,23 @@ pub async fn activate_connection(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<ConnectionResponse>, PlatformError> {
+    use crate::connection::operations::UpdateConnectionCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
-    let mut conn = state.connection_repo.find_by_id(&id).await?
+
+    let cmd = UpdateConnectionCommand {
+        connection_id: id.clone(),
+        name: None,
+        description: None,
+        external_id: None,
+        status: Some("ACTIVE".to_string()),
+        service_account_id: None,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.update_use_case.run(cmd, ctx).await.into_result()?;
+    let conn = state.connection_repo.find_by_id(&id).await?
         .or_not_found("Connection", &id)?;
-    conn.activate();
-    state.connection_repo.update(&conn).await?;
     Ok(Json(conn.into()))
 }
 

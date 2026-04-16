@@ -97,6 +97,9 @@ pub struct EmailDomainMappingsListResponse {
 pub struct EmailDomainMappingsState {
     pub edm_repo: Arc<EmailDomainMappingRepository>,
     pub idp_repo: Arc<IdentityProviderRepository>,
+    pub create_use_case: Arc<crate::email_domain_mapping::operations::CreateEmailDomainMappingUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_use_case: Arc<crate::email_domain_mapping::operations::UpdateEmailDomainMappingUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_use_case: Arc<crate::email_domain_mapping::operations::DeleteEmailDomainMappingUseCase<crate::usecase::PgUnitOfWork>>,
 }
 
 /// Create a new email domain mapping
@@ -117,23 +120,28 @@ pub async fn create_email_domain_mapping(
     auth: Authenticated,
     Json(req): Json<CreateEmailDomainMappingRequest>,
 ) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
+    use crate::email_domain_mapping::operations::CreateEmailDomainMappingCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
-    if state.edm_repo.find_by_email_domain(&req.email_domain).await?.is_some() {
-        return Err(PlatformError::duplicate("EmailDomainMapping", "emailDomain", &req.email_domain));
-    }
 
-    let scope = ScopeType::from_str(&req.scope_type);
-    let mut edm = EmailDomainMapping::new(&req.email_domain, &req.identity_provider_id, scope);
-    edm.primary_client_id = req.primary_client_id;
-    edm.additional_client_ids = req.additional_client_ids.unwrap_or_default();
-    edm.granted_client_ids = req.granted_client_ids.unwrap_or_default();
-    edm.required_oidc_tenant_id = req.required_oidc_tenant_id;
-    edm.allowed_role_ids = req.allowed_role_ids.unwrap_or_default();
-    edm.sync_roles_from_idp = req.sync_roles_from_idp.unwrap_or(false);
-
-    let id = edm.id.clone();
-    state.edm_repo.insert(&edm).await?;
-    Ok((axum::http::StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
+    let cmd = CreateEmailDomainMappingCommand {
+        email_domain: req.email_domain,
+        identity_provider_id: req.identity_provider_id,
+        scope_type: req.scope_type,
+        primary_client_id: req.primary_client_id,
+        additional_client_ids: req.additional_client_ids.unwrap_or_default(),
+        granted_client_ids: req.granted_client_ids.unwrap_or_default(),
+        required_oidc_tenant_id: req.required_oidc_tenant_id,
+        allowed_role_ids: req.allowed_role_ids.unwrap_or_default(),
+        sync_roles_from_idp: req.sync_roles_from_idp.unwrap_or(false),
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    let event = state.create_use_case.run(cmd, ctx).await.into_result()?;
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(crate::shared::api_common::CreatedResponse::new(event.mapping_id)),
+    ))
 }
 
 /// List all email domain mappings
@@ -252,21 +260,24 @@ pub async fn update_email_domain_mapping(
     Path(id): Path<String>,
     Json(req): Json<UpdateEmailDomainMappingRequest>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
+    use crate::email_domain_mapping::operations::UpdateEmailDomainMappingCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
-    let mut edm = state.edm_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("EmailDomainMapping", &id))?;
 
-    if let Some(idp_id) = req.identity_provider_id { edm.identity_provider_id = idp_id; }
-    if let Some(scope) = req.scope_type { edm.scope_type = ScopeType::from_str(&scope); }
-    if let Some(pcid) = req.primary_client_id { edm.primary_client_id = Some(pcid); }
-    if let Some(ac) = req.additional_client_ids { edm.additional_client_ids = ac; }
-    if let Some(gc) = req.granted_client_ids { edm.granted_client_ids = gc; }
-    if let Some(tenant) = req.required_oidc_tenant_id { edm.required_oidc_tenant_id = Some(tenant); }
-    if let Some(roles) = req.allowed_role_ids { edm.allowed_role_ids = roles; }
-    if let Some(sync) = req.sync_roles_from_idp { edm.sync_roles_from_idp = sync; }
-    edm.updated_at = chrono::Utc::now();
-
-    state.edm_repo.update(&edm).await?;
+    let cmd = UpdateEmailDomainMappingCommand {
+        mapping_id: id,
+        identity_provider_id: req.identity_provider_id,
+        scope_type: req.scope_type,
+        primary_client_id: req.primary_client_id,
+        sync_roles_from_idp: req.sync_roles_from_idp,
+        additional_client_ids: req.additional_client_ids,
+        granted_client_ids: req.granted_client_ids,
+        required_oidc_tenant_id: req.required_oidc_tenant_id,
+        allowed_role_ids: req.allowed_role_ids,
+    };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.update_use_case.run(cmd, ctx).await.into_result()?;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
@@ -290,10 +301,14 @@ pub async fn delete_email_domain_mapping(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
+    use crate::email_domain_mapping::operations::DeleteEmailDomainMappingCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::checks::require_anchor(&auth.0)?;
-    let _ = state.edm_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("EmailDomainMapping", &id))?;
-    state.edm_repo.delete(&id).await?;
+
+    let cmd = DeleteEmailDomainMappingCommand { mapping_id: id };
+    let ctx = ExecutionContext::create(&auth.0.principal_id);
+    state.delete_use_case.run(cmd, ctx).await.into_result()?;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 

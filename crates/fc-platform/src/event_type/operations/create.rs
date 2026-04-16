@@ -30,6 +30,11 @@ pub struct CreateEventTypeCommand {
     /// Optional client ID for multi-tenant scoping
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_id: Option<String>,
+
+    /// Optional initial schema payload. When provided, persisted as spec
+    /// version `1.0`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schema: Option<serde_json::Value>,
 }
 
 
@@ -146,6 +151,10 @@ impl<U: UnitOfWork> UseCase for CreateEventTypeUseCase<U> {
                 if let Some(client_id) = &command.client_id {
                     et.client_id = Some(client_id.clone());
                 }
+                if let Some(schema) = &command.schema {
+                    let spec = crate::SpecVersion::new(&et.id, "1.0", Some(schema.clone()));
+                    et.add_schema_version(spec);
+                }
                 et.created_by = Some(ctx.principal_id.clone());
                 et
             }
@@ -211,6 +220,7 @@ mod tests {
             name: "Shipment Shipped".to_string(),
             description: Some("When a shipment leaves".to_string()),
             client_id: None,
+            schema: None,
         };
 
         let json = serde_json::to_string(&cmd).unwrap();
