@@ -555,10 +555,14 @@ pub async fn get_application_service_account<U: UnitOfWork>(
     Ok(Json(service_account.into()))
 }
 
-/// List roles for an application
+/// List roles for an application (admin, by TSID).
+///
+/// Mounted under a `/by-id` prefix so it doesn't collide with the SDK's
+/// `/{app_code}/roles` route. The SDK path takes the application code;
+/// this admin path takes the TSID (which the frontend has on hand).
 #[utoipa::path(
     get,
-    path = "/{id}/roles",
+    path = "/by-id/{id}/roles",
     tag = "applications",
     operation_id = "getApiAdminApplicationsByIdRoles",
     params(
@@ -1099,7 +1103,7 @@ pub fn applications_router<U: UnitOfWork + Clone>(state: ApplicationsState<U>) -
         .route("/{id}/deactivate", post(deactivate_application::<U>))
         .route("/{id}/provision-service-account", post(provision_service_account::<U>))
         .route("/{id}/service-account", get(get_application_service_account::<U>))
-        .route("/{id}/roles", get(list_application_roles::<U>))
+        .route("/by-id/{id}/roles", get(list_application_roles::<U>))
         .route("/{id}/clients", get(list_client_configs::<U>))
         .route("/{id}/clients/{client_id}", put(update_client_config::<U>))
         .route("/{id}/clients/{client_id}/enable", post(enable_for_client::<U>))
