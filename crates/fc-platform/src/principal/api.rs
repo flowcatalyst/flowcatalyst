@@ -382,8 +382,12 @@ pub struct PrincipalsQuery {
     /// Filter by client ID
     pub client_id: Option<String>,
 
-    /// Search by name or email
+    /// Search by name or email (substring, case-insensitive)
     pub q: Option<String>,
+
+    /// Exact email match (case-insensitive). Use this when looking up a
+    /// specific user — `q` is a substring search and can return unrelated rows.
+    pub email: Option<String>,
 
     /// Filter by active status
     pub active: Option<bool>,
@@ -609,7 +613,11 @@ pub async fn get_principal(
         ("limit" = Option<u32>, Query, description = "Items per page"),
         ("type" = Option<String>, Query, description = "Filter by type"),
         ("scope" = Option<String>, Query, description = "Filter by scope"),
-        ("client_id" = Option<String>, Query, description = "Filter by client ID")
+        ("client_id" = Option<String>, Query, description = "Filter by client ID"),
+        ("email" = Option<String>, Query, description = "Exact email match (case-insensitive)"),
+        ("q" = Option<String>, Query, description = "Search by name or email (substring)"),
+        ("active" = Option<bool>, Query, description = "Filter by active status"),
+        ("roles" = Option<String>, Query, description = "Filter by roles (comma-separated)")
     ),
     responses(
         (status = 200, description = "List of principals", body = PrincipalListResponse)
@@ -635,6 +643,7 @@ pub async fn list_principals(
         query.principal_type.as_deref(),
         query.active,
         query.q.as_deref(),
+        query.email.as_deref(),
     ).await?;
 
     // Post-filter: access control + roles (requires hydrated data)

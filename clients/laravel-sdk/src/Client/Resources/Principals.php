@@ -67,6 +67,12 @@ class Principals
      * Find a principal by email address.
      *
      * Returns null if no principal exists with the given email.
+     *
+     * Note: we defensively verify the returned row's email matches the
+     * requested one. Older platform builds silently ignored the `email`
+     * query parameter and returned an unfiltered list — handing back the
+     * wrong principal would cause downstream writes (e.g. password reset)
+     * to hit an unintended user.
      */
     public function findByEmail(string $email): ?Principal
     {
@@ -76,7 +82,14 @@ class Principals
             return null;
         }
 
-        return $result['principals'][0] ?? null;
+        $needle = strtolower($email);
+        foreach ($result['principals'] as $principal) {
+            if (strtolower($principal->email ?? '') === $needle) {
+                return $principal;
+            }
+        }
+
+        return null;
     }
 
     /**

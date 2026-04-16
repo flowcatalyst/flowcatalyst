@@ -275,6 +275,7 @@ impl PrincipalRepository {
         principal_type: Option<&str>,
         active: Option<bool>,
         search: Option<&str>,
+        email: Option<&str>,
     ) -> Result<Vec<Principal>> {
         let needs_join = client_id.is_some();
         let mut qb: QueryBuilder<Postgres> = QueryBuilder::new(if needs_join {
@@ -320,6 +321,12 @@ impl PrincipalRepository {
                     .push(" OR p.email LIKE ")
                     .push_bind(pattern)
                     .push(")");
+            }
+        }
+        if let Some(em) = email {
+            if !em.is_empty() {
+                push_where(&mut qb, &mut has_where);
+                qb.push("LOWER(p.email) = ").push_bind(em.to_lowercase());
             }
         }
 
