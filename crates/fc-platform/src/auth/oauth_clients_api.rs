@@ -563,6 +563,7 @@ pub async fn rotate_oauth_client_secret(
     auth: Authenticated,
     path: Path<String>,
 ) -> Result<Json<RegenerateSecretResponse>, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     regenerate_oauth_client_secret(state, auth, path).await
 }
 

@@ -345,6 +345,7 @@ pub async fn create_service_account<U: UnitOfWork>(
     auth: Authenticated,
     Json(req): Json<CreateServiceAccountRequest>,
 ) -> Result<Json<CreateServiceAccountResponse>, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let command = CreateServiceAccountCommand {
         code: req.code,
         name: req.name,
@@ -442,6 +443,7 @@ pub async fn update_service_account<U: UnitOfWork>(
     Path(id): Path<String>,
     Json(req): Json<UpdateServiceAccountRequest>,
 ) -> Result<StatusCode, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let command = UpdateServiceAccountCommand {
         id: id.clone(),
         name: req.name,
@@ -477,6 +479,7 @@ pub async fn delete_service_account<U: UnitOfWork>(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let command = DeleteServiceAccountCommand { id };
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
@@ -507,6 +510,7 @@ pub async fn update_auth_token<U: UnitOfWork>(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<RegenerateTokenResponse>, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let command = RegenerateAuthTokenCommand { service_account_id: id };
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
@@ -541,6 +545,7 @@ pub async fn regenerate_auth_token<U: UnitOfWork>(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<RegenerateTokenResponse>, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let command = RegenerateAuthTokenCommand { service_account_id: id };
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
@@ -575,6 +580,7 @@ pub async fn regenerate_signing_secret<U: UnitOfWork>(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<RegenerateSecretResponse>, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let command = RegenerateSigningSecretCommand { service_account_id: id };
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
@@ -645,6 +651,7 @@ pub async fn assign_roles<U: UnitOfWork>(
     Path(id): Path<String>,
     Json(req): Json<AssignRolesRequest>,
 ) -> Result<Json<AssignRolesResponse>, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let command = AssignRolesCommand {
         service_account_id: id.clone(),
         roles: req.roles,

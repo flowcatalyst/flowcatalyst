@@ -104,9 +104,10 @@ pub struct IdentityProvidersState {
 )]
 async fn create_identity_provider(
     State(state): State<IdentityProvidersState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Json(req): Json<CreateIdentityProviderRequest>,
 ) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     if state.idp_repo.find_by_code(&req.code).await?.is_some() {
         return Err(PlatformError::duplicate("IdentityProvider", "code", &req.code));
     }
@@ -188,10 +189,11 @@ async fn get_identity_provider(
 )]
 async fn update_identity_provider(
     State(state): State<IdentityProvidersState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateIdentityProviderRequest>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let mut idp = state.idp_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("IdentityProvider", &id))?;
 
@@ -224,9 +226,10 @@ async fn update_identity_provider(
 )]
 async fn delete_identity_provider(
     State(state): State<IdentityProvidersState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let _ = state.idp_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("IdentityProvider", &id))?;
     state.idp_repo.delete(&id).await?;

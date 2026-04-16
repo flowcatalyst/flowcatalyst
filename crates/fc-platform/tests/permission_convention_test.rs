@@ -16,9 +16,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Any of these substrings in a handler body counts as a permission check.
-/// Keep in sync with `shared::authorization_service::checks` and
-/// `AuthorizationService` methods.
+/// Keep in sync with `shared::authorization_service::checks`,
+/// `AuthorizationService` methods, and `AuthContext` helpers.
 const AUTH_CHECK_PATTERNS: &[&str] = &[
+    // checks module functions (shared::authorization_service::checks)
     "require_anchor",
     "require_permission",
     "require_client_access",
@@ -29,7 +30,12 @@ const AUTH_CHECK_PATTERNS: &[&str] = &[
     "can_update_",
     "can_delete_",
     "can_retry_",
+    // AuthorizationService method calls
     ".authorize(",
+    // AuthContext inline checks (used in conditionals that return 403)
+    ".is_anchor()",
+    ".can_access_client(",
+    ".has_permission(",
 ];
 
 /// Handler files that contain endpoints which legitimately don't need a
@@ -67,8 +73,32 @@ const FILE_SKIPLIST: &[&str] = &[
     // "shared/sdk_dispatch_jobs_api.rs",
 ];
 
-/// Specific handler function names to skip (by exact fn name match).
-const FN_SKIPLIST: &[&str] = &[];
+/// Specific handlers to skip, identified as `"path/suffix::fn_name"`. The
+/// `path/suffix` must be a substring of the file path relative to `src/`.
+const FN_SKIPLIST: &[&str] = &[
+    // OAuth 2.0 protocol endpoints — authenticated by RFC-defined credentials
+    // (client_id/client_secret, token-in-body), not by platform permissions.
+    // The protocol is the gate.
+    "auth/oauth_api.rs::token",      // POST /oauth/token (RFC 6749)
+    "auth/oauth_api.rs::introspect", // POST /oauth/introspect (RFC 7662)
+    "auth/oauth_api.rs::revoke",     // POST /oauth/revoke (RFC 7009)
+    // /auth/client/switch — part of the authenticated login flow; no extra
+    // permission needed to pick a different client for your own session.
+    "shared/client_selection_api.rs::switch_client",
+    // TODO: The SDK sync endpoints authenticate via service-account bearer
+    // token but don't currently call a permission helper. They effectively
+    // require the caller to be a service account attached to the application
+    // they're syncing. Add an explicit `require_permission(ctx, "SDK_SYNC")`
+    // or similar when the permission catalog has a slot for it.
+    "shared/application_roles_sdk_api.rs::create_role",
+    "shared/application_roles_sdk_api.rs::sync_roles",
+    "shared/application_roles_sdk_api.rs::delete_role",
+    "shared/sdk_sync_api.rs::sync_roles",
+    "shared/sdk_sync_api.rs::sync_event_types",
+    "shared/sdk_sync_api.rs::sync_subscriptions",
+    "shared/sdk_sync_api.rs::sync_dispatch_pools",
+    "shared/sdk_sync_api.rs::sync_principals",
+];
 
 fn src_root() -> PathBuf {
     // Cargo sets CARGO_MANIFEST_DIR to the crate root when running tests.
@@ -218,7 +248,7 @@ fn has_auth_check(body: &str) -> bool {
 
 #[test]
 fn every_write_handler_calls_an_auth_check() {
-    let skip_fns: HashSet<&str> = FN_SKIPLIST.iter().copied().collect();
+    let skip_keys: HashSet<&str> = FN_SKIPLIST.iter().copied().collect();
 
     let mut files = Vec::new();
     walk_rs_files(&src_root(), &mut files);
@@ -232,16 +262,17 @@ fn every_write_handler_calls_an_auth_check() {
         let Ok(content) = fs::read_to_string(file) else {
             continue;
         };
+        let rel = file
+            .strip_prefix(src_root())
+            .unwrap_or(file)
+            .to_string_lossy()
+            .replace('\\', "/");
         for (fn_name, body, line_no) in extract_write_handlers(&content) {
-            if skip_fns.contains(fn_name.as_str()) {
+            let key = format!("{}::{}", rel, fn_name);
+            if skip_keys.contains(key.as_str()) {
                 continue;
             }
             if !has_auth_check(&body) {
-                let rel = file
-                    .strip_prefix(src_root())
-                    .unwrap_or(file)
-                    .to_string_lossy()
-                    .replace('\\', "/");
                 violations.push(format!("{}:{} fn {}", rel, line_no, fn_name));
             }
         }

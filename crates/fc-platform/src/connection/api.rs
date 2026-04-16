@@ -104,9 +104,10 @@ pub struct ConnectionsState {
 )]
 pub async fn create_connection(
     State(state): State<ConnectionsState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Json(req): Json<CreateConnectionRequest>,
 ) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     if let Some(existing) = state.connection_repo.find_by_code_and_client(&req.code, req.client_id.as_deref()).await? {
         return Err(PlatformError::duplicate("Connection", "code", &existing.code));
     }
@@ -197,10 +198,11 @@ pub async fn get_connection(
 )]
 pub async fn update_connection(
     State(state): State<ConnectionsState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateConnectionRequest>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let mut conn = state.connection_repo.find_by_id(&id).await?
         .or_not_found("Connection", &id)?;
 
@@ -233,9 +235,10 @@ pub async fn update_connection(
 )]
 pub async fn delete_connection(
     State(state): State<ConnectionsState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let _ = state.connection_repo.find_by_id(&id).await?
         .or_not_found("Connection", &id)?;
     state.connection_repo.delete(&id).await?;
@@ -259,9 +262,10 @@ pub async fn delete_connection(
 )]
 pub async fn pause_connection(
     State(state): State<ConnectionsState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<ConnectionResponse>, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let mut conn = state.connection_repo.find_by_id(&id).await?
         .or_not_found("Connection", &id)?;
     conn.pause();
@@ -286,9 +290,10 @@ pub async fn pause_connection(
 )]
 pub async fn activate_connection(
     State(state): State<ConnectionsState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<ConnectionResponse>, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let mut conn = state.connection_repo.find_by_id(&id).await?
         .or_not_found("Connection", &id)?;
     conn.activate();

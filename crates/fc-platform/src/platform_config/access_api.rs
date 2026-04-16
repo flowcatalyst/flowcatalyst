@@ -107,10 +107,11 @@ pub async fn list_access(
 )]
 pub async fn create_access(
     State(state): State<ConfigAccessState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(app_code): Path<String>,
     Json(req): Json<CreateAccessRequest>,
 ) -> Result<(axum::http::StatusCode, Json<AccessResponse>), PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     if state.access_repo.find_by_application_and_role(&app_code, &req.role_code).await?.is_some() {
         return Err(PlatformError::conflict(format!("Access grant already exists for {}/{}", app_code, req.role_code)));
     }
@@ -142,10 +143,11 @@ pub async fn create_access(
 )]
 pub async fn update_access(
     State(state): State<ConfigAccessState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path((app_code, role_code)): Path<(String, String)>,
     Json(req): Json<UpdateAccessRequest>,
 ) -> Result<Json<AccessResponse>, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let mut access = state.access_repo.find_by_application_and_role(&app_code, &role_code).await?
         .ok_or_else(|| PlatformError::not_found("PlatformConfigAccess", &format!("{}/{}", app_code, role_code)))?;
 
@@ -174,9 +176,10 @@ pub async fn update_access(
 )]
 pub async fn delete_access(
     State(state): State<ConfigAccessState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path((app_code, role_code)): Path<(String, String)>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let deleted = state.access_repo.delete_by_application_and_role(&app_code, &role_code).await?;
     if deleted {
         Ok(axum::http::StatusCode::NO_CONTENT)

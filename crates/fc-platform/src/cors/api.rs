@@ -81,6 +81,7 @@ pub async fn create_cors_origin(
     auth: Authenticated,
     Json(req): Json<CreateCorsOriginRequest>,
 ) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     if state.cors_repo.find_by_origin(&req.origin).await?.is_some() {
         return Err(PlatformError::duplicate("CorsAllowedOrigin", "origin", &req.origin));
     }
@@ -179,9 +180,10 @@ pub async fn get_cors_origin(
 )]
 pub async fn delete_cors_origin(
     State(state): State<CorsState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let _ = state.cors_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("CorsAllowedOrigin", &id))?;
     state.cors_repo.delete(&id).await?;

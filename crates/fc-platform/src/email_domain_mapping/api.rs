@@ -114,9 +114,10 @@ pub struct EmailDomainMappingsState {
 )]
 pub async fn create_email_domain_mapping(
     State(state): State<EmailDomainMappingsState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Json(req): Json<CreateEmailDomainMappingRequest>,
 ) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     if state.edm_repo.find_by_email_domain(&req.email_domain).await?.is_some() {
         return Err(PlatformError::duplicate("EmailDomainMapping", "emailDomain", &req.email_domain));
     }
@@ -247,10 +248,11 @@ pub async fn lookup_email_domain_mapping(
 )]
 pub async fn update_email_domain_mapping(
     State(state): State<EmailDomainMappingsState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(id): Path<String>,
     Json(req): Json<UpdateEmailDomainMappingRequest>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let mut edm = state.edm_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("EmailDomainMapping", &id))?;
 
@@ -285,9 +287,10 @@ pub async fn update_email_domain_mapping(
 )]
 pub async fn delete_email_domain_mapping(
     State(state): State<EmailDomainMappingsState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let _ = state.edm_repo.find_by_id(&id).await?
         .ok_or_else(|| PlatformError::not_found("EmailDomainMapping", &id))?;
     state.edm_repo.delete(&id).await?;

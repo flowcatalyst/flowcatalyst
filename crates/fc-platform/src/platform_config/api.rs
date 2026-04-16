@@ -236,11 +236,12 @@ pub async fn get_property(
 )]
 pub async fn set_property(
     State(state): State<PlatformConfigState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path((app_code, section, property)): Path<(String, String, String)>,
     Query(query): Query<ConfigQuery>,
     Json(req): Json<SetConfigRequest>,
 ) -> Result<(axum::http::StatusCode, Json<ConfigResponse>), PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let scope_str = query.scope.as_deref().unwrap_or("GLOBAL");
     let existing = state.config_repo.find_by_key(
         &app_code, &section, &property, scope_str, query.client_id.as_deref(),
@@ -285,10 +286,11 @@ pub async fn set_property(
 )]
 pub async fn delete_property(
     State(state): State<PlatformConfigState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path((app_code, section, property)): Path<(String, String, String)>,
     Query(query): Query<ConfigQuery>,
 ) -> Result<axum::http::StatusCode, PlatformError> {
+    crate::checks::require_anchor(&auth.0)?;
     let scope_str = query.scope.as_deref().unwrap_or("GLOBAL");
     let deleted = state.config_repo.delete_by_key(
         &app_code, &section, &property, scope_str, query.client_id.as_deref(),
