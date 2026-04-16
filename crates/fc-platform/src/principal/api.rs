@@ -1858,7 +1858,11 @@ mod tests {
 /// Create principals router
 pub fn principals_router(state: PrincipalsState) -> OpenApiRouter {
     OpenApiRouter::new()
-        .routes(routes!(create_user, list_principals))
+        // `routes!(...)` groups handlers on the SAME path; `create_user` is
+        // `/users` and `list_principals` is `""`, so they must be registered
+        // separately or only one gets mounted (previously the cause of 405s).
+        .routes(routes!(list_principals))
+        .routes(routes!(create_user))
         .routes(routes!(check_email_domain))
         .routes(routes!(get_principal, update_principal, delete_principal))
         .routes(routes!(activate_principal))
