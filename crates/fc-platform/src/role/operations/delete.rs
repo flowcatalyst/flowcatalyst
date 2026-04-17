@@ -87,7 +87,9 @@ impl<U: UnitOfWork> UseCase for DeleteRoleUseCase<U> {
         let event = RoleDeleted::new(&ctx, &role.id, &role.name);
 
         // Atomic commit with delete
-        self.unit_of_work.commit_delete(&role, event, &command).await
+        self.unit_of_work
+            .commit_delete(&role, &*self.role_repo, event, &command)
+            .await
     }
 }
 

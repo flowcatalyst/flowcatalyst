@@ -7,8 +7,9 @@ description = "FlowCatalyst Development Monolith - All components in a single bi
 [dependencies]
 fc-common = { path = "../../crates/fc-common" }
 fc-router = { path = "../../crates/fc-router" }
-# Queue uses SQLite as embedded SQS replacement for local dev
-fc-queue = { path = "../../crates/fc-queue", features = ["sqlite"] }
+# Queue reuses the embedded Postgres as an SQS replacement for local dev —
+# one DB, one pool, queue tables live alongside control-plane tables.
+fc-queue = { path = "../../crates/fc-queue", features = ["postgres"] }
 # Outbox supports all database backends - reads from developer's app database
 fc-outbox = { path = "../../crates/fc-outbox", features = ["sqlite", "postgres", "mongo"] }
 fc-stream = { path = "../../crates/fc-stream" }
@@ -32,3 +33,17 @@ reqwest = { workspace = true }
 dotenvy = "0.15.7"
 rust-embed = { workspace = true }
 mime_guess = "2"
+# Embedded PostgreSQL for zero-friction local dev. The `bundled` feature
+# downloads the pg binary at *build* time and embeds it into the compiled
+# fc-dev exe — first run extracts from the binary itself, no runtime network
+# call. Trade-off: fc-dev grows ~80MB per target triple, but the whole
+# artifact is covered by one signature / one hash for corporate review.
+#
+# Gated behind the `embedded-db` feature (on by default for fc-dev only)
+# so fc-server never pulls this dep.
+postgresql_embedded = { version = "0.19", features = ["bundled"], optional = true }
+dirs = { version = "5", optional = true }
+
+[features]
+default = ["embedded-db"]
+embedded-db = ["dep:postgresql_embedded", "dep:dirs"]

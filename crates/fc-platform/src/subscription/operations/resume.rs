@@ -90,7 +90,9 @@ impl<U: UnitOfWork> UseCase for ResumeSubscriptionUseCase<U> {
         let event = SubscriptionResumed::new(&ctx, &subscription.id, &subscription.code);
 
         // Atomic commit
-        self.unit_of_work.commit(&subscription, event, &command).await
+        self.unit_of_work
+            .commit(&subscription, &*self.subscription_repo, event, &command)
+            .await
     }
 }
 

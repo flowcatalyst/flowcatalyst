@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 
 use super::entity::{AuthRole, RoleSource};
 use crate::shared::error::Result;
-use crate::usecase::unit_of_work::{HasId, PgPersist};
+use crate::usecase::unit_of_work::HasId;
 
 /// Row mapping for iam_roles table
 #[derive(sqlx::FromRow)]
@@ -398,18 +398,17 @@ impl RoleRepository {
     }
 }
 
-// ── PgPersist implementation ──────────────────────────────────────────────────
+// ── Persist<AuthRole> ────────────────────────────────────────────────────────
 
 impl HasId for AuthRole {
     fn id(&self) -> &str { &self.id }
 }
 
 #[async_trait]
-impl PgPersist for AuthRole {
-    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+impl crate::usecase::Persist<AuthRole> for RoleRepository {
+    async fn persist(&self, r: &AuthRole, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
 
-        // 1. Upsert main row
         sqlx::query(
             "INSERT INTO iam_roles (id, application_id, application_code, name, display_name, description, source, client_managed, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -423,41 +422,39 @@ impl PgPersist for AuthRole {
                 client_managed = EXCLUDED.client_managed,
                 updated_at = EXCLUDED.updated_at"
         )
-        .bind(&self.id)
-        .bind(&self.application_id)
-        .bind(Some(&self.application_code))
-        .bind(&self.name)
-        .bind(&self.display_name)
-        .bind(&self.description)
-        .bind(self.source.as_str())
-        .bind(self.client_managed)
+        .bind(&r.id)
+        .bind(&r.application_id)
+        .bind(Some(&r.application_code))
+        .bind(&r.name)
+        .bind(&r.display_name)
+        .bind(&r.description)
+        .bind(r.source.as_str())
+        .bind(r.client_managed)
         .bind(now)
         .bind(now)
-        .execute(&mut **txn).await?;
+        .execute(&mut **tx.inner).await?;
 
-        // 2. Delete existing permissions
         sqlx::query("DELETE FROM iam_role_permissions WHERE role_id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
+            .bind(&r.id)
+            .execute(&mut **tx.inner).await?;
 
-        // 3. Re-insert permissions
-        for perm in &self.permissions {
+        for perm in &r.permissions {
             sqlx::query(
                 "INSERT INTO iam_role_permissions (role_id, permission) VALUES ($1, $2)"
             )
-            .bind(&self.id)
+            .bind(&r.id)
             .bind(perm)
-            .execute(&mut **txn).await?;
+            .execute(&mut **tx.inner).await?;
         }
 
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+    async fn delete(&self, r: &AuthRole, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         // Permissions cascade via ON DELETE CASCADE
         sqlx::query("DELETE FROM iam_roles WHERE id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
+            .bind(&r.id)
+            .execute(&mut **tx.inner).await?;
         Ok(())
     }
 }

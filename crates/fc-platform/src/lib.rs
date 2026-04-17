@@ -66,7 +66,7 @@ pub use shared::tsid::{TsidGenerator, EntityType};
 // Re-export use case infrastructure
 pub use usecase::{
     UseCaseResult, UseCaseError, DomainEvent, ExecutionContext,
-    TracingContext, UnitOfWork, PgUnitOfWork, PgPersist, PgAggregate,
+    TracingContext, UnitOfWork, PgUnitOfWork, Persist, DbTx, HasId,
 };
 // Note: impl_domain_event! macro is automatically exported at crate root via #[macro_export]
 

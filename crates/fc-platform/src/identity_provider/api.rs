@@ -9,7 +9,7 @@ use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use super::entity::{IdentityProvider, IdentityProviderType};
+use super::entity::IdentityProvider;
 use super::repository::IdentityProviderRepository;
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;

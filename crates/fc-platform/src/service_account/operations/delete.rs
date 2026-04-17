@@ -78,7 +78,9 @@ impl<U: UnitOfWork> UseCase for DeleteServiceAccountUseCase<U> {
         );
 
         // Atomic commit with delete
-        self.unit_of_work.commit_delete(&service_account, event, &command).await
+        self.unit_of_work
+            .commit_delete(&service_account, &*self.service_account_repo, event, &command)
+            .await
     }
 }
 

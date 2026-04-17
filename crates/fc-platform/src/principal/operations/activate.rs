@@ -90,7 +90,9 @@ impl<U: UnitOfWork> UseCase for ActivateUserUseCase<U> {
         let event = UserActivated::new(&ctx, &principal.id);
 
         // Atomic commit
-        self.unit_of_work.commit(&principal, event, &command).await
+        self.unit_of_work
+            .commit(&principal, &*self.principal_repo, event, &command)
+            .await
     }
 }
 

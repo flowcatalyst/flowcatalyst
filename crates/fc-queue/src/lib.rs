@@ -6,6 +6,9 @@ pub mod error;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 
+#[cfg(feature = "postgres")]
+pub mod postgres;
+
 #[cfg(feature = "sqs")]
 pub mod sqs;
 

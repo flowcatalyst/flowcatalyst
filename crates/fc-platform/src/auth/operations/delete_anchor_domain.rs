@@ -68,6 +68,8 @@ impl<U: UnitOfWork> UseCase for DeleteAnchorDomainUseCase<U> {
 
         let event = AnchorDomainDeleted::new(&ctx, &anchor_domain.id, &anchor_domain.domain);
 
-        self.unit_of_work.commit_delete(&anchor_domain, event, &command).await
+        self.unit_of_work
+            .commit_delete(&anchor_domain, &*self.anchor_domain_repo, event, &command)
+            .await
     }
 }

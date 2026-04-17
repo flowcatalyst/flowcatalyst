@@ -100,7 +100,9 @@ impl<U: UnitOfWork> UseCase for AssignRolesUseCase<U> {
         );
 
         // Atomic commit
-        self.unit_of_work.commit(&service_account, event, &command).await
+        self.unit_of_work
+            .commit(&service_account, &*self.service_account_repo, event, &command)
+            .await
     }
 }
 

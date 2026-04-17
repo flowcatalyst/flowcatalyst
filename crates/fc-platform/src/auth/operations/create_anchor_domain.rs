@@ -67,6 +67,8 @@ impl<U: UnitOfWork> UseCase for CreateAnchorDomainUseCase<U> {
 
         let event = AnchorDomainCreated::new(&ctx, &anchor_domain.id, &anchor_domain.domain);
 
-        self.unit_of_work.commit(&anchor_domain, event, &command).await
+        self.unit_of_work
+            .commit(&anchor_domain, &*self.anchor_domain_repo, event, &command)
+            .await
     }
 }

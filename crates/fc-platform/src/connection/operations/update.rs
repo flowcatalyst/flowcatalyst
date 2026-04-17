@@ -110,7 +110,9 @@ impl<U: UnitOfWork> UseCase for UpdateConnectionUseCase<U> {
             command.status.as_deref(),
         );
 
-        self.unit_of_work.commit(&connection, event, &command).await
+        self.unit_of_work
+            .commit(&connection, &*self.connection_repo, event, &command)
+            .await
     }
 }
 

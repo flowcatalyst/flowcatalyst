@@ -61,7 +61,9 @@ impl<U: UnitOfWork> UseCase for DeleteCorsOriginUseCase<U> {
 
         let event = CorsOriginDeleted::new(&ctx, &origin.id, &origin.origin);
 
-        self.unit_of_work.commit_delete(&origin, event, &command).await
+        self.unit_of_work
+            .commit_delete(&origin, &*self.cors_repo, event, &command)
+            .await
     }
 }
 

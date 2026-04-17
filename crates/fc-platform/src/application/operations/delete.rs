@@ -74,7 +74,9 @@ impl<U: UnitOfWork> UseCase for DeleteApplicationUseCase<U> {
             &application.name,
         );
 
-        self.unit_of_work.commit_delete(&application, event, &command).await
+        self.unit_of_work
+            .commit_delete(&application, &*self.application_repo, event, &command)
+            .await
     }
 }
 

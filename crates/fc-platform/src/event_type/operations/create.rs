@@ -198,7 +198,9 @@ impl<U: UnitOfWork> UseCase for CreateEventTypeUseCase<U> {
         };
 
         // Atomic commit: entity + event + audit log
-        self.unit_of_work.commit(&event_type, event, &command).await
+        self.unit_of_work
+            .commit(&event_type, &*self.event_type_repo, event, &command)
+            .await
     }
 }
 

@@ -89,7 +89,9 @@ impl<U: UnitOfWork> UseCase for ActivateApplicationUseCase<U> {
         );
 
         // Atomic commit
-        self.unit_of_work.commit(&application, event, &command).await
+        self.unit_of_work
+            .commit(&application, &*self.application_repo, event, &command)
+            .await
     }
 }
 

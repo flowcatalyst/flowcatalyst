@@ -1,6 +1,6 @@
 //! Convention test: every `*UseCase::execute` body must terminate through
-//! `UnitOfWork::commit` / `commit_delete` / `emit_event` / `commit_all`, OR
-//! only return `UseCaseResult::failure`s.
+//! `UnitOfWork::commit` / `commit_delete` / `emit_event`, OR only return
+//! `UseCaseResult::failure`s.
 //!
 //! `UseCaseResult::success` is sealed in the `usecase` module, so it's
 //! impossible to construct a success outside of UoW — but a use case could
@@ -19,13 +19,8 @@ use std::path::{Path, PathBuf};
 /// Any of these substrings in the execute body means the use case is
 /// routing through UnitOfWork — the happy path we want.
 const UOW_PATTERNS: &[&str] = &[
-    ".unit_of_work.commit(",
-    ".unit_of_work.commit_delete(",
-    ".unit_of_work.emit_event(",
-    ".unit_of_work.commit_all(",
-    // Use cases that transform a successful commit via `.map()` (e.g.
-    // service-account create, which attaches one-time secrets).
     "unit_of_work.commit(",
+    "unit_of_work.commit_delete(",
     "unit_of_work.emit_event(",
 ];
 
@@ -209,7 +204,7 @@ fn every_use_case_terminates_through_unit_of_work() {
         let mut msg = String::from(
             "\n\nUse cases whose `execute` body doesn't terminate through `UnitOfWork`.\n\
              Every `*UseCase::execute` must either call one of \
-             `unit_of_work.commit/commit_delete/emit_event/commit_all` on the happy path, \
+             `unit_of_work.commit/commit_delete/emit_event` on the happy path, \
              or return only `UseCaseResult::failure`.\n\
              Success can only be constructed inside the `usecase` module; skipping UoW \
              means the use case never emits a domain event or audit log — a silent data \

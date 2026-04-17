@@ -78,7 +78,9 @@ impl<U: UnitOfWork> UseCase for DeleteSubscriptionUseCase<U> {
         let event = SubscriptionDeleted::new(&ctx, &subscription.id, &subscription.code);
 
         // Atomic commit with delete
-        self.unit_of_work.commit_delete(&subscription, event, &command).await
+        self.unit_of_work
+            .commit_delete(&subscription, &*self.subscription_repo, event, &command)
+            .await
     }
 }
 

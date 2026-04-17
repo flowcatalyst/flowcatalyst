@@ -95,7 +95,9 @@ impl<U: UnitOfWork> UseCase for AddCorsOriginUseCase<U> {
 
         let event = CorsOriginAdded::new(&ctx, &entity.id, &entity.origin);
 
-        self.unit_of_work.commit(&entity, event, &command).await
+        self.unit_of_work
+            .commit(&entity, &*self.cors_repo, event, &command)
+            .await
     }
 }
 

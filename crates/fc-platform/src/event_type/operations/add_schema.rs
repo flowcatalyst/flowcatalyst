@@ -147,7 +147,9 @@ impl<U: UnitOfWork> UseCase for AddSchemaUseCase<U> {
             command.schema_type.as_deref().unwrap_or("JSON_SCHEMA"),
         );
 
-        self.unit_of_work.commit(&event_type, event, &command).await
+        self.unit_of_work
+            .commit(&event_type, &*self.event_type_repo, event, &command)
+            .await
     }
 }
 

@@ -2,12 +2,11 @@
 
 use async_trait::async_trait;
 use sqlx::PgPool;
-use sqlx::Postgres;
 use chrono::{DateTime, Utc};
 
 use super::entity::{DispatchPool, DispatchPoolStatus};
 use crate::shared::error::Result;
-use crate::usecase::unit_of_work::{HasId, PgPersist};
+use crate::usecase::unit_of_work::HasId;
 
 /// Row mapping for msg_dispatch_pools table
 #[derive(sqlx::FromRow)]
@@ -200,15 +199,15 @@ impl DispatchPoolRepository {
     }
 }
 
-// ── PgPersist implementation ──────────────────────────────────────────────────
+// ── Persist<DispatchPool> ────────────────────────────────────────────────────
 
 impl HasId for DispatchPool {
     fn id(&self) -> &str { &self.id }
 }
 
 #[async_trait]
-impl PgPersist for DispatchPool {
-    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, Postgres>) -> Result<()> {
+impl crate::usecase::Persist<DispatchPool> for DispatchPoolRepository {
+    async fn persist(&self, p: &DispatchPool, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
         sqlx::query(
             "INSERT INTO msg_dispatch_pools (id, code, name, description, rate_limit, concurrency, client_id, client_identifier, status, created_at, updated_at)
@@ -224,26 +223,26 @@ impl PgPersist for DispatchPool {
                 status = EXCLUDED.status,
                 updated_at = EXCLUDED.updated_at"
         )
-        .bind(&self.id)
-        .bind(&self.code)
-        .bind(&self.name)
-        .bind(&self.description)
-        .bind(self.rate_limit)
-        .bind(self.concurrency)
-        .bind(&self.client_id)
-        .bind(&self.client_identifier)
-        .bind(self.status.as_str())
+        .bind(&p.id)
+        .bind(&p.code)
+        .bind(&p.name)
+        .bind(&p.description)
+        .bind(p.rate_limit)
+        .bind(p.concurrency)
+        .bind(&p.client_id)
+        .bind(&p.client_identifier)
+        .bind(p.status.as_str())
         .bind(now)
         .bind(now)
-        .execute(&mut **txn)
+        .execute(&mut **tx.inner)
         .await?;
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, Postgres>) -> Result<()> {
+    async fn delete(&self, p: &DispatchPool, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM msg_dispatch_pools WHERE id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn)
+            .bind(&p.id)
+            .execute(&mut **tx.inner)
             .await?;
         Ok(())
     }

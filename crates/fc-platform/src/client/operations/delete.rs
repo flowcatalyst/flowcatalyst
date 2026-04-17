@@ -69,7 +69,9 @@ impl<U: UnitOfWork> UseCase for DeleteClientUseCase<U> {
 
         let event = ClientDeleted::new(&ctx, &client.id, &client.name, &client.identifier);
 
-        self.unit_of_work.commit_delete(&client, event, &command).await
+        self.unit_of_work
+            .commit_delete(&client, &*self.client_repo, event, &command)
+            .await
     }
 }
 

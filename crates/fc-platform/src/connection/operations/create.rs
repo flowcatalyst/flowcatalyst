@@ -138,7 +138,9 @@ impl<U: UnitOfWork> UseCase for CreateConnectionUseCase<U> {
             connection.client_id.as_deref(),
         );
 
-        self.unit_of_work.commit(&connection, event, &command).await
+        self.unit_of_work
+            .commit(&connection, &*self.connection_repo, event, &command)
+            .await
     }
 }
 

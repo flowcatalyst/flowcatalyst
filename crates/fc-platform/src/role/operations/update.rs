@@ -182,7 +182,9 @@ impl<U: UnitOfWork> UseCase for UpdateRoleUseCase<U> {
         );
 
         // Atomic commit
-        self.unit_of_work.commit(&role, event, &command).await
+        self.unit_of_work
+            .commit(&role, &*self.role_repo, event, &command)
+            .await
     }
 }
 

@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use crate::auth::config_entity::{AnchorDomain, AuthConfigType, AuthProvider, ClientAuthConfig, IdpRoleMapping};
 use crate::principal::entity::ClientAccessGrant;
 use crate::shared::error::Result;
-use crate::usecase::unit_of_work::{HasId, PgPersist};
+use crate::usecase::unit_of_work::HasId;
 
 // ── Row types ────────────────────────────────────────────────────────────────
 
@@ -420,15 +420,15 @@ impl ClientAccessGrantRepository {
     }
 }
 
-// ── PgPersist for ClientAccessGrant ──────────────────────────────────────────
+// ── Persist<ClientAccessGrant> ───────────────────────────────────────────────
 
 impl HasId for ClientAccessGrant {
     fn id(&self) -> &str { &self.id }
 }
 
 #[async_trait]
-impl PgPersist for ClientAccessGrant {
-    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+impl crate::usecase::Persist<ClientAccessGrant> for ClientAccessGrantRepository {
+    async fn persist(&self, g: &ClientAccessGrant, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query(
             "INSERT INTO iam_client_access_grants (id, principal_id, client_id, granted_by, granted_at, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -436,36 +436,36 @@ impl PgPersist for ClientAccessGrant {
                 granted_by = EXCLUDED.granted_by,
                 updated_at = EXCLUDED.updated_at"
         )
-        .bind(&self.id)
-        .bind(&self.principal_id)
-        .bind(&self.client_id)
-        .bind(&self.granted_by)
-        .bind(self.granted_at)
-        .bind(self.created_at)
-        .bind(self.updated_at)
-        .execute(&mut **txn)
+        .bind(&g.id)
+        .bind(&g.principal_id)
+        .bind(&g.client_id)
+        .bind(&g.granted_by)
+        .bind(g.granted_at)
+        .bind(g.created_at)
+        .bind(g.updated_at)
+        .execute(&mut **tx.inner)
         .await?;
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+    async fn delete(&self, g: &ClientAccessGrant, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM iam_client_access_grants WHERE id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn)
+            .bind(&g.id)
+            .execute(&mut **tx.inner)
             .await?;
         Ok(())
     }
 }
 
-// ── PgPersist for AnchorDomain ────────────────────────────────────────────────
+// ── Persist<AnchorDomain> ────────────────────────────────────────────────────
 
 impl HasId for AnchorDomain {
     fn id(&self) -> &str { &self.id }
 }
 
 #[async_trait]
-impl PgPersist for AnchorDomain {
-    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+impl crate::usecase::Persist<AnchorDomain> for AnchorDomainRepository {
+    async fn persist(&self, d: &AnchorDomain, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
         sqlx::query(
             "INSERT INTO tnt_anchor_domains (id, domain, created_at, updated_at)
@@ -474,36 +474,36 @@ impl PgPersist for AnchorDomain {
                 domain = EXCLUDED.domain,
                 updated_at = EXCLUDED.updated_at"
         )
-        .bind(&self.id)
-        .bind(&self.domain)
+        .bind(&d.id)
+        .bind(&d.domain)
         .bind(now)
         .bind(now)
-        .execute(&mut **txn)
+        .execute(&mut **tx.inner)
         .await?;
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+    async fn delete(&self, d: &AnchorDomain, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM tnt_anchor_domains WHERE id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn)
+            .bind(&d.id)
+            .execute(&mut **tx.inner)
             .await?;
         Ok(())
     }
 }
 
-// ── PgPersist for ClientAuthConfig ───────────────────────────────────────────
+// ── Persist<ClientAuthConfig> ────────────────────────────────────────────────
 
 impl HasId for ClientAuthConfig {
     fn id(&self) -> &str { &self.id }
 }
 
 #[async_trait]
-impl PgPersist for ClientAuthConfig {
-    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+impl crate::usecase::Persist<ClientAuthConfig> for ClientAuthConfigRepository {
+    async fn persist(&self, c: &ClientAuthConfig, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
-        let additional_client_ids_json = serde_json::to_value(&self.additional_client_ids).unwrap_or_default();
-        let granted_client_ids_json = serde_json::to_value(&self.granted_client_ids).unwrap_or_default();
+        let additional_client_ids_json = serde_json::to_value(&c.additional_client_ids).unwrap_or_default();
+        let granted_client_ids_json = serde_json::to_value(&c.granted_client_ids).unwrap_or_default();
         sqlx::query(
             "INSERT INTO tnt_client_auth_configs (id, email_domain, config_type, primary_client_id, additional_client_ids, granted_client_ids, auth_provider, oidc_issuer_url, oidc_client_id, oidc_multi_tenant, oidc_issuer_pattern, oidc_client_secret_ref, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
@@ -521,29 +521,29 @@ impl PgPersist for ClientAuthConfig {
                 oidc_client_secret_ref = EXCLUDED.oidc_client_secret_ref,
                 updated_at = EXCLUDED.updated_at"
         )
-        .bind(&self.id)
-        .bind(&self.email_domain)
-        .bind(self.config_type.as_str())
-        .bind(&self.primary_client_id)
+        .bind(&c.id)
+        .bind(&c.email_domain)
+        .bind(c.config_type.as_str())
+        .bind(&c.primary_client_id)
         .bind(&additional_client_ids_json)
         .bind(&granted_client_ids_json)
-        .bind(self.auth_provider.as_str())
-        .bind(&self.oidc_issuer_url)
-        .bind(&self.oidc_client_id)
-        .bind(self.oidc_multi_tenant)
-        .bind(&self.oidc_issuer_pattern)
-        .bind(&self.oidc_client_secret_ref)
+        .bind(c.auth_provider.as_str())
+        .bind(&c.oidc_issuer_url)
+        .bind(&c.oidc_client_id)
+        .bind(c.oidc_multi_tenant)
+        .bind(&c.oidc_issuer_pattern)
+        .bind(&c.oidc_client_secret_ref)
         .bind(now)
         .bind(now)
-        .execute(&mut **txn)
+        .execute(&mut **tx.inner)
         .await?;
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+    async fn delete(&self, c: &ClientAuthConfig, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM tnt_client_auth_configs WHERE id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn)
+            .bind(&c.id)
+            .execute(&mut **tx.inner)
             .await?;
         Ok(())
     }

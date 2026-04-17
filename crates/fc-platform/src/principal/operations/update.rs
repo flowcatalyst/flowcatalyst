@@ -119,7 +119,9 @@ impl<U: UnitOfWork> UseCase for UpdateUserUseCase<U> {
         let event = UserUpdated::new(&ctx, &principal.id, updated_name, None);
 
         // Atomic commit
-        self.unit_of_work.commit(&principal, event, &command).await
+        self.unit_of_work
+            .commit(&principal, &*self.principal_repo, event, &command)
+            .await
     }
 }
 

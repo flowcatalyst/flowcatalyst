@@ -223,7 +223,9 @@ impl<U: UnitOfWork> UseCase for CreateSubscriptionUseCase<U> {
         );
 
         // Atomic commit
-        self.unit_of_work.commit(&subscription, event, &command).await
+        self.unit_of_work
+            .commit(&subscription, &*self.subscription_repo, event, &command)
+            .await
     }
 }
 

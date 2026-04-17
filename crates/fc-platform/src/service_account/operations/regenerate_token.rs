@@ -134,7 +134,7 @@ impl<U: UnitOfWork> UseCase for RegenerateAuthTokenUseCase<U> {
         // Atomic commit through UnitOfWork, then map the event onto our
         // wrapper (carrying the one-time token).
         self.unit_of_work
-            .commit(&service_account, event, &command)
+            .commit(&service_account, &*self.service_account_repo, event, &command)
             .await
             .map(|_| result)
     }

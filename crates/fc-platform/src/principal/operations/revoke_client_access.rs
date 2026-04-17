@@ -110,7 +110,9 @@ impl<U: UnitOfWork> UseCase for RevokeClientAccessUseCase<U> {
             &command.client_id,
         );
 
-        self.unit_of_work.commit_delete(&grant, event, &command).await
+        self.unit_of_work
+            .commit_delete(&grant, &*self.grant_repo, event, &command)
+            .await
     }
 }
 

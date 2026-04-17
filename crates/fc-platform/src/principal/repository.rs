@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 use super::entity::{ExternalIdentity, Principal, PrincipalType, UserIdentity, UserScope};
 use crate::service_account::entity::RoleAssignment;
 use crate::shared::error::Result;
-use crate::usecase::unit_of_work::{HasId, PgPersist};
+use crate::usecase::unit_of_work::HasId;
 
 // ── Row types ────────────────────────────────────────────────────────────────
 
@@ -716,24 +716,28 @@ impl PrincipalRepository {
     }
 }
 
-// ── PgPersist implementation ──────────────────────────────────────────────────
+// ── Persist<Principal> ─────────────────────────────────────────────────────
+//
+// Per CLAUDE.md § "Layering Rules": the repository persists the aggregate,
+// not the other way round. `Principal` itself has no knowledge of how it
+// gets stored — all SQL lives here.
 
 impl HasId for Principal {
     fn id(&self) -> &str { &self.id }
 }
 
 #[async_trait]
-impl PgPersist for Principal {
-    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+impl crate::usecase::Persist<Principal> for PrincipalRepository {
+    async fn persist(&self, p: &Principal, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
-        let email_domain = self.user_identity.as_ref()
+        let email_domain = p.user_identity.as_ref()
             .map(|i| i.email.split('@').nth(1).unwrap_or("").to_string());
-        let email = self.user_identity.as_ref().map(|i| i.email.clone());
-        let idp_type = self.user_identity.as_ref().and_then(|i| i.provider.clone())
-            .or_else(|| if self.is_user() { Some("INTERNAL".to_string()) } else { None });
-        let external_idp_id = self.external_identity.as_ref().map(|e| e.external_id.clone());
-        let password_hash = self.user_identity.as_ref().and_then(|i| i.password_hash.clone());
-        let last_login_at = self.user_identity.as_ref().and_then(|i| i.last_login_at);
+        let email = p.user_identity.as_ref().map(|i| i.email.clone());
+        let idp_type = p.user_identity.as_ref().and_then(|i| i.provider.clone())
+            .or_else(|| if p.is_user() { Some("INTERNAL".to_string()) } else { None });
+        let external_idp_id = p.external_identity.as_ref().map(|e| e.external_id.clone());
+        let password_hash = p.user_identity.as_ref().and_then(|i| i.password_hash.clone());
+        let last_login_at = p.user_identity.as_ref().and_then(|i| i.last_login_at);
 
         // 1. Upsert main row
         sqlx::query(
@@ -755,90 +759,90 @@ impl PgPersist for Principal {
                 service_account_id = EXCLUDED.service_account_id,
                 updated_at = EXCLUDED.updated_at"
         )
-        .bind(&self.id)
-        .bind(self.principal_type.as_str())
-        .bind(Some(self.scope.as_str()))
-        .bind(&self.client_id)
-        .bind(&self.application_id)
-        .bind(&self.name)
-        .bind(self.active)
+        .bind(&p.id)
+        .bind(p.principal_type.as_str())
+        .bind(Some(p.scope.as_str()))
+        .bind(&p.client_id)
+        .bind(&p.application_id)
+        .bind(&p.name)
+        .bind(p.active)
         .bind(&email)
         .bind(&email_domain)
         .bind(&idp_type)
         .bind(&external_idp_id)
         .bind(&password_hash)
         .bind(last_login_at)
-        .bind(&self.service_account_id)
+        .bind(&p.service_account_id)
         .bind(now)
         .bind(now)
-        .execute(&mut **txn).await?;
+        .execute(&mut **tx.inner).await?;
 
         // 2. Sync roles: delete then re-insert
         sqlx::query("DELETE FROM iam_principal_roles WHERE principal_id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
-        for r in &self.roles {
+            .bind(&p.id)
+            .execute(&mut **tx.inner).await?;
+        for r in &p.roles {
             sqlx::query(
                 "INSERT INTO iam_principal_roles (principal_id, role_name, assignment_source, assigned_at)
                  VALUES ($1, $2, $3, $4)"
             )
-            .bind(&self.id)
+            .bind(&p.id)
             .bind(&r.role)
             .bind(&r.assignment_source)
             .bind(r.assigned_at)
-            .execute(&mut **txn).await?;
+            .execute(&mut **tx.inner).await?;
         }
 
         // 3. Sync client access grants: delete then re-insert
         sqlx::query("DELETE FROM iam_client_access_grants WHERE principal_id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
-        for client_id in &self.assigned_clients {
+            .bind(&p.id)
+            .execute(&mut **tx.inner).await?;
+        for client_id in &p.assigned_clients {
             sqlx::query(
                 "INSERT INTO iam_client_access_grants (id, principal_id, client_id, granted_by, granted_at, created_at, updated_at)
                  VALUES ($1, $2, $3, $4, $5, $6, $7)"
             )
             .bind(crate::TsidGenerator::generate(crate::EntityType::Principal))
-            .bind(&self.id)
+            .bind(&p.id)
             .bind(client_id)
-            .bind(&self.id) // granted_by = self
+            .bind(&p.id) // granted_by = self
             .bind(now)
             .bind(now)
             .bind(now)
-            .execute(&mut **txn).await?;
+            .execute(&mut **tx.inner).await?;
         }
 
         // 4. Sync application access: delete then re-insert
         sqlx::query("DELETE FROM iam_principal_application_access WHERE principal_id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
-        for app_id in &self.accessible_application_ids {
+            .bind(&p.id)
+            .execute(&mut **tx.inner).await?;
+        for app_id in &p.accessible_application_ids {
             sqlx::query(
                 "INSERT INTO iam_principal_application_access (principal_id, application_id, granted_at)
                  VALUES ($1, $2, $3)"
             )
-            .bind(&self.id)
+            .bind(&p.id)
             .bind(app_id)
             .bind(now)
-            .execute(&mut **txn).await?;
+            .execute(&mut **tx.inner).await?;
         }
 
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+    async fn delete(&self, p: &Principal, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM iam_principal_roles WHERE principal_id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
+            .bind(&p.id)
+            .execute(&mut **tx.inner).await?;
         sqlx::query("DELETE FROM iam_client_access_grants WHERE principal_id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
+            .bind(&p.id)
+            .execute(&mut **tx.inner).await?;
         sqlx::query("DELETE FROM iam_principal_application_access WHERE principal_id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
+            .bind(&p.id)
+            .execute(&mut **tx.inner).await?;
         sqlx::query("DELETE FROM iam_principals WHERE id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
+            .bind(&p.id)
+            .execute(&mut **tx.inner).await?;
         Ok(())
     }
 }

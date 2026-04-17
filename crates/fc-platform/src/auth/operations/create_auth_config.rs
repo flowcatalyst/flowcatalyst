@@ -99,6 +99,8 @@ impl<U: UnitOfWork> UseCase for CreateAuthConfigUseCase<U> {
             config.config_type.as_str(),
         );
 
-        self.unit_of_work.commit(&config, event, &command).await
+        self.unit_of_work
+            .commit(&config, &*self.auth_config_repo, event, &command)
+            .await
     }
 }

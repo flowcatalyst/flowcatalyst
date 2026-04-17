@@ -113,8 +113,9 @@ impl<U: UnitOfWork> UseCase for UpdateEmailDomainMappingUseCase<U> {
         mapping.updated_at = chrono::Utc::now();
 
         // Persist the updated entity (including junction-table re-writes)
-        // before emitting the event/audit. Phase 2 will upgrade this to a
-        // fully atomic `unit_of_work.commit` once `PgPersist` lands for EDM.
+        // before emitting the event/audit. TODO: add `impl Persist<EmailDomainMapping>
+        // for EmailDomainMappingRepository` and migrate to
+        // `unit_of_work.commit(...)` for a single atomic transaction.
         if let Err(e) = self.edm_repo.update(&mapping).await {
             return UseCaseResult::failure(UseCaseError::commit(format!(
                 "Failed to update email domain mapping: {}", e

@@ -78,7 +78,9 @@ impl<U: UnitOfWork> UseCase for DeleteDispatchPoolUseCase<U> {
         );
 
         // Atomic commit with delete
-        self.unit_of_work.commit_delete(&pool, event, &command).await
+        self.unit_of_work
+            .commit_delete(&pool, &*self.dispatch_pool_repo, event, &command)
+            .await
     }
 }
 

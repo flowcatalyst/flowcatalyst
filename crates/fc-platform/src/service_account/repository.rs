@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use crate::ServiceAccount;
 use crate::service_account::entity::{RoleAssignment, WebhookCredentials, WebhookAuthType};
 use crate::shared::error::Result;
-use crate::usecase::unit_of_work::{HasId, PgPersist};
+use crate::usecase::unit_of_work::HasId;
 
 /// Row mapping for iam_principals table (SERVICE type rows)
 #[derive(sqlx::FromRow, Clone)]
@@ -401,19 +401,19 @@ impl ServiceAccountRepository {
     }
 }
 
-// ── PgPersist implementation ──────────────────────────────────────────────────
+// ── Persist<ServiceAccount> ──────────────────────────────────────────────────
 
 impl HasId for ServiceAccount {
     fn id(&self) -> &str { &self.id }
 }
 
 #[async_trait]
-impl PgPersist for ServiceAccount {
-    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+impl crate::usecase::Persist<ServiceAccount> for ServiceAccountRepository {
+    async fn persist(&self, sa: &ServiceAccount, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
-        let scope = self.scope.clone().unwrap_or_else(|| "ANCHOR".to_string());
-        let sa_table_id = self.service_account_table_id.clone().unwrap_or_else(|| self.id.clone());
-        let wh = &self.webhook_credentials;
+        let scope = sa.scope.clone().unwrap_or_else(|| "ANCHOR".to_string());
+        let sa_table_id = sa.service_account_table_id.clone().unwrap_or_else(|| sa.id.clone());
+        let wh = &sa.webhook_credentials;
 
         // 1. Upsert iam_principals (SERVICE type principal)
         sqlx::query(
@@ -426,16 +426,16 @@ impl PgPersist for ServiceAccount {
                 application_id = EXCLUDED.application_id,
                 updated_at = EXCLUDED.updated_at"
         )
-        .bind(&self.id)
+        .bind(&sa.id)
         .bind(&scope)
-        .bind(self.client_ids.first())
-        .bind(&self.application_id)
-        .bind(&self.name)
-        .bind(self.active)
-        .bind(Some(&self.id)) // service_account_id
-        .bind(self.created_at)
+        .bind(sa.client_ids.first())
+        .bind(&sa.application_id)
+        .bind(&sa.name)
+        .bind(sa.active)
+        .bind(Some(&sa.id))
+        .bind(sa.created_at)
         .bind(now)
-        .execute(&mut **txn).await?;
+        .execute(&mut **tx.inner).await?;
 
         // 2. Upsert iam_service_accounts (webhook credentials)
         sqlx::query(
@@ -455,51 +455,49 @@ impl PgPersist for ServiceAccount {
                 updated_at = EXCLUDED.updated_at"
         )
         .bind(&sa_table_id)
-        .bind(&self.code)
-        .bind(&self.name)
-        .bind(&self.description)
-        .bind(&self.application_id)
-        .bind(self.active)
+        .bind(&sa.code)
+        .bind(&sa.name)
+        .bind(&sa.description)
+        .bind(&sa.application_id)
+        .bind(sa.active)
         .bind(Some(wh.auth_type.as_str()))
         .bind(&wh.token)
         .bind(&wh.signing_secret)
         .bind(&wh.signing_algorithm)
-        .bind(Some(now)) // wh_credentials_created_at
-        .bind(self.last_used_at)
+        .bind(Some(now))
+        .bind(sa.last_used_at)
         .bind(now)
         .bind(now)
-        .execute(&mut **txn).await?;
+        .execute(&mut **tx.inner).await?;
 
-        // 3. Sync roles to iam_principal_roles using the principal ID (self.id)
+        // 3. Sync roles to iam_principal_roles using the principal ID
         sqlx::query("DELETE FROM iam_principal_roles WHERE principal_id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
-        for r in &self.roles {
+            .bind(&sa.id)
+            .execute(&mut **tx.inner).await?;
+        for r in &sa.roles {
             sqlx::query(
                 "INSERT INTO iam_principal_roles (principal_id, role_name, assignment_source, assigned_at)
                  VALUES ($1, $2, $3, $4)"
             )
-            .bind(&self.id)
+            .bind(&sa.id)
             .bind(&r.role)
             .bind(&r.assignment_source)
             .bind(r.assigned_at)
-            .execute(&mut **txn).await?;
+            .execute(&mut **tx.inner).await?;
         }
 
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
-        // Delete service account details
-        if let Some(ref sa_id) = self.service_account_table_id {
+    async fn delete(&self, sa: &ServiceAccount, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
+        if let Some(ref sa_id) = sa.service_account_table_id {
             sqlx::query("DELETE FROM iam_service_accounts WHERE id = $1")
                 .bind(sa_id)
-                .execute(&mut **txn).await?;
+                .execute(&mut **tx.inner).await?;
         }
-        // Delete principal (CASCADE handles roles)
         sqlx::query("DELETE FROM iam_principals WHERE id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
+            .bind(&sa.id)
+            .execute(&mut **tx.inner).await?;
         Ok(())
     }
 }

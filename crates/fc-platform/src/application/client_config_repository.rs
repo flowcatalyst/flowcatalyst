@@ -2,12 +2,11 @@
 
 use async_trait::async_trait;
 use sqlx::PgPool;
-use sqlx::Postgres;
 use chrono::{DateTime, Utc};
 
 use super::client_config::ApplicationClientConfig;
 use crate::shared::error::Result;
-use crate::usecase::unit_of_work::{HasId, PgPersist};
+use crate::usecase::unit_of_work::HasId;
 
 /// Row mapping for app_client_configs table
 #[derive(sqlx::FromRow)]
@@ -201,15 +200,15 @@ impl ApplicationClientConfigRepository {
     }
 }
 
-// ── PgPersist for ApplicationClientConfig ────────────────────────────────────
+// ── Persist<ApplicationClientConfig> ─────────────────────────────────────────
 
 impl HasId for ApplicationClientConfig {
     fn id(&self) -> &str { &self.id }
 }
 
 #[async_trait]
-impl PgPersist for ApplicationClientConfig {
-    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, Postgres>) -> Result<()> {
+impl crate::usecase::Persist<ApplicationClientConfig> for ApplicationClientConfigRepository {
+    async fn persist(&self, c: &ApplicationClientConfig, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
         sqlx::query(
             "INSERT INTO app_client_configs (id, application_id, client_id, enabled, created_at, updated_at)
@@ -218,21 +217,21 @@ impl PgPersist for ApplicationClientConfig {
                 enabled = EXCLUDED.enabled,
                 updated_at = EXCLUDED.updated_at"
         )
-        .bind(&self.id)
-        .bind(&self.application_id)
-        .bind(&self.client_id)
-        .bind(self.enabled)
+        .bind(&c.id)
+        .bind(&c.application_id)
+        .bind(&c.client_id)
+        .bind(c.enabled)
         .bind(now)
         .bind(now)
-        .execute(&mut **txn)
+        .execute(&mut **tx.inner)
         .await?;
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, Postgres>) -> Result<()> {
+    async fn delete(&self, c: &ApplicationClientConfig, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM app_client_configs WHERE id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn)
+            .bind(&c.id)
+            .execute(&mut **tx.inner)
             .await?;
         Ok(())
     }

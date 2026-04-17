@@ -27,7 +27,7 @@ pub enum QueueError {
     Config(String),
 }
 
-#[cfg(feature = "sqlite")]
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 impl From<sqlx::Error> for QueueError {
     fn from(e: sqlx::Error) -> Self {
         QueueError::Database(e.to_string())

@@ -107,6 +107,8 @@ impl<U: UnitOfWork> UseCase for UpdateAuthConfigUseCase<U> {
 
         let event = AuthConfigUpdated::new(&ctx, &config.id, &config.email_domain);
 
-        self.unit_of_work.commit(&config, event, &command).await
+        self.unit_of_work
+            .commit(&config, &*self.auth_config_repo, event, &command)
+            .await
     }
 }

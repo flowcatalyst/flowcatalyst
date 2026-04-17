@@ -127,7 +127,9 @@ impl<U: UnitOfWork> UseCase for AssignUserRolesUseCase<U> {
             removed,
         );
 
-        self.unit_of_work.commit(&principal, event, &command).await
+        self.unit_of_work
+            .commit(&principal, &*self.principal_repo, event, &command)
+            .await
     }
 }
 

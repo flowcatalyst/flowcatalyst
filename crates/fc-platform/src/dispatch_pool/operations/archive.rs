@@ -90,7 +90,9 @@ impl<U: UnitOfWork> UseCase for ArchiveDispatchPoolUseCase<U> {
         );
 
         // Atomic commit
-        self.unit_of_work.commit(&pool, event, &command).await
+        self.unit_of_work
+            .commit(&pool, &*self.dispatch_pool_repo, event, &command)
+            .await
     }
 }
 

@@ -34,11 +34,13 @@ What this means for every `*UseCase::execute`:
 2. The only other legal tail is `UseCaseResult::failure(...)`.
 3. You cannot skip UoW and return a hand-built success. It's a type error.
 
-Direct repository writes (`repo.insert/update/delete`) inside a use case body
-are *not yet* prevented — Phase 2 (handler + repo audit) will narrow those.
-For now, `tests/uow_convention_test.rs` asserts that every use case's
-`execute` body reaches a `unit_of_work.*` call on the happy path, catching
-any regressions.
+Aggregates can't persist themselves — `impl Persist<X> for XRepository`
+lives on the repository, not on the aggregate. Use cases write via
+`unit_of_work.commit(&agg, &*self.repo, event, &command)` (or
+`commit_delete`). Direct `repo.insert/update/delete` from a use case body
+is forbidden by convention; `tests/uow_convention_test.rs` asserts that
+every use case's `execute` body reaches a `unit_of_work.*` call on the
+happy path, catching any regressions.
 
 **Consequence:** if you see a write action with no corresponding row in
 `msg_events` / `iam_audit_logs`, the bug is almost certainly in the handler
@@ -155,7 +157,8 @@ The use case layer ensures: validation, authorization, domain events, audit logs
 ### Exceptions: Platform Infrastructure Processing
 The **only** operations that bypass UseCase/UnitOfWork are the platform's own internal
 infrastructure — the machinery that moves messages through the pipeline. These cannot
-generate events/audit logs (that would be recursive):
+generate events/audit logs (that would be recursive — a UoW commit emits a domain event,
+so creating an event via UoW would mean emitting an event about the event):
 
 - **Event ingest**: `POST /api/events/batch` — stores events received from consumer apps
 - **Dispatch job ingest**: `POST /api/dispatch-jobs/batch` — stores dispatch jobs from consumer apps
@@ -164,6 +167,11 @@ generate events/audit logs (that would be recursive):
 - **Outbox processing**: polling `outbox_messages` and forwarding to platform API
 
 These go directly to the repository. They are the platform's internal plumbing.
+
+Any `createEvent` / `createDispatchJob` code path — SDK, admin UI, internal
+caller, reprocessing tool — falls in this category and **must not** be wrapped
+in a UseCase. Wrapping them would emit a domain event for every ingested
+event/job, which is recursive and swamps the event log.
 
 **Everything else goes through UseCase with domain events + audit logs:**
 - All control plane CRUD: Event Types, Subscriptions, Connections, Dispatch Pools, Clients, Principals, Roles, Applications, Service Accounts, Identity Providers, Email Domain Mappings, CORS Origins, Auth Configs
@@ -181,6 +189,74 @@ All UseCase operations emit both. The UnitOfWork handles this automatically.
 ### Reads Are Fine in Handlers
 Read operations (list, get, filter) can call repositories directly from handlers.
 Only writes need the use case layer.
+
+## Layering Rules
+
+The platform has four layers. Code in each layer may only depend on layers
+below it. Crossing layers is a bug, even when it compiles.
+
+| Layer | Lives in | Knows about | Does NOT know about |
+|---|---|---|---|
+| **Handler** (HTTP/route) | `*/api.rs`, `shared/*_api.rs` | HTTP types, DTOs, permission checks | SQL, transactions, database types |
+| **Use Case** | `*/operations/*.rs` | Domain entities, repositories (as traits/readers), `UnitOfWork`, domain events | HTTP, SQL strings, transaction types |
+| **Domain** | `*/entity.rs`, `*/operations/events.rs` | Plain data, domain invariants, factory/behavior methods | `sqlx`, `Postgres`, `Transaction<'_, _>`, any DB driver |
+| **Repository** | `*/repository.rs` | SQL, sqlx types, row structs, transaction handles | HTTP, permissions, domain events |
+
+### Aggregates Don't Persist Themselves
+
+Domain entities (`Principal`, `Client`, `EventType`, …) are pure data + domain
+behavior. They **must not**:
+- Import `sqlx`, `Postgres`, `Transaction<'_, _>`, or any driver-specific type.
+- Contain SQL strings in method bodies.
+- Implement a persistence trait that takes a transaction handle.
+
+If you catch yourself writing `impl Persist for Principal`, stop. The correct
+shape is `impl Persist<Principal> for PrincipalRepository` — the **repository**
+persists the **aggregate**. The aggregate is the thing being written, not the
+writer.
+
+This is why the TS version reads cleaner than Rust on the same operation:
+TS puts `insert/update/delete` on `PrincipalRepository` and nowhere else;
+earlier Rust ports collapsed this into `impl PgPersist for Principal` because
+it reduced generic bounds — at the cost of leaking the transaction type into
+the domain layer and creating two competing write paths.
+
+### One Write Path Per Aggregate
+
+Every aggregate has exactly one place its rows are written: its repository's
+`persist` and `delete` methods. No handler, use case, or service writes to
+that aggregate's tables directly. If you need to write to `iam_principals`,
+you go through `PrincipalRepository`. Full stop.
+
+The one exception is **platform infrastructure processing** (stream
+projections, dispatch lifecycle, outbox polling, `createEvent` /
+`createDispatchJob` ingest) — these write directly to `msg_events` /
+`msg_dispatch_jobs` / `outbox_messages` without aggregates or use cases.
+Those tables don't have aggregates in the DDD sense; they're message
+queues and audit streams.
+
+### Transactions Stay in the Persistence Layer
+
+Use cases call `unit_of_work.commit(&aggregate, &*self.repo, event, &command)`
+— passing the repository by reference. They never see a `Transaction<'_, _>`
+type. The `UnitOfWork` opens the transaction, calls the repository's persist
+method, writes the domain event + audit log, commits. If a use case signature
+or body mentions a transaction type, something has leaked upward.
+
+The transaction handle is wrapped in a `DbTx<'_>` newtype so that swapping
+the underlying driver (or adding a second dev-only backend) only touches the
+newtype and its consumers — not every repository method signature.
+
+### Where New Code Goes
+
+Adding a new aggregate? You create, in order:
+1. `src/<domain>/entity.rs` — pure Rust structs, no sqlx.
+2. `src/<domain>/repository.rs` — `struct <Aggregate>Repository`, row types, all SQL, and `impl Persist<Aggregate> for <Aggregate>Repository`.
+3. `src/<domain>/operations/*.rs` — one file per use case. Call `unit_of_work.commit(...)` at the tail.
+4. `src/<domain>/api.rs` — HTTP handlers. Permission checks, build Command, call `use_case.run(...)`.
+
+If you find yourself adding SQL anywhere other than `repository.rs` (or one
+of the three infrastructure-processing files), you are in the wrong file.
 
 ## Permission Check Naming Convention
 

@@ -68,6 +68,8 @@ impl<U: UnitOfWork> UseCase for DeleteAuthConfigUseCase<U> {
 
         let event = AuthConfigDeleted::new(&ctx, &config.id, &config.email_domain);
 
-        self.unit_of_work.commit_delete(&config, event, &command).await
+        self.unit_of_work
+            .commit_delete(&config, &*self.auth_config_repo, event, &command)
+            .await
     }
 }

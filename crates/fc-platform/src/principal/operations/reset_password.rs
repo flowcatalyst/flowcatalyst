@@ -140,7 +140,9 @@ impl<U: UnitOfWork> UseCase for ResetPasswordUseCase<U> {
 
         let event = PasswordResetCompleted::from_ctx(&ctx, &principal.id, &email);
 
-        self.unit_of_work.commit(&principal, event, &command).await
+        self.unit_of_work
+            .commit(&principal, &*self.principal_repo, event, &command)
+            .await
     }
 }
 

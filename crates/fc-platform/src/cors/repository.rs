@@ -1,12 +1,12 @@
 //! CORS Origin Repository — PostgreSQL via SQLx
 
 use async_trait::async_trait;
-use sqlx::{PgPool, Postgres};
+use sqlx::PgPool;
 use chrono::{DateTime, Utc};
 
 use super::entity::CorsAllowedOrigin;
 use crate::shared::error::Result;
-use crate::usecase::{HasId, PgPersist};
+use crate::usecase::HasId;
 
 #[derive(sqlx::FromRow)]
 struct CorsOriginRow {
@@ -85,8 +85,8 @@ impl HasId for CorsAllowedOrigin {
 }
 
 #[async_trait]
-impl PgPersist for CorsAllowedOrigin {
-    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, Postgres>) -> Result<()> {
+impl crate::usecase::Persist<CorsAllowedOrigin> for CorsOriginRepository {
+    async fn persist(&self, o: &CorsAllowedOrigin, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
         sqlx::query(
             "INSERT INTO tnt_cors_allowed_origins
@@ -97,21 +97,21 @@ impl PgPersist for CorsAllowedOrigin {
                 description = EXCLUDED.description,
                 updated_at = EXCLUDED.updated_at"
         )
-        .bind(&self.id)
-        .bind(&self.origin)
-        .bind(&self.description)
-        .bind(&self.created_by)
+        .bind(&o.id)
+        .bind(&o.origin)
+        .bind(&o.description)
+        .bind(&o.created_by)
         .bind(now)
         .bind(now)
-        .execute(&mut **txn)
+        .execute(&mut **tx.inner)
         .await?;
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, Postgres>) -> Result<()> {
+    async fn delete(&self, o: &CorsAllowedOrigin, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM tnt_cors_allowed_origins WHERE id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn)
+            .bind(&o.id)
+            .execute(&mut **tx.inner)
             .await?;
         Ok(())
     }

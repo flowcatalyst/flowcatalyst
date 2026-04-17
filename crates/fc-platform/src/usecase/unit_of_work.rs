@@ -22,24 +22,36 @@ pub trait HasId {
     fn collection_name() -> &'static str where Self: Sized { "" }
 }
 
-/// Trait for domain entities that can be upserted/deleted within a PostgreSQL transaction.
-///
-/// Implement this for every aggregate that is passed to `UnitOfWork::commit`.
-#[async_trait]
-pub trait PgPersist: HasId + Send + Sync {
-    /// Upsert the entity into the database within the given transaction.
-    async fn pg_upsert(&self, txn: &mut Transaction<'_, Postgres>) -> crate::shared::error::Result<()>;
+// ─── Repository-owned persistence ────────────────────────────────────────────
+//
+// Aggregates don't persist themselves. A repository persists an aggregate.
+// The transaction handle is wrapped in `DbTx` so repositories don't mention
+// the concrete driver type — only this file does. A future backend swap
+// would only touch `DbTx` plus `PgUnitOfWork` internals, not the ~15
+// `impl Persist<X> for XRepository` blocks.
+//
+// See CLAUDE.md § "Layering Rules" for the full rule set.
 
-    /// Delete the entity from the database within the given transaction.
-    async fn pg_delete(&self, txn: &mut Transaction<'_, Postgres>) -> crate::shared::error::Result<()>;
+/// Opaque write handle passed to `Persist` methods. Wraps the underlying
+/// driver transaction; repositories access the inner handle via
+/// `&mut *tx.inner` which keeps the leak contained to this crate.
+pub struct DbTx<'t> {
+    pub(crate) inner: &'t mut Transaction<'static, Postgres>,
 }
 
-/// Trait for aggregates passed by value to `commit_all`.
-/// Same as `PgPersist` but object-safe via `async_trait`.
+/// A repository that can persist and delete aggregates of type `A` within
+/// a transaction.
+///
+/// Implement this on the repository type (`impl Persist<Principal> for
+/// PrincipalRepository`), **not** on the aggregate. The aggregate is the
+/// thing being written; the repository is what writes it.
 #[async_trait]
-pub trait PgAggregate: Send + Sync {
-    fn id(&self) -> &str;
-    async fn pg_upsert(&self, txn: &mut Transaction<'_, Postgres>) -> crate::shared::error::Result<()>;
+pub trait Persist<A: HasId + Send + Sync>: Send + Sync {
+    /// Upsert the aggregate's rows within the given transaction.
+    async fn persist(&self, aggregate: &A, tx: &mut DbTx<'_>) -> crate::shared::error::Result<()>;
+
+    /// Delete the aggregate's rows within the given transaction.
+    async fn delete(&self, aggregate: &A, tx: &mut DbTx<'_>) -> crate::shared::error::Result<()>;
 }
 
 // ─── UnitOfWork trait ────────────────────────────────────────────────────────
@@ -50,46 +62,41 @@ pub trait PgAggregate: Send + Sync {
 /// atomically in a single PostgreSQL transaction.
 #[async_trait]
 pub trait UnitOfWork: Send + Sync {
-    /// Commit an entity upsert with its domain event and audit log.
-    async fn commit<E, T, C>(
+    /// Commit an aggregate upsert via its repository, plus the domain event
+    /// and audit log — all in a single transaction.
+    async fn commit<A, R, E, C>(
         &self,
-        aggregate: &T,
+        aggregate: &A,
+        repository: &R,
         event: E,
         command: &C,
     ) -> UseCaseResult<E>
     where
+        A: HasId + Send + Sync,
+        R: Persist<A>,
         E: DomainEvent + Serialize + Send + 'static,
-        T: Serialize + HasId + PgPersist + Send + Sync,
         C: Serialize + Send + Sync;
 
-    /// Commit an entity delete with its domain event and audit log.
-    async fn commit_delete<E, T, C>(
+    /// Commit an aggregate delete via its repository, plus the domain event
+    /// and audit log — all in a single transaction.
+    async fn commit_delete<A, R, E, C>(
         &self,
-        aggregate: &T,
+        aggregate: &A,
+        repository: &R,
         event: E,
         command: &C,
     ) -> UseCaseResult<E>
     where
+        A: HasId + Send + Sync,
+        R: Persist<A>,
         E: DomainEvent + Serialize + Send + 'static,
-        T: Serialize + HasId + PgPersist + Send + Sync,
         C: Serialize + Send + Sync;
 
     /// Emit a domain event and audit log without an entity change.
     ///
-    /// Used for events that don't modify an entity directly (e.g., UserLoggedIn).
+    /// Used for events that don't modify an entity directly (e.g., `UserLoggedIn`).
     async fn emit_event<E, C>(
         &self,
-        event: E,
-        command: &C,
-    ) -> UseCaseResult<E>
-    where
-        E: DomainEvent + Serialize + Send + 'static,
-        C: Serialize + Send + Sync;
-
-    /// Commit multiple entity upserts with a single domain event and audit log.
-    async fn commit_all<E, C>(
-        &self,
-        aggregates: Vec<Box<dyn PgAggregate>>,
         event: E,
         command: &C,
     ) -> UseCaseResult<E>
@@ -240,15 +247,17 @@ impl PgUnitOfWork {
 
 #[async_trait]
 impl UnitOfWork for PgUnitOfWork {
-    async fn commit<E, T, C>(
+    async fn commit<A, R, E, C>(
         &self,
-        aggregate: &T,
+        aggregate: &A,
+        repository: &R,
         event: E,
         command: &C,
     ) -> UseCaseResult<E>
     where
+        A: HasId + Send + Sync,
+        R: Persist<A>,
         E: DomainEvent + Serialize + Send + 'static,
-        T: Serialize + HasId + PgPersist + Send + Sync,
         C: Serialize + Send + Sync,
     {
         let mut txn = match self.pool.begin().await {
@@ -259,7 +268,12 @@ impl UnitOfWork for PgUnitOfWork {
             }
         };
 
-        if let Err(e) = aggregate.pg_upsert(&mut txn).await {
+        // Scope the DbTx so its &mut borrow of txn is released before we reuse txn.
+        let persist_result = {
+            let mut tx = DbTx { inner: &mut txn };
+            repository.persist(aggregate, &mut tx).await
+        };
+        if let Err(e) = persist_result {
             let _ = txn.rollback().await;
             error!("Failed to persist aggregate: {}", e);
             return UseCaseResult::failure(UseCaseError::commit(format!("Failed to persist aggregate: {}", e)));
@@ -284,15 +298,17 @@ impl UnitOfWork for PgUnitOfWork {
         UseCaseResult::success(event)
     }
 
-    async fn commit_delete<E, T, C>(
+    async fn commit_delete<A, R, E, C>(
         &self,
-        aggregate: &T,
+        aggregate: &A,
+        repository: &R,
         event: E,
         command: &C,
     ) -> UseCaseResult<E>
     where
+        A: HasId + Send + Sync,
+        R: Persist<A>,
         E: DomainEvent + Serialize + Send + 'static,
-        T: Serialize + HasId + PgPersist + Send + Sync,
         C: Serialize + Send + Sync,
     {
         let mut txn = match self.pool.begin().await {
@@ -303,7 +319,11 @@ impl UnitOfWork for PgUnitOfWork {
             }
         };
 
-        if let Err(e) = aggregate.pg_delete(&mut txn).await {
+        let delete_result = {
+            let mut tx = DbTx { inner: &mut txn };
+            repository.delete(aggregate, &mut tx).await
+        };
+        if let Err(e) = delete_result {
             let _ = txn.rollback().await;
             error!("Failed to delete aggregate: {}", e);
             return UseCaseResult::failure(UseCaseError::commit(format!("Failed to delete aggregate: {}", e)));
@@ -363,52 +383,6 @@ impl UnitOfWork for PgUnitOfWork {
 
         UseCaseResult::success(event)
     }
-
-    async fn commit_all<E, C>(
-        &self,
-        aggregates: Vec<Box<dyn PgAggregate>>,
-        event: E,
-        command: &C,
-    ) -> UseCaseResult<E>
-    where
-        E: DomainEvent + Serialize + Send + 'static,
-        C: Serialize + Send + Sync,
-    {
-        let mut txn = match self.pool.begin().await {
-            Ok(t) => t,
-            Err(e) => {
-                error!("Failed to start transaction: {}", e);
-                return UseCaseResult::failure(UseCaseError::commit(format!("Failed to start transaction: {}", e)));
-            }
-        };
-
-        for aggregate in &aggregates {
-            if let Err(e) = aggregate.pg_upsert(&mut txn).await {
-                let _ = txn.rollback().await;
-                error!("Failed to persist aggregate: {}", e);
-                return UseCaseResult::failure(UseCaseError::commit(format!("Failed to persist aggregate: {}", e)));
-            }
-        }
-
-        if let Err(e) = Self::persist_event_and_audit(&mut txn, &event, command).await {
-            let _ = txn.rollback().await;
-            return UseCaseResult::failure(e);
-        }
-
-        if let Err(e) = txn.commit().await {
-            error!("Failed to commit transaction: {}", e);
-            return UseCaseResult::failure(UseCaseError::commit(format!("Failed to commit transaction: {}", e)));
-        }
-
-        debug!(
-            event_id = event.event_id(),
-            event_type = event.event_type(),
-            aggregate_count = aggregates.len(),
-            "Successfully committed multi-aggregate transaction"
-        );
-
-        UseCaseResult::success(event)
-    }
 }
 
 // ─── InMemory (tests) ─────────────────────────────────────────────────────────
@@ -428,20 +402,34 @@ impl InMemoryUnitOfWork {
 #[cfg(test)]
 #[async_trait]
 impl UnitOfWork for InMemoryUnitOfWork {
-    async fn commit<E, T, C>(&self, _aggregate: &T, event: E, _command: &C) -> UseCaseResult<E>
+    async fn commit<A, R, E, C>(
+        &self,
+        _aggregate: &A,
+        _repository: &R,
+        event: E,
+        _command: &C,
+    ) -> UseCaseResult<E>
     where
+        A: HasId + Send + Sync,
+        R: Persist<A>,
         E: DomainEvent + Serialize + Send + 'static,
-        T: Serialize + HasId + PgPersist + Send + Sync,
         C: Serialize + Send + Sync,
     {
         self.committed_events.lock().unwrap().push(event.event_id().to_string());
         UseCaseResult::success(event)
     }
 
-    async fn commit_delete<E, T, C>(&self, _aggregate: &T, event: E, _command: &C) -> UseCaseResult<E>
+    async fn commit_delete<A, R, E, C>(
+        &self,
+        _aggregate: &A,
+        _repository: &R,
+        event: E,
+        _command: &C,
+    ) -> UseCaseResult<E>
     where
+        A: HasId + Send + Sync,
+        R: Persist<A>,
         E: DomainEvent + Serialize + Send + 'static,
-        T: Serialize + HasId + PgPersist + Send + Sync,
         C: Serialize + Send + Sync,
     {
         self.committed_events.lock().unwrap().push(event.event_id().to_string());
@@ -449,15 +437,6 @@ impl UnitOfWork for InMemoryUnitOfWork {
     }
 
     async fn emit_event<E, C>(&self, event: E, _command: &C) -> UseCaseResult<E>
-    where
-        E: DomainEvent + Serialize + Send + 'static,
-        C: Serialize + Send + Sync,
-    {
-        self.committed_events.lock().unwrap().push(event.event_id().to_string());
-        UseCaseResult::success(event)
-    }
-
-    async fn commit_all<E, C>(&self, _aggregates: Vec<Box<dyn PgAggregate>>, event: E, _command: &C) -> UseCaseResult<E>
     where
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync,

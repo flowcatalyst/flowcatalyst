@@ -26,6 +26,7 @@ tracing = { workspace = true }
 [features]
 default = []
 sqlite = ["dep:sqlx"]
+postgres = ["dep:sqlx"]
 sqs = ["dep:aws-sdk-sqs", "dep:aws-config", "dep:parking_lot"]
 activemq = ["dep:lapin", "dep:futures", "dep:dashmap"]
 nats = ["dep:async-nats", "dep:dashmap", "dep:futures"]

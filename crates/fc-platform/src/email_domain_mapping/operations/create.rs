@@ -143,8 +143,9 @@ impl<U: UnitOfWork> UseCase for CreateEmailDomainMappingUseCase<U> {
 
         // Emit the event + audit log via UoW. The entity itself was written
         // above via a direct repo call (pre-existing pattern with junction
-        // tables); a follow-up refactor will migrate to `unit_of_work.commit`
-        // once `PgPersist` is implemented for `EmailDomainMapping`.
+        // tables). TODO: migrate to `impl Persist<EmailDomainMapping> for
+        // EmailDomainMappingRepository` and `unit_of_work.commit(...)` to
+        // match the rest of the codebase.
         self.unit_of_work.emit_event(event, &command).await
     }
 }

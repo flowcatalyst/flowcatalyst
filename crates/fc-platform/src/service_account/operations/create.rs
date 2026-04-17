@@ -188,7 +188,7 @@ impl<U: UnitOfWork> UseCase for CreateServiceAccountUseCase<U> {
         // wrapper result (which carries the one-time secrets) without
         // bypassing the seal.
         self.unit_of_work
-            .commit(&service_account, event, &command)
+            .commit(&service_account, &*self.service_account_repo, event, &command)
             .await
             .map(|_| result)
     }

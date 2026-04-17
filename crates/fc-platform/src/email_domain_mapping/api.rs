@@ -9,7 +9,7 @@ use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use super::entity::{EmailDomainMapping, ScopeType};
+use super::entity::EmailDomainMapping;
 use super::repository::EmailDomainMappingRepository;
 use crate::identity_provider::repository::IdentityProviderRepository;
 use crate::shared::error::PlatformError;

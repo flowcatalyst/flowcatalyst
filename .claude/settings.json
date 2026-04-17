@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo check *)",
+      "Bash(php -l *)",
+      "Bash(pnpm typecheck)",
+      "Bash(npm view *)"
+    ]
+  }
+}

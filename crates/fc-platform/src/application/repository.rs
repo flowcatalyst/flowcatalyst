@@ -2,12 +2,11 @@
 
 use async_trait::async_trait;
 use sqlx::PgPool;
-use sqlx::Postgres;
 use chrono::{DateTime, Utc};
 
 use super::entity::{Application, ApplicationType};
 use crate::shared::error::Result;
-use crate::usecase::unit_of_work::{HasId, PgPersist};
+use crate::usecase::unit_of_work::HasId;
 
 /// Row mapping for app_applications table
 #[derive(sqlx::FromRow)]
@@ -234,15 +233,15 @@ impl ApplicationRepository {
     }
 }
 
-// ── PgPersist implementation ──────────────────────────────────────────────────
+// ── Persist<Application> ─────────────────────────────────────────────────────
 
 impl HasId for Application {
     fn id(&self) -> &str { &self.id }
 }
 
 #[async_trait]
-impl PgPersist for Application {
-    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, Postgres>) -> Result<()> {
+impl crate::usecase::Persist<Application> for ApplicationRepository {
+    async fn persist(&self, a: &Application, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
         sqlx::query(
             "INSERT INTO app_applications (id, type, code, name, description, icon_url, website, logo, logo_mime_type, default_base_url, service_account_id, active, created_at, updated_at)
@@ -261,29 +260,29 @@ impl PgPersist for Application {
                 active = EXCLUDED.active,
                 updated_at = EXCLUDED.updated_at"
         )
-        .bind(&self.id)
-        .bind(self.application_type.as_str())
-        .bind(&self.code)
-        .bind(&self.name)
-        .bind(&self.description)
-        .bind(&self.icon_url)
-        .bind(&self.website)
-        .bind(&self.logo)
-        .bind(&self.logo_mime_type)
-        .bind(&self.default_base_url)
-        .bind(&self.service_account_id)
-        .bind(self.active)
+        .bind(&a.id)
+        .bind(a.application_type.as_str())
+        .bind(&a.code)
+        .bind(&a.name)
+        .bind(&a.description)
+        .bind(&a.icon_url)
+        .bind(&a.website)
+        .bind(&a.logo)
+        .bind(&a.logo_mime_type)
+        .bind(&a.default_base_url)
+        .bind(&a.service_account_id)
+        .bind(a.active)
         .bind(now)
         .bind(now)
-        .execute(&mut **txn)
+        .execute(&mut **tx.inner)
         .await?;
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, Postgres>) -> Result<()> {
+    async fn delete(&self, a: &Application, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM app_applications WHERE id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn)
+            .bind(&a.id)
+            .execute(&mut **tx.inner)
             .await?;
         Ok(())
     }

@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 
 use super::entity::{EventType, EventTypeStatus, EventTypeSource, SpecVersion, SpecVersionStatus, SchemaType};
 use crate::shared::error::Result;
-use crate::usecase::unit_of_work::{HasId, PgPersist};
+use crate::usecase::unit_of_work::HasId;
 
 /// Row mapping for msg_event_types table
 #[derive(sqlx::FromRow)]
@@ -370,18 +370,17 @@ impl EventTypeRepository {
     }
 }
 
-// ── PgPersist implementation ──────────────────────────────────────────────────
+// ── Persist<EventType> ───────────────────────────────────────────────────────
 
 impl HasId for EventType {
     fn id(&self) -> &str { &self.id }
 }
 
 #[async_trait]
-impl PgPersist for EventType {
-    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+impl crate::usecase::Persist<EventType> for EventTypeRepository {
+    async fn persist(&self, et: &EventType, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
 
-        // 1. Upsert main row
         sqlx::query(
             "INSERT INTO msg_event_types (id, code, name, description, status, source, client_scoped, application, subdomain, aggregate, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
@@ -393,27 +392,25 @@ impl PgPersist for EventType {
                 client_scoped = EXCLUDED.client_scoped,
                 updated_at = EXCLUDED.updated_at"
         )
-        .bind(&self.id)
-        .bind(&self.code)
-        .bind(&self.name)
-        .bind(&self.description)
-        .bind(self.status.as_str())
-        .bind(self.source.as_str())
-        .bind(self.client_scoped)
-        .bind(&self.application)
-        .bind(&self.subdomain)
-        .bind(&self.aggregate)
+        .bind(&et.id)
+        .bind(&et.code)
+        .bind(&et.name)
+        .bind(&et.description)
+        .bind(et.status.as_str())
+        .bind(et.source.as_str())
+        .bind(et.client_scoped)
+        .bind(&et.application)
+        .bind(&et.subdomain)
+        .bind(&et.aggregate)
         .bind(now)
         .bind(now)
-        .execute(&mut **txn).await?;
+        .execute(&mut **tx.inner).await?;
 
-        // 2. Delete existing spec versions
         sqlx::query("DELETE FROM msg_event_type_spec_versions WHERE event_type_id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
+            .bind(&et.id)
+            .execute(&mut **tx.inner).await?;
 
-        // 3. Re-insert spec versions
-        for sv in &self.spec_versions {
+        for sv in &et.spec_versions {
             sqlx::query(
                 "INSERT INTO msg_event_type_spec_versions (id, event_type_id, version, mime_type, schema_content, schema_type, status, created_at, updated_at)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
@@ -427,19 +424,19 @@ impl PgPersist for EventType {
             .bind(sv.status.as_str())
             .bind(sv.created_at)
             .bind(sv.updated_at)
-            .execute(&mut **txn).await?;
+            .execute(&mut **tx.inner).await?;
         }
 
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+    async fn delete(&self, et: &EventType, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM msg_event_type_spec_versions WHERE event_type_id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
+            .bind(&et.id)
+            .execute(&mut **tx.inner).await?;
         sqlx::query("DELETE FROM msg_event_types WHERE id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
+            .bind(&et.id)
+            .execute(&mut **tx.inner).await?;
         Ok(())
     }
 }

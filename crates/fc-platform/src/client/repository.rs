@@ -2,12 +2,11 @@
 
 use async_trait::async_trait;
 use sqlx::PgPool;
-use sqlx::Postgres;
 use chrono::{DateTime, Utc};
 
 use super::entity::{Client, ClientNote, ClientStatus};
 use crate::shared::error::Result;
-use crate::usecase::unit_of_work::{HasId, PgPersist};
+use crate::usecase::unit_of_work::HasId;
 
 /// Row mapping for tnt_clients table
 #[derive(sqlx::FromRow)]
@@ -201,17 +200,17 @@ impl ClientRepository {
     }
 }
 
-// ── PgPersist implementation ──────────────────────────────────────────────────
+// ── Persist<Client> ──────────────────────────────────────────────────────────
 
 impl HasId for Client {
     fn id(&self) -> &str { &self.id }
 }
 
 #[async_trait]
-impl PgPersist for Client {
-    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, Postgres>) -> Result<()> {
+impl crate::usecase::Persist<Client> for ClientRepository {
+    async fn persist(&self, c: &Client, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
-        let notes_json = serde_json::to_value(&self.notes).unwrap_or_default();
+        let notes_json = serde_json::to_value(&c.notes).unwrap_or_default();
         sqlx::query(
             "INSERT INTO tnt_clients (id, name, identifier, status, status_reason, status_changed_at, notes, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -224,24 +223,24 @@ impl PgPersist for Client {
                 notes = EXCLUDED.notes,
                 updated_at = EXCLUDED.updated_at"
         )
-        .bind(&self.id)
-        .bind(&self.name)
-        .bind(&self.identifier)
-        .bind(self.status.as_str())
-        .bind(&self.status_reason)
-        .bind(self.status_changed_at)
+        .bind(&c.id)
+        .bind(&c.name)
+        .bind(&c.identifier)
+        .bind(c.status.as_str())
+        .bind(&c.status_reason)
+        .bind(c.status_changed_at)
         .bind(&notes_json)
         .bind(now)
         .bind(now)
-        .execute(&mut **txn)
+        .execute(&mut **tx.inner)
         .await?;
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, Postgres>) -> Result<()> {
+    async fn delete(&self, c: &Client, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM tnt_clients WHERE id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn)
+            .bind(&c.id)
+            .execute(&mut **tx.inner)
             .await?;
         Ok(())
     }

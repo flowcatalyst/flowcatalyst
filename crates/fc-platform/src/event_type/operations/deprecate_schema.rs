@@ -117,7 +117,9 @@ impl<U: UnitOfWork> UseCase for DeprecateSchemaUseCase<U> {
             &command.version,
         );
 
-        self.unit_of_work.commit(&event_type, event, &command).await
+        self.unit_of_work
+            .commit(&event_type, &*self.event_type_repo, event, &command)
+            .await
     }
 }
 

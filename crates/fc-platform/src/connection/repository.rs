@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 
 use super::entity::{Connection, ConnectionStatus};
 use crate::shared::error::Result;
-use crate::usecase::unit_of_work::{HasId, PgPersist};
+use crate::usecase::unit_of_work::HasId;
 
 /// Row mapping for msg_connections table
 #[derive(sqlx::FromRow)]
@@ -216,8 +216,8 @@ impl HasId for Connection {
 }
 
 #[async_trait]
-impl PgPersist for Connection {
-    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, Postgres>) -> Result<()> {
+impl crate::usecase::Persist<Connection> for ConnectionRepository {
+    async fn persist(&self, c: &Connection, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
         sqlx::query(
             "INSERT INTO msg_connections (id, code, name, description, external_id, status, service_account_id, client_id, client_identifier, created_at, updated_at)
@@ -233,26 +233,26 @@ impl PgPersist for Connection {
                 client_identifier = EXCLUDED.client_identifier,
                 updated_at = EXCLUDED.updated_at"
         )
-        .bind(&self.id)
-        .bind(&self.code)
-        .bind(&self.name)
-        .bind(&self.description)
-        .bind(&self.external_id)
-        .bind(self.status.as_str())
-        .bind(&self.service_account_id)
-        .bind(&self.client_id)
-        .bind(&self.client_identifier)
+        .bind(&c.id)
+        .bind(&c.code)
+        .bind(&c.name)
+        .bind(&c.description)
+        .bind(&c.external_id)
+        .bind(c.status.as_str())
+        .bind(&c.service_account_id)
+        .bind(&c.client_id)
+        .bind(&c.client_identifier)
         .bind(now)
         .bind(now)
-        .execute(&mut **txn)
+        .execute(&mut **tx.inner)
         .await?;
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, Postgres>) -> Result<()> {
+    async fn delete(&self, c: &Connection, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM msg_connections WHERE id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn)
+            .bind(&c.id)
+            .execute(&mut **tx.inner)
             .await?;
         Ok(())
     }

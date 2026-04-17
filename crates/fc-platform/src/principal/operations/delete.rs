@@ -87,7 +87,9 @@ impl<U: UnitOfWork> UseCase for DeleteUserUseCase<U> {
         let event = UserDeleted::new(&ctx, &principal.id);
 
         // Atomic commit with delete
-        self.unit_of_work.commit_delete(&principal, event, &command).await
+        self.unit_of_work
+            .commit_delete(&principal, &*self.principal_repo, event, &command)
+            .await
     }
 }
 

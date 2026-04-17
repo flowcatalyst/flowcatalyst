@@ -90,7 +90,9 @@ impl<U: UnitOfWork> UseCase for ArchiveEventTypeUseCase<U> {
         let event = EventTypeArchived::new(&ctx, &event_type.id, &event_type.code);
 
         // Atomic commit
-        self.unit_of_work.commit(&event_type, event, &command).await
+        self.unit_of_work
+            .commit(&event_type, &*self.event_type_repo, event, &command)
+            .await
     }
 }
 

@@ -141,7 +141,9 @@ impl<U: UnitOfWork> UseCase for GrantClientAccessUseCase<U> {
             &command.client_id,
         );
 
-        self.unit_of_work.commit(&grant, event, &command).await
+        self.unit_of_work
+            .commit(&grant, &*self.grant_repo, event, &command)
+            .await
     }
 }
 

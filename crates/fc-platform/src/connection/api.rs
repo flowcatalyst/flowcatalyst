@@ -9,7 +9,7 @@ use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use super::entity::{Connection, ConnectionStatus};
+use super::entity::Connection;
 use super::repository::ConnectionRepository;
 use crate::shared::error::{PlatformError, NotFoundExt};
 use crate::shared::middleware::Authenticated;

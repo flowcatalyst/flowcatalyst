@@ -410,7 +410,7 @@ async fn test_unit_of_work_commit() {
     struct CreateClientCommand { name: String }
     let command = CreateClientCommand { name: "UoW Test Client".to_string() };
 
-    let result = uow.commit(&client, event, &command).await;
+    let result = uow.commit(&client, &client_repo, event, &command).await;
     assert!(result.into_result().is_ok(), "UnitOfWork commit should succeed");
 
     // Verify event was persisted (use find_by_type since find_all doesn't exist)

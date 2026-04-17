@@ -42,7 +42,7 @@ use fc_router::{
     CircuitBreakerRegistry as RouterCircuitBreakerRegistry,
     api::create_router as create_api_router,
 };
-use fc_queue::sqlite::SqliteQueue;
+use fc_queue::postgres::PostgresQueue;
 use fc_queue::EmbeddedQueue;
 use fc_outbox::enhanced_processor::{EnhancedOutboxProcessor, EnhancedProcessorConfig};
 use fc_outbox::http_dispatcher::HttpDispatcherConfig;
@@ -50,14 +50,12 @@ use fc_outbox::postgres::PostgresOutboxRepository;
 
 // Platform imports
 use fc_platform::api::middleware::{AppState, AuthLayer};
-use fc_platform::api::{event_type_filters_router, dispatch_jobs_router};
+use fc_platform::api::event_type_filters_router;
 use fc_platform::repository::{
     Repositories,
     RoleRepository,
 };
 use fc_platform::usecase::PgUnitOfWork;
-
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// FlowCatalyst Development Server
 #[derive(Parser, Debug)]
@@ -109,6 +107,116 @@ struct Args {
     /// PostgreSQL database URL
     #[arg(long, env = "FC_DATABASE_URL", default_value = "postgresql://localhost:5432/flowcatalyst")]
     database_url: String,
+
+    /// Start an embedded PostgreSQL instead of connecting to `--database-url`.
+    /// First run downloads a ~80MB pg binary to `~/.cache/flowcatalyst-dev/pgdata/`.
+    /// Set to `false` (or pass `--embedded-db=false`) to connect to an
+    /// existing Postgres (e.g. the one you run in Docker). Only available
+    /// when compiled with the `embedded-db` feature.
+    #[cfg(feature = "embedded-db")]
+    #[arg(long, env = "FC_EMBEDDED_DB", default_value = "true")]
+    embedded_db: bool,
+
+    /// Wipe the embedded Postgres data directory before starting. Only
+    /// honoured when `--embedded-db` is active.
+    #[cfg(feature = "embedded-db")]
+    #[arg(long, env = "FC_RESET_DB", default_value = "false")]
+    reset_db: bool,
+}
+
+#[cfg(feature = "embedded-db")]
+mod embedded_pg {
+    //! Bundles a PostgreSQL binary into fc-dev so a fresh clone can
+    //! `./fc-dev` without running any database separately.
+    //!
+    //! The `bundled` feature on `postgresql_embedded` pulls the pg binary
+    //! at **build** time and embeds it into the fc-dev executable. First
+    //! run extracts from the exe itself — no runtime network call, no
+    //! second binary for EDR or corporate allowlisting to review.
+
+    use anyhow::{Context, Result};
+    use postgresql_embedded::{PostgreSQL, Settings};
+    use std::path::PathBuf;
+    use tracing::info;
+
+    pub struct EmbeddedDb {
+        pub postgresql: PostgreSQL,
+        pub url: String,
+    }
+
+    pub fn data_dir() -> PathBuf {
+        dirs::cache_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("flowcatalyst-dev")
+            .join("pgdata")
+    }
+
+    pub async fn start(reset: bool) -> Result<EmbeddedDb> {
+        let data_dir = data_dir();
+
+        if reset && data_dir.exists() {
+            info!(path = %data_dir.display(), "Resetting embedded Postgres data dir");
+            std::fs::remove_dir_all(&data_dir)
+                .context("Failed to remove embedded Postgres data dir")?;
+        }
+
+        // Pin the password so the data dir and the connection URL stay
+        // consistent across restarts. `Settings::default()` generates a
+        // *fresh* random password every process start and does NOT
+        // persist it — initdb'd data from a previous run then no longer
+        // matches, and connections fail.
+        //
+        // Username is pinned to "postgres" because postgresql_embedded
+        // hardcodes that as the initdb bootstrap superuser regardless of
+        // what we pass. Setting it to anything else only changes what
+        // appears in `settings().url()`, not the actual role pg creates —
+        // and we want the URL to match an existing role.
+        //
+        // Changing these later after a data dir exists requires
+        // `--reset-db` (initdb only runs once).
+        let settings = Settings {
+            data_dir: data_dir.clone(),
+            // Deterministic port so the connection string is stable across
+            // restarts. 15432 avoids colliding with a native-installed Postgres.
+            port: 15432,
+            username: "postgres".to_string(),
+            password: "flowcatalyst".to_string(),
+            temporary: false,
+            ..Settings::default()
+        };
+
+        info!(
+            data_dir = %data_dir.display(),
+            port = settings.port,
+            "Starting embedded Postgres (binary is bundled into fc-dev)"
+        );
+
+        let mut postgresql = PostgreSQL::new(settings);
+        postgresql.setup().await.context("embedded Postgres setup failed")?;
+        postgresql.start().await.context("embedded Postgres start failed")?;
+
+        let database_name = "flowcatalyst";
+        // create_database is not idempotent across restarts; the second run
+        // returns an "already exists" error that we can safely ignore.
+        if let Err(e) = postgresql.create_database(database_name).await {
+            let msg = e.to_string();
+            if !msg.contains("already exists") {
+                return Err(anyhow::anyhow!("failed to create flowcatalyst database: {}", e));
+            }
+        }
+
+        let url = postgresql.settings().url(database_name);
+        info!("Embedded Postgres ready at {}", url);
+
+        Ok(EmbeddedDb { postgresql, url })
+    }
+
+    pub async fn stop(db: &mut EmbeddedDb) {
+        info!("Stopping embedded Postgres");
+        if let Err(e) = db.postgresql.stop().await {
+            tracing::warn!(error = %e, "Failed to stop embedded Postgres cleanly");
+        }
+    }
 }
 
 #[tokio::main]
@@ -129,28 +237,46 @@ async fn main() -> Result<()> {
     // Initialize logging (JSON if LOG_FORMAT=json, text otherwise)
     fc_common::logging::init_logging("fc-dev");
 
-    let args = Args::parse();
+    #[allow(unused_mut)]
+    let mut args = Args::parse();
 
     info!("Starting FlowCatalyst Dev Monolith (Rust)");
     info!("API port: {}, Metrics port: {}", args.api_port, args.metrics_port);
 
+    // 0. If embedded-pg is enabled, start it before anything else touches
+    //    the database and override the URL that downstream code will use.
+    #[cfg(feature = "embedded-db")]
+    let mut embedded_db = if args.embedded_db {
+        let db = embedded_pg::start(args.reset_db).await?;
+        args.database_url = db.url.clone();
+        std::env::set_var("FC_DATABASE_URL", &db.url);
+        Some(db)
+    } else {
+        None
+    };
+
     // Setup shutdown signal
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
-    // 1. Setup SQLite for embedded queue (file-based so it persists across restarts)
-    let queue_pool = SqlitePoolOptions::new()
-        .max_connections(5)
-        .connect("sqlite:fc_dev_queue.db?mode=rwc")
-        .await?;
+    // 1. Connect to Postgres early — the queue, control plane, stream
+    //    processor, and unit-of-work all share the same pool.
+    info!("Connecting to PostgreSQL...");
+    let pg_pool = fc_platform::shared::database::create_pool(&args.database_url).await
+        .map_err(|e| anyhow::anyhow!("PostgreSQL connection failed: {}", e))?;
 
-    // 2. Initialize embedded queue (SQLite-based, mimics SQS FIFO)
-    let queue = Arc::new(SqliteQueue::new(
-        queue_pool.clone(),
+    fc_platform::shared::database::run_migrations(&pg_pool).await
+        .map_err(|e| anyhow::anyhow!("PostgreSQL migrations failed: {}", e))?;
+
+    // 2. Initialise the embedded queue on the same Postgres pool. Queue
+    //    tables live alongside the control-plane tables — one DB to back
+    //    up, one dialect to reason about.
+    let queue = Arc::new(PostgresQueue::new(
+        pg_pool.clone(),
         "dev-queue".to_string(),
         30, // visibility timeout
     ));
     queue.init_schema().await?;
-    info!("Embedded SQLite queue initialized");
+    info!("Embedded Postgres queue initialized");
 
     // 3. Initialize HTTP Mediator (dev mode: HTTP/1.1, shorter timeout)
     let mediator = Arc::new(HttpMediator::dev());
@@ -178,7 +304,7 @@ async fn main() -> Result<()> {
         queues: vec![
             QueueConfig {
                 name: "dev-queue".to_string(),
-                uri: "sqlite:fc_dev_queue.db?mode=rwc".to_string(),
+                uri: args.database_url.clone(),
                 connections: 1,
                 visibility_timeout: 30,
             },
@@ -217,16 +343,7 @@ async fn main() -> Result<()> {
     // 8. Setup platform services and APIs
     info!("Initializing platform services...");
 
-    // 8a. Connect to PostgreSQL
-    info!("Connecting to PostgreSQL...");
-    let pg_pool = fc_platform::shared::database::create_pool(&args.database_url).await
-        .map_err(|e| anyhow::anyhow!("PostgreSQL connection failed: {}", e))?;
-
-    // Run PostgreSQL migrations
-    fc_platform::shared::database::run_migrations(&pg_pool).await
-        .map_err(|e| anyhow::anyhow!("PostgreSQL migrations failed: {}", e))?;
-
-    // Seed development data
+    // Seed development data (the pool + migrations were set up in step 1).
     let seeder = fc_platform::seed::DevDataSeeder::new(pg_pool.clone());
     if let Err(e) = seeder.seed().await {
         tracing::warn!("Dev data seeding skipped (data may already exist): {}", e);
@@ -392,10 +509,15 @@ async fn main() -> Result<()> {
         application_repo: repos.application_repo.clone(),
     };
 
-    // Dev-specific extra routes: API-surface mirrors of BFF routes.
-    // NOTE: /api/events is now provided by PlatformRoutes via admin_events_router.
+    // Dev-specific extra routes.
+    //
+    // `POST /api/dispatch-jobs/batch` is already registered by
+    // `PlatformRoutes` via `sdk_dispatch_jobs_batch_router`, so we do NOT
+    // re-nest the full `dispatch_jobs_router` here — doing so double-
+    // registers the /batch handler and axum panics at startup. Dispatch
+    // job list/get endpoints remain available under `/bff/dispatch-jobs/*`.
+    let _ = dispatch_jobs_state; // kept for future expansion; not mounted
     let platform_router = platform_app
-        .nest("/api/dispatch-jobs", dispatch_jobs_router(dispatch_jobs_state).into())
         .nest("/api/event-types/filters", event_type_filters_router(filter_options_state).into())
         // Add auth middleware
         .layer(AuthLayer::new(app_state));
@@ -544,6 +666,13 @@ async fn main() -> Result<()> {
             let _ = h.await;
         }
     }).await;
+
+    // Stop embedded Postgres last — repositories / pools will have been
+    // shut down by the timeout above, so closing the server is safe.
+    #[cfg(feature = "embedded-db")]
+    if let Some(ref mut db) = embedded_db {
+        embedded_pg::stop(db).await;
+    }
 
     info!("FlowCatalyst Dev Monolith shutdown complete");
     Ok(())

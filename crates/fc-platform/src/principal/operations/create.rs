@@ -190,7 +190,9 @@ impl<U: UnitOfWork> UseCase for CreateUserUseCase<U> {
             .build();
 
         // Atomic commit — principal + event + audit log, in one transaction.
-        self.unit_of_work.commit(&principal, event, &command).await
+        self.unit_of_work
+            .commit(&principal, &*self.principal_repo, event, &command)
+            .await
     }
 }
 

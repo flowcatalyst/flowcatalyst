@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use super::entity::{Subscription, EventTypeBinding, ConfigEntry, SubscriptionSource, SubscriptionStatus};
 use fc_common::DispatchMode;
 use crate::shared::error::Result;
-use crate::usecase::unit_of_work::{HasId, PgPersist};
+use crate::usecase::unit_of_work::HasId;
 
 // ── Row types ────────────────────────────────────────────────────────────────
 
@@ -514,15 +514,15 @@ impl SubscriptionRepository {
     }
 }
 
-// ── PgPersist implementation ──────────────────────────────────────────────────
+// ── Persist<Subscription> ────────────────────────────────────────────────────
 
 impl HasId for Subscription {
     fn id(&self) -> &str { &self.id }
 }
 
 #[async_trait]
-impl PgPersist for Subscription {
-    async fn pg_upsert(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+impl crate::usecase::Persist<Subscription> for SubscriptionRepository {
+    async fn persist(&self, s: &Subscription, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
 
         // 1. Upsert main row
@@ -554,77 +554,75 @@ impl PgPersist for Subscription {
                 data_only = EXCLUDED.data_only,
                 updated_at = EXCLUDED.updated_at"
         )
-        .bind(&self.id)
-        .bind(&self.code)
-        .bind(&self.application_code)
-        .bind(&self.name)
-        .bind(&self.description)
-        .bind(&self.client_id)
-        .bind(&self.client_identifier)
-        .bind(self.client_scoped)
-        .bind(&self.connection_id)
-        .bind(&self.endpoint)
-        .bind(&self.queue)
-        .bind(self.source.as_str())
-        .bind(self.status.as_str())
-        .bind(self.max_age_seconds)
-        .bind(&self.dispatch_pool_id)
-        .bind(&self.dispatch_pool_code)
-        .bind(self.delay_seconds)
-        .bind(self.sequence)
-        .bind(self.mode.as_str())
-        .bind(self.timeout_seconds)
-        .bind(self.max_retries)
-        .bind(&self.service_account_id)
-        .bind(self.data_only)
+        .bind(&s.id)
+        .bind(&s.code)
+        .bind(&s.application_code)
+        .bind(&s.name)
+        .bind(&s.description)
+        .bind(&s.client_id)
+        .bind(&s.client_identifier)
+        .bind(s.client_scoped)
+        .bind(&s.connection_id)
+        .bind(&s.endpoint)
+        .bind(&s.queue)
+        .bind(s.source.as_str())
+        .bind(s.status.as_str())
+        .bind(s.max_age_seconds)
+        .bind(&s.dispatch_pool_id)
+        .bind(&s.dispatch_pool_code)
+        .bind(s.delay_seconds)
+        .bind(s.sequence)
+        .bind(s.mode.as_str())
+        .bind(s.timeout_seconds)
+        .bind(s.max_retries)
+        .bind(&s.service_account_id)
+        .bind(s.data_only)
         .bind(now)
         .bind(now)
-        .execute(&mut **txn).await?;
+        .execute(&mut **tx.inner).await?;
 
-        // 2. Sync event type bindings: delete then re-insert
         sqlx::query("DELETE FROM msg_subscription_event_types WHERE subscription_id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
-        for et in &self.event_types {
+            .bind(&s.id)
+            .execute(&mut **tx.inner).await?;
+        for et in &s.event_types {
             sqlx::query(
                 "INSERT INTO msg_subscription_event_types (subscription_id, event_type_id, event_type_code, spec_version)
                  VALUES ($1, $2, $3, $4)"
             )
-            .bind(&self.id)
+            .bind(&s.id)
             .bind(&et.event_type_id)
             .bind(&et.event_type_code)
             .bind(&et.spec_version)
-            .execute(&mut **txn).await?;
+            .execute(&mut **tx.inner).await?;
         }
 
-        // 3. Sync custom config: delete then re-insert
         sqlx::query("DELETE FROM msg_subscription_custom_configs WHERE subscription_id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
-        for entry in &self.custom_config {
+            .bind(&s.id)
+            .execute(&mut **tx.inner).await?;
+        for entry in &s.custom_config {
             sqlx::query(
                 "INSERT INTO msg_subscription_custom_configs (subscription_id, config_key, config_value)
                  VALUES ($1, $2, $3)"
             )
-            .bind(&self.id)
+            .bind(&s.id)
             .bind(&entry.key)
             .bind(&entry.value)
-            .execute(&mut **txn).await?;
+            .execute(&mut **tx.inner).await?;
         }
 
         Ok(())
     }
 
-    async fn pg_delete(&self, txn: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+    async fn delete(&self, s: &Subscription, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM msg_subscription_event_types WHERE subscription_id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
+            .bind(&s.id)
+            .execute(&mut **tx.inner).await?;
         sqlx::query("DELETE FROM msg_subscription_custom_configs WHERE subscription_id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
+            .bind(&s.id)
+            .execute(&mut **tx.inner).await?;
         sqlx::query("DELETE FROM msg_subscriptions WHERE id = $1")
-            .bind(&self.id)
-            .execute(&mut **txn).await?;
+            .bind(&s.id)
+            .execute(&mut **tx.inner).await?;
         Ok(())
     }
 }

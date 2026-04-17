@@ -98,7 +98,9 @@ impl<U: UnitOfWork> UseCase for AddClientNoteUseCase<U> {
             &ctx.principal_id,
         );
 
-        self.unit_of_work.commit(&client, event, &command).await
+        self.unit_of_work
+            .commit(&client, &*self.client_repo, event, &command)
+            .await
     }
 }
 

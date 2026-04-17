@@ -129,7 +129,9 @@ impl<U: UnitOfWork> UseCase for EnableApplicationForClientUseCase<U> {
             &config.id,
         );
 
-        self.unit_of_work.commit(&config, event, &command).await
+        self.unit_of_work
+            .commit(&config, &*self.config_repo, event, &command)
+            .await
     }
 }
 
