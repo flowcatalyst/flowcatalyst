@@ -1,7 +1,7 @@
 //! Dispatch pool management operations.
 
 use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError, ListResponse};
+use super::{FlowCatalystClient, ClientError};
 
 /// Request to create a dispatch pool.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -62,10 +62,13 @@ pub struct DispatchPoolResponse {
 
 impl FlowCatalystClient {
     /// List dispatch pools with optional filters.
+    ///
+    /// The platform returns a bare JSON array for this endpoint — no
+    /// `{ pools, total }` envelope. No total count available.
     pub async fn list_dispatch_pools(
         &self,
         filters: &DispatchPoolFilters,
-    ) -> Result<ListResponse<DispatchPoolResponse>, ClientError> {
+    ) -> Result<Vec<DispatchPoolResponse>, ClientError> {
         let mut params = Vec::new();
         if let Some(ref cid) = filters.client_id {
             params.push(format!("clientId={}", cid));

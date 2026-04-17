@@ -1,7 +1,24 @@
 //! Subscription management operations.
 
 use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError, ListResponse};
+use super::{FlowCatalystClient, ClientError};
+
+/// Paginated list of subscriptions — `GET /api/subscriptions`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionListResponse {
+    pub subscriptions: Vec<SubscriptionResponse>,
+    #[serde(default)]
+    pub total: u64,
+}
+
+/// Custom config entry returned on subscription responses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigEntry {
+    pub key: String,
+    pub value: String,
+}
 
 /// Request to create a subscription.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -122,6 +139,10 @@ pub struct SubscriptionResponse {
     pub application_code: Option<String>,
     #[serde(default)]
     pub client_scoped: bool,
+    /// Per-subscription custom configuration entries (key/value pairs).
+    /// Returned by the platform as part of every subscription response.
+    #[serde(default)]
+    pub custom_config: Vec<ConfigEntry>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -145,7 +166,7 @@ impl FlowCatalystClient {
         &self,
         client_id: Option<&str>,
         status: Option<&str>,
-    ) -> Result<ListResponse<SubscriptionResponse>, ClientError> {
+    ) -> Result<SubscriptionListResponse, ClientError> {
         let mut params = Vec::new();
         if let Some(cid) = client_id {
             params.push(format!("client_id={}", cid));

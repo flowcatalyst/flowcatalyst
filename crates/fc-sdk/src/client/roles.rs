@@ -1,7 +1,26 @@
 //! Role and permission management operations.
 
 use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError, ListResponse};
+use super::{FlowCatalystClient, ClientError};
+use super::applications::CreatedResponse;
+
+/// Paginated list of roles — `GET /api/roles`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleListResponse {
+    pub roles: Vec<RoleResponse>,
+    #[serde(default)]
+    pub total: u64,
+}
+
+/// Paginated list of permissions — `GET /api/roles/permissions`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionListResponse {
+    pub permissions: Vec<PermissionResponse>,
+    #[serde(default)]
+    pub total: u64,
+}
 
 /// Request to create a role.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -72,7 +91,7 @@ impl FlowCatalystClient {
     // ── Roles ────────────────────────────────────────────────────────────────
 
     /// List all roles.
-    pub async fn list_roles(&self) -> Result<ListResponse<RoleResponse>, ClientError> {
+    pub async fn list_roles(&self) -> Result<RoleListResponse, ClientError> {
         self.get("/api/roles").await
     }
 
@@ -82,20 +101,24 @@ impl FlowCatalystClient {
     }
 
     /// Create a new role.
+    ///
+    /// Returns `{ id }` only. Call `get_role(name)` if you need the full record.
     pub async fn create_role(
         &self,
         req: &CreateRoleRequest,
-    ) -> Result<RoleResponse, ClientError> {
+    ) -> Result<CreatedResponse, ClientError> {
         self.post("/api/roles", req).await
     }
 
-    /// Update an existing role by name.
+    /// Update an existing role by name. The platform responds with 204.
     pub async fn update_role(
         &self,
         name: &str,
         req: &UpdateRoleRequest,
-    ) -> Result<RoleResponse, ClientError> {
-        self.put(&format!("/api/roles/{}", name), req).await
+    ) -> Result<(), ClientError> {
+        let _: serde_json::Value =
+            self.put(&format!("/api/roles/{}", name), req).await?;
+        Ok(())
     }
 
     /// Delete a role by name.
@@ -107,7 +130,7 @@ impl FlowCatalystClient {
     pub async fn list_roles_for_application(
         &self,
         application_id: &str,
-    ) -> Result<ListResponse<RoleResponse>, ClientError> {
+    ) -> Result<RoleListResponse, ClientError> {
         self.get(&format!(
             "/api/roles/by-application/{}",
             application_id
@@ -120,7 +143,7 @@ impl FlowCatalystClient {
     /// List all permissions.
     pub async fn list_permissions(
         &self,
-    ) -> Result<ListResponse<PermissionResponse>, ClientError> {
+    ) -> Result<PermissionListResponse, ClientError> {
         self.get("/api/roles/permissions").await
     }
 

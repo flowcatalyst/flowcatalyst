@@ -244,14 +244,3 @@ pub enum ClientError {
     Api { status: u16, body: String },
 }
 
-/// Paginated list response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ListResponse<T> {
-    pub data: Vec<T>,
-    #[serde(default)]
-    pub total: Option<u64>,
-    #[serde(default)]
-    pub page: Option<u32>,
-    #[serde(default)]
-    pub page_size: Option<u32>,
-}

@@ -1,7 +1,20 @@
 //! Audit log query operations.
 
 use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError, ListResponse};
+use super::{FlowCatalystClient, ClientError};
+
+/// Paginated list of audit logs — `GET /api/audit-logs`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditLogListResponse {
+    pub audit_logs: Vec<AuditLogResponse>,
+    #[serde(default)]
+    pub total: i64,
+    #[serde(default)]
+    pub page: i32,
+    #[serde(default)]
+    pub page_size: i32,
+}
 
 /// Filters for listing audit logs.
 #[derive(Debug, Clone, Default)]
@@ -42,7 +55,7 @@ impl FlowCatalystClient {
     pub async fn list_audit_logs(
         &self,
         filters: &AuditLogFilters,
-    ) -> Result<ListResponse<AuditLogResponse>, ClientError> {
+    ) -> Result<AuditLogListResponse, ClientError> {
         let mut params = Vec::new();
         if let Some(ref v) = filters.entity_type {
             params.push(format!("entityType={}", v));

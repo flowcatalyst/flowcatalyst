@@ -1,7 +1,7 @@
 //! Principal (user/service) management operations.
 
 use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError, ListResponse};
+use super::{FlowCatalystClient, ClientError};
 
 /// Request to create a user principal.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -80,35 +80,41 @@ pub struct PrincipalResponse {
     pub updated_at: String,
 }
 
-/// Role reference returned by principal role queries.
+/// Role assignment returned by GET /api/principals/{id}/roles.
+///
+/// Matches the platform's `RoleAssignmentDto` — uses `roleName` and
+/// `assignmentSource`, not `name` and `source`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrincipalRoleResponse {
-    pub name: String,
-    #[serde(default)]
-    pub display_name: Option<String>,
-    #[serde(default)]
-    pub source: Option<String>,
+    pub id: String,
+    pub role_name: String,
+    pub assignment_source: String,
+    pub assigned_at: String,
 }
 
 /// Client access grant for a principal.
+///
+/// Matches the platform's `ClientAccessGrantResponse` — `id`, `clientId`,
+/// `grantedAt`, optional `expiresAt`. No client name / identifier fields
+/// (those were in an older SDK version that didn't reflect the backend).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientAccessGrantResponse {
+    pub id: String,
     pub client_id: String,
+    pub granted_at: String,
     #[serde(default)]
-    pub client_name: Option<String>,
-    #[serde(default)]
-    pub client_identifier: Option<String>,
-    #[serde(default)]
-    pub granted_at: Option<String>,
+    pub expires_at: Option<String>,
 }
 
-/// Request to assign a single role.
+/// Request to assign a single role (additive — keeps existing roles).
+///
+/// The backend expects `{ "role": "..." }`, not `{ "roleName": "..." }`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssignRoleRequest {
-    pub role_name: String,
+    pub role: String,
 }
 
 /// Request to replace all roles.
@@ -125,6 +131,29 @@ pub struct GrantClientAccessRequest {
     pub client_id: String,
 }
 
+/// Paginated list of principals — `GET /api/principals`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrincipalListResponse {
+    pub principals: Vec<PrincipalResponse>,
+    #[serde(default)]
+    pub total: u64,
+}
+
+/// List of role assignments for a principal — `GET /api/principals/{id}/roles`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrincipalRoleListResponse {
+    pub roles: Vec<PrincipalRoleResponse>,
+}
+
+/// List of client access grants — `GET /api/principals/{id}/client-access`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientAccessListResponse {
+    pub grants: Vec<ClientAccessGrantResponse>,
+}
+
 impl FlowCatalystClient {
     /// Create a new user principal.
     pub async fn create_user(
@@ -138,7 +167,7 @@ impl FlowCatalystClient {
     pub async fn list_principals(
         &self,
         filters: &PrincipalFilters,
-    ) -> Result<ListResponse<PrincipalResponse>, ClientError> {
+    ) -> Result<PrincipalListResponse, ClientError> {
         let mut params = Vec::new();
         if let Some(ref cid) = filters.client_id {
             params.push(format!("clientId={}", cid));
@@ -166,10 +195,14 @@ impl FlowCatalystClient {
     }
 
     /// Find principals by email.
+    ///
+    /// The result still contains every principal the caller is authorised to
+    /// see whose email matches exactly (case-insensitive) — callers should
+    /// pick the expected one by `email` rather than assuming index 0.
     pub async fn find_principal_by_email(
         &self,
         email: &str,
-    ) -> Result<ListResponse<PrincipalResponse>, ClientError> {
+    ) -> Result<PrincipalListResponse, ClientError> {
         self.list_principals(&PrincipalFilters {
             email: Some(email.to_string()),
             ..Default::default()
@@ -187,40 +220,41 @@ impl FlowCatalystClient {
     }
 
     /// Activate a principal.
-    pub async fn activate_principal(
-        &self,
-        id: &str,
-    ) -> Result<PrincipalResponse, ClientError> {
-        self.post_action(&format!("/api/principals/{}/activate", id))
-            .await
+    ///
+    /// The platform returns `{ "message": "..." }` only. Call
+    /// `get_principal(id)` if you need the refreshed record.
+    pub async fn activate_principal(&self, id: &str) -> Result<(), ClientError> {
+        let _: serde_json::Value = self
+            .post_action(&format!("/api/principals/{}/activate", id))
+            .await?;
+        Ok(())
     }
 
-    /// Deactivate a principal.
-    pub async fn deactivate_principal(
-        &self,
-        id: &str,
-    ) -> Result<PrincipalResponse, ClientError> {
-        self.post_action(&format!("/api/principals/{}/deactivate", id))
-            .await
+    /// Deactivate a principal. The platform returns a message only.
+    pub async fn deactivate_principal(&self, id: &str) -> Result<(), ClientError> {
+        let _: serde_json::Value = self
+            .post_action(&format!("/api/principals/{}/deactivate", id))
+            .await?;
+        Ok(())
     }
 
     /// Get roles assigned to a principal.
     pub async fn get_principal_roles(
         &self,
         id: &str,
-    ) -> Result<ListResponse<PrincipalRoleResponse>, ClientError> {
+    ) -> Result<PrincipalRoleListResponse, ClientError> {
         self.get(&format!("/api/principals/{}/roles", id))
             .await
     }
 
-    /// Assign a single role to a principal.
+    /// Assign a single role to a principal (additive — keeps existing roles).
     pub async fn assign_principal_role(
         &self,
         id: &str,
         role_name: &str,
     ) -> Result<(), ClientError> {
         let body = AssignRoleRequest {
-            role_name: role_name.to_string(),
+            role: role_name.to_string(),
         };
         let _: serde_json::Value = self
             .post(&format!("/api/principals/{}/roles", id), &body)
@@ -258,7 +292,7 @@ impl FlowCatalystClient {
     pub async fn get_principal_client_access(
         &self,
         id: &str,
-    ) -> Result<ListResponse<ClientAccessGrantResponse>, ClientError> {
+    ) -> Result<ClientAccessListResponse, ClientError> {
         self.get(&format!("/api/principals/{}/client-access", id))
             .await
     }

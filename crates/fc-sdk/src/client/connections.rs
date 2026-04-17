@@ -1,7 +1,17 @@
 //! Connection management operations.
 
 use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError, ListResponse};
+use super::{FlowCatalystClient, ClientError};
+use super::applications::CreatedResponse;
+
+/// Paginated list of connections — `GET /api/connections`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionsListResponse {
+    pub connections: Vec<ConnectionResponse>,
+    #[serde(default)]
+    pub total: u64,
+}
 
 /// Request to create a connection.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -60,11 +70,14 @@ pub struct ConnectionResponse {
 }
 
 impl FlowCatalystClient {
-    /// Create a new connection
+    /// Create a new connection.
+    ///
+    /// Returns `{ id }` only. Call `get_connection(&id)` if you need the
+    /// full record.
     pub async fn create_connection(
         &self,
         req: &CreateConnectionRequest,
-    ) -> Result<serde_json::Value, ClientError> {
+    ) -> Result<CreatedResponse, ClientError> {
         self.post("/api/connections", req).await
     }
 
@@ -79,7 +92,7 @@ impl FlowCatalystClient {
         client_id: Option<&str>,
         status: Option<&str>,
         service_account_id: Option<&str>,
-    ) -> Result<ListResponse<ConnectionResponse>, ClientError> {
+    ) -> Result<ConnectionsListResponse, ClientError> {
         let mut query = String::new();
         let mut params = Vec::new();
         if let Some(v) = client_id { params.push(format!("clientId={}", v)); }

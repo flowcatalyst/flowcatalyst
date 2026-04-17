@@ -102,8 +102,9 @@ pub struct SyncDispatchPoolItem {
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub concurrency: Option<u32>,
+    /// Messages per minute. The backend's camelCase field is `rateLimit`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub rate_limit_per_minute: Option<u32>,
+    pub rate_limit: Option<u32>,
 }
 
 impl FlowCatalystClient {

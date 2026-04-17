@@ -1,7 +1,17 @@
 //! Event Type management operations.
 
 use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError, ListResponse};
+use super::{FlowCatalystClient, ClientError};
+
+/// List of event types returned by `GET /api/event-types`.
+///
+/// The platform uses `{ items: [...] }` — not `{ data, total }`. There is
+/// no separate total count.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventTypeListResponse {
+    pub items: Vec<EventTypeResponse>,
+}
 
 /// Request to create an event type.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -102,7 +112,7 @@ impl FlowCatalystClient {
         application: Option<&str>,
         status: Option<&str>,
         client_id: Option<&str>,
-    ) -> Result<ListResponse<EventTypeResponse>, ClientError> {
+    ) -> Result<EventTypeListResponse, ClientError> {
         let mut params = Vec::new();
         if let Some(app) = application {
             params.push(format!("application={}", app));
