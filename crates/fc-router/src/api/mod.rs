@@ -21,7 +21,8 @@ use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::time::Duration;
 use tokio::sync::RwLock;
 use fc_queue::{QueuePublisher, QueueMetrics as FcQueueMetrics};
 use fc_common::{
@@ -67,14 +68,36 @@ pub struct AppState {
     pub cached_broker_stats: Arc<CachedBrokerStats>,
 }
 
+/// Cumulative per-queue counters captured at a point in time; used to compute
+/// windowed deltas (current - baseline).
+#[derive(Debug, Clone, Copy, Default)]
+struct QueueCounterSnapshot {
+    total_polled: u64,
+    total_acked: u64,
+    total_nacked: u64,
+    total_deferred: u64,
+}
+
+struct CounterHistoryEntry {
+    ts: std::time::Instant,
+    per_queue: HashMap<String, QueueCounterSnapshot>,
+}
+
+/// Keep 30 min of history so the longest dashboard window has a baseline.
+const COUNTER_HISTORY_WINDOW: Duration = Duration::from_secs(1800);
+
 /// Cached SQS broker stats with timestamp.
 /// Only the expensive SQS API attributes (pending/in-flight) are cached.
 /// Counter metrics (polled/acked/nacked) are read live from consumer atomics on every request.
+/// For windowed queue stats, we also retain a rolling history of cumulative
+/// counter snapshots (30 min) so we can compute per-window deltas on demand.
 pub struct CachedBrokerStats {
     /// Cached SQS attributes: pending_messages and in_flight_messages per queue
     sqs_attributes: RwLock<HashMap<String, (u64, u64)>>,
     last_updated: RwLock<Option<std::time::Instant>>,
     queue_manager: Arc<QueueManager>,
+    /// Rolling history of cumulative counter snapshots, oldest first.
+    counter_history: RwLock<VecDeque<CounterHistoryEntry>>,
 }
 
 impl CachedBrokerStats {
@@ -83,10 +106,12 @@ impl CachedBrokerStats {
             sqs_attributes: RwLock::new(HashMap::new()),
             last_updated: RwLock::new(None),
             queue_manager,
+            counter_history: RwLock::new(VecDeque::new()),
         }
     }
 
-    /// Fetch fresh SQS attributes (pending/in-flight) and update cache
+    /// Fetch fresh SQS attributes (pending/in-flight) and update cache.
+    /// Also appends a cumulative-counter snapshot used for windowed deltas.
     pub async fn refresh(&self) {
         let fresh = self.queue_manager.get_queue_metrics().await;
         let mut attrs = self.sqs_attributes.write().await;
@@ -94,23 +119,84 @@ impl CachedBrokerStats {
         for m in &fresh {
             attrs.insert(m.queue_identifier.clone(), (m.pending_messages, m.in_flight_messages));
         }
+        drop(attrs);
         *self.last_updated.write().await = Some(std::time::Instant::now());
+
+        self.snapshot_counters().await;
+    }
+
+    async fn snapshot_counters(&self) {
+        let live = self.queue_manager.get_queue_metrics_counters_only().await;
+        let mut per_queue = HashMap::with_capacity(live.len());
+        for m in live {
+            per_queue.insert(
+                m.queue_identifier,
+                QueueCounterSnapshot {
+                    total_polled: m.total_polled,
+                    total_acked: m.total_acked,
+                    total_nacked: m.total_nacked,
+                    total_deferred: m.total_deferred,
+                },
+            );
+        }
+        let now = std::time::Instant::now();
+        let cutoff = now.checked_sub(COUNTER_HISTORY_WINDOW).unwrap_or(now);
+        let mut history = self.counter_history.write().await;
+        history.push_back(CounterHistoryEntry { ts: now, per_queue });
+        while history.front().map_or(false, |e| e.ts < cutoff) {
+            history.pop_front();
+        }
     }
 
     /// Get metrics with live counters overlaid on cached SQS attributes.
-    /// Counter reads are instant (atomics), only SQS API calls are cached.
-    pub async fn get(&self) -> Vec<FcQueueMetrics> {
+    /// When `window` is `Some`, cumulative counters are replaced with deltas over
+    /// that window (picking the newest snapshot at or before `now - window`;
+    /// falling back to the oldest snapshot if history is shorter than the window).
+    pub async fn get_windowed(&self, window: Option<Duration>) -> Vec<FcQueueMetrics> {
         let cached_attrs = self.sqs_attributes.read().await;
-        let live = self.queue_manager.get_queue_metrics_counters_only().await;
+        let mut live = self.queue_manager.get_queue_metrics_counters_only().await;
 
-        live.into_iter().map(|mut m| {
-            // Overlay cached SQS attributes if available
+        for m in &mut live {
             if let Some(&(pending, in_flight)) = cached_attrs.get(&m.queue_identifier) {
                 m.pending_messages = pending;
                 m.in_flight_messages = in_flight;
             }
-            m
-        }).collect()
+        }
+        drop(cached_attrs);
+
+        let Some(window) = window else {
+            return live;
+        };
+
+        let history = self.counter_history.read().await;
+        let now = std::time::Instant::now();
+        let target = now.checked_sub(window).unwrap_or(now);
+
+        let baseline = history
+            .iter()
+            .rev()
+            .find(|e| e.ts <= target)
+            .or_else(|| history.front());
+
+        for m in &mut live {
+            let base = baseline.and_then(|e| e.per_queue.get(&m.queue_identifier).copied());
+            match base {
+                Some(b) => {
+                    m.total_polled = m.total_polled.saturating_sub(b.total_polled);
+                    m.total_acked = m.total_acked.saturating_sub(b.total_acked);
+                    m.total_nacked = m.total_nacked.saturating_sub(b.total_nacked);
+                    m.total_deferred = m.total_deferred.saturating_sub(b.total_deferred);
+                }
+                None => {
+                    m.total_polled = 0;
+                    m.total_acked = 0;
+                    m.total_nacked = 0;
+                    m.total_deferred = 0;
+                }
+            }
+        }
+
+        live
     }
 
     /// Get time since last refresh
@@ -1077,7 +1163,31 @@ async fn dashboard_health_handler(State(state): State<AppState>) -> Json<Dashboa
     })
 }
 
-/// Queue stats for dashboard (matches Java QueueStats)
+/// Query parameters accepted by the dashboard stats endpoints.
+#[derive(Deserialize, Default)]
+struct DashboardStatsQuery {
+    /// "5min" | "30min" | "all" | "all-time" (default: all-time).
+    #[serde(default)]
+    time_window: Option<String>,
+    /// "true" forces a live SQS fetch before serving queue stats.
+    #[serde(default)]
+    refresh: Option<String>,
+}
+
+/// Parse the dashboard `time_window` query value. `None` means "all time".
+fn parse_time_window(raw: Option<&str>) -> Option<Duration> {
+    match raw.unwrap_or("").trim() {
+        "5min" | "5m" => Some(Duration::from_secs(300)),
+        "30min" | "30m" => Some(Duration::from_secs(1800)),
+        // "all" | "all-time" | "" | unknown -> all-time
+        _ => None,
+    }
+}
+
+/// Queue stats for dashboard. Counts (`totalMessages`, `totalConsumed`,
+/// `totalFailed`, `totalDeferred`, `successRate`) are scoped to the requested
+/// time window. Live-state fields (`pendingMessages`, `messagesNotVisible`,
+/// `currentSize`) always reflect the current queue state.
 #[derive(Serialize, ToSchema)]
 struct DashboardQueueStats {
     name: String,
@@ -1098,24 +1208,6 @@ struct DashboardQueueStats {
     pending_messages: u64,
     #[serde(rename = "messagesNotVisible")]
     messages_not_visible: u64,
-    // 5 minute window metrics
-    #[serde(rename = "totalMessages5min")]
-    total_messages_5min: u64,
-    #[serde(rename = "totalConsumed5min")]
-    total_consumed_5min: u64,
-    #[serde(rename = "totalFailed5min")]
-    total_failed_5min: u64,
-    #[serde(rename = "successRate5min")]
-    success_rate_5min: f64,
-    // 30 minute window metrics
-    #[serde(rename = "totalMessages30min")]
-    total_messages_30min: u64,
-    #[serde(rename = "totalConsumed30min")]
-    total_consumed_30min: u64,
-    #[serde(rename = "totalFailed30min")]
-    total_failed_30min: u64,
-    #[serde(rename = "successRate30min")]
-    success_rate_30min: f64,
 }
 
 /// Queue stats endpoint for dashboard
@@ -1129,13 +1221,13 @@ struct DashboardQueueStats {
 )]
 async fn dashboard_queue_stats_handler(
     State(state): State<AppState>,
-    Query(params): Query<HashMap<String, String>>,
+    Query(params): Query<DashboardStatsQuery>,
 ) -> Json<HashMap<String, DashboardQueueStats>> {
-    // ?refresh=true forces a live fetch from SQS
-    if params.get("refresh").is_some_and(|v| v == "true") {
+    if params.refresh.as_deref() == Some("true") {
         state.cached_broker_stats.refresh().await;
     }
-    let metrics = state.cached_broker_stats.get().await;
+    let window = parse_time_window(params.time_window.as_deref());
+    let metrics = state.cached_broker_stats.get_windowed(window).await;
     let mut result = HashMap::new();
 
     for m in metrics {
@@ -1143,8 +1235,8 @@ async fn dashboard_queue_stats_handler(
         // in_flight_messages = messages currently being processed
         let current_size = m.pending_messages + m.in_flight_messages;
 
-        // Calculate success rate from acked vs (acked + nacked), excluding deferred
-        // Deferred messages (rate limiting, capacity) are not counted as failures
+        // Success rate from acked vs (acked + nacked); deferred (rate limit /
+        // capacity) is not counted as a failure.
         let total_processed = m.total_acked + m.total_nacked;
         let success_rate = if total_processed > 0 {
             m.total_acked as f64 / total_processed as f64
@@ -1160,18 +1252,9 @@ async fn dashboard_queue_stats_handler(
             total_deferred: m.total_deferred,
             success_rate,
             current_size,
-            throughput: 0.0,   // TODO: Calculate throughput
+            throughput: 0.0,
             pending_messages: m.pending_messages,
             messages_not_visible: m.in_flight_messages,
-            // TODO: Windowed metrics require time-bucketed tracking
-            total_messages_5min: m.total_polled,  // Using total for now
-            total_consumed_5min: m.total_acked,
-            total_failed_5min: m.total_nacked,
-            success_rate_5min: success_rate,
-            total_messages_30min: m.total_polled,
-            total_consumed_30min: m.total_acked,
-            total_failed_30min: m.total_nacked,
-            success_rate_30min: success_rate,
         };
         result.insert(m.queue_identifier, stats);
     }
@@ -1197,7 +1280,11 @@ async fn broker_stats_refresh_handler(State(state): State<AppState>) -> Json<ser
     }))
 }
 
-/// Pool stats for dashboard (matches Java PoolStats)
+/// Pool stats for dashboard. Throughput-style fields (`totalProcessed`,
+/// `totalSucceeded`, `totalFailed`, `totalRateLimited`, `successRate`,
+/// `averageProcessingTimeMs`) are scoped to the requested time window.
+/// Live-state fields (`activeWorkers`, `queueSize`, etc.) always reflect
+/// the current pool state.
 #[derive(Serialize, ToSchema)]
 struct DashboardPoolStats {
     #[serde(rename = "poolCode")]
@@ -1224,28 +1311,6 @@ struct DashboardPoolStats {
     max_queue_capacity: u32,
     #[serde(rename = "averageProcessingTimeMs")]
     average_processing_time_ms: f64,
-    // 5 minute window metrics
-    #[serde(rename = "totalProcessed5min")]
-    total_processed_5min: u64,
-    #[serde(rename = "totalSucceeded5min")]
-    total_succeeded_5min: u64,
-    #[serde(rename = "totalFailed5min")]
-    total_failed_5min: u64,
-    #[serde(rename = "successRate5min")]
-    success_rate_5min: f64,
-    #[serde(rename = "totalRateLimited5min")]
-    total_rate_limited_5min: u64,
-    // 30 minute window metrics
-    #[serde(rename = "totalProcessed30min")]
-    total_processed_30min: u64,
-    #[serde(rename = "totalSucceeded30min")]
-    total_succeeded_30min: u64,
-    #[serde(rename = "totalFailed30min")]
-    total_failed_30min: u64,
-    #[serde(rename = "successRate30min")]
-    success_rate_30min: f64,
-    #[serde(rename = "totalRateLimited30min")]
-    total_rate_limited_30min: u64,
 }
 
 /// Pool stats endpoint for dashboard
@@ -1257,67 +1322,56 @@ struct DashboardPoolStats {
         (status = 200, description = "Pool stats for dashboard")
     )
 )]
-async fn dashboard_pool_stats_handler(State(state): State<AppState>) -> Json<HashMap<String, DashboardPoolStats>> {
+async fn dashboard_pool_stats_handler(
+    State(state): State<AppState>,
+    Query(params): Query<DashboardStatsQuery>,
+) -> Json<HashMap<String, DashboardPoolStats>> {
+    let window = parse_time_window(params.time_window.as_deref());
     let pool_stats = state.queue_manager.get_pool_stats();
     let mut result = HashMap::new();
 
+    const FIVE_MIN: Duration = Duration::from_secs(300);
+    const THIRTY_MIN: Duration = Duration::from_secs(1800);
+
     for s in pool_stats {
-        // Extract metrics from the enhanced metrics if available
-        let (total_success, total_failure, success_rate, avg_processing_time,
-             success_5min, failure_5min, rate_5min,
-             success_30min, failure_30min, rate_30min) = if let Some(ref m) = s.metrics {
-            (
+        let (succeeded, failed, success_rate, avg_ms, rate_limited) = match (&s.metrics, window) {
+            (Some(m), Some(w)) if w == FIVE_MIN => (
+                m.last_5_min.success_count,
+                m.last_5_min.failure_count,
+                m.last_5_min.success_rate,
+                m.last_5_min.processing_time.avg_ms,
+                m.last_5_min.rate_limited_count,
+            ),
+            (Some(m), Some(w)) if w == THIRTY_MIN => (
+                m.last_30_min.success_count,
+                m.last_30_min.failure_count,
+                m.last_30_min.success_rate,
+                m.last_30_min.processing_time.avg_ms,
+                m.last_30_min.rate_limited_count,
+            ),
+            (Some(m), _) => (
                 m.total_success,
                 m.total_failure,
                 m.success_rate,
                 m.processing_time.avg_ms,
-                m.last_5_min.success_count,
-                m.last_5_min.failure_count,
-                m.last_5_min.success_rate,
-                m.last_30_min.success_count,
-                m.last_30_min.failure_count,
-                m.last_30_min.success_rate,
-            )
-        } else {
-            (0, 0, 1.0, 0.0, 0, 0, 1.0, 0, 0, 1.0)
-        };
-
-        // Extract rate limited counts from metrics if available
-        let (rate_limited_total, rate_limited_5min, rate_limited_30min) = if let Some(ref m) = s.metrics {
-            (
                 m.total_rate_limited,
-                m.last_5_min.rate_limited_count,
-                m.last_30_min.rate_limited_count,
-            )
-        } else {
-            (0, 0, 0)
+            ),
+            (None, _) => (0, 0, 1.0, 0.0, 0),
         };
 
         let stats = DashboardPoolStats {
             pool_code: s.pool_code.clone(),
-            total_processed: total_success + total_failure,
-            total_succeeded: total_success,
-            total_failed: total_failure,
-            total_rate_limited: rate_limited_total,
+            total_processed: succeeded + failed,
+            total_succeeded: succeeded,
+            total_failed: failed,
+            total_rate_limited: rate_limited,
             success_rate,
             active_workers: s.active_workers,
             available_permits: s.concurrency.saturating_sub(s.active_workers),
             max_concurrency: s.concurrency,
             queue_size: s.queue_size,
             max_queue_capacity: s.queue_capacity,
-            average_processing_time_ms: avg_processing_time,
-            // 5 minute window
-            total_processed_5min: success_5min + failure_5min,
-            total_succeeded_5min: success_5min,
-            total_failed_5min: failure_5min,
-            success_rate_5min: rate_5min,
-            total_rate_limited_5min: rate_limited_5min,
-            // 30 minute window
-            total_processed_30min: success_30min + failure_30min,
-            total_succeeded_30min: success_30min,
-            total_failed_30min: failure_30min,
-            success_rate_30min: rate_30min,
-            total_rate_limited_30min: rate_limited_30min,
+            average_processing_time_ms: avg_ms,
         };
         result.insert(s.pool_code, stats);
     }

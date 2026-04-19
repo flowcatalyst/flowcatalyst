@@ -65,7 +65,7 @@
                     <option value="30min" selected>Last 30 Minutes (Default)</option>
                     <option value="all-time">All Time</option>
                 </select>
-                <span class="text-sm text-gray-500 ml-4">Note: Total Processed and System Health always show current state</span>
+                <span class="text-sm text-gray-500 ml-4">Note: System Health, pending/in-flight counts, and active workers always show current state</span>
             </div>
         </div>
 
@@ -556,7 +556,7 @@
                 document.getElementById('logoutBtn').addEventListener('click', () => this.logout());
                 document.getElementById('timePeriodSelect').addEventListener('change', (e) => {
                     this.timePeriod = e.target.value;
-                    this.updateUI();
+                    this.loadData();
                 });
                 document.getElementById('severityFilter').addEventListener('change', (e) => {
                     this.filters.severity = e.target.value;
@@ -715,13 +715,15 @@
 
             async loadData(refreshBrokerStats = false) {
                 try {
+                    const tw = encodeURIComponent(this.timePeriod);
                     const queueStatsUrl = refreshBrokerStats
-                        ? '/monitoring/queue-stats?refresh=true'
-                        : '/monitoring/queue-stats';
+                        ? `/monitoring/queue-stats?time_window=${tw}&refresh=true`
+                        : `/monitoring/queue-stats?time_window=${tw}`;
+                    const poolStatsUrl = `/monitoring/pool-stats?time_window=${tw}`;
                     const responses = await Promise.all([
                         this.fetchWithAuth('/monitoring/health'),
                         this.fetchWithAuth(queueStatsUrl),
-                        this.fetchWithAuth('/monitoring/pool-stats'),
+                        this.fetchWithAuth(poolStatsUrl),
                         this.fetchWithAuth('/monitoring/warnings'),
                         this.fetchWithAuth('/monitoring/circuit-breakers')
                     ]);
@@ -796,7 +798,6 @@
                 const queueCount = Object.keys(this.data.queueStats).length;
                 document.getElementById('activeQueues').textContent = queueCount;
 
-                // Use pool stats for total processed (queue stats don't track totals yet)
                 const totalProcessed = Object.values(this.data.poolStats)
                     .reduce((sum, stats) => sum + (stats.totalProcessed || 0), 0);
                 document.getElementById('totalProcessed').textContent = totalProcessed.toLocaleString();
@@ -820,17 +821,6 @@
 
                 // Update table
                 this.updatePoolStatsTable();
-            }
-
-            getRateLimited(stats) {
-                switch (this.timePeriod) {
-                    case '5min':
-                        return stats.totalRateLimited5min !== undefined ? stats.totalRateLimited5min : stats.totalRateLimited;
-                    case '30min':
-                        return stats.totalRateLimited30min !== undefined ? stats.totalRateLimited30min : stats.totalRateLimited;
-                    default:
-                        return stats.totalRateLimited || 0;
-                }
             }
 
             updateQueueStatsTable() {
@@ -906,15 +896,15 @@
                     let rate, rateClass;
                     if (this.poolRateView === 'deferred') {
                         // Deferred Rate = Rate Limited / (Total Processed + Rate Limited) * 100
-                        const rateLimited = this.getRateLimited(stats);
-                        const processed = this.getTotal(stats, 'totalProcessed');
+                        const rateLimited = stats.totalRateLimited || 0;
+                        const processed = stats.totalProcessed || 0;
                         const total = processed + rateLimited;
                         rate = total > 0 ? (rateLimited / total) * 100 : 0;
                         // For deferred rate, lower is better (inverted colors)
                         rateClass = rate <= 10 ? 'bg-green-100 text-green-800' :
                                    rate <= 25 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
                     } else {
-                        rate = (this.getSuccessRate(stats) || 1) * 100;
+                        rate = (stats.successRate || 1) * 100;
                         rateClass = rate >= 90 ? 'bg-green-100 text-green-800' :
                                    rate >= 75 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
                     }
@@ -923,9 +913,9 @@
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${stats.poolCode}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${stats.activeWorkers}/${stats.maxConcurrency}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-purple-600">${stats.queueSize}/${stats.maxQueueCapacity}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-orange-600">${(this.getRateLimited(stats) || 0).toLocaleString()}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(this.getTotal(stats, 'totalProcessed') || 0).toLocaleString()}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-green-600">${(this.getTotal(stats, 'totalSucceeded') || 0).toLocaleString()}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-orange-600">${(stats.totalRateLimited || 0).toLocaleString()}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(stats.totalProcessed || 0).toLocaleString()}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-green-600">${(stats.totalSucceeded || 0).toLocaleString()}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             <span class="px-2 py-1 text-xs font-medium rounded-full ${rateClass}">
                                 ${rate.toFixed(1)}%
@@ -1035,28 +1025,6 @@
                 }
             }
 
-            // Get success rate based on time period
-            getSuccessRate(stats) {
-                switch (this.timePeriod) {
-                    case '5min':
-                        return stats.successRate5min !== undefined ? stats.successRate5min : stats.successRate;
-                    case '30min':
-                        return stats.successRate30min !== undefined ? stats.successRate30min : stats.successRate;
-                    default:
-                        return stats.successRate;
-                }
-            }
-
-            getTotal(stats, field) {
-                switch (this.timePeriod) {
-                    case '5min':
-                        return stats[`${field}5min`] !== undefined ? stats[`${field}5min`] : stats[field];
-                    case '30min':
-                        return stats[`${field}30min`] !== undefined ? stats[`${field}30min`] : stats[field];
-                    default:
-                        return stats[field];
-                }
-            }
 
             renderInFlightMessages(messages) {
                 const table = document.getElementById('inFlightTable');
