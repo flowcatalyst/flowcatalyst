@@ -4,16 +4,17 @@ import { useRouter } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import { useListState } from "@/composables/useListState";
 import { useReturnTo } from "@/composables/useReturnTo";
+import { useClientOptions } from "@/composables/useClientOptions";
 import { usersApi, type User } from "@/api/users";
-import { clientsApi, type Client } from "@/api/clients";
 import { rolesApi, type Role } from "@/api/roles";
+import ClientFilter from "@/components/ClientFilter.vue";
 
 const router = useRouter();
 const { navigateToDetail } = useReturnTo();
 const toast = useToast();
+const { ensureLoaded: ensureClients, getLabel: getClientLabel } = useClientOptions();
 
 const users = ref<User[]>([]);
-const clients = ref<Client[]>([]);
 const availableRoles = ref<Role[]>([]);
 const loading = ref(false);
 const initialLoading = ref(true);
@@ -54,19 +55,12 @@ const statusOptions = [
 	{ label: "Inactive", value: "inactive" },
 ];
 
-const clientOptions = computed(() => {
-	return clients.value.map((c) => ({
-		label: c.name,
-		value: c.id,
-	}));
-});
-
 const roleOptions = computed(() =>
 	availableRoles.value.map((r) => ({ label: r.displayName, value: r.name })),
 );
 
 onMounted(async () => {
-	await Promise.all([loadUsers(), loadClients(), loadRoles()]);
+	await Promise.all([loadUsers(), ensureClients(), loadRoles()]);
 });
 
 async function loadUsers() {
@@ -111,23 +105,6 @@ async function loadRoles() {
 	}
 }
 
-async function loadClients() {
-	try {
-		const allClients: typeof clients.value = [];
-		let page = 0;
-		const pageSize = 100;
-		while (true) {
-			const response = await clientsApi.list({ page, pageSize });
-			allClients.push(...response.clients);
-			if (response.clients.length < pageSize) break;
-			page++;
-		}
-		clients.value = allClients;
-	} catch (error) {
-		console.error("Failed to fetch clients:", error);
-	}
-}
-
 function addUser() {
 	router.push("/users/new");
 }
@@ -142,8 +119,7 @@ function editUser(user: User) {
 
 function getClientName(clientId: string | null): string {
 	if (!clientId) return "No Client";
-	const client = clients.value.find((c) => c.id === clientId);
-	return client?.name || clientId;
+	return getClientLabel(clientId);
 }
 
 function getUserType(user: User): {
@@ -211,13 +187,9 @@ function formatDate(dateStr: string | undefined | null) {
 
         <div class="filter-group">
           <label>Client</label>
-          <Select
+          <ClientFilter
             v-model="filters.clientId.value"
-            :options="clientOptions"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="All Clients"
-            :showClear="true"
+            :multiple="false"
             class="filter-input"
           />
         </div>

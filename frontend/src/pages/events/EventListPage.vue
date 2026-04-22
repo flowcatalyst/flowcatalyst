@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { useListState } from "@/composables/useListState";
+import ClientFilter from "@/components/ClientFilter.vue";
 import {
 	getApiAdminEvents,
 	getApiAdminEventsById,
@@ -56,7 +57,6 @@ const { filters, page, pageSize, sortField, sortOrder, hasActiveFilters, clearFi
 	);
 
 // Filter options (from server)
-const clientOptions = ref<FilterOption[]>([]);
 const applicationOptions = ref<FilterOption[]>([]);
 const subdomainOptions = ref<FilterOption[]>([]);
 const aggregateOptions = ref<FilterOption[]>([]);
@@ -133,14 +133,12 @@ async function loadFilterOptions() {
 			},
 		});
 		const data = response.data as unknown as {
-			clients?: FilterOption[];
 			applications?: FilterOption[];
 			subdomains?: FilterOption[];
 			aggregates?: FilterOption[];
 			types?: FilterOption[];
 		};
 		if (data) {
-			clientOptions.value = (data.clients || []) as FilterOption[];
 			applicationOptions.value = (data.applications || []) as FilterOption[];
 			subdomainOptions.value = (data.subdomains || []) as FilterOption[];
 			aggregateOptions.value = (data.aggregates || []) as FilterOption[];
@@ -252,16 +250,9 @@ function truncateId(id: string | undefined): string {
         <div class="filter-row">
           <div class="filter-group">
             <label>Client</label>
-            <MultiSelect
+            <ClientFilter
               v-model="filters.clients.value"
-              :options="clientOptions"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="All Clients"
-              :maxSelectedLabels="2"
-              :loading="loadingOptions"
               class="filter-select"
-              filter
               @change="onFilterChange('applications')"
             />
           </div>

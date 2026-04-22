@@ -168,10 +168,11 @@ pub struct EventRead {
 
 
 /// Filter options for the events read model (cascading filters).
+/// Clients are served by the canonical `/bff/filter-options/clients` endpoint,
+/// so they aren't duplicated here.
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EventFilterOptions {
-    pub clients: Vec<String>,
     pub applications: Vec<String>,
     pub subdomains: Vec<String>,
     pub aggregates: Vec<String>,

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { useListState } from "@/composables/useListState";
+import ClientFilter from "@/components/ClientFilter.vue";
 import {
 	getApiAdminDispatchJobs,
 	getApiAdminDispatchJobsFilterOptions,
@@ -54,7 +55,6 @@ const { filters, page, pageSize, sortField, sortOrder, onPage, onSort } =
 	);
 
 // Filter options
-const clientOptions = ref<FilterOption[]>([]);
 const applicationOptions = ref<FilterOption[]>([]);
 const subdomainOptions = ref<FilterOption[]>([]);
 const aggregateOptions = ref<FilterOption[]>([]);
@@ -92,7 +92,6 @@ async function loadFilterOptions() {
 			},
 		});
 		const data = response.data as unknown as {
-			clients?: FilterOption[];
 			applications?: FilterOption[];
 			subdomains?: FilterOption[];
 			aggregates?: FilterOption[];
@@ -100,7 +99,6 @@ async function loadFilterOptions() {
 			statuses?: FilterOption[];
 		};
 		if (data) {
-			clientOptions.value = (data.clients || []) as FilterOption[];
 			applicationOptions.value = (data.applications || []) as FilterOption[];
 			subdomainOptions.value = (data.subdomains || []) as FilterOption[];
 			aggregateOptions.value = (data.aggregates || []) as FilterOption[];
@@ -298,12 +296,8 @@ function formatCode(code: string | undefined): {
     <div class="fc-card">
       <div class="toolbar">
         <div class="filter-row">
-          <MultiSelect
+          <ClientFilter
             v-model="filters.clients.value"
-            :options="clientOptions"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="All Clients"
             class="filter-select"
             @change="onFilterChange('applications')"
           />

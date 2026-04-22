@@ -6,13 +6,13 @@ import {
 	fetchEntityTypes,
 	fetchOperations,
 	fetchDistinctApplicationIds,
-	fetchDistinctClientIds,
 	type AuditLog,
 	type AuditLogDetail,
 } from "@/api/audit-logs";
 import { applicationsApi } from "@/api/applications";
-import { clientsApi } from "@/api/clients";
 import { useListState } from "@/composables/useListState";
+import { useClientOptions } from "@/composables/useClientOptions";
+import ClientFilter from "@/components/ClientFilter.vue";
 
 interface Option {
 	label: string;
@@ -28,7 +28,7 @@ const initialLoading = ref(true);
 const entityTypes = ref<string[]>([]);
 const operations = ref<string[]>([]);
 const applicationOptions = ref<Option[]>([]);
-const clientOptions = ref<Option[]>([]);
+const { ensureLoaded: ensureClients, getLabel: getClientLabel } = useClientOptions();
 
 const { filters, page, pageSize, sortField, sortOrder, hasActiveFilters, clearFilters: doClearFilters, onPage, onSort } =
 	useListState(
@@ -54,29 +54,21 @@ const loadingDetail = ref(false);
 
 async function loadFilters() {
 	try {
-		const [entityTypesRes, operationsRes, appIdsRes, clientIdsRes, appsRes, clientsRes] =
+		const [entityTypesRes, operationsRes, appIdsRes, appsRes] =
 			await Promise.all([
 				fetchEntityTypes(),
 				fetchOperations(),
 				fetchDistinctApplicationIds(),
-				fetchDistinctClientIds(),
 				applicationsApi.list(),
-				clientsApi.list(),
+				ensureClients(),
 			]);
 		entityTypes.value = entityTypesRes.entityTypes;
 		operations.value = operationsRes.operations;
 
-		// Build lookup maps from full lists
+		// Only show applications that actually appear in audit logs
 		const appMap = new Map(appsRes.applications.map((a) => [a.id, a.name]));
-		const clientMap = new Map(clientsRes.clients.map((c) => [c.id, c.name]));
-
-		// Only show applications/clients that actually appear in audit logs
 		applicationOptions.value = appIdsRes.applicationIds.map((id) => ({
 			label: appMap.get(id) ?? id,
-			value: id,
-		}));
-		clientOptions.value = clientIdsRes.clientIds.map((id) => ({
-			label: clientMap.get(id) ?? id,
 			value: id,
 		}));
 	} catch (error) {
@@ -215,14 +207,8 @@ onMounted(async () => {
 
         <div class="filter-group">
           <label>Client</label>
-          <MultiSelect
+          <ClientFilter
             v-model="filters.clientIds.value"
-            :options="clientOptions"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="All Clients"
-            :maxSelectedLabels="2"
-            filter
             class="filter-input"
           />
         </div>
@@ -306,7 +292,7 @@ onMounted(async () => {
         <Column header="Client" style="width: 13%">
           <template #body="{ data }">
             <span v-if="data.clientId" class="context-tag">
-              {{ clientOptions.find(c => c.value === data.clientId)?.label ?? data.clientId }}
+              {{ getClientLabel(data.clientId) }}
             </span>
             <span v-else class="muted-text">—</span>
           </template>
@@ -392,7 +378,7 @@ onMounted(async () => {
           <div class="detail-row" v-if="selectedLog.clientId">
             <span class="detail-label">Client</span>
             <span class="detail-value">
-              {{ clientOptions.find(c => c.value === selectedLog!.clientId)?.label ?? selectedLog.clientId }}
+              {{ getClientLabel(selectedLog.clientId) }}
             </span>
           </div>
         </div>

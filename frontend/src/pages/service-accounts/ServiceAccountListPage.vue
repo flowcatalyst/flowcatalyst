@@ -6,16 +6,17 @@ import {
 	serviceAccountsApi,
 	type ServiceAccount,
 } from "@/api/service-accounts";
-import { clientsApi, type Client } from "@/api/clients";
 import { useListState } from "@/composables/useListState";
 import { useReturnTo } from "@/composables/useReturnTo";
+import { useClientOptions } from "@/composables/useClientOptions";
+import ClientFilter from "@/components/ClientFilter.vue";
 
 const router = useRouter();
 const { navigateToDetail } = useReturnTo();
 const toast = useToast();
+const { ensureLoaded: ensureClients, getLabel: getClientLabel } = useClientOptions();
 
 const serviceAccounts = ref<ServiceAccount[]>([]);
-const clients = ref<Client[]>([]);
 const loading = ref(true);
 
 const { filters, hasActiveFilters, clearFilters: clearListFilters } = useListState({
@@ -32,13 +33,6 @@ const statusOptions = [
 	{ label: "Active", value: "active" },
 	{ label: "Inactive", value: "inactive" },
 ];
-
-const clientOptions = computed(() => {
-	return clients.value.map((c) => ({
-		label: c.name,
-		value: c.id,
-	}));
-});
 
 const filteredServiceAccounts = computed(() => {
 	let result = serviceAccounts.value;
@@ -57,7 +51,7 @@ const filteredServiceAccounts = computed(() => {
 });
 
 onMounted(async () => {
-	await Promise.all([loadServiceAccounts(), loadClients()]);
+	await Promise.all([loadServiceAccounts(), ensureClients()]);
 });
 
 async function loadServiceAccounts() {
@@ -86,15 +80,6 @@ async function loadServiceAccounts() {
 	}
 }
 
-async function loadClients() {
-	try {
-		const response = await clientsApi.list();
-		clients.value = response.clients;
-	} catch (error) {
-		console.error("Failed to fetch clients:", error);
-	}
-}
-
 function clearFilters() {
 	clearListFilters();
 }
@@ -112,8 +97,7 @@ function editServiceAccount(sa: ServiceAccount) {
 }
 
 function getClientName(clientId: string): string {
-	const client = clients.value.find((c) => c.id === clientId);
-	return client?.name || clientId;
+	return getClientLabel(clientId);
 }
 
 function getClientNames(clientIds: string[]): string {
@@ -159,13 +143,9 @@ function formatDate(dateStr: string | undefined | null) {
 
         <div class="filter-group">
           <label>Client</label>
-          <Select
+          <ClientFilter
             v-model="filters.clientId.value"
-            :options="clientOptions"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="All Clients"
-            :showClear="true"
+            :multiple="false"
             class="filter-input"
           />
         </div>

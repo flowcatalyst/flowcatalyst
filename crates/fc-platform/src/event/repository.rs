@@ -413,10 +413,6 @@ impl EventRepository {
 
     /// Get distinct filter option values from the read model.
     pub async fn read_filter_options(&self) -> Result<EventFilterOptions> {
-        let clients = sqlx::query_scalar::<_, String>(
-            "SELECT DISTINCT client_id FROM msg_events_read WHERE client_id IS NOT NULL ORDER BY client_id"
-        ).fetch_all(&self.pool).await?;
-
         let applications = sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT application FROM msg_events_read WHERE application IS NOT NULL ORDER BY application"
         ).fetch_all(&self.pool).await?;
@@ -433,7 +429,7 @@ impl EventRepository {
             "SELECT DISTINCT type FROM msg_events_read ORDER BY type"
         ).fetch_all(&self.pool).await?;
 
-        Ok(EventFilterOptions { clients, applications, subdomains, aggregates, types })
+        Ok(EventFilterOptions { applications, subdomains, aggregates, types })
     }
 
     pub async fn insert_read_projection(&self, p: &EventRead) -> Result<()> {
