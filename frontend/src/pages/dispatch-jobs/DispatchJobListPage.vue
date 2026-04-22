@@ -377,6 +377,7 @@ function formatCode(code: string | undefined): {
         :loading="loading"
         :lazy="true"
         :paginator="true"
+        :first="page * pageSize"
         :rows="pageSize"
         :totalRecords="totalRecords"
         :rowsPerPageOptions="[50, 100, 250, 500]"

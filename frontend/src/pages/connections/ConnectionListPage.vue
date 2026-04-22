@@ -7,8 +7,10 @@ import {
 	type ConnectionStatus,
 } from "@/api/connections";
 import { useListState } from "@/composables/useListState";
+import { useReturnTo } from "@/composables/useReturnTo";
 
 const router = useRouter();
+const { navigateToDetail } = useReturnTo();
 const connections = ref<Connection[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -156,14 +158,14 @@ function getScopeLabel(conn: Connection) {
               text
               rounded
               v-tooltip="'View'"
-              @click="router.push(`/connections/${data.id}`)"
+              @click="navigateToDetail(`/connections/${data.id}`)"
             />
             <Button
               icon="pi pi-pencil"
               text
               rounded
               v-tooltip="'Edit'"
-              @click="router.push(`/connections/${data.id}`)"
+              @click="navigateToDetail(`/connections/${data.id}`)"
             />
           </template>
         </Column>

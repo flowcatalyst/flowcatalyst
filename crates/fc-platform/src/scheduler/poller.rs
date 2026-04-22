@@ -130,7 +130,7 @@ impl PendingJobPoller {
         }
 
         let job_count = pending_jobs.len();
-        debug!(count = job_count, "Found pending jobs to process");
+        trace!(count = job_count, "Found pending jobs to process");
         metrics::gauge!("scheduler.pending_jobs").set(job_count as f64);
 
         let jobs_by_group = Self::group_by_message_group(pending_jobs);
@@ -141,14 +141,14 @@ impl PendingJobPoller {
 
         for (group, jobs) in jobs_by_group {
             if blocked_groups.contains(&group) {
-                debug!(group = %group, count = jobs.len(), "Message group blocked, skipping");
+                trace!(group = %group, count = jobs.len(), "Message group blocked, skipping");
                 metrics::counter!("scheduler.jobs.blocked_total").increment(jobs.len() as u64);
                 continue;
             }
 
             let dispatchable = Self::filter_by_dispatch_mode(jobs, &blocked_groups);
             if !dispatchable.is_empty() {
-                debug!(group = %group, count = dispatchable.len(), "Submitting jobs for message group");
+                trace!(group = %group, count = dispatchable.len(), "Submitting jobs for message group");
                 self.group_dispatcher.submit_jobs(&group, dispatchable);
             }
         }

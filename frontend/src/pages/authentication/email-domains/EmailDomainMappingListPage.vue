@@ -8,8 +8,10 @@ import {
 } from "@/api/email-domain-mappings";
 import { getErrorMessage } from "@/utils/errors";
 import { useListState } from "@/composables/useListState";
+import { useReturnTo } from "@/composables/useReturnTo";
 
 const router = useRouter();
+const { navigateToDetail } = useReturnTo();
 const toast = useToast();
 const mappings = ref<EmailDomainMapping[]>([]);
 const loading = ref(true);
@@ -187,7 +189,7 @@ function formatDate(dateString: string) {
                 text
                 rounded
                 v-tooltip="'View Details'"
-                @click="router.push(`/authentication/email-domain-mappings/${data.id}`)"
+                @click="navigateToDetail(`/authentication/email-domain-mappings/${data.id}`)"
               />
               <Button
                 icon="pi pi-trash"

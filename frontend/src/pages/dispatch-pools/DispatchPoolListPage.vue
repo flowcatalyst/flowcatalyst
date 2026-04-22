@@ -7,8 +7,10 @@ import {
 	type DispatchPoolStatus,
 } from "@/api/dispatch-pools";
 import { useListState } from "@/composables/useListState";
+import { useReturnTo } from "@/composables/useReturnTo";
 
 const router = useRouter();
+const { navigateToDetail } = useReturnTo();
 const pools = ref<DispatchPool[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -163,14 +165,14 @@ function getScopeLabel(pool: DispatchPool) {
               text
               rounded
               v-tooltip="'View'"
-              @click="router.push(`/dispatch-pools/${data.id}`)"
+              @click="navigateToDetail(`/dispatch-pools/${data.id}`)"
             />
             <Button
               icon="pi pi-pencil"
               text
               rounded
               v-tooltip="'Edit'"
-              @click="router.push(`/dispatch-pools/${data.id}`)"
+              @click="navigateToDetail(`/dispatch-pools/${data.id}`)"
             />
           </template>
         </Column>

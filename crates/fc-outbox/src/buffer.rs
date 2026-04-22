@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::fmt;
 use tokio::sync::{Mutex, mpsc};
 use fc_common::OutboxItem;
-use tracing::{debug, warn};
+use tracing::warn;
 
 /// Error returned when the buffer is full.
 ///
@@ -95,7 +95,6 @@ impl GlobalBuffer {
             });
         }
         buffer.push_back(item);
-        debug!("Item added to global buffer, size: {}", buffer.len());
         Ok(())
     }
 
@@ -109,7 +108,6 @@ impl GlobalBuffer {
                 batch.push(item);
             }
         }
-        debug!("Drained {} items from global buffer", batch.len());
         batch
     }
 

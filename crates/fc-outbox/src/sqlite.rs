@@ -11,7 +11,7 @@ use anyhow::Result;
 use sqlx::{SqlitePool, Row};
 use chrono::{DateTime, Utc};
 use std::time::Duration;
-use tracing::{info, debug};
+use tracing::{debug, info, trace};
 
 /// SQLite implementation of OutboxRepository
 pub struct SqliteOutboxRepository {
@@ -108,7 +108,7 @@ impl OutboxRepository for SqliteOutboxRepository {
             items.push(self.parse_row(row, item_type)?);
         }
 
-        debug!(table = %table, item_type = %item_type, count = items.len(), "Fetched pending items");
+        trace!(table = %table, item_type = %item_type, count = items.len(), "Fetched pending items");
         Ok(items)
     }
 

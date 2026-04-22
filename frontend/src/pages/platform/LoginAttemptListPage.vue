@@ -179,6 +179,7 @@ onMounted(async () => {
         :value="attempts"
         :loading="loading"
         :paginator="true"
+        :first="page * pageSize"
         :rows="pageSize"
         :totalRecords="totalRecords"
         :rowsPerPageOptions="[50, 100, 250, 500]"

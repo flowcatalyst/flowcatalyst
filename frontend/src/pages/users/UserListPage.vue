@@ -3,11 +3,13 @@ import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import { useListState } from "@/composables/useListState";
+import { useReturnTo } from "@/composables/useReturnTo";
 import { usersApi, type User } from "@/api/users";
 import { clientsApi, type Client } from "@/api/clients";
 import { rolesApi, type Role } from "@/api/roles";
 
 const router = useRouter();
+const { navigateToDetail } = useReturnTo();
 const toast = useToast();
 
 const users = ref<User[]>([]);
@@ -131,11 +133,11 @@ function addUser() {
 }
 
 function viewUser(user: User) {
-	router.push(`/users/${user.id}`);
+	navigateToDetail(`/users/${user.id}`);
 }
 
 function editUser(user: User) {
-	router.push(`/users/${user.id}?edit=true`);
+	navigateToDetail(`/users/${user.id}`, { edit: "true" });
 }
 
 function getClientName(clientId: string | null): string {
@@ -271,6 +273,7 @@ function formatDate(dateStr: string | undefined | null) {
         :value="users"
         :loading="loading"
         :paginator="true"
+        :first="page * pageSize"
         :rows="pageSize"
         :totalRecords="totalRecords"
         :rowsPerPageOptions="[50, 100, 250, 500]"

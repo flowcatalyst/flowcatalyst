@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::RwLock;
 use fc_common::OutboxStatus;
-use tracing::{info, debug, warn, error};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::repository::OutboxRepository;
 use crate::buffer::{GlobalBuffer, GlobalBufferConfig};
@@ -504,7 +504,7 @@ impl EnhancedOutboxProcessor {
         let available_slots = self.config.max_in_flight.saturating_sub(current_in_flight);
 
         if available_slots < self.config.poll_batch_size as u64 {
-            debug!(
+            trace!(
                 "Skipping poll - insufficient capacity (in_flight: {}, max: {})",
                 current_in_flight, self.config.max_in_flight
             );
@@ -517,7 +517,7 @@ impl EnhancedOutboxProcessor {
             return Ok(());
         }
 
-        debug!("Polled {} items from outbox", items.len());
+        trace!("Polled {} items from outbox", items.len());
 
         // Mark as in-progress
         let ids: Vec<String> = items.iter().map(|i| i.id.clone()).collect();

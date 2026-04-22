@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { useRouter, useRoute } from "vue-router";
+import { useRoute } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import { useConfirm } from "primevue/useconfirm";
 import {
@@ -14,9 +14,10 @@ import type { PrincipalScope } from "@/api/users";
 import { rolesApi, type Role } from "@/api/roles";
 import { clientsApi, type Client } from "@/api/clients";
 import { getErrorMessage } from "@/utils/errors";
+import { useReturnTo } from "@/composables/useReturnTo";
 
-const router = useRouter();
 const route = useRoute();
+const { returnTo } = useReturnTo();
 const toast = useToast();
 const confirm = useConfirm();
 
@@ -118,7 +119,7 @@ async function loadServiceAccount() {
 			life: 5000,
 		});
 		console.error("Failed to fetch service account:", error);
-		router.push("/identity/service-accounts");
+		returnTo("/identity/service-accounts");
 	}
 }
 
@@ -425,7 +426,7 @@ function formatDate(dateStr: string | null | undefined) {
 }
 
 function goBack() {
-	router.push("/identity/service-accounts");
+	returnTo("/identity/service-accounts");
 }
 
 async function deleteServiceAccount() {
@@ -438,7 +439,7 @@ async function deleteServiceAccount() {
 			detail: "Service account deleted successfully",
 			life: 3000,
 		});
-		router.push("/identity/service-accounts");
+		returnTo("/identity/service-accounts");
 	} catch (e: unknown) {
 		toast.add({
 			severity: "error",

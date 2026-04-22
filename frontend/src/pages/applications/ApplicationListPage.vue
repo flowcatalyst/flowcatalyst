@@ -6,8 +6,10 @@ import {
 	type Application,
 } from "@/api/applications";
 import { useListState } from "@/composables/useListState";
+import { useReturnTo } from "@/composables/useReturnTo";
 
 const router = useRouter();
+const { navigateToDetail } = useReturnTo();
 const applications = ref<Application[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -177,14 +179,14 @@ function formatDate(dateString: string) {
               text
               rounded
               v-tooltip="'View'"
-              @click="router.push(`/applications/${data.id}`)"
+              @click="navigateToDetail(`/applications/${data.id}`)"
             />
             <Button
               icon="pi pi-pencil"
               text
               rounded
               v-tooltip="'Edit'"
-              @click="router.push(`/applications/${data.id}`)"
+              @click="navigateToDetail(`/applications/${data.id}`)"
             />
           </template>
         </Column>

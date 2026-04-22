@@ -10,7 +10,7 @@ use anyhow::Result;
 use sqlx::{MySqlPool, Row};
 use chrono::{DateTime, Utc};
 use std::time::Duration;
-use tracing::{info, debug};
+use tracing::{debug, info, trace};
 
 /// MySQL implementation of OutboxRepository
 pub struct MySqlOutboxRepository {
@@ -97,7 +97,7 @@ impl OutboxRepository for MySqlOutboxRepository {
             items.push(self.parse_row(row, item_type)?);
         }
 
-        debug!(table = %table, item_type = %item_type, count = items.len(), "Fetched pending items");
+        trace!(table = %table, item_type = %item_type, count = items.len(), "Fetched pending items");
         Ok(items)
     }
 

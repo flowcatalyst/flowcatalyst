@@ -7,8 +7,10 @@ import {
 	type SubscriptionStatus,
 } from "@/api/subscriptions";
 import { useListState } from "@/composables/useListState";
+import { useReturnTo } from "@/composables/useReturnTo";
 
 const router = useRouter();
+const { navigateToDetail } = useReturnTo();
 const subscriptions = ref<Subscription[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -231,14 +233,14 @@ function getEventTypesLabel(sub: Subscription) {
               text
               rounded
               v-tooltip="'View'"
-              @click="router.push(`/subscriptions/${data.id}`)"
+              @click="navigateToDetail(`/subscriptions/${data.id}`)"
             />
             <Button
               icon="pi pi-pencil"
               text
               rounded
               v-tooltip="'Edit'"
-              @click="router.push(`/subscriptions/${data.id}`)"
+              @click="navigateToDetail(`/subscriptions/${data.id}`)"
             />
           </template>
         </Column>

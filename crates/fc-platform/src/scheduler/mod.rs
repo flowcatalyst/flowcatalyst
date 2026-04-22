@@ -23,7 +23,7 @@ use sqlx::PgPool;
 use thiserror::Error;
 use tokio::sync::{RwLock, Semaphore};
 use tokio::time::interval;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, trace, warn};
 
 pub mod auth;
 pub mod dispatcher;
@@ -219,7 +219,7 @@ impl MessageGroupDispatcher {
             let success = this.dispatch_single_job(&job).await;
 
             if success {
-                debug!(job_id = %job.id, message_group = %message_group, "Successfully dispatched job");
+                trace!(job_id = %job.id, message_group = %message_group, "Successfully dispatched job");
             } else {
                 warn!(job_id = %job.id, message_group = %message_group, "Failed to dispatch job");
             }
@@ -264,7 +264,7 @@ impl MessageGroupDispatcher {
             Err(e) => {
                 let error_msg = format!("{}", e);
                 if error_msg.contains("Deduplicated") || error_msg.contains("deduplicated") {
-                    debug!(job_id = %job.id, "Job was deduplicated (already dispatched)");
+                    trace!(job_id = %job.id, "Job was deduplicated (already dispatched)");
                     true
                 } else {
                     warn!(job_id = %job.id, error = %error_msg, "Failed to dispatch job");

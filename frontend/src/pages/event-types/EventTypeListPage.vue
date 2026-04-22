@@ -3,11 +3,13 @@ import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import { useEventTypes } from "@/composables/useEventTypes";
+import { useReturnTo } from "@/composables/useReturnTo";
 import { eventTypesApi } from "@/api/event-types";
 import type { EventType } from "@/api/event-types";
 import { exportSchemasAsZip } from "@/utils/schema-export";
 
 const router = useRouter();
+const { navigateToDetail } = useReturnTo();
 const toast = useToast();
 const syncing = ref(false);
 
@@ -32,7 +34,7 @@ const {
 onMounted(() => initialize());
 
 function viewEventType(eventType: EventType) {
-	router.push(`/event-types/${eventType.id}`);
+	navigateToDetail(`/event-types/${eventType.id}`);
 }
 
 async function syncPlatformEvents() {

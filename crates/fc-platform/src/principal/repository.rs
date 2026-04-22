@@ -316,9 +316,9 @@ impl PrincipalRepository {
             if !q.is_empty() {
                 push_where(&mut qb, &mut has_where);
                 let pattern = format!("%{}%", q);
-                qb.push("(p.name LIKE ")
+                qb.push("(p.name ILIKE ")
                     .push_bind(pattern.clone())
-                    .push(" OR p.email LIKE ")
+                    .push(" OR p.email ILIKE ")
                     .push_bind(pattern)
                     .push(")");
             }

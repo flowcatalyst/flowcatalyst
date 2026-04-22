@@ -115,6 +115,7 @@ function truncateId(id: string): string {
         :loading="loading"
         :lazy="true"
         :paginator="true"
+        :first="page * pageSize"
         :rows="pageSize"
         :totalRecords="totalRecords"
         :rowsPerPageOptions="[10, 20, 50]"

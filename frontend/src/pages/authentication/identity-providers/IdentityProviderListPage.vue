@@ -8,8 +8,10 @@ import {
 } from "@/api/identity-providers";
 import { getErrorMessage } from "@/utils/errors";
 import { useListState } from "@/composables/useListState";
+import { useReturnTo } from "@/composables/useReturnTo";
 
 const router = useRouter();
+const { navigateToDetail } = useReturnTo();
 const toast = useToast();
 const providers = ref<IdentityProvider[]>([]);
 const loading = ref(true);
@@ -189,7 +191,7 @@ function formatDate(dateString: string) {
                 text
                 rounded
                 v-tooltip="'View Details'"
-                @click="router.push(`/authentication/identity-providers/${data.id}`)"
+                @click="navigateToDetail(`/authentication/identity-providers/${data.id}`)"
               />
               <Button
                 icon="pi pi-trash"

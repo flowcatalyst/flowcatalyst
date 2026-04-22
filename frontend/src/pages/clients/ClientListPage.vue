@@ -2,11 +2,13 @@
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useListState } from "@/composables/useListState";
+import { useReturnTo } from "@/composables/useReturnTo";
 import { clientsApi, type Client } from "@/api/clients";
 
 const PAGE_SIZE = 100;
 
 const router = useRouter();
+const { navigateToDetail } = useReturnTo();
 const clients = ref<Client[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -131,14 +133,14 @@ function formatDate(dateString: string) {
               text
               rounded
               v-tooltip="'View'"
-              @click="router.push(`/clients/${data.id}`)"
+              @click="navigateToDetail(`/clients/${data.id}`)"
             />
             <Button
               icon="pi pi-pencil"
               text
               rounded
               v-tooltip="'Edit'"
-              @click="router.push(`/clients/${data.id}`)"
+              @click="navigateToDetail(`/clients/${data.id}`)"
             />
           </template>
         </Column>

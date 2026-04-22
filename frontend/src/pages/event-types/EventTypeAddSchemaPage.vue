@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import {
 	eventTypesApi,
 	type EventType,
 	type SchemaType,
 } from "@/api/event-types";
+import { useReturnTo } from "@/composables/useReturnTo";
 
 const route = useRoute();
-const router = useRouter();
+const { returnTo, forwardFrom } = useReturnTo();
 const toast = useToast();
 
 const loading = ref(true);
@@ -116,9 +117,9 @@ function suggestNextVersion() {
 
 function goBack() {
 	if (eventType.value) {
-		router.push(`/event-types/${eventType.value.id}`);
+		forwardFrom(`/event-types/${eventType.value.id}`);
 	} else {
-		router.push("/event-types");
+		returnTo("/event-types");
 	}
 }
 
@@ -141,7 +142,7 @@ async function onSubmit() {
 			detail: "Schema added",
 			life: 3000,
 		});
-		router.push(`/event-types/${eventType.value.id}`);
+		forwardFrom(`/event-types/${eventType.value.id}`);
 	} catch (e) {
 		errorMessage.value =
 			e instanceof Error ? e.message : "Failed to add schema";

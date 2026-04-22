@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { useRouter, useRoute } from "vue-router";
+import { useRoute } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import {
 	usersApi,
@@ -15,9 +15,10 @@ import {
 import { clientsApi, type Client } from "@/api/clients";
 import { rolesApi, type Role } from "@/api/roles";
 import { getErrorMessage } from "@/utils/errors";
+import { useReturnTo } from "@/composables/useReturnTo";
 
-const router = useRouter();
 const route = useRoute();
+const { returnTo } = useReturnTo();
 const toast = useToast();
 
 const userId = route.params['id'] as string;
@@ -206,7 +207,7 @@ async function loadUser() {
 			life: 5000,
 		});
 		console.error("Failed to fetch user:", error);
-		router.push("/users");
+		returnTo("/users");
 	}
 }
 
@@ -439,7 +440,7 @@ async function deleteUser() {
 			detail: `User "${user.value?.name}" deleted`,
 			life: 3000,
 		});
-		router.push("/users");
+		returnTo("/users");
 	} catch (e: unknown) {
 		toast.add({
 			severity: "error",
@@ -692,7 +693,7 @@ function formatDate(dateStr: string | null | undefined) {
 }
 
 function goBack() {
-	router.push("/users");
+	returnTo("/users");
 }
 </script>
 

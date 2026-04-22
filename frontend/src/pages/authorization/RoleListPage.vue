@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { useRouter } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import { useListState } from "@/composables/useListState";
+import { useReturnTo } from "@/composables/useReturnTo";
 import {
 	rolesApi,
 	type Role,
@@ -10,7 +10,7 @@ import {
 	type ApplicationOption,
 } from "@/api/roles";
 
-const router = useRouter();
+const { navigateToDetail } = useReturnTo();
 const toast = useToast();
 
 // Data
@@ -112,7 +112,7 @@ async function loadApplications() {
 }
 
 function viewRole(role: Role) {
-	router.push(`/authorization/roles/${encodeURIComponent(role.name)}`);
+	navigateToDetail(`/authorization/roles/${encodeURIComponent(role.name)}`);
 }
 
 function openCreateDialog() {

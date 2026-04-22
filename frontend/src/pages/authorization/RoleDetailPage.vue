@@ -3,9 +3,11 @@ import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import { rolesApi, type Role, type RoleSource } from "@/api/roles";
+import { useReturnTo } from "@/composables/useReturnTo";
 
 const route = useRoute();
 const router = useRouter();
+const { returnTo } = useReturnTo();
 const toast = useToast();
 
 const role = ref<Role | null>(null);
@@ -40,7 +42,7 @@ async function loadRole() {
 }
 
 function goBack() {
-	router.push("/authorization/roles");
+	returnTo("/authorization/roles");
 }
 
 function editRole() {

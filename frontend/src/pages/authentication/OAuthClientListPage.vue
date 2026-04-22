@@ -5,8 +5,10 @@ import { useToast } from "primevue/usetoast";
 import { oauthClientsApi, type OAuthClient } from "@/api/oauth-clients";
 import { getErrorMessage } from "@/utils/errors";
 import { useListState } from "@/composables/useListState";
+import { useReturnTo } from "@/composables/useReturnTo";
 
 const router = useRouter();
+const { navigateToDetail } = useReturnTo();
 const toast = useToast();
 const clients = ref<OAuthClient[]>([]);
 const loading = ref(true);
@@ -220,7 +222,7 @@ function formatDate(dateString: string) {
                 text
                 rounded
                 v-tooltip="'View Details'"
-                @click="router.push(`/authentication/oauth-clients/${data.id}`)"
+                @click="navigateToDetail(`/authentication/oauth-clients/${data.id}`)"
               />
               <Button
                 :icon="data.active ? 'pi pi-ban' : 'pi pi-check-circle'"

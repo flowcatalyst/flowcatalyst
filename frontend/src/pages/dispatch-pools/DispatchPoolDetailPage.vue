@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import { useConfirm } from "primevue/useconfirm";
 import { useToast } from "primevue/usetoast";
 import {
@@ -8,9 +8,10 @@ import {
 	type DispatchPool,
 	type DispatchPoolStatus,
 } from "@/api/dispatch-pools";
+import { useReturnTo } from "@/composables/useReturnTo";
 
 const route = useRoute();
-const router = useRouter();
+const { returnTo } = useReturnTo();
 const confirm = useConfirm();
 const toast = useToast();
 
@@ -171,7 +172,7 @@ async function deletePool() {
 			detail: "Pool deleted",
 			life: 3000,
 		});
-		router.push("/dispatch-pools");
+		returnTo("/dispatch-pools");
 	} catch {
 		toast.add({
 			severity: "error",
@@ -221,7 +222,7 @@ function getScopeLabel(p: DispatchPool) {
             icon="pi pi-arrow-left"
             text
             severity="secondary"
-            @click="router.push('/dispatch-pools')"
+            @click="returnTo('/dispatch-pools')"
             v-tooltip="'Back to list'"
           />
           <div class="header-text">

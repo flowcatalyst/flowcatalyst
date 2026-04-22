@@ -10,7 +10,7 @@ use anyhow::Result;
 use sqlx::{PgPool, Row};
 use chrono::{DateTime, Utc};
 use std::time::Duration;
-use tracing::{info, debug};
+use tracing::{debug, info, trace};
 
 /// PostgreSQL implementation of OutboxRepository
 pub struct PostgresOutboxRepository {
@@ -88,7 +88,7 @@ impl OutboxRepository for PostgresOutboxRepository {
             items.push(self.parse_row(row, item_type)?);
         }
 
-        debug!(
+        trace!(
             table = %table,
             item_type = %item_type,
             count = items.len(),

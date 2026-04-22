@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::{Mutex, oneshot};
 use fc_common::OutboxItem;
-use tracing::{debug, error, warn, info};
+use tracing::{error, info, trace, warn};
 use async_trait::async_trait;
 
 /// Message dispatch result
@@ -170,7 +170,7 @@ impl MessageGroupProcessor {
         }
 
         queue.push_back(TrackedMessage::new(item));
-        debug!(
+        trace!(
             "Item enqueued for group {}, queue depth: {}",
             self.group_id,
             queue.len()
@@ -267,7 +267,7 @@ impl MessageGroupProcessor {
             tracked.increment_attempt();
         }
 
-        debug!(
+        trace!(
             "Processing batch of {} items in group {}",
             batch.len(), self.group_id
         );
@@ -287,7 +287,7 @@ impl MessageGroupProcessor {
         for (tracked, item_result) in batch.into_iter().zip(result.results.iter()) {
             match &item_result.result {
                 DispatchResult::Success => {
-                    debug!(
+                    trace!(
                         "Item {} dispatched successfully in group {}",
                         tracked.item.id, self.group_id
                     );
@@ -298,7 +298,7 @@ impl MessageGroupProcessor {
 
                     if *retryable && tracked.attempt < self.config.max_retries {
                         failed_to_requeue.push(tracked);
-                        debug!(
+                        trace!(
                             "Item {} will be re-queued for retry in group {}",
                             item_result.item_id, self.group_id
                         );

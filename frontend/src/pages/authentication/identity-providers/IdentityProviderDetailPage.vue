@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { useRouter, useRoute } from "vue-router";
+import { useRoute } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import {
 	identityProvidersApi,
 	type IdentityProvider,
 } from "@/api/identity-providers";
 import { getErrorMessage } from "@/utils/errors";
+import { useReturnTo } from "@/composables/useReturnTo";
 
-const router = useRouter();
 const route = useRoute();
+const { returnTo } = useReturnTo();
 const toast = useToast();
 
 const provider = ref<IdentityProvider | null>(null);
@@ -164,7 +165,7 @@ async function deleteProvider() {
 			detail: `Identity provider "${provider.value.name}" deleted`,
 			life: 3000,
 		});
-		router.push("/authentication/identity-providers");
+		returnTo("/authentication/identity-providers");
 	} catch (e: unknown) {
 		toast.add({
 			severity: "error",
@@ -195,7 +196,7 @@ function getTypeSeverity(type: string) {
           icon="pi pi-arrow-left"
           text
           class="back-button"
-          @click="router.push('/authentication/identity-providers')"
+          @click="returnTo('/authentication/identity-providers')"
         />
         <h1 class="page-title">{{ provider?.name || 'Identity Provider Details' }}</h1>
         <p class="page-subtitle" v-if="provider">

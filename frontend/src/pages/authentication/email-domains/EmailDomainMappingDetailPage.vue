@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { useRouter, useRoute } from "vue-router";
+import { useRoute } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import {
 	emailDomainMappingsApi,
@@ -14,9 +14,10 @@ import {
 import { clientsApi, type Client } from "@/api/clients";
 import { rolesApi, type Role } from "@/api/roles";
 import { getErrorMessage } from "@/utils/errors";
+import { useReturnTo } from "@/composables/useReturnTo";
 
-const router = useRouter();
 const route = useRoute();
+const { returnTo } = useReturnTo();
 const toast = useToast();
 
 const mapping = ref<EmailDomainMapping | null>(null);
@@ -264,7 +265,7 @@ async function deleteMapping() {
 			detail: `Email domain mapping for "${mapping.value.emailDomain}" deleted`,
 			life: 3000,
 		});
-		router.push("/authentication/email-domain-mappings");
+		returnTo("/authentication/email-domain-mappings");
 	} catch (e: unknown) {
 		toast.add({
 			severity: "error",
@@ -312,7 +313,7 @@ function getPrimaryClientName(): string {
           icon="pi pi-arrow-left"
           text
           class="back-button"
-          @click="router.push('/authentication/email-domain-mappings')"
+          @click="returnTo('/authentication/email-domain-mappings')"
         />
         <h1 class="page-title">{{ mapping?.emailDomain || 'Email Domain Mapping' }}</h1>
         <p class="page-subtitle" v-if="provider">Identity Provider: {{ provider.name }}</p>

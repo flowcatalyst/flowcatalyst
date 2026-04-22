@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import { useConfirm } from "primevue/useconfirm";
 import { useToast } from "primevue/usetoast";
 import {
@@ -9,9 +9,10 @@ import {
 	type SpecVersion,
 } from "@/api/event-types";
 import SchemaViewerDialog from "./SchemaViewerDialog.vue";
+import { useReturnTo } from "@/composables/useReturnTo";
 
 const route = useRoute();
-const router = useRouter();
+const { returnTo, forwardFrom } = useReturnTo();
 const confirm = useConfirm();
 const toast = useToast();
 
@@ -255,7 +256,7 @@ async function deleteEventType() {
 			detail: "Event type deleted",
 			life: 3000,
 		});
-		router.push("/event-types");
+		returnTo("/event-types");
 	} catch {
 		toast.add({
 			severity: "error",
@@ -281,7 +282,7 @@ async function deleteEventType() {
             icon="pi pi-arrow-left"
             text
             severity="secondary"
-            @click="router.push('/event-types')"
+            @click="returnTo('/event-types')"
             v-tooltip="'Back to list'"
           />
           <div class="header-text">
@@ -364,7 +365,7 @@ async function deleteEventType() {
             icon="pi pi-plus"
             label="Add Schema"
             text
-            @click="router.push(`/event-types/${eventType.id}/add-schema`)"
+            @click="forwardFrom(`/event-types/${eventType.id}/add-schema`)"
           />
         </div>
         <div class="card-content">
@@ -375,7 +376,7 @@ async function deleteEventType() {
               v-if="eventType.status === 'CURRENT'"
               label="Add First Schema"
               icon="pi pi-plus"
-              @click="router.push(`/event-types/${eventType.id}/add-schema`)"
+              @click="forwardFrom(`/event-types/${eventType.id}/add-schema`)"
             />
           </div>
 

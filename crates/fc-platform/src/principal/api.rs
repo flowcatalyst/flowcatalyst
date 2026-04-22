@@ -702,7 +702,14 @@ pub async fn list_principals(
     }
 
     let total = filtered.len();
-    Ok(Json(PrincipalListResponse { principals: filtered, total }))
+    let offset = query.pagination.offset() as usize;
+    let limit = query.pagination.limit() as usize;
+    let principals: Vec<PrincipalResponse> = filtered
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .collect();
+    Ok(Json(PrincipalListResponse { principals, total }))
 }
 
 /// Update principal

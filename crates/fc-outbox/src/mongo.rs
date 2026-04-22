@@ -13,7 +13,7 @@ use mongodb::options::{FindOptions, IndexOptions};
 use chrono::{DateTime, Utc};
 use futures::stream::TryStreamExt;
 use std::time::Duration;
-use tracing::{info, debug};
+use tracing::{debug, info, trace};
 
 /// MongoDB implementation of OutboxRepository
 pub struct MongoOutboxRepository {
@@ -106,7 +106,7 @@ impl OutboxRepository for MongoOutboxRepository {
             items.push(self.parse_doc(&doc, item_type)?);
         }
 
-        debug!(
+        trace!(
             collection = %self.table_config.table_for_type(item_type),
             item_type = %item_type,
             count = items.len(),

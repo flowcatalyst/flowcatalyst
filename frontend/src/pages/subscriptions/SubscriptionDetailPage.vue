@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import { useConfirm } from "primevue/useconfirm";
 import { useToast } from "primevue/usetoast";
 import {
@@ -9,9 +9,10 @@ import {
 	type SubscriptionStatus,
 	type SubscriptionMode,
 } from "@/api/subscriptions";
+import { useReturnTo } from "@/composables/useReturnTo";
 
 const route = useRoute();
-const router = useRouter();
+const { returnTo } = useReturnTo();
 const confirm = useConfirm();
 const toast = useToast();
 
@@ -196,7 +197,7 @@ async function deleteSubscription() {
 			detail: "Subscription deleted",
 			life: 3000,
 		});
-		router.push("/subscriptions");
+		returnTo("/subscriptions");
 	} catch {
 		toast.add({
 			severity: "error",
@@ -257,7 +258,7 @@ function getScopeLabel(sub: Subscription) {
             icon="pi pi-arrow-left"
             text
             severity="secondary"
-            @click="router.push('/subscriptions')"
+            @click="returnTo('/subscriptions')"
             v-tooltip="'Back to list'"
           />
           <div class="header-text">

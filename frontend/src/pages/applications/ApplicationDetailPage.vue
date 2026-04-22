@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import { useConfirm } from "primevue/useconfirm";
 import { useToast } from "primevue/usetoast";
 import {
@@ -9,9 +9,10 @@ import {
 	type ServiceAccountCredentials,
 } from "@/api/applications";
 import { getErrorMessage } from "@/utils/errors";
+import { useReturnTo } from "@/composables/useReturnTo";
 
 const route = useRoute();
-const router = useRouter();
+const { returnTo } = useReturnTo();
 const confirm = useConfirm();
 const toast = useToast();
 
@@ -197,7 +198,7 @@ async function deleteApplication() {
 			detail: "Application deleted",
 			life: 3000,
 		});
-		router.push("/applications");
+		returnTo("/applications");
 	} catch {
 		toast.add({
 			severity: "error",
@@ -274,7 +275,7 @@ function formatDate(dateString: string) {
             icon="pi pi-arrow-left"
             text
             severity="secondary"
-            @click="router.push('/applications')"
+            @click="returnTo('/applications')"
             v-tooltip="'Back to list'"
           />
           <div class="header-text">

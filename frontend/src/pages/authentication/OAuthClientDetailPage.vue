@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { useRouter, useRoute } from "vue-router";
+import { useRoute } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import { oauthClientsApi, type OAuthClient } from "@/api/oauth-clients";
 import { applicationsApi, type Application } from "@/api/applications";
 import { getErrorMessage } from "@/utils/errors";
+import { useReturnTo } from "@/composables/useReturnTo";
 
-const router = useRouter();
 const route = useRoute();
+const { returnTo } = useReturnTo();
 const toast = useToast();
 
 const client = ref<OAuthClient | null>(null);
@@ -336,7 +337,7 @@ function getClientTypeSeverity(clientType: string) {
           icon="pi pi-arrow-left"
           text
           class="back-button"
-          @click="router.push('/authentication/oauth-clients')"
+          @click="returnTo('/authentication/oauth-clients')"
         />
         <h1 class="page-title">{{ client?.clientName || 'OAuth Client Details' }}</h1>
         <p class="page-subtitle" v-if="client">

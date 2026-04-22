@@ -8,8 +8,10 @@ import {
 } from "@/api/service-accounts";
 import { clientsApi, type Client } from "@/api/clients";
 import { useListState } from "@/composables/useListState";
+import { useReturnTo } from "@/composables/useReturnTo";
 
 const router = useRouter();
+const { navigateToDetail } = useReturnTo();
 const toast = useToast();
 
 const serviceAccounts = ref<ServiceAccount[]>([]);
@@ -102,11 +104,11 @@ function addServiceAccount() {
 }
 
 function viewServiceAccount(sa: ServiceAccount) {
-	router.push(`/identity/service-accounts/${sa.id}`);
+	navigateToDetail(`/identity/service-accounts/${sa.id}`);
 }
 
 function editServiceAccount(sa: ServiceAccount) {
-	router.push(`/identity/service-accounts/${sa.id}?edit=true`);
+	navigateToDetail(`/identity/service-accounts/${sa.id}`, { edit: "true" });
 }
 
 function getClientName(clientId: string): string {

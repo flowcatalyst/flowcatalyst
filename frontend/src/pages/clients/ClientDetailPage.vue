@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import { useConfirm } from "primevue/useconfirm";
 import { useToast } from "primevue/usetoast";
 import { clientsApi, type Client, type ClientApplication } from "@/api/clients";
+import { useReturnTo } from "@/composables/useReturnTo";
 
 const route = useRoute();
-const router = useRouter();
+const { returnTo } = useReturnTo();
 const confirm = useConfirm();
 const toast = useToast();
 
@@ -263,7 +264,7 @@ function formatDate(dateString: string) {
             icon="pi pi-arrow-left"
             text
             severity="secondary"
-            @click="router.push('/clients')"
+            @click="returnTo('/clients')"
             v-tooltip="'Back to list'"
           />
           <div class="header-text">
