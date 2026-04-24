@@ -290,6 +290,9 @@ async fn main() -> Result<()> {
     fc_platform::shared::database::run_migrations(&pg_pool).await
         .map_err(|e| anyhow::anyhow!("PostgreSQL migrations failed: {}", e))?;
 
+    fc_platform::shared::database::seed_builtin_roles(&pg_pool).await
+        .map_err(|e| anyhow::anyhow!("Built-in role seeding failed: {}", e))?;
+
     // Referential-integrity scan — warns when any aggregate delete path has
     // left orphan junction rows behind. Non-fatal; operator-visible.
     fc_platform::shared::integrity_scan::run(&pg_pool).await;

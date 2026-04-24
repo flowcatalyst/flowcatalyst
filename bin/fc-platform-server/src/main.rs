@@ -69,6 +69,9 @@ async fn main() -> Result<()> {
     fc_platform::shared::database::run_migrations(&pg_pool).await
         .map_err(|e| anyhow::anyhow!("PostgreSQL migrations failed: {}", e))?;
 
+    fc_platform::shared::database::seed_builtin_roles(&pg_pool).await
+        .map_err(|e| anyhow::anyhow!("Built-in role seeding failed: {}", e))?;
+
     // Referential-integrity scan — warns about orphaned junction rows.
     fc_platform::shared::integrity_scan::run(&pg_pool).await;
 

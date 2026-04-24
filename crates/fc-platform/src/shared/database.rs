@@ -248,3 +248,40 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
     info!("All database migrations completed");
     Ok(())
 }
+
+// ── Built-in role seeding ────────────────────────────────────────────────────
+
+/// Ensure the platform's built-in roles (defined in `role::entity::roles::all()`)
+/// exist in `iam_roles`. Called on every startup.
+///
+/// **Upsert-only, no reconciliation:** inserts missing rows, leaves existing
+/// rows alone. If an admin renames or deletes a built-in role at runtime, this
+/// won't resurrect it — that's intentional. Built-in role definitions in code
+/// are the platform's **initial state**, not an authoritative mirror.
+///
+/// Permissions for newly-inserted roles are also seeded from code.
+pub async fn seed_builtin_roles(pool: &PgPool) -> Result<(), sqlx::Error> {
+    use crate::role::repository::RoleRepository;
+    use crate::role::entity::roles;
+
+    let repo = RoleRepository::new(pool);
+    let mut inserted = 0;
+
+    for role in roles::all() {
+        if repo.find_by_name(&role.name).await
+            .map_err(|e| sqlx::Error::Protocol(format!("find_by_name({}): {}", role.name, e)))?
+            .is_some()
+        {
+            continue;
+        }
+        repo.insert(&role).await
+            .map_err(|e| sqlx::Error::Protocol(format!("insert({}): {}", role.name, e)))?;
+        info!(role = %role.name, "Seeded built-in role");
+        inserted += 1;
+    }
+
+    if inserted > 0 {
+        info!(count = inserted, "Built-in role seeding complete");
+    }
+    Ok(())
+}

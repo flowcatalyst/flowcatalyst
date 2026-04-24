@@ -524,7 +524,7 @@ pub mod roles {
 
     /// PLATFORM_ADMIN — manages clients, applications, and platform configuration
     pub fn platform_admin() -> AuthRole {
-        AuthRole::new("platform", "platform-admin", "Platform Admin")
+        AuthRole::new("platform", "admin", "Platform Admin")
             .with_description("Manages clients, applications, and platform configuration")
             .with_source(RoleSource::Code)
             .with_permissions([
@@ -543,7 +543,7 @@ pub mod roles {
 
     /// PLATFORM_ADMIN_READONLY — view-only access to clients, applications, config
     pub fn platform_admin_readonly() -> AuthRole {
-        AuthRole::new("platform", "platform-admin-readonly", "Platform Admin Read-Only")
+        AuthRole::new("platform", "admin-readonly", "Platform Admin Read-Only")
             .with_description("View-only access to clients, applications, and platform configuration")
             .with_source(RoleSource::Code)
             .with_permissions([

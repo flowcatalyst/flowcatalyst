@@ -194,7 +194,6 @@ export function createRoutePermissionGuard() {
 		// Platform admins bypass all permission checks
 		const adminRoles = [
 			"platform:super-admin",
-			"platform:platform-admin",
 			"platform:admin",
 		];
 		if (

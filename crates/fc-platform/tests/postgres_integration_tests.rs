@@ -322,7 +322,7 @@ async fn test_token_generation_from_db_principal() {
 
     // Create and persist a principal
     let mut principal = Principal::new_user("admin@flowcatalyst.local", UserScope::Anchor);
-    principal.assign_role("platform-admin");
+    principal.assign_role("platform:admin");
     principal_repo.insert(&principal).await.expect("Failed to insert principal");
 
     // Load from DB
