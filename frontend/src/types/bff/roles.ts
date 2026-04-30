@@ -44,8 +44,8 @@ export interface BffApplicationOptionsResponse {
 
 export interface BffCreateRoleRequest {
 	applicationCode: string;
-	name: string;
-	displayName?: string;
+	roleName: string;
+	displayName: string;
 	description?: string;
 	permissions?: string[];
 	clientManaged?: boolean;

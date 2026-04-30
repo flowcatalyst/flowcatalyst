@@ -136,8 +136,8 @@ async function createRole() {
 	try {
 		await rolesApi.create({
 			applicationCode: createForm.value.applicationCode,
-			name: createForm.value.name,
-			displayName: createForm.value.displayName || undefined,
+			roleName: createForm.value.name,
+			displayName: createForm.value.displayName || createForm.value.name,
 			description: createForm.value.description || undefined,
 		});
 
