@@ -300,16 +300,22 @@ impl EventRepository {
         Ok(row.map(EventRead::from))
     }
 
-    /// List events from the read model with optional combinable filters.
+    /// List events from the read model with multi-value filters and pagination.
+    /// Returns `(rows, total_match_count)`. Empty slices mean "no filter on
+    /// that column"; the caller passes accessible client IDs to scope a
+    /// non-anchor user.
+    #[allow(clippy::too_many_arguments)]
     pub async fn find_read_with_filters(
         &self,
-        client_id: Option<&str>,
-        application: Option<&str>,
-        subdomain: Option<&str>,
-        aggregate: Option<&str>,
-        event_type: Option<&str>,
+        client_ids: &[String],
+        applications: &[String],
+        subdomains: &[String],
+        aggregates: &[String],
+        event_types: &[String],
         correlation_id: Option<&str>,
         search: Option<&str>,
+        sort_field: Option<&str>,
+        sort_desc: bool,
         limit: i64,
         offset: i64,
     ) -> Result<(Vec<EventRead>, i64)> {
@@ -318,36 +324,36 @@ impl EventRepository {
             *has_where = true;
         }
 
-        fn apply_filters(
-            qb: &mut QueryBuilder<Postgres>,
-            client_id: Option<&str>,
-            application: Option<&str>,
-            subdomain: Option<&str>,
-            aggregate: Option<&str>,
-            event_type: Option<&str>,
-            correlation_id: Option<&str>,
-            search_pattern: Option<String>,
+        fn apply_filters<'a>(
+            qb: &mut QueryBuilder<'a, Postgres>,
+            client_ids: &'a [String],
+            applications: &'a [String],
+            subdomains: &'a [String],
+            aggregates: &'a [String],
+            event_types: &'a [String],
+            correlation_id: Option<&'a str>,
+            search_pattern: Option<&'a String>,
         ) {
             let mut has_where = false;
-            if let Some(v) = client_id {
+            if !client_ids.is_empty() {
                 push_where(qb, &mut has_where);
-                qb.push("client_id = ").push_bind(v.to_string());
+                qb.push("client_id = ANY(").push_bind(client_ids).push(")");
             }
-            if let Some(v) = application {
+            if !applications.is_empty() {
                 push_where(qb, &mut has_where);
-                qb.push("application = ").push_bind(v.to_string());
+                qb.push("application = ANY(").push_bind(applications).push(")");
             }
-            if let Some(v) = subdomain {
+            if !subdomains.is_empty() {
                 push_where(qb, &mut has_where);
-                qb.push("subdomain = ").push_bind(v.to_string());
+                qb.push("subdomain = ANY(").push_bind(subdomains).push(")");
             }
-            if let Some(v) = aggregate {
+            if !aggregates.is_empty() {
                 push_where(qb, &mut has_where);
-                qb.push("aggregate = ").push_bind(v.to_string());
+                qb.push("aggregate = ANY(").push_bind(aggregates).push(")");
             }
-            if let Some(v) = event_type {
+            if !event_types.is_empty() {
                 push_where(qb, &mut has_where);
-                qb.push("type = ").push_bind(v.to_string());
+                qb.push("type = ANY(").push_bind(event_types).push(")");
             }
             if let Some(v) = correlation_id {
                 push_where(qb, &mut has_where);
@@ -360,27 +366,28 @@ impl EventRepository {
                     .push(" OR source ILIKE ")
                     .push_bind(pattern.clone())
                     .push(" OR subject ILIKE ")
-                    .push_bind(pattern)
+                    .push_bind(pattern.clone())
                     .push(")");
             }
         }
 
-        let search_pattern = search.and_then(|v| {
-            if v.is_empty() { None } else { Some(format!("%{}%", v)) }
-        });
+        let search_pattern = search
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| format!("%{}%", s));
 
         // Count query
         let mut count_qb: QueryBuilder<Postgres> =
             QueryBuilder::new("SELECT COUNT(*) FROM msg_events_read");
         apply_filters(
             &mut count_qb,
-            client_id,
-            application,
-            subdomain,
-            aggregate,
-            event_type,
+            client_ids,
+            applications,
+            subdomains,
+            aggregates,
+            event_types,
             correlation_id,
-            search_pattern.clone(),
+            search_pattern.as_ref(),
         );
         let total: i64 = count_qb.build_query_scalar().fetch_one(&self.pool).await?;
 
@@ -392,19 +399,27 @@ impl EventRepository {
         );
         apply_filters(
             &mut data_qb,
-            client_id,
-            application,
-            subdomain,
-            aggregate,
-            event_type,
+            client_ids,
+            applications,
+            subdomains,
+            aggregates,
+            event_types,
             correlation_id,
-            search_pattern,
+            search_pattern.as_ref(),
         );
-        data_qb
-            .push(" ORDER BY time DESC LIMIT ")
-            .push_bind(limit)
-            .push(" OFFSET ")
-            .push_bind(offset);
+
+        let sort_column = match sort_field.unwrap_or("time") {
+            "time" | "createdAt" => "time",
+            "type" => "type",
+            "source" => "source",
+            "application" => "application",
+            "projectedAt" => "projected_at",
+            _ => "time",
+        };
+        data_qb.push(" ORDER BY ").push(sort_column);
+        data_qb.push(if sort_desc { " DESC" } else { " ASC" });
+        data_qb.push(" LIMIT ").push_bind(limit);
+        data_qb.push(" OFFSET ").push_bind(offset);
 
         let rows: Vec<EventReadRow> = data_qb.build_query_as().fetch_all(&self.pool).await?;
 

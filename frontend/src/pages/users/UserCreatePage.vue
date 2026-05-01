@@ -1,12 +1,10 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import { usersApi, type EmailDomainCheckResponse } from "@/api/users";
-import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
-const toast = useToast();
 
 const saving = ref(false);
 
@@ -170,22 +168,11 @@ async function createUser() {
 		// Create the user (client will be auto-detected from email domain on backend)
 		const user = await usersApi.create(request);
 
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "User created successfully",
-			life: 3000,
-		});
+		toast.success("Success", "User created successfully");
 
 		// Redirect to user detail/edit page
 		router.push(`/users/${user.id}`);
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to create user"),
-			life: 5000,
-		});
 	} finally {
 		saving.value = false;
 	}

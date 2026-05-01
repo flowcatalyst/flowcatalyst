@@ -1,15 +1,14 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { useConfirm } from "primevue/useconfirm";
-import { useToast } from "primevue/usetoast";
 import { clientsApi, type Client, type ClientApplication } from "@/api/clients";
 import { useReturnTo } from "@/composables/useReturnTo";
 
 const route = useRoute();
 const { returnTo } = useReturnTo();
 const confirm = useConfirm();
-const toast = useToast();
 
 const loading = ref(true);
 const client = ref<Client | null>(null);
@@ -63,12 +62,6 @@ async function loadApplications(clientId: string) {
 		applications.value = [available, enabled];
 	} catch (error) {
 		console.error("Failed to load applications:", error);
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to load applications",
-			life: 3000,
-		});
 	} finally {
 		loadingApps.value = false;
 	}
@@ -81,19 +74,8 @@ async function saveApplications() {
 	try {
 		const enabledIds = applications.value[1].map((app) => app.id);
 		await clientsApi.updateApplications(client.value.id, enabledIds);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Applications updated",
-			life: 3000,
-		});
-	} catch (error) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to update applications",
-			life: 3000,
-		});
+		toast.success("Success", "Applications updated");
+	} catch {
 	} finally {
 		savingApps.value = false;
 	}
@@ -119,19 +101,8 @@ async function saveChanges() {
 			name: editName.value,
 		});
 		editing.value = false;
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Client updated",
-			life: 3000,
-		});
-	} catch (e) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to update",
-			life: 3000,
-		});
+		toast.success("Success", "Client updated");
+	} catch {
 	} finally {
 		saving.value = false;
 	}
@@ -152,19 +123,8 @@ async function activateClient() {
 	try {
 		await clientsApi.activate(client.value.id);
 		client.value = await clientsApi.get(client.value.id);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Client activated",
-			life: 3000,
-		});
+		toast.success("Success", "Client activated");
 	} catch {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to activate",
-			life: 3000,
-		});
 	}
 }
 
@@ -184,19 +144,8 @@ async function suspendClient(reason: string) {
 	try {
 		await clientsApi.suspend(client.value.id, reason);
 		client.value = await clientsApi.get(client.value.id);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Client suspended",
-			life: 3000,
-		});
+		toast.success("Success", "Client suspended");
 	} catch {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to suspend",
-			life: 3000,
-		});
 	}
 }
 
@@ -216,19 +165,8 @@ async function deactivateClient(reason: string) {
 	try {
 		await clientsApi.deactivate(client.value.id, reason);
 		client.value = await clientsApi.get(client.value.id);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Client deactivated",
-			life: 3000,
-		});
+		toast.success("Success", "Client deactivated");
 	} catch {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to deactivate",
-			life: 3000,
-		});
 	}
 }
 

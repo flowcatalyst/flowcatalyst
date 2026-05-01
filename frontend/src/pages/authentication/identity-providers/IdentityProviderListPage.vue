@@ -1,18 +1,16 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import {
 	identityProvidersApi,
 	type IdentityProvider,
 } from "@/api/identity-providers";
-import { getErrorMessage } from "@/utils/errors";
 import { useListState } from "@/composables/useListState";
 import { useReturnTo } from "@/composables/useReturnTo";
 
 const router = useRouter();
 const { navigateToDetail } = useReturnTo();
-const toast = useToast();
 const providers = ref<IdentityProvider[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -73,19 +71,8 @@ async function deleteProvider() {
 			(p) => p.id !== providerToDelete.value?.id,
 		);
 		showDeleteDialog.value = false;
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: `Identity provider "${providerToDelete.value.name}" deleted`,
-			life: 3000,
-		});
+		toast.success("Success", `Identity provider "${providerToDelete.value.name}" deleted`);
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to delete identity provider"),
-			life: 5000,
-		});
 	} finally {
 		deleteLoading.value = false;
 		providerToDelete.value = null;

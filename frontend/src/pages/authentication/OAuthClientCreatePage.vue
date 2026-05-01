@@ -1,13 +1,12 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import { oauthClientsApi, type ClientType } from "@/api/oauth-clients";
 import { applicationsApi, type Application } from "@/api/applications";
 import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
-const toast = useToast();
 
 const applications = ref<Application[]>([]);
 const loading = ref(false);
@@ -80,12 +79,7 @@ async function loadApplications() {
 		console.log("Loaded applications:", applications.value);
 	} catch (e: unknown) {
 		console.error("Failed to load applications:", e);
-		toast.add({
-			severity: "warn",
-			summary: "Warning",
-			detail: "Could not load applications: " + getErrorMessage(e, "Unknown error"),
-			life: 5000,
-		});
+		toast.warn("Warning", "Could not load applications: " + getErrorMessage(e, "Unknown error"));
 	}
 }
 
@@ -98,13 +92,7 @@ function addRedirectUri() {
 			form.value.redirectUris.push(uri);
 			newRedirectUri.value = "";
 		} catch {
-			toast.add({
-				severity: "error",
-				summary: "Invalid URL",
-				detail: "Please enter a valid URL",
-				life: 3000,
-			});
-		}
+	}
 	}
 }
 
@@ -120,26 +108,14 @@ function addAllowedOrigin() {
 			const url = new URL(origin);
 			// Origin should not have path (other than /)
 			if (url.pathname !== "/" && url.pathname !== "") {
-				toast.add({
-					severity: "error",
-					summary: "Invalid Origin",
-					detail:
-						"Origin should not include a path (e.g., https://example.com)",
-					life: 3000,
-				});
+				toast.error("Invalid Origin", "Origin should not include a path (e.g., https://example.com)");
 				return;
 			}
 			// Use the origin (scheme + host + port)
 			form.value.allowedOrigins.push(url.origin);
 			newAllowedOrigin.value = "";
 		} catch {
-			toast.add({
-				severity: "error",
-				summary: "Invalid URL",
-				detail: "Please enter a valid origin URL",
-				life: 3000,
-			});
-		}
+	}
 	}
 }
 
@@ -173,12 +149,7 @@ async function createClient() {
 					: undefined,
 		});
 
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: `OAuth client "${response.client.clientName}" created successfully`,
-			life: 3000,
-		});
+		toast.success("Success", `OAuth client "${response.client.clientName}" created successfully`);
 
 		if (response.clientSecret) {
 			// Show the one-time secret dialog before navigating away
@@ -198,12 +169,7 @@ async function createClient() {
 function copySecret() {
 	if (clientSecret.value) {
 		navigator.clipboard.writeText(clientSecret.value);
-		toast.add({
-			severity: "success",
-			summary: "Copied",
-			detail: "Client secret copied to clipboard",
-			life: 2000,
-		});
+		toast.success("Copied", "Client secret copied to clipboard");
 	}
 }
 

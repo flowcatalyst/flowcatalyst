@@ -19,7 +19,7 @@ class CreateOAuthClientRequest extends \ArrayObject
      */
     protected $applicationIds;
     /**
-     * OAuth client_id (public identifier)
+     * OAuth client_id (public identifier). Auto-generated if not provided.
      *
      * @var string|null
      */
@@ -77,7 +77,7 @@ class CreateOAuthClientRequest extends \ArrayObject
         return $this;
     }
     /**
-     * OAuth client_id (public identifier)
+     * OAuth client_id (public identifier). Auto-generated if not provided.
      *
      * @return string|null
      */
@@ -86,7 +86,7 @@ class CreateOAuthClientRequest extends \ArrayObject
         return $this->clientId;
     }
     /**
-     * OAuth client_id (public identifier)
+     * OAuth client_id (public identifier). Auto-generated if not provided.
      *
      * @param string|null $clientId
      *

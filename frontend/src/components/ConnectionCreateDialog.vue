@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, watch } from "vue";
-import { useToast } from "primevue/usetoast";
 import { connectionsApi, type Connection } from "@/api/connections";
 import {
 	serviceAccountsApi,
@@ -18,7 +18,6 @@ const emit = defineEmits<{
 	created: [connection: Connection];
 }>();
 
-const toast = useToast();
 
 // Form fields
 const code = ref("");
@@ -102,12 +101,7 @@ async function onSubmit() {
 			serviceAccountId: saId,
 			clientId: cId || undefined,
 		});
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Connection created",
-			life: 3000,
-		});
+		toast.success("Success", "Connection created");
 		emit("created", connection);
 		emit("update:visible", false);
 	} catch (e) {

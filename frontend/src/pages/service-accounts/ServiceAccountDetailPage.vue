@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import { useConfirm } from "primevue/useconfirm";
 import {
 	serviceAccountsApi,
@@ -13,12 +13,10 @@ import { connectionsApi, type Connection } from "@/api/connections";
 import type { PrincipalScope } from "@/api/users";
 import { rolesApi, type Role } from "@/api/roles";
 import { clientsApi, type Client } from "@/api/clients";
-import { getErrorMessage } from "@/utils/errors";
 import { useReturnTo } from "@/composables/useReturnTo";
 
 const route = useRoute();
 const { returnTo } = useReturnTo();
-const toast = useToast();
 const confirm = useConfirm();
 
 const serviceAccountId = route.params['id'] as string;
@@ -112,12 +110,6 @@ async function loadServiceAccount() {
 		editScope.value = serviceAccount.value.scope || "ANCHOR";
 		editClientIds.value = serviceAccount.value.clientIds || [];
 	} catch (error) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to load service account",
-			life: 5000,
-		});
 		console.error("Failed to fetch service account:", error);
 		returnTo("/identity/service-accounts");
 	}
@@ -184,40 +176,18 @@ function confirmPauseConnection(connection: Connection) {
 async function pauseConnection(id: string) {
 	try {
 		await connectionsApi.pause(id);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Connection paused",
-			life: 3000,
-		});
+		toast.success("Success", "Connection paused");
 		await loadConnections();
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to pause connection"),
-			life: 5000,
-		});
 	}
 }
 
 async function activateConnection(id: string) {
 	try {
 		await connectionsApi.activate(id);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Connection activated",
-			life: 3000,
-		});
+		toast.success("Success", "Connection activated");
 		await loadConnections();
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to activate connection"),
-			life: 5000,
-		});
 	}
 }
 
@@ -239,12 +209,7 @@ function cancelEdit() {
 
 async function saveServiceAccount() {
 	if (!editName.value.trim()) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Name is required",
-			life: 3000,
-		});
+		toast.error("Error", "Name is required");
 		return;
 	}
 
@@ -261,19 +226,8 @@ async function saveServiceAccount() {
 		serviceAccount.value!.scope = editScope.value;
 		serviceAccount.value!.clientIds = editClientIds.value;
 		editMode.value = false;
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Service account updated successfully",
-			life: 3000,
-		});
+		toast.success("Success", "Service account updated successfully");
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to update service account"),
-			life: 5000,
-		});
 	} finally {
 		saving.value = false;
 	}
@@ -285,19 +239,8 @@ async function regenerateToken() {
 		const response = await serviceAccountsApi.regenerateToken(serviceAccountId);
 		newToken.value = response.authToken;
 		showRegenerateTokenDialog.value = true;
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Auth token regenerated",
-			life: 3000,
-		});
+		toast.success("Success", "Auth token regenerated");
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to regenerate token"),
-			life: 5000,
-		});
 	} finally {
 		saving.value = false;
 	}
@@ -310,19 +253,8 @@ async function regenerateSecret() {
 			await serviceAccountsApi.regenerateSecret(serviceAccountId);
 		newSecret.value = response.signingSecret;
 		showRegenerateSecretDialog.value = true;
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Signing secret regenerated",
-			life: 3000,
-		});
+		toast.success("Success", "Signing secret regenerated");
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to regenerate secret"),
-			life: 5000,
-		});
 	} finally {
 		saving.value = false;
 	}
@@ -330,12 +262,7 @@ async function regenerateSecret() {
 
 function copyToClipboard(text: string, label: string) {
 	navigator.clipboard.writeText(text);
-	toast.add({
-		severity: "info",
-		summary: "Copied",
-		detail: `${label} copied to clipboard`,
-		life: 2000,
-	});
+	toast.info("Copied", `${label} copied to clipboard`);
 }
 
 function openRolePicker() {
@@ -383,19 +310,8 @@ async function saveRoles() {
 			detail = `Removed ${removed} role(s)`;
 		}
 
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail,
-			life: 3000,
-		});
+		toast.success("Success", detail);
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to save roles"),
-			life: 5000,
-		});
 	} finally {
 		savingRoles.value = false;
 	}
@@ -433,20 +349,9 @@ async function deleteServiceAccount() {
 	deleting.value = true;
 	try {
 		await serviceAccountsApi.delete(serviceAccountId);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Service account deleted successfully",
-			life: 3000,
-		});
+		toast.success("Success", "Service account deleted successfully");
 		returnTo("/identity/service-accounts");
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to delete service account"),
-			life: 5000,
-		});
 	} finally {
 		deleting.value = false;
 		showDeleteDialog.value = false;

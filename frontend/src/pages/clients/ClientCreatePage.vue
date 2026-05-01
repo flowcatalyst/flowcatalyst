@@ -1,11 +1,10 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import { clientsApi } from "@/api/clients";
 
 const router = useRouter();
-const toast = useToast();
 
 const name = ref("");
 const identifier = ref("");
@@ -39,12 +38,7 @@ async function onSubmit() {
 			name: name.value,
 			identifier: identifier.value,
 		});
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Client created",
-			life: 3000,
-		});
+		toast.success("Success", "Client created");
 		router.push(`/clients/${client.id}`);
 	} catch (e) {
 		errorMessage.value =

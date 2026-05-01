@@ -13,66 +13,110 @@ class DispatchJobFilterOptionsResponse extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
-     * @var list<string>|null
+     * @var list<FilterOption>|null
      */
-    protected $eventTypeCodes;
+    protected $aggregates;
     /**
-     * @var list<string>|null
+     * @var list<FilterOption>|null
      */
-    protected $modes;
+    protected $applications;
     /**
-     * @var list<string>|null
+     * @var list<FilterOption>|null
+     */
+    protected $clients;
+    /**
+     * @var list<FilterOption>|null
+     */
+    protected $codes;
+    /**
+     * @var list<FilterOption>|null
      */
     protected $statuses;
     /**
-     * @var list<string>|null
+     * @var list<FilterOption>|null
      */
-    protected $subscriptionIds;
+    protected $subdomains;
     /**
-     * @return list<string>|null
+     * @return list<FilterOption>|null
      */
-    public function getEventTypeCodes(): ?array
+    public function getAggregates(): ?array
     {
-        return $this->eventTypeCodes;
+        return $this->aggregates;
     }
     /**
-     * @param list<string>|null $eventTypeCodes
+     * @param list<FilterOption>|null $aggregates
      *
      * @return self
      */
-    public function setEventTypeCodes(?array $eventTypeCodes): self
+    public function setAggregates(?array $aggregates): self
     {
-        $this->initialized['eventTypeCodes'] = true;
-        $this->eventTypeCodes = $eventTypeCodes;
+        $this->initialized['aggregates'] = true;
+        $this->aggregates = $aggregates;
         return $this;
     }
     /**
-     * @return list<string>|null
+     * @return list<FilterOption>|null
      */
-    public function getModes(): ?array
+    public function getApplications(): ?array
     {
-        return $this->modes;
+        return $this->applications;
     }
     /**
-     * @param list<string>|null $modes
+     * @param list<FilterOption>|null $applications
      *
      * @return self
      */
-    public function setModes(?array $modes): self
+    public function setApplications(?array $applications): self
     {
-        $this->initialized['modes'] = true;
-        $this->modes = $modes;
+        $this->initialized['applications'] = true;
+        $this->applications = $applications;
         return $this;
     }
     /**
-     * @return list<string>|null
+     * @return list<FilterOption>|null
+     */
+    public function getClients(): ?array
+    {
+        return $this->clients;
+    }
+    /**
+     * @param list<FilterOption>|null $clients
+     *
+     * @return self
+     */
+    public function setClients(?array $clients): self
+    {
+        $this->initialized['clients'] = true;
+        $this->clients = $clients;
+        return $this;
+    }
+    /**
+     * @return list<FilterOption>|null
+     */
+    public function getCodes(): ?array
+    {
+        return $this->codes;
+    }
+    /**
+     * @param list<FilterOption>|null $codes
+     *
+     * @return self
+     */
+    public function setCodes(?array $codes): self
+    {
+        $this->initialized['codes'] = true;
+        $this->codes = $codes;
+        return $this;
+    }
+    /**
+     * @return list<FilterOption>|null
      */
     public function getStatuses(): ?array
     {
         return $this->statuses;
     }
     /**
-     * @param list<string>|null $statuses
+     * @param list<FilterOption>|null $statuses
      *
      * @return self
      */
@@ -83,21 +127,21 @@ class DispatchJobFilterOptionsResponse extends \ArrayObject
         return $this;
     }
     /**
-     * @return list<string>|null
+     * @return list<FilterOption>|null
      */
-    public function getSubscriptionIds(): ?array
+    public function getSubdomains(): ?array
     {
-        return $this->subscriptionIds;
+        return $this->subdomains;
     }
     /**
-     * @param list<string>|null $subscriptionIds
+     * @param list<FilterOption>|null $subdomains
      *
      * @return self
      */
-    public function setSubscriptionIds(?array $subscriptionIds): self
+    public function setSubdomains(?array $subdomains): self
     {
-        $this->initialized['subscriptionIds'] = true;
-        $this->subscriptionIds = $subscriptionIds;
+        $this->initialized['subdomains'] = true;
+        $this->subdomains = $subdomains;
         return $this;
     }
 }

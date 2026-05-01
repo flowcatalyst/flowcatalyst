@@ -54,6 +54,9 @@ pub struct UpdateRoleRequest {
     /// Description
     pub description: Option<String>,
 
+    /// Replace the role's permission set. Omit to leave permissions unchanged.
+    pub permissions: Option<Vec<String>>,
+
     /// Whether clients can manage this role
     pub client_managed: Option<bool>,
 }
@@ -356,7 +359,7 @@ pub async fn update_role(
         role_id: role.id,
         display_name: req.display_name,
         description: req.description,
-        permissions: None,
+        permissions: req.permissions,
         client_managed: req.client_managed,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);

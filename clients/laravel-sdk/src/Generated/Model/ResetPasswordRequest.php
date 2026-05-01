@@ -13,17 +13,48 @@ class ResetPasswordRequest extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
+     * When false, the platform skips its password complexity rules
+     * (uppercase/lowercase/digit/special) and only enforces a 2-character
+     * minimum. Intended for SDK callers that apply their own policy.
+     * Defaults to true.
+     *
+     * @var bool|null
+     */
+    protected $enforcePasswordComplexity;
+    /**
      * New password (min 8 characters)
      *
      * @var string|null
      */
     protected $newPassword;
     /**
-     * When false, the platform skips its password complexity rules (uppercase/lowercase/digit/special) and only enforces a 2-character minimum. Intended for SDK callers that apply their own policy. Defaults to true.
+     * When false, the platform skips its password complexity rules
+     * (uppercase/lowercase/digit/special) and only enforces a 2-character
+     * minimum. Intended for SDK callers that apply their own policy.
+     * Defaults to true.
      *
-     * @var bool|null
+     * @return bool|null
      */
-    protected $enforcePasswordComplexity;
+    public function getEnforcePasswordComplexity(): ?bool
+    {
+        return $this->enforcePasswordComplexity;
+    }
+    /**
+    * When false, the platform skips its password complexity rules
+    (uppercase/lowercase/digit/special) and only enforces a 2-character
+    minimum. Intended for SDK callers that apply their own policy.
+    Defaults to true.
+    *
+    * @param bool|null $enforcePasswordComplexity
+    *
+    * @return self
+    */
+    public function setEnforcePasswordComplexity(?bool $enforcePasswordComplexity): self
+    {
+        $this->initialized['enforcePasswordComplexity'] = true;
+        $this->enforcePasswordComplexity = $enforcePasswordComplexity;
+        return $this;
+    }
     /**
      * New password (min 8 characters)
      *
@@ -44,28 +75,6 @@ class ResetPasswordRequest extends \ArrayObject
     {
         $this->initialized['newPassword'] = true;
         $this->newPassword = $newPassword;
-        return $this;
-    }
-    /**
-     * When false, the platform skips its password complexity rules (uppercase/lowercase/digit/special) and only enforces a 2-character minimum. Intended for SDK callers that apply their own policy. Defaults to true.
-     *
-     * @return bool|null
-     */
-    public function getEnforcePasswordComplexity(): ?bool
-    {
-        return $this->enforcePasswordComplexity;
-    }
-    /**
-     * When false, the platform skips its password complexity rules (uppercase/lowercase/digit/special) and only enforces a 2-character minimum. Intended for SDK callers that apply their own policy. Defaults to true.
-     *
-     * @param bool|null $enforcePasswordComplexity
-     *
-     * @return self
-     */
-    public function setEnforcePasswordComplexity(?bool $enforcePasswordComplexity): self
-    {
-        $this->initialized['enforcePasswordComplexity'] = true;
-        $this->enforcePasswordComplexity = $enforcePasswordComplexity;
         return $this;
     }
 }

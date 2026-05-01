@@ -9,6 +9,7 @@ import type { SdkError } from "../errors";
 import type { FlowCatalystClient } from "../client";
 import * as sdk from "../generated/sdk.gen";
 import type {
+	GetApiAdminPrincipalsData,
 	GetApiAdminPrincipalsResponse,
 	GetApiAdminPrincipalsByIdResponse,
 	PostApiAdminPrincipalsUsersData,
@@ -28,12 +29,9 @@ export type RoleListResponse = GetApiAdminPrincipalsByIdRolesResponse;
 export type ClientAccessListResponse =
 	GetApiAdminPrincipalsByIdClientAccessResponse;
 
-export interface PrincipalFilters {
-	clientId?: string;
-	type?: string;
-	active?: string;
-	email?: string;
-}
+// Derived from the generated query type so it stays in sync with the platform
+// spec automatically — adding a query param upstream surfaces here on regen.
+export type PrincipalFilters = GetApiAdminPrincipalsData["query"];
 
 /**
  * Principals resource for managing users and service accounts.

@@ -120,6 +120,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\DispatchJobFilterOptionsResponse::class => \FlowCatalyst\Generated\Normalizer\DispatchJobFilterOptionsResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\DispatchJobReadResponse::class => \FlowCatalyst\Generated\Normalizer\DispatchJobReadResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\DispatchJobResponse::class => \FlowCatalyst\Generated\Normalizer\DispatchJobResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\DispatchJobsFilterOptions::class => \FlowCatalyst\Generated\Normalizer\DispatchJobsFilterOptionsNormalizer::class,
@@ -133,6 +135,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\EntityAuditLogsResponse::class => \FlowCatalyst\Generated\Normalizer\EntityAuditLogsResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\EntityTypesResponse::class => \FlowCatalyst\Generated\Normalizer\EntityTypesResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\EventRead::class => \FlowCatalyst\Generated\Normalizer\EventReadNormalizer::class,
         
         \FlowCatalyst\Generated\Model\EventResponse::class => \FlowCatalyst\Generated\Normalizer\EventResponseNormalizer::class,
         
@@ -167,6 +171,10 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\OAuthClientResponse::class => \FlowCatalyst\Generated\Normalizer\OAuthClientResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\OperationsResponse::class => \FlowCatalyst\Generated\Normalizer\OperationsResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\PagedDispatchJobResponse::class => \FlowCatalyst\Generated\Normalizer\PagedDispatchJobResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\PagedEventsResponse::class => \FlowCatalyst\Generated\Normalizer\PagedEventsResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\PaginatedDispatchJobsResponse::class => \FlowCatalyst\Generated\Normalizer\PaginatedDispatchJobsResponseNormalizer::class,
         
@@ -345,6 +353,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\DashboardMetrics::class => false,
             \FlowCatalyst\Generated\Model\DispatchAttemptResponse::class => false,
             \FlowCatalyst\Generated\Model\DispatchJobFilterOptionsResponse::class => false,
+            \FlowCatalyst\Generated\Model\DispatchJobReadResponse::class => false,
             \FlowCatalyst\Generated\Model\DispatchJobResponse::class => false,
             \FlowCatalyst\Generated\Model\DispatchJobsFilterOptions::class => false,
             \FlowCatalyst\Generated\Model\DispatchPoolFilterOptions::class => false,
@@ -352,6 +361,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\EnhancedPoolMetrics::class => false,
             \FlowCatalyst\Generated\Model\EntityAuditLogsResponse::class => false,
             \FlowCatalyst\Generated\Model\EntityTypesResponse::class => false,
+            \FlowCatalyst\Generated\Model\EventRead::class => false,
             \FlowCatalyst\Generated\Model\EventResponse::class => false,
             \FlowCatalyst\Generated\Model\EventSummaryResponse::class => false,
             \FlowCatalyst\Generated\Model\EventTypeBindingRequest::class => false,
@@ -369,6 +379,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\LoginResponse::class => false,
             \FlowCatalyst\Generated\Model\OAuthClientResponse::class => false,
             \FlowCatalyst\Generated\Model\OperationsResponse::class => false,
+            \FlowCatalyst\Generated\Model\PagedDispatchJobResponse::class => false,
+            \FlowCatalyst\Generated\Model\PagedEventsResponse::class => false,
             \FlowCatalyst\Generated\Model\PaginatedDispatchJobsResponse::class => false,
             \FlowCatalyst\Generated\Model\PaginatedEventsResponse::class => false,
             \FlowCatalyst\Generated\Model\PaginationParams::class => false,

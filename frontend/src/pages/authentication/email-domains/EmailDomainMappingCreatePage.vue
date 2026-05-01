@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import {
 	emailDomainMappingsApi,
 	type CreateEmailDomainMappingRequest,
@@ -16,7 +16,6 @@ import { rolesApi, type Role } from "@/api/roles";
 import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
-const toast = useToast();
 
 const providers = ref<IdentityProvider[]>([]);
 const clients = ref<Client[]>([]);
@@ -114,12 +113,6 @@ async function loadData() {
 		// Initialize role picker with all roles available, none selected
 		rolePickerModel.value = [[...rolesResponse.items], []];
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to load data: " + getErrorMessage(e, "Unknown error"),
-			life: 5000,
-		});
 	} finally {
 		dataLoading.value = false;
 	}
@@ -177,12 +170,7 @@ async function createMapping() {
 		};
 
 		const created = await emailDomainMappingsApi.create(requestData);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: `Email domain mapping for "${created.emailDomain}" created successfully`,
-			life: 3000,
-		});
+		toast.success("Success", `Email domain mapping for "${created.emailDomain}" created successfully`);
 		router.push(`/authentication/email-domain-mappings/${created.id}`);
 	} catch (e: unknown) {
 		error.value = getErrorMessage(e, "Failed to create mapping");

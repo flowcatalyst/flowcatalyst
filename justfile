@@ -108,6 +108,25 @@ dev-debug:
 run:
     FC_DATABASE_URL={{ FC_DATABASE_URL }} cargo run --bin fc-dev
 
+# ─── SDKs ─────────────────────────────────────────────────────────────────
+
+# Regenerate every SDK from the live platform's OpenAPI spec.
+# Requires fc-dev (or fc-platform-server) to be serving on FC_API_PORT.
+regen-sdks:
+    @curl -fsS http://localhost:{{ FC_API_PORT }}/q/openapi >/dev/null \
+        || (echo "✗ Platform not reachable at http://localhost:{{ FC_API_PORT }}/q/openapi — run 'just run' (or 'just dev') first."; exit 1)
+    @echo "▸ Refreshing OpenAPI snapshots from /q/openapi"
+    @curl -fsS http://localhost:{{ FC_API_PORT }}/q/openapi -o clients/typescript-sdk/openapi/openapi.json
+    @curl -fsS http://localhost:{{ FC_API_PORT }}/q/openapi -o clients/laravel-sdk/openapi/openapi.json
+    @curl -fsS http://localhost:{{ FC_API_PORT }}/q/openapi -o frontend/openapi/openapi.json
+    @echo "▸ TypeScript SDK"
+    cd clients/typescript-sdk && pnpm build
+    @echo "▸ Laravel SDK"
+    cd clients/laravel-sdk && php scripts/prepare-openapi.php && vendor/bin/jane-openapi generate --config-file=jane-openapi.php
+    @echo "▸ Frontend generated client"
+    cd frontend && pnpm api:generate
+    @echo "✓ SDKs regenerated"
+
 # ─── Frontend ─────────────────────────────────────────────────────────────
 
 # Install frontend dependencies

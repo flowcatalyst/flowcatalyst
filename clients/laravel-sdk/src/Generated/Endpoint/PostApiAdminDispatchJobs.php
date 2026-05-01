@@ -38,14 +38,14 @@ class PostApiAdminDispatchJobs extends \FlowCatalyst\Generated\Runtime\Client\Ba
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminDispatchJobsBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminDispatchJobsForbiddenException
      *
-     * @return null|\FlowCatalyst\Generated\Model\DispatchJobResponse
+     * @return null|\FlowCatalyst\Generated\Model\CreatedResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (201 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\DispatchJobResponse', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\CreatedResponse', 'json');
         }
         if (400 === $status) {
             throw new \FlowCatalyst\Generated\Exception\PostApiAdminDispatchJobsBadRequestException($response);

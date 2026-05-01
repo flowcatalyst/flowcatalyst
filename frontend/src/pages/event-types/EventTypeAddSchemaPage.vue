@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import {
 	eventTypesApi,
 	type EventType,
@@ -11,7 +11,6 @@ import { useReturnTo } from "@/composables/useReturnTo";
 
 const route = useRoute();
 const { returnTo, forwardFrom } = useReturnTo();
-const toast = useToast();
 
 const loading = ref(true);
 const eventType = ref<EventType | null>(null);
@@ -136,12 +135,7 @@ async function onSubmit() {
 			schema: schema.value,
 			schemaType: schemaType.value,
 		});
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Schema added",
-			life: 3000,
-		});
+		toast.success("Success", "Schema added");
 		forwardFrom(`/event-types/${eventType.value.id}`);
 	} catch (e) {
 		errorMessage.value =

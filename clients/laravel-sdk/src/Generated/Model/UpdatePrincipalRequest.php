@@ -19,6 +19,13 @@ class UpdatePrincipalRequest extends \ArrayObject
      */
     protected $active;
     /**
+     * Home client ID (required when scope is CLIENT, ignored otherwise).
+     * Changing client requires anchor.
+     *
+     * @var string|null
+     */
+    protected $clientId;
+    /**
      * First name (for users)
      *
      * @var string|null
@@ -36,6 +43,12 @@ class UpdatePrincipalRequest extends \ArrayObject
      * @var string|null
      */
     protected $name;
+    /**
+     * User scope (ANCHOR / PARTNER / CLIENT). Changing scope requires anchor.
+     *
+     * @var string|null
+     */
+    protected $scope;
     /**
      * Active status
      *
@@ -56,6 +69,30 @@ class UpdatePrincipalRequest extends \ArrayObject
     {
         $this->initialized['active'] = true;
         $this->active = $active;
+        return $this;
+    }
+    /**
+     * Home client ID (required when scope is CLIENT, ignored otherwise).
+     * Changing client requires anchor.
+     *
+     * @return string|null
+     */
+    public function getClientId(): ?string
+    {
+        return $this->clientId;
+    }
+    /**
+    * Home client ID (required when scope is CLIENT, ignored otherwise).
+    Changing client requires anchor.
+    *
+    * @param string|null $clientId
+    *
+    * @return self
+    */
+    public function setClientId(?string $clientId): self
+    {
+        $this->initialized['clientId'] = true;
+        $this->clientId = $clientId;
         return $this;
     }
     /**
@@ -122,6 +159,28 @@ class UpdatePrincipalRequest extends \ArrayObject
     {
         $this->initialized['name'] = true;
         $this->name = $name;
+        return $this;
+    }
+    /**
+     * User scope (ANCHOR / PARTNER / CLIENT). Changing scope requires anchor.
+     *
+     * @return string|null
+     */
+    public function getScope(): ?string
+    {
+        return $this->scope;
+    }
+    /**
+     * User scope (ANCHOR / PARTNER / CLIENT). Changing scope requires anchor.
+     *
+     * @param string|null $scope
+     *
+     * @return self
+     */
+    public function setScope(?string $scope): self
+    {
+        $this->initialized['scope'] = true;
+        $this->scope = $scope;
         return $this;
     }
 }

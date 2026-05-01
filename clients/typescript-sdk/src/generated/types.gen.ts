@@ -658,9 +658,9 @@ export type CreateOAuthClientRequest = {
      */
     applicationIds?: Array<string>;
     /**
-     * OAuth client_id (public identifier)
+     * OAuth client_id (public identifier). Auto-generated if not provided.
      */
-    clientId: string;
+    clientId?: string | null;
     /**
      * Human-readable name
      */
@@ -784,6 +784,13 @@ export type CreateUserRequest = {
      */
     email: string;
     /**
+     * When false, the platform skips its password complexity rules
+     * (uppercase/lowercase/digit/special) and only enforces a 2-character
+     * minimum. Intended for SDK callers that apply their own policy.
+     * Defaults to true.
+     */
+    enforcePasswordComplexity?: boolean | null;
+    /**
      * Display name
      */
     name: string;
@@ -791,10 +798,6 @@ export type CreateUserRequest = {
      * Password (optional - only for internal auth users)
      */
     password?: string | null;
-    /**
-     * When false, the platform skips its password complexity rules (uppercase/lowercase/digit/special) and only enforces a 2-character minimum. Intended for SDK callers that apply their own policy. Defaults to true.
-     */
-    enforcePasswordComplexity?: boolean | null;
 };
 
 /**
@@ -894,13 +897,59 @@ export type DispatchAttemptResponse = {
 };
 
 /**
- * Filter options for dispatch jobs dropdowns
+ * Filter options for dispatch jobs dropdowns — cascading filter support.
+ * Matches the TS version: queries distinct values from the read projection.
  */
 export type DispatchJobFilterOptionsResponse = {
-    eventTypeCodes: Array<string>;
-    modes: Array<string>;
-    statuses: Array<string>;
-    subscriptionIds: Array<string>;
+    aggregates: Array<FilterOption>;
+    applications: Array<FilterOption>;
+    clients: Array<FilterOption>;
+    codes: Array<FilterOption>;
+    statuses: Array<FilterOption>;
+    subdomains: Array<FilterOption>;
+};
+
+/**
+ * Dispatch job read projection response (matches Java DispatchJobReadResponse)
+ */
+export type DispatchJobReadResponse = {
+    aggregate?: string | null;
+    application?: string | null;
+    attemptCount: number;
+    clientId?: string | null;
+    code: string;
+    completedAt?: string | null;
+    correlationId?: string | null;
+    createdAt: string;
+    dispatchPoolId?: string | null;
+    durationMillis?: number | null;
+    eventId?: string | null;
+    expiresAt?: string | null;
+    externalId?: string | null;
+    id: string;
+    idempotencyKey?: string | null;
+    isCompleted: boolean;
+    isTerminal: boolean;
+    kind: string;
+    lastAttemptAt?: string | null;
+    lastError?: string | null;
+    maxRetries: number;
+    messageGroup?: string | null;
+    mode: string;
+    projectedAt?: string | null;
+    protocol: string;
+    retryStrategy: string;
+    scheduledFor?: string | null;
+    sequence: number;
+    serviceAccountId?: string | null;
+    source?: string | null;
+    status: string;
+    subdomain?: string | null;
+    subject?: string | null;
+    subscriptionId?: string | null;
+    targetUrl: string;
+    timeoutSeconds: number;
+    updatedAt: string;
 };
 
 /**
@@ -1033,6 +1082,28 @@ export type EntityTypesResponse = {
 };
 
 /**
+ * Event read projection — CQRS read model, matches msg_events_read table
+ */
+export type EventRead = {
+    aggregate?: string | null;
+    application?: string | null;
+    clientId?: string | null;
+    /**
+     * Denormalized client name for display
+     */
+    clientName?: string | null;
+    correlationId?: string | null;
+    id: string;
+    messageGroup?: string | null;
+    projectedAt: string;
+    source: string;
+    subdomain?: string | null;
+    subject?: string | null;
+    time: string;
+    type: string;
+};
+
+/**
  * Event response DTO
  */
 export type EventResponse = {
@@ -1135,7 +1206,7 @@ export type EventsFilterOptions = {
 };
 
 /**
- * Filter option item
+ * A filter option with value and label (matches TS FilterOption)
  */
 export type FilterOption = {
     label: string;
@@ -1239,6 +1310,7 @@ export type LoginResponse = {
  */
 export type OAuthClientResponse = {
     active: boolean;
+    allowedOrigins?: Array<string>;
     applicationIds: Array<string>;
     clientId: string;
     clientName: string;
@@ -1259,6 +1331,26 @@ export type OAuthClientResponse = {
  */
 export type OperationsResponse = {
     operations: Array<string>;
+};
+
+/**
+ * Paginated dispatch job list response
+ */
+export type PagedDispatchJobResponse = {
+    items: Array<DispatchJobReadResponse>;
+    page: number;
+    size: number;
+    totalItems: number;
+};
+
+/**
+ * Paginated events list response (read projection)
+ */
+export type PagedEventsResponse = {
+    items: Array<EventRead>;
+    page: number;
+    size: number;
+    totalItems: number;
 };
 
 /**
@@ -1429,13 +1521,16 @@ export type RegenerateSecretResponse = {
  */
 export type ResetPasswordRequest = {
     /**
+     * When false, the platform skips its password complexity rules
+     * (uppercase/lowercase/digit/special) and only enforces a 2-character
+     * minimum. Intended for SDK callers that apply their own policy.
+     * Defaults to true.
+     */
+    enforcePasswordComplexity?: boolean | null;
+    /**
      * New password (min 8 characters)
      */
     newPassword: string;
-    /**
-     * When false, the platform skips its password complexity rules (uppercase/lowercase/digit/special) and only enforces a 2-character minimum. Intended for SDK callers that apply their own policy. Defaults to true.
-     */
-    enforcePasswordComplexity?: boolean | null;
 };
 
 /**
@@ -1773,6 +1868,10 @@ export type UpdateOAuthClientRequest = {
      */
     active?: boolean | null;
     /**
+     * Allowed CORS origins
+     */
+    allowedOrigins?: Array<string> | null;
+    /**
      * Application IDs this client can access
      */
     applicationIds?: Array<string> | null;
@@ -1803,6 +1902,11 @@ export type UpdatePrincipalRequest = {
      */
     active?: boolean | null;
     /**
+     * Home client ID (required when scope is CLIENT, ignored otherwise).
+     * Changing client requires anchor.
+     */
+    clientId?: string | null;
+    /**
      * First name (for users)
      */
     firstName?: string | null;
@@ -1814,6 +1918,10 @@ export type UpdatePrincipalRequest = {
      * Display name
      */
     name?: string | null;
+    /**
+     * User scope (ANCHOR / PARTNER / CLIENT). Changing scope requires anchor.
+     */
+    scope?: string | null;
 };
 
 /**
@@ -1832,6 +1940,10 @@ export type UpdateRoleRequest = {
      * Display name
      */
     displayName?: string | null;
+    /**
+     * Replace the role's permission set. Omit to leave permissions unchanged.
+     */
+    permissions?: Array<string> | null;
 };
 
 /**
@@ -2148,7 +2260,7 @@ export type PostApiAdminClientsResponses = {
     /**
      * Client created
      */
-    201: ClientResponse;
+    201: CreatedResponse;
 };
 
 export type PostApiAdminClientsResponse = PostApiAdminClientsResponses[keyof PostApiAdminClientsResponses];
@@ -2281,7 +2393,7 @@ export type PutApiAdminClientsByIdResponses = {
     /**
      * Client updated
      */
-    200: ClientResponse;
+    204: void;
 };
 
 export type PutApiAdminClientsByIdResponse = PutApiAdminClientsByIdResponses[keyof PutApiAdminClientsByIdResponses];
@@ -2582,7 +2694,7 @@ export type PostApiAdminEventTypesResponses = {
     /**
      * Event type created
      */
-    201: EventTypeResponse;
+    201: CreatedResponse;
 };
 
 export type PostApiAdminEventTypesResponse = PostApiAdminEventTypesResponses[keyof PostApiAdminEventTypesResponses];
@@ -2726,7 +2838,7 @@ export type PutApiAdminEventTypesByIdResponses = {
     /**
      * Event type updated
      */
-    200: EventTypeResponse;
+    204: void;
 };
 
 export type PutApiAdminEventTypesByIdResponse = PutApiAdminEventTypesByIdResponses[keyof PutApiAdminEventTypesByIdResponses];
@@ -2758,6 +2870,86 @@ export type PostApiAdminEventTypesByIdSchemasResponses = {
 };
 
 export type PostApiAdminEventTypesByIdSchemasResponse = PostApiAdminEventTypesByIdSchemasResponses[keyof PostApiAdminEventTypesByIdSchemasResponses];
+
+export type GetApiAdminMonitoringCircuitBreakersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/monitoring/circuit-breakers';
+};
+
+export type GetApiAdminMonitoringCircuitBreakersResponses = {
+    /**
+     * Circuit breaker states
+     */
+    200: CircuitBreakersResponse;
+};
+
+export type GetApiAdminMonitoringCircuitBreakersResponse = GetApiAdminMonitoringCircuitBreakersResponses[keyof GetApiAdminMonitoringCircuitBreakersResponses];
+
+export type GetApiAdminMonitoringDashboardData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/monitoring/dashboard';
+};
+
+export type GetApiAdminMonitoringDashboardResponses = {
+    /**
+     * Dashboard metrics
+     */
+    200: DashboardMetrics;
+};
+
+export type GetApiAdminMonitoringDashboardResponse = GetApiAdminMonitoringDashboardResponses[keyof GetApiAdminMonitoringDashboardResponses];
+
+export type GetApiAdminMonitoringInFlightMessagesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/monitoring/in-flight-messages';
+};
+
+export type GetApiAdminMonitoringInFlightMessagesResponses = {
+    /**
+     * In-flight messages
+     */
+    200: InFlightMessagesResponse;
+};
+
+export type GetApiAdminMonitoringInFlightMessagesResponse = GetApiAdminMonitoringInFlightMessagesResponses[keyof GetApiAdminMonitoringInFlightMessagesResponses];
+
+export type GetApiAdminMonitoringPoolStatsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/monitoring/pool-stats';
+};
+
+export type GetApiAdminMonitoringPoolStatsResponses = {
+    /**
+     * Pool statistics with enhanced metrics
+     */
+    200: PoolStatsResponse;
+};
+
+export type GetApiAdminMonitoringPoolStatsResponse = GetApiAdminMonitoringPoolStatsResponses[keyof GetApiAdminMonitoringPoolStatsResponses];
+
+export type GetApiAdminMonitoringStandbyStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/monitoring/standby-status';
+};
+
+export type GetApiAdminMonitoringStandbyStatusResponses = {
+    /**
+     * Standby status
+     */
+    200: StandbyStatus;
+};
+
+export type GetApiAdminMonitoringStandbyStatusResponse = GetApiAdminMonitoringStandbyStatusResponses[keyof GetApiAdminMonitoringStandbyStatusResponses];
 
 export type GetApiAdminOauthClientsData = {
     body?: never;
@@ -2915,7 +3107,7 @@ export type PutApiAdminOauthClientsByIdResponses = {
     /**
      * OAuth client updated
      */
-    200: OAuthClientResponse;
+    204: void;
 };
 
 export type PutApiAdminOauthClientsByIdResponse = PutApiAdminOauthClientsByIdResponses[keyof PutApiAdminOauthClientsByIdResponses];
@@ -3056,6 +3248,22 @@ export type GetApiAdminPrincipalsData = {
          * Filter by client ID
          */
         client_id?: string;
+        /**
+         * Exact email match (case-insensitive)
+         */
+        email?: string;
+        /**
+         * Search by name or email (substring)
+         */
+        q?: string;
+        /**
+         * Filter by active status
+         */
+        active?: boolean;
+        /**
+         * Filter by roles (comma-separated)
+         */
+        roles?: string;
     };
     url: '/api/principals';
 };
@@ -3068,6 +3276,27 @@ export type GetApiAdminPrincipalsResponses = {
 };
 
 export type GetApiAdminPrincipalsResponse = GetApiAdminPrincipalsResponses[keyof GetApiAdminPrincipalsResponses];
+
+export type GetApiAdminPrincipalsCheckEmailDomainData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Email domain to check
+         */
+        domain: string;
+    };
+    url: '/api/principals/check-email-domain';
+};
+
+export type GetApiAdminPrincipalsCheckEmailDomainResponses = {
+    /**
+     * Domain check result
+     */
+    200: CheckEmailDomainResponse;
+};
+
+export type GetApiAdminPrincipalsCheckEmailDomainResponse = GetApiAdminPrincipalsCheckEmailDomainResponses[keyof GetApiAdminPrincipalsCheckEmailDomainResponses];
 
 export type PostApiAdminPrincipalsUsersData = {
     body: CreateUserRequest;
@@ -3095,27 +3324,6 @@ export type PostApiAdminPrincipalsUsersResponses = {
 };
 
 export type PostApiAdminPrincipalsUsersResponse = PostApiAdminPrincipalsUsersResponses[keyof PostApiAdminPrincipalsUsersResponses];
-
-export type GetApiAdminPrincipalsCheckEmailDomainData = {
-    body?: never;
-    path?: never;
-    query: {
-        /**
-         * Email domain to check
-         */
-        domain: string;
-    };
-    url: '/api/principals/check-email-domain';
-};
-
-export type GetApiAdminPrincipalsCheckEmailDomainResponses = {
-    /**
-     * Domain check result
-     */
-    200: CheckEmailDomainResponse;
-};
-
-export type GetApiAdminPrincipalsCheckEmailDomainResponse = GetApiAdminPrincipalsCheckEmailDomainResponses[keyof GetApiAdminPrincipalsCheckEmailDomainResponses];
 
 export type DeleteApiAdminPrincipalsByIdData = {
     body?: never;
@@ -3589,6 +3797,42 @@ export type DeleteApiAdminPrincipalsByIdRolesByRoleNameResponses = {
 
 export type DeleteApiAdminPrincipalsByIdRolesByRoleNameResponse = DeleteApiAdminPrincipalsByIdRolesByRoleNameResponses[keyof DeleteApiAdminPrincipalsByIdRolesByRoleNameResponses];
 
+export type PostApiAdminPrincipalsByIdSendPasswordResetData = {
+    body?: never;
+    path: {
+        /**
+         * Principal ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/principals/{id}/send-password-reset';
+};
+
+export type PostApiAdminPrincipalsByIdSendPasswordResetErrors = {
+    /**
+     * User is not eligible (OIDC, service account, or no email)
+     */
+    400: unknown;
+    /**
+     * Insufficient permissions
+     */
+    403: unknown;
+    /**
+     * Principal not found
+     */
+    404: unknown;
+};
+
+export type PostApiAdminPrincipalsByIdSendPasswordResetResponses = {
+    /**
+     * Reset email queued
+     */
+    200: StatusChangeResponse;
+};
+
+export type PostApiAdminPrincipalsByIdSendPasswordResetResponse = PostApiAdminPrincipalsByIdSendPasswordResetResponses[keyof PostApiAdminPrincipalsByIdSendPasswordResetResponses];
+
 export type GetApiAdminRolesData = {
     body?: never;
     path?: never;
@@ -3641,7 +3885,7 @@ export type PostApiAdminRolesResponses = {
     /**
      * Role created
      */
-    201: RoleResponse;
+    201: CreatedResponse;
 };
 
 export type PostApiAdminRolesResponse = PostApiAdminRolesResponses[keyof PostApiAdminRolesResponses];
@@ -3862,7 +4106,7 @@ export type PutApiAdminRolesByNameResponses = {
     /**
      * Role updated
      */
-    200: RoleResponse;
+    204: void;
 };
 
 export type PutApiAdminRolesByNameResponse = PutApiAdminRolesByNameResponses[keyof PutApiAdminRolesByNameResponses];
@@ -3975,7 +4219,7 @@ export type PostApiAdminSubscriptionsResponses = {
     /**
      * Subscription created
      */
-    201: SubscriptionResponse;
+    201: CreatedResponse;
 };
 
 export type PostApiAdminSubscriptionsResponse = PostApiAdminSubscriptionsResponses[keyof PostApiAdminSubscriptionsResponses];
@@ -4091,7 +4335,7 @@ export type PutApiAdminSubscriptionsByIdResponses = {
     /**
      * Subscription updated
      */
-    200: SubscriptionResponse;
+    204: void;
 };
 
 export type PutApiAdminSubscriptionsByIdResponse = PutApiAdminSubscriptionsByIdResponses[keyof PutApiAdminSubscriptionsByIdResponses];
@@ -4151,86 +4395,6 @@ export type PostApiAdminSubscriptionsByIdResumeResponses = {
 };
 
 export type PostApiAdminSubscriptionsByIdResumeResponse = PostApiAdminSubscriptionsByIdResumeResponses[keyof PostApiAdminSubscriptionsByIdResumeResponses];
-
-export type GetApiAdminMonitoringCircuitBreakersData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/monitoring/circuit-breakers';
-};
-
-export type GetApiAdminMonitoringCircuitBreakersResponses = {
-    /**
-     * Circuit breaker states
-     */
-    200: CircuitBreakersResponse;
-};
-
-export type GetApiAdminMonitoringCircuitBreakersResponse = GetApiAdminMonitoringCircuitBreakersResponses[keyof GetApiAdminMonitoringCircuitBreakersResponses];
-
-export type GetApiAdminMonitoringDashboardData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/monitoring/dashboard';
-};
-
-export type GetApiAdminMonitoringDashboardResponses = {
-    /**
-     * Dashboard metrics
-     */
-    200: DashboardMetrics;
-};
-
-export type GetApiAdminMonitoringDashboardResponse = GetApiAdminMonitoringDashboardResponses[keyof GetApiAdminMonitoringDashboardResponses];
-
-export type GetApiAdminMonitoringInFlightMessagesData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/monitoring/in-flight-messages';
-};
-
-export type GetApiAdminMonitoringInFlightMessagesResponses = {
-    /**
-     * In-flight messages
-     */
-    200: InFlightMessagesResponse;
-};
-
-export type GetApiAdminMonitoringInFlightMessagesResponse = GetApiAdminMonitoringInFlightMessagesResponses[keyof GetApiAdminMonitoringInFlightMessagesResponses];
-
-export type GetApiAdminMonitoringPoolStatsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/monitoring/pool-stats';
-};
-
-export type GetApiAdminMonitoringPoolStatsResponses = {
-    /**
-     * Pool statistics with enhanced metrics
-     */
-    200: PoolStatsResponse;
-};
-
-export type GetApiAdminMonitoringPoolStatsResponse = GetApiAdminMonitoringPoolStatsResponses[keyof GetApiAdminMonitoringPoolStatsResponses];
-
-export type GetApiAdminMonitoringStandbyStatusData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/monitoring/standby-status';
-};
-
-export type GetApiAdminMonitoringStandbyStatusResponses = {
-    /**
-     * Standby status
-     */
-    200: StandbyStatus;
-};
-
-export type GetApiAdminMonitoringStandbyStatusResponse = GetApiAdminMonitoringStandbyStatusResponses[keyof GetApiAdminMonitoringStandbyStatusResponses];
 
 export type GetAuthCheckDomainData = {
     body?: never;
@@ -4341,8 +4505,23 @@ export type PostAuthRefreshResponse = PostAuthRefreshResponses[keyof PostAuthRef
 export type GetApiAdminDispatchJobsData = {
     body?: never;
     path?: never;
-    query: {
-        pagination: PaginationParams;
+    query?: {
+        /**
+         * Page number (1-based). Falls back to 1.
+         */
+        page?: number;
+        /**
+         * Page size. Capped at 500.
+         */
+        size?: number;
+        /**
+         * Sort field. Allow-listed; unknown values fall back to `createdAt`.
+         */
+        sortField?: string;
+        /**
+         * Sort order: `asc` or `desc`. Defaults to `desc`.
+         */
+        sortOrder?: string;
         /**
          * Filter by event ID
          */
@@ -4356,13 +4535,33 @@ export type GetApiAdminDispatchJobsData = {
          */
         subscriptionId?: string;
         /**
-         * Filter by client ID
+         * Filter by client IDs (comma-separated)
          */
-        clientId?: string;
+        clientIds?: string;
         /**
-         * Filter by status
+         * Filter by statuses (comma-separated)
          */
-        status?: string;
+        statuses?: string;
+        /**
+         * Filter by application codes (comma-separated)
+         */
+        applications?: string;
+        /**
+         * Filter by subdomains (comma-separated)
+         */
+        subdomains?: string;
+        /**
+         * Filter by aggregates (comma-separated)
+         */
+        aggregates?: string;
+        /**
+         * Filter by codes (comma-separated)
+         */
+        codes?: string;
+        /**
+         * Free-text search across code, subject, source
+         */
+        source?: string;
     };
     url: '/bff/dispatch-jobs';
 };
@@ -4371,7 +4570,7 @@ export type GetApiAdminDispatchJobsResponses = {
     /**
      * List of dispatch jobs
      */
-    200: Array<DispatchJobResponse>;
+    200: PagedDispatchJobResponse;
 };
 
 export type GetApiAdminDispatchJobsResponse = GetApiAdminDispatchJobsResponses[keyof GetApiAdminDispatchJobsResponses];
@@ -4398,7 +4597,7 @@ export type PostApiAdminDispatchJobsResponses = {
     /**
      * Dispatch job created
      */
-    201: DispatchJobResponse;
+    201: CreatedResponse;
 };
 
 export type PostApiAdminDispatchJobsResponse = PostApiAdminDispatchJobsResponses[keyof PostApiAdminDispatchJobsResponses];
@@ -4567,20 +4766,51 @@ export type GetApiAdminDispatchJobsByIdRawResponses = {
 export type GetApiAdminEventsData = {
     body?: never;
     path?: never;
-    query: {
-        pagination: PaginationParams;
+    query?: {
         /**
-         * Filter by event type
+         * Page number (1-based). Falls back to 1.
          */
-        eventType?: string;
+        page?: number;
+        /**
+         * Page size. Capped at 500.
+         */
+        size?: number;
+        /**
+         * Sort field. Allow-listed; unknown values fall back to `time`.
+         */
+        sortField?: string;
+        /**
+         * Sort order: `asc` or `desc`. Defaults to `desc`.
+         */
+        sortOrder?: string;
+        /**
+         * Filter by client IDs (comma-separated)
+         */
+        clientIds?: string;
+        /**
+         * Filter by event types (comma-separated)
+         */
+        types?: string;
+        /**
+         * Filter by application codes (comma-separated)
+         */
+        applications?: string;
+        /**
+         * Filter by subdomains (comma-separated)
+         */
+        subdomains?: string;
+        /**
+         * Filter by aggregates (comma-separated)
+         */
+        aggregates?: string;
         /**
          * Filter by correlation ID
          */
         correlationId?: string;
         /**
-         * Filter by client ID
+         * Free-text search across type, source, subject
          */
-        clientId?: string;
+        source?: string;
     };
     url: '/bff/events';
 };
@@ -4589,7 +4819,7 @@ export type GetApiAdminEventsResponses = {
     /**
      * List of events
      */
-    200: Array<EventResponse>;
+    200: PagedEventsResponse;
 };
 
 export type GetApiAdminEventsResponse = GetApiAdminEventsResponses[keyof GetApiAdminEventsResponses];
@@ -4727,21 +4957,21 @@ export type GetApiAdminFilterOptionsClientsResponses = {
 
 export type GetApiAdminFilterOptionsClientsResponse = GetApiAdminFilterOptionsClientsResponses[keyof GetApiAdminFilterOptionsClientsResponses];
 
-export type GetApiAdminDispatchJobsFilterOptions2Data = {
+export type GetApiAdminFilterOptionsDispatchJobsData = {
     body?: never;
     path?: never;
     query?: never;
     url: '/bff/filter-options/dispatch-jobs';
 };
 
-export type GetApiAdminDispatchJobsFilterOptions2Responses = {
+export type GetApiAdminFilterOptionsDispatchJobsResponses = {
     /**
      * Dispatch jobs filter options
      */
     200: DispatchJobsFilterOptions;
 };
 
-export type GetApiAdminDispatchJobsFilterOptions2Response = GetApiAdminDispatchJobsFilterOptions2Responses[keyof GetApiAdminDispatchJobsFilterOptions2Responses];
+export type GetApiAdminFilterOptionsDispatchJobsResponse = GetApiAdminFilterOptionsDispatchJobsResponses[keyof GetApiAdminFilterOptionsDispatchJobsResponses];
 
 export type GetApiAdminFilterOptionsDispatchPoolsData = {
     body?: never;

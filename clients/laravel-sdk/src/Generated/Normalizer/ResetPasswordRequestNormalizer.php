@@ -34,15 +34,11 @@ class ResetPasswordRequestNormalizer implements DenormalizerInterface, Normalize
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
         $object = new \FlowCatalyst\Generated\Model\ResetPasswordRequest();
+        if (\array_key_exists('enforcePasswordComplexity', $data) && \is_int($data['enforcePasswordComplexity'])) {
+            $data['enforcePasswordComplexity'] = (bool) $data['enforcePasswordComplexity'];
+        }
         if (null === $data || false === \is_array($data)) {
             return $object;
-        }
-        if (\array_key_exists('newPassword', $data) && $data['newPassword'] !== null) {
-            $object->setNewPassword($data['newPassword']);
-            unset($data['newPassword']);
-        }
-        elseif (\array_key_exists('newPassword', $data) && $data['newPassword'] === null) {
-            $object->setNewPassword(null);
         }
         if (\array_key_exists('enforcePasswordComplexity', $data) && $data['enforcePasswordComplexity'] !== null) {
             $object->setEnforcePasswordComplexity($data['enforcePasswordComplexity']);
@@ -50,6 +46,13 @@ class ResetPasswordRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('enforcePasswordComplexity', $data) && $data['enforcePasswordComplexity'] === null) {
             $object->setEnforcePasswordComplexity(null);
+        }
+        if (\array_key_exists('newPassword', $data) && $data['newPassword'] !== null) {
+            $object->setNewPassword($data['newPassword']);
+            unset($data['newPassword']);
+        }
+        elseif (\array_key_exists('newPassword', $data) && $data['newPassword'] === null) {
+            $object->setNewPassword(null);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -61,10 +64,10 @@ class ResetPasswordRequestNormalizer implements DenormalizerInterface, Normalize
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        $dataArray['newPassword'] = $data->getNewPassword();
         if ($data->isInitialized('enforcePasswordComplexity')) {
             $dataArray['enforcePasswordComplexity'] = $data->getEnforcePasswordComplexity();
         }
+        $dataArray['newPassword'] = $data->getNewPassword();
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;

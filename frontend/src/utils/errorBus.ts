@@ -36,6 +36,10 @@ export function notify(notification: Notification): void {
 
 /**
  * Convenience methods for common notification types.
+ *
+ * Errors and warnings persist until the user dismisses them — they're the
+ * outcomes the user most needs to read. Success/info auto-dismiss so they
+ * don't clutter the banner stack.
  */
 export const toast = {
 	success(summary: string, detail?: string) {
@@ -45,9 +49,9 @@ export const toast = {
 		notify({ severity: "info", summary, detail, life: 5000 });
 	},
 	warn(summary: string, detail?: string) {
-		notify({ severity: "warn", summary, detail, life: 5000 });
+		notify({ severity: "warn", summary, detail });
 	},
 	error(summary: string, detail?: string) {
-		notify({ severity: "error", summary, detail, life: 5000 });
+		notify({ severity: "error", summary, detail });
 	},
 };

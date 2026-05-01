@@ -183,11 +183,14 @@ export function mapHttpStatusToError(
 	message?: string,
 ): SdkError {
 	const errorBody = body as Record<string, unknown> | undefined;
+	// Platform JSON: { error: "<CODE>", message: "<human text>" }
+	// Prefer the human message; fall back to the code, then a generic.
 	const errorMessage =
 		message ??
-		errorBody?.["error"]?.toString() ??
 		errorBody?.["message"]?.toString() ??
+		errorBody?.["error"]?.toString() ??
 		`HTTP ${status}`;
+	const errorCode = errorBody?.["error"]?.toString();
 
 	switch (status) {
 		case 401:
@@ -197,7 +200,7 @@ export function mapHttpStatusToError(
 		case 404:
 			return notFoundError(errorMessage);
 		case 409:
-			return conflictError(errorMessage, errorBody?.["code"]?.toString());
+			return conflictError(errorMessage, errorCode);
 		case 422:
 			return validationError(
 				errorMessage,

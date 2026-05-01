@@ -30,23 +30,19 @@ class PutApiAdminSubscriptionsById extends \FlowCatalyst\Generated\Runtime\Clien
         }
         return [[], null];
     }
-    public function getExtraHeaders(): array
-    {
-        return ['Accept' => ['application/json']];
-    }
     /**
      * {@inheritdoc}
      *
      * @throws \FlowCatalyst\Generated\Exception\PutApiAdminSubscriptionsByIdNotFoundException
      *
-     * @return null|\FlowCatalyst\Generated\Model\SubscriptionResponse
+     * @return null
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\SubscriptionResponse', 'json');
+        if (204 === $status) {
+            return null;
         }
         if (404 === $status) {
             throw new \FlowCatalyst\Generated\Exception\PutApiAdminSubscriptionsByIdNotFoundException($response);

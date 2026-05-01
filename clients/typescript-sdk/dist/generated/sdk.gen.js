@@ -205,6 +205,26 @@ export const postApiAdminEventTypesByIdSchemas = (options) => (options.client ??
     }
 });
 /**
+ * Get circuit breaker states
+ */
+export const getApiAdminMonitoringCircuitBreakers = (options) => (options?.client ?? client).get({ url: '/api/monitoring/circuit-breakers', ...options });
+/**
+ * Get dashboard metrics
+ */
+export const getApiAdminMonitoringDashboard = (options) => (options?.client ?? client).get({ url: '/api/monitoring/dashboard', ...options });
+/**
+ * Get in-flight messages
+ */
+export const getApiAdminMonitoringInFlightMessages = (options) => (options?.client ?? client).get({ url: '/api/monitoring/in-flight-messages', ...options });
+/**
+ * Get pool statistics with enhanced metrics
+ */
+export const getApiAdminMonitoringPoolStats = (options) => (options?.client ?? client).get({ url: '/api/monitoring/pool-stats', ...options });
+/**
+ * Get standby status
+ */
+export const getApiAdminMonitoringStandbyStatus = (options) => (options?.client ?? client).get({ url: '/api/monitoring/standby-status', ...options });
+/**
  * List OAuth clients
  */
 export const getApiAdminOauthClients = (options) => (options.client ?? client).get({ url: '/api/oauth-clients', ...options });
@@ -263,6 +283,10 @@ export const postApiAdminOauthClientsRotateSecret = (options) => (options.client
  */
 export const getApiAdminPrincipals = (options) => (options?.client ?? client).get({ url: '/api/principals', ...options });
 /**
+ * Check email domain configuration
+ */
+export const getApiAdminPrincipalsCheckEmailDomain = (options) => (options.client ?? client).get({ url: '/api/principals/check-email-domain', ...options });
+/**
  * Create a new user principal
  */
 export const postApiAdminPrincipalsUsers = (options) => (options.client ?? client).post({
@@ -273,10 +297,6 @@ export const postApiAdminPrincipalsUsers = (options) => (options.client ?? clien
         ...options.headers
     }
 });
-/**
- * Check email domain configuration
- */
-export const getApiAdminPrincipalsCheckEmailDomain = (options) => (options.client ?? client).get({ url: '/api/principals/check-email-domain', ...options });
 /**
  * Delete principal (deactivate)
  */
@@ -396,6 +416,17 @@ export const putApiAdminPrincipalsByIdRoles = (options) => (options.client ?? cl
  * Remove role from principal
  */
 export const deleteApiAdminPrincipalsByIdRolesByRoleName = (options) => (options.client ?? client).delete({ url: '/api/principals/{id}/roles/{role}', ...options });
+/**
+ * Trigger a password reset email for an internal-auth user.
+ *
+ * Sends the same single-use email as the user-initiated
+ * `/auth/password-reset/request` flow. The user clicks the link and sets
+ * their own password; the admin never sees or handles the password.
+ *
+ * Rejects OIDC-federated users (they manage credentials at their IDP) and
+ * users without an email address.
+ */
+export const postApiAdminPrincipalsByIdSendPasswordReset = (options) => (options.client ?? client).post({ url: '/api/principals/{id}/send-password-reset', ...options });
 /**
  * List roles
  */
@@ -526,26 +557,6 @@ export const postApiAdminSubscriptionsByIdPause = (options) => (options.client ?
  */
 export const postApiAdminSubscriptionsByIdResume = (options) => (options.client ?? client).post({ url: '/api/subscriptions/{id}/resume', ...options });
 /**
- * Get circuit breaker states
- */
-export const getApiAdminMonitoringCircuitBreakers = (options) => (options?.client ?? client).get({ url: '/api/monitoring/circuit-breakers', ...options });
-/**
- * Get dashboard metrics
- */
-export const getApiAdminMonitoringDashboard = (options) => (options?.client ?? client).get({ url: '/api/monitoring/dashboard', ...options });
-/**
- * Get in-flight messages
- */
-export const getApiAdminMonitoringInFlightMessages = (options) => (options?.client ?? client).get({ url: '/api/monitoring/in-flight-messages', ...options });
-/**
- * Get pool statistics with enhanced metrics
- */
-export const getApiAdminMonitoringPoolStats = (options) => (options?.client ?? client).get({ url: '/api/monitoring/pool-stats', ...options });
-/**
- * Get standby status
- */
-export const getApiAdminMonitoringStandbyStatus = (options) => (options?.client ?? client).get({ url: '/api/monitoring/standby-status', ...options });
-/**
  * Check email domain authentication method
  *
  * Determines how a user with the given email should authenticate:
@@ -599,7 +610,7 @@ export const postAuthRefresh = (options) => (options.client ?? client).post({
 /**
  * List dispatch jobs
  */
-export const getApiAdminDispatchJobs = (options) => (options.client ?? client).get({ url: '/bff/dispatch-jobs', ...options });
+export const getApiAdminDispatchJobs = (options) => (options?.client ?? client).get({ url: '/bff/dispatch-jobs', ...options });
 /**
  * Create a new dispatch job
  *
@@ -633,7 +644,7 @@ export const getApiAdminDispatchJobsByEventByEventId = (options) => (options.cli
 /**
  * Get filter options for dispatch jobs
  *
- * Returns distinct values for filter dropdowns (statuses, modes, subscriptionIds, eventTypeCodes).
+ * Returns distinct values from the read projection for cascading filter dropdowns.
  */
 export const getApiAdminDispatchJobsFilterOptions = (options) => (options?.client ?? client).get({ url: '/bff/dispatch-jobs/filter-options', ...options });
 /**
@@ -659,7 +670,7 @@ export const getApiAdminDispatchJobsByIdRaw = (options) => (options.client ?? cl
 /**
  * List events
  */
-export const getApiAdminEvents = (options) => (options.client ?? client).get({ url: '/bff/events', ...options });
+export const getApiAdminEvents = (options) => (options?.client ?? client).get({ url: '/bff/events', ...options });
 /**
  * Create a new event
  *
@@ -709,7 +720,7 @@ export const getApiAdminFilterOptionsClients = (options) => (options?.client ?? 
 /**
  * Get dispatch jobs filter options
  */
-export const getApiAdminDispatchJobsFilterOptions2 = (options) => (options?.client ?? client).get({ url: '/bff/filter-options/dispatch-jobs', ...options });
+export const getApiAdminFilterOptionsDispatchJobs = (options) => (options?.client ?? client).get({ url: '/bff/filter-options/dispatch-jobs', ...options });
 /**
  * Get dispatch pool filter options
  */

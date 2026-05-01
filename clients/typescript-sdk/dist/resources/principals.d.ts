@@ -6,7 +6,7 @@
 import type { ResultAsync } from "neverthrow";
 import type { SdkError } from "../errors";
 import type { FlowCatalystClient } from "../client";
-import type { GetApiAdminPrincipalsResponse, GetApiAdminPrincipalsByIdResponse, PostApiAdminPrincipalsUsersData, PutApiAdminPrincipalsByIdData, PostApiAdminPrincipalsByIdResetPasswordData, GetApiAdminPrincipalsByIdRolesResponse, GetApiAdminPrincipalsByIdClientAccessResponse } from "../generated/types.gen";
+import type { GetApiAdminPrincipalsData, GetApiAdminPrincipalsResponse, GetApiAdminPrincipalsByIdResponse, PostApiAdminPrincipalsUsersData, PutApiAdminPrincipalsByIdData, PostApiAdminPrincipalsByIdResetPasswordData, GetApiAdminPrincipalsByIdRolesResponse, GetApiAdminPrincipalsByIdClientAccessResponse } from "../generated/types.gen";
 export type PrincipalListResponse = GetApiAdminPrincipalsResponse;
 export type PrincipalDto = GetApiAdminPrincipalsByIdResponse;
 export type CreateUserRequest = PostApiAdminPrincipalsUsersData["body"];
@@ -14,12 +14,7 @@ export type UpdatePrincipalRequest = PutApiAdminPrincipalsByIdData["body"];
 export type ResetPasswordRequest = PostApiAdminPrincipalsByIdResetPasswordData["body"];
 export type RoleListResponse = GetApiAdminPrincipalsByIdRolesResponse;
 export type ClientAccessListResponse = GetApiAdminPrincipalsByIdClientAccessResponse;
-export interface PrincipalFilters {
-    clientId?: string;
-    type?: string;
-    active?: string;
-    email?: string;
-}
+export type PrincipalFilters = GetApiAdminPrincipalsData["query"];
 /**
  * Principals resource for managing users and service accounts.
  */

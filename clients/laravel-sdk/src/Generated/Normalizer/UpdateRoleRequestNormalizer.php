@@ -61,9 +61,20 @@ class UpdateRoleRequestNormalizer implements DenormalizerInterface, NormalizerIn
         elseif (\array_key_exists('displayName', $data) && $data['displayName'] === null) {
             $object->setDisplayName(null);
         }
-        foreach ($data as $key => $value) {
+        if (\array_key_exists('permissions', $data) && $data['permissions'] !== null) {
+            $values = [];
+            foreach ($data['permissions'] as $value) {
+                $values[] = $value;
+            }
+            $object->setPermissions($values);
+            unset($data['permissions']);
+        }
+        elseif (\array_key_exists('permissions', $data) && $data['permissions'] === null) {
+            $object->setPermissions(null);
+        }
+        foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
-                $object[$key] = $value;
+                $object[$key] = $value_1;
             }
         }
         return $object;
@@ -80,9 +91,16 @@ class UpdateRoleRequestNormalizer implements DenormalizerInterface, NormalizerIn
         if ($data->isInitialized('displayName')) {
             $dataArray['displayName'] = $data->getDisplayName();
         }
-        foreach ($data as $key => $value) {
+        if ($data->isInitialized('permissions')) {
+            $values = [];
+            foreach ($data->getPermissions() as $value) {
+                $values[] = $value;
+            }
+            $dataArray['permissions'] = $values;
+        }
+        foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
-                $dataArray[$key] = $value;
+                $dataArray[$key] = $value_1;
             }
         }
         return $dataArray;

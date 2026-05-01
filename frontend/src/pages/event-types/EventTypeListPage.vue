@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import { useEventTypes } from "@/composables/useEventTypes";
 import { useReturnTo } from "@/composables/useReturnTo";
 import { eventTypesApi } from "@/api/event-types";
@@ -10,7 +10,6 @@ import { exportSchemasAsZip } from "@/utils/schema-export";
 
 const router = useRouter();
 const { navigateToDetail } = useReturnTo();
-const toast = useToast();
 const syncing = ref(false);
 
 const {
@@ -55,22 +54,11 @@ async function syncPlatformEvents() {
 			? `\nSchemas: ${schemaParts.join(", ")} (${schemaTotal} total)`
 			: "";
 
-		toast.add({
-			severity: "success",
-			summary: "Platform Events Synced",
-			detail: (parts.length > 0
+		toast.success("Platform Events Synced", (parts.length > 0
 				? `${parts.join(", ")} (${result.total} total)`
-				: `${result.total} event types up to date`) + schemaDetail,
-			life: 5000,
-		});
+				: `${result.total} event types up to date`) + schemaDetail);
 		await loadEventTypes();
-	} catch (e) {
-		toast.add({
-			severity: "error",
-			summary: "Sync Failed",
-			detail: e instanceof Error ? e.message : "Failed to sync platform events",
-			life: 5000,
-		});
+	} catch {
 	} finally {
 		syncing.value = false;
 	}
@@ -86,29 +74,14 @@ function exportSchemas() {
 	const result = exportSchemasAsZip(eventTypes.value);
 
 	if (result.exported === 0) {
-		toast.add({
-			severity: "warn",
-			summary: "Nothing to Export",
-			detail: "No event types with a CURRENT schema in the current view",
-			life: 4000,
-		});
+		toast.warn("Nothing to Export", "No event types with a CURRENT schema in the current view");
 		return;
 	}
 
-	toast.add({
-		severity: "success",
-		summary: "Export Complete",
-		detail: `Exported ${result.exported} schema${result.exported !== 1 ? "s" : ""} to event-schemas.zip`,
-		life: 3000,
-	});
+	toast.success("Export Complete", `Exported ${result.exported} schema${result.exported !== 1 ? "s" : ""} to event-schemas.zip`);
 
 	if (result.errors.length > 0) {
-		toast.add({
-			severity: "warn",
-			summary: `${result.errors.length} Generation Error${result.errors.length !== 1 ? "s" : ""}`,
-			detail: result.errors.join("\n"),
-			life: 8000,
-		});
+		toast.warn(`${result.errors.length} Generation Error${result.errors.length !== 1 ? "s" : ""}`, result.errors.join("\n"));
 	}
 }
 

@@ -1,10 +1,9 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
-import { useToast } from "primevue/usetoast";
 import { corsApi, type CorsOrigin } from "@/api/cors";
 import { getErrorMessage } from "@/utils/errors";
 
-const toast = useToast();
 const origins = ref<CorsOrigin[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -80,12 +79,7 @@ async function addOrigin() {
 		});
 		origins.value.push(created);
 		showAddDialog.value = false;
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: `CORS origin "${created.origin}" added successfully`,
-			life: 3000,
-		});
+		toast.success("Success", `CORS origin "${created.origin}" added successfully`);
 	} catch (e: unknown) {
 		addError.value = getErrorMessage(e, "Failed to add CORS origin");
 	} finally {
@@ -109,19 +103,8 @@ async function deleteOrigin() {
 			(o) => o.id !== originToDelete.value?.id,
 		);
 		showDeleteDialog.value = false;
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: `CORS origin "${originToDelete.value.origin}" removed`,
-			life: 3000,
-		});
+		toast.success("Success", `CORS origin "${originToDelete.value.origin}" removed`);
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to delete CORS origin"),
-			life: 5000,
-		});
 	} finally {
 		deleteLoading.value = false;
 		originToDelete.value = null;

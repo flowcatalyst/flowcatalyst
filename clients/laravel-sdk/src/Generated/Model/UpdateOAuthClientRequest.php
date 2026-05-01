@@ -19,6 +19,12 @@ class UpdateOAuthClientRequest extends \ArrayObject
      */
     protected $active;
     /**
+     * Allowed CORS origins
+     *
+     * @var list<string>|null
+     */
+    protected $allowedOrigins;
+    /**
      * Application IDs this client can access
      *
      * @var list<string>|null
@@ -68,6 +74,28 @@ class UpdateOAuthClientRequest extends \ArrayObject
     {
         $this->initialized['active'] = true;
         $this->active = $active;
+        return $this;
+    }
+    /**
+     * Allowed CORS origins
+     *
+     * @return list<string>|null
+     */
+    public function getAllowedOrigins(): ?array
+    {
+        return $this->allowedOrigins;
+    }
+    /**
+     * Allowed CORS origins
+     *
+     * @param list<string>|null $allowedOrigins
+     *
+     * @return self
+     */
+    public function setAllowedOrigins(?array $allowedOrigins): self
+    {
+        $this->initialized['allowedOrigins'] = true;
+        $this->allowedOrigins = $allowedOrigins;
         return $this;
     }
     /**

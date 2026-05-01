@@ -1,17 +1,15 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import {
 	serviceAccountsApi,
 	type CreateServiceAccountResponse,
 } from "@/api/service-accounts";
 import type { PrincipalScope } from "@/api/users";
 import { clientsApi, type Client } from "@/api/clients";
-import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
-const toast = useToast();
 
 const code = ref("");
 const name = ref("");
@@ -75,12 +73,7 @@ function generateCode() {
 
 async function createServiceAccount() {
 	if (!isValid.value) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Code and name are required",
-			life: 3000,
-		});
+		toast.error("Error", "Code and name are required");
 		return;
 	}
 
@@ -108,19 +101,8 @@ async function createServiceAccount() {
 		createdServiceAccountId.value = response.serviceAccount.id;
 		showCredentialsDialog.value = true;
 
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Service account created successfully",
-			life: 3000,
-		});
+		toast.success("Success", "Service account created successfully");
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to create service account"),
-			life: 5000,
-		});
 	} finally {
 		saving.value = false;
 	}
@@ -128,12 +110,7 @@ async function createServiceAccount() {
 
 function copyToClipboard(text: string, label: string) {
 	navigator.clipboard.writeText(text);
-	toast.add({
-		severity: "info",
-		summary: "Copied",
-		detail: `${label} copied to clipboard`,
-		life: 2000,
-	});
+	toast.info("Copied", `${label} copied to clipboard`);
 }
 
 function closeDialogAndNavigate() {

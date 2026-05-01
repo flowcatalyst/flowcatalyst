@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import {
 	emailDomainMappingsApi,
 	type EmailDomainMapping,
@@ -18,7 +18,6 @@ import { useReturnTo } from "@/composables/useReturnTo";
 
 const route = useRoute();
 const { returnTo } = useReturnTo();
-const toast = useToast();
 
 const mapping = ref<EmailDomainMapping | null>(null);
 const provider = ref<IdentityProvider | null>(null);
@@ -239,12 +238,7 @@ async function saveChanges() {
 		}
 
 		isEditing.value = false;
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Email domain mapping updated successfully",
-			life: 3000,
-		});
+		toast.success("Success", "Email domain mapping updated successfully");
 	} catch (e: unknown) {
 		error.value = getErrorMessage(e, "Failed to update mapping");
 	} finally {
@@ -259,20 +253,9 @@ async function deleteMapping() {
 
 	try {
 		await emailDomainMappingsApi.delete(mapping.value.id);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: `Email domain mapping for "${mapping.value.emailDomain}" deleted`,
-			life: 3000,
-		});
+		toast.success("Success", `Email domain mapping for "${mapping.value.emailDomain}" deleted`);
 		returnTo("/authentication/email-domain-mappings");
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to delete mapping"),
-			life: 5000,
-		});
 	} finally {
 		deleteLoading.value = false;
 		showDeleteDialog.value = false;

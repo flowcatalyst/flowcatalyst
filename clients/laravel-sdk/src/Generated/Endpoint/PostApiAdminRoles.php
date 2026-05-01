@@ -37,14 +37,14 @@ class PostApiAdminRoles extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpo
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminRolesBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminRolesConflictException
      *
-     * @return null|\FlowCatalyst\Generated\Model\RoleResponse
+     * @return null|\FlowCatalyst\Generated\Model\CreatedResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (201 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\RoleResponse', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\CreatedResponse', 'json');
         }
         if (400 === $status) {
             throw new \FlowCatalyst\Generated\Exception\PostApiAdminRolesBadRequestException($response);

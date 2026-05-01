@@ -7,15 +7,20 @@ namespace FlowCatalyst\DTOs\Requests;
 /**
  * Payload for PUT /api/roles/{roleName}. Only provided fields are updated.
  *
- * Permissions are not edited here — use `grantPermission` / `revokePermission`
- * (or the batch sync endpoint) to change the permission set.
+ * Pass `permissions` to replace the role's permission set wholesale. Omit it
+ * to leave permissions unchanged — or use `grantPermission` / `revokePermission`
+ * to add/remove individual permissions without sending the whole set.
  */
 final class UpdateRoleRequest
 {
+    /**
+     * @param list<string>|null $permissions
+     */
     public function __construct(
         public readonly ?string $displayName = null,
         public readonly ?string $description = null,
         public readonly ?bool $clientManaged = null,
+        public readonly ?array $permissions = null,
     ) {}
 
     /**
@@ -32,6 +37,9 @@ final class UpdateRoleRequest
         }
         if ($this->clientManaged !== null) {
             $payload['clientManaged'] = $this->clientManaged;
+        }
+        if ($this->permissions !== null) {
+            $payload['permissions'] = $this->permissions;
         }
         return $payload;
     }

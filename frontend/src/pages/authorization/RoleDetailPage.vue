@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import { rolesApi, type Role, type RoleSource } from "@/api/roles";
 import { useReturnTo } from "@/composables/useReturnTo";
 
 const route = useRoute();
 const router = useRouter();
 const { returnTo } = useReturnTo();
-const toast = useToast();
 
 const role = ref<Role | null>(null);
 const loading = ref(true);
@@ -30,12 +28,6 @@ async function loadRole() {
 		role.value = await rolesApi.get(roleName.value);
 	} catch (e) {
 		error.value = e instanceof Error ? e.message : "Failed to load role";
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: error.value,
-			life: 5000,
-		});
 	} finally {
 		loading.value = false;
 	}

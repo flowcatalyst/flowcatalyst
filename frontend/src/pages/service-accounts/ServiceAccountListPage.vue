@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import {
 	serviceAccountsApi,
 	type ServiceAccount,
@@ -13,7 +12,6 @@ import ClientFilter from "@/components/ClientFilter.vue";
 
 const router = useRouter();
 const { navigateToDetail } = useReturnTo();
-const toast = useToast();
 const { ensureLoaded: ensureClients, getLabel: getClientLabel } = useClientOptions();
 
 const serviceAccounts = ref<ServiceAccount[]>([]);
@@ -68,12 +66,6 @@ async function loadServiceAccounts() {
 		});
 		serviceAccounts.value = response.serviceAccounts;
 	} catch (error) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to load service accounts",
-			life: 5000,
-		});
 		console.error("Failed to fetch service accounts:", error);
 	} finally {
 		loading.value = false;

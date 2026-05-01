@@ -137,6 +137,9 @@ pub struct DispatchJobReadResponse {
     pub is_completed: bool,
     pub is_terminal: bool,
     pub projected_at: Option<String>,
+    pub application: Option<String>,
+    pub subdomain: Option<String>,
+    pub aggregate: Option<String>,
 }
 
 impl From<DispatchJobRead> for DispatchJobReadResponse {
@@ -176,6 +179,9 @@ impl From<DispatchJobRead> for DispatchJobReadResponse {
             is_completed: job.is_completed,
             is_terminal: job.is_terminal,
             projected_at: job.projected_at.map(|t| t.to_rfc3339()),
+            application: job.application,
+            subdomain: job.subdomain,
+            aggregate: job.aggregate,
         }
     }
 }
@@ -185,8 +191,17 @@ impl From<DispatchJobRead> for DispatchJobReadResponse {
 #[serde(rename_all = "camelCase")]
 #[into_params(parameter_in = Query)]
 pub struct DispatchJobsQuery {
-    #[serde(flatten)]
-    pub pagination: PaginationParams,
+    /// Page number (1-based). Falls back to 1.
+    pub page: Option<u32>,
+
+    /// Page size. Capped at 500.
+    pub size: Option<u32>,
+
+    /// Sort field. Allow-listed; unknown values fall back to `createdAt`.
+    pub sort_field: Option<String>,
+
+    /// Sort order: `asc` or `desc`. Defaults to `desc`.
+    pub sort_order: Option<String>,
 
     /// Filter by event ID
     pub event_id: Option<String>,
@@ -197,11 +212,38 @@ pub struct DispatchJobsQuery {
     /// Filter by subscription ID
     pub subscription_id: Option<String>,
 
-    /// Filter by client ID
-    pub client_id: Option<String>,
+    /// Filter by client IDs (comma-separated)
+    pub client_ids: Option<String>,
 
-    /// Filter by status
-    pub status: Option<String>,
+    /// Filter by statuses (comma-separated)
+    pub statuses: Option<String>,
+
+    /// Filter by application codes (comma-separated)
+    pub applications: Option<String>,
+
+    /// Filter by subdomains (comma-separated)
+    pub subdomains: Option<String>,
+
+    /// Filter by aggregates (comma-separated)
+    pub aggregates: Option<String>,
+
+    /// Filter by codes (comma-separated)
+    pub codes: Option<String>,
+
+    /// Free-text search across code, subject, source
+    pub source: Option<String>,
+}
+
+fn split_csv(input: Option<&str>) -> Vec<String> {
+    input
+        .map(|s| {
+            s.split(',')
+                .map(|v| v.trim())
+                .filter(|v| !v.is_empty())
+                .map(|v| v.to_string())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Dispatch jobs service state
@@ -383,7 +425,7 @@ pub async fn get_dispatch_job(
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PagedDispatchJobResponse {
-    pub items: Vec<DispatchJobResponse>,
+    pub items: Vec<DispatchJobReadResponse>,
     pub page: u32,
     pub size: u32,
     pub total_items: u64,
@@ -408,51 +450,73 @@ pub async fn list_dispatch_jobs(
 ) -> Result<Json<PagedDispatchJobResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_dispatch_jobs(&auth.0)?;
 
-    // Validate client access if client_id filter is specified
-    if let Some(ref client_id) = query.client_id {
-        if !auth.0.can_access_client(client_id) {
-            return Err(PlatformError::forbidden(format!("No access to client: {}", client_id)));
+    // Resolve filter values
+    let mut client_ids = split_csv(query.client_ids.as_deref());
+    let statuses = split_csv(query.statuses.as_deref());
+    let applications = split_csv(query.applications.as_deref());
+    let subdomains = split_csv(query.subdomains.as_deref());
+    let aggregates = split_csv(query.aggregates.as_deref());
+    let codes = split_csv(query.codes.as_deref());
+
+    // Validate any caller-supplied client IDs against access; if none provided,
+    // narrow non-anchor callers to their accessible client IDs.
+    if !client_ids.is_empty() {
+        for cid in &client_ids {
+            if !auth.0.can_access_client(cid) {
+                return Err(PlatformError::forbidden(format!("No access to client: {}", cid)));
+            }
+        }
+    } else if !auth.0.is_anchor() {
+        client_ids = auth.0.accessible_clients
+            .iter()
+            .filter(|c| c.as_str() != "*")
+            .cloned()
+            .collect();
+        if client_ids.is_empty() {
+            return Ok(Json(PagedDispatchJobResponse {
+                items: vec![],
+                page: query.page.unwrap_or(1).max(1),
+                size: query.size.unwrap_or(50).min(500),
+                total_items: 0,
+            }));
         }
     }
 
-    // Validate status filter if provided
-    if let Some(ref status_str) = query.status {
+    // Validate status values
+    for status_str in &statuses {
         match status_str.to_uppercase().as_str() {
             "PENDING" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED" | "EXPIRED" => {},
             _ => return Err(PlatformError::validation(format!("Invalid status: {}", status_str))),
         }
     }
 
-    let page = query.pagination.page();
-    let size = query.pagination.size();
+    let page = query.page.unwrap_or(1).max(1);
+    let size = query.size.unwrap_or(50).min(500);
+    let offset = ((page - 1) as i64) * (size as i64);
+    let sort_desc = !matches!(
+        query.sort_order.as_deref().unwrap_or("desc").to_lowercase().as_str(),
+        "asc",
+    );
 
-    let jobs = state.dispatch_job_repo.find_with_filters(
-        query.event_id.as_deref(),
-        query.correlation_id.as_deref(),
-        query.subscription_id.as_deref(),
-        query.client_id.as_deref(),
-        query.status.as_deref(),
+    let (jobs, total) = state.dispatch_job_repo.find_read_with_filters(
+        &client_ids,
+        &statuses,
+        &applications,
+        &subdomains,
+        &aggregates,
+        &codes,
+        query.source.as_deref(),
+        query.sort_field.as_deref(),
+        sort_desc,
         size as i64,
+        offset,
     ).await?;
 
-    // Filter by client access
-    let filtered: Vec<DispatchJobResponse> = jobs.into_iter()
-        .filter(|j| {
-            match &j.client_id {
-                Some(cid) => auth.0.can_access_client(cid),
-                None => auth.0.is_anchor(),
-            }
-        })
-        .map(|j| j.into())
-        .collect();
-
-    let total = filtered.len() as u64;
-
     Ok(Json(PagedDispatchJobResponse {
-        items: filtered,
+        items: jobs.into_iter().map(DispatchJobReadResponse::from).collect(),
         page,
         size,
-        total_items: total,
+        total_items: total as u64,
     }))
 }
 

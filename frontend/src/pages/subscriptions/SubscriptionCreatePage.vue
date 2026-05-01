@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import {
 	subscriptionsApi,
 	type SubscriptionMode,
@@ -13,7 +13,6 @@ import { eventTypesApi, type EventType } from "@/api/event-types";
 import ConnectionCreateDialog from "@/components/ConnectionCreateDialog.vue";
 
 const router = useRouter();
-const toast = useToast();
 
 // Form fields
 const code = ref("");
@@ -187,12 +186,7 @@ async function onSubmit() {
 			mode: mode.value,
 			source: "UI",
 		});
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Subscription created",
-			life: 3000,
-		});
+		toast.success("Success", "Subscription created");
 		router.push(`/subscriptions/${subscription.id}`);
 	} catch (e) {
 		errorMessage.value =

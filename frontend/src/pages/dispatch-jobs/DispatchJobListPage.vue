@@ -5,26 +5,8 @@ import ClientFilter from "@/components/ClientFilter.vue";
 import {
 	getApiAdminDispatchJobs,
 	getApiAdminDispatchJobsFilterOptions,
+	type DispatchJobReadResponse as DispatchJob,
 } from "@/api/generated";
-
-interface DispatchJob {
-	id: string;
-	source: string;
-	code: string;
-	kind: string;
-	targetUrl: string;
-	status: string;
-	mode: string;
-	clientId?: string;
-	subscriptionId?: string;
-	dispatchPoolId?: string;
-	attemptCount: number;
-	maxRetries: number;
-	createdAt: string;
-	updatedAt: string;
-	completedAt?: string;
-	lastError?: string;
-}
 
 interface FilterOption {
 	label: string;
@@ -71,33 +53,8 @@ onMounted(async () => {
 
 async function loadFilterOptions() {
 	try {
-		const response = await getApiAdminDispatchJobsFilterOptions({
-			query: {
-				clientIds:
-					filters.clients.value.length > 0
-						? filters.clients.value.join(",")
-						: undefined,
-				applications:
-					filters.applications.value.length > 0
-						? filters.applications.value.join(",")
-						: undefined,
-				subdomains:
-					filters.subdomains.value.length > 0
-						? filters.subdomains.value.join(",")
-						: undefined,
-				aggregates:
-					filters.aggregates.value.length > 0
-						? filters.aggregates.value.join(",")
-						: undefined,
-			},
-		});
-		const data = response.data as unknown as {
-			applications?: FilterOption[];
-			subdomains?: FilterOption[];
-			aggregates?: FilterOption[];
-			codes?: FilterOption[];
-			statuses?: FilterOption[];
-		};
+		const response = await getApiAdminDispatchJobsFilterOptions();
+		const data = response.data;
 		if (data) {
 			applicationOptions.value = (data.applications || []) as FilterOption[];
 			subdomainOptions.value = (data.subdomains || []) as FilterOption[];
@@ -115,10 +72,10 @@ async function loadDispatchJobs() {
 	try {
 		const response = await getApiAdminDispatchJobs({
 			query: {
-				page: String(page.value),
-				size: String(pageSize.value),
-				sortField: sortField.value,
-				sortOrder: sortOrder.value,
+				page: page.value,
+				size: pageSize.value,
+				sortField: sortField.value || undefined,
+				sortOrder: sortOrder.value || undefined,
 				clientIds:
 					filters.clients.value.length > 0
 						? filters.clients.value.join(",")
@@ -146,12 +103,9 @@ async function loadDispatchJobs() {
 				source: filters.search.value || undefined,
 			},
 		});
-		const data = response.data as {
-			items?: DispatchJob[];
-			totalItems?: number;
-		};
+		const data = response.data;
 		if (data) {
-			dispatchJobs.value = (data.items || []) as DispatchJob[];
+			dispatchJobs.value = data.items;
 			totalRecords.value = data.totalItems || 0;
 		}
 	} catch (error) {

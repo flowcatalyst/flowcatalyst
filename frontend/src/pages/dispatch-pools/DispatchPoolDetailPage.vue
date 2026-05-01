@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { useConfirm } from "primevue/useconfirm";
-import { useToast } from "primevue/usetoast";
 import {
 	dispatchPoolsApi,
 	type DispatchPool,
@@ -13,7 +13,6 @@ import { useReturnTo } from "@/composables/useReturnTo";
 const route = useRoute();
 const { returnTo } = useReturnTo();
 const confirm = useConfirm();
-const toast = useToast();
 
 const loading = ref(true);
 const pool = ref<DispatchPool | null>(null);
@@ -70,19 +69,8 @@ async function saveChanges() {
 			concurrency: editConcurrency.value || undefined,
 		});
 		editing.value = false;
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Pool updated",
-			life: 3000,
-		});
-	} catch (e) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to update",
-			life: 3000,
-		});
+		toast.success("Success", "Pool updated");
+	} catch {
 	} finally {
 		saving.value = false;
 	}
@@ -103,19 +91,8 @@ async function activatePool() {
 	try {
 		await dispatchPoolsApi.activate(pool.value.id);
 		pool.value = await dispatchPoolsApi.get(pool.value.id);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Pool activated",
-			life: 3000,
-		});
+		toast.success("Success", "Pool activated");
 	} catch {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to activate",
-			life: 3000,
-		});
 	}
 }
 
@@ -135,19 +112,8 @@ async function suspendPool() {
 	try {
 		await dispatchPoolsApi.suspend(pool.value.id);
 		pool.value = await dispatchPoolsApi.get(pool.value.id);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Pool suspended",
-			life: 3000,
-		});
+		toast.success("Success", "Pool suspended");
 	} catch {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to suspend",
-			life: 3000,
-		});
 	}
 }
 
@@ -166,20 +132,9 @@ async function deletePool() {
 	if (!pool.value) return;
 	try {
 		await dispatchPoolsApi.delete(pool.value.id);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Pool deleted",
-			life: 3000,
-		});
+		toast.success("Success", "Pool deleted");
 		returnTo("/dispatch-pools");
 	} catch {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to delete",
-			life: 3000,
-		});
 	}
 }
 

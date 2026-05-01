@@ -37,14 +37,14 @@ class PostApiAdminSubscriptions extends \FlowCatalyst\Generated\Runtime\Client\B
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminSubscriptionsBadRequestException
      * @throws \FlowCatalyst\Generated\Exception\PostApiAdminSubscriptionsConflictException
      *
-     * @return null|\FlowCatalyst\Generated\Model\SubscriptionResponse
+     * @return null|\FlowCatalyst\Generated\Model\CreatedResponse
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (201 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\SubscriptionResponse', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\CreatedResponse', 'json');
         }
         if (400 === $status) {
             throw new \FlowCatalyst\Generated\Exception\PostApiAdminSubscriptionsBadRequestException($response);

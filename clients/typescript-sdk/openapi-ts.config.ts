@@ -1,10 +1,12 @@
 import { defineConfig } from "@hey-api/openapi-ts";
 
-// Use local file from platform build, or live endpoint for dev
+// Default to the snapshotted JSON spec (refreshed by `just regen-sdks`).
+// FC_API_PORT lets you override the live port (defaults to 8080, matching fc-dev).
+const livePort = process.env.FC_API_PORT ?? "8080";
 const openApiInput =
 	process.env.OPENAPI_LIVE === "true"
-		? "http://localhost:3000/q/openapi"
-		: "./openapi/openapi.yaml";
+		? `http://localhost:${livePort}/q/openapi`
+		: "./openapi/openapi.json";
 
 export default defineConfig({
 	input: openApiInput,

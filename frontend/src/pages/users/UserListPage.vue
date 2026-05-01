@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import { useListState } from "@/composables/useListState";
 import { useReturnTo } from "@/composables/useReturnTo";
 import { useClientOptions } from "@/composables/useClientOptions";
@@ -11,7 +10,6 @@ import ClientFilter from "@/components/ClientFilter.vue";
 
 const router = useRouter();
 const { navigateToDetail } = useReturnTo();
-const toast = useToast();
 const { ensureLoaded: ensureClients, getLabel: getClientLabel } = useClientOptions();
 
 const users = ref<User[]>([]);
@@ -83,12 +81,6 @@ async function loadUsers() {
 		users.value = response.principals;
 		totalRecords.value = response.total;
 	} catch (error) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to load users",
-			life: 5000,
-		});
 		console.error("Failed to fetch users:", error);
 	} finally {
 		loading.value = false;

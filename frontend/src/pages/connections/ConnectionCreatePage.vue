@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import { connectionsApi } from "@/api/connections";
 import {
 	serviceAccountsApi,
@@ -9,7 +9,6 @@ import {
 } from "@/api/service-accounts";
 
 const router = useRouter();
-const toast = useToast();
 
 // Form fields
 const code = ref("");
@@ -73,12 +72,7 @@ async function onSubmit() {
 			serviceAccountId: serviceAccountId.value!,
 			clientId: clientId.value || undefined,
 		});
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Connection created",
-			life: 3000,
-		});
+		toast.success("Success", "Connection created");
 		router.push(`/connections/${connection.id}`);
 	} catch (e) {
 		errorMessage.value =

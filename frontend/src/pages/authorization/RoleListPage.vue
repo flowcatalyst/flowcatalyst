@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
-import { useToast } from "primevue/usetoast";
 import { useListState } from "@/composables/useListState";
 import { useReturnTo } from "@/composables/useReturnTo";
 import {
@@ -11,7 +11,6 @@ import {
 } from "@/api/roles";
 
 const { navigateToDetail } = useReturnTo();
-const toast = useToast();
 
 // Data
 const roles = ref<Role[]>([]);
@@ -90,13 +89,7 @@ async function loadRoles() {
 
 		const response = await rolesApi.list(apiFilters);
 		roles.value = response.items;
-	} catch (e) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: e instanceof Error ? e.message : "Failed to load roles",
-			life: 5000,
-		});
+	} catch {
 	} finally {
 		loading.value = false;
 	}
@@ -141,12 +134,7 @@ async function createRole() {
 			description: createForm.value.description || undefined,
 		});
 
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Role created successfully",
-			life: 3000,
-		});
+		toast.success("Success", "Role created successfully");
 		showCreateDialog.value = false;
 		loadRoles();
 	} catch (e) {
@@ -179,12 +167,7 @@ async function updateRole() {
 			description: editForm.value.description || undefined,
 		});
 
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Role updated successfully",
-			life: 3000,
-		});
+		toast.success("Success", "Role updated successfully");
 		showEditDialog.value = false;
 		loadRoles();
 	} catch (e) {
@@ -206,20 +189,9 @@ async function deleteRole(role: Role) {
 
 	try {
 		await rolesApi.delete(role.name);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Role deleted successfully",
-			life: 3000,
-		});
+		toast.success("Success", "Role deleted successfully");
 		loadRoles();
-	} catch (e) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: e instanceof Error ? e.message : "Failed to delete role",
-			life: 5000,
-		});
+	} catch {
 	}
 }
 

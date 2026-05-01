@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import {
 	identityProvidersApi,
 	type IdentityProvider,
@@ -11,7 +11,6 @@ import { useReturnTo } from "@/composables/useReturnTo";
 
 const route = useRoute();
 const { returnTo } = useReturnTo();
-const toast = useToast();
 
 const provider = ref<IdentityProvider | null>(null);
 const loading = ref(true);
@@ -94,12 +93,7 @@ function addAllowedDomain() {
 			editForm.value.allowedEmailDomains.push(domain);
 			newAllowedDomain.value = "";
 		} else {
-			toast.add({
-				severity: "error",
-				summary: "Invalid Domain",
-				detail: "Please enter a valid domain name",
-				life: 3000,
-			});
+			toast.error("Invalid Domain", "Please enter a valid domain name");
 		}
 	}
 }
@@ -139,12 +133,7 @@ async function saveChanges() {
 		);
 		provider.value = updated;
 		isEditing.value = false;
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Identity provider updated successfully",
-			life: 3000,
-		});
+		toast.success("Success", "Identity provider updated successfully");
 	} catch (e: unknown) {
 		error.value = getErrorMessage(e, "Failed to update identity provider");
 	} finally {
@@ -159,20 +148,9 @@ async function deleteProvider() {
 
 	try {
 		await identityProvidersApi.delete(provider.value.id);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: `Identity provider "${provider.value.name}" deleted`,
-			life: 3000,
-		});
+		toast.success("Success", `Identity provider "${provider.value.name}" deleted`);
 		returnTo("/authentication/identity-providers");
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to delete identity provider"),
-			life: 5000,
-		});
 	} finally {
 		deleteLoading.value = false;
 		showDeleteDialog.value = false;

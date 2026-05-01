@@ -427,7 +427,7 @@ const DISPATCH_JOB_STATUSES: &[(&str, &str)] = &[
     get,
     path = "/dispatch-jobs",
     tag = "filter-options",
-    operation_id = "getApiAdminDispatchJobsFilterOptions",
+    operation_id = "getApiAdminFilterOptionsDispatchJobs",
     responses(
         (status = 200, description = "Dispatch jobs filter options", body = DispatchJobsFilterOptions)
     ),

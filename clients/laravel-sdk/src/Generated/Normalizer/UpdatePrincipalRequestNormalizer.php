@@ -47,6 +47,13 @@ class UpdatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         elseif (\array_key_exists('active', $data) && $data['active'] === null) {
             $object->setActive(null);
         }
+        if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
+            $object->setClientId($data['clientId']);
+            unset($data['clientId']);
+        }
+        elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
+            $object->setClientId(null);
+        }
         if (\array_key_exists('firstName', $data) && $data['firstName'] !== null) {
             $object->setFirstName($data['firstName']);
             unset($data['firstName']);
@@ -68,6 +75,13 @@ class UpdatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
         }
+        if (\array_key_exists('scope', $data) && $data['scope'] !== null) {
+            $object->setScope($data['scope']);
+            unset($data['scope']);
+        }
+        elseif (\array_key_exists('scope', $data) && $data['scope'] === null) {
+            $object->setScope(null);
+        }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $object[$key] = $value;
@@ -81,6 +95,9 @@ class UpdatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         if ($data->isInitialized('active')) {
             $dataArray['active'] = $data->getActive();
         }
+        if ($data->isInitialized('clientId')) {
+            $dataArray['clientId'] = $data->getClientId();
+        }
         if ($data->isInitialized('firstName')) {
             $dataArray['firstName'] = $data->getFirstName();
         }
@@ -89,6 +106,9 @@ class UpdatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         }
         if ($data->isInitialized('name')) {
             $dataArray['name'] = $data->getName();
+        }
+        if ($data->isInitialized('scope')) {
+            $dataArray['scope'] = $data->getScope();
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {

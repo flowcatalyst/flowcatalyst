@@ -1,15 +1,13 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import { oauthClientsApi, type OAuthClient } from "@/api/oauth-clients";
-import { getErrorMessage } from "@/utils/errors";
 import { useListState } from "@/composables/useListState";
 import { useReturnTo } from "@/composables/useReturnTo";
 
 const router = useRouter();
 const { navigateToDetail } = useReturnTo();
-const toast = useToast();
 const clients = ref<OAuthClient[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -70,19 +68,8 @@ async function deleteClient() {
 			(c) => c.id !== clientToDelete.value?.id,
 		);
 		showDeleteDialog.value = false;
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: `OAuth client "${clientToDelete.value.clientName}" deleted`,
-			life: 3000,
-		});
+		toast.success("Success", `OAuth client "${clientToDelete.value.clientName}" deleted`);
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to delete OAuth client"),
-			life: 5000,
-		});
 	} finally {
 		deleteLoading.value = false;
 		clientToDelete.value = null;
@@ -94,29 +81,13 @@ async function toggleActive(client: OAuthClient) {
 		if (client.active) {
 			await oauthClientsApi.deactivate(client.id);
 			client.active = false;
-			toast.add({
-				severity: "success",
-				summary: "Deactivated",
-				detail: `OAuth client "${client.clientName}" has been deactivated`,
-				life: 3000,
-			});
+			toast.success("Deactivated", `OAuth client "${client.clientName}" has been deactivated`);
 		} else {
 			await oauthClientsApi.activate(client.id);
 			client.active = true;
-			toast.add({
-				severity: "success",
-				summary: "Activated",
-				detail: `OAuth client "${client.clientName}" has been activated`,
-				life: 3000,
-			});
+			toast.success("Activated", `OAuth client "${client.clientName}" has been activated`);
 		}
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to update client status"),
-			life: 5000,
-		});
 	}
 }
 

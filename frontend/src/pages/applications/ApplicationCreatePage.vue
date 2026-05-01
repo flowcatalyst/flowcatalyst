@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import {
 	applicationsApi,
 	type ApplicationType,
@@ -9,7 +9,6 @@ import {
 } from "@/api/applications";
 
 const router = useRouter();
-const toast = useToast();
 
 // Form state
 const code = ref("");
@@ -75,12 +74,7 @@ async function onSubmit() {
 		if (application.serviceAccount) {
 			showCredentialsDialog.value = true;
 		} else {
-			toast.add({
-				severity: "success",
-				summary: "Success",
-				detail: "Application created",
-				life: 3000,
-			});
+			toast.success("Success", "Application created");
 			router.push(`/applications/${application.id}`);
 		}
 	} catch (e) {
@@ -93,12 +87,7 @@ async function onSubmit() {
 
 function onCredentialsDialogClose() {
 	showCredentialsDialog.value = false;
-	toast.add({
-		severity: "success",
-		summary: "Success",
-		detail: "Application created",
-		life: 3000,
-	});
+	toast.success("Success", "Application created");
 	if (createdApplication.value) {
 		router.push(`/applications/${createdApplication.value.id}`);
 	}
@@ -106,12 +95,7 @@ function onCredentialsDialogClose() {
 
 function copyToClipboard(text: string) {
 	navigator.clipboard.writeText(text);
-	toast.add({
-		severity: "info",
-		summary: "Copied",
-		detail: "Copied to clipboard",
-		life: 2000,
-	});
+	toast.info("Copied", "Copied to clipboard");
 }
 </script>
 

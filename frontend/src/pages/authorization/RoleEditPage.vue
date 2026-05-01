@@ -1,13 +1,12 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import { rolesApi, type Role } from "@/api/roles";
 import { permissionsApi, type Permission } from "@/api/permissions";
 
 const route = useRoute();
 const router = useRouter();
-const toast = useToast();
 
 const role = ref<Role | null>(null);
 const allPermissions = ref<Permission[]>([]);
@@ -69,12 +68,7 @@ async function loadRole() {
 
 		// Redirect if not editable
 		if (role.value.source !== "DATABASE") {
-			toast.add({
-				severity: "warn",
-				summary: "Not Editable",
-				detail: "Only admin-created roles can be edited",
-				life: 5000,
-			});
+			toast.warn("Not Editable", "Only admin-created roles can be edited");
 			router.push(`/authorization/roles/${encodeURIComponent(roleName.value)}`);
 		}
 	} catch (e) {
@@ -86,13 +80,7 @@ async function loadPermissions() {
 	try {
 		const response = await permissionsApi.list();
 		allPermissions.value = response.items;
-	} catch (e) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to load permissions",
-			life: 5000,
-		});
+	} catch {
 	} finally {
 		loading.value = false;
 	}
@@ -149,21 +137,10 @@ async function saveRole() {
 			clientManaged: clientManaged.value,
 		});
 
-		toast.add({
-			severity: "success",
-			summary: "Saved",
-			detail: "Role updated successfully",
-			life: 3000,
-		});
+		toast.success("Saved", "Role updated successfully");
 
 		router.push(`/authorization/roles/${encodeURIComponent(roleName.value)}`);
-	} catch (e) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: e instanceof Error ? e.message : "Failed to save role",
-			life: 5000,
-		});
+	} catch {
 	} finally {
 		saving.value = false;
 	}

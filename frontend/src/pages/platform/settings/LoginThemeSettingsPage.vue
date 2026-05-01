@@ -1,10 +1,9 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, onMounted, computed } from "vue";
-import { useToast } from "primevue/usetoast";
 import { configApi, type LoginTheme } from "@/api/config";
 import { getErrorMessage } from "@/utils/errors";
 
-const toast = useToast();
 
 const loading = ref(true);
 const saving = ref(false);
@@ -90,20 +89,9 @@ async function saveTheme() {
 
 	try {
 		await configApi.setLoginThemeConfig(theme.value);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Theme saved successfully",
-			life: 3000,
-		});
+		toast.success("Success", "Theme saved successfully");
 	} catch (e: unknown) {
 		error.value = getErrorMessage(e, "Failed to save theme");
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: error.value,
-			life: 5000,
-		});
 	} finally {
 		saving.value = false;
 	}

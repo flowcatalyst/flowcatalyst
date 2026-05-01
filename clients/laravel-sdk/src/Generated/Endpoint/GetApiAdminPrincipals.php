@@ -11,6 +11,10 @@ class GetApiAdminPrincipals extends \FlowCatalyst\Generated\Runtime\Client\BaseE
      *    "type"?: string, //Filter by type
      *    "scope"?: string, //Filter by scope
      *    "client_id"?: string, //Filter by client ID
+     *    "email"?: string, //Exact email match (case-insensitive)
+     *    "q"?: string, //Search by name or email (substring)
+     *    "active"?: bool, //Filter by active status
+     *    "roles"?: string, //Filter by roles (comma-separated)
      * } $queryParameters
      */
     public function __construct(array $queryParameters = [])
@@ -37,7 +41,7 @@ class GetApiAdminPrincipals extends \FlowCatalyst\Generated\Runtime\Client\BaseE
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['page', 'limit', 'type', 'scope', 'client_id']);
+        $optionsResolver->setDefined(['page', 'limit', 'type', 'scope', 'client_id', 'email', 'q', 'active', 'roles']);
         $optionsResolver->setRequired([]);
         $optionsResolver->setDefaults([]);
         $optionsResolver->addAllowedTypes('page', ['int']);
@@ -45,6 +49,10 @@ class GetApiAdminPrincipals extends \FlowCatalyst\Generated\Runtime\Client\BaseE
         $optionsResolver->addAllowedTypes('type', ['string']);
         $optionsResolver->addAllowedTypes('scope', ['string']);
         $optionsResolver->addAllowedTypes('client_id', ['string']);
+        $optionsResolver->addAllowedTypes('email', ['string']);
+        $optionsResolver->addAllowedTypes('q', ['string']);
+        $optionsResolver->addAllowedTypes('active', ['bool']);
+        $optionsResolver->addAllowedTypes('roles', ['string']);
         return $optionsResolver;
     }
     /**

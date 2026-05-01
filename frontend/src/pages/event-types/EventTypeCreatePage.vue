@@ -1,12 +1,11 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import { eventTypesApi } from "@/api/event-types";
 import { applicationsApi, type Application } from "@/api/applications";
 
 const router = useRouter();
-const toast = useToast();
 
 // Applications data
 const applications = ref<Application[]>([]);
@@ -87,12 +86,7 @@ async function onSubmit() {
 			description: description.value || undefined,
 			clientScoped: clientScoped.value,
 		});
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Event type created",
-			life: 3000,
-		});
+		toast.success("Success", "Event type created");
 		router.push(`/event-types/${eventType.id}`);
 	} catch (e) {
 		errorMessage.value =

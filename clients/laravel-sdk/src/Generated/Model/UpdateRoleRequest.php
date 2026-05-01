@@ -31,6 +31,12 @@ class UpdateRoleRequest extends \ArrayObject
      */
     protected $displayName;
     /**
+     * Replace the role's permission set. Omit to leave permissions unchanged.
+     *
+     * @var list<string>|null
+     */
+    protected $permissions;
+    /**
      * Whether clients can manage this role
      *
      * @return bool|null
@@ -94,6 +100,28 @@ class UpdateRoleRequest extends \ArrayObject
     {
         $this->initialized['displayName'] = true;
         $this->displayName = $displayName;
+        return $this;
+    }
+    /**
+     * Replace the role's permission set. Omit to leave permissions unchanged.
+     *
+     * @return list<string>|null
+     */
+    public function getPermissions(): ?array
+    {
+        return $this->permissions;
+    }
+    /**
+     * Replace the role's permission set. Omit to leave permissions unchanged.
+     *
+     * @param list<string>|null $permissions
+     *
+     * @return self
+     */
+    public function setPermissions(?array $permissions): self
+    {
+        $this->initialized['permissions'] = true;
+        $this->permissions = $permissions;
         return $this;
     }
 }

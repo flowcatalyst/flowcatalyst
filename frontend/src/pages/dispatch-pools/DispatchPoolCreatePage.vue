@@ -1,11 +1,10 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import { dispatchPoolsApi } from "@/api/dispatch-pools";
 
 const router = useRouter();
-const toast = useToast();
 
 const code = ref("");
 const name = ref("");
@@ -51,12 +50,7 @@ async function onSubmit() {
 			concurrency: concurrency.value,
 			clientId: isAnchorLevel.value ? undefined : clientId.value || undefined,
 		});
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Dispatch pool created",
-			life: 3000,
-		});
+		toast.success("Success", "Dispatch pool created");
 		router.push(`/dispatch-pools/${pool.id}`);
 	} catch (e) {
 		errorMessage.value =

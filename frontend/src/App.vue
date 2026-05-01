@@ -22,9 +22,8 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <NotificationBannerStack />
   <RouterView />
-  <Toast />
   <ConfirmDialog />
-  <GlobalToast />
   <PermissionDeniedModal />
 </template>

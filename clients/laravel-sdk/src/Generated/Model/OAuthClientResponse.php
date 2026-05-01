@@ -19,6 +19,10 @@ class OAuthClientResponse extends \ArrayObject
     /**
      * @var list<string>|null
      */
+    protected $allowedOrigins;
+    /**
+     * @var list<string>|null
+     */
     protected $applicationIds;
     /**
      * @var string|null
@@ -84,6 +88,24 @@ class OAuthClientResponse extends \ArrayObject
     {
         $this->initialized['active'] = true;
         $this->active = $active;
+        return $this;
+    }
+    /**
+     * @return list<string>|null
+     */
+    public function getAllowedOrigins(): ?array
+    {
+        return $this->allowedOrigins;
+    }
+    /**
+     * @param list<string>|null $allowedOrigins
+     *
+     * @return self
+     */
+    public function setAllowedOrigins(?array $allowedOrigins): self
+    {
+        $this->initialized['allowedOrigins'] = true;
+        $this->allowedOrigins = $allowedOrigins;
         return $this;
     }
     /**

@@ -1,9 +1,11 @@
 import { defineConfig } from "@hey-api/openapi-ts";
 
+// Default to the snapshotted JSON spec (refreshed by `just regen-sdks`).
+const livePort = process.env.FC_API_PORT ?? "8080";
 const openApiInput =
 	process.env.OPENAPI_LIVE === "true"
-		? "http://localhost:8080/q/openapi"
-		: "./openapi/openapi.yaml";
+		? `http://localhost:${livePort}/q/openapi`
+		: "./openapi/openapi.json";
 
 export default defineConfig({
 	input: openApiInput,

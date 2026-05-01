@@ -92,10 +92,13 @@ export const rateLimitError = (message, retryAfterMs) => ({
  */
 export function mapHttpStatusToError(status, body, message) {
     const errorBody = body;
+    // Platform JSON: { error: "<CODE>", message: "<human text>" }
+    // Prefer the human message; fall back to the code, then a generic.
     const errorMessage = message ??
-        errorBody?.["error"]?.toString() ??
         errorBody?.["message"]?.toString() ??
+        errorBody?.["error"]?.toString() ??
         `HTTP ${status}`;
+    const errorCode = errorBody?.["error"]?.toString();
     switch (status) {
         case 401:
             return authError.tokenExpired(errorMessage);
@@ -104,7 +107,7 @@ export function mapHttpStatusToError(status, body, message) {
         case 404:
             return notFoundError(errorMessage);
         case 409:
-            return conflictError(errorMessage, errorBody?.["code"]?.toString());
+            return conflictError(errorMessage, errorCode);
         case 422:
             return validationError(errorMessage, errorBody?.["errors"] ?? {});
         case 429: {

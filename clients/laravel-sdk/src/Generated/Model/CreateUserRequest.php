@@ -25,6 +25,15 @@ class CreateUserRequest extends \ArrayObject
      */
     protected $email;
     /**
+     * When false, the platform skips its password complexity rules
+     * (uppercase/lowercase/digit/special) and only enforces a 2-character
+     * minimum. Intended for SDK callers that apply their own policy.
+     * Defaults to true.
+     *
+     * @var bool|null
+     */
+    protected $enforcePasswordComplexity;
+    /**
      * Display name
      *
      * @var string|null
@@ -36,12 +45,6 @@ class CreateUserRequest extends \ArrayObject
      * @var string|null
      */
     protected $password;
-    /**
-     * When false, the platform skips its password complexity rules (uppercase/lowercase/digit/special) and only enforces a 2-character minimum. Intended for SDK callers that apply their own policy. Defaults to true.
-     *
-     * @var bool|null
-     */
-    protected $enforcePasswordComplexity;
     /**
      * Client ID (for client-bound users)
      *
@@ -87,6 +90,34 @@ class CreateUserRequest extends \ArrayObject
         return $this;
     }
     /**
+     * When false, the platform skips its password complexity rules
+     * (uppercase/lowercase/digit/special) and only enforces a 2-character
+     * minimum. Intended for SDK callers that apply their own policy.
+     * Defaults to true.
+     *
+     * @return bool|null
+     */
+    public function getEnforcePasswordComplexity(): ?bool
+    {
+        return $this->enforcePasswordComplexity;
+    }
+    /**
+    * When false, the platform skips its password complexity rules
+    (uppercase/lowercase/digit/special) and only enforces a 2-character
+    minimum. Intended for SDK callers that apply their own policy.
+    Defaults to true.
+    *
+    * @param bool|null $enforcePasswordComplexity
+    *
+    * @return self
+    */
+    public function setEnforcePasswordComplexity(?bool $enforcePasswordComplexity): self
+    {
+        $this->initialized['enforcePasswordComplexity'] = true;
+        $this->enforcePasswordComplexity = $enforcePasswordComplexity;
+        return $this;
+    }
+    /**
      * Display name
      *
      * @return string|null
@@ -128,28 +159,6 @@ class CreateUserRequest extends \ArrayObject
     {
         $this->initialized['password'] = true;
         $this->password = $password;
-        return $this;
-    }
-    /**
-     * When false, the platform skips its password complexity rules (uppercase/lowercase/digit/special) and only enforces a 2-character minimum. Intended for SDK callers that apply their own policy. Defaults to true.
-     *
-     * @return bool|null
-     */
-    public function getEnforcePasswordComplexity(): ?bool
-    {
-        return $this->enforcePasswordComplexity;
-    }
-    /**
-     * When false, the platform skips its password complexity rules (uppercase/lowercase/digit/special) and only enforces a 2-character minimum. Intended for SDK callers that apply their own policy. Defaults to true.
-     *
-     * @param bool|null $enforcePasswordComplexity
-     *
-     * @return self
-     */
-    public function setEnforcePasswordComplexity(?bool $enforcePasswordComplexity): self
-    {
-        $this->initialized['enforcePasswordComplexity'] = true;
-        $this->enforcePasswordComplexity = $enforcePasswordComplexity;
         return $this;
     }
 }

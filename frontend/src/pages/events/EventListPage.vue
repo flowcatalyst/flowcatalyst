@@ -6,27 +6,9 @@ import {
 	getApiAdminEvents,
 	getApiAdminEventsById,
 	getApiAdminEventsFilterOptions,
+	type EventRead,
+	type EventResponse,
 } from "@/api/generated";
-
-interface EventRead {
-	id: string;
-	specVersion: string;
-	type: string;
-	application?: string;
-	subdomain?: string;
-	aggregate?: string;
-	source: string;
-	subject: string;
-	time: string;
-	data: string;
-	messageGroup?: string;
-	correlationId?: string;
-	causationId?: string;
-	deduplicationId?: string;
-	contextData?: { key: string; value: string }[];
-	clientId?: string;
-	projectedAt?: string;
-}
 
 interface FilterOption {
 	value: string;
@@ -67,7 +49,11 @@ const loadingOptions = ref(false);
 const isUpdating = ref(false);
 
 // Detail dialog
-const selectedEvent = ref<EventRead | null>(null);
+// Detail view merges the projection row (application/subdomain/aggregate/projectedAt
+// only live on EventRead) with the full event payload from /events/{id}
+// (data/causationId/deduplicationId/contextData only live on EventResponse).
+type EventDetail = EventRead & Partial<EventResponse>;
+const selectedEvent = ref<EventDetail | null>(null);
 const showDetailDialog = ref(false);
 const loadingDetail = ref(false);
 
@@ -116,33 +102,15 @@ async function onFilterChange(
 async function loadFilterOptions() {
 	loadingOptions.value = true;
 	try {
-		const response = await getApiAdminEventsFilterOptions({
-			query: {
-				clientIds: filters.clients.value.length
-					? filters.clients.value.join(",")
-					: undefined,
-				applications: filters.applications.value.length
-					? filters.applications.value.join(",")
-					: undefined,
-				subdomains: filters.subdomains.value.length
-					? filters.subdomains.value.join(",")
-					: undefined,
-				aggregates: filters.aggregates.value.length
-					? filters.aggregates.value.join(",")
-					: undefined,
-			},
-		});
-		const data = response.data as unknown as {
-			applications?: FilterOption[];
-			subdomains?: FilterOption[];
-			aggregates?: FilterOption[];
-			types?: FilterOption[];
-		};
+		const response = await getApiAdminEventsFilterOptions();
+		const data = response.data;
 		if (data) {
 			applicationOptions.value = (data.applications || []) as FilterOption[];
 			subdomainOptions.value = (data.subdomains || []) as FilterOption[];
-			aggregateOptions.value = (data.aggregates || []) as FilterOption[];
-			typeOptions.value = (data.types || []) as FilterOption[];
+			// `aggregates` is not surfaced by the shared filter-options endpoint.
+			// Leave the filter pre-populated with whatever's already cached or empty.
+			aggregateOptions.value = [];
+			typeOptions.value = (data.eventTypes || []) as FilterOption[];
 		}
 	} catch (error) {
 		console.error("Failed to load filter options:", error);
@@ -156,10 +124,10 @@ async function loadEvents() {
 	try {
 		const response = await getApiAdminEvents({
 			query: {
-				page: String(page.value),
-				size: String(pageSize.value),
-				sortField: sortField.value,
-				sortOrder: sortOrder.value,
+				page: page.value,
+				size: pageSize.value,
+				sortField: sortField.value || undefined,
+				sortOrder: sortOrder.value || undefined,
 				clientIds: filters.clients.value.length
 					? filters.clients.value.join(",")
 					: undefined,
@@ -178,9 +146,9 @@ async function loadEvents() {
 				source: filters.search.value || undefined,
 			},
 		});
-		const data = response.data as { items?: EventRead[]; totalItems?: number };
+		const data = response.data;
 		if (data) {
-			events.value = (data.items || []) as EventRead[];
+			events.value = data.items;
 			totalRecords.value = data.totalItems || 0;
 		}
 	} catch (error) {
@@ -203,10 +171,11 @@ async function clearAllFilters() {
 async function viewEventDetail(event: EventRead) {
 	loadingDetail.value = true;
 	showDetailDialog.value = true;
+	selectedEvent.value = { ...event };
 	try {
 		const response = await getApiAdminEventsById({ path: { id: event.id } });
 		if (response.data) {
-			selectedEvent.value = response.data as unknown as EventRead;
+			selectedEvent.value = { ...event, ...response.data };
 		}
 	} catch (error) {
 		console.error("Failed to load event details:", error);
@@ -220,8 +189,16 @@ function formatDate(dateStr: string | undefined): string {
 	return new Date(dateStr).toLocaleString();
 }
 
-function formatData(data: string | undefined): string {
-	if (!data) return "-";
+function formatData(data: unknown): string {
+	if (data == null) return "-";
+	if (typeof data === "object") {
+		try {
+			return JSON.stringify(data, null, 2);
+		} catch {
+			return String(data);
+		}
+	}
+	if (typeof data !== "string") return String(data);
 	try {
 		return JSON.stringify(JSON.parse(data), null, 2);
 	} catch {

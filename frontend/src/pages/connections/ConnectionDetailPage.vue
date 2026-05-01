@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { useConfirm } from "primevue/useconfirm";
-import { useToast } from "primevue/usetoast";
 import {
 	connectionsApi,
 	type Connection,
@@ -13,7 +13,6 @@ import { useReturnTo } from "@/composables/useReturnTo";
 const route = useRoute();
 const { returnTo } = useReturnTo();
 const confirm = useConfirm();
-const toast = useToast();
 
 const loading = ref(true);
 const connection = ref<Connection | null>(null);
@@ -67,19 +66,8 @@ async function saveChanges() {
 			externalId: editExternalId.value || undefined,
 		});
 		editing.value = false;
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Connection updated",
-			life: 3000,
-		});
-	} catch (e) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to update",
-			life: 3000,
-		});
+		toast.success("Success", "Connection updated");
+	} catch {
 	} finally {
 		saving.value = false;
 	}
@@ -100,19 +88,8 @@ async function activateConnection() {
 	try {
 		await connectionsApi.activate(connection.value.id);
 		connection.value = await connectionsApi.get(connection.value.id);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Connection activated",
-			life: 3000,
-		});
+		toast.success("Success", "Connection activated");
 	} catch {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to activate",
-			life: 3000,
-		});
 	}
 }
 
@@ -132,19 +109,8 @@ async function pauseConnection() {
 	try {
 		await connectionsApi.pause(connection.value.id);
 		connection.value = await connectionsApi.get(connection.value.id);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Connection paused",
-			life: 3000,
-		});
+		toast.success("Success", "Connection paused");
 	} catch {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to pause",
-			life: 3000,
-		});
 	}
 }
 
@@ -163,20 +129,9 @@ async function deleteConnection() {
 	if (!connection.value) return;
 	try {
 		await connectionsApi.delete(connection.value.id);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Connection deleted",
-			life: 3000,
-		});
+		toast.success("Success", "Connection deleted");
 		returnTo("/connections");
 	} catch {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to delete",
-			life: 3000,
-		});
 	}
 }
 

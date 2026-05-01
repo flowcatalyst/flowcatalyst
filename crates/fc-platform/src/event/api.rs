@@ -192,17 +192,50 @@ impl From<EventRead> for EventReadResponse {
 #[serde(rename_all = "camelCase")]
 #[into_params(parameter_in = Query)]
 pub struct EventsQuery {
-    #[serde(flatten)]
-    pub pagination: PaginationParams,
+    /// Page number (1-based). Falls back to 1.
+    pub page: Option<u32>,
 
-    /// Filter by event type
-    pub event_type: Option<String>,
+    /// Page size. Capped at 500.
+    pub size: Option<u32>,
+
+    /// Sort field. Allow-listed; unknown values fall back to `time`.
+    pub sort_field: Option<String>,
+
+    /// Sort order: `asc` or `desc`. Defaults to `desc`.
+    pub sort_order: Option<String>,
+
+    /// Filter by client IDs (comma-separated)
+    pub client_ids: Option<String>,
+
+    /// Filter by event types (comma-separated)
+    pub types: Option<String>,
+
+    /// Filter by application codes (comma-separated)
+    pub applications: Option<String>,
+
+    /// Filter by subdomains (comma-separated)
+    pub subdomains: Option<String>,
+
+    /// Filter by aggregates (comma-separated)
+    pub aggregates: Option<String>,
 
     /// Filter by correlation ID
     pub correlation_id: Option<String>,
 
-    /// Filter by client ID
-    pub client_id: Option<String>,
+    /// Free-text search across type, source, subject
+    pub source: Option<String>,
+}
+
+fn split_csv(input: Option<&str>) -> Vec<String> {
+    input
+        .map(|s| {
+            s.split(',')
+                .map(|v| v.trim())
+                .filter(|v| !v.is_empty())
+                .map(|v| v.to_string())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Events service state
@@ -344,6 +377,16 @@ pub async fn get_event(
     Ok(Json(event.into()))
 }
 
+/// Paginated events list response (read projection)
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PagedEventsResponse {
+    pub items: Vec<super::entity::EventRead>,
+    pub page: u32,
+    pub size: u32,
+    pub total_items: i64,
+}
+
 /// List events
 #[utoipa::path(
     get,
@@ -352,7 +395,7 @@ pub async fn get_event(
     operation_id = "getApiAdminEvents",
     params(EventsQuery),
     responses(
-        (status = 200, description = "List of events", body = Vec<EventResponse>)
+        (status = 200, description = "List of events", body = PagedEventsResponse)
     ),
     security(("bearer_auth" = []))
 )]
@@ -360,35 +403,65 @@ pub async fn list_events(
     State(state): State<EventsState>,
     auth: Authenticated,
     Query(query): Query<EventsQuery>,
-) -> Result<Json<Vec<EventResponse>>, PlatformError> {
+) -> Result<Json<PagedEventsResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_events(&auth.0)?;
 
-    let events = if let Some(ref corr_id) = query.correlation_id {
-        state.event_repo.find_by_correlation_id(corr_id).await?
-    } else if let Some(ref event_type) = query.event_type {
-        state.event_repo.find_by_type(event_type, query.pagination.limit()).await?
-    } else if let Some(ref client_id) = query.client_id {
-        if !auth.0.can_access_client(client_id) {
-            return Err(PlatformError::forbidden(format!("No access to client: {}", client_id)));
-        }
-        state.event_repo.find_by_client(client_id, query.pagination.limit()).await?
-    } else {
-        // Return empty for now - need proper listing with pagination
-        vec![]
-    };
+    let mut client_ids = split_csv(query.client_ids.as_deref());
+    let event_types = split_csv(query.types.as_deref());
+    let applications = split_csv(query.applications.as_deref());
+    let subdomains = split_csv(query.subdomains.as_deref());
+    let aggregates = split_csv(query.aggregates.as_deref());
 
-    // Filter by client access
-    let filtered: Vec<EventResponse> = events.into_iter()
-        .filter(|e| {
-            match &e.client_id {
-                Some(cid) => auth.0.can_access_client(cid),
-                None => auth.0.is_anchor(), // Anchor-level events only visible to anchors
+    if !client_ids.is_empty() {
+        for cid in &client_ids {
+            if !auth.0.can_access_client(cid) {
+                return Err(PlatformError::forbidden(format!("No access to client: {}", cid)));
             }
-        })
-        .map(|e| e.into())
-        .collect();
+        }
+    } else if !auth.0.is_anchor() {
+        client_ids = auth.0.accessible_clients
+            .iter()
+            .filter(|c| c.as_str() != "*")
+            .cloned()
+            .collect();
+        if client_ids.is_empty() {
+            return Ok(Json(PagedEventsResponse {
+                items: vec![],
+                page: query.page.unwrap_or(1).max(1),
+                size: query.size.unwrap_or(50).min(500),
+                total_items: 0,
+            }));
+        }
+    }
 
-    Ok(Json(filtered))
+    let page = query.page.unwrap_or(1).max(1);
+    let size = query.size.unwrap_or(50).min(500);
+    let offset = ((page - 1) as i64) * (size as i64);
+    let sort_desc = !matches!(
+        query.sort_order.as_deref().unwrap_or("desc").to_lowercase().as_str(),
+        "asc",
+    );
+
+    let (events, total) = state.event_repo.find_read_with_filters(
+        &client_ids,
+        &applications,
+        &subdomains,
+        &aggregates,
+        &event_types,
+        query.correlation_id.as_deref(),
+        query.source.as_deref(),
+        query.sort_field.as_deref(),
+        sort_desc,
+        size as i64,
+        offset,
+    ).await?;
+
+    Ok(Json(PagedEventsResponse {
+        items: events,
+        page,
+        size,
+        total_items: total,
+    }))
 }
 
 /// Batch create events request
@@ -656,21 +729,22 @@ pub async fn admin_list_events(
     let size = query.size.unwrap_or(100).min(500);
     let offset = ((page - 1) * size) as i64;
 
-    // Take first value from comma-separated lists for now
-    let client_id = query.clients.as_deref().and_then(|s| s.split(',').next());
-    let application = query.apps.as_deref().and_then(|s| s.split(',').next());
-    let subdomain = query.subs.as_deref().and_then(|s| s.split(',').next());
-    let aggregate = query.aggs.as_deref().and_then(|s| s.split(',').next());
-    let event_type = query.types.as_deref().and_then(|s| s.split(',').next());
+    let client_ids = split_csv(query.clients.as_deref());
+    let applications = split_csv(query.apps.as_deref());
+    let subdomains = split_csv(query.subs.as_deref());
+    let aggregates = split_csv(query.aggs.as_deref());
+    let event_types = split_csv(query.types.as_deref());
 
     let (events, total) = state.event_repo.find_read_with_filters(
-        client_id,
-        application,
-        subdomain,
-        aggregate,
-        event_type,
+        &client_ids,
+        &applications,
+        &subdomains,
+        &aggregates,
+        &event_types,
         None, // correlation_id not in admin query
         query.q.as_deref(),
+        None,
+        true,
         size as i64,
         offset,
     ).await?;

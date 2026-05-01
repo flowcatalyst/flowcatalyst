@@ -118,7 +118,9 @@ class CreateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
             }
             $dataArray['applicationIds'] = $values;
         }
-        $dataArray['clientId'] = $data->getClientId();
+        if ($data->isInitialized('clientId')) {
+            $dataArray['clientId'] = $data->getClientId();
+        }
         $dataArray['clientName'] = $data->getClientName();
         if ($data->isInitialized('clientType')) {
             $dataArray['clientType'] = $data->getClientType();

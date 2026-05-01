@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import {
 	usersApi,
 	type User,
@@ -19,7 +19,6 @@ import { useReturnTo } from "@/composables/useReturnTo";
 
 const route = useRoute();
 const { returnTo } = useReturnTo();
-const toast = useToast();
 
 const userId = route.params['id'] as string;
 
@@ -200,12 +199,6 @@ async function loadUser() {
 		user.value = await usersApi.get(userId);
 		editName.value = user.value.name;
 	} catch (error) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Failed to load user",
-			life: 5000,
-		});
 		console.error("Failed to fetch user:", error);
 		returnTo("/users");
 	}
@@ -289,12 +282,7 @@ function cancelEdit() {
 
 async function saveUser() {
 	if (!editName.value.trim()) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: "Name is required",
-			life: 3000,
-		});
+		toast.error("Error", "Name is required");
 		return;
 	}
 
@@ -312,19 +300,8 @@ async function saveUser() {
 		user.value!.scope = updated.scope;
 		user.value!.clientId = updated.clientId;
 		editMode.value = false;
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "User updated successfully",
-			life: 3000,
-		});
+		toast.success("Success", "User updated successfully");
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to update user"),
-			life: 5000,
-		});
 	} finally {
 		saving.value = false;
 	}
@@ -338,29 +315,13 @@ async function toggleUserStatus() {
 		if (user.value.active) {
 			await usersApi.deactivate(userId);
 			user.value.active = false;
-			toast.add({
-				severity: "success",
-				summary: "Success",
-				detail: "User deactivated",
-				life: 3000,
-			});
+			toast.success("Success", "User deactivated");
 		} else {
 			await usersApi.activate(userId);
 			user.value.active = true;
-			toast.add({
-				severity: "success",
-				summary: "Success",
-				detail: "User activated",
-				life: 3000,
-			});
+			toast.success("Success", "User activated");
 		}
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to update user status"),
-			life: 5000,
-		});
 	} finally {
 		saving.value = false;
 	}
@@ -372,19 +333,8 @@ async function sendPasswordReset() {
 	try {
 		const result = await usersApi.sendPasswordReset(userId);
 		showSendResetDialog.value = false;
-		toast.add({
-			severity: "success",
-			summary: "Reset email sent",
-			detail: result.message,
-			life: 4000,
-		});
+		toast.success("Reset email sent", result.message);
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Could not send reset email",
-			detail: getErrorMessage(e, "Failed to send password reset email"),
-			life: 5000,
-		});
 	} finally {
 		sendingReset.value = false;
 	}
@@ -416,12 +366,7 @@ async function resetPasswordDirect() {
 	try {
 		const result = await usersApi.resetPassword(userId, resetPasswordNew.value);
 		showResetPasswordDialog.value = false;
-		toast.add({
-			severity: "success",
-			summary: "Password reset",
-			detail: result.message,
-			life: 4000,
-		});
+		toast.success("Password reset", result.message);
 	} catch (e: unknown) {
 		resetPasswordError.value = getErrorMessage(e, "Failed to reset password");
 	} finally {
@@ -434,20 +379,9 @@ async function deleteUser() {
 	try {
 		await usersApi.delete(userId);
 		showDeleteDialog.value = false;
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: `User "${user.value?.name}" deleted`,
-			life: 3000,
-		});
+		toast.success("Success", `User "${user.value?.name}" deleted`);
 		returnTo("/users");
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to delete user"),
-			life: 5000,
-		});
 	} finally {
 		deleteLoading.value = false;
 	}
@@ -475,19 +409,8 @@ async function grantClientAccess() {
 		showAddClientDialog.value = false;
 		selectedClient.value = null;
 		clientSearchQuery.value = "";
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Client access granted",
-			life: 3000,
-		});
+		toast.success("Success", "Client access granted");
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to grant client access"),
-			life: 5000,
-		});
 	} finally {
 		saving.value = false;
 	}
@@ -500,19 +423,8 @@ async function revokeClientAccess(clientId: string) {
 		clientGrants.value = clientGrants.value.filter(
 			(g) => g.clientId !== clientId,
 		);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: "Client access revoked",
-			life: 3000,
-		});
+		toast.success("Success", "Client access revoked");
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to revoke client access"),
-			life: 5000,
-		});
 	} finally {
 		saving.value = false;
 	}
@@ -576,19 +488,8 @@ async function saveRoles() {
 			detail = `Removed ${removed} role(s)`;
 		}
 
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail,
-			life: 3000,
-		});
+		toast.success("Success", detail);
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to save roles"),
-			life: 5000,
-		});
 	} finally {
 		savingRoles.value = false;
 	}
@@ -660,19 +561,8 @@ async function saveApps() {
 			detail = `Removed ${removed} app(s)`;
 		}
 
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail,
-			life: 3000,
-		});
+		toast.success("Success", detail);
 	} catch (e: unknown) {
-		toast.add({
-			severity: "error",
-			summary: "Error",
-			detail: getErrorMessage(e, "Failed to save application access"),
-			life: 5000,
-		});
 	} finally {
 		savingApps.value = false;
 	}

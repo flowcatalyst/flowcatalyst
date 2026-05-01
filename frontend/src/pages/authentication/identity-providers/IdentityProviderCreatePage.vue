@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { toast } from "@/utils/errorBus";
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
 import {
 	identityProvidersApi,
 	type CreateIdentityProviderRequest,
@@ -10,7 +10,6 @@ import {
 import { getErrorMessage } from "@/utils/errors";
 
 const router = useRouter();
-const toast = useToast();
 
 const loading = ref(false);
 const error = ref<string | null>(null);
@@ -66,12 +65,7 @@ function addAllowedDomain() {
 			form.value.allowedEmailDomains.push(domain);
 			newAllowedDomain.value = "";
 		} else {
-			toast.add({
-				severity: "error",
-				summary: "Invalid Domain",
-				detail: "Please enter a valid domain name",
-				life: 3000,
-			});
+			toast.error("Invalid Domain", "Please enter a valid domain name");
 		}
 	}
 }
@@ -112,12 +106,7 @@ async function createProvider() {
 		};
 
 		const created = await identityProvidersApi.create(requestData);
-		toast.add({
-			severity: "success",
-			summary: "Success",
-			detail: `Identity provider "${created.name}" created successfully`,
-			life: 3000,
-		});
+		toast.success("Success", `Identity provider "${created.name}" created successfully`);
 		router.push(`/authentication/identity-providers/${created.id}`);
 	} catch (e: unknown) {
 		error.value = getErrorMessage(e, "Failed to create identity provider");
