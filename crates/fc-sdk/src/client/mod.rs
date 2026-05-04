@@ -31,6 +31,7 @@ pub mod event_types;
 pub mod me;
 pub mod principals;
 pub mod roles;
+pub mod router;
 pub mod subscriptions;
 pub mod sync;
 
@@ -46,6 +47,7 @@ pub use event_types::*;
 pub use me::*;
 pub use principals::*;
 pub use roles::*;
+pub use router::*;
 pub use subscriptions::*;
 pub use sync::*;
 
@@ -55,6 +57,11 @@ pub struct FlowCatalystClient {
     base_url: String,
     http: reqwest::Client,
     token: Option<String>,
+    /// Optional override base URL for the message router's monitoring
+    /// endpoints. The router is a separate process from the platform and
+    /// usually runs at its own host. If `None`, router methods fall back
+    /// to `base_url`.
+    router_base_url: Option<String>,
 }
 
 impl FlowCatalystClient {
@@ -64,6 +71,7 @@ impl FlowCatalystClient {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             http: reqwest::Client::new(),
             token: None,
+            router_base_url: None,
         }
     }
 
@@ -76,6 +84,15 @@ impl FlowCatalystClient {
     /// Set a custom reqwest client (e.g., with custom TLS config).
     pub fn with_http_client(mut self, client: reqwest::Client) -> Self {
         self.http = client;
+        self
+    }
+
+    /// Set the message router's base URL for monitoring endpoints
+    /// (`/monitoring/in-flight-messages/...`). The router runs at a
+    /// different host than the platform; if you only configured `base_url`,
+    /// router calls will hit the platform host instead.
+    pub fn with_router_url(mut self, url: impl Into<String>) -> Self {
+        self.router_base_url = Some(url.into().trim_end_matches('/').to_string());
         self
     }
 

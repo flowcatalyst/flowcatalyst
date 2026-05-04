@@ -372,6 +372,8 @@ impl From<QueueMetrics> for QueueMetricsResponse {
         dashboard_warnings_handler,
         dashboard_circuit_breakers_handler,
         dashboard_in_flight_messages_handler,
+        in_flight_message_check_handler,
+        in_flight_message_check_batch_handler,
         monitoring_acknowledge_warning,
         get_circuit_breaker_state,
         reset_circuit_breaker,
@@ -546,6 +548,8 @@ pub fn create_router_with_options(
         .route("/monitoring/circuit-breakers/{name}/reset", post(reset_circuit_breaker))
         .route("/monitoring/circuit-breakers/reset-all", post(reset_all_circuit_breakers))
         .route("/monitoring/in-flight-messages", get(dashboard_in_flight_messages_handler))
+        .route("/monitoring/in-flight-messages/check", get(in_flight_message_check_handler))
+        .route("/monitoring/in-flight-messages/check-batch", post(in_flight_message_check_batch_handler))
         .route("/monitoring/dashboard", get(dashboard_html_handler))
         .route("/monitoring/consumer-health", get(consumer_health_handler))
         .route("/monitoring/standby-status", get(get_standby_status))
@@ -1500,6 +1504,117 @@ async fn dashboard_in_flight_messages_handler(
     let limit = query.limit.unwrap_or(100);
     let messages = state.queue_manager.get_in_flight_messages(limit, query.message_id.as_deref(), query.pool_code.as_deref());
     Json(messages)
+}
+
+/// Query params for the in-flight check endpoint.
+#[derive(Deserialize, Default, ToSchema)]
+struct InFlightCheckQuery {
+    /// The application message ID to check (e.g. `evt_…` or `djb_…`).
+    #[serde(rename = "messageId")]
+    message_id: String,
+}
+
+/// Result of checking whether a message is currently held in the router.
+///
+/// Designed for an external recovery system to ask "is this stuck-looking
+/// message actually still being processed by the router?" before
+/// re-enqueueing. Always returns 200; `inPipeline=false` means the router
+/// does NOT have it (safe to resend).
+#[derive(serde::Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+struct InFlightCheckResponse {
+    /// Echo of the queried `messageId`.
+    message_id: String,
+    /// True when the router currently holds the message in its in-pipeline
+    /// map. False when it does not — safe for the caller to resend.
+    in_pipeline: bool,
+    /// Populated only when `inPipeline=true`. Lets the caller decide whether
+    /// to skip / wait / force-resend based on age and pool.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<InFlightMessageInfo>,
+}
+
+/// Check whether a single application message ID is currently held in the
+/// router's in-pipeline map.
+///
+/// O(1) lookup. Use this from an external system that maintains its own
+/// view of "messages that should be retried" to avoid double-enqueueing
+/// while the router is still actively processing.
+#[utoipa::path(
+    get,
+    path = "/monitoring/in-flight-messages/check",
+    tag = "monitoring",
+    params(
+        ("messageId" = String, Query, description = "Application message ID to look up (e.g. evt_… or djb_…)")
+    ),
+    responses(
+        (status = 200, description = "Lookup result", body = InFlightCheckResponse)
+    )
+)]
+async fn in_flight_message_check_handler(
+    State(state): State<AppState>,
+    Query(query): Query<InFlightCheckQuery>,
+) -> Json<InFlightCheckResponse> {
+    let detail = state.queue_manager.lookup_in_flight_by_app_id(&query.message_id);
+    Json(InFlightCheckResponse {
+        message_id: query.message_id,
+        in_pipeline: detail.is_some(),
+        detail,
+    })
+}
+
+/// Cap on the number of message IDs accepted in one batch check. Beyond
+/// this, the caller should split the request — the per-id check is O(1)
+/// but very large arrays bloat request/response framing.
+const IN_FLIGHT_CHECK_BATCH_LIMIT: usize = 5000;
+
+/// Body for the batch in-flight check.
+#[derive(Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+struct InFlightCheckBatchRequest {
+    /// Application message IDs to look up. Capped at
+    /// `IN_FLIGHT_CHECK_BATCH_LIMIT`; longer lists return 400.
+    message_ids: Vec<String>,
+}
+
+/// Batch check whether each of the given application message IDs is
+/// currently held in the router's in-pipeline map.
+///
+/// Returns a flat object keyed by message ID with a boolean value:
+/// `true` = router has it (caller should NOT resend); `false` = router does
+/// not have it (safe to resend). Each lookup is O(1); response framing is
+/// the only meaningful cost beyond that.
+#[utoipa::path(
+    post,
+    path = "/monitoring/in-flight-messages/check-batch",
+    tag = "monitoring",
+    request_body = InFlightCheckBatchRequest,
+    responses(
+        (status = 200, description = "Map of messageId → inPipeline boolean", body = std::collections::HashMap<String, bool>),
+        (status = 400, description = "Too many IDs in one request")
+    )
+)]
+async fn in_flight_message_check_batch_handler(
+    State(state): State<AppState>,
+    Json(body): Json<InFlightCheckBatchRequest>,
+) -> Result<Json<std::collections::HashMap<String, bool>>, (axum::http::StatusCode, String)> {
+    if body.message_ids.len() > IN_FLIGHT_CHECK_BATCH_LIMIT {
+        return Err((
+            axum::http::StatusCode::BAD_REQUEST,
+            format!(
+                "messageIds exceeds limit of {} (got {}). Split the request.",
+                IN_FLIGHT_CHECK_BATCH_LIMIT,
+                body.message_ids.len()
+            ),
+        ));
+    }
+
+    let mut result = std::collections::HashMap::with_capacity(body.message_ids.len());
+    for id in body.message_ids {
+        let present = state.queue_manager.is_in_flight_by_app_id(&id);
+        result.insert(id, present);
+    }
+    Ok(Json(result))
 }
 
 /// Serve dashboard HTML

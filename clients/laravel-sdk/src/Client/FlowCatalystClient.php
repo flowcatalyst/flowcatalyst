@@ -16,6 +16,7 @@ use FlowCatalyst\Client\Resources\Permissions;
 use FlowCatalyst\Client\Resources\Principals;
 use FlowCatalyst\Client\Resources\Roles;
 use FlowCatalyst\Client\Resources\Connections;
+use FlowCatalyst\Client\Resources\Router;
 use FlowCatalyst\Client\Resources\Subscriptions;
 use FlowCatalyst\Exceptions\AuthenticationException;
 use FlowCatalyst\Exceptions\FlowCatalystException;
@@ -40,6 +41,7 @@ class FlowCatalystClient
     private ?Principals $principals = null;
     private ?Connections $connections = null;
     private ?Me $me = null;
+    private ?Router $router = null;
 
     /**
      * Create a new FlowCatalyst client.
@@ -55,7 +57,8 @@ class FlowCatalystClient
         private readonly string $baseUrl,
         private readonly int $timeout = 30,
         private readonly int $retryAttempts = 3,
-        private readonly int $retryDelay = 100
+        private readonly int $retryDelay = 100,
+        private readonly ?string $routerBaseUrl = null
     ) {
         $this->tokenProvider = $tokenProvider;
         $this->httpClient = new Client([
@@ -180,6 +183,28 @@ class FlowCatalystClient
     public function me(): Me
     {
         return $this->me ??= new Me($this);
+    }
+
+    /**
+     * Get the Router monitoring resource.
+     *
+     * Provides presence checks against the message router's in-pipeline
+     * map (single id and batch). Talks to the router URL configured at
+     * construction; falls back to the platform `baseUrl` when no router
+     * URL is set.
+     */
+    public function router(): Router
+    {
+        return $this->router ??= new Router($this);
+    }
+
+    /**
+     * The base URL the router resource should target. Returns the
+     * configured `routerBaseUrl` if set, otherwise the platform `baseUrl`.
+     */
+    public function getRouterBaseUrl(): string
+    {
+        return rtrim($this->routerBaseUrl ?? $this->baseUrl, '/');
     }
 
     /**

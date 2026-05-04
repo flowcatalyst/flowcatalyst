@@ -24,6 +24,7 @@ import { PrincipalsResource } from "./resources/principals";
 import { MeResource } from "./resources/me";
 import { ConnectionsResource } from "./resources/connections";
 import { DefinitionSynchronizer } from "./sync/definition-synchronizer";
+import { RouterResource } from "./resources/router";
 
 /**
  * Configuration for client credentials authentication.
@@ -35,6 +36,14 @@ export interface ClientCredentialsConfig extends TokenManagerConfig {
 	retryAttempts?: number;
 	/** Base delay between retries in ms (default: 100) */
 	retryDelay?: number;
+	/**
+	 * Base URL of the message router for monitoring endpoints
+	 * (`/monitoring/in-flight-messages/...`). The router runs at a
+	 * different host than the platform; if not set, router calls fall
+	 * back to `baseUrl` (correct only when router and platform share a
+	 * host, e.g. `fc-dev`).
+	 */
+	routerBaseUrl?: string;
 }
 
 /**
@@ -55,6 +64,11 @@ export interface UserTokenConfig {
 	retryAttempts?: number;
 	/** Base delay between retries in ms (default: 100) */
 	retryDelay?: number;
+	/**
+	 * Base URL of the message router for monitoring endpoints. See
+	 * `ClientCredentialsConfig.routerBaseUrl`.
+	 */
+	routerBaseUrl?: string;
 }
 
 export type FlowCatalystConfig = ClientCredentialsConfig | UserTokenConfig;
@@ -67,6 +81,7 @@ function isUserTokenConfig(
 
 type ResolvedConfig = {
 	baseUrl: string;
+	routerBaseUrl: string;
 	timeout: number;
 	retryAttempts: number;
 	retryDelay: number;
@@ -113,6 +128,7 @@ export class FlowCatalystClient {
 	private _me?: MeResource;
 	private _connections?: ConnectionsResource;
 	private _definitions?: DefinitionSynchronizer;
+	private _router?: RouterResource;
 
 	constructor(config: FlowCatalystConfig) {
 		this.config = {
@@ -120,6 +136,10 @@ export class FlowCatalystClient {
 			retryAttempts: config.retryAttempts ?? 3,
 			retryDelay: config.retryDelay ?? 100,
 			baseUrl: config.baseUrl.replace(/\/$/, ""),
+			routerBaseUrl: (config.routerBaseUrl ?? config.baseUrl).replace(
+				/\/$/,
+				"",
+			),
 		};
 
 		if (isUserTokenConfig(config)) {
@@ -201,6 +221,21 @@ export class FlowCatalystClient {
 	/** Connections resource */
 	connections(): ConnectionsResource {
 		return (this._connections ??= new ConnectionsResource(this));
+	}
+
+	/**
+	 * Message router monitoring resource. Provides presence checks
+	 * against the router's in-pipeline map (single id and batch).
+	 * Talks to `routerBaseUrl` if configured, otherwise falls back to
+	 * `baseUrl`.
+	 */
+	router(): RouterResource {
+		return (this._router ??= new RouterResource(this));
+	}
+
+	/** Base URL of the message router (used by `router()`). */
+	getRouterBaseUrl(): string {
+		return this.config.routerBaseUrl;
 	}
 
 	/**

@@ -1713,6 +1713,44 @@ impl QueueManager {
 
     /// Get in-flight messages (currently being processed)
     /// Returns messages sorted by elapsed time (oldest first)
+    /// Cheap presence check for a single application message ID. O(1).
+    pub fn is_in_flight_by_app_id(&self, app_message_id: &str) -> bool {
+        match self.app_message_to_pipeline_key.get(app_message_id) {
+            Some(e) => self.in_pipeline.contains_key(e.value().as_str()),
+            None => false,
+        }
+    }
+
+    /// Look up a single application message ID in the in-pipeline map.
+    ///
+    /// Designed for external recovery systems that have a backlog of
+    /// messages they suspect are stuck and want to check whether the router
+    /// already owns each one before re-enqueueing it. Returns `None` if the
+    /// router does not currently hold the message (safe to resend), or a
+    /// populated `InFlightMessageInfo` if it does (caller should wait or
+    /// skip).
+    ///
+    /// O(1): goes through `app_message_to_pipeline_key` then `in_pipeline`.
+    /// Both are `DashMap`, no global lock.
+    pub fn lookup_in_flight_by_app_id(&self, app_message_id: &str) -> Option<InFlightMessageInfo> {
+        let pipeline_key = self.app_message_to_pipeline_key
+            .get(app_message_id)
+            .map(|e| e.value().clone())?;
+        self.in_pipeline.get(&pipeline_key).map(|entry| {
+            let msg = entry.value();
+            let elapsed = msg.started_at.elapsed();
+            InFlightMessageInfo {
+                message_id: msg.message_id.clone(),
+                broker_message_id: msg.broker_message_id.clone(),
+                queue_id: msg.queue_identifier.clone(),
+                pool_code: msg.pool_code.clone(),
+                elapsed_time_ms: elapsed.as_millis() as u64,
+                added_to_in_pipeline_at: chrono::Utc::now()
+                    - chrono::Duration::milliseconds(elapsed.as_millis() as i64),
+            }
+        })
+    }
+
     pub fn get_in_flight_messages(&self, limit: usize, message_id_filter: Option<&str>, pool_code_filter: Option<&str>) -> Vec<InFlightMessageInfo> {
         let mut messages: Vec<InFlightMessageInfo> = self.in_pipeline
             .iter()
