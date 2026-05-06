@@ -684,6 +684,21 @@ export type CreateOAuthClientRequest = {
 };
 
 /**
+ * Wrapper response from `POST /api/oauth-clients`. Includes the freshly
+ * generated `client_secret` exactly once for confidential clients — it is
+ * never retrievable afterwards.
+ */
+export type CreateOAuthClientResponse = {
+    client: OAuthClientResponse;
+    /**
+     * Plaintext client secret. Only present on creation of CONFIDENTIAL
+     * clients. Capture this on the first response — the platform stores
+     * only the encrypted form and cannot return it again.
+     */
+    clientSecret?: string | null;
+};
+
+/**
  * Create role request
  */
 export type CreateRoleRequest = {
@@ -1081,6 +1096,17 @@ export type EntityTypesResponse = {
     entityTypes: Array<string>;
 };
 
+export type ErrorResponse = {
+    /**
+     * Machine-readable error code (e.g. ROLE_HAS_ASSIGNMENTS)
+     */
+    error: string;
+    /**
+     * Human-readable error message suitable for display
+     */
+    message: string;
+};
+
 /**
  * Event read projection — CQRS read model, matches msg_events_read table
  */
@@ -1306,6 +1332,13 @@ export type LoginResponse = {
 };
 
 /**
+ * List response wrapper for `GET /api/oauth-clients`.
+ */
+export type OAuthClientListResponse = {
+    clients: Array<OAuthClientResponse>;
+};
+
+/**
  * OAuth client response DTO
  */
 export type OAuthClientResponse = {
@@ -1372,8 +1405,14 @@ export type PaginatedEventsResponse = {
 };
 
 export type PaginationParams = {
-    limit?: number;
+    /**
+     * Page number (1-based)
+     */
     page?: number;
+    /**
+     * Page size. Aliases: limit, pageSize, page_size.
+     */
+    size?: number;
 };
 
 /**
@@ -2968,7 +3007,7 @@ export type GetApiAdminOauthClientsResponses = {
     /**
      * List of OAuth clients
      */
-    200: Array<OAuthClientResponse>;
+    200: OAuthClientListResponse;
 };
 
 export type GetApiAdminOauthClientsResponse = GetApiAdminOauthClientsResponses[keyof GetApiAdminOauthClientsResponses];
@@ -2995,7 +3034,7 @@ export type PostApiAdminOauthClientsResponses = {
     /**
      * OAuth client created
      */
-    201: OAuthClientResponse;
+    201: CreateOAuthClientResponse;
 };
 
 export type PostApiAdminOauthClientsResponse = PostApiAdminOauthClientsResponses[keyof PostApiAdminOauthClientsResponses];

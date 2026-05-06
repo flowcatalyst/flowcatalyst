@@ -417,7 +417,7 @@ impl crate::usecase::Persist<ServiceAccount> for ServiceAccountRepository {
 
         // 1. Upsert iam_principals (SERVICE type principal)
         sqlx::query(
-            "INSERT INTO iam_principals (id, principal_type, scope, client_id, application_id, name, active, email, email_domain, idp_type, external_idp_id, password_hash, last_login_at, service_account_id, created_at, updated_at)
+            "INSERT INTO iam_principals (id, type, scope, client_id, application_id, name, active, email, email_domain, idp_type, external_idp_id, password_hash, last_login_at, service_account_id, created_at, updated_at)
              VALUES ($1, 'SERVICE', $2, $3, $4, $5, $6, NULL, NULL, NULL, NULL, NULL, NULL, $7, $8, $9)
              ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,

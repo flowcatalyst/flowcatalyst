@@ -44,3 +44,6 @@ localstack-data/
 
 # LocalStack
 .localstack/
+/clients/typescript-sdk/dist
+/clients/typescript-sdk/dist
+/clients/typescript-sdk/dist
