@@ -207,11 +207,26 @@ pub fn start_secret_refresh(
 
 // ── Migrations ───────────────────────────────────────────────────────────────
 
-/// Run all SQL migrations from the migrations/ directory.
-pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
-    info!("Running database migrations...");
+/// Migration profile. Selects which optional migrations apply.
+///
+/// `Embedded` is for local dev (`fc-dev`) using `postgresql_embedded`. It skips
+/// production-only migrations like declarative partitioning, which add
+/// operational machinery (partition manager, retention sweeps) that aren't
+/// useful when the data dir is throwaway.
+///
+/// `Production` is for `fc-server` and any RDS-backed deployment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MigrationProfile {
+    Embedded,
+    Production,
+}
 
-    let migration_files = [
+/// Run all SQL migrations from the migrations/ directory.
+pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<(), sqlx::Error> {
+    info!(?profile, "Running database migrations...");
+
+    // Migrations applied to every profile.
+    let core_migrations = [
         include_str!("../../../../migrations/001_tenant_tables.sql"),
         include_str!("../../../../migrations/002_iam_tables.sql"),
         include_str!("../../../../migrations/003_application_tables.sql"),
@@ -229,24 +244,187 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
         include_str!("../../../../migrations/015_dispatch_jobs_write_indexes.sql"),
     ];
 
-    for (i, sql) in migration_files.iter().enumerate() {
-        for statement in sql.split(';') {
-            let cleaned: String = statement
-                .lines()
-                .filter(|line| !line.trim_start().starts_with("--"))
-                .collect::<Vec<_>>()
-                .join("\n");
-            let trimmed = cleaned.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            sqlx::query(trimmed).execute(pool).await?;
-        }
+    for (i, sql) in core_migrations.iter().enumerate() {
+        apply_migration(pool, sql).await?;
         info!("Migration {} applied successfully", i + 1);
+    }
+
+    // Production-only migrations.
+    if profile == MigrationProfile::Production {
+        let production_migrations = [
+            ("018_partition_messaging_tables", include_str!("../../../../migrations/018_partition_messaging_tables.sql")),
+        ];
+        for (name, sql) in production_migrations.iter() {
+            apply_migration(pool, sql).await?;
+            info!(migration = %name, "Production migration applied");
+        }
     }
 
     info!("All database migrations completed");
     Ok(())
+}
+
+async fn apply_migration(pool: &PgPool, sql: &str) -> Result<(), sqlx::Error> {
+    for statement in split_sql_statements(sql) {
+        let cleaned: String = statement
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("--"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let trimmed = cleaned.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        sqlx::query(trimmed).execute(pool).await?;
+    }
+    Ok(())
+}
+
+/// Split a SQL script into top-level statements on `;`, respecting:
+/// - dollar-quoted bodies (`$$ ... $$` or `$tag$ ... $tag$`) used by `DO`/`CREATE FUNCTION`
+/// - single-quoted strings (`'foo''bar'`)
+/// - line comments (`-- ...`) and block comments (`/* ... */`)
+fn split_sql_statements(sql: &str) -> Vec<String> {
+    let bytes = sql.as_bytes();
+    let mut out = Vec::new();
+    let mut buf = String::new();
+    let mut i = 0;
+
+    enum State {
+        Normal,
+        SingleQuote,
+        LineComment,
+        BlockComment,
+        DollarQuote(String), // tag including the dollars, e.g. "$$" or "$plpgsql$"
+    }
+
+    let mut state = State::Normal;
+
+    while i < bytes.len() {
+        match &state {
+            State::Normal => {
+                let b = bytes[i];
+                // Try to recognize a dollar-quote tag opener: $...$
+                if b == b'$' {
+                    if let Some(tag_end) = bytes[i + 1..].iter().position(|&c| c == b'$') {
+                        let tag_body = &bytes[i + 1..i + 1 + tag_end];
+                        let valid_tag = tag_body
+                            .iter()
+                            .all(|&c| c.is_ascii_alphanumeric() || c == b'_');
+                        if valid_tag {
+                            let full_tag =
+                                String::from_utf8_lossy(&bytes[i..=i + 1 + tag_end]).into_owned();
+                            buf.push_str(&full_tag);
+                            i += full_tag.len();
+                            state = State::DollarQuote(full_tag);
+                            continue;
+                        }
+                    }
+                    buf.push(b as char);
+                    i += 1;
+                } else if b == b'\'' {
+                    buf.push('\'');
+                    i += 1;
+                    state = State::SingleQuote;
+                } else if b == b'-' && i + 1 < bytes.len() && bytes[i + 1] == b'-' {
+                    buf.push_str("--");
+                    i += 2;
+                    state = State::LineComment;
+                } else if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+                    buf.push_str("/*");
+                    i += 2;
+                    state = State::BlockComment;
+                } else if b == b';' {
+                    out.push(std::mem::take(&mut buf));
+                    i += 1;
+                } else {
+                    buf.push(b as char);
+                    i += 1;
+                }
+            }
+            State::SingleQuote => {
+                let b = bytes[i];
+                buf.push(b as char);
+                i += 1;
+                if b == b'\'' {
+                    if i < bytes.len() && bytes[i] == b'\'' {
+                        buf.push('\'');
+                        i += 1;
+                    } else {
+                        state = State::Normal;
+                    }
+                }
+            }
+            State::LineComment => {
+                let b = bytes[i];
+                buf.push(b as char);
+                i += 1;
+                if b == b'\n' {
+                    state = State::Normal;
+                }
+            }
+            State::BlockComment => {
+                let b = bytes[i];
+                buf.push(b as char);
+                i += 1;
+                if b == b'*' && i < bytes.len() && bytes[i] == b'/' {
+                    buf.push('/');
+                    i += 1;
+                    state = State::Normal;
+                }
+            }
+            State::DollarQuote(tag) => {
+                if bytes[i..].starts_with(tag.as_bytes()) {
+                    buf.push_str(tag);
+                    i += tag.len();
+                    state = State::Normal;
+                } else {
+                    buf.push(bytes[i] as char);
+                    i += 1;
+                }
+            }
+        }
+    }
+
+    if !buf.trim().is_empty() {
+        out.push(buf);
+    }
+    out
+}
+
+#[cfg(test)]
+mod sql_split_tests {
+    use super::split_sql_statements;
+
+    #[test]
+    fn splits_simple_statements() {
+        let sql = "SELECT 1; SELECT 2;";
+        let parts = split_sql_statements(sql);
+        assert_eq!(parts.len(), 2);
+    }
+
+    #[test]
+    fn preserves_dollar_quoted_block() {
+        let sql = "DO $$ BEGIN SELECT 1; SELECT 2; END $$; SELECT 3;";
+        let parts = split_sql_statements(sql);
+        assert_eq!(parts.len(), 2);
+        assert!(parts[0].contains("BEGIN"));
+        assert!(parts[0].contains("END"));
+    }
+
+    #[test]
+    fn handles_tagged_dollar_quote() {
+        let sql = "CREATE FUNCTION f() RETURNS void AS $body$ BEGIN END; $body$ LANGUAGE plpgsql; SELECT 1;";
+        let parts = split_sql_statements(sql);
+        assert_eq!(parts.len(), 2);
+    }
+
+    #[test]
+    fn ignores_semicolons_in_strings() {
+        let sql = "INSERT INTO t VALUES ('a;b'); SELECT 1;";
+        let parts = split_sql_statements(sql);
+        assert_eq!(parts.len(), 2);
+    }
 }
 
 // ── Built-in role seeding ────────────────────────────────────────────────────

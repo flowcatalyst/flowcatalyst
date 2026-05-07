@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 const UOW_PATTERNS: &[&str] = &[
     "unit_of_work.commit(",
     "unit_of_work.commit_delete(",
+    "unit_of_work.commit_all(",
     "unit_of_work.emit_event(",
 ];
 

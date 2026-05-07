@@ -15,7 +15,7 @@ struct DispatchPoolRow {
     code: String,
     name: String,
     description: Option<String>,
-    rate_limit: i32,
+    rate_limit: Option<i32>,
     concurrency: i32,
     client_id: Option<String>,
     client_identifier: Option<String>,

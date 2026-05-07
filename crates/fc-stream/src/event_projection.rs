@@ -95,7 +95,7 @@ async fn poll_once(pool: &PgPool, batch_size: u32) -> anyhow::Result<u32> {
     let rows = sqlx::query_as::<_, (i32,)>(
         r#"
         WITH batch AS (
-            SELECT id
+            SELECT id, created_at
             FROM msg_events
             WHERE projected_at IS NULL
             ORDER BY created_at
@@ -105,7 +105,7 @@ async fn poll_once(pool: &PgPool, batch_size: u32) -> anyhow::Result<u32> {
             INSERT INTO msg_events_read (
                 id, spec_version, type, source, subject, time, data,
                 correlation_id, causation_id, deduplication_id, message_group,
-                client_id, application, subdomain, aggregate, projected_at
+                client_id, application, subdomain, aggregate, created_at, projected_at
             )
             SELECT
                 e.id,
@@ -123,14 +123,16 @@ async fn poll_once(pool: &PgPool, batch_size: u32) -> anyhow::Result<u32> {
                 split_part(e.type, ':', 1),
                 NULLIF(split_part(e.type, ':', 2), ''),
                 NULLIF(split_part(e.type, ':', 3), ''),
+                e.created_at,
                 NOW()
             FROM msg_events e
-            JOIN batch b ON b.id = e.id
-            ON CONFLICT (id) DO NOTHING
+            JOIN batch b ON b.id = e.id AND b.created_at = e.created_at
+            ON CONFLICT (id, created_at) DO NOTHING
         )
-        UPDATE msg_events
+        UPDATE msg_events m
         SET projected_at = NOW()
-        WHERE id IN (SELECT id FROM batch)
+        FROM batch b
+        WHERE m.id = b.id AND m.created_at = b.created_at
         RETURNING 1
         "#,
     )

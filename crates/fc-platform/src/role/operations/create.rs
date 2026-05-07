@@ -4,7 +4,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::role::entity::AuthRole;
+use crate::role::entity::{AuthRole, RoleSource};
 use crate::role::repository::RoleRepository;
 use crate::usecase::{
     ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
@@ -35,6 +35,11 @@ pub struct CreateRoleCommand {
     /// Whether clients can manage this role
     #[serde(default)]
     pub client_managed: bool,
+
+    /// Where this role definition came from. Defaults to `Database` (admin-created);
+    /// the SDK role API passes `Sdk`.
+    #[serde(default)]
+    pub source: RoleSource,
 }
 
 
@@ -112,6 +117,7 @@ impl<U: UnitOfWork> UseCase for CreateRoleUseCase<U> {
 
         // Create the role entity
         let mut role = AuthRole::new(&app_code, &role_name, display_name);
+        role.source = command.source;
 
         if let Some(desc) = &command.description {
             role.description = Some(desc.clone());

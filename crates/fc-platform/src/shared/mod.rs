@@ -34,6 +34,7 @@ pub mod email_service;
 pub mod encryption_service;
 pub mod authorization_service;
 pub mod projections_service;
+pub mod event_fan_out_service;
 pub mod role_sync_service;
 pub mod integrity_scan;
 

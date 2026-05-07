@@ -4,7 +4,7 @@
 
 use axum::{
     routing::post,
-    extract::State,
+    extract::{State, DefaultBodyLimit},
     Json, Router,
 };
 use std::sync::Arc;
@@ -34,8 +34,8 @@ async fn sdk_batch_create_dispatch_jobs(
     if req.jobs.is_empty() {
         return Err(PlatformError::validation("Request body must contain at least one dispatch job"));
     }
-    if req.jobs.len() > 100 {
-        return Err(PlatformError::validation("Batch size cannot exceed 100 dispatch jobs"));
+    if req.jobs.len() > 500 {
+        return Err(PlatformError::validation("Batch size cannot exceed 500 dispatch jobs"));
     }
 
     let mut created_jobs: Vec<DispatchJob> = Vec::new();
@@ -140,5 +140,6 @@ async fn sdk_batch_create_dispatch_jobs(
 pub fn sdk_dispatch_jobs_batch_router(state: SdkDispatchJobsState) -> Router {
     Router::new()
         .route("/batch", post(sdk_batch_create_dispatch_jobs))
+        .layer(DefaultBodyLimit::max(32 * 1024 * 1024))
         .with_state(state)
 }

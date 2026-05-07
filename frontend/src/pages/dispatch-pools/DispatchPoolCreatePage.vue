@@ -9,7 +9,7 @@ const router = useRouter();
 const code = ref("");
 const name = ref("");
 const description = ref("");
-const rateLimit = ref<number>(100);
+const rateLimit = ref<number | null>(null);
 const concurrency = ref<number>(10);
 const clientId = ref<string | null>(null);
 const isAnchorLevel = ref(false);
@@ -30,7 +30,7 @@ const isFormValid = computed(() => {
 		CODE_PATTERN.test(code.value) &&
 		name.value.trim().length > 0 &&
 		name.value.length <= 255 &&
-		rateLimit.value >= 1 &&
+		(rateLimit.value === null || rateLimit.value >= 1) &&
 		concurrency.value >= 1
 	);
 });
@@ -46,7 +46,7 @@ async function onSubmit() {
 			code: code.value,
 			name: name.value,
 			description: description.value || undefined,
-			rateLimit: rateLimit.value,
+			rateLimit: rateLimit.value ?? undefined,
 			concurrency: concurrency.value,
 			clientId: isAnchorLevel.value ? undefined : clientId.value || undefined,
 		});
@@ -66,7 +66,7 @@ async function onSubmit() {
     <header class="page-header">
       <div>
         <h1 class="page-title">Create Dispatch Pool</h1>
-        <p class="page-subtitle">Configure a new rate-limiting pool for dispatch jobs</p>
+        <p class="page-subtitle">Configure a new pool for dispatch jobs</p>
       </div>
     </header>
 
@@ -116,9 +116,9 @@ async function onSubmit() {
 
           <div class="form-row">
             <div class="form-field">
-              <label>Rate Limit (per minute) <span class="required">*</span></label>
-              <InputNumber v-model="rateLimit" :min="1" class="full-width" />
-              <small class="hint">Maximum dispatches per minute</small>
+              <label>Rate Limit (per minute)</label>
+              <InputNumber v-model="rateLimit" :min="1" class="full-width" placeholder="Unlimited" />
+              <small class="hint">Optional. Leave blank to run on concurrency only.</small>
             </div>
 
             <div class="form-field">

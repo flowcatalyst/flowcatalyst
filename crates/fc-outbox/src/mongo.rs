@@ -162,6 +162,20 @@ impl OutboxRepository for MongoOutboxRepository {
             "id": { "$in": &ids },
             "type": item_type.type_value()
         };
+
+        // SUCCESS is terminal — the platform now owns the message. Delete the
+        // outbox document instead of updating it; otherwise the customer's
+        // outbox collection grows unbounded.
+        if matches!(status, OutboxStatus::SUCCESS) {
+            collection.delete_many(filter).await?;
+            debug!(
+                collection = %self.table_config.table_for_type(item_type),
+                count = ids.len(),
+                "Deleted successful outbox items"
+            );
+            return Ok(());
+        }
+
         let mut set_doc = doc! {
             "status": status.code(),
             "updated_at": Self::now_iso()

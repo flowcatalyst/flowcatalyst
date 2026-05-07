@@ -7,7 +7,8 @@ export interface DispatchPool {
 	code: string;
 	name: string;
 	description?: string;
-	rateLimit: number;
+	/** `null` means concurrency-only (no rate limiter). */
+	rateLimit: number | null;
 	concurrency: number;
 	clientId?: string;
 	clientIdentifier?: string;
@@ -25,7 +26,8 @@ export interface CreateDispatchPoolRequest {
 	code: string;
 	name: string;
 	description?: string;
-	rateLimit: number;
+	/** Optional. Omit/undefined for concurrency-only pools. */
+	rateLimit?: number;
 	concurrency: number;
 	clientId?: string;
 }

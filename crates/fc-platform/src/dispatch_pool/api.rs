@@ -91,7 +91,7 @@ impl From<DispatchPool> for DispatchPoolResponse {
             description: p.description,
             client_id: p.client_id,
             status: format!("{:?}", p.status).to_uppercase(),
-            rate_limit: Some(p.rate_limit as u32),
+            rate_limit: p.rate_limit.map(|r| r as u32),
             concurrency: Some(p.concurrency as u32),
             created_at: p.created_at.to_rfc3339(),
             updated_at: p.updated_at.to_rfc3339(),
@@ -114,6 +114,14 @@ pub struct DispatchPoolsQuery {
     pub status: Option<String>,
 }
 
+/// Dispatch pools list response (matches TS `{ pools, total }` shape)
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DispatchPoolListResponse {
+    pub pools: Vec<DispatchPoolResponse>,
+    pub total: u32,
+}
+
 /// Sync dispatch pools request (admin)
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -132,13 +140,13 @@ pub struct SyncDispatchPoolInputRequest {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    #[serde(default = "default_rate_limit")]
-    pub rate_limit: u32,
+    /// Optional. `None` / omitted = concurrency-only (no rate limit).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_limit: Option<u32>,
     #[serde(default = "default_concurrency")]
     pub concurrency: u32,
 }
 
-fn default_rate_limit() -> u32 { 100 }
 fn default_concurrency() -> u32 { 10 }
 
 /// Sync query parameters
@@ -270,7 +278,7 @@ pub async fn get_dispatch_pool<U: UnitOfWork>(
     operation_id = "getApiAdminDispatchPools",
     params(DispatchPoolsQuery),
     responses(
-        (status = 200, description = "List of dispatch pools", body = Vec<DispatchPoolResponse>)
+        (status = 200, description = "List of dispatch pools", body = DispatchPoolListResponse)
     ),
     security(("bearer_auth" = []))
 )]
@@ -278,7 +286,7 @@ pub async fn list_dispatch_pools<U: UnitOfWork>(
     State(state): State<DispatchPoolsState<U>>,
     auth: Authenticated,
     Query(query): Query<DispatchPoolsQuery>,
-) -> Result<Json<Vec<DispatchPoolResponse>>, PlatformError> {
+) -> Result<Json<DispatchPoolListResponse>, PlatformError> {
     let pools = if let Some(ref client_id) = query.client_id {
         // Check access
         if !auth.0.is_anchor() && !auth.0.can_access_client(client_id) {
@@ -315,7 +323,8 @@ pub async fn list_dispatch_pools<U: UnitOfWork>(
         .map(|p| p.into())
         .collect();
 
-    Ok(Json(filtered))
+    let total = filtered.len() as u32;
+    Ok(Json(DispatchPoolListResponse { pools: filtered, total }))
 }
 
 /// Update dispatch pool

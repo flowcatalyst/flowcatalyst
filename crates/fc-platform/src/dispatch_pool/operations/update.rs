@@ -110,9 +110,9 @@ impl<U: UnitOfWork> UseCase for UpdateDispatchPoolUseCase<U> {
             pool.description = Some(description.clone());
         }
 
-        // Apply rate limit update
+        // Apply rate limit update (Some sets/changes; clearing requires a separate flag)
         if let Some(rate) = command.rate_limit {
-            pool.rate_limit = rate as i32;
+            pool.rate_limit = Some(rate as i32);
         }
 
         // Apply concurrency update

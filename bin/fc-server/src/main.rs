@@ -167,8 +167,12 @@ async fn main() -> Result<()> {
     let pg_pool = fc_platform::shared::database::create_pool(&database_url).await
         .map_err(|e| anyhow::anyhow!("PostgreSQL connection failed: {}", e))?;
 
-    fc_platform::shared::database::run_migrations(&pg_pool).await
-        .map_err(|e| anyhow::anyhow!("PostgreSQL migrations failed: {}", e))?;
+    fc_platform::shared::database::run_migrations(
+        &pg_pool,
+        fc_platform::shared::database::MigrationProfile::Production,
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("PostgreSQL migrations failed: {}", e))?;
 
     fc_platform::shared::database::seed_builtin_roles(&pg_pool).await
         .map_err(|e| anyhow::anyhow!("Built-in role seeding failed: {}", e))?;
@@ -240,6 +244,27 @@ async fn main() -> Result<()> {
 
     let repos = Repositories::new(&pg_pool);
     info!("Repositories initialized");
+
+    // ── Event fan-out service ──────────────────────────────────────────────
+    // Polls msg_events for unfanned rows, matches against active subscriptions,
+    // creates PENDING dispatch jobs. The scheduler handles the publish step.
+    // Safe to run on every instance — claims use FOR UPDATE SKIP LOCKED.
+    let _fan_out_service = {
+        use fc_platform::shared::event_fan_out_service::{EventFanOutConfig, EventFanOutService};
+        let config = EventFanOutConfig {
+            batch_size: env_or_parse("FC_FAN_OUT_BATCH_SIZE", 200),
+            subscription_refresh: Duration::from_secs(env_or_parse("FC_FAN_OUT_SUBS_REFRESH_SECS", 5)),
+        };
+        let svc = EventFanOutService::new(
+            pg_pool.clone(),
+            repos.subscription_repo.clone(),
+            repos.dispatch_job_repo.clone(),
+            config,
+        );
+        let _handle = svc.start();
+        info!("Event fan-out service started");
+        svc
+    };
 
     // CORS origins cache
     let cors_origins_cache: Arc<std::sync::RwLock<std::collections::HashSet<String>>> =
@@ -458,7 +483,6 @@ fn build_platform_app(
         auth_services,
         unit_of_work,
         fc_platform::shared::server_setup::PlatformRoutesConfig {
-            event_dispatch: None,
             session_cookie_secure: true,
             static_dir: std::env::var("FC_STATIC_DIR").ok(),
             oidc_login_external_base_url: std::env::var("FC_EXTERNAL_BASE_URL")
@@ -742,6 +766,7 @@ async fn spawn_stream_processor(
         events_batch_size: env_or_parse("FC_STREAM_EVENTS_BATCH_SIZE", 100),
         dispatch_jobs_enabled: env_bool("FC_STREAM_DISPATCH_JOBS_ENABLED", true),
         dispatch_jobs_batch_size: env_or_parse("FC_STREAM_DISPATCH_JOBS_BATCH_SIZE", 100),
+        partition_manager_enabled: env_bool("FC_STREAM_PARTITION_MANAGER_ENABLED", true),
     };
 
     let pool = sqlx::postgres::PgPoolOptions::new()
@@ -783,6 +808,7 @@ async fn spawn_stream_processor(
                 events_batch_size: config.events_batch_size,
                 dispatch_jobs_enabled: config.dispatch_jobs_enabled,
                 dispatch_jobs_batch_size: config.dispatch_jobs_batch_size,
+                partition_manager_enabled: config.partition_manager_enabled,
             };
             let (handle, _health_service) = start_stream_processor(pool_clone.clone(), cfg);
             current_handle = Some(handle);

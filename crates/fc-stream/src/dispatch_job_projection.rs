@@ -96,7 +96,7 @@ async fn poll_once(pool: &PgPool, batch_size: u32) -> anyhow::Result<u32> {
     let rows = sqlx::query_as::<_, (i32,)>(
         r#"
         WITH batch AS (
-            SELECT id
+            SELECT id, created_at
             FROM msg_dispatch_jobs
             WHERE projected_at IS NULL
                OR updated_at > projected_at
@@ -131,8 +131,8 @@ async fn poll_once(pool: &PgPool, batch_size: u32) -> anyhow::Result<u32> {
                 NULLIF(split_part(j.code, ':', 3), ''),
                 j.created_at, j.updated_at, NOW()
             FROM msg_dispatch_jobs j
-            JOIN batch b ON b.id = j.id
-            ON CONFLICT (id) DO UPDATE SET
+            JOIN batch b ON b.id = j.id AND b.created_at = j.created_at
+            ON CONFLICT (id, created_at) DO UPDATE SET
                 status = EXCLUDED.status,
                 attempt_count = EXCLUDED.attempt_count,
                 last_attempt_at = EXCLUDED.last_attempt_at,
@@ -144,9 +144,10 @@ async fn poll_once(pool: &PgPool, batch_size: u32) -> anyhow::Result<u32> {
                 updated_at = EXCLUDED.updated_at,
                 projected_at = NOW()
         )
-        UPDATE msg_dispatch_jobs
+        UPDATE msg_dispatch_jobs m
         SET projected_at = NOW()
-        WHERE id IN (SELECT id FROM batch)
+        FROM batch b
+        WHERE m.id = b.id AND m.created_at = b.created_at
         RETURNING 1
         "#,
     )

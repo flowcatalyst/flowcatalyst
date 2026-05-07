@@ -287,8 +287,12 @@ async fn main() -> Result<()> {
     let pg_pool = fc_platform::shared::database::create_pool(&args.database_url).await
         .map_err(|e| anyhow::anyhow!("PostgreSQL connection failed: {}", e))?;
 
-    fc_platform::shared::database::run_migrations(&pg_pool).await
-        .map_err(|e| anyhow::anyhow!("PostgreSQL migrations failed: {}", e))?;
+    fc_platform::shared::database::run_migrations(
+        &pg_pool,
+        fc_platform::shared::database::MigrationProfile::Embedded,
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("PostgreSQL migrations failed: {}", e))?;
 
     fc_platform::shared::database::seed_builtin_roles(&pg_pool).await
         .map_err(|e| anyhow::anyhow!("Built-in role seeding failed: {}", e))?;
@@ -391,6 +395,9 @@ async fn main() -> Result<()> {
             events_batch_size: 100,
             dispatch_jobs_enabled: true,
             dispatch_jobs_batch_size: 100,
+            // fc-dev uses embedded postgres which skips the partitioning
+            // migration; the partition manager has nothing to do here.
+            partition_manager_enabled: false,
         };
         let (handle, _health) = fc_stream::start_stream_processor(pg_pool.clone(), config);
         info!("Stream processor started (event + dispatch job projections)");
@@ -501,19 +508,13 @@ async fn main() -> Result<()> {
     };
 
     // 8e. Build platform API router via shared builder (handles ~38 state structs).
-    // fc-dev embeds the queue, so `event_dispatch` is populated with deps pointing
-    // at the in-process queue publisher.
+    // Event fan-out runs as a background service (started below); the request
+    // path doesn't need the queue/dispatch deps wired in here.
     let routes = fc_platform::shared::server_setup::build_platform_routes(
         &repos,
         &auth_services,
         &unit_of_work,
         fc_platform::shared::server_setup::PlatformRoutesConfig {
-            event_dispatch: Some(fc_platform::api::EventDispatchDeps {
-                subscription_repo: repos.subscription_repo.clone(),
-                dispatch_job_repo: repos.dispatch_job_repo.clone(),
-                queue_publisher: queue.clone(),
-                dispatch_process_url: format!("http://localhost:{}/api/dispatch/process", args.api_port),
-            }),
             session_cookie_secure: false,
             static_dir: None, // fc-dev handles SPA serving itself (embedded or FC_STATIC_DIR)
             oidc_login_external_base_url: Some(
@@ -524,6 +525,27 @@ async fn main() -> Result<()> {
             password_reset_external_base_url: format!("http://localhost:{}", args.api_port),
         },
     );
+
+    // 8e.1 Start event fan-out as a background service. Reads unfanned events
+    // from msg_events, matches against active subscriptions, creates PENDING
+    // dispatch jobs. The scheduler picks them up and publishes. Replaces the
+    // previous synchronous fan-out that ran inside the batch_events handler.
+    let _fan_out_service = {
+        use fc_platform::shared::event_fan_out_service::{EventFanOutConfig, EventFanOutService};
+        let config = EventFanOutConfig {
+            batch_size: 200,
+            subscription_refresh: std::time::Duration::from_secs(5),
+        };
+        let svc = EventFanOutService::new(
+            pg_pool.clone(),
+            repos.subscription_repo.clone(),
+            repos.dispatch_job_repo.clone(),
+            config,
+        );
+        let _handle = svc.start();
+        svc
+    };
+    info!("Event fan-out service started");
     let (platform_app, _openapi) = routes.build();
 
     // Dev-specific extra route states (the shared builder doesn't wire

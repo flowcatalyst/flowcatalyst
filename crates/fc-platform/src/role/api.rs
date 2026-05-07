@@ -218,6 +218,7 @@ pub async fn create_role(
         description: req.description,
         permissions: req.permissions,
         client_managed: req.client_managed,
+        source: crate::role::entity::RoleSource::Database,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     let event = state.create_use_case.run(cmd, ctx).await.into_result()?;

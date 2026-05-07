@@ -72,7 +72,7 @@ async fn process_dispatch(
     }
 
     // 3. Update status to PROCESSING
-    if let Err(e) = state.dispatch_job_repo.update_status(job_id, DispatchStatus::Processing).await {
+    if let Err(e) = state.dispatch_job_repo.update_status(job_id, job.created_at, DispatchStatus::Processing).await {
         error!(job_id = %job_id, error = %e, "Failed to update job to PROCESSING");
     }
 
@@ -194,6 +194,7 @@ async fn process_dispatch(
     // 7. Update dispatch job status
     if let Err(e) = state.dispatch_job_repo.update_after_attempt(
         job_id,
+        job.created_at,
         outcome.new_status,
         attempt_number,
         duration_ms,

@@ -11,12 +11,16 @@ use axum::{
 use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::collections::HashSet;
 
 use crate::{AuthRole, RoleSource};
 use crate::{ApplicationRepository, RoleRepository};
+use crate::role::operations::{
+    CreateRoleCommand, CreateRoleUseCase, DeleteRoleCommand, DeleteRoleUseCase,
+    SyncRoleInput, SyncRolesCommand, SyncRolesUseCase,
+};
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
+use crate::usecase::{ExecutionContext, PgUnitOfWork, UseCase};
 
 /// Role DTO for SDK response
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -123,6 +127,9 @@ pub struct SyncRolesQuery {
 pub struct ApplicationRolesSdkState {
     pub application_repo: Arc<ApplicationRepository>,
     pub role_repo: Arc<RoleRepository>,
+    pub create_use_case: Arc<CreateRoleUseCase<PgUnitOfWork>>,
+    pub sync_use_case: Arc<SyncRolesUseCase<PgUnitOfWork>>,
+    pub delete_use_case: Arc<DeleteRoleUseCase<PgUnitOfWork>>,
 }
 
 /// List all roles for an application
@@ -197,43 +204,33 @@ pub async fn list_roles(
 )]
 pub async fn create_role(
     State(state): State<ApplicationRolesSdkState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(app_code): Path<String>,
     Json(req): Json<CreateRoleRequest>,
 ) -> Result<Json<RoleDto>, PlatformError> {
-    // Validate request
-    if req.name.is_empty() {
-        return Err(PlatformError::validation("Role name is required"));
-    }
-
-    // Verify application exists
+    // Verify application exists (the use case doesn't load the app row,
+    // so we keep this pre-check to surface a 404 cleanly).
     state.application_repo.find_by_code(&app_code).await?
         .ok_or_else(|| PlatformError::not_found("Application", &app_code))?;
 
-    // Build full role code
+    let display_name = req.display_name.clone().unwrap_or_else(|| req.name.clone());
+    let cmd = CreateRoleCommand {
+        application_code: app_code.clone(),
+        role_name: req.name.clone(),
+        display_name,
+        description: req.description,
+        permissions: req.permissions,
+        client_managed: req.client_managed,
+        source: RoleSource::Sdk,
+    };
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    state.create_use_case.run(cmd, ctx).await.into_result()?;
+
+    // Re-load the persisted role so the response carries the canonical state
+    // (id + role_id + permissions normalised).
     let role_code = format!("{}:{}", app_code, req.name);
-
-    // Check if role already exists
-    if state.role_repo.exists_by_code(&role_code).await? {
-        return Err(PlatformError::duplicate("Role", "code", &role_code));
-    }
-
-    // Create the role
-    let display_name = req.display_name.unwrap_or_else(|| req.name.clone());
-    let mut role = AuthRole::new(&app_code, &req.name, &display_name)
-        .with_source(RoleSource::Sdk)
-        .with_client_managed(req.client_managed);
-
-    if let Some(desc) = req.description {
-        role = role.with_description(desc);
-    }
-
-    for perm in req.permissions {
-        role.permissions.insert(perm);
-    }
-
-    state.role_repo.insert(&role).await?;
-
+    let role = state.role_repo.find_by_name(&role_code).await?
+        .ok_or_else(|| PlatformError::internal("Role disappeared after create"))?;
     Ok(Json(RoleDto::from_role(role)))
 }
 
@@ -256,90 +253,33 @@ pub async fn create_role(
 )]
 pub async fn sync_roles(
     State(state): State<ApplicationRolesSdkState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path(app_code): Path<String>,
     Query(query): Query<SyncRolesQuery>,
     Json(req): Json<SyncRolesRequest>,
 ) -> Result<Json<SyncRolesResponse>, PlatformError> {
-    // Verify application exists
-    state.application_repo.find_by_code(&app_code).await?
-        .ok_or_else(|| PlatformError::not_found("Application", &app_code))?;
+    let synced_count = req.roles.iter().filter(|r| !r.name.is_empty()).count();
 
-    // Get existing SDK roles
-    let existing_roles = state.role_repo.find_by_application(&app_code).await?;
-    let existing_sdk_roles: Vec<_> = existing_roles.into_iter()
-        .filter(|r| r.source == RoleSource::Sdk)
-        .collect();
+    let cmd = SyncRolesCommand {
+        application_code: app_code.clone(),
+        roles: req
+            .roles
+            .into_iter()
+            .filter(|r| !r.name.is_empty())
+            .map(|r| SyncRoleInput {
+                name: r.name,
+                display_name: r.display_name,
+                description: r.description,
+                permissions: r.permissions,
+                client_managed: r.client_managed,
+            })
+            .collect(),
+        remove_unlisted: query.remove_unlisted,
+    };
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    state.sync_use_case.run(cmd, ctx).await.into_result()?;
 
-    // Track synced role codes
-    let mut synced_codes: HashSet<String> = HashSet::new();
-    let mut synced_count = 0;
-
-    // Process each role in the sync request
-    for role_req in &req.roles {
-        if role_req.name.is_empty() {
-            continue;
-        }
-
-        let role_code = format!("{}:{}", app_code, role_req.name);
-        synced_codes.insert(role_code.clone());
-
-        // Check if role exists
-        if let Some(mut existing) = state.role_repo.find_by_name(&role_code).await? {
-            // Update existing role
-            let display_name = role_req.display_name.as_ref()
-                .unwrap_or(&role_req.name);
-            existing.display_name = display_name.clone();
-            existing.description = role_req.description.clone();
-            existing.client_managed = role_req.client_managed;
-            existing.permissions = role_req.permissions.iter().cloned().collect();
-            existing.updated_at = chrono::Utc::now();
-
-            state.role_repo.update(&existing).await?;
-        } else {
-            // Create new role
-            let display_name = role_req.display_name.as_ref()
-                .unwrap_or(&role_req.name);
-            let mut role = AuthRole::new(&app_code, &role_req.name, display_name)
-                .with_source(RoleSource::Sdk)
-                .with_client_managed(role_req.client_managed);
-
-            if let Some(ref desc) = role_req.description {
-                role = role.with_description(desc);
-            }
-
-            for perm in &role_req.permissions {
-                role.permissions.insert(perm.clone());
-            }
-
-            state.role_repo.insert(&role).await?;
-        }
-
-        synced_count += 1;
-    }
-
-    // Remove unlisted SDK roles if requested. Refuse if any still have
-    // principal assignments — the junction has no DB-level FK, so silently
-    // dropping it would orphan user role assignments. Caller must strip the
-    // assignments first.
-    if query.remove_unlisted {
-        for existing in existing_sdk_roles {
-            if synced_codes.contains(&existing.name) {
-                continue;
-            }
-            let assignments = state.role_repo.count_assignments(&existing.name).await?;
-            if assignments > 0 {
-                return Err(PlatformError::validation(format!(
-                    "Cannot remove role '{}' — {} principal(s) still hold it. \
-                     Strip the assignments before syncing with remove_unlisted=true.",
-                    existing.name, assignments,
-                )));
-            }
-            state.role_repo.delete(&existing.id).await?;
-        }
-    }
-
-    // Get updated roles
+    // Re-read SDK-sourced roles for the response payload.
     let updated_roles = state.role_repo.find_by_application(&app_code).await?;
     let sdk_roles: Vec<RoleDto> = updated_roles.into_iter()
         .filter(|r| r.source == RoleSource::Sdk)
@@ -370,34 +310,25 @@ pub async fn sync_roles(
 )]
 pub async fn delete_role(
     State(state): State<ApplicationRolesSdkState>,
-    _auth: Authenticated,
+    auth: Authenticated,
     Path((app_code, role_name)): Path<(String, String)>,
 ) -> Result<(), PlatformError> {
     let role_code = format!("{}:{}", app_code, role_name);
 
-    // Get the role
+    // Look up the role first so we can enforce SDK-only deletion as a 400
+    // before invoking the use case (use case is source-agnostic).
     let role = state.role_repo.find_by_name(&role_code).await?
         .ok_or_else(|| PlatformError::not_found("Role", &role_code))?;
 
-    // Only allow deleting SDK-sourced roles
     if role.source != RoleSource::Sdk {
         return Err(PlatformError::validation(
             "Cannot delete non-SDK role. Only SDK-sourced roles can be deleted via API."
         ));
     }
 
-    // Refuse if principals still hold this role — enforced in code because
-    // the junction (iam_principal_roles) has no DB-level FK.
-    let assignments = state.role_repo.count_assignments(&role.name).await?;
-    if assignments > 0 {
-        return Err(PlatformError::validation(format!(
-            "Cannot delete role '{}' — {} principal(s) still hold it. \
-             Strip the assignments before deleting.",
-            role.name, assignments,
-        )));
-    }
-
-    state.role_repo.delete(&role.id).await?;
+    let cmd = DeleteRoleCommand { role_id: role.id.clone() };
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    state.delete_use_case.run(cmd, ctx).await.into_result()?;
 
     Ok(())
 }

@@ -114,9 +114,7 @@ impl<U: UnitOfWork> UseCase for CreateDispatchPoolUseCase<U> {
             pool = pool.with_client_id(client_id);
         }
 
-        if let Some(rate) = command.rate_limit {
-            pool = pool.with_rate_limit(rate);
-        }
+        pool = pool.with_rate_limit(command.rate_limit);
 
         if let Some(conc) = command.concurrency {
             pool = pool.with_concurrency(conc);

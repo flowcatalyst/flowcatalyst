@@ -140,6 +140,24 @@ impl OutboxRepository for MySqlOutboxRepository {
         let table = self.table_config.table_for_type(item_type);
         let in_clause = Self::build_in_clause(ids.len());
 
+        // SUCCESS is terminal — the platform now owns the message. Delete the
+        // outbox row instead of updating it; otherwise the customer's outbox
+        // table grows unbounded.
+        if matches!(status, OutboxStatus::SUCCESS) {
+            let query = format!(
+                "DELETE FROM {} WHERE type = ? AND id IN ({})",
+                table, in_clause
+            );
+            let mut q = sqlx::query(&query).bind(item_type.type_value());
+            for id in &ids {
+                q = q.bind(id);
+            }
+            q.execute(&self.pool).await?;
+
+            debug!(table = %table, count = ids.len(), "Deleted successful outbox items");
+            return Ok(());
+        }
+
         let query = format!(
             "UPDATE {} SET status = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP(3) WHERE type = ? AND id IN ({})",
             table, in_clause

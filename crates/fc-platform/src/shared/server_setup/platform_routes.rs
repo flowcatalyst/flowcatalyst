@@ -2,14 +2,15 @@
 //!
 //! Constructs the ~38 API state structs every binary needs, wiring
 //! them to repositories, auth services, and use cases. Binaries provide
-//! a `PlatformRoutesConfig` with the 3 known points of variation:
+//! a `PlatformRoutesConfig` with the points of variation:
 //!
-//! 1. Optional `EventDispatchDeps` for `SdkEventsState.dispatch` (only
-//!    fc-dev sets this, because it has a queue publisher embedded in
-//!    the same process).
-//! 2. Whether the OIDC session cookie's `Secure` flag is set — `true`
+//! 1. Whether the OIDC session cookie's `Secure` flag is set — `true`
 //!    in production (fc-server), `false` for dev/no-TLS deployments.
-//! 3. Optional static asset directory for SPA serving.
+//! 2. Optional static asset directory for SPA serving.
+//!
+//! Event fan-out (subscriptions → dispatch jobs → queue) runs out-of-band
+//! in `EventFanOutService`; the request path no longer needs queue/dispatch
+//! deps wired in here.
 //!
 //! In addition, external base URLs for the well-known, OIDC login, and
 //! password-reset endpoints are passed directly so each binary can read
@@ -22,7 +23,7 @@ use crate::api::{
     ApplicationRolesSdkState, ApplicationsState, AuditLogsState, AuthConfigState, AuthState,
     BffEventTypesState, BffRolesState, CircuitBreakerRegistry, ClientSelectionState, ClientsState,
     ConfigAccessState, ConnectionsState, CorsState, DebugState, DispatchJobsState,
-    DispatchPoolsState, DispatchProcessState, EmailDomainMappingsState, EventDispatchDeps,
+    DispatchPoolsState, DispatchProcessState, EmailDomainMappingsState,
     EventTypesState, EventsState, FilterOptionsState, IdentityProvidersState, InFlightTracker,
     LeaderState, LoginAttemptsState, MeState, MonitoringState, OAuthClientsState, OAuthState,
     OidcLoginApiState, PasswordResetApiState, PlatformConfigState, PrincipalsState, PublicApiState,
@@ -47,10 +48,6 @@ use super::AuthServices;
 
 /// Per-binary configuration for the points where binaries diverge.
 pub struct PlatformRoutesConfig {
-    /// When set, `SdkEventsState.dispatch` receives these deps so the SDK
-    /// batch endpoint can publish directly to the in-process queue.
-    /// `None` for server binaries that delegate to the router.
-    pub event_dispatch: Option<EventDispatchDeps>,
     /// `Secure` flag for the OIDC session cookie. `true` in production.
     pub session_cookie_secure: bool,
     /// Optional static asset directory for SPA serving.
@@ -162,6 +159,28 @@ pub fn build_platform_routes(
             unit_of_work.clone(),
         ),
     );
+    let update_client_applications_use_case = Arc::new(
+        crate::application::operations::UpdateClientApplicationsUseCase::new(
+            repos.application_repo.clone(),
+            repos.client_repo.clone(),
+            repos.application_client_config_repo.clone(),
+            unit_of_work.clone(),
+        ),
+    );
+    let enable_application_for_client_use_case = Arc::new(
+        crate::application::operations::EnableApplicationForClientUseCase::new(
+            repos.application_repo.clone(),
+            repos.client_repo.clone(),
+            repos.application_client_config_repo.clone(),
+            unit_of_work.clone(),
+        ),
+    );
+    let disable_application_for_client_use_case = Arc::new(
+        crate::application::operations::DisableApplicationForClientUseCase::new(
+            repos.application_client_config_repo.clone(),
+            unit_of_work.clone(),
+        ),
+    );
     let clients_state = ClientsState {
         client_repo: repos.client_repo.clone(),
         application_repo: Some(repos.application_repo.clone()),
@@ -173,6 +192,9 @@ pub fn build_platform_routes(
         activate_use_case: activate_client_use_case,
         suspend_use_case: suspend_client_use_case,
         add_note_use_case: add_client_note_use_case,
+        update_applications_use_case: Some(update_client_applications_use_case),
+        enable_application_use_case: Some(enable_application_for_client_use_case),
+        disable_application_use_case: Some(disable_application_for_client_use_case),
     };
     // Password reset emailer — shared between user-initiated /auth/password-reset/request
     // and admin-initiated /api/principals/{id}/send-password-reset.
@@ -266,7 +288,7 @@ pub fn build_platform_routes(
         password_reset_emailer: Some(password_reset_emailer.clone()),
         create_user_use_case,
         grant_client_access_use_case,
-        reset_password_use_case,
+        reset_password_use_case: reset_password_use_case.clone(),
         activate_use_case: activate_user_use_case,
         deactivate_use_case: deactivate_user_use_case,
         delete_use_case: delete_user_use_case,
@@ -690,9 +712,31 @@ pub fn build_platform_routes(
         grant_repo: repos.client_access_grant_repo.clone(),
         auth_service: auth.auth.clone(),
     };
+    let create_role_use_case = Arc::new(
+        crate::role::operations::CreateRoleUseCase::new(
+            repos.role_repo.clone(),
+            unit_of_work.clone(),
+        ),
+    );
+    let sync_roles_use_case = Arc::new(
+        crate::role::operations::SyncRolesUseCase::new(
+            repos.role_repo.clone(),
+            repos.application_repo.clone(),
+            unit_of_work.clone(),
+        ),
+    );
+    let delete_role_use_case = Arc::new(
+        crate::role::operations::DeleteRoleUseCase::new(
+            repos.role_repo.clone(),
+            unit_of_work.clone(),
+        ),
+    );
     let application_roles_sdk_state = ApplicationRolesSdkState {
         application_repo: repos.application_repo.clone(),
         role_repo: repos.role_repo.clone(),
+        create_use_case: create_role_use_case,
+        sync_use_case: sync_roles_use_case,
+        delete_use_case: delete_role_use_case,
     };
 
     let password_reset_state = PasswordResetApiState {
@@ -701,6 +745,7 @@ pub fn build_platform_routes(
         unit_of_work: unit_of_work.clone(),
         emailer: password_reset_emailer,
         password_reset_repo: repos.password_reset_repo.clone(),
+        reset_password_use_case: reset_password_use_case.clone(),
     };
 
     let applications_state = ApplicationsState {
@@ -775,7 +820,6 @@ pub fn build_platform_routes(
 
     let sdk_events_state = SdkEventsState {
         event_repo: repos.event_repo.clone(),
-        dispatch: config.event_dispatch,
     };
     let debug_state = DebugState {
         event_repo: repos.event_repo.clone(),

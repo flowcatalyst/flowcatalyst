@@ -41,6 +41,7 @@ async fn main() -> Result<()> {
         events_batch_size: env_or_parse("FC_STREAM_EVENTS_BATCH_SIZE", 100),
         dispatch_jobs_enabled: env_bool("FC_STREAM_DISPATCH_JOBS_ENABLED", true),
         dispatch_jobs_batch_size: env_or_parse("FC_STREAM_DISPATCH_JOBS_BATCH_SIZE", 100),
+        partition_manager_enabled: env_bool("FC_STREAM_PARTITION_MANAGER_ENABLED", true),
     };
 
     // Connect to PostgreSQL

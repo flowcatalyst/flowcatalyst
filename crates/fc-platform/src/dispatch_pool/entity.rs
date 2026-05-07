@@ -39,7 +39,8 @@ pub struct DispatchPool {
     pub code: String,
     pub name: String,
     pub description: Option<String>,
-    pub rate_limit: i32,
+    /// `None` means concurrency-only (no rate limit applied by the message router).
+    pub rate_limit: Option<i32>,
     pub concurrency: i32,
     pub client_id: Option<String>,
     pub client_identifier: Option<String>,
@@ -56,7 +57,7 @@ impl DispatchPool {
             code: code.into(),
             name: name.into(),
             description: None,
-            rate_limit: 100,
+            rate_limit: None,
             concurrency: 10,
             client_id: None,
             client_identifier: None,
@@ -68,7 +69,7 @@ impl DispatchPool {
 
     pub fn with_description(mut self, desc: impl Into<String>) -> Self { self.description = Some(desc.into()); self }
     pub fn with_client_id(mut self, id: impl Into<String>) -> Self { self.client_id = Some(id.into()); self }
-    pub fn with_rate_limit(mut self, rate: u32) -> Self { self.rate_limit = rate as i32; self }
+    pub fn with_rate_limit(mut self, rate: Option<u32>) -> Self { self.rate_limit = rate.map(|r| r as i32); self }
     pub fn with_concurrency(mut self, conc: u32) -> Self { self.concurrency = conc as i32; self }
 
     pub fn suspend(&mut self) {
@@ -101,7 +102,7 @@ mod tests {
         assert_eq!(pool.code, "default-pool");
         assert_eq!(pool.name, "Default Pool");
         assert!(pool.description.is_none());
-        assert_eq!(pool.rate_limit, 100);
+        assert_eq!(pool.rate_limit, None);
         assert_eq!(pool.concurrency, 10);
         assert!(pool.client_id.is_none());
         assert!(pool.client_identifier.is_none());
@@ -148,12 +149,12 @@ mod tests {
         let pool = DispatchPool::new("pool", "Pool")
             .with_description("A test pool")
             .with_client_id("client-1")
-            .with_rate_limit(200)
+            .with_rate_limit(Some(200))
             .with_concurrency(20);
 
         assert_eq!(pool.description, Some("A test pool".to_string()));
         assert_eq!(pool.client_id, Some("client-1".to_string()));
-        assert_eq!(pool.rate_limit, 200);
+        assert_eq!(pool.rate_limit, Some(200));
         assert_eq!(pool.concurrency, 20);
     }
 

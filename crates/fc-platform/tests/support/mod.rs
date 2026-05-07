@@ -31,7 +31,7 @@ use tower::ServiceExt;
 
 use fc_platform::auth::auth_service::{AuthConfig, AuthService};
 use fc_platform::domain::{Principal, UserScope};
-use fc_platform::shared::database::{create_pool, run_migrations};
+use fc_platform::shared::database::{create_pool, run_migrations, MigrationProfile};
 use fc_platform::shared::middleware::{AppState, AuthLayer};
 use fc_platform::shared::server_setup::{
     build_platform_routes, AuthServices, PlatformRoutesConfig,
@@ -71,7 +71,7 @@ impl TestApp {
         let database_url = format!("postgresql://test:test@{}:{}/flowcatalyst_test", host, port);
 
         let pool = create_pool(&database_url).await.expect("pool");
-        run_migrations(&pool).await.expect("migrations");
+        run_migrations(&pool, MigrationProfile::Production).await.expect("migrations");
 
         let repos = Repositories::new(&pool);
         let unit_of_work = Arc::new(PgUnitOfWork::new(pool.clone()));
@@ -109,7 +109,6 @@ impl TestApp {
             &auth_services,
             &unit_of_work,
             PlatformRoutesConfig {
-                event_dispatch: None,
                 session_cookie_secure: false,
                 static_dir: None,
                 oidc_login_external_base_url: None,

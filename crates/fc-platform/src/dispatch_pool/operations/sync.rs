@@ -27,13 +27,13 @@ pub struct SyncDispatchPoolInput {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    #[serde(default = "default_rate_limit")]
-    pub rate_limit: u32,
+    /// `None` means concurrency-only (router runs the pool with no rate limiter).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_limit: Option<u32>,
     #[serde(default = "default_concurrency")]
     pub concurrency: u32,
 }
 
-fn default_rate_limit() -> u32 { 100 }
 fn default_concurrency() -> u32 { 10 }
 
 /// Command for syncing dispatch pools from an application.
@@ -84,10 +84,12 @@ impl<U: UnitOfWork> UseCase for SyncDispatchPoolsUseCase<U> {
                     "NAME_REQUIRED", "Pool name is required",
                 ));
             }
-            if input.rate_limit < 1 {
-                return Err(UseCaseError::validation(
-                    "INVALID_RATE_LIMIT", "Rate limit must be at least 1",
-                ));
+            if let Some(rl) = input.rate_limit {
+                if rl < 1 {
+                    return Err(UseCaseError::validation(
+                        "INVALID_RATE_LIMIT", "Rate limit, when set, must be at least 1",
+                    ));
+                }
             }
             if input.concurrency < 1 {
                 return Err(UseCaseError::validation(
@@ -132,7 +134,7 @@ impl<U: UnitOfWork> UseCase for SyncDispatchPoolsUseCase<U> {
                     let mut updated = pool.clone();
                     updated.name = input.name.clone();
                     updated.description = input.description.clone();
-                    updated.rate_limit = input.rate_limit as i32;
+                    updated.rate_limit = input.rate_limit.map(|r| r as i32);
                     updated.concurrency = input.concurrency as i32;
                     updated.updated_at = chrono::Utc::now();
                     if let Err(e) = self.dispatch_pool_repo.update(&updated).await {
@@ -145,7 +147,7 @@ impl<U: UnitOfWork> UseCase for SyncDispatchPoolsUseCase<U> {
                 None => {
                     let mut pool = DispatchPool::new(&input.code, &input.name);
                     pool.description = input.description.clone();
-                    pool.rate_limit = input.rate_limit as i32;
+                    pool.rate_limit = input.rate_limit.map(|r| r as i32);
                     pool.concurrency = input.concurrency as i32;
                     if let Err(e) = self.dispatch_pool_repo.insert(&pool).await {
                         return UseCaseResult::failure(UseCaseError::commit(format!(

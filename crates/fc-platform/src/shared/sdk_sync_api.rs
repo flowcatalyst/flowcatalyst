@@ -167,13 +167,13 @@ pub struct SyncDispatchPoolInputRequest {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    #[serde(default = "default_rate_limit")]
-    pub rate_limit: u32,
+    /// Optional. `None` / omitted = concurrency-only (no rate limit).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_limit: Option<u32>,
     #[serde(default = "default_concurrency")]
     pub concurrency: u32,
 }
 
-fn default_rate_limit() -> u32 { 100 }
 fn default_concurrency() -> u32 { 10 }
 
 // ---------------------------------------------------------------------------

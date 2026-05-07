@@ -145,7 +145,10 @@ function getScopeLabel(pool: DispatchPool) {
           </template>
         </Column>
         <Column field="rateLimit" header="Rate Limit" sortable>
-          <template #body="{ data }"> {{ data.rateLimit }}/min </template>
+          <template #body="{ data }">
+            <span v-if="data.rateLimit != null">{{ data.rateLimit }}/min</span>
+            <span v-else>—</span>
+          </template>
         </Column>
         <Column field="concurrency" header="Concurrency" sortable />
         <Column field="status" header="Status" sortable>

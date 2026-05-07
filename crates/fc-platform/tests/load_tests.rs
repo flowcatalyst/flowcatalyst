@@ -14,7 +14,7 @@ use std::time::Instant;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
-use fc_platform::shared::database::{create_pool, run_migrations};
+use fc_platform::shared::database::{create_pool, run_migrations, MigrationProfile};
 use fc_platform::{
     ClientRepository, EventRepository, DispatchJobRepository,
     Client, Event, DispatchJob,
@@ -43,7 +43,7 @@ async fn setup_test_db() -> (sqlx::PgPool, testcontainers::ContainerAsync<Postgr
         .await
         .expect("Failed to connect to test database");
 
-    run_migrations(&pool)
+    run_migrations(&pool, MigrationProfile::Production)
         .await
         .expect("Failed to run migrations");
 
@@ -316,7 +316,7 @@ async fn test_api_batch_events_throughput() {
     };
 
     let event_repo = Arc::new(EventRepository::new(&pool));
-    let sdk_events_state = SdkEventsState { event_repo, dispatch: None };
+    let sdk_events_state = SdkEventsState { event_repo };
     let app: Router = Router::new()
         .nest("/api/events", sdk_events_batch_router(sdk_events_state))
         .layer(AuthLayer::new(app_state));

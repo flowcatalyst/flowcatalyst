@@ -275,7 +275,7 @@ impl MessageGroupDispatcher {
         };
 
         if should_mark_queued {
-            if let Err(e) = self.batch_update_status_queued(&[&job.id]).await {
+            if let Err(e) = self.batch_update_status_queued(&[(&job.id, job.created_at)]).await {
                 error!(job_id = %job.id, error = %e, "Failed to update job to QUEUED");
                 return false;
             }
@@ -286,18 +286,26 @@ impl MessageGroupDispatcher {
         }
     }
 
-    async fn batch_update_status_queued(&self, job_ids: &[&str]) -> Result<(), sqlx::Error> {
-        if job_ids.is_empty() {
+    /// Mark jobs as QUEUED. Uses (id, created_at) so PG can prune to the
+    /// owning partition instead of scanning all active partition PK indexes.
+    async fn batch_update_status_queued(
+        &self,
+        jobs: &[(&str, DateTime<Utc>)],
+    ) -> Result<(), sqlx::Error> {
+        if jobs.is_empty() {
             return Ok(());
         }
 
-        let ids: Vec<String> = job_ids.iter().map(|id| id.to_string()).collect();
+        let ids: Vec<String> = jobs.iter().map(|(id, _)| id.to_string()).collect();
+        let created_ats: Vec<DateTime<Utc>> = jobs.iter().map(|(_, ts)| *ts).collect();
 
         sqlx::query(
             "UPDATE msg_dispatch_jobs SET status = 'QUEUED', queued_at = NOW(), updated_at = NOW() \
-             WHERE id = ANY($1)",
+             FROM UNNEST($1::varchar[], $2::timestamptz[]) AS t(id, created_at) \
+             WHERE msg_dispatch_jobs.id = t.id AND msg_dispatch_jobs.created_at = t.created_at",
         )
         .bind(&ids)
+        .bind(&created_ats)
         .execute(&self.pool)
         .await?;
 

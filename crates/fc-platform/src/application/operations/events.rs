@@ -414,6 +414,57 @@ impl ApplicationClientConfigUpdated {
     }
 }
 
+/// Event emitted when a client's enabled application set is updated in bulk
+/// (e.g., admin reassigns which applications a client has access to).
+/// Carries the diff so consumers don't need to re-derive it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientApplicationsUpdated {
+    #[serde(flatten)]
+    pub metadata: EventMetadata,
+
+    pub client_id: String,
+    /// Final, authoritative set of enabled applications after the update.
+    pub enabled_application_ids: Vec<String>,
+    /// Applications that became enabled in this operation.
+    pub enabled_added: Vec<String>,
+    /// Applications that became disabled in this operation.
+    pub disabled_removed: Vec<String>,
+}
+
+impl_domain_event!(ClientApplicationsUpdated);
+
+impl ClientApplicationsUpdated {
+    const EVENT_TYPE: &'static str = "platform:iam:client:applications-updated";
+    const SPEC_VERSION: &'static str = "1.0";
+    const SOURCE: &'static str = "platform:client";
+
+    pub fn new(
+        ctx: &ExecutionContext,
+        client_id: &str,
+        enabled_application_ids: Vec<String>,
+        enabled_added: Vec<String>,
+        disabled_removed: Vec<String>,
+    ) -> Self {
+        let event_id = TsidGenerator::generate_untyped();
+        let subject = format!("platform.client.{}", client_id);
+        let message_group = format!("platform:client:{}", client_id);
+
+        Self {
+            metadata: EventMetadata::new(
+                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
+                subject, message_group,
+                ctx.execution_id.clone(), ctx.correlation_id.clone(),
+                ctx.causation_id.clone(), ctx.principal_id.clone(),
+            ),
+            client_id: client_id.to_string(),
+            enabled_application_ids,
+            enabled_added,
+            disabled_removed,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

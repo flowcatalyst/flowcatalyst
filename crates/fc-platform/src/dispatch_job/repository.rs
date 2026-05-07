@@ -455,7 +455,7 @@ impl DispatchJobRepository {
                 attempt_count = $29, last_attempt_at = $30, completed_at = $31,
                 duration_millis = $32, last_error = $33, idempotency_key = $34,
                 updated_at = $35
-            WHERE id = $1"#
+            WHERE id = $1 AND created_at = $36"#
         )
         .bind(&job.id)
         .bind(&job.external_id)
@@ -492,14 +492,33 @@ impl DispatchJobRepository {
         .bind(&job.last_error)
         .bind(&job.idempotency_key)
         .bind(job.updated_at)
+        .bind(job.created_at)
         .execute(&self.pool)
         .await?;
 
         Ok(())
     }
 
-    /// Bulk insert multiple dispatch jobs using UNNEST
+    /// Bulk insert multiple dispatch jobs using UNNEST against the pool.
     pub async fn insert_many(&self, jobs: &[DispatchJob]) -> Result<()> {
+        Self::insert_many_inner(&self.pool, jobs).await
+    }
+
+    /// Bulk insert as part of an existing transaction. Used by services that
+    /// need atomicity across the insert and another write (e.g. fan-out: claim
+    /// events + create dispatch jobs in one txn).
+    pub async fn insert_many_tx<'a>(
+        &self,
+        tx: &mut sqlx::Transaction<'a, sqlx::Postgres>,
+        jobs: &[DispatchJob],
+    ) -> Result<()> {
+        Self::insert_many_inner(&mut **tx, jobs).await
+    }
+
+    async fn insert_many_inner<'e, E>(executor: E, jobs: &[DispatchJob]) -> Result<()>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
         if jobs.is_empty() {
             return Ok(());
         }
@@ -635,18 +654,29 @@ impl DispatchJobRepository {
         .bind(&idempotency_keys as &[Option<String>])
         .bind(&created_ats)
         .bind(&updated_ats)
-        .execute(&self.pool)
+        .execute(executor)
         .await?;
 
         Ok(())
     }
 
-    pub async fn update_status(&self, id: &str, status: DispatchStatus) -> Result<bool> {
+    /// Update status by primary key. `created_at` is required because
+    /// `msg_dispatch_jobs` is partitioned on it — including it in the WHERE
+    /// clause lets PG prune to a single partition instead of scanning all
+    /// active partition PK indexes.
+    pub async fn update_status(
+        &self,
+        id: &str,
+        created_at: DateTime<Utc>,
+        status: DispatchStatus,
+    ) -> Result<bool> {
         let result = sqlx::query(
-            "UPDATE msg_dispatch_jobs SET status = $1, updated_at = NOW() WHERE id = $2"
+            "UPDATE msg_dispatch_jobs SET status = $1, updated_at = NOW() \
+             WHERE id = $2 AND created_at = $3"
         )
         .bind(status.as_str())
         .bind(id)
+        .bind(created_at)
         .execute(&self.pool)
         .await?;
 
@@ -864,7 +894,7 @@ impl DispatchJobRepository {
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
                     $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
                     $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
-            ON CONFLICT (id) DO UPDATE SET
+            ON CONFLICT (id, created_at) DO UPDATE SET
                 status = EXCLUDED.status,
                 attempt_count = EXCLUDED.attempt_count,
                 last_error = EXCLUDED.last_error,
@@ -1093,9 +1123,13 @@ impl DispatchJobRepository {
     }
 
     /// Update a dispatch job after a delivery attempt.
+    ///
+    /// `created_at` is required because the table is partitioned on it —
+    /// passing it lets PG prune to a single partition.
     pub async fn update_after_attempt(
         &self,
         id: &str,
+        created_at: DateTime<Utc>,
         status: DispatchStatus,
         attempt_count: u32,
         duration_millis: i64,
@@ -1108,7 +1142,7 @@ impl DispatchJobRepository {
             r#"UPDATE msg_dispatch_jobs SET
                 status = $1, attempt_count = $2, last_attempt_at = $3,
                 duration_millis = $4, last_error = $5, completed_at = $6, updated_at = $7
-            WHERE id = $8"#
+            WHERE id = $8 AND created_at = $9"#
         )
         .bind(status.as_str())
         .bind(attempt_count as i32)
@@ -1118,6 +1152,7 @@ impl DispatchJobRepository {
         .bind(completed_at)
         .bind(now)
         .bind(id)
+        .bind(created_at)
         .execute(&self.pool)
         .await?;
 

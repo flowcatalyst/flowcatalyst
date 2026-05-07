@@ -23,7 +23,7 @@ use serde_json::json;
 
 use fc_platform::auth::auth_service::{AuthConfig, AuthService};
 use fc_platform::domain::{Principal, UserScope};
-use fc_platform::shared::database::{create_pool, run_migrations};
+use fc_platform::shared::database::{create_pool, run_migrations, MigrationProfile};
 use fc_platform::{
     ClientRepository, DispatchJobRepository, EventRepository, RoleRepository,
 };
@@ -61,7 +61,7 @@ async fn setup_test_db() -> (sqlx::PgPool, testcontainers::ContainerAsync<Postgr
         .await
         .expect("Failed to connect to test database");
 
-    run_migrations(&pool)
+    run_migrations(&pool, MigrationProfile::Production)
         .await
         .expect("Failed to run migrations");
 
@@ -130,7 +130,6 @@ fn build_test_router(pool: &sqlx::PgPool) -> (Router, Arc<AuthService>) {
 
     let sdk_events_state = SdkEventsState {
         event_repo: Arc::new(EventRepository::new(pool)),
-        dispatch: None,
     };
 
     let sdk_dispatch_jobs_state = SdkDispatchJobsState {

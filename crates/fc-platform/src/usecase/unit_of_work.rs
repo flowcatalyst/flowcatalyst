@@ -117,6 +117,25 @@ pub trait UnitOfWork: Send + Sync {
     where
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync;
+
+    /// Commit a batch of aggregate upserts of the same type via one repository,
+    /// plus a single domain event and audit log — all in one transaction.
+    ///
+    /// Use when one logical operation touches many rows of the same aggregate
+    /// (e.g., toggling client→application enablement). Emits exactly one event
+    /// summarising the change rather than one event per row.
+    async fn commit_all<A, R, E, C>(
+        &self,
+        aggregates: &[A],
+        repository: &R,
+        event: E,
+        command: &C,
+    ) -> UseCaseResult<E>
+    where
+        A: HasId + Send + Sync,
+        R: Persist<A>,
+        E: DomainEvent + Serialize + Send + 'static,
+        C: Serialize + Send + Sync;
 }
 
 // ─── PgUnitOfWork ────────────────────────────────────────────────────────────
@@ -362,6 +381,59 @@ impl UnitOfWork for PgUnitOfWork {
         UseCaseResult::success(event)
     }
 
+    async fn commit_all<A, R, E, C>(
+        &self,
+        aggregates: &[A],
+        repository: &R,
+        event: E,
+        command: &C,
+    ) -> UseCaseResult<E>
+    where
+        A: HasId + Send + Sync,
+        R: Persist<A>,
+        E: DomainEvent + Serialize + Send + 'static,
+        C: Serialize + Send + Sync,
+    {
+        let mut txn = match self.pool.begin().await {
+            Ok(t) => t,
+            Err(e) => {
+                error!("Failed to start transaction: {}", e);
+                return UseCaseResult::failure(UseCaseError::commit(format!("Failed to start transaction: {}", e)));
+            }
+        };
+
+        for aggregate in aggregates {
+            let persist_result = {
+                let mut tx = DbTx { inner: &mut txn };
+                repository.persist(aggregate, &mut tx).await
+            };
+            if let Err(e) = persist_result {
+                let _ = txn.rollback().await;
+                error!("Failed to persist aggregate in batch: {}", e);
+                return UseCaseResult::failure(UseCaseError::commit(format!("Failed to persist aggregate: {}", e)));
+            }
+        }
+
+        if let Err(e) = Self::persist_event_and_audit(&mut txn, &event, command).await {
+            let _ = txn.rollback().await;
+            return UseCaseResult::failure(e);
+        }
+
+        if let Err(e) = txn.commit().await {
+            error!("Failed to commit transaction: {}", e);
+            return UseCaseResult::failure(UseCaseError::commit(format!("Failed to commit transaction: {}", e)));
+        }
+
+        debug!(
+            event_id = event.event_id(),
+            event_type = event.event_type(),
+            count = aggregates.len(),
+            "Successfully committed batch transaction"
+        );
+
+        UseCaseResult::success(event)
+    }
+
     async fn emit_event<E, C>(
         &self,
         event: E,
@@ -532,6 +604,47 @@ impl UnitOfWork for TxScopedUnitOfWork {
 
         UseCaseResult::success(event)
     }
+
+    async fn commit_all<A, R, E, C>(
+        &self,
+        aggregates: &[A],
+        repository: &R,
+        event: E,
+        command: &C,
+    ) -> UseCaseResult<E>
+    where
+        A: HasId + Send + Sync,
+        R: Persist<A>,
+        E: DomainEvent + Serialize + Send + 'static,
+        C: Serialize + Send + Sync,
+    {
+        let mut guard = self.tx.lock().await;
+        let txn = match guard.as_mut() {
+            Some(t) => t,
+            None => return UseCaseResult::failure(UseCaseError::commit(
+                "TxScopedUnitOfWork: transaction already finalized",
+            )),
+        };
+
+        for aggregate in aggregates {
+            let persist_result = {
+                let mut tx = DbTx { inner: txn };
+                repository.persist(aggregate, &mut tx).await
+            };
+            if let Err(e) = persist_result {
+                error!("Failed to persist aggregate in scoped batch: {}", e);
+                return UseCaseResult::failure(UseCaseError::commit(
+                    format!("Failed to persist aggregate: {}", e),
+                ));
+            }
+        }
+
+        if let Err(e) = PgUnitOfWork::persist_event_and_audit(txn, &event, command).await {
+            return UseCaseResult::failure(e);
+        }
+
+        UseCaseResult::success(event)
+    }
 }
 
 impl PgUnitOfWork {
@@ -654,6 +767,23 @@ impl UnitOfWork for InMemoryUnitOfWork {
 
     async fn emit_event<E, C>(&self, event: E, _command: &C) -> UseCaseResult<E>
     where
+        E: DomainEvent + Serialize + Send + 'static,
+        C: Serialize + Send + Sync,
+    {
+        self.committed_events.lock().unwrap().push(event.event_id().to_string());
+        UseCaseResult::success(event)
+    }
+
+    async fn commit_all<A, R, E, C>(
+        &self,
+        _aggregates: &[A],
+        _repository: &R,
+        event: E,
+        _command: &C,
+    ) -> UseCaseResult<E>
+    where
+        A: HasId + Send + Sync,
+        R: Persist<A>,
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync,
     {

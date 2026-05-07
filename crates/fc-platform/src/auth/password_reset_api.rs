@@ -16,7 +16,7 @@ use crate::password_reset::entity::PasswordResetToken;
 use crate::password_reset::repository::PasswordResetTokenRepository;
 use crate::principal::entity::Principal;
 use crate::principal::repository::PrincipalRepository;
-use crate::principal::operations::events::{PasswordResetCompleted, PasswordResetRequested};
+use crate::principal::operations::events::PasswordResetRequested;
 use crate::auth::password_service::PasswordService;
 use crate::shared::error::PlatformError;
 use crate::shared::email_service::{EmailService, EmailMessage};
@@ -105,6 +105,9 @@ pub struct PasswordResetApiState {
     pub emailer: Arc<PasswordResetEmailer>,
     /// Direct repo access for the validate/confirm endpoints which look up by token.
     pub password_reset_repo: Arc<PasswordResetTokenRepository>,
+    /// Use case used by `confirm_reset` so the principal write + event +
+    /// audit log are committed atomically.
+    pub reset_password_use_case: Arc<crate::principal::operations::ResetPasswordUseCase<PgUnitOfWork>>,
 }
 
 // -- Request / Response DTOs --
@@ -245,6 +248,9 @@ async fn confirm_reset(
     State(state): State<PasswordResetApiState>,
     Json(body): Json<ConfirmResetBody>,
 ) -> Result<Json<MessageResponse>, PlatformError> {
+    use crate::principal::operations::ResetPasswordCommand;
+    use crate::usecase::{ExecutionContext, UseCase};
+
     let token_hash = hash_token(&body.token);
 
     let reset_token = state.password_reset_repo.find_by_token_hash(&token_hash).await?
@@ -260,38 +266,25 @@ async fn confirm_reset(
         });
     }
 
-    // Validate and hash the new password
-    let password_hash = state.password_service.hash_password(&body.password)?;
+    // Run the password change through ResetPasswordUseCase so the principal
+    // write, the PasswordResetCompleted event, and the audit log all commit
+    // atomically. The unauthenticated reset is attributed to "system".
+    let command = ResetPasswordCommand {
+        principal_id: reset_token.principal_id.clone(),
+        new_password: body.password,
+        enforce_password_complexity: Some(true),
+    };
+    let ctx = ExecutionContext::create("system");
+    state.reset_password_use_case
+        .run(command, ctx)
+        .await
+        .into_result()
+        .map_err(|e| PlatformError::Validation { message: e.to_string() })?;
 
-    // Update the principal's password
-    let mut principal = state.principal_repo.find_by_id(&reset_token.principal_id).await?
-        .ok_or_else(|| PlatformError::Validation {
-            message: "Associated account not found.".to_string(),
-        })?;
-
-    if let Some(ref mut identity) = principal.user_identity {
-        identity.password_hash = Some(password_hash);
-    } else {
-        return Err(PlatformError::Validation {
-            message: "Account does not support password authentication.".to_string(),
-        });
-    }
-    state.principal_repo.update(&principal).await?;
-
-    // Delete all reset tokens for this principal (consumed)
+    // Token cleanup happens after the principal write commits. If this fails
+    // the password is already changed; the worst case is the consumed token
+    // lingers until expiry/cleanup.
     state.password_reset_repo.delete_by_principal_id(&reset_token.principal_id).await?;
-
-    // Emit domain event (best-effort, non-blocking)
-    let email = principal.user_identity
-        .as_ref()
-        .map(|id| id.email.as_str())
-        .unwrap_or("")
-        .to_string();
-    let event = PasswordResetCompleted::new(&reset_token.principal_id, &email);
-    let command = serde_json::json!({ "principalId": reset_token.principal_id });
-    if let Err(e) = state.unit_of_work.emit_event(event, &command).await.into_result() {
-        warn!("Failed to emit PasswordResetCompleted event (reset still succeeded): {}", e);
-    }
 
     info!(principal_id = %reset_token.principal_id, "Password reset completed successfully");
 

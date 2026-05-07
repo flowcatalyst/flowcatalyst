@@ -348,6 +348,7 @@ pub async fn create_role(
         description: req.description,
         permissions: req.permissions,
         client_managed: req.client_managed,
+        source: crate::role::entity::RoleSource::Database,
     };
 
     let ctx = ExecutionContext::from_auth(&auth.0);

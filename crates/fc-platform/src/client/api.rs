@@ -178,6 +178,9 @@ pub struct ClientsState {
     pub activate_use_case: Arc<crate::client::operations::ActivateClientUseCase<crate::usecase::PgUnitOfWork>>,
     pub suspend_use_case: Arc<crate::client::operations::SuspendClientUseCase<crate::usecase::PgUnitOfWork>>,
     pub add_note_use_case: Arc<crate::client::operations::AddClientNoteUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_applications_use_case: Option<Arc<crate::application::operations::UpdateClientApplicationsUseCase<crate::usecase::PgUnitOfWork>>>,
+    pub enable_application_use_case: Option<Arc<crate::application::operations::EnableApplicationForClientUseCase<crate::usecase::PgUnitOfWork>>>,
+    pub disable_application_use_case: Option<Arc<crate::application::operations::DisableApplicationForClientUseCase<crate::usecase::PgUnitOfWork>>>,
 }
 
 /// Create a new client
@@ -706,22 +709,21 @@ pub async fn enable_application(
     auth: Authenticated,
     Path((id, application_id)): Path<(String, String)>,
 ) -> Result<StatusCode, PlatformError> {
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    // Verify client exists
-    let _client = state.client_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Client", &id))?;
+    let use_case = state
+        .enable_application_use_case
+        .as_ref()
+        .ok_or_else(|| PlatformError::internal("Enable-application use case not configured"))?;
 
-    // Verify application exists
-    if let Some(ref app_repo) = state.application_repo {
-        let _app = app_repo.find_by_id(&application_id).await?
-            .ok_or_else(|| PlatformError::not_found("Application", &application_id))?;
-    }
-
-    // Enable the application for this client
-    if let Some(ref config_repo) = state.application_client_config_repo {
-        config_repo.enable_for_client(&application_id, &id).await?;
-    }
+    let command = crate::application::operations::EnableApplicationForClientCommand {
+        application_id,
+        client_id: id,
+    };
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    use_case.run(command, ctx).await.into_result()?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -747,16 +749,21 @@ pub async fn disable_application(
     auth: Authenticated,
     Path((id, application_id)): Path<(String, String)>,
 ) -> Result<StatusCode, PlatformError> {
+    use crate::usecase::{ExecutionContext, UseCase};
+
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    // Verify client exists
-    let _client = state.client_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Client", &id))?;
+    let use_case = state
+        .disable_application_use_case
+        .as_ref()
+        .ok_or_else(|| PlatformError::internal("Disable-application use case not configured"))?;
 
-    // Disable the application for this client
-    if let Some(ref config_repo) = state.application_client_config_repo {
-        config_repo.disable_for_client(&application_id, &id).await?;
-    }
+    let command = crate::application::operations::DisableApplicationForClientCommand {
+        application_id,
+        client_id: id,
+    };
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    use_case.run(command, ctx).await.into_result()?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -785,25 +792,19 @@ pub async fn update_client_applications(
 ) -> Result<StatusCode, PlatformError> {
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    // Verify client exists
-    let _client = state.client_repo.find_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Client", &id))?;
+    use crate::usecase::{ExecutionContext, UseCase};
 
-    // Update application configs
-    if let Some(ref config_repo) = state.application_client_config_repo {
-        // First, get all current configs and disable them
-        let current_configs = config_repo.find_by_client(&id).await?;
-        for config in current_configs {
-            if config.enabled {
-                config_repo.disable_for_client(&config.application_id, &id).await?;
-            }
-        }
+    let use_case = state
+        .update_applications_use_case
+        .as_ref()
+        .ok_or_else(|| PlatformError::internal("Client applications use case not configured"))?;
 
-        // Then enable the requested applications
-        for app_id in req.enabled_application_ids {
-            config_repo.enable_for_client(&app_id, &id).await?;
-        }
-    }
+    let command = crate::application::operations::UpdateClientApplicationsCommand {
+        client_id: id,
+        enabled_application_ids: req.enabled_application_ids,
+    };
+    let ctx = ExecutionContext::from_auth(&auth.0);
+    use_case.run(command, ctx).await.into_result()?;
 
     Ok(StatusCode::NO_CONTENT)
 }

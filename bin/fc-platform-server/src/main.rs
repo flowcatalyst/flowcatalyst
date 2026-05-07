@@ -66,8 +66,12 @@ async fn main() -> Result<()> {
         .map_err(|e| anyhow::anyhow!("PostgreSQL connection failed: {}", e))?;
 
     // Run PostgreSQL migrations
-    fc_platform::shared::database::run_migrations(&pg_pool).await
-        .map_err(|e| anyhow::anyhow!("PostgreSQL migrations failed: {}", e))?;
+    fc_platform::shared::database::run_migrations(
+        &pg_pool,
+        fc_platform::shared::database::MigrationProfile::Production,
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("PostgreSQL migrations failed: {}", e))?;
 
     fc_platform::shared::database::seed_builtin_roles(&pg_pool).await
         .map_err(|e| anyhow::anyhow!("Built-in role seeding failed: {}", e))?;
@@ -165,7 +169,6 @@ async fn main() -> Result<()> {
         &auth_services,
         &unit_of_work,
         fc_platform::shared::server_setup::PlatformRoutesConfig {
-            event_dispatch: None,
             session_cookie_secure: false,
             static_dir: std::env::var("FC_STATIC_DIR").ok(),
             oidc_login_external_base_url: std::env::var("FC_EXTERNAL_BASE_URL").ok(),

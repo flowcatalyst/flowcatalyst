@@ -53,11 +53,12 @@ impl JobDispatcher {
 
         metrics::counter!("scheduler.jobs.dispatched_total").increment(1);
 
+        let update_sql = "UPDATE msg_dispatch_jobs SET status = 'QUEUED', queued_at = NOW(), updated_at = NOW() WHERE id = $1 AND created_at = $2";
         match self.queue_publisher.publish(message).await {
             Ok(_) => {
-                let update_sql = "UPDATE msg_dispatch_jobs SET status = 'QUEUED', queued_at = NOW(), updated_at = NOW() WHERE id = $1";
                 sqlx::query(update_sql)
                     .bind(job_id)
+                    .bind(job.created_at)
                     .execute(&self.pool)
                     .await?;
                 debug!(job_id = %job_id, "Job dispatched successfully");
@@ -68,9 +69,9 @@ impl JobDispatcher {
                 let error_msg = format!("{}", e);
 
                 if error_msg.contains("Deduplicated") || error_msg.contains("deduplicated") {
-                    let update_sql = "UPDATE msg_dispatch_jobs SET status = 'QUEUED', queued_at = NOW(), updated_at = NOW() WHERE id = $1";
                     sqlx::query(update_sql)
                         .bind(job_id)
+                        .bind(job.created_at)
                         .execute(&self.pool)
                         .await?;
                     debug!(job_id = %job_id, "Job was deduplicated (already dispatched)");

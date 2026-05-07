@@ -16,7 +16,7 @@ use testcontainers_modules::postgres::Postgres;
 
 use fc_platform::auth::auth_service::{AuthConfig, AuthService};
 use fc_platform::domain::{Principal, UserScope};
-use fc_platform::shared::database::{create_pool, run_migrations};
+use fc_platform::shared::database::{create_pool, run_migrations, MigrationProfile};
 use fc_platform::{
     ClientRepository, PrincipalRepository, RoleRepository,
     EventTypeRepository, ApplicationRepository,
@@ -51,7 +51,7 @@ async fn setup_test_db() -> (sqlx::PgPool, testcontainers::ContainerAsync<Postgr
         .await
         .expect("Failed to connect to test database");
 
-    run_migrations(&pool)
+    run_migrations(&pool, MigrationProfile::Production)
         .await
         .expect("Failed to run migrations");
 
@@ -379,10 +379,10 @@ async fn test_migrations_are_idempotent() {
     let (pool, _container) = setup_test_db().await;
 
     // Run migrations again — should succeed (IF NOT EXISTS)
-    run_migrations(&pool).await.expect("Second migration run should succeed");
+    run_migrations(&pool, MigrationProfile::Production).await.expect("Second migration run should succeed");
 
     // Run a third time for good measure
-    run_migrations(&pool).await.expect("Third migration run should succeed");
+    run_migrations(&pool, MigrationProfile::Production).await.expect("Third migration run should succeed");
 }
 
 // ─── Cross-Repository Transaction Test ────────────────────────────────────

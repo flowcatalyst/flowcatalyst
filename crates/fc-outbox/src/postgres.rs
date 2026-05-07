@@ -139,6 +139,24 @@ impl OutboxRepository for PostgresOutboxRepository {
 
         let table = self.table_config.table_for_type(item_type);
 
+        // SUCCESS is terminal — the platform now owns the message. Delete the
+        // outbox row instead of updating it; otherwise the customer's outbox
+        // table grows unbounded.
+        if matches!(status, OutboxStatus::SUCCESS) {
+            let query = format!(
+                "DELETE FROM {} WHERE id = ANY($1) AND type = $2",
+                table
+            );
+            sqlx::query(&query)
+                .bind(&ids)
+                .bind(item_type.type_value())
+                .execute(&self.pool)
+                .await?;
+
+            debug!(table = %table, count = ids.len(), "Deleted successful outbox items");
+            return Ok(());
+        }
+
         let query = format!(
             "UPDATE {} SET status = $1, error_message = $2, updated_at = NOW() WHERE id = ANY($3) AND type = $4",
             table
