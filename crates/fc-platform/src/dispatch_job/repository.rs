@@ -696,15 +696,12 @@ impl DispatchJobRepository {
         Ok(row.map(DispatchJobRead::from))
     }
 
-    /// List from the read projection with multi-value filters, optional sort,
-    /// and pagination. Returns `(rows, total_match_count)` so the API can
-    /// surface totalItems alongside the page slice.
-    ///
-    /// `search` matches `code`/`subject`/`source` via ILIKE.
-    /// `sort_field` accepts the camelCase names emitted in the projection;
-    /// only an allow-list is honoured to keep the SQL injection-safe.
+    /// Cursor-paginated read of `msg_dispatch_jobs_read`. Drops `SELECT COUNT(*)` and the
+    /// configurable sort — orders by `(created_at, id) DESC` so the keyset
+    /// comparison is well-defined. Returns `fetch_limit` rows so the API
+    /// layer can detect `hasMore`.
     #[allow(clippy::too_many_arguments)]
-    pub async fn find_read_with_filters(
+    pub async fn find_read_with_cursor(
         &self,
         client_ids: &[String],
         statuses: &[String],
@@ -713,115 +710,65 @@ impl DispatchJobRepository {
         aggregates: &[String],
         codes: &[String],
         search: Option<&str>,
-        sort_field: Option<&str>,
-        sort_desc: bool,
-        limit: i64,
-        offset: i64,
-    ) -> Result<(Vec<DispatchJobRead>, i64)> {
-        fn push_where(qb: &mut QueryBuilder<Postgres>, has_where: &mut bool) {
-            qb.push(if *has_where { " AND " } else { " WHERE " });
-            *has_where = true;
-        }
-
-        fn apply_filters<'a>(
-            qb: &mut QueryBuilder<'a, Postgres>,
-            client_ids: &'a [String],
-            statuses: &'a [String],
-            applications: &'a [String],
-            subdomains: &'a [String],
-            aggregates: &'a [String],
-            codes: &'a [String],
-            search_pattern: Option<&'a String>,
-        ) {
-            let mut has_where = false;
-            if !client_ids.is_empty() {
-                push_where(qb, &mut has_where);
-                qb.push("client_id = ANY(").push_bind(client_ids).push(")");
-            }
-            if !statuses.is_empty() {
-                push_where(qb, &mut has_where);
-                qb.push("status = ANY(").push_bind(statuses).push(")");
-            }
-            if !applications.is_empty() {
-                push_where(qb, &mut has_where);
-                qb.push("application = ANY(").push_bind(applications).push(")");
-            }
-            if !subdomains.is_empty() {
-                push_where(qb, &mut has_where);
-                qb.push("subdomain = ANY(").push_bind(subdomains).push(")");
-            }
-            if !aggregates.is_empty() {
-                push_where(qb, &mut has_where);
-                qb.push("aggregate = ANY(").push_bind(aggregates).push(")");
-            }
-            if !codes.is_empty() {
-                push_where(qb, &mut has_where);
-                qb.push("code = ANY(").push_bind(codes).push(")");
-            }
-            if let Some(pattern) = search_pattern {
-                push_where(qb, &mut has_where);
-                qb.push("(code ILIKE ").push_bind(pattern.clone())
-                  .push(" OR subject ILIKE ").push_bind(pattern.clone())
-                  .push(" OR source ILIKE ").push_bind(pattern.clone())
-                  .push(")");
-            }
-        }
-
+        cursor: Option<&crate::shared::api_common::DecodedCursor>,
+        fetch_limit: i64,
+    ) -> Result<Vec<DispatchJobRead>> {
         let search_pattern = search
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .map(|s| format!("%{}%", s));
 
-        // ── Total ────────────────────────────────────────────────────────
-        let mut count_qb: QueryBuilder<Postgres> =
-            QueryBuilder::new("SELECT COUNT(*) FROM msg_dispatch_jobs_read");
-        apply_filters(
-            &mut count_qb,
-            client_ids,
-            statuses,
-            applications,
-            subdomains,
-            aggregates,
-            codes,
-            search_pattern.as_ref(),
-        );
-        let total: i64 = count_qb
-            .build_query_scalar::<i64>()
-            .fetch_one(&self.pool)
-            .await?;
-
-        // ── Page slice ───────────────────────────────────────────────────
         let mut qb: QueryBuilder<Postgres> =
             QueryBuilder::new("SELECT * FROM msg_dispatch_jobs_read");
-        apply_filters(
-            &mut qb,
-            client_ids,
-            statuses,
-            applications,
-            subdomains,
-            aggregates,
-            codes,
-            search_pattern.as_ref(),
-        );
-
-        let sort_column = match sort_field.unwrap_or("createdAt") {
-            "createdAt" => "created_at",
-            "updatedAt" => "updated_at",
-            "scheduledFor" => "scheduled_for",
-            "completedAt" => "completed_at",
-            "lastAttemptAt" => "last_attempt_at",
-            "code" => "code",
-            "status" => "status",
-            "application" => "application",
-            _ => "created_at",
+        let mut has_where = false;
+        let push_where = |qb: &mut QueryBuilder<Postgres>, has_where: &mut bool| {
+            qb.push(if *has_where { " AND " } else { " WHERE " });
+            *has_where = true;
         };
-        qb.push(" ORDER BY ").push(sort_column);
-        qb.push(if sort_desc { " DESC" } else { " ASC" });
-        qb.push(" LIMIT ").push_bind(limit);
-        qb.push(" OFFSET ").push_bind(offset);
 
+        if !client_ids.is_empty() {
+            push_where(&mut qb, &mut has_where);
+            qb.push("client_id = ANY(").push_bind(client_ids).push(")");
+        }
+        if !statuses.is_empty() {
+            push_where(&mut qb, &mut has_where);
+            qb.push("status = ANY(").push_bind(statuses).push(")");
+        }
+        if !applications.is_empty() {
+            push_where(&mut qb, &mut has_where);
+            qb.push("application = ANY(").push_bind(applications).push(")");
+        }
+        if !subdomains.is_empty() {
+            push_where(&mut qb, &mut has_where);
+            qb.push("subdomain = ANY(").push_bind(subdomains).push(")");
+        }
+        if !aggregates.is_empty() {
+            push_where(&mut qb, &mut has_where);
+            qb.push("aggregate = ANY(").push_bind(aggregates).push(")");
+        }
+        if !codes.is_empty() {
+            push_where(&mut qb, &mut has_where);
+            qb.push("code = ANY(").push_bind(codes).push(")");
+        }
+        if let Some(pattern) = search_pattern {
+            push_where(&mut qb, &mut has_where);
+            qb.push("(code ILIKE ").push_bind(pattern.clone())
+              .push(" OR subject ILIKE ").push_bind(pattern.clone())
+              .push(" OR source ILIKE ").push_bind(pattern.clone())
+              .push(")");
+        }
+        if let Some(c) = cursor {
+            push_where(&mut qb, &mut has_where);
+            qb.push("(created_at, id) < (")
+                .push_bind(c.created_at)
+                .push(", ")
+                .push_bind(c.id.clone())
+                .push(")");
+        }
+
+        qb.push(" ORDER BY created_at DESC, id DESC LIMIT ").push_bind(fetch_limit);
         let rows: Vec<DispatchJobReadRow> = qb.build_query_as().fetch_all(&self.pool).await?;
-        Ok((rows.into_iter().map(DispatchJobRead::from).collect(), total))
+        Ok(rows.into_iter().map(DispatchJobRead::from).collect())
     }
 
     pub async fn insert_read_projection(&self, p: &DispatchJobRead) -> Result<()> {
@@ -1066,15 +1013,31 @@ impl DispatchJobRepository {
 
     // ── Pagination ───────────────────────────────────────────────────────
 
-    pub async fn find_recent_paged(&self, limit: i64, offset: i64) -> Result<Vec<DispatchJob>> {
-        let rows = sqlx::query_as::<_, DispatchJobRow>(
-            "SELECT * FROM msg_dispatch_jobs ORDER BY created_at DESC LIMIT $1 OFFSET $2"
-        )
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&self.pool)
-        .await?;
-
+    /// Cursor-paginated raw dispatch jobs. Keyset on `(created_at, id) DESC`.
+    pub async fn find_recent_with_cursor(
+        &self,
+        cursor: Option<&crate::shared::api_common::DecodedCursor>,
+        fetch_limit: i64,
+    ) -> Result<Vec<DispatchJob>> {
+        let rows = if let Some(c) = cursor {
+            sqlx::query_as::<_, DispatchJobRow>(
+                "SELECT * FROM msg_dispatch_jobs \
+                 WHERE (created_at, id) < ($1, $2) \
+                 ORDER BY created_at DESC, id DESC LIMIT $3",
+            )
+            .bind(c.created_at)
+            .bind(&c.id)
+            .bind(fetch_limit)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as::<_, DispatchJobRow>(
+                "SELECT * FROM msg_dispatch_jobs ORDER BY created_at DESC, id DESC LIMIT $1",
+            )
+            .bind(fetch_limit)
+            .fetch_all(&self.pool)
+            .await?
+        };
         Ok(rows.into_iter().map(DispatchJob::from).collect())
     }
 

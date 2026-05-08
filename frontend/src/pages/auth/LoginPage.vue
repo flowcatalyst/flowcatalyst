@@ -7,6 +7,9 @@ import { z } from "zod";
 import { useAuthStore } from "@/stores/auth";
 import { useLoginThemeStore } from "@/stores/loginTheme";
 import { checkEmailDomain, login } from "@/api/auth";
+import { authenticateWithPasskey, isWebauthnSupported } from "@/api/webauthn";
+import router from "@/router";
+import { getErrorMessage } from "@/utils/errors";
 
 type LoginStep = "email" | "password" | "redirecting";
 
@@ -133,6 +136,65 @@ async function onSubmitPassword() {
 		await login({ email: currentEmail.value, password: passwordValue.value });
 	} catch {
 		// Error is handled by AuthStore
+	} finally {
+		isSubmitting.value = false;
+	}
+}
+
+const passkeySupported = computed(() => isWebauthnSupported());
+
+async function onPasskeyLogin() {
+	if (!currentEmail.value || isSubmitting.value) return;
+
+	isSubmitting.value = true;
+	authStore.setError(null);
+
+	try {
+		const result = await authenticateWithPasskey(currentEmail.value);
+		// Server set the session cookie. Mirror what /auth/login does to
+		// keep the auth store in sync and honour OAuth/OIDC redirects.
+		authStore.setUser({
+			id: result.principalId,
+			email: result.email ?? currentEmail.value,
+			name: result.name,
+			clientId: null,
+			roles: result.roles,
+			permissions: [],
+		});
+
+		const urlParams = new URLSearchParams(window.location.search);
+		const interactionUid = urlParams.get("interaction");
+		if (interactionUid) {
+			window.location.href = `/oidc/interaction/${interactionUid}/login`;
+			return;
+		}
+		if (urlParams.get("oauth") === "true") {
+			const oauthFields = [
+				"response_type",
+				"client_id",
+				"redirect_uri",
+				"scope",
+				"state",
+				"code_challenge",
+				"code_challenge_method",
+				"nonce",
+			];
+			const oauthParams = new URLSearchParams();
+			for (const field of oauthFields) {
+				const value = urlParams.get(field);
+				if (value) oauthParams.set(field, value);
+			}
+			window.location.href = `/oauth/authorize?${oauthParams.toString()}`;
+			return;
+		}
+		await router.replace("/dashboard");
+	} catch (e) {
+		const message = getErrorMessage(e, "Passkey sign-in failed");
+		authStore.setError(
+			message.includes("NotAllowedError")
+				? "Cancelled — try again or use your password."
+				: message,
+		);
 	} finally {
 		isSubmitting.value = false;
 	}
@@ -269,6 +331,22 @@ async function onSubmitPassword() {
             :loading="isSubmitting"
             :disabled="!isPasswordValid"
             class="w-full"
+          />
+
+          <!-- Passkey alternative — server will silently 401 if the user
+               has no passkey or their domain is federated, so it's safe
+               to show whenever WebAuthn is supported. -->
+          <div v-if="passkeySupported" class="passkey-divider">or</div>
+          <Button
+            v-if="passkeySupported"
+            type="button"
+            label="Sign in with a passkey"
+            icon="pi pi-key"
+            severity="secondary"
+            outlined
+            :disabled="isSubmitting"
+            class="w-full passkey-button"
+            @click="onPasskeyLogin"
           />
         </form>
       </div>
@@ -508,6 +586,45 @@ async function onSubmitPassword() {
   color: #627d98;
   font-size: 14px;
   margin: 24px 0 0;
+}
+
+.passkey-divider {
+  text-align: center;
+  font-size: 12px;
+  color: #94a3b8;
+  position: relative;
+  margin: 4px 0;
+}
+
+.passkey-divider::before,
+.passkey-divider::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: calc(50% - 20px);
+  height: 1px;
+  background: #e2e8f0;
+}
+
+.passkey-divider::before {
+  left: 0;
+}
+
+.passkey-divider::after {
+  right: 0;
+}
+
+/* Don't override the secondary outlined passkey button with the accent color. */
+:deep(.passkey-button.p-button) {
+  background: transparent;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+
+:deep(.passkey-button.p-button:not(:disabled):hover) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #1e293b;
 }
 
 /* Override PrimeVue Password component width */

@@ -304,7 +304,7 @@ async fn main() -> Result<()> {
     // Sync code-defined roles
     {
         let role_sync = fc_platform::service::RoleSyncService::new(
-            fc_platform::repository::RoleRepository::new(&pg_pool),
+            std::sync::Arc::new(fc_platform::repository::RoleRepository::new(&pg_pool)),
         );
         if let Err(e) = role_sync.sync_code_defined_roles().await {
             warn!("Role sync failed: {}", e);
@@ -484,6 +484,11 @@ fn build_platform_app(
         unit_of_work,
         fc_platform::shared::server_setup::PlatformRoutesConfig {
             session_cookie_secure: true,
+            session_cookie_same_site: std::env::var("FC_SESSION_COOKIE_SAME_SITE")
+                .unwrap_or_else(|_| fc_platform::shared::server_setup::PlatformRoutesConfig::DEFAULT_SAME_SITE.to_string()),
+            session_token_expiry_secs: std::env::var("FC_SESSION_TOKEN_EXPIRY_SECS")
+                .ok().and_then(|v| v.parse().ok())
+                .unwrap_or(fc_platform::shared::server_setup::PlatformRoutesConfig::DEFAULT_SESSION_EXPIRY_SECS),
             static_dir: std::env::var("FC_STATIC_DIR").ok(),
             oidc_login_external_base_url: std::env::var("FC_EXTERNAL_BASE_URL")
                 .or_else(|_| std::env::var("EXTERNAL_BASE_URL"))

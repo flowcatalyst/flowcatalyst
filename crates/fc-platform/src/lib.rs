@@ -34,6 +34,7 @@ pub mod dispatch_job;
 // Authentication & authorization
 pub mod auth;
 pub mod audit;
+pub mod webauthn;
 
 // New domains (TS alignment)
 pub mod connection;
@@ -214,6 +215,10 @@ pub mod repository {
         pub login_attempt_repo: Arc<LoginAttemptRepository>,
         pub password_reset_repo: Arc<PasswordResetTokenRepository>,
         pub pending_auth_repo: Arc<PendingAuthRepository>,
+        /// Raw pool — exposed so callers (e.g. the BFF dashboard stats
+        /// endpoint) can run ad-hoc queries that don't fit a single
+        /// repository. Cloning is cheap; sqlx already Arcs internally.
+        pub pool: PgPool,
     }
 
     impl Repositories {
@@ -248,6 +253,7 @@ pub mod repository {
                 idp_repo: Arc::new(IdentityProviderRepository::new(pool)),
                 edm_repo: Arc::new(EmailDomainMappingRepository::new(pool)),
                 pending_auth_repo: Arc::new(PendingAuthRepository::new(pool)),
+                pool: pool.clone(),
             }
         }
     }
@@ -273,9 +279,9 @@ pub mod api {
     pub use crate::shared::api_common::{PaginationParams, PaginatedResponse, SuccessResponse, CreatedResponse, ApiError};
 
     // API state and router exports from each aggregate
-    pub use crate::event::api::{events_router, admin_events_router, EventsState};
+    pub use crate::event::api::{events_router, events_api_router, EventsState};
     pub use crate::event_type::api::{event_types_router, EventTypesState};
-    pub use crate::dispatch_job::api::{dispatch_jobs_router, DispatchJobsState};
+    pub use crate::dispatch_job::api::{dispatch_jobs_router, dispatch_jobs_api_router, DispatchJobsState};
     pub use crate::dispatch_pool::api::{dispatch_pools_router, DispatchPoolsState};
     pub use crate::subscription::api::{subscriptions_router, SubscriptionsState};
     pub use crate::client::api::{clients_router, ClientsState};
@@ -307,6 +313,7 @@ pub mod api {
     pub use crate::shared::sdk_dispatch_jobs_api::{sdk_dispatch_jobs_batch_router, SdkDispatchJobsState};
     pub use crate::shared::bff_roles_api::{bff_roles_router, BffRolesState};
     pub use crate::shared::bff_event_types_api::{bff_event_types_router, BffEventTypesState};
+    pub use crate::shared::bff_dashboard_api::{bff_dashboard_router, BffDashboardState};
     pub use crate::shared::dispatch_process_api::{dispatch_process_router, DispatchProcessState};
 
     // Shared APIs

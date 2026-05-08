@@ -20,11 +20,14 @@ export interface AuditLogDetail extends AuditLog {
 	operationJson: string | null;
 }
 
+/**
+ * Cursor-paginated audit logs response. Backend keysets on
+ * `(performedAt, id) DESC` and never counts — `aud_logs` is unbounded.
+ */
 export interface AuditLogListResponse {
 	auditLogs: AuditLog[];
-	total: number;
-	page: number;
-	pageSize: number;
+	hasMore: boolean;
+	nextCursor?: string;
 }
 
 export interface AuditLogFilters {
@@ -34,14 +37,13 @@ export interface AuditLogFilters {
 	operation?: string;
 	applicationIds?: string[];
 	clientIds?: string[];
-	page?: number;
+	/** Opaque cursor returned by a previous response. Omit for the first page. */
+	after?: string | undefined;
 	pageSize?: number;
-	sortField?: string;
-	sortOrder?: string;
 }
 
 /**
- * Fetch audit logs with optional filters and pagination.
+ * Fetch a page of audit logs (cursor-paginated).
  */
 export async function fetchAuditLogs(
 	filters: AuditLogFilters = {},
@@ -53,11 +55,9 @@ export async function fetchAuditLogs(
 	if (filters.operation) params.set("operation", filters.operation);
 	if (filters.applicationIds?.length) params.set("applicationIds", filters.applicationIds.join(","));
 	if (filters.clientIds?.length) params.set("clientIds", filters.clientIds.join(","));
-	if (filters.page !== undefined) params.set("page", String(filters.page));
+	if (filters.after) params.set("after", filters.after);
 	if (filters.pageSize !== undefined)
 		params.set("pageSize", String(filters.pageSize));
-	if (filters.sortField) params.set("sortField", filters.sortField);
-	if (filters.sortOrder) params.set("sortOrder", filters.sortOrder);
 
 	const query = params.toString();
 	return apiFetch<AuditLogListResponse>(

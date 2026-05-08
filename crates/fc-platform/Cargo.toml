@@ -38,6 +38,7 @@ base64 = "0.22"
 argon2 = "0.5"
 rsa = { version = "0.9", features = ["pem"] }
 rand = { workspace = true }
+webauthn-rs = { workspace = true }
 
 # HTTP client for OIDC
 reqwest = { version = "0.12", features = ["json"] }
@@ -62,6 +63,10 @@ regex = { workspace = true }
 
 # Concurrent cache
 dashmap = { workspace = true }
+
+# Token-bucket rate limiter
+governor = { workspace = true }
+nonzero_ext = { workspace = true }
 
 # Scheduler dependencies
 parking_lot = { workspace = true }

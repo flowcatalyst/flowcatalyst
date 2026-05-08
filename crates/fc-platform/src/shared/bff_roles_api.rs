@@ -166,6 +166,7 @@ pub struct BffRolesState {
     pub role_repo: Arc<RoleRepository>,
     pub application_repo: Option<Arc<ApplicationRepository>>,
     pub unit_of_work: Arc<PgUnitOfWork>,
+    pub role_sync_service: Arc<crate::shared::role_sync_service::RoleSyncService>,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -511,6 +512,54 @@ fn perm(app: &str, ctx: &str, agg: &str, action: &str, desc: &str) -> BffPermiss
     }
 }
 
+// ── Sync platform roles ───────────────────────────────────────────────────
+
+/// Response for the platform-roles sync endpoint. Mirrors the shape of the
+/// EventTypes sync response so the dashboard can render both with one toast.
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncPlatformRolesResponse {
+    pub created: u32,
+    pub updated: u32,
+    pub removed: u32,
+    /// Total count of code-defined roles after sync.
+    pub total: u32,
+}
+
+/// Re-run the code-defined role sync (the same one the binary runs at boot).
+///
+/// Used by the admin dashboard to pick up newly-added platform roles without
+/// restarting the server. Anchor-only.
+#[utoipa::path(
+    post,
+    path = "/sync-platform",
+    tag = "bff-roles",
+    operation_id = "postBffRolesSyncPlatform",
+    responses(
+        (status = 200, description = "Platform roles synced", body = SyncPlatformRolesResponse)
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn sync_platform_roles(
+    State(state): State<BffRolesState>,
+    auth: Authenticated,
+) -> Result<axum::Json<SyncPlatformRolesResponse>, PlatformError> {
+    crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
+
+    let counts = state
+        .role_sync_service
+        .sync_code_defined_roles()
+        .await
+        .map_err(|e| PlatformError::internal(format!("Role sync failed: {}", e)))?;
+
+    Ok(axum::Json(SyncPlatformRolesResponse {
+        created: counts.created,
+        updated: counts.updated,
+        removed: counts.removed,
+        total: counts.total,
+    }))
+}
+
 // ── Router ────────────────────────────────────────────────────────────────
 
 /// Create BFF roles router (mounted at `/bff/roles`)
@@ -520,6 +569,7 @@ pub fn bff_roles_router(state: BffRolesState) -> OpenApiRouter {
         .routes(routes!(get_filter_applications))
         .routes(routes!(list_permissions))
         .routes(routes!(get_permission))
+        .routes(routes!(sync_platform_roles))
         .routes(routes!(get_role, update_role, delete_role))
         .with_state(state)
 }

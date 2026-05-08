@@ -24,10 +24,14 @@ pub mod sdk_dispatch_jobs_api;
 pub mod public_api;
 pub mod bff_roles_api;
 pub mod bff_event_types_api;
+pub mod bff_dashboard_api;
 pub mod dispatch_process_api;
 
 // Server setup helpers (shared across fc-server, fc-platform-server, fc-dev)
 pub mod server_setup;
+
+// Per-IP rate limit middleware
+pub mod rate_limit_middleware;
 
 // Services
 pub mod email_service;

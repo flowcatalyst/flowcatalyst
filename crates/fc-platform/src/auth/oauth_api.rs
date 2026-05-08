@@ -177,6 +177,9 @@ pub struct OAuthState {
     pub password_service: Arc<PasswordService>,
     /// Login attempt logging
     pub login_attempt_repo: Arc<LoginAttemptRepository>,
+    /// Per-`client_id` rate limit on `/oauth/token` (composes with the
+    /// per-IP middleware that wraps `/oauth/*`).
+    pub client_token_rate_limit: crate::shared::rate_limit_middleware::IpRateLimiterState,
 }
 
 impl OAuthState {
@@ -190,6 +193,7 @@ impl OAuthState {
         pending_auth_repo: Arc<PendingAuthRepository>,
         password_service: Arc<PasswordService>,
         login_attempt_repo: Arc<LoginAttemptRepository>,
+        client_token_rate_limit: crate::shared::rate_limit_middleware::IpRateLimiterState,
     ) -> Self {
         Self {
             oauth_client_repo,
@@ -201,6 +205,7 @@ impl OAuthState {
             pending_auth_repo,
             password_service,
             login_attempt_repo,
+            client_token_rate_limit,
         }
     }
 }
@@ -632,6 +637,25 @@ pub async fn token(
     headers: HeaderMap,
     Form(req): Form<TokenRequest>,
 ) -> Response {
+    // Per-client_id rate limit. Composes with the per-IP layer that already
+    // wraps `/oauth/*` — this catches a single client running away with
+    // refresh-token churn from many IPs (which the per-IP layer wouldn't
+    // detect on its own).
+    if let Some(ref client_id) = req.client_id {
+        if let Err(retry_after) = state.client_token_rate_limit.check(client_id) {
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                [(axum::http::header::RETRY_AFTER, retry_after.to_string())],
+                Json(ErrorResponse {
+                    error: "rate_limit_exceeded".to_string(),
+                    error_description: Some(
+                        "this client_id has exceeded its token endpoint rate limit".to_string(),
+                    ),
+                }),
+            ).into_response();
+        }
+    }
+
     // P0-1: Authenticate the client before processing any grant type.
     // For client_credentials grant, the handler does its own auth (backward compat),
     // but for authorization_code and refresh_token, we authenticate here.

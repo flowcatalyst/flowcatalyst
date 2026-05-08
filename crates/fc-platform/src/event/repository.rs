@@ -263,15 +263,33 @@ impl EventRepository {
         Ok(row.map(Event::from))
     }
 
-    pub async fn find_recent_paged(&self, limit: i64, offset: i64) -> Result<Vec<Event>> {
-        let rows = sqlx::query_as::<_, EventRow>(
-            "SELECT * FROM msg_events ORDER BY created_at DESC LIMIT $1 OFFSET $2"
-        )
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&self.pool)
-        .await?;
-
+    /// Cursor-paginated raw events (write table). Keyset on
+    /// `(created_at, id) DESC` matches the existing index pattern. Returns
+    /// up to `fetch_limit` rows so the caller can detect `hasMore` cheaply.
+    pub async fn find_recent_with_cursor(
+        &self,
+        cursor: Option<&crate::shared::api_common::DecodedCursor>,
+        fetch_limit: i64,
+    ) -> Result<Vec<Event>> {
+        let rows = if let Some(c) = cursor {
+            sqlx::query_as::<_, EventRow>(
+                "SELECT * FROM msg_events \
+                 WHERE (created_at, id) < ($1, $2) \
+                 ORDER BY created_at DESC, id DESC LIMIT $3",
+            )
+            .bind(c.created_at)
+            .bind(&c.id)
+            .bind(fetch_limit)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as::<_, EventRow>(
+                "SELECT * FROM msg_events ORDER BY created_at DESC, id DESC LIMIT $1",
+            )
+            .bind(fetch_limit)
+            .fetch_all(&self.pool)
+            .await?
+        };
         Ok(rows.into_iter().map(Event::from).collect())
     }
 
@@ -300,12 +318,13 @@ impl EventRepository {
         Ok(row.map(EventRead::from))
     }
 
-    /// List events from the read model with multi-value filters and pagination.
-    /// Returns `(rows, total_match_count)`. Empty slices mean "no filter on
-    /// that column"; the caller passes accessible client IDs to scope a
-    /// non-anchor user.
+    /// Cursor-paginated read of `msg_events_read`. Drops the
+    /// `SELECT COUNT(*)` (msg_events_read can be billions of rows) and the
+    /// configurable sort — always orders by `(time DESC, id DESC)` so the
+    /// keyset comparison is well-defined. Returns `size + 1` rows so the
+    /// caller can detect `hasMore` without a count.
     #[allow(clippy::too_many_arguments)]
-    pub async fn find_read_with_filters(
+    pub async fn find_read_with_cursor(
         &self,
         client_ids: &[String],
         applications: &[String],
@@ -314,116 +333,76 @@ impl EventRepository {
         event_types: &[String],
         correlation_id: Option<&str>,
         search: Option<&str>,
-        sort_field: Option<&str>,
-        sort_desc: bool,
-        limit: i64,
-        offset: i64,
-    ) -> Result<(Vec<EventRead>, i64)> {
-        fn push_where(qb: &mut QueryBuilder<Postgres>, has_where: &mut bool) {
-            qb.push(if *has_where { " AND " } else { " WHERE " });
-            *has_where = true;
-        }
-
-        fn apply_filters<'a>(
-            qb: &mut QueryBuilder<'a, Postgres>,
-            client_ids: &'a [String],
-            applications: &'a [String],
-            subdomains: &'a [String],
-            aggregates: &'a [String],
-            event_types: &'a [String],
-            correlation_id: Option<&'a str>,
-            search_pattern: Option<&'a String>,
-        ) {
-            let mut has_where = false;
-            if !client_ids.is_empty() {
-                push_where(qb, &mut has_where);
-                qb.push("client_id = ANY(").push_bind(client_ids).push(")");
-            }
-            if !applications.is_empty() {
-                push_where(qb, &mut has_where);
-                qb.push("application = ANY(").push_bind(applications).push(")");
-            }
-            if !subdomains.is_empty() {
-                push_where(qb, &mut has_where);
-                qb.push("subdomain = ANY(").push_bind(subdomains).push(")");
-            }
-            if !aggregates.is_empty() {
-                push_where(qb, &mut has_where);
-                qb.push("aggregate = ANY(").push_bind(aggregates).push(")");
-            }
-            if !event_types.is_empty() {
-                push_where(qb, &mut has_where);
-                qb.push("type = ANY(").push_bind(event_types).push(")");
-            }
-            if let Some(v) = correlation_id {
-                push_where(qb, &mut has_where);
-                qb.push("correlation_id = ").push_bind(v.to_string());
-            }
-            if let Some(pattern) = search_pattern {
-                push_where(qb, &mut has_where);
-                qb.push("(type ILIKE ")
-                    .push_bind(pattern.clone())
-                    .push(" OR source ILIKE ")
-                    .push_bind(pattern.clone())
-                    .push(" OR subject ILIKE ")
-                    .push_bind(pattern.clone())
-                    .push(")");
-            }
-        }
+        cursor: Option<&crate::shared::api_common::DecodedCursor>,
+        fetch_limit: i64,
+    ) -> Result<Vec<EventRead>> {
+        let mut qb: QueryBuilder<Postgres> = QueryBuilder::new(
+            "SELECT id, type, source, subject, time, application, subdomain, \
+             aggregate, message_group, correlation_id, client_id, projected_at \
+             FROM msg_events_read",
+        );
 
         let search_pattern = search
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .map(|s| format!("%{}%", s));
 
-        // Count query
-        let mut count_qb: QueryBuilder<Postgres> =
-            QueryBuilder::new("SELECT COUNT(*) FROM msg_events_read");
-        apply_filters(
-            &mut count_qb,
-            client_ids,
-            applications,
-            subdomains,
-            aggregates,
-            event_types,
-            correlation_id,
-            search_pattern.as_ref(),
-        );
-        let total: i64 = count_qb.build_query_scalar().fetch_one(&self.pool).await?;
-
-        // Data query
-        let mut data_qb: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT id, type, source, subject, time, application, subdomain, \
-             aggregate, message_group, correlation_id, client_id, projected_at \
-             FROM msg_events_read",
-        );
-        apply_filters(
-            &mut data_qb,
-            client_ids,
-            applications,
-            subdomains,
-            aggregates,
-            event_types,
-            correlation_id,
-            search_pattern.as_ref(),
-        );
-
-        let sort_column = match sort_field.unwrap_or("time") {
-            "time" | "createdAt" => "time",
-            "type" => "type",
-            "source" => "source",
-            "application" => "application",
-            "projectedAt" => "projected_at",
-            _ => "time",
+        let mut has_where = false;
+        let push_where = |qb: &mut QueryBuilder<Postgres>, has_where: &mut bool| {
+            qb.push(if *has_where { " AND " } else { " WHERE " });
+            *has_where = true;
         };
-        data_qb.push(" ORDER BY ").push(sort_column);
-        data_qb.push(if sort_desc { " DESC" } else { " ASC" });
-        data_qb.push(" LIMIT ").push_bind(limit);
-        data_qb.push(" OFFSET ").push_bind(offset);
 
-        let rows: Vec<EventReadRow> = data_qb.build_query_as().fetch_all(&self.pool).await?;
+        if !client_ids.is_empty() {
+            push_where(&mut qb, &mut has_where);
+            qb.push("client_id = ANY(").push_bind(client_ids).push(")");
+        }
+        if !applications.is_empty() {
+            push_where(&mut qb, &mut has_where);
+            qb.push("application = ANY(").push_bind(applications).push(")");
+        }
+        if !subdomains.is_empty() {
+            push_where(&mut qb, &mut has_where);
+            qb.push("subdomain = ANY(").push_bind(subdomains).push(")");
+        }
+        if !aggregates.is_empty() {
+            push_where(&mut qb, &mut has_where);
+            qb.push("aggregate = ANY(").push_bind(aggregates).push(")");
+        }
+        if !event_types.is_empty() {
+            push_where(&mut qb, &mut has_where);
+            qb.push("type = ANY(").push_bind(event_types).push(")");
+        }
+        if let Some(v) = correlation_id {
+            push_where(&mut qb, &mut has_where);
+            qb.push("correlation_id = ").push_bind(v.to_string());
+        }
+        if let Some(pattern) = search_pattern {
+            push_where(&mut qb, &mut has_where);
+            qb.push("(type ILIKE ")
+                .push_bind(pattern.clone())
+                .push(" OR source ILIKE ")
+                .push_bind(pattern.clone())
+                .push(" OR subject ILIKE ")
+                .push_bind(pattern.clone())
+                .push(")");
+        }
+        // Keyset comparison: rows strictly older than the cursor's
+        // (time, id) tuple. Postgres tuple comparison is lexicographic and
+        // matches the index on (time DESC, id DESC) directly.
+        if let Some(c) = cursor {
+            push_where(&mut qb, &mut has_where);
+            qb.push("(time, id) < (")
+                .push_bind(c.created_at)
+                .push(", ")
+                .push_bind(c.id.clone())
+                .push(")");
+        }
 
-        Ok((rows.into_iter().map(EventRead::from).collect(), total))
+        qb.push(" ORDER BY time DESC, id DESC LIMIT ").push_bind(fetch_limit);
+
+        let rows: Vec<EventReadRow> = qb.build_query_as().fetch_all(&self.pool).await?;
+        Ok(rows.into_iter().map(EventRead::from).collect())
     }
 
     /// Get distinct filter option values from the read model.

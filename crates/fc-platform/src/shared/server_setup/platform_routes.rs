@@ -50,6 +50,11 @@ use super::AuthServices;
 pub struct PlatformRoutesConfig {
     /// `Secure` flag for the OIDC session cookie. `true` in production.
     pub session_cookie_secure: bool,
+    /// `SameSite` policy for the session cookie (`Lax`, `Strict`, or `None`).
+    /// Defaults to `Lax`.
+    pub session_cookie_same_site: String,
+    /// Session token expiry in seconds. Defaults to 86400 (24h).
+    pub session_token_expiry_secs: i64,
     /// Optional static asset directory for SPA serving.
     pub static_dir: Option<String>,
     /// External base URL for the OIDC login flow (used for absolute redirect
@@ -59,6 +64,13 @@ pub struct PlatformRoutesConfig {
     pub well_known_external_base_url: String,
     /// External base URL for password-reset email links.
     pub password_reset_external_base_url: String,
+}
+
+impl PlatformRoutesConfig {
+    /// Default `SameSite` policy when not configured.
+    pub const DEFAULT_SAME_SITE: &'static str = "Lax";
+    /// Default session token expiry (24 hours) when not configured.
+    pub const DEFAULT_SESSION_EXPIRY_SECS: i64 = 86400;
 }
 
 /// Build a fully-populated `PlatformRoutes` for the three server binaries.
@@ -491,7 +503,12 @@ pub fn build_platform_routes(
         auth.auth.clone(),
         unit_of_work.clone(),
     )
-    .with_session_cookie_settings("fc_session", config.session_cookie_secure, "Lax", 86400);
+    .with_session_cookie_settings(
+        "fc_session",
+        config.session_cookie_secure,
+        &config.session_cookie_same_site,
+        config.session_token_expiry_secs,
+    );
     let encryption_service = EncryptionService::from_env().map(Arc::new);
     let oidc_login_state = if let Some(enc_svc) = encryption_service {
         oidc_login_state.with_encryption_service(enc_svc)
@@ -505,6 +522,7 @@ pub fn build_platform_routes(
         oidc_login_state
     };
 
+    let backoff_policy = Arc::new(crate::auth::login_backoff::BackoffPolicy::from_env());
     let embedded_auth_state = AuthState::new(
         auth.auth.clone(),
         repos.principal_repo.clone(),
@@ -513,7 +531,12 @@ pub fn build_platform_routes(
         repos.edm_repo.clone(),
         repos.idp_repo.clone(),
         repos.login_attempt_repo.clone(),
+        backoff_policy.clone(),
     );
+    let client_token_rate_limit =
+        crate::shared::rate_limit_middleware::IpRateLimiterState::new(
+            &crate::shared::rate_limit_middleware::RateLimitConfig::oauth_token_per_client_from_env(),
+        );
     let oauth_state = OAuthState::new(
         repos.oauth_client_repo.clone(),
         repos.principal_repo.clone(),
@@ -524,6 +547,7 @@ pub fn build_platform_routes(
         repos.pending_auth_repo.clone(),
         auth.password.clone(),
         repos.login_attempt_repo.clone(),
+        client_token_rate_limit,
     );
 
     let audit_logs_state = AuditLogsState {
@@ -830,6 +854,9 @@ pub fn build_platform_routes(
         role_repo: repos.role_repo.clone(),
         application_repo: Some(repos.application_repo.clone()),
         unit_of_work: unit_of_work.clone(),
+        role_sync_service: Arc::new(
+            crate::shared::role_sync_service::RoleSyncService::new(repos.role_repo.clone()),
+        ),
     };
     let bff_event_types_state = BffEventTypesState {
         event_type_repo: repos.event_type_repo.clone(),
@@ -843,7 +870,38 @@ pub fn build_platform_routes(
         circuit_breakers: CircuitBreakerRegistry::new(),
         in_flight: InFlightTracker::new(),
         dispatch_job_repo: repos.dispatch_job_repo.clone(),
+        pool: repos.pool.clone(),
         start_time: std::time::Instant::now(),
+    };
+
+    let bff_dashboard_state = crate::shared::bff_dashboard_api::BffDashboardState {
+        pool: repos.pool.clone(),
+    };
+
+    let webauthn_credential_repo = Arc::new(
+        crate::webauthn::repository::WebauthnCredentialRepository::new(&repos.pool),
+    );
+    let webauthn_ceremony_repo = Arc::new(
+        crate::webauthn::WebauthnCeremonyRepository::new(&repos.pool),
+    );
+    let webauthn_service = Arc::new(
+        crate::webauthn::WebauthnService::from_env()
+            .expect("FC_WEBAUTHN_RP_ID/FC_WEBAUTHN_ORIGINS misconfigured"),
+    );
+    let webauthn_state = crate::webauthn::WebauthnApiState {
+        credential_repo: webauthn_credential_repo,
+        ceremony_repo: webauthn_ceremony_repo,
+        principal_repo: repos.principal_repo.clone(),
+        email_domain_mapping_repo: repos.edm_repo.clone(),
+        login_attempt_repo: repos.login_attempt_repo.clone(),
+        webauthn_service,
+        auth_service: auth.auth.clone(),
+        backoff_policy: backoff_policy.clone(),
+        unit_of_work: unit_of_work.clone(),
+        session_cookie_name: "fc_session".to_string(),
+        session_cookie_secure: config.session_cookie_secure,
+        session_cookie_same_site: config.session_cookie_same_site.clone(),
+        session_token_expiry_secs: config.session_token_expiry_secs,
     };
 
     PlatformRoutes {
@@ -861,6 +919,7 @@ pub fn build_platform_routes(
         auth: embedded_auth_state,
         bff_roles: bff_roles_state,
         bff_event_types: bff_event_types_state,
+        bff_dashboard: bff_dashboard_state,
         debug: debug_state,
         auth_config: auth_config_state,
         applications: applications_state,
@@ -885,6 +944,7 @@ pub fn build_platform_routes(
         sdk_audit_batch: sdk_audit_batch_state,
         public: public_api_state,
         password_reset: password_reset_state,
+        webauthn: webauthn_state,
         dispatch_process: Some(DispatchProcessState {
             dispatch_job_repo: repos.dispatch_job_repo.clone(),
             http_client: reqwest::Client::builder()

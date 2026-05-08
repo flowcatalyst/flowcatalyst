@@ -10,10 +10,58 @@ use axum::{
     Json,
 };
 
-/// Client IP address, extracted from X-Forwarded-For or X-Real-IP headers.
-/// Equivalent to Express.js `req.ip` with `trust proxy` enabled.
+/// Client IP address extracted from proxy headers.
+///
+/// **Configured via `FC_TRUSTED_PROXY_HOPS`** (default `1`). Reads
+/// `X-Forwarded-For` and walks the chain from the **right** by that many
+/// hops — the rightmost entries are added by trusted proxies and the
+/// leftmost ones may be attacker-supplied.
+///
+/// AWS ALB **appends** the real client IP to whatever the client sent, so
+/// reading the leftmost value is attacker-controllable. Reading the right
+/// (with hop count = number of trusted proxies in front of us) gives the
+/// real client. With ALB-only set hops to `1`. With CloudFront → ALB set to
+/// `2`. With no proxy at all set to `0` (and the value is whatever the
+/// client supplied — only safe in dev).
+///
+/// Falls back to `X-Real-IP` when no `X-Forwarded-For` is present.
 #[derive(Debug, Clone)]
 pub struct ClientIp(pub Option<String>);
+
+/// Extract the trusted client IP from `X-Forwarded-For` per the configured
+/// trusted-proxy hop count. Public so other code paths (rate-limit
+/// middleware) can use the same logic.
+pub fn extract_trusted_client_ip(headers: &axum::http::HeaderMap) -> Option<String> {
+    let hops = trusted_proxy_hops();
+    if let Some(forwarded) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
+        let chain: Vec<&str> = forwarded
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if !chain.is_empty() {
+            // Take the entry `hops` from the right — that's the IP the
+            // outermost trusted proxy saw before appending its own.
+            // hops=0 means "trust the leftmost as-is" (no proxy in front).
+            let idx = chain.len().saturating_sub(hops.max(1));
+            return Some(chain[idx].to_string());
+        }
+    }
+    headers.get("x-real-ip")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn trusted_proxy_hops() -> usize {
+    static CACHED: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *CACHED.get_or_init(|| {
+        std::env::var("FC_TRUSTED_PROXY_HOPS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1)
+    })
+}
 
 impl<S> FromRequestParts<S> for ClientIp
 where
@@ -22,19 +70,7 @@ where
     type Rejection = std::convert::Infallible;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        // X-Forwarded-For: client, proxy1, proxy2 — take the first (leftmost) IP
-        if let Some(forwarded) = parts.headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
-            if let Some(client_ip) = forwarded.split(',').next().map(|s| s.trim().to_string()) {
-                if !client_ip.is_empty() {
-                    return Ok(ClientIp(Some(client_ip)));
-                }
-            }
-        }
-        // Fallback: X-Real-IP (set by nginx)
-        if let Some(real_ip) = parts.headers.get("x-real-ip").and_then(|v| v.to_str().ok()) {
-            return Ok(ClientIp(Some(real_ip.to_string())));
-        }
-        Ok(ClientIp(None))
+        Ok(ClientIp(extract_trusted_client_ip(&parts.headers)))
     }
 }
 use std::sync::Arc;
@@ -762,7 +798,13 @@ mod tests {
     // ─── ClientIp Extractor Tests ──────────────────────────────────────────
 
     #[tokio::test]
-    async fn test_client_ip_from_x_forwarded_for() {
+    async fn test_client_ip_reads_from_right_with_one_trusted_hop() {
+        // Default hops=1 (ALB-only). The chain is `client, proxy_ip` after
+        // ALB appends the real client IP. We want the appended-by-trusted
+        // value, which is the second entry — but with hops=1 we pick the
+        // entry one from the right, which is the original client.
+        // Chain: "real_client, alb_added" → with 1 trusted hop, take the
+        // entry the trusted proxy *saw before* appending = real_client.
         let req = Request::builder()
             .header("x-forwarded-for", "192.168.1.1, 10.0.0.1")
             .body(())
@@ -771,7 +813,23 @@ mod tests {
 
         let result = ClientIp::from_request_parts(&mut parts, &()).await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().0, Some("192.168.1.1".to_string()));
+        // Last entry (rightmost) is what ALB appended — that's the trusted
+        // value. 192.168.1.1 was supplied by whoever hit ALB; 10.0.0.1 is
+        // ALB's own observation. With one trusted proxy in front of us, we
+        // take entry-from-right = 1, which is the rightmost.
+        assert_eq!(result.unwrap().0, Some("10.0.0.1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_client_ip_single_entry_chain() {
+        // Just one entry in XFF — proxy added it, no client manipulation.
+        let req = Request::builder()
+            .header("x-forwarded-for", "203.0.113.42")
+            .body(())
+            .unwrap();
+        let (mut parts, _) = req.into_parts();
+        let result = ClientIp::from_request_parts(&mut parts, &()).await.unwrap();
+        assert_eq!(result.0, Some("203.0.113.42".to_string()));
     }
 
     #[tokio::test]
@@ -809,6 +867,38 @@ mod tests {
         let result = ClientIp::from_request_parts(&mut parts, &()).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().0, Some("1.2.3.4".to_string()));
+    }
+
+    #[test]
+    fn extract_trusted_client_ip_attacker_prefix_is_ignored() {
+        // Attacker spoofs the leftmost; ALB appends the real client. With
+        // hops=1 we read the rightmost (ALB-added), so spoofing achieves
+        // nothing.
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            axum::http::HeaderValue::from_static("evil.attacker, real.client"),
+        );
+        assert_eq!(
+            extract_trusted_client_ip(&headers),
+            Some("real.client".to_string()),
+        );
+    }
+
+    #[test]
+    fn extract_trusted_client_ip_falls_back_to_x_real_ip() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            "x-real-ip",
+            axum::http::HeaderValue::from_static("9.9.9.9"),
+        );
+        assert_eq!(extract_trusted_client_ip(&headers), Some("9.9.9.9".to_string()));
+    }
+
+    #[test]
+    fn extract_trusted_client_ip_returns_none_when_no_headers() {
+        let headers = axum::http::HeaderMap::new();
+        assert_eq!(extract_trusted_client_ip(&headers), None);
     }
 
     // ─── AuthError Response Tests ──────────────────────────────────────────

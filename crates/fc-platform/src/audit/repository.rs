@@ -173,6 +173,38 @@ impl AuditLogRepository {
         Ok(count)
     }
 
+    /// Cursor-paginated search. Keyset on `(performed_at, id) DESC`. Returns
+    /// `fetch_limit` rows so the caller can detect `hasMore`.
+    pub async fn search_with_cursor(
+        &self,
+        entity_type: Option<&str>,
+        entity_id: Option<&str>,
+        operation: Option<&str>,
+        principal_id: Option<&str>,
+        cursor: Option<&crate::shared::api_common::DecodedCursor>,
+        fetch_limit: i64,
+    ) -> Result<Vec<AuditLog>> {
+        let mut qb: QueryBuilder<Postgres> = QueryBuilder::new("SELECT * FROM aud_logs");
+        apply_audit_filters(&mut qb, entity_type, entity_id, operation, principal_id);
+        if let Some(c) = cursor {
+            // apply_audit_filters injects WHERE/AND for any filter; if there
+            // were none we need WHERE here, otherwise AND.
+            let already_has_where = entity_type.is_some()
+                || entity_id.is_some()
+                || operation.is_some()
+                || principal_id.is_some();
+            qb.push(if already_has_where { " AND " } else { " WHERE " });
+            qb.push("(performed_at, id) < (")
+                .push_bind(c.created_at)
+                .push(", ")
+                .push_bind(c.id.clone())
+                .push(")");
+        }
+        qb.push(" ORDER BY performed_at DESC, id DESC LIMIT ").push_bind(fetch_limit);
+        let rows: Vec<AuditLogRow> = qb.build_query_as().fetch_all(&self.pool).await?;
+        Ok(rows.into_iter().map(AuditLog::from).collect())
+    }
+
     pub async fn find_distinct_entity_types(&self) -> Result<Vec<String>> {
         let rows = sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT entity_type FROM aud_logs ORDER BY entity_type"

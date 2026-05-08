@@ -12,6 +12,7 @@ pub mod operations;
 pub mod auth_service;
 pub mod auth_api;
 pub mod password_service;
+pub mod login_backoff;
 
 // OAuth
 pub mod oauth_entity;

@@ -1,42 +1,60 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { useListState } from "@/composables/useListState";
+import { ref, onMounted, computed } from "vue";
 import ClientFilter from "@/components/ClientFilter.vue";
+import { useCursorPagination } from "@/composables/useCursorPagination";
 import {
-	getApiAdminEvents,
-	getApiAdminEventsById,
-	getApiAdminEventsFilterOptions,
+	eventsApi,
 	type EventRead,
-	type EventResponse,
-} from "@/api/generated";
+	type EventDetail,
+	type EventsListParams,
+} from "@/api/events";
 
 interface FilterOption {
 	value: string;
 	label: string;
 }
 
-// Table state
-const events = ref<EventRead[]>([]);
-const loading = ref(true);
-const totalRecords = ref(0);
+// Filters live as plain refs — the cursor stack invalidates on every filter
+// change so the URL-synced `useListState` machinery isn't useful here.
+const filters = {
+	clients: ref<string[]>([]),
+	applications: ref<string[]>([]),
+	subdomains: ref<string[]>([]),
+	aggregates: ref<string[]>([]),
+	types: ref<string[]>([]),
+	search: ref<string>(""),
+};
+const pageSize = ref(100);
 
-const { filters, page, pageSize, sortField, sortOrder, hasActiveFilters, clearFilters, onPage, onSort } =
-	useListState(
-		{
-			filters: {
-				clients: { type: "array", key: "clients" },
-				applications: { type: "array", key: "apps" },
-				subdomains: { type: "array", key: "subs" },
-				aggregates: { type: "array", key: "aggs" },
-				types: { type: "array", key: "types" },
-				search: { type: "string", key: "q" },
-			},
-			pageSize: 100,
-			sortField: "time",
-			sortOrder: "desc",
-		},
-		() => loadEvents(),
-	);
+const hasActiveFilters = computed(() =>
+	Boolean(
+		filters.clients.value.length ||
+			filters.applications.value.length ||
+			filters.subdomains.value.length ||
+			filters.aggregates.value.length ||
+			filters.types.value.length ||
+			filters.search.value,
+	),
+);
+
+function buildParams(after: string | undefined): EventsListParams {
+	return {
+		after,
+		size: pageSize.value,
+		clientIds: filters.clients.value.length ? filters.clients.value : undefined,
+		applications: filters.applications.value.length ? filters.applications.value : undefined,
+		subdomains: filters.subdomains.value.length ? filters.subdomains.value : undefined,
+		aggregates: filters.aggregates.value.length ? filters.aggregates.value : undefined,
+		types: filters.types.value.length ? filters.types.value : undefined,
+		source: filters.search.value || undefined,
+	};
+}
+
+const cursor = useCursorPagination<EventRead>({
+	fetchPage: (after) => eventsApi.list(buildParams(after)),
+});
+const events = cursor.items;
+const loading = cursor.loading;
 
 // Filter options (from server)
 const applicationOptions = ref<FilterOption[]>([]);
@@ -49,17 +67,13 @@ const loadingOptions = ref(false);
 const isUpdating = ref(false);
 
 // Detail dialog
-// Detail view merges the projection row (application/subdomain/aggregate/projectedAt
-// only live on EventRead) with the full event payload from /events/{id}
-// (data/causationId/deduplicationId/contextData only live on EventResponse).
-type EventDetail = EventRead & Partial<EventResponse>;
-const selectedEvent = ref<EventDetail | null>(null);
+const selectedEvent = ref<(EventRead & Partial<EventDetail>) | null>(null);
 const showDetailDialog = ref(false);
 const loadingDetail = ref(false);
 
 onMounted(async () => {
 	await loadFilterOptions();
-	await loadEvents();
+	await cursor.loadFirst();
 });
 
 // Unified filter change handler to prevent loops
@@ -75,7 +89,6 @@ async function onFilterChange(
 
 	isUpdating.value = true;
 	try {
-		// Clear downstream selections based on which filter changed
 		if (clearDownstream === "applications") {
 			filters.applications.value = [];
 			filters.subdomains.value = [];
@@ -93,7 +106,7 @@ async function onFilterChange(
 		}
 
 		await loadFilterOptions();
-		await loadEvents();
+		await cursor.reset();
 	} finally {
 		isUpdating.value = false;
 	}
@@ -102,16 +115,12 @@ async function onFilterChange(
 async function loadFilterOptions() {
 	loadingOptions.value = true;
 	try {
-		const response = await getApiAdminEventsFilterOptions();
-		const data = response.data;
-		if (data) {
-			applicationOptions.value = (data.applications || []) as FilterOption[];
-			subdomainOptions.value = (data.subdomains || []) as FilterOption[];
-			// `aggregates` is not surfaced by the shared filter-options endpoint.
-			// Leave the filter pre-populated with whatever's already cached or empty.
-			aggregateOptions.value = [];
-			typeOptions.value = (data.eventTypes || []) as FilterOption[];
-		}
+		const data = await eventsApi.filterOptions();
+		applicationOptions.value = data.applications || [];
+		subdomainOptions.value = data.subdomains || [];
+		// `aggregates` is not surfaced by the shared filter-options endpoint.
+		aggregateOptions.value = [];
+		typeOptions.value = data.eventTypes || [];
 	} catch (error) {
 		console.error("Failed to load filter options:", error);
 	} finally {
@@ -119,53 +128,19 @@ async function loadFilterOptions() {
 	}
 }
 
-async function loadEvents() {
-	loading.value = true;
-	try {
-		const response = await getApiAdminEvents({
-			query: {
-				page: page.value,
-				size: pageSize.value,
-				sortField: sortField.value || undefined,
-				sortOrder: sortOrder.value || undefined,
-				clientIds: filters.clients.value.length
-					? filters.clients.value.join(",")
-					: undefined,
-				applications: filters.applications.value.length
-					? filters.applications.value.join(",")
-					: undefined,
-				subdomains: filters.subdomains.value.length
-					? filters.subdomains.value.join(",")
-					: undefined,
-				aggregates: filters.aggregates.value.length
-					? filters.aggregates.value.join(",")
-					: undefined,
-				types: filters.types.value.length
-					? filters.types.value.join(",")
-					: undefined,
-				source: filters.search.value || undefined,
-			},
-		});
-		const data = response.data;
-		if (data) {
-			events.value = data.items;
-			totalRecords.value = data.totalItems || 0;
-		}
-	} catch (error) {
-		console.error("Failed to load events:", error);
-	} finally {
-		loading.value = false;
-	}
-}
-
 async function onSearchChange() {
-	page.value = 0;
-	await loadEvents();
+	await cursor.reset();
 }
 
 async function clearAllFilters() {
-	clearFilters();
+	filters.clients.value = [];
+	filters.applications.value = [];
+	filters.subdomains.value = [];
+	filters.aggregates.value = [];
+	filters.types.value = [];
+	filters.search.value = "";
 	await loadFilterOptions();
+	await cursor.reset();
 }
 
 async function viewEventDetail(event: EventRead) {
@@ -173,10 +148,8 @@ async function viewEventDetail(event: EventRead) {
 	showDetailDialog.value = true;
 	selectedEvent.value = { ...event };
 	try {
-		const response = await getApiAdminEventsById({ path: { id: event.id } });
-		if (response.data) {
-			selectedEvent.value = { ...event, ...response.data };
-		}
+		const detail = await eventsApi.get(event.id);
+		selectedEvent.value = { ...event, ...detail };
 	} catch (error) {
 		console.error("Failed to load event details:", error);
 	} finally {
@@ -312,21 +285,13 @@ function truncateId(id: string | undefined): string {
             v-tooltip="'Clear all filters'"
             :disabled="!hasActiveFilters"
           />
-          <Button icon="pi pi-refresh" text rounded @click="loadEvents" v-tooltip="'Refresh'" />
+          <Button icon="pi pi-refresh" text rounded @click="cursor.refresh" v-tooltip="'Refresh'" />
         </div>
       </div>
 
       <DataTable
         :value="events"
         :loading="loading"
-        :lazy="true"
-        :paginator="true"
-        :first="page * pageSize"
-        :rows="pageSize"
-        :totalRecords="totalRecords"
-        :rowsPerPageOptions="[50, 100, 250, 500]"
-        @page="onPage"
-        @sort="onSort"
         stripedRows
         emptyMessage="No events found"
         tableStyle="min-width: 60rem"
@@ -355,7 +320,7 @@ function truncateId(id: string | undefined): string {
             <span v-else class="text-muted">-</span>
           </template>
         </Column>
-        <Column field="time" header="Time" sortable style="width: 12rem">
+        <Column field="time" header="Time" style="width: 12rem">
           <template #body="{ data }">
             <span class="text-sm">{{ formatDate(data.time) }}</span>
           </template>
@@ -372,6 +337,28 @@ function truncateId(id: string | undefined): string {
           </template>
         </Column>
       </DataTable>
+
+      <!-- Cursor pager. No "Page X of N" — counting billions of rows isn't
+           free. Use ← Prev / Next → for in-session navigation; refresh resets
+           to the first page. -->
+      <div class="cursor-pager">
+        <Button
+          icon="pi pi-angle-left"
+          label="Newer"
+          text
+          :disabled="!cursor.hasPrev.value || cursor.loading.value"
+          @click="cursor.loadPrev"
+        />
+        <span class="page-indicator">Page {{ cursor.page.value }}</span>
+        <Button
+          icon="pi pi-angle-right"
+          iconPos="right"
+          label="Older"
+          text
+          :disabled="!cursor.hasMore.value || cursor.loading.value"
+          @click="cursor.loadNext"
+        />
+      </div>
     </div>
 
     <!-- Event Detail Dialog -->
@@ -511,6 +498,21 @@ function truncateId(id: string | undefined): string {
 
 .search-input {
   width: 250px;
+}
+
+.cursor-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.75rem 0 0.25rem;
+}
+
+.page-indicator {
+  font-size: 0.875rem;
+  color: var(--text-color-secondary);
+  min-width: 4.5rem;
+  text-align: center;
 }
 
 .font-mono {

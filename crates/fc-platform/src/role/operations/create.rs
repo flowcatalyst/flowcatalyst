@@ -160,6 +160,7 @@ mod tests {
             description: Some("Full access to orders".to_string()),
             permissions: vec!["orders:read".to_string(), "orders:write".to_string()],
             client_managed: false,
+            source: RoleSource::Database,
         };
 
         let json = serde_json::to_string(&cmd).unwrap();

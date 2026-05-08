@@ -1,33 +1,75 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { useListState } from "@/composables/useListState";
+import { ref, onMounted, computed, watch } from "vue";
+import { useCursorPagination } from "@/composables/useCursorPagination";
 import {
   fetchLoginAttempts,
   type LoginAttempt,
 } from "@/api/login-attempts";
 
-const attempts = ref<LoginAttempt[]>([]);
-const totalRecords = ref(0);
-const loading = ref(false);
+const filters = {
+  attemptType: ref<string>(""),
+  outcome: ref<string>(""),
+  identifier: ref<string>(""),
+  dateFrom: ref<string>(""),
+  dateTo: ref<string>(""),
+};
+const pageSize = ref(100);
+
+const hasActiveFilters = computed(() =>
+  Boolean(
+    filters.attemptType.value ||
+      filters.outcome.value ||
+      filters.identifier.value.trim() ||
+      filters.dateFrom.value ||
+      filters.dateTo.value,
+  ),
+);
+
+const cursor = useCursorPagination<LoginAttempt>({
+  fetchPage: async (after) => {
+    const r = await fetchLoginAttempts({
+      attemptType: filters.attemptType.value || undefined,
+      outcome: filters.outcome.value || undefined,
+      identifier: filters.identifier.value.trim() || undefined,
+      dateFrom: filters.dateFrom.value || undefined,
+      dateTo: filters.dateTo.value || undefined,
+      after,
+      pageSize: pageSize.value,
+    });
+    return {
+      items: r.items,
+      hasMore: r.hasMore,
+      ...(r.nextCursor !== undefined ? { nextCursor: r.nextCursor } : {}),
+    };
+  },
+});
+const attempts = cursor.items;
+const loading = cursor.loading;
 const initialLoading = ref(true);
 
-const { filters, page, pageSize, sortField, sortOrder, hasActiveFilters, clearFilters, onPage, onSort } =
-  useListState(
-    {
-      filters: {
-        attemptType: { type: "string", key: "type" },
-        outcome: { type: "string", key: "outcome" },
-        identifier: { type: "string", key: "id" },
-        dateFrom: { type: "string", key: "from" },
-        dateTo: { type: "string", key: "to" },
-      },
-      pageSize: 100,
-      sortField: "attemptedAt",
-      sortOrder: "desc",
-      debounce: 0,
-    },
-    () => loadAttempts(),
-  );
+let suppressFilterReload = true;
+watch(
+  [
+    filters.attemptType,
+    filters.outcome,
+    filters.identifier,
+    filters.dateFrom,
+    filters.dateTo,
+  ],
+  () => {
+    if (suppressFilterReload) return;
+    void cursor.reset();
+  },
+);
+
+async function clearFilters() {
+  filters.attemptType.value = "";
+  filters.outcome.value = "";
+  filters.identifier.value = "";
+  filters.dateFrom.value = "";
+  filters.dateTo.value = "";
+  await cursor.reset();
+}
 
 // Detail dialog
 const selectedAttempt = ref<LoginAttempt | null>(null);
@@ -35,30 +77,6 @@ const showDetailDialog = ref(false);
 
 const attemptTypeOptions = ["USER_LOGIN", "SERVICE_ACCOUNT_TOKEN"];
 const outcomeOptions = ["SUCCESS", "FAILURE"];
-
-async function loadAttempts() {
-  loading.value = true;
-  try {
-    const response = await fetchLoginAttempts({
-      attemptType: filters.attemptType.value || undefined,
-      outcome: filters.outcome.value || undefined,
-      identifier: filters.identifier.value.trim() || undefined,
-      dateFrom: filters.dateFrom.value || undefined,
-      dateTo: filters.dateTo.value || undefined,
-      page: page.value,
-      pageSize: pageSize.value,
-      sortField: sortField.value,
-      sortOrder: sortOrder.value,
-    });
-    attempts.value = response.items;
-    totalRecords.value = response.total;
-  } catch (error) {
-    console.error("Failed to load login attempts:", error);
-  } finally {
-    loading.value = false;
-    initialLoading.value = false;
-  }
-}
 
 function viewDetails(attempt: LoginAttempt) {
   selectedAttempt.value = attempt;
@@ -90,7 +108,9 @@ function attemptTypeSeverity(type: string): string {
 }
 
 onMounted(async () => {
-  await loadAttempts();
+  await cursor.loadFirst();
+  initialLoading.value = false;
+  suppressFilterReload = false;
 });
 </script>
 
@@ -178,27 +198,17 @@ onMounted(async () => {
         v-else
         :value="attempts"
         :loading="loading"
-        :paginator="true"
-        :first="page * pageSize"
-        :rows="pageSize"
-        :totalRecords="totalRecords"
-        :rowsPerPageOptions="[50, 100, 250, 500]"
-        :lazy="true"
-        :showCurrentPageReport="true"
-        currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
         size="small"
-        @page="onPage"
-        @sort="onSort"
         @row-click="(e) => viewDetails(e.data)"
         :rowClass="() => 'clickable-row'"
       >
-        <Column field="attemptedAt" header="Time" sortable style="width: 16%">
+        <Column field="attemptedAt" header="Time" style="width: 16%">
           <template #body="{ data }">
             <span class="time-text">{{ formatDateTime(data.attemptedAt) }}</span>
           </template>
         </Column>
 
-        <Column field="attemptType" header="Type" sortable style="width: 14%">
+        <Column field="attemptType" header="Type" style="width: 14%">
           <template #body="{ data }">
             <Tag
               :value="formatAttemptType(data.attemptType)"
@@ -207,13 +217,13 @@ onMounted(async () => {
           </template>
         </Column>
 
-        <Column field="outcome" header="Outcome" sortable style="width: 10%">
+        <Column field="outcome" header="Outcome" style="width: 10%">
           <template #body="{ data }">
             <Tag :value="data.outcome" :severity="outcomeSeverity(data.outcome)" />
           </template>
         </Column>
 
-        <Column field="identifier" header="Identifier" sortable style="width: 22%">
+        <Column field="identifier" header="Identifier" style="width: 22%">
           <template #body="{ data }">
             <code class="identifier-text">{{ data.identifier }}</code>
           </template>
@@ -256,6 +266,26 @@ onMounted(async () => {
           </div>
         </template>
       </DataTable>
+
+      <!-- Cursor pager. iam_login_attempts is unbounded; we never count. -->
+      <div class="cursor-pager">
+        <Button
+          icon="pi pi-angle-left"
+          label="Newer"
+          text
+          :disabled="!cursor.hasPrev.value || cursor.loading.value"
+          @click="cursor.loadPrev"
+        />
+        <span class="page-indicator">Page {{ cursor.page.value }}</span>
+        <Button
+          icon="pi pi-angle-right"
+          iconPos="right"
+          label="Older"
+          text
+          :disabled="!cursor.hasMore.value || cursor.loading.value"
+          @click="cursor.loadNext"
+        />
+      </div>
     </div>
 
     <!-- Detail Dialog -->
@@ -322,6 +352,21 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.cursor-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.75rem 0 0.25rem;
+}
+
+.page-indicator {
+  font-size: 0.875rem;
+  color: var(--text-color-secondary);
+  min-width: 4.5rem;
+  text-align: center;
+}
+
 .filter-card {
   margin-bottom: 24px;
 }

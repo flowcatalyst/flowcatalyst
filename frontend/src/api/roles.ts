@@ -64,4 +64,15 @@ export const rolesApi = {
 	getApplications(): Promise<ApplicationOptionsResponse> {
 		return bffFetch("/roles/filters/applications");
 	},
+
+	syncPlatform(): Promise<SyncPlatformRolesResponse> {
+		return bffFetch("/roles/sync-platform", { method: "POST" });
+	},
 };
+
+export interface SyncPlatformRolesResponse {
+	created: number;
+	updated: number;
+	removed: number;
+	total: number;
+}

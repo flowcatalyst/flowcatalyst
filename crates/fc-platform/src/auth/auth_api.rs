@@ -26,8 +26,9 @@ use crate::identity_provider::entity::IdentityProviderType;
 use crate::RefreshToken;
 use crate::AuthService;
 use crate::PasswordService;
+use crate::auth::login_backoff::{self, BackoffPolicy, BackoffDecision};
 use crate::shared::error::PlatformError;
-use crate::shared::middleware::Authenticated;
+use crate::shared::middleware::{Authenticated, ClientIp};
 
 /// Login request
 #[derive(Debug, Deserialize, ToSchema)]
@@ -142,6 +143,9 @@ pub struct AuthState {
     pub email_domain_mapping_repo: Arc<EmailDomainMappingRepository>,
     pub identity_provider_repo: Arc<IdentityProviderRepository>,
     pub login_attempt_repo: Arc<LoginAttemptRepository>,
+    /// Layered failed-login backoff policy. Loaded from env in
+    /// `build_platform_routes` so all binaries share the same defaults.
+    pub backoff_policy: Arc<BackoffPolicy>,
     /// Session cookie name (default: "fc_session")
     pub session_cookie_name: String,
     /// Whether to set Secure flag on cookie
@@ -162,6 +166,7 @@ impl AuthState {
         email_domain_mapping_repo: Arc<EmailDomainMappingRepository>,
         identity_provider_repo: Arc<IdentityProviderRepository>,
         login_attempt_repo: Arc<LoginAttemptRepository>,
+        backoff_policy: Arc<BackoffPolicy>,
     ) -> Self {
         Self {
             auth_service,
@@ -171,6 +176,7 @@ impl AuthState {
             email_domain_mapping_repo,
             identity_provider_repo,
             login_attempt_repo,
+            backoff_policy,
             session_cookie_name: "fc_session".to_string(),
             session_cookie_secure: false,
             session_cookie_same_site: "Lax".to_string(),
@@ -211,15 +217,27 @@ impl AuthState {
 )]
 pub async fn login(
     State(state): State<AuthState>,
+    ClientIp(client_ip): ClientIp,
     jar: CookieJar,
     Json(req): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, PlatformError> {
+    let ip = client_ip.unwrap_or_default();
+
+    // Run the layered backoff check BEFORE lookup so the response timing /
+    // shape doesn't leak whether the email exists.
+    match login_backoff::check(&state.login_attempt_repo, &state.backoff_policy, &req.email, &ip).await? {
+        BackoffDecision::Allow => {}
+        BackoffDecision::Reject { retry_after_secs, .. } => {
+            return Err(login_backoff::rejection_error(retry_after_secs));
+        }
+    }
+
     // Find principal by email
     let principal = match state.principal_repo.find_by_email(&req.email).await? {
         Some(p) => p,
         None => {
             // Record failed attempt (fire-and-forget)
-            record_login_attempt(&state, &req.email, None, LoginOutcome::Failure, Some("INVALID_CREDENTIALS")).await;
+            record_login_attempt(&state, &req.email, None, &ip, LoginOutcome::Failure, Some("INVALID_CREDENTIALS")).await;
             return Err(PlatformError::Unauthorized {
                 message: "Invalid credentials".to_string(),
             });
@@ -238,7 +256,7 @@ pub async fn login(
         .unwrap_or(false);
 
     if !password_valid {
-        record_login_attempt(&state, &req.email, Some(&principal.id), LoginOutcome::Failure, Some("INVALID_CREDENTIALS")).await;
+        record_login_attempt(&state, &req.email, Some(&principal.id), &ip, LoginOutcome::Failure, Some("INVALID_CREDENTIALS")).await;
         return Err(PlatformError::Unauthorized {
             message: "Invalid credentials".to_string(),
         });
@@ -246,7 +264,7 @@ pub async fn login(
 
     // Check if user is active
     if !principal.active {
-        record_login_attempt(&state, &req.email, Some(&principal.id), LoginOutcome::Failure, Some("ACCOUNT_INACTIVE")).await;
+        record_login_attempt(&state, &req.email, Some(&principal.id), &ip, LoginOutcome::Failure, Some("ACCOUNT_INACTIVE")).await;
         return Err(PlatformError::Unauthorized {
             message: "Account is not active".to_string(),
         });
@@ -273,7 +291,7 @@ pub async fn login(
     let jar = jar.add(cookie);
 
     // Record successful login attempt (fire-and-forget)
-    record_login_attempt(&state, &req.email, Some(&principal.id), LoginOutcome::Success, None).await;
+    record_login_attempt(&state, &req.email, Some(&principal.id), &ip, LoginOutcome::Success, None).await;
 
     // Build response with user info (matches Java LoginResponse)
     let response = LoginResponse {
@@ -293,6 +311,7 @@ async fn record_login_attempt(
     state: &AuthState,
     email: &str,
     principal_id: Option<&str>,
+    ip: &str,
     outcome: LoginOutcome,
     failure_reason: Option<&str>,
 ) {
@@ -300,6 +319,9 @@ async fn record_login_attempt(
     attempt.identifier = Some(email.to_string());
     attempt.principal_id = principal_id.map(|s| s.to_string());
     attempt.failure_reason = failure_reason.map(|s| s.to_string());
+    if !ip.is_empty() {
+        attempt.ip_address = Some(ip.to_string());
+    }
 
     if let Err(e) = state.login_attempt_repo.create(&attempt).await {
         warn!(error = %e, "Failed to record login attempt (non-blocking)");

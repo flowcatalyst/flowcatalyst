@@ -11,9 +11,10 @@ use axum::{
     response::Json,
     Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use crate::{Event, DispatchJob};
 use crate::{EventRepository, DispatchJobRepository};
+use crate::shared::api_common::{CursorPage, CursorParams, decode_cursor, encode_cursor};
 use crate::shared::error::{PlatformError, Result};
 
 // ============================================================================
@@ -84,15 +85,6 @@ impl From<&Event> for RawEventResponse {
     }
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PagedRawEventResponse {
-    pub items: Vec<RawEventResponse>,
-    pub page: u32,
-    pub size: u32,
-    pub total_items: u64,
-    pub total_pages: u32,
-}
 
 // ============================================================================
 // DTOs - Raw Dispatch Jobs
@@ -173,56 +165,34 @@ impl From<&DispatchJob> for RawDispatchJobResponse {
     }
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PagedRawDispatchJobResponse {
-    pub items: Vec<RawDispatchJobResponse>,
-    pub page: u32,
-    pub size: u32,
-    pub total_items: u64,
-    pub total_pages: u32,
-}
-
-// ============================================================================
-// Query Parameters
-// ============================================================================
-
-#[derive(Debug, Deserialize)]
-pub struct PaginationQuery {
-    #[serde(default)]
-    pub page: Option<u32>,
-    #[serde(default)]
-    pub size: Option<u32>,
-}
-
 // ============================================================================
 // Handlers - Raw Events
 // ============================================================================
 
-/// List raw events with pagination (debug/admin only)
+/// List raw events (debug/admin only). Cursor-paginated; `msg_events` is
+/// unbounded so we keyset on `(created_at, id) DESC` and never count.
 async fn list_raw_events(
     State(state): State<DebugState>,
-    Query(query): Query<PaginationQuery>,
-) -> Result<Json<PagedRawEventResponse>> {
-    // Validate and default pagination
-    let page = query.page.unwrap_or(0);
-    let size = query.size.unwrap_or(20).clamp(1, 100);
+    Query(params): Query<CursorParams>,
+) -> Result<Json<CursorPage<RawEventResponse>>> {
+    let size = params.size() as usize;
+    let cursor = match params.after.as_deref() {
+        Some(c) => Some(decode_cursor(c).map_err(|_| PlatformError::validation("Invalid cursor"))?),
+        None => None,
+    };
+    let mut events = state.event_repo
+        .find_recent_with_cursor(cursor.as_ref(), params.fetch_limit())
+        .await?;
 
-    let limit = size as i64;
-    let offset = (page as i64) * (size as i64);
-    let events = state.event_repo.find_recent_paged(limit, offset).await?;
-    let total_count = state.event_repo.count_all().await?;
-
-    let responses: Vec<RawEventResponse> = events.iter().map(RawEventResponse::from).collect();
-    let total_pages = ((total_count as f64) / (size as f64)).ceil() as u32;
-
-    Ok(Json(PagedRawEventResponse {
-        items: responses,
-        page,
-        size,
-        total_items: total_count,
-        total_pages,
-    }))
+    let has_more = events.len() > size;
+    if has_more { events.truncate(size); }
+    let next_cursor = if has_more {
+        events.last().map(|e| encode_cursor(e.created_at, &e.id))
+    } else {
+        None
+    };
+    let items = events.iter().map(RawEventResponse::from).collect();
+    Ok(Json(CursorPage { items, has_more, next_cursor }))
 }
 
 /// Get a single raw event by ID (debug/admin only)
@@ -240,30 +210,31 @@ async fn get_raw_event(
 // Handlers - Raw Dispatch Jobs
 // ============================================================================
 
-/// List raw dispatch jobs with pagination (debug/admin only)
+/// List raw dispatch jobs (debug/admin only). Cursor-paginated;
+/// `msg_dispatch_jobs` is unbounded so we keyset on `(created_at, id) DESC`
+/// and never count.
 async fn list_raw_dispatch_jobs(
     State(state): State<DebugState>,
-    Query(query): Query<PaginationQuery>,
-) -> Result<Json<PagedRawDispatchJobResponse>> {
-    // Validate and default pagination
-    let page = query.page.unwrap_or(0);
-    let size = query.size.unwrap_or(20).clamp(1, 100);
+    Query(params): Query<CursorParams>,
+) -> Result<Json<CursorPage<RawDispatchJobResponse>>> {
+    let size = params.size() as usize;
+    let cursor = match params.after.as_deref() {
+        Some(c) => Some(decode_cursor(c).map_err(|_| PlatformError::validation("Invalid cursor"))?),
+        None => None,
+    };
+    let mut jobs = state.dispatch_job_repo
+        .find_recent_with_cursor(cursor.as_ref(), params.fetch_limit())
+        .await?;
 
-    let limit = size as i64;
-    let offset = (page as i64) * (size as i64);
-    let jobs = state.dispatch_job_repo.find_recent_paged(limit, offset).await?;
-    let total_count = state.dispatch_job_repo.count_all().await?;
-
-    let responses: Vec<RawDispatchJobResponse> = jobs.iter().map(RawDispatchJobResponse::from).collect();
-    let total_pages = ((total_count as f64) / (size as f64)).ceil() as u32;
-
-    Ok(Json(PagedRawDispatchJobResponse {
-        items: responses,
-        page,
-        size,
-        total_items: total_count,
-        total_pages,
-    }))
+    let has_more = jobs.len() > size;
+    if has_more { jobs.truncate(size); }
+    let next_cursor = if has_more {
+        jobs.last().map(|j| encode_cursor(j.created_at, &j.id))
+    } else {
+        None
+    };
+    let items = jobs.iter().map(RawDispatchJobResponse::from).collect();
+    Ok(Json(CursorPage { items, has_more, next_cursor }))
 }
 
 /// Get a single raw dispatch job by ID (debug/admin only)

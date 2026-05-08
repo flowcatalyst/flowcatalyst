@@ -2,7 +2,6 @@
 //!
 //! REST endpoints for event management.
 
-use axum::Router;
 use axum::{
     extract::{State, Path, Query},
     Json,
@@ -15,7 +14,6 @@ use std::sync::Arc;
 use crate::{Event, EventRead, ContextData};
 use crate::EventRepository;
 use crate::shared::error::PlatformError;
-use crate::shared::api_common::PaginationParams;
 use crate::shared::middleware::Authenticated;
 
 /// Context data for event filtering/searching
@@ -187,22 +185,22 @@ impl From<EventRead> for EventReadResponse {
     }
 }
 
-/// Query parameters for events list
+/// Query parameters for events list (cursor-paginated).
+///
+/// `msg_events_read` can grow to billions of rows, so we keyset-paginate on
+/// `(time DESC, id DESC)` rather than counting + offsetting. Sort order is
+/// fixed to most-recent-first; if you need an alphabetical scan, build a
+/// separate report rather than paginating the firehose.
 #[derive(Debug, Default, Deserialize, IntoParams)]
 #[serde(rename_all = "camelCase")]
 #[into_params(parameter_in = Query)]
 pub struct EventsQuery {
-    /// Page number (1-based). Falls back to 1.
-    pub page: Option<u32>,
+    /// Opaque cursor returned by a previous page's `nextCursor`. Omit for
+    /// the first page.
+    pub after: Option<String>,
 
-    /// Page size. Capped at 500.
+    /// Page size. Capped at 200.
     pub size: Option<u32>,
-
-    /// Sort field. Allow-listed; unknown values fall back to `time`.
-    pub sort_field: Option<String>,
-
-    /// Sort order: `asc` or `desc`. Defaults to `desc`.
-    pub sort_order: Option<String>,
 
     /// Filter by client IDs (comma-separated)
     pub client_ids: Option<String>,
@@ -377,15 +375,8 @@ pub async fn get_event(
     Ok(Json(event.into()))
 }
 
-/// Paginated events list response (read projection)
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct PagedEventsResponse {
-    pub items: Vec<super::entity::EventRead>,
-    pub page: u32,
-    pub size: u32,
-    pub total_items: i64,
-}
+/// Cursor-paginated events list response.
+pub type EventsCursorResponse = crate::shared::api_common::CursorPage<super::entity::EventRead>;
 
 /// List events
 #[utoipa::path(
@@ -395,7 +386,7 @@ pub struct PagedEventsResponse {
     operation_id = "getApiAdminEvents",
     params(EventsQuery),
     responses(
-        (status = 200, description = "List of events", body = PagedEventsResponse)
+        (status = 200, description = "List of events", body = EventsCursorResponse)
     ),
     security(("bearer_auth" = []))
 )]
@@ -403,7 +394,9 @@ pub async fn list_events(
     State(state): State<EventsState>,
     auth: Authenticated,
     Query(query): Query<EventsQuery>,
-) -> Result<Json<PagedEventsResponse>, PlatformError> {
+) -> Result<Json<EventsCursorResponse>, PlatformError> {
+    use crate::shared::api_common::{CursorPage, decode_cursor};
+
     crate::shared::authorization_service::checks::can_read_events(&auth.0)?;
 
     let mut client_ids = split_csv(query.client_ids.as_deref());
@@ -425,24 +418,17 @@ pub async fn list_events(
             .cloned()
             .collect();
         if client_ids.is_empty() {
-            return Ok(Json(PagedEventsResponse {
-                items: vec![],
-                page: query.page.unwrap_or(1).max(1),
-                size: query.size.unwrap_or(50).min(500),
-                total_items: 0,
-            }));
+            return Ok(Json(CursorPage { items: vec![], has_more: false, next_cursor: None }));
         }
     }
 
-    let page = query.page.unwrap_or(1).max(1);
-    let size = query.size.unwrap_or(50).min(500);
-    let offset = ((page - 1) as i64) * (size as i64);
-    let sort_desc = !matches!(
-        query.sort_order.as_deref().unwrap_or("desc").to_lowercase().as_str(),
-        "asc",
-    );
+    let size = query.size.unwrap_or(50).min(200) as usize;
+    let cursor = match query.after.as_deref() {
+        Some(c) => Some(decode_cursor(c).map_err(|_| PlatformError::validation("Invalid cursor"))?),
+        None => None,
+    };
 
-    let (events, total) = state.event_repo.find_read_with_filters(
+    let rows = state.event_repo.find_read_with_cursor(
         &client_ids,
         &applications,
         &subdomains,
@@ -450,19 +436,13 @@ pub async fn list_events(
         &event_types,
         query.correlation_id.as_deref(),
         query.source.as_deref(),
-        query.sort_field.as_deref(),
-        sort_desc,
-        size as i64,
-        offset,
+        cursor.as_ref(),
+        (size as i64) + 1,
     ).await?;
 
-    Ok(Json(PagedEventsResponse {
-        items: events,
-        page,
-        size,
-        total_items: total,
-    }))
+    Ok(Json(CursorPage::from_overfetch(rows, size, |r| (r.time, r.id.clone()))))
 }
+
 
 /// Batch create events request
 #[derive(Debug, Deserialize, ToSchema)]
@@ -641,126 +621,62 @@ pub struct PaginatedEventsResponse {
     pub size: u32,
 }
 
-/// List raw events (from msg_events, not read projection)
+/// Cursor-paginated raw events response.
+pub type EventsRawCursorResponse = crate::shared::api_common::CursorPage<EventSummaryResponse>;
+
+/// List raw events (from msg_events, not read projection). Cursor-paginated
+/// because msg_events grows unbounded.
 #[utoipa::path(
     get,
     path = "/raw",
     tag = "events",
     operation_id = "getApiAdminEventsRaw",
-    params(PaginationParams),
+    params(crate::shared::api_common::CursorParams),
     responses(
-        (status = 200, description = "Raw events page", body = PaginatedEventsResponse)
+        (status = 200, description = "Raw events page", body = EventsRawCursorResponse)
     ),
     security(("bearer_auth" = []))
 )]
 pub async fn list_events_raw(
     State(state): State<EventsState>,
     auth: Authenticated,
-    Query(pagination): Query<PaginationParams>,
-) -> Result<Json<PaginatedEventsResponse>, PlatformError> {
+    Query(params): Query<crate::shared::api_common::CursorParams>,
+) -> Result<Json<EventsRawCursorResponse>, PlatformError> {
+    use crate::shared::api_common::{CursorPage, decode_cursor, encode_cursor};
     crate::shared::authorization_service::checks::can_read_events(&auth.0)?;
 
-    let page = pagination.page();
-    let size = pagination.size().min(500);
-    let limit = size as i64;
-    let offset = (page as i64) * (size as i64);
-    let events = state.event_repo
-        .find_recent_paged(limit, offset)
+    let size = params.size() as usize;
+    let cursor = match params.after.as_deref() {
+        Some(c) => Some(decode_cursor(c).map_err(|_| PlatformError::validation("Invalid cursor"))?),
+        None => None,
+    };
+    let mut events = state.event_repo
+        .find_recent_with_cursor(cursor.as_ref(), params.fetch_limit())
         .await?;
 
-    Ok(Json(PaginatedEventsResponse {
-        items: events.into_iter().map(Into::into).collect(),
-        page,
-        size,
-    }))
-}
-
-// ── Admin events (read model) ────────────────────────────────────────────────
-
-/// Query params for admin events list (read model)
-#[derive(Debug, Deserialize, utoipa::IntoParams)]
-#[serde(rename_all = "camelCase")]
-pub struct AdminEventsQuery {
-    /// Filter by client IDs (comma-separated)
-    pub clients: Option<String>,
-    /// Filter by application codes (comma-separated)
-    pub apps: Option<String>,
-    /// Filter by subdomains (comma-separated)
-    pub subs: Option<String>,
-    /// Filter by aggregates (comma-separated)
-    pub aggs: Option<String>,
-    /// Filter by event types (comma-separated)
-    pub types: Option<String>,
-    /// Free-text search across type, source, subject
-    pub q: Option<String>,
-    /// Page number (1-based)
-    pub page: Option<u32>,
-    /// Page size
-    pub size: Option<u32>,
-}
-
-/// Paginated response for admin events list
-#[derive(Debug, Serialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct AdminEventsResponse {
-    pub items: Vec<super::entity::EventRead>,
-    pub total: i64,
-    pub page: u32,
-    pub size: u32,
-}
-
-/// List events from the read model with filters and pagination.
-#[utoipa::path(
-    get,
-    path = "",
-    tag = "admin-events",
-    params(AdminEventsQuery),
-    responses((status = 200, body = AdminEventsResponse)),
-    security(("bearer_auth" = []))
-)]
-pub async fn admin_list_events(
-    State(state): State<EventsState>,
-    auth: Authenticated,
-    Query(query): Query<AdminEventsQuery>,
-) -> Result<Json<AdminEventsResponse>, PlatformError> {
-    crate::shared::authorization_service::checks::can_read_events(&auth.0)?;
-
-    let page = query.page.unwrap_or(1).max(1);
-    let size = query.size.unwrap_or(100).min(500);
-    let offset = ((page - 1) * size) as i64;
-
-    let client_ids = split_csv(query.clients.as_deref());
-    let applications = split_csv(query.apps.as_deref());
-    let subdomains = split_csv(query.subs.as_deref());
-    let aggregates = split_csv(query.aggs.as_deref());
-    let event_types = split_csv(query.types.as_deref());
-
-    let (events, total) = state.event_repo.find_read_with_filters(
-        &client_ids,
-        &applications,
-        &subdomains,
-        &aggregates,
-        &event_types,
-        None, // correlation_id not in admin query
-        query.q.as_deref(),
-        None,
-        true,
-        size as i64,
-        offset,
-    ).await?;
-
-    Ok(Json(AdminEventsResponse { items: events, total, page, size }))
+    let has_more = events.len() > size;
+    if has_more { events.truncate(size); }
+    // Compute cursor on the typed entity before converting; the response
+    // DTO's `time` is an RFC3339 string and not suitable for keyset compares.
+    let next_cursor = if has_more {
+        events.last().map(|e| encode_cursor(e.created_at, &e.id))
+    } else {
+        None
+    };
+    let items = events.into_iter().map(EventSummaryResponse::from).collect();
+    Ok(Json(CursorPage { items, has_more, next_cursor }))
 }
 
 /// Get filter options for the events read model.
 #[utoipa::path(
     get,
     path = "/filter-options",
-    tag = "admin-events",
+    tag = "events",
+    operation_id = "getApiAdminEventsFilterOptions",
     responses((status = 200, body = super::entity::EventFilterOptions)),
     security(("bearer_auth" = []))
 )]
-pub async fn admin_event_filter_options(
+pub async fn event_filter_options(
     State(state): State<EventsState>,
     auth: Authenticated,
 ) -> Result<Json<super::entity::EventFilterOptions>, PlatformError> {
@@ -769,40 +685,29 @@ pub async fn admin_event_filter_options(
     Ok(Json(options))
 }
 
-/// Get a single event from the read model.
-#[utoipa::path(
-    get,
-    path = "/{id}",
-    tag = "admin-events",
-    responses((status = 200, body = super::entity::EventRead)),
-    security(("bearer_auth" = []))
-)]
-pub async fn admin_get_event(
-    State(state): State<EventsState>,
-    auth: Authenticated,
-    axum::extract::Path(id): axum::extract::Path<String>,
-) -> Result<Json<super::entity::EventRead>, PlatformError> {
-    crate::shared::authorization_service::checks::can_read_events(&auth.0)?;
-    let event = state.event_repo.find_read_by_id(&id).await?
-        .ok_or_else(|| PlatformError::not_found("Event", &id))?;
-    Ok(Json(event))
-}
-
-/// Create events router (BFF)
+/// Create events router for the BFF tier (`/bff/events`). Cookie-auth, used
+/// by the SPA. Includes `batch_create_events` — the SPA-facing batch that
+/// fans out events to subscriptions.
 pub fn events_router(state: EventsState) -> OpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(create_event, list_events))
         .routes(routes!(batch_create_events))
         .routes(routes!(list_events_raw))
+        .routes(routes!(event_filter_options))
         .routes(routes!(get_event))
         .with_state(state)
 }
 
-/// Admin events router — reads from msg_events_read (projected read model)
-pub fn admin_events_router(state: EventsState) -> Router {
-    Router::new()
-        .route("/", axum::routing::get(admin_list_events))
-        .route("/filter-options", axum::routing::get(admin_event_filter_options))
-        .route("/{id}", axum::routing::get(admin_get_event))
+/// Create events router for the API tier (`/api/events`). Bearer-auth, used
+/// by SDK consumers. **No `batch_create_events`** — SDK callers use
+/// `sdk_events_batch_router::POST /batch` (different handler, optimized for
+/// high-volume insert without per-event fan-out). The two routers must not
+/// both register `POST /batch` against the same prefix.
+pub fn events_api_router(state: EventsState) -> OpenApiRouter {
+    OpenApiRouter::new()
+        .routes(routes!(create_event, list_events))
+        .routes(routes!(list_events_raw))
+        .routes(routes!(event_filter_options))
+        .routes(routes!(get_event))
         .with_state(state)
 }

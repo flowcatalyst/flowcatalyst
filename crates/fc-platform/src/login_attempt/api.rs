@@ -23,12 +23,10 @@ pub struct LoginAttemptsQuery {
     pub principal_id: Option<String>,
     pub date_from: Option<String>,
     pub date_to: Option<String>,
-    pub page: Option<u64>,
+    /// Opaque cursor returned by a previous page's `nextCursor`. Omit for
+    /// the first page.
+    pub after: Option<String>,
     pub page_size: Option<u64>,
-    #[serde(rename = "sortField")]
-    pub sort_field: Option<String>,
-    #[serde(rename = "sortOrder")]
-    pub sort_order: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -61,13 +59,15 @@ impl From<LoginAttempt> for LoginAttemptResponse {
     }
 }
 
+/// Cursor-paginated login attempts response. `iam_login_attempts` grows
+/// unbounded so we never count.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct LoginAttemptsListResponse {
     pub items: Vec<LoginAttemptResponse>,
-    pub total: u64,
-    pub page: u64,
-    pub page_size: u64,
+    pub has_more: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Clone)]
@@ -103,29 +103,37 @@ async fn list_login_attempts(
     _auth: Authenticated,
     Query(query): Query<LoginAttemptsQuery>,
 ) -> Result<Json<LoginAttemptsListResponse>, PlatformError> {
-    let page = query.page.unwrap_or(0);
-    let page_size = query.page_size.unwrap_or(100).min(500);
-    let limit = page_size as i64;
-    let offset = (page as i64) * (page_size as i64);
+    use crate::shared::api_common::{decode_cursor, encode_cursor};
 
-    let (items, total) = state.login_attempt_repo.find_paged(
+    let size = query.page_size.unwrap_or(50).clamp(1, 200) as usize;
+    let cursor = match query.after.as_deref() {
+        Some(c) => Some(decode_cursor(c).map_err(|_| PlatformError::validation("Invalid cursor"))?),
+        None => None,
+    };
+
+    let mut items = state.login_attempt_repo.find_with_cursor(
         query.attempt_type.as_deref(),
         query.outcome.as_deref(),
         query.identifier.as_deref(),
         query.principal_id.as_deref(),
         query.date_from.as_deref(),
         query.date_to.as_deref(),
-        limit,
-        offset,
-        query.sort_field.as_deref(),
-        query.sort_order.as_deref(),
+        cursor.as_ref(),
+        (size as i64) + 1,
     ).await?;
+
+    let has_more = items.len() > size;
+    if has_more { items.truncate(size); }
+    let next_cursor = if has_more {
+        items.last().map(|a| encode_cursor(a.attempted_at, &a.id))
+    } else {
+        None
+    };
 
     Ok(Json(LoginAttemptsListResponse {
         items: items.into_iter().map(|a| a.into()).collect(),
-        total,
-        page,
-        page_size,
+        has_more,
+        next_cursor,
     }))
 }
 

@@ -16,11 +16,15 @@ export interface LoginAttempt {
 	attemptedAt: string;
 }
 
+/**
+ * Cursor-paginated login attempts. Backend keysets on
+ * `(attemptedAt, id) DESC`; `iam_login_attempts` is unbounded so we never
+ * count.
+ */
 export interface LoginAttemptListResponse {
 	items: LoginAttempt[];
-	total: number;
-	page: number;
-	pageSize: number;
+	hasMore: boolean;
+	nextCursor?: string;
 }
 
 export interface LoginAttemptFilters {
@@ -30,14 +34,13 @@ export interface LoginAttemptFilters {
 	principalId?: string;
 	dateFrom?: string;
 	dateTo?: string;
-	page?: number;
+	/** Opaque cursor returned by a previous response. */
+	after?: string | undefined;
 	pageSize?: number;
-	sortField?: string;
-	sortOrder?: string;
 }
 
 /**
- * Fetch login attempts with optional filters and pagination.
+ * Fetch a page of login attempts (cursor-paginated).
  */
 export async function fetchLoginAttempts(
 	filters: LoginAttemptFilters = {},
@@ -49,11 +52,9 @@ export async function fetchLoginAttempts(
 	if (filters.principalId) params.set("principalId", filters.principalId);
 	if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
 	if (filters.dateTo) params.set("dateTo", filters.dateTo);
-	if (filters.page !== undefined) params.set("page", String(filters.page));
+	if (filters.after) params.set("after", filters.after);
 	if (filters.pageSize !== undefined)
 		params.set("pageSize", String(filters.pageSize));
-	if (filters.sortField) params.set("sortField", filters.sortField);
-	if (filters.sortOrder) params.set("sortOrder", filters.sortOrder);
 
 	const query = params.toString();
 	return apiFetch<LoginAttemptListResponse>(

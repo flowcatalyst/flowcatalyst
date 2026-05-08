@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useAuthStore } from "@/stores/auth";
+import PasskeysSection from "@/components/PasskeysSection.vue";
 
 const authStore = useAuthStore();
 </script>
@@ -53,6 +54,9 @@ const authStore = useAuthStore();
           </div>
         </div>
       </div>
+
+      <!-- Passkeys Card -->
+      <PasskeysSection />
 
       <!-- Security Card -->
       <div class="fc-card">

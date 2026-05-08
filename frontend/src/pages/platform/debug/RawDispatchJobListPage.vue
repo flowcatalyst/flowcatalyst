@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { useListState } from "@/composables/useListState";
 import { bffFetch } from "@/api/client";
+import { useCursorPagination } from "@/composables/useCursorPagination";
 
 interface RawDispatchJob {
 	id: string;
@@ -37,39 +37,28 @@ interface RawDispatchJob {
 	attemptHistoryCount: number;
 }
 
-const dispatchJobs = ref<RawDispatchJob[]>([]);
-const loading = ref(true);
-const totalRecords = ref(0);
+const pageSize = 20;
 
-const { page, pageSize, onPage } = useListState(
-	{ filters: {}, pageSize: 20 },
-	() => loadDispatchJobs(),
-);
+const cursor = useCursorPagination<RawDispatchJob>({
+	fetchPage: async (after) => {
+		const qs = new URLSearchParams();
+		qs.set("size", String(pageSize));
+		if (after) qs.set("after", after);
+		return bffFetch<{ items: RawDispatchJob[]; hasMore: boolean; nextCursor?: string }>(
+			`/debug/dispatch-jobs?${qs}`,
+		);
+	},
+});
+const dispatchJobs = cursor.items;
+const loading = cursor.loading;
 
 // Detail dialog
 const selectedJob = ref<RawDispatchJob | null>(null);
 const showDetailDialog = ref(false);
 
 onMounted(async () => {
-	await loadDispatchJobs();
+	await cursor.loadFirst();
 });
-
-async function loadDispatchJobs() {
-	loading.value = true;
-	try {
-		const data = await bffFetch<{ items: RawDispatchJob[]; page: number; size: number }>(
-			`/debug/dispatch-jobs?page=${page.value}&size=${pageSize.value}`,
-		);
-		dispatchJobs.value = data.items || [];
-		totalRecords.value = data.items.length < pageSize.value
-			? page.value * pageSize.value + data.items.length
-			: (page.value + 2) * pageSize.value;
-	} catch (error) {
-		console.error("Failed to load raw dispatch jobs:", error);
-	} finally {
-		loading.value = false;
-	}
-}
 
 async function viewJobDetail(job: RawDispatchJob) {
 	selectedJob.value = job;
@@ -139,7 +128,7 @@ function formatAttempts(job: RawDispatchJob): string {
 
     <div class="fc-card">
       <div class="toolbar">
-        <Button icon="pi pi-refresh" text rounded @click="loadDispatchJobs" v-tooltip="'Refresh'" />
+        <Button icon="pi pi-refresh" text rounded @click="cursor.refresh" v-tooltip="'Refresh'" />
         <span class="text-muted ml-2">
           Showing raw dispatch jobs (no filtering - queries would be slow on this collection)
         </span>
@@ -148,13 +137,6 @@ function formatAttempts(job: RawDispatchJob): string {
       <DataTable
         :value="dispatchJobs"
         :loading="loading"
-        :lazy="true"
-        :paginator="true"
-        :first="page * pageSize"
-        :rows="pageSize"
-        :totalRecords="totalRecords"
-        :rowsPerPageOptions="[10, 20, 50]"
-        @page="onPage"
         stripedRows
         emptyMessage="No dispatch jobs found"
         tableStyle="min-width: 60rem"
@@ -211,6 +193,26 @@ function formatAttempts(job: RawDispatchJob): string {
           </template>
         </Column>
       </DataTable>
+
+      <!-- Cursor pager. msg_dispatch_jobs is unbounded; we never count. -->
+      <div class="cursor-pager">
+        <Button
+          icon="pi pi-angle-left"
+          label="Newer"
+          text
+          :disabled="!cursor.hasPrev.value || cursor.loading.value"
+          @click="cursor.loadPrev"
+        />
+        <span class="page-indicator">Page {{ cursor.page.value }}</span>
+        <Button
+          icon="pi pi-angle-right"
+          iconPos="right"
+          label="Older"
+          text
+          :disabled="!cursor.hasMore.value || cursor.loading.value"
+          @click="cursor.loadNext"
+        />
+      </div>
     </div>
 
     <!-- Job Detail Dialog -->
@@ -311,6 +313,21 @@ function formatAttempts(job: RawDispatchJob): string {
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 16px;
+}
+
+.cursor-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.75rem 0 0.25rem;
+}
+
+.page-indicator {
+  font-size: 0.875rem;
+  color: var(--text-color-secondary);
+  min-width: 4.5rem;
+  text-align: center;
 }
 
 .font-mono {

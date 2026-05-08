@@ -179,23 +179,34 @@ pub const CODE_DEFINED_ROLES: &[&RoleDefinition] = &[
     &PLATFORM_VIEWER,
 ];
 
+/// Counts returned from `sync_code_defined_roles` so callers (the BFF
+/// sync-platform endpoint, dev seeding) can surface the diff back to the user.
+#[derive(Debug, Clone, Copy, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleSyncCounts {
+    pub created: u32,
+    pub updated: u32,
+    pub removed: u32,
+    pub total: u32,
+}
+
 /// Role Sync Service
 pub struct RoleSyncService {
-    role_repo: RoleRepository,
+    role_repo: std::sync::Arc<RoleRepository>,
 }
 
 impl RoleSyncService {
-    pub fn new(role_repo: RoleRepository) -> Self {
+    pub fn new(role_repo: std::sync::Arc<RoleRepository>) -> Self {
         Self { role_repo }
     }
 
     /// Sync all code-defined roles to the database.
-    /// Call this at application startup.
-    pub async fn sync_code_defined_roles(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    /// Call this at application startup or via the BFF sync-platform endpoint.
+    pub async fn sync_code_defined_roles(&self) -> Result<RoleSyncCounts, Box<dyn std::error::Error + Send + Sync>> {
         info!("Syncing code-defined roles to database...");
 
-        let mut created = 0;
-        let mut updated = 0;
+        let mut created = 0u32;
+        let mut updated = 0u32;
 
         for role_def in CODE_DEFINED_ROLES {
             let role_name = role_def.full_name();
@@ -233,14 +244,19 @@ impl RoleSyncService {
         }
 
         // Remove stale CODE roles
-        let removed = self.remove_stale_code_roles().await?;
+        let removed = self.remove_stale_code_roles().await? as u32;
 
         info!(
             "Code role sync complete: {} created, {} updated, {} removed",
             created, updated, removed
         );
 
-        Ok(())
+        Ok(RoleSyncCounts {
+            created,
+            updated,
+            removed,
+            total: CODE_DEFINED_ROLES.len() as u32,
+        })
     }
 
     /// Remove CODE-sourced roles from the database that no longer exist in code.

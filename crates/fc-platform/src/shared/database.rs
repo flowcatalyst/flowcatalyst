@@ -242,6 +242,14 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
         include_str!("../../../../migrations/013_drop_connection_endpoint.sql"),
         include_str!("../../../../migrations/014_widen_attempt_type.sql"),
         include_str!("../../../../migrations/015_dispatch_jobs_write_indexes.sql"),
+        include_str!("../../../../migrations/016_clean_orphaned_role_assignments.sql"),
+        include_str!("../../../../migrations/017_dispatch_pool_rate_limit_nullable.sql"),
+        // 018 reshapes the messaging tables into the partitioning-ready
+        // schema (composite PKs, fanned_out_at, read-table created_at). Runs
+        // on every profile — embedded gets the new shape on regular tables;
+        // production gets it as a precursor to 019's partition DDL.
+        include_str!("../../../../migrations/018_partition_prep.sql"),
+        include_str!("../../../../migrations/020_webauthn_credentials.sql"),
     ];
 
     for (i, sql) in core_migrations.iter().enumerate() {
@@ -252,7 +260,7 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
     // Production-only migrations.
     if profile == MigrationProfile::Production {
         let production_migrations = [
-            ("018_partition_messaging_tables", include_str!("../../../../migrations/018_partition_messaging_tables.sql")),
+            ("019_partition_messaging_tables", include_str!("../../../../migrations/019_partition_messaging_tables.sql")),
         ];
         for (name, sql) in production_migrations.iter() {
             apply_migration(pool, sql).await?;

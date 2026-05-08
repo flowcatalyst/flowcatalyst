@@ -85,14 +85,15 @@ impl From<AuditLog> for AuditLogDetailResponse {
     }
 }
 
-/// Audit logs list response (matches Java AuditLogListResponse)
+/// Cursor-paginated audit logs response. `aud_logs` grows unbounded, so we
+/// keyset-paginate on `(performed_at, id) DESC` and never count.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AuditLogListResponse {
     pub audit_logs: Vec<AuditLogResponse>,
-    pub total: i64,
-    pub page: i32,
-    pub page_size: i32,
+    pub has_more: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 /// Entity types response
@@ -133,16 +134,16 @@ pub struct EntityAuditLogsResponse {
     pub entity_id: String,
 }
 
-/// Query parameters for audit logs (matches Java query params)
+/// Query parameters for audit logs. Cursor-paginated.
 #[derive(Debug, Default, Deserialize, IntoParams)]
 #[serde(rename_all = "camelCase")]
 #[into_params(parameter_in = Query)]
 pub struct AuditLogsQuery {
-    /// Page number (0-based, matches Java)
-    #[serde(default)]
-    pub page: i32,
+    /// Opaque cursor returned by a previous page's `nextCursor`. Omit for
+    /// the first page.
+    pub after: Option<String>,
 
-    /// Page size (default 50)
+    /// Page size (default 50, capped at 200).
     #[serde(default = "default_page_size")]
     pub page_size: i32,
 
@@ -301,41 +302,41 @@ pub async fn list_audit_logs(
     auth: Authenticated,
     Query(query): Query<AuditLogsQuery>,
 ) -> Result<Json<AuditLogListResponse>, PlatformError> {
+    use crate::shared::api_common::{decode_cursor, encode_cursor};
+
     crate::checks::require_anchor(&auth.0)?;
 
-    let page = query.page;
-    let page_size = query.page_size;
-    let limit = page_size as i64;
-    let offset = (page as i64) * (page_size as i64);
+    let size = query.page_size.clamp(1, 200) as usize;
+    let cursor = match query.after.as_deref() {
+        Some(c) => Some(decode_cursor(c).map_err(|_| PlatformError::validation("Invalid cursor"))?),
+        None => None,
+    };
 
-    let mut logs = state.audit_log_repo.search(
+    let mut logs = state.audit_log_repo.search_with_cursor(
         query.entity_type.as_deref(),
         query.entity_id.as_deref(),
         query.operation.as_deref(),
         query.principal_id.as_deref(),
-        limit,
-        offset,
+        cursor.as_ref(),
+        (size as i64) + 1,
     ).await?;
 
-    // Get total count for pagination
-    let total = state.audit_log_repo.count_with_filters(
-        query.entity_type.as_deref(),
-        query.entity_id.as_deref(),
-        query.operation.as_deref(),
-        query.principal_id.as_deref(),
-    ).await?;
+    let has_more = logs.len() > size;
+    if has_more { logs.truncate(size); }
+    let next_cursor = if has_more {
+        logs.last().map(|l| encode_cursor(l.performed_at, &l.id))
+    } else {
+        None
+    };
 
     enrich_principal_names(&mut logs, &state.principal_repo).await;
 
-    let audit_logs: Vec<AuditLogResponse> = logs.into_iter()
-        .map(|l| l.into())
-        .collect();
+    let audit_logs: Vec<AuditLogResponse> = logs.into_iter().map(|l| l.into()).collect();
 
     Ok(Json(AuditLogListResponse {
         audit_logs,
-        total,
-        page,
-        page_size,
+        has_more,
+        next_cursor,
     }))
 }
 

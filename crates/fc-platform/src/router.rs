@@ -11,9 +11,9 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::api::{
     // OpenApiRouter routes
-    events_router, admin_events_router, EventsState,
+    events_router, events_api_router, EventsState,
     event_types_router, EventTypesState,
-    dispatch_jobs_router, DispatchJobsState,
+    dispatch_jobs_router, dispatch_jobs_api_router, DispatchJobsState,
     filter_options_router, FilterOptionsState,
     clients_router, ClientsState,
     principals_router, PrincipalsState,
@@ -26,6 +26,7 @@ use crate::api::{
     // Plain Router routes
     bff_roles_router, BffRolesState,
     bff_event_types_router, BffEventTypesState,
+    bff_dashboard_router, BffDashboardState,
     debug_events_router, debug_dispatch_jobs_router, DebugState,
     anchor_domains_router, client_auth_configs_router, idp_role_mappings_router, AuthConfigState,
     applications_router, ApplicationsState,
@@ -53,6 +54,9 @@ use crate::api::{
     password_reset_router, PasswordResetApiState,
     dispatch_process_router, DispatchProcessState,
 };
+use crate::shared::rate_limit_middleware::{
+    rate_limit_per_ip, IpRateLimiterState, RateLimitConfig,
+};
 use crate::usecase::UnitOfWork;
 
 // =============================================================================
@@ -65,6 +69,7 @@ pub const PATH_BFF_DISPATCH_JOBS: &str = "/bff/dispatch-jobs";
 pub const PATH_BFF_FILTER_OPTIONS: &str = "/bff/filter-options";
 pub const PATH_BFF_ROLES: &str = "/bff/roles";
 pub const PATH_BFF_EVENT_TYPES: &str = "/bff/event-types";
+pub const PATH_BFF_DASHBOARD: &str = "/bff/dashboard";
 pub const PATH_BFF_DEBUG_EVENTS: &str = "/bff/debug/events";
 pub const PATH_BFF_DEBUG_DISPATCH_JOBS: &str = "/bff/debug/dispatch-jobs";
 
@@ -154,6 +159,7 @@ pub struct PlatformRoutes<U: UnitOfWork + Clone + 'static> {
     // -- Plain Router routes (NOT in Swagger) --
     pub bff_roles: BffRolesState,
     pub bff_event_types: BffEventTypesState,
+    pub bff_dashboard: BffDashboardState,
     pub debug: DebugState,
     pub auth_config: AuthConfigState,
     pub applications: ApplicationsState<U>,
@@ -178,6 +184,7 @@ pub struct PlatformRoutes<U: UnitOfWork + Clone + 'static> {
     pub sdk_audit_batch: SdkAuditBatchState,
     pub public: PublicApiState,
     pub password_reset: PasswordResetApiState,
+    pub webauthn: crate::webauthn::WebauthnApiState,
     /// Optional — dispatch processing endpoint state. None when dispatch processing
     /// is not needed (e.g., tests or standalone platform server without router).
     pub dispatch_process: Option<DispatchProcessState>,
@@ -196,11 +203,38 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
     /// Swagger UI, and SPA serving (if `static_dir` is set).
     /// It does **not** include auth middleware, CORS, or tracing layers.
     pub fn build(self) -> (Router, utoipa::openapi::OpenApi) {
+        // Per-IP rate limiters: separate buckets so a high-volume OAuth
+        // client doesn't starve the auth login flow (and vice versa). The
+        // limits compose with — they don't replace — the per-account
+        // backoff in `auth::login_backoff`.
+        let auth_ip_limit = IpRateLimiterState::new(&RateLimitConfig::auth_default_from_env());
+        let oauth_ip_limit = IpRateLimiterState::new(&RateLimitConfig::oauth_token_default_from_env());
+        let auth_layer = axum::middleware::from_fn_with_state(
+            auth_ip_limit, rate_limit_per_ip,
+        );
+        let oauth_layer = axum::middleware::from_fn_with_state(
+            oauth_ip_limit, rate_limit_per_ip,
+        );
+
         // 1. OpenApiRouter routes (auto-collected in Swagger spec)
         let (router, mut openapi) = OpenApiRouter::new()
-            .nest(PATH_API_EVENTS, admin_events_router(self.events.clone()).into())
+            // Same cursor-paginated read handlers serve both /api/events
+            // (bearer-auth, SDK consumers) and /bff/events (cookie-auth,
+            // SPA). The previous `admin_events_router` wrapped a duplicate
+            // offset+COUNT(*) path on the same `msg_events_read`; gone now.
+            //
+            // `events_api_router` excludes `batch_create_events` — SDK
+            // callers use the bulk-insert `sdk_events_batch_router::POST
+            // /batch` mounted further down at the same prefix. The two must
+            // not both register POST /batch (axum panics on overlap).
+            .nest(PATH_API_EVENTS, events_api_router(self.events.clone()))
             .nest(PATH_BFF_EVENTS, events_router(self.events))
             .nest(PATH_API_EVENT_TYPES, event_types_router(self.event_types))
+            // Cursor-paginated read handlers serve both API + BFF tiers.
+            // The API tier excludes `batch_create_dispatch_jobs` so it
+            // doesn't collide with `sdk_dispatch_jobs_batch_router::POST
+            // /batch` mounted at the same prefix below.
+            .nest(PATH_API_DISPATCH_JOBS, dispatch_jobs_api_router(self.dispatch_jobs.clone()))
             .nest(PATH_BFF_DISPATCH_JOBS, dispatch_jobs_router(self.dispatch_jobs))
             .nest(PATH_BFF_FILTER_OPTIONS, filter_options_router(self.filter_options))
             .nest(PATH_API_CLIENTS, clients_router(self.clients))
@@ -210,7 +244,8 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
             .nest(PATH_API_OAUTH_CLIENTS, oauth_clients_router(self.oauth_clients))
             .nest(PATH_API_AUDIT_LOGS, audit_logs_router(self.audit_logs))
             .nest(PATH_MONITORING, monitoring_router(self.monitoring))
-            .nest(PATH_AUTH, auth_router(self.auth))
+            .nest(PATH_AUTH, auth_router(self.auth).layer(auth_layer.clone()))
+            .nest(PATH_AUTH, crate::webauthn::webauthn_router(self.webauthn).layer(auth_layer.clone()))
             .split_for_parts();
 
         // 2. Hand-curated schemas for types referenced via #[serde(flatten)] or
@@ -277,6 +312,7 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
             // BFF
             .nest(PATH_BFF_ROLES, bff_roles_router(self.bff_roles).into())
             .nest(PATH_BFF_EVENT_TYPES, bff_event_types_router(self.bff_event_types).into())
+            .nest(PATH_BFF_DASHBOARD, bff_dashboard_router(self.bff_dashboard))
             .nest(PATH_BFF_DEBUG_EVENTS, debug_events_router(self.debug.clone()))
             .nest(PATH_BFF_DEBUG_DISPATCH_JOBS, debug_dispatch_jobs_router(self.debug))
             // API — auth config
@@ -296,11 +332,11 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
             .nest(PATH_API_LOGIN_ATTEMPTS, login_attempts_router(self.login_attempts))
             // Auth
             .nest(PATH_API_ME, me_router(self.me))
-            .nest(PATH_AUTH, oidc_login_router(self.oidc_login))
-            .nest(PATH_OAUTH, oauth_router(self.oauth))
+            .nest(PATH_AUTH, oidc_login_router(self.oidc_login).layer(auth_layer.clone()))
+            .nest(PATH_OAUTH, oauth_router(self.oauth).layer(oauth_layer.clone()))
             .nest(PATH_WELL_KNOWN, well_known_router(self.well_known))
-            .nest(PATH_AUTH_CLIENT, client_selection_router(self.client_selection))
-            .nest(PATH_AUTH_PASSWORD_RESET, password_reset_router(self.password_reset))
+            .nest(PATH_AUTH_CLIENT, client_selection_router(self.client_selection).layer(auth_layer.clone()))
+            .nest(PATH_AUTH_PASSWORD_RESET, password_reset_router(self.password_reset).layer(auth_layer.clone()))
             // Batch ingest endpoints (merged into resource routers)
             .nest(PATH_API_EVENTS, sdk_events_batch_router(self.sdk_events))
             .nest(PATH_API_DISPATCH_JOBS, sdk_dispatch_jobs_batch_router(self.sdk_dispatch_jobs))

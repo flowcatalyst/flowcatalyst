@@ -410,7 +410,7 @@ async fn main() -> Result<()> {
     // Sync code-defined roles to database
     {
         let role_sync = fc_platform::service::RoleSyncService::new(
-            RoleRepository::new(&pg_pool)
+            Arc::new(RoleRepository::new(&pg_pool))
         );
         if let Err(e) = role_sync.sync_code_defined_roles().await {
             tracing::warn!("Role sync failed: {}", e);
@@ -516,6 +516,8 @@ async fn main() -> Result<()> {
         &unit_of_work,
         fc_platform::shared::server_setup::PlatformRoutesConfig {
             session_cookie_secure: false,
+            session_cookie_same_site: fc_platform::shared::server_setup::PlatformRoutesConfig::DEFAULT_SAME_SITE.to_string(),
+            session_token_expiry_secs: fc_platform::shared::server_setup::PlatformRoutesConfig::DEFAULT_SESSION_EXPIRY_SECS,
             static_dir: None, // fc-dev handles SPA serving itself (embedded or FC_STATIC_DIR)
             oidc_login_external_base_url: Some(
                 std::env::var("FC_EXTERNAL_BASE_URL")

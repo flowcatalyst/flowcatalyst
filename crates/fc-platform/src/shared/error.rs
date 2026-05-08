@@ -76,6 +76,9 @@ pub enum PlatformError {
 
     #[error("Internal error: {message}")]
     Internal { message: String },
+
+    #[error("{message}")]
+    TooManyRequests { retry_after_secs: u32, message: String },
 }
 
 impl PlatformError {
@@ -180,11 +183,25 @@ impl IntoResponse for PlatformError {
             PlatformError::PrincipalNotFound { .. } => (StatusCode::NOT_FOUND, "PRINCIPAL_NOT_FOUND".to_string()),
             PlatformError::ServiceAccountNotFound { .. } => (StatusCode::NOT_FOUND, "SERVICE_ACCOUNT_NOT_FOUND".to_string()),
             PlatformError::Sqlx(_) => (StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR".to_string()),
+            PlatformError::TooManyRequests { .. } => (StatusCode::TOO_MANY_REQUESTS, "TOO_MANY_REQUESTS".to_string()),
             _ => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR".to_string()),
         };
 
         if status == StatusCode::INTERNAL_SERVER_ERROR {
             tracing::error!(error = %self, "Internal server error");
+        }
+
+        // 429 carries Retry-After per RFC 6585 / 7231.
+        if let PlatformError::TooManyRequests { retry_after_secs, .. } = &self {
+            let body = ErrorResponse {
+                error: error_code,
+                message: self.to_string(),
+            };
+            return (
+                status,
+                [(axum::http::header::RETRY_AFTER, retry_after_secs.to_string())],
+                Json(body),
+            ).into_response();
         }
 
         let body = ErrorResponse {

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { useListState } from "@/composables/useListState";
+import { ref } from "vue";
+import { onMounted } from "vue";
 import { bffFetch } from "@/api/client";
+import { useCursorPagination } from "@/composables/useCursorPagination";
 
 interface RawEvent {
 	id: string;
@@ -19,39 +20,28 @@ interface RawEvent {
 	clientId?: string;
 }
 
-const events = ref<RawEvent[]>([]);
-const loading = ref(true);
-const totalRecords = ref(0);
+const pageSize = 20;
 
-const { page, pageSize, onPage } = useListState(
-	{ filters: {}, pageSize: 20 },
-	() => loadEvents(),
-);
+const cursor = useCursorPagination<RawEvent>({
+	fetchPage: async (after) => {
+		const qs = new URLSearchParams();
+		qs.set("size", String(pageSize));
+		if (after) qs.set("after", after);
+		return bffFetch<{ items: RawEvent[]; hasMore: boolean; nextCursor?: string }>(
+			`/debug/events?${qs}`,
+		);
+	},
+});
+const events = cursor.items;
+const loading = cursor.loading;
 
 // Detail dialog
 const selectedEvent = ref<RawEvent | null>(null);
 const showDetailDialog = ref(false);
 
 onMounted(async () => {
-	await loadEvents();
+	await cursor.loadFirst();
 });
-
-async function loadEvents() {
-	loading.value = true;
-	try {
-		const data = await bffFetch<{ items: RawEvent[]; page: number; size: number }>(
-			`/debug/events?page=${page.value}&size=${pageSize.value}`,
-		);
-		events.value = data.items || [];
-		totalRecords.value = data.items.length < pageSize.value
-			? page.value * pageSize.value + data.items.length
-			: (page.value + 2) * pageSize.value;
-	} catch (error) {
-		console.error("Failed to load raw events:", error);
-	} finally {
-		loading.value = false;
-	}
-}
 
 async function viewEventDetail(event: RawEvent) {
 	showDetailDialog.value = true;
@@ -104,7 +94,7 @@ function truncateId(id: string): string {
 
     <div class="fc-card">
       <div class="toolbar">
-        <Button icon="pi pi-refresh" text rounded @click="loadEvents" v-tooltip="'Refresh'" />
+        <Button icon="pi pi-refresh" text rounded @click="cursor.refresh" v-tooltip="'Refresh'" />
         <span class="text-muted ml-2">
           Showing raw events (no filtering - queries would be slow on this collection)
         </span>
@@ -113,13 +103,6 @@ function truncateId(id: string): string {
       <DataTable
         :value="events"
         :loading="loading"
-        :lazy="true"
-        :paginator="true"
-        :first="page * pageSize"
-        :rows="pageSize"
-        :totalRecords="totalRecords"
-        :rowsPerPageOptions="[10, 20, 50]"
-        @page="onPage"
         stripedRows
         resizableColumns
         columnResizeMode="expand"
@@ -164,6 +147,26 @@ function truncateId(id: string): string {
           </template>
         </Column>
       </DataTable>
+
+      <!-- Cursor pager. msg_events is unbounded; we never count. -->
+      <div class="cursor-pager">
+        <Button
+          icon="pi pi-angle-left"
+          label="Newer"
+          text
+          :disabled="!cursor.hasPrev.value || cursor.loading.value"
+          @click="cursor.loadPrev"
+        />
+        <span class="page-indicator">Page {{ cursor.page.value }}</span>
+        <Button
+          icon="pi pi-angle-right"
+          iconPos="right"
+          label="Older"
+          text
+          :disabled="!cursor.hasMore.value || cursor.loading.value"
+          @click="cursor.loadNext"
+        />
+      </div>
     </div>
 
     <!-- Event Detail Dialog -->
@@ -238,6 +241,21 @@ function truncateId(id: string): string {
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 16px;
+}
+
+.cursor-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.75rem 0 0.25rem;
+}
+
+.page-indicator {
+  font-size: 0.875rem;
+  color: var(--text-color-secondary);
+  min-width: 4.5rem;
+  text-align: center;
 }
 
 .font-mono {

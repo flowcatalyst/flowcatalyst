@@ -1,40 +1,48 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { useListState } from "@/composables/useListState";
 import ClientFilter from "@/components/ClientFilter.vue";
+import { useCursorPagination } from "@/composables/useCursorPagination";
 import {
-	getApiAdminDispatchJobs,
-	getApiAdminDispatchJobsFilterOptions,
-	type DispatchJobReadResponse as DispatchJob,
-} from "@/api/generated";
+	dispatchJobsApi,
+	type DispatchJobRead as DispatchJob,
+	type DispatchJobsListParams,
+} from "@/api/dispatch-jobs";
 
 interface FilterOption {
 	label: string;
 	value: string;
 }
 
-const dispatchJobs = ref<DispatchJob[]>([]);
-const loading = ref(true);
-const totalRecords = ref(0);
+const filters = {
+	clients: ref<string[]>([]),
+	applications: ref<string[]>([]),
+	subdomains: ref<string[]>([]),
+	aggregates: ref<string[]>([]),
+	codes: ref<string[]>([]),
+	statuses: ref<string[]>([]),
+	search: ref<string>(""),
+};
+const pageSize = ref(100);
 
-const { filters, page, pageSize, sortField, sortOrder, onPage, onSort } =
-	useListState(
-		{
-			filters: {
-				clients: { type: "array", key: "clients" },
-				applications: { type: "array", key: "apps" },
-				subdomains: { type: "array", key: "subs" },
-				aggregates: { type: "array", key: "aggs" },
-				codes: { type: "array", key: "codes" },
-				statuses: { type: "array", key: "statuses" },
-				search: { type: "string", key: "q" },
-			},
-			pageSize: 100,
-			sortField: "createdAt",
-			sortOrder: "desc",
-		},
-		() => loadDispatchJobs(),
-	);
+function buildParams(after: string | undefined): DispatchJobsListParams {
+	return {
+		after,
+		size: pageSize.value,
+		clientIds: filters.clients.value.length ? filters.clients.value : undefined,
+		statuses: filters.statuses.value.length ? filters.statuses.value : undefined,
+		applications: filters.applications.value.length ? filters.applications.value : undefined,
+		subdomains: filters.subdomains.value.length ? filters.subdomains.value : undefined,
+		aggregates: filters.aggregates.value.length ? filters.aggregates.value : undefined,
+		codes: filters.codes.value.length ? filters.codes.value : undefined,
+		source: filters.search.value || undefined,
+	};
+}
+
+const cursor = useCursorPagination<DispatchJob>({
+	fetchPage: (after) => dispatchJobsApi.list(buildParams(after)),
+});
+const dispatchJobs = cursor.items;
+const loading = cursor.loading;
 
 // Filter options
 const applicationOptions = ref<FilterOption[]>([]);
@@ -48,70 +56,19 @@ const isUpdating = ref(false);
 
 onMounted(async () => {
 	await loadFilterOptions();
-	await loadDispatchJobs();
+	await cursor.loadFirst();
 });
 
 async function loadFilterOptions() {
 	try {
-		const response = await getApiAdminDispatchJobsFilterOptions();
-		const data = response.data;
-		if (data) {
-			applicationOptions.value = (data.applications || []) as FilterOption[];
-			subdomainOptions.value = (data.subdomains || []) as FilterOption[];
-			aggregateOptions.value = (data.aggregates || []) as FilterOption[];
-			codeOptions.value = (data.codes || []) as FilterOption[];
-			statusOptions.value = (data.statuses || []) as FilterOption[];
-		}
+		const data = await dispatchJobsApi.filterOptions();
+		applicationOptions.value = data.applications || [];
+		subdomainOptions.value = data.subdomains || [];
+		aggregateOptions.value = data.aggregates || [];
+		codeOptions.value = data.codes || [];
+		statusOptions.value = data.statuses || [];
 	} catch (error) {
 		console.error("Failed to load filter options:", error);
-	}
-}
-
-async function loadDispatchJobs() {
-	loading.value = true;
-	try {
-		const response = await getApiAdminDispatchJobs({
-			query: {
-				page: page.value,
-				size: pageSize.value,
-				sortField: sortField.value || undefined,
-				sortOrder: sortOrder.value || undefined,
-				clientIds:
-					filters.clients.value.length > 0
-						? filters.clients.value.join(",")
-						: undefined,
-				statuses:
-					filters.statuses.value.length > 0
-						? filters.statuses.value.join(",")
-						: undefined,
-				applications:
-					filters.applications.value.length > 0
-						? filters.applications.value.join(",")
-						: undefined,
-				subdomains:
-					filters.subdomains.value.length > 0
-						? filters.subdomains.value.join(",")
-						: undefined,
-				aggregates:
-					filters.aggregates.value.length > 0
-						? filters.aggregates.value.join(",")
-						: undefined,
-				codes:
-					filters.codes.value.length > 0
-						? filters.codes.value.join(",")
-						: undefined,
-				source: filters.search.value || undefined,
-			},
-		});
-		const data = response.data;
-		if (data) {
-			dispatchJobs.value = data.items;
-			totalRecords.value = data.totalItems || 0;
-		}
-	} catch (error) {
-		console.error("Failed to load dispatch jobs:", error);
-	} finally {
-		loading.value = false;
 	}
 }
 
@@ -142,22 +99,19 @@ async function onFilterChange(
 			filters.codes.value = [];
 		}
 
-		page.value = 0;
 		await loadFilterOptions();
-		await loadDispatchJobs();
+		await cursor.reset();
 	} finally {
 		isUpdating.value = false;
 	}
 }
 
 async function onStatusChange() {
-	page.value = 0;
-	await loadDispatchJobs();
+	await cursor.reset();
 }
 
 async function onSearchChange() {
-	page.value = 0;
-	await loadDispatchJobs();
+	await cursor.reset();
 }
 
 function getSeverity(
@@ -218,7 +172,7 @@ function formatDate(dateStr: string | undefined): string {
 }
 
 function formatAttempts(job: DispatchJob): string {
-	return `${job.attemptCount || 0}/${job.maxRetries || 3}`;
+	return `${job.attemptCount || 0}/${(job["maxRetries"] as number | undefined) || 3}`;
 }
 
 function formatCode(code: string | undefined): {
@@ -314,7 +268,7 @@ function formatCode(code: string | undefined): {
             icon="pi pi-refresh"
             text
             rounded
-            @click="loadDispatchJobs"
+            @click="cursor.refresh"
             v-tooltip="'Refresh'"
           />
         </div>
@@ -323,14 +277,6 @@ function formatCode(code: string | undefined): {
       <DataTable
         :value="dispatchJobs"
         :loading="loading"
-        :lazy="true"
-        :paginator="true"
-        :first="page * pageSize"
-        :rows="pageSize"
-        :totalRecords="totalRecords"
-        :rowsPerPageOptions="[50, 100, 250, 500]"
-        @page="onPage"
-        @sort="onSort"
         stripedRows
         emptyMessage="No dispatch jobs found"
         tableStyle="min-width: 60rem"
@@ -353,8 +299,8 @@ function formatCode(code: string | undefined): {
             </span>
           </template>
         </Column>
-        <Column field="source" header="Source" sortable />
-        <Column field="status" header="Status" sortable style="width: 8rem">
+        <Column field="source" header="Source" />
+        <Column field="status" header="Status" style="width: 8rem">
           <template #body="{ data }">
             <Tag :value="data.status" :severity="getSeverity(data.status)" />
           </template>
@@ -376,7 +322,7 @@ function formatCode(code: string | undefined): {
             </span>
           </template>
         </Column>
-        <Column field="createdAt" header="Created" sortable style="width: 10rem">
+        <Column field="createdAt" header="Created" style="width: 10rem">
           <template #body="{ data }">
             <span class="text-sm">{{ formatDate(data.createdAt) }}</span>
           </template>
@@ -397,11 +343,47 @@ function formatCode(code: string | undefined): {
           </template>
         </Column>
       </DataTable>
+
+      <!-- Cursor pager. msg_dispatch_jobs is unbounded so we keyset rather
+           than count. ← Newer / Older → for in-session navigation. -->
+      <div class="cursor-pager">
+        <Button
+          icon="pi pi-angle-left"
+          label="Newer"
+          text
+          :disabled="!cursor.hasPrev.value || cursor.loading.value"
+          @click="cursor.loadPrev"
+        />
+        <span class="page-indicator">Page {{ cursor.page.value }}</span>
+        <Button
+          icon="pi pi-angle-right"
+          iconPos="right"
+          label="Older"
+          text
+          :disabled="!cursor.hasMore.value || cursor.loading.value"
+          @click="cursor.loadNext"
+        />
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.cursor-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.75rem 0 0.25rem;
+}
+
+.page-indicator {
+  font-size: 0.875rem;
+  color: var(--text-color-secondary);
+  min-width: 4.5rem;
+  text-align: center;
+}
+
 .toolbar {
   display: flex;
   flex-direction: column;

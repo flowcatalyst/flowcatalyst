@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed, watch } from "vue";
 import {
 	fetchAuditLogs,
 	fetchAuditLogById,
@@ -10,7 +10,7 @@ import {
 	type AuditLogDetail,
 } from "@/api/audit-logs";
 import { applicationsApi } from "@/api/applications";
-import { useListState } from "@/composables/useListState";
+import { useCursorPagination } from "@/composables/useCursorPagination";
 import { useClientOptions } from "@/composables/useClientOptions";
 import ClientFilter from "@/components/ClientFilter.vue";
 
@@ -19,33 +19,54 @@ interface Option {
 	value: string;
 }
 
-const auditLogs = ref<AuditLog[]>([]);
-const totalRecords = ref(0);
-const loading = ref(false);
-const initialLoading = ref(true);
-
 // Filter option lists
 const entityTypes = ref<string[]>([]);
 const operations = ref<string[]>([]);
 const applicationOptions = ref<Option[]>([]);
 const { ensureLoaded: ensureClients, getLabel: getClientLabel } = useClientOptions();
 
-const { filters, page, pageSize, sortField, sortOrder, hasActiveFilters, clearFilters: doClearFilters, onPage, onSort } =
-	useListState(
-		{
-			filters: {
-				entityType:      { type: "string", key: "entityType" },
-				operation:       { type: "string", key: "operation" },
-				applicationIds:  { type: "array",  key: "appIds" },
-				clientIds:       { type: "array",  key: "clientIds" },
-			},
-			pageSize: 100,
-			sortField: "performedAt",
-			sortOrder: "desc",
-			debounce: 0,
-		},
-		() => loadAuditLogs(),
-	);
+// Filters live as plain refs — cursor invalidates on filter change.
+const filters = {
+	entityType: ref<string>(""),
+	operation: ref<string>(""),
+	applicationIds: ref<string[]>([]),
+	clientIds: ref<string[]>([]),
+};
+const pageSize = ref(100);
+
+const hasActiveFilters = computed(() =>
+	Boolean(
+		filters.entityType.value ||
+			filters.operation.value ||
+			filters.applicationIds.value.length ||
+			filters.clientIds.value.length,
+	),
+);
+
+const cursor = useCursorPagination<AuditLog>({
+	fetchPage: async (after) => {
+		const r = await fetchAuditLogs({
+			entityType: filters.entityType.value || undefined,
+			operation: filters.operation.value || undefined,
+			applicationIds: filters.applicationIds.value.length
+				? filters.applicationIds.value
+				: undefined,
+			clientIds: filters.clientIds.value.length
+				? filters.clientIds.value
+				: undefined,
+			after,
+			pageSize: pageSize.value,
+		});
+		return {
+			items: r.auditLogs,
+			hasMore: r.hasMore,
+			...(r.nextCursor !== undefined ? { nextCursor: r.nextCursor } : {}),
+		};
+	},
+});
+const auditLogs = cursor.items;
+const loading = cursor.loading;
+const initialLoading = ref(true);
 
 // Detail dialog
 const selectedLog = ref<AuditLogDetail | null>(null);
@@ -76,32 +97,17 @@ async function loadFilters() {
 	}
 }
 
-async function loadAuditLogs() {
-	loading.value = true;
-	try {
-		const response = await fetchAuditLogs({
-			entityType: filters.entityType.value || undefined,
-			operation: filters.operation.value || undefined,
-			applicationIds: filters.applicationIds.value.length
-				? filters.applicationIds.value
-				: undefined,
-			clientIds: filters.clientIds.value.length
-				? filters.clientIds.value
-				: undefined,
-			page: page.value,
-			pageSize: pageSize.value,
-			sortField: sortField.value,
-			sortOrder: sortOrder.value,
-		});
-		auditLogs.value = response.auditLogs;
-		totalRecords.value = response.total;
-	} catch (error) {
-		console.error("Failed to load audit logs:", error);
-	} finally {
-		loading.value = false;
-		initialLoading.value = false;
-	}
-}
+// Re-fetch from page 1 when any filter changes. The deep flag is needed for
+// the array filters; without it Vue won't see push/splice mutations.
+let suppressFilterReload = true;
+watch(
+	[filters.entityType, filters.operation, filters.applicationIds, filters.clientIds],
+	() => {
+		if (suppressFilterReload) return;
+		void cursor.reset();
+	},
+	{ deep: true },
+);
 
 async function viewDetails(log: AuditLog) {
 	loadingDetail.value = true;
@@ -115,8 +121,12 @@ async function viewDetails(log: AuditLog) {
 	}
 }
 
-function clearFilters() {
-	doClearFilters();
+async function clearFilters() {
+	filters.entityType.value = "";
+	filters.operation.value = "";
+	filters.applicationIds.value = [];
+	filters.clientIds.value = [];
+	await cursor.reset();
 }
 
 function formatDateTime(isoString: string): string {
@@ -153,7 +163,11 @@ function formatJson(json: string | null): string {
 
 onMounted(async () => {
 	await loadFilters();
-	await loadAuditLogs();
+	await cursor.loadFirst();
+	initialLoading.value = false;
+	// Re-enable the filter watcher only after the initial load so the
+	// watcher doesn't fire from filter-option hydration.
+	suppressFilterReload = false;
 });
 </script>
 
@@ -236,27 +250,17 @@ onMounted(async () => {
         v-else
         :value="auditLogs"
         :loading="loading"
-        :paginator="true"
-        :first="page * pageSize"
-        :rows="pageSize"
-        :totalRecords="totalRecords"
-        :rowsPerPageOptions="[50, 100, 250, 500]"
-        :lazy="true"
-        :showCurrentPageReport="true"
-        currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
         size="small"
-        @page="onPage"
-        @sort="onSort"
         @row-click="(e) => viewDetails(e.data)"
         :rowClass="() => 'clickable-row'"
       >
-        <Column field="performedAt" header="Time" sortable style="width: 15%">
+        <Column field="performedAt" header="Time" style="width: 15%">
           <template #body="{ data }">
             <span class="time-text">{{ formatDateTime(data.performedAt) }}</span>
           </template>
         </Column>
 
-        <Column field="entityType" header="Entity Type" sortable style="width: 13%">
+        <Column field="entityType" header="Entity Type" style="width: 13%">
           <template #body="{ data }">
             <Tag :value="data.entityType" :severity="getEntityTypeSeverity(data.entityType)" />
           </template>
@@ -268,7 +272,7 @@ onMounted(async () => {
           </template>
         </Column>
 
-        <Column field="operation" header="Operation" sortable style="width: 18%">
+        <Column field="operation" header="Operation" style="width: 18%">
           <template #body="{ data }">
             <span class="operation-text">{{ formatOperationName(data.operation) }}</span>
           </template>
@@ -319,6 +323,26 @@ onMounted(async () => {
           </div>
         </template>
       </DataTable>
+
+      <!-- Cursor pager. aud_logs is unbounded so we don't count. -->
+      <div class="cursor-pager">
+        <Button
+          icon="pi pi-angle-left"
+          label="Newer"
+          text
+          :disabled="!cursor.hasPrev.value || cursor.loading.value"
+          @click="cursor.loadPrev"
+        />
+        <span class="page-indicator">Page {{ cursor.page.value }}</span>
+        <Button
+          icon="pi pi-angle-right"
+          iconPos="right"
+          label="Older"
+          text
+          :disabled="!cursor.hasMore.value || cursor.loading.value"
+          @click="cursor.loadNext"
+        />
+      </div>
     </div>
 
     <!-- Detail Dialog -->
@@ -393,6 +417,21 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.cursor-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.75rem 0 0.25rem;
+}
+
+.page-indicator {
+  font-size: 0.875rem;
+  color: var(--text-color-secondary);
+  min-width: 4.5rem;
+  text-align: center;
+}
+
 .filter-card {
   margin-bottom: 24px;
 }

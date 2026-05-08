@@ -15,12 +15,7 @@ use tokio::sync::RwLock;
 
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
-use crate::{
-    DispatchJobRepository, EventTypeRepository,
-    SubscriptionRepository, DispatchPoolRepository, ClientRepository,
-    PrincipalRepository, ApplicationRepository,
-};
-use crate::DispatchStatus;
+use crate::DispatchJobRepository;
 
 /// Standby status response
 #[derive(Debug, Serialize, ToSchema)]
@@ -50,18 +45,28 @@ pub struct ClusterMember {
     pub healthy: bool,
 }
 
-/// Dashboard metrics response
+/// Dashboard metrics response.
+///
+/// `total_events` and `total_jobs` are **approximate** — read from
+/// `pg_class.reltuples` (the planner's row estimate maintained by autovacuum/
+/// ANALYZE). Within a few % of accurate; sub-millisecond regardless of row
+/// count, where exact counts on `msg_events` / `msg_dispatch_jobs` would be a
+/// non-starter at production scale.
+///
+/// `jobs_by_status` was removed: migration 015 dropped the status index on
+/// `msg_dispatch_jobs` (it's a write-optimized table; the read projection
+/// has the index). Per-status counts are now full table scans, so they're
+/// not surfaced here. If you need them, query the read projection directly.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardMetrics {
-    /// Total events received
+    /// Approximate total events received (planner estimate).
     pub total_events: u64,
-    /// Events in last hour
+    /// Events in last hour. Currently always 0 — needs a time-windowed
+    /// counter on the projection or an external metrics store.
     pub events_last_hour: u64,
-    /// Total dispatch jobs
+    /// Approximate total dispatch jobs (planner estimate).
     pub total_jobs: u64,
-    /// Jobs by status
-    pub jobs_by_status: HashMap<String, u64>,
     /// Active subscriptions
     pub active_subscriptions: u64,
     /// Active dispatch pools
@@ -215,49 +220,6 @@ impl InFlightTracker {
 }
 
 /// Platform statistics response
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct PlatformStats {
-    /// Total number of clients
-    pub total_clients: u64,
-    /// Active clients
-    pub active_clients: u64,
-    /// Total principals (users + service accounts)
-    pub total_principals: u64,
-    /// Total applications
-    pub total_applications: u64,
-    /// Active applications
-    pub active_applications: u64,
-    /// Total event types
-    pub total_event_types: u64,
-    /// Active event types
-    pub active_event_types: u64,
-    /// Total subscriptions
-    pub total_subscriptions: u64,
-    /// Active subscriptions
-    pub active_subscriptions: u64,
-    /// Total dispatch pools
-    pub total_dispatch_pools: u64,
-    /// Total events received (all time)
-    pub total_events: u64,
-    /// Total dispatch jobs (all time)
-    pub total_dispatch_jobs: u64,
-    /// Dispatch jobs by status
-    pub jobs_by_status: HashMap<String, u64>,
-}
-
-/// Stats state (subset of MonitoringState for the stats endpoint)
-#[derive(Clone)]
-pub struct StatsState {
-    pub client_repo: Arc<ClientRepository>,
-    pub principal_repo: Arc<PrincipalRepository>,
-    pub application_repo: Arc<ApplicationRepository>,
-    pub event_type_repo: Arc<EventTypeRepository>,
-    pub subscription_repo: Arc<SubscriptionRepository>,
-    pub dispatch_pool_repo: Arc<DispatchPoolRepository>,
-    pub dispatch_job_repo: Arc<DispatchJobRepository>,
-}
-
 /// Monitoring service state
 #[derive(Clone)]
 pub struct MonitoringState {
@@ -265,6 +227,10 @@ pub struct MonitoringState {
     pub circuit_breakers: CircuitBreakerRegistry,
     pub in_flight: InFlightTracker,
     pub dispatch_job_repo: Arc<DispatchJobRepository>,
+    /// Used by `get_dashboard` for `pg_class.reltuples` lookups —
+    /// `msg_dispatch_jobs` / `msg_events` can be billions of rows where
+    /// `COUNT(*)` is a non-starter.
+    pub pool: sqlx::PgPool,
     pub start_time: std::time::Instant,
 }
 
@@ -316,33 +282,33 @@ pub async fn get_dashboard(
 ) -> Result<Json<DashboardMetrics>, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
-    // Get job counts by status
-    let pending = state.dispatch_job_repo.count_by_status(DispatchStatus::Pending).await.unwrap_or(0);
-    let queued = state.dispatch_job_repo.count_by_status(DispatchStatus::Queued).await.unwrap_or(0);
-    let processing = state.dispatch_job_repo.count_by_status(DispatchStatus::Processing).await.unwrap_or(0);
-    let completed = state.dispatch_job_repo.count_by_status(DispatchStatus::Completed).await.unwrap_or(0);
-    let failed = state.dispatch_job_repo.count_by_status(DispatchStatus::Failed).await.unwrap_or(0);
-
-    let mut jobs_by_status = HashMap::new();
-    jobs_by_status.insert("PENDING".to_string(), pending);
-    jobs_by_status.insert("QUEUED".to_string(), queued);
-    jobs_by_status.insert("PROCESSING".to_string(), processing);
-    jobs_by_status.insert("COMPLETED".to_string(), completed);
-    jobs_by_status.insert("FAILED".to_string(), failed);
-
-    let total_jobs = pending + queued + processing + completed + failed;
+    // Approximate row counts via pg_class.reltuples. One round-trip for
+    // both message tables; sub-millisecond regardless of row count.
+    let row: Option<(f32, f32)> = sqlx::query_as(
+        "SELECT \
+            COALESCE(MAX(CASE WHEN relname = 'msg_dispatch_jobs' THEN reltuples END), 0)::float4, \
+            COALESCE(MAX(CASE WHEN relname = 'msg_events' THEN reltuples END), 0)::float4 \
+         FROM pg_class \
+         WHERE relname IN ('msg_dispatch_jobs', 'msg_events') AND relkind = 'r'",
+    )
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten();
+    let (total_jobs, total_events) = row
+        .map(|(j, e)| (j.max(0.0) as u64, e.max(0.0) as u64))
+        .unwrap_or((0, 0));
 
     Ok(Json(DashboardMetrics {
-        total_events: 0, // Would need event repo
-        events_last_hour: 0,
+        total_events,
+        events_last_hour: 0, // Time-windowed counter not yet wired.
         total_jobs,
-        jobs_by_status,
-        active_subscriptions: 0, // Would need subscription repo
-        active_pools: 0, // Would need pool repo
+        active_subscriptions: 0, // Would need subscription repo.
+        active_pools: 0, // Would need pool repo.
         health: SystemHealth {
             status: "UP".to_string(),
             uptime_seconds: state.start_time.elapsed().as_secs(),
-            memory_used_mb: 0, // Could use sysinfo crate
+            memory_used_mb: 0, // Could use sysinfo crate.
             cpu_usage_percent: 0.0,
         },
     }))
@@ -421,90 +387,6 @@ pub async fn get_in_flight_messages(
         by_pool,
         by_message_group,
     }))
-}
-
-/// Get platform statistics
-#[utoipa::path(
-    get,
-    path = "",
-    tag = "stats",
-    operation_id = "getApiAdminStats",
-    responses(
-        (status = 200, description = "Platform statistics", body = PlatformStats)
-    ),
-    security(("bearer_auth" = []))
-)]
-pub async fn get_platform_stats(
-    State(state): State<StatsState>,
-    auth: Authenticated,
-) -> Result<Json<PlatformStats>, PlatformError> {
-    crate::checks::require_anchor(&auth.0)?;
-
-    // Get client counts (find_active exists)
-    let active_clients = state.client_repo.find_active().await?.len() as u64;
-    // Total clients estimated as active (no find_all method)
-    let total_clients = active_clients;
-
-    // Get principal counts (find_active exists)
-    let active_principals = state.principal_repo.find_active().await?;
-    let total_principals = active_principals.len() as u64;
-
-    // Get application counts (find_active exists)
-    let active_applications = state.application_repo.find_active().await?.len() as u64;
-    let total_applications = active_applications;
-
-    // Get event type counts (find_active exists)
-    let active_event_types = state.event_type_repo.find_active().await?.len() as u64;
-    let total_event_types = active_event_types;
-
-    // Get subscription counts (find_active exists)
-    let active_subscriptions = state.subscription_repo.find_active().await?.len() as u64;
-    let total_subscriptions = active_subscriptions;
-
-    // Get dispatch pool count (find_active exists)
-    let active_pools = state.dispatch_pool_repo.find_active().await?.len() as u64;
-    let total_dispatch_pools = active_pools;
-
-    // Event count not available without full scan
-    let total_events = 0u64;
-
-    // Get dispatch job counts (count methods exist)
-    let total_dispatch_jobs = state.dispatch_job_repo.count_all().await.unwrap_or(0);
-    let pending = state.dispatch_job_repo.count_by_status(DispatchStatus::Pending).await.unwrap_or(0);
-    let queued = state.dispatch_job_repo.count_by_status(DispatchStatus::Queued).await.unwrap_or(0);
-    let processing = state.dispatch_job_repo.count_by_status(DispatchStatus::Processing).await.unwrap_or(0);
-    let completed = state.dispatch_job_repo.count_by_status(DispatchStatus::Completed).await.unwrap_or(0);
-    let failed = state.dispatch_job_repo.count_by_status(DispatchStatus::Failed).await.unwrap_or(0);
-
-    let mut jobs_by_status = HashMap::new();
-    jobs_by_status.insert("PENDING".to_string(), pending);
-    jobs_by_status.insert("QUEUED".to_string(), queued);
-    jobs_by_status.insert("PROCESSING".to_string(), processing);
-    jobs_by_status.insert("COMPLETED".to_string(), completed);
-    jobs_by_status.insert("FAILED".to_string(), failed);
-
-    Ok(Json(PlatformStats {
-        total_clients,
-        active_clients,
-        total_principals,
-        total_applications,
-        active_applications,
-        total_event_types,
-        active_event_types,
-        total_subscriptions,
-        active_subscriptions,
-        total_dispatch_pools,
-        total_events,
-        total_dispatch_jobs,
-        jobs_by_status,
-    }))
-}
-
-/// Create stats router
-pub fn stats_router(state: StatsState) -> OpenApiRouter {
-    OpenApiRouter::new()
-        .routes(routes!(get_platform_stats))
-        .with_state(state)
 }
 
 /// Pool statistics response (with enhanced metrics)

@@ -49,6 +49,7 @@ pub enum EntityType {
     PlatformConfig,
     ConfigAccess,
     PasswordResetToken,
+    WebauthnCredential,
 }
 
 impl EntityType {
@@ -85,6 +86,7 @@ impl EntityType {
             EntityType::PlatformConfig => "pcf",
             EntityType::ConfigAccess => "cfa",
             EntityType::PasswordResetToken => "prt",
+            EntityType::WebauthnCredential => "pkc",
         }
     }
 }

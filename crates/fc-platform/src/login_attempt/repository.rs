@@ -176,4 +176,126 @@ impl LoginAttemptRepository {
 
         Ok((rows.into_iter().map(LoginAttempt::from).collect(), total))
     }
+
+    /// Cursor-paginated variant. Drops the `SELECT COUNT(*)` and the
+    /// configurable sort — orders by `(attempted_at, id) DESC` so the keyset
+    /// comparison is well-defined. Returns `fetch_limit` rows so the caller
+    /// can detect `hasMore`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn find_with_cursor(
+        &self,
+        attempt_type: Option<&str>,
+        outcome: Option<&str>,
+        identifier: Option<&str>,
+        principal_id: Option<&str>,
+        date_from: Option<&str>,
+        date_to: Option<&str>,
+        cursor: Option<&crate::shared::api_common::DecodedCursor>,
+        fetch_limit: i64,
+    ) -> Result<Vec<LoginAttempt>> {
+        let date_from_parsed = date_from
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.with_timezone(&Utc));
+        let date_to_parsed = date_to
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.with_timezone(&Utc));
+
+        let mut qb: QueryBuilder<Postgres> =
+            QueryBuilder::new("SELECT * FROM iam_login_attempts");
+        let mut has_where = false;
+        let push_where = |qb: &mut QueryBuilder<Postgres>, has_where: &mut bool| {
+            qb.push(if *has_where { " AND " } else { " WHERE " });
+            *has_where = true;
+        };
+
+        if let Some(at) = attempt_type {
+            push_where(&mut qb, &mut has_where);
+            qb.push("attempt_type = ").push_bind(at.to_string());
+        }
+        if let Some(o) = outcome {
+            push_where(&mut qb, &mut has_where);
+            qb.push("outcome = ").push_bind(o.to_string());
+        }
+        if let Some(ident) = identifier {
+            push_where(&mut qb, &mut has_where);
+            qb.push("identifier = ").push_bind(ident.to_string());
+        }
+        if let Some(pid) = principal_id {
+            push_where(&mut qb, &mut has_where);
+            qb.push("principal_id = ").push_bind(pid.to_string());
+        }
+        if let Some(dt) = date_from_parsed {
+            push_where(&mut qb, &mut has_where);
+            qb.push("attempted_at >= ").push_bind(dt);
+        }
+        if let Some(dt) = date_to_parsed {
+            push_where(&mut qb, &mut has_where);
+            qb.push("attempted_at <= ").push_bind(dt);
+        }
+        if let Some(c) = cursor {
+            push_where(&mut qb, &mut has_where);
+            qb.push("(attempted_at, id) < (")
+                .push_bind(c.created_at)
+                .push(", ")
+                .push_bind(c.id.clone())
+                .push(")");
+        }
+        qb.push(" ORDER BY attempted_at DESC, id DESC LIMIT ").push_bind(fetch_limit);
+        let rows: Vec<LoginAttemptRow> = qb.build_query_as().fetch_all(&self.pool).await?;
+        Ok(rows.into_iter().map(LoginAttempt::from).collect())
+    }
+
+    /// Last successful login attempt timestamp for an identifier. Used by the
+    /// backoff helper to compute "failures since the last good login".
+    pub async fn last_success_at(&self, identifier: &str) -> Result<Option<DateTime<Utc>>> {
+        // MAX(...) over zero rows returns NULL — query_as decodes the single
+        // aggregated row, then we treat the NULL as None.
+        let (ts,): (Option<DateTime<Utc>>,) = sqlx::query_as(
+            "SELECT MAX(attempted_at) FROM iam_login_attempts
+             WHERE identifier = $1 AND outcome = 'SUCCESS'",
+        )
+        .bind(identifier)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(ts)
+    }
+
+    /// Count failures and most-recent failure timestamp for `(identifier, ip)`
+    /// strictly after `since`. Returns `(0, None)` when none exist.
+    pub async fn failure_stats_by_identifier_ip_since(
+        &self,
+        identifier: &str,
+        ip: &str,
+        since: DateTime<Utc>,
+    ) -> Result<(i64, Option<DateTime<Utc>>)> {
+        let row: (i64, Option<DateTime<Utc>>) = sqlx::query_as(
+            "SELECT COUNT(*), MAX(attempted_at) FROM iam_login_attempts
+             WHERE identifier = $1 AND ip_address = $2 AND outcome = 'FAILURE'
+               AND attempted_at > $3",
+        )
+        .bind(identifier)
+        .bind(ip)
+        .bind(since)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Count failures across all IPs for `identifier` strictly after `since`.
+    /// Used for the per-email global ceiling.
+    pub async fn failure_count_by_identifier_since(
+        &self,
+        identifier: &str,
+        since: DateTime<Utc>,
+    ) -> Result<i64> {
+        let count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM iam_login_attempts
+             WHERE identifier = $1 AND outcome = 'FAILURE' AND attempted_at > $2",
+        )
+        .bind(identifier)
+        .bind(since)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count.0)
+    }
 }

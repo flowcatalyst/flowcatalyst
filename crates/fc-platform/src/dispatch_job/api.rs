@@ -17,7 +17,6 @@ use crate::{
 };
 use crate::DispatchJobRepository;
 use crate::shared::error::PlatformError;
-use crate::shared::api_common::PaginationParams;
 use crate::shared::middleware::Authenticated;
 
 /// Dispatch job response DTO (matches Java DispatchJobReadResponse)
@@ -186,22 +185,21 @@ impl From<DispatchJobRead> for DispatchJobReadResponse {
     }
 }
 
-/// Query parameters for dispatch jobs list
+/// Query parameters for dispatch jobs list (cursor-paginated).
+///
+/// `msg_dispatch_jobs_read` can grow to billions of rows, so we keyset-
+/// paginate on `(created_at DESC, id DESC)` rather than counting +
+/// offsetting. Sort order is fixed.
 #[derive(Debug, Default, Deserialize, IntoParams)]
 #[serde(rename_all = "camelCase")]
 #[into_params(parameter_in = Query)]
 pub struct DispatchJobsQuery {
-    /// Page number (1-based). Falls back to 1.
-    pub page: Option<u32>,
+    /// Opaque cursor returned by a previous page's `nextCursor`. Omit for
+    /// the first page.
+    pub after: Option<String>,
 
-    /// Page size. Capped at 500.
+    /// Page size. Capped at 200.
     pub size: Option<u32>,
-
-    /// Sort field. Allow-listed; unknown values fall back to `createdAt`.
-    pub sort_field: Option<String>,
-
-    /// Sort order: `asc` or `desc`. Defaults to `desc`.
-    pub sort_order: Option<String>,
 
     /// Filter by event ID
     pub event_id: Option<String>,
@@ -421,17 +419,10 @@ pub async fn get_dispatch_job(
     Ok(Json(job.into()))
 }
 
-/// Paginated dispatch job list response
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct PagedDispatchJobResponse {
-    pub items: Vec<DispatchJobReadResponse>,
-    pub page: u32,
-    pub size: u32,
-    pub total_items: u64,
-}
+/// Cursor-paginated dispatch jobs response.
+pub type DispatchJobsCursorResponse = crate::shared::api_common::CursorPage<DispatchJobReadResponse>;
 
-/// List dispatch jobs
+/// List dispatch jobs (cursor pagination).
 #[utoipa::path(
     get,
     path = "",
@@ -439,7 +430,7 @@ pub struct PagedDispatchJobResponse {
     operation_id = "getApiAdminDispatchJobs",
     params(DispatchJobsQuery),
     responses(
-        (status = 200, description = "List of dispatch jobs", body = PagedDispatchJobResponse)
+        (status = 200, description = "List of dispatch jobs", body = DispatchJobsCursorResponse)
     ),
     security(("bearer_auth" = []))
 )]
@@ -447,10 +438,11 @@ pub async fn list_dispatch_jobs(
     State(state): State<DispatchJobsState>,
     auth: Authenticated,
     Query(query): Query<DispatchJobsQuery>,
-) -> Result<Json<PagedDispatchJobResponse>, PlatformError> {
+) -> Result<Json<DispatchJobsCursorResponse>, PlatformError> {
+    use crate::shared::api_common::{CursorPage, decode_cursor, encode_cursor};
+
     crate::shared::authorization_service::checks::can_read_dispatch_jobs(&auth.0)?;
 
-    // Resolve filter values
     let mut client_ids = split_csv(query.client_ids.as_deref());
     let statuses = split_csv(query.statuses.as_deref());
     let applications = split_csv(query.applications.as_deref());
@@ -458,8 +450,6 @@ pub async fn list_dispatch_jobs(
     let aggregates = split_csv(query.aggregates.as_deref());
     let codes = split_csv(query.codes.as_deref());
 
-    // Validate any caller-supplied client IDs against access; if none provided,
-    // narrow non-anchor callers to their accessible client IDs.
     if !client_ids.is_empty() {
         for cid in &client_ids {
             if !auth.0.can_access_client(cid) {
@@ -473,16 +463,10 @@ pub async fn list_dispatch_jobs(
             .cloned()
             .collect();
         if client_ids.is_empty() {
-            return Ok(Json(PagedDispatchJobResponse {
-                items: vec![],
-                page: query.page.unwrap_or(1).max(1),
-                size: query.size.unwrap_or(50).min(500),
-                total_items: 0,
-            }));
+            return Ok(Json(CursorPage { items: vec![], has_more: false, next_cursor: None }));
         }
     }
 
-    // Validate status values
     for status_str in &statuses {
         match status_str.to_uppercase().as_str() {
             "PENDING" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED" | "EXPIRED" => {},
@@ -490,15 +474,13 @@ pub async fn list_dispatch_jobs(
         }
     }
 
-    let page = query.page.unwrap_or(1).max(1);
-    let size = query.size.unwrap_or(50).min(500);
-    let offset = ((page - 1) as i64) * (size as i64);
-    let sort_desc = !matches!(
-        query.sort_order.as_deref().unwrap_or("desc").to_lowercase().as_str(),
-        "asc",
-    );
+    let size = query.size.unwrap_or(50).min(200) as usize;
+    let cursor = match query.after.as_deref() {
+        Some(c) => Some(decode_cursor(c).map_err(|_| PlatformError::validation("Invalid cursor"))?),
+        None => None,
+    };
 
-    let (jobs, total) = state.dispatch_job_repo.find_read_with_filters(
+    let mut jobs = state.dispatch_job_repo.find_read_with_cursor(
         &client_ids,
         &statuses,
         &applications,
@@ -506,18 +488,19 @@ pub async fn list_dispatch_jobs(
         &aggregates,
         &codes,
         query.source.as_deref(),
-        query.sort_field.as_deref(),
-        sort_desc,
-        size as i64,
-        offset,
+        cursor.as_ref(),
+        (size as i64) + 1,
     ).await?;
 
-    Ok(Json(PagedDispatchJobResponse {
-        items: jobs.into_iter().map(DispatchJobReadResponse::from).collect(),
-        page,
-        size,
-        total_items: total as u64,
-    }))
+    let has_more = jobs.len() > size;
+    if has_more { jobs.truncate(size); }
+    let next_cursor = if has_more {
+        jobs.last().map(|j| encode_cursor(j.created_at, &j.id))
+    } else {
+        None
+    };
+    let items = jobs.into_iter().map(DispatchJobReadResponse::from).collect();
+    Ok(Json(CursorPage { items, has_more, next_cursor }))
 }
 
 /// Get dispatch jobs for an event
@@ -954,45 +937,74 @@ pub struct PaginatedDispatchJobsResponse {
     pub size: u32,
 }
 
-/// List raw dispatch jobs (from msg_dispatch_jobs, not read projection)
+/// Cursor-paginated raw dispatch jobs response.
+pub type DispatchJobsRawCursorResponse = crate::shared::api_common::CursorPage<DispatchJobResponse>;
+
+/// List raw dispatch jobs (from msg_dispatch_jobs, not read projection).
+/// Cursor-paginated; msg_dispatch_jobs grows unbounded.
 #[utoipa::path(
     get,
     path = "/raw",
     tag = "dispatch-jobs",
     operation_id = "getApiAdminDispatchJobsRaw",
-    params(PaginationParams),
+    params(crate::shared::api_common::CursorParams),
     responses(
-        (status = 200, description = "Raw dispatch jobs page", body = PaginatedDispatchJobsResponse)
+        (status = 200, description = "Raw dispatch jobs page", body = DispatchJobsRawCursorResponse)
     ),
     security(("bearer_auth" = []))
 )]
 pub async fn list_dispatch_jobs_raw(
     State(state): State<DispatchJobsState>,
     auth: Authenticated,
-    Query(pagination): Query<PaginationParams>,
-) -> Result<Json<PaginatedDispatchJobsResponse>, PlatformError> {
+    Query(params): Query<crate::shared::api_common::CursorParams>,
+) -> Result<Json<DispatchJobsRawCursorResponse>, PlatformError> {
+    use crate::shared::api_common::{CursorPage, decode_cursor, encode_cursor};
     crate::shared::authorization_service::checks::can_read_dispatch_jobs(&auth.0)?;
 
-    let page = pagination.page();
-    let size = pagination.size().min(500);
-    let limit = size as i64;
-    let offset = (page as i64) * (size as i64);
-    let jobs = state.dispatch_job_repo
-        .find_recent_paged(limit, offset)
+    let size = params.size() as usize;
+    let cursor = match params.after.as_deref() {
+        Some(c) => Some(decode_cursor(c).map_err(|_| PlatformError::validation("Invalid cursor"))?),
+        None => None,
+    };
+    let mut jobs = state.dispatch_job_repo
+        .find_recent_with_cursor(cursor.as_ref(), params.fetch_limit())
         .await?;
 
-    Ok(Json(PaginatedDispatchJobsResponse {
-        items: jobs.into_iter().map(Into::into).collect(),
-        page,
-        size,
-    }))
+    let has_more = jobs.len() > size;
+    if has_more { jobs.truncate(size); }
+    let next_cursor = if has_more {
+        jobs.last().map(|j| encode_cursor(j.created_at, &j.id))
+    } else {
+        None
+    };
+    let items = jobs.into_iter().map(DispatchJobResponse::from).collect();
+    Ok(Json(CursorPage { items, has_more, next_cursor }))
 }
 
-/// Create dispatch jobs router
+/// Create dispatch jobs router for the BFF tier (`/bff/dispatch-jobs`).
+/// Cookie-auth, used by the SPA. Includes `batch_create_dispatch_jobs` —
+/// the SPA-facing batch.
 pub fn dispatch_jobs_router(state: DispatchJobsState) -> OpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(list_dispatch_jobs, create_dispatch_job))
         .routes(routes!(batch_create_dispatch_jobs))
+        .routes(routes!(get_filter_options))
+        .routes(routes!(list_dispatch_jobs_raw))
+        .routes(routes!(get_dispatch_job))
+        .routes(routes!(get_dispatch_job_raw))
+        .routes(routes!(get_dispatch_job_attempts))
+        .routes(routes!(get_jobs_for_event))
+        .with_state(state)
+}
+
+/// Create dispatch jobs router for the API tier (`/api/dispatch-jobs`).
+/// Bearer-auth, used by SDK consumers. **No `batch_create_dispatch_jobs`**
+/// — SDK callers use `sdk_dispatch_jobs_batch_router::POST /batch` (the
+/// high-volume bulk-insert path). The two routers must not both register
+/// `POST /batch` at the same prefix (axum panics on overlap).
+pub fn dispatch_jobs_api_router(state: DispatchJobsState) -> OpenApiRouter {
+    OpenApiRouter::new()
+        .routes(routes!(list_dispatch_jobs, create_dispatch_job))
         .routes(routes!(get_filter_options))
         .routes(routes!(list_dispatch_jobs_raw))
         .routes(routes!(get_dispatch_job))

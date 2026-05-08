@@ -165,6 +165,15 @@ so creating an event via UoW would mean emitting an event about the event):
 - **Stream processing**: `events_raw` CQRS projection into `msg_events`
 - **Dispatch job delivery lifecycle**: status transitions during webhook delivery (pending → in_progress → success/failed), attempt recording
 - **Outbox processing**: polling `outbox_messages` and forwarding to platform API
+- **Auth/OIDC token storage**: refresh token, authorization code, OIDC pending-auth
+  state, and OIDC login state inserts (`auth/oauth_api.rs`, `auth/auth_api.rs`,
+  `auth/oidc_login_api.rs`). These are short-lived session records — wrapping
+  them in UoW would emit a domain event per token, swamping the event log on
+  every login or token refresh. Login/logout *outcomes* (e.g. `UserLoggedIn`,
+  `UserLoggedOut`) ARE emitted via UoW; only the token-row plumbing bypasses.
+- **Built-in role seeding**: startup-time hydration of code-defined roles via
+  `shared/database.rs::seed_built_in_roles` and `shared/role_sync_service.rs`.
+  Bootstrap-only, runs before HTTP serving begins, no executing principal.
 
 These go directly to the repository. They are the platform's internal plumbing.
 

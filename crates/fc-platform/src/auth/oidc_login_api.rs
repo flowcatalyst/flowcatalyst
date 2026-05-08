@@ -1199,6 +1199,15 @@ pub async fn get_interaction(
         }
     };
 
+    // requires_oidc reflects whether the interaction's email domain has a
+    // federated IdP mapping. Internal-auth domains (no mapping) tell the SPA
+    // to use `/auth/login` or `/auth/webauthn/*` instead of redirecting to an
+    // external IdP.
+    let requires_oidc = matches!(
+        state.email_domain_mapping_repo.find_by_email_domain(&login_state.email_domain).await,
+        Ok(Some(_)),
+    );
+
     (
         StatusCode::OK,
         Json(InteractionDetailsResponse {
@@ -1207,7 +1216,7 @@ pub async fn get_interaction(
             client_id: login_state.oauth_client_id.clone(),
             scope: login_state.oauth_scope.clone(),
             email_domain: login_state.email_domain.clone(),
-            requires_oidc: true,
+            requires_oidc,
         }),
     ).into_response()
 }
@@ -1269,6 +1278,26 @@ pub async fn post_interaction_login(
                 redirect_url: None,
                 error: Some("Email domain does not match".to_string()),
             }),
+        ).into_response();
+    }
+
+    // Branch on whether the email's domain is federated. Internal-auth
+    // domains don't have an OIDC IdP — the SPA should drive login via
+    // `/auth/login` or `/auth/webauthn/*` and bounce back to /oauth/authorize
+    // once a session cookie is set.
+    if matches!(
+        state.email_domain_mapping_repo.find_by_email_domain(&email_domain).await,
+        Ok(None),
+    ) {
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "success": false,
+                "internalAuth": true,
+                "loginUrl": "/auth/login",
+                "passkeyBeginUrl": "/auth/webauthn/authenticate/begin",
+                "error": "domain uses internal authentication; complete login via /auth/login or /auth/webauthn/* and revisit /oauth/authorize",
+            })),
         ).into_response();
     }
 
