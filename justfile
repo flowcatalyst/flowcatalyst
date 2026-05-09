@@ -122,7 +122,9 @@ regen-sdks:
     @echo "▸ TypeScript SDK"
     cd clients/typescript-sdk && pnpm build
     @echo "▸ Laravel SDK"
-    cd clients/laravel-sdk && php scripts/prepare-openapi.php && vendor/bin/jane-openapi generate --config-file=jane-openapi.php
+    # XDEBUG_MODE=off — Homebrew's Xdebug defaults to step-debug mode and
+    # silently blocks every CLI invocation waiting for a debugger on :9003.
+    cd clients/laravel-sdk && XDEBUG_MODE=off php scripts/prepare-openapi.php && XDEBUG_MODE=off vendor/bin/jane-openapi generate --config-file=jane-openapi.php
     @echo "▸ Frontend generated client"
     cd frontend && pnpm api:generate
     @echo "✓ SDKs regenerated"

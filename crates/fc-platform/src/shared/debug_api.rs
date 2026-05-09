@@ -11,11 +11,25 @@ use axum::{
     response::Json,
     Router,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use crate::{Event, DispatchJob};
 use crate::{EventRepository, DispatchJobRepository};
-use crate::shared::api_common::{CursorPage, CursorParams, decode_cursor, encode_cursor};
 use crate::shared::error::{PlatformError, Result};
+
+/// Debug list query — `?size=` only. Debug grids look at the most recent
+/// rows; no pagination.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugListQuery {
+    /// Result size. Default 50, capped at 1000.
+    pub size: Option<u32>,
+}
+
+impl DebugListQuery {
+    fn limit(&self) -> i64 {
+        self.size.unwrap_or(50).clamp(1, 1000) as i64
+    }
+}
 
 // ============================================================================
 // State
@@ -169,30 +183,18 @@ impl From<&DispatchJob> for RawDispatchJobResponse {
 // Handlers - Raw Events
 // ============================================================================
 
-/// List raw events (debug/admin only). Cursor-paginated; `msg_events` is
-/// unbounded so we keyset on `(created_at, id) DESC` and never count.
+/// List raw events (debug/admin). Returns the most recent rows; no
+/// pagination — `msg_events` ingests at high rates and page navigation is
+/// meaningless.
 async fn list_raw_events(
     State(state): State<DebugState>,
-    Query(params): Query<CursorParams>,
-) -> Result<Json<CursorPage<RawEventResponse>>> {
-    let size = params.size() as usize;
-    let cursor = match params.after.as_deref() {
-        Some(c) => Some(decode_cursor(c).map_err(|_| PlatformError::validation("Invalid cursor"))?),
-        None => None,
-    };
-    let mut events = state.event_repo
-        .find_recent_with_cursor(cursor.as_ref(), params.fetch_limit())
+    Query(params): Query<DebugListQuery>,
+) -> Result<Json<Vec<RawEventResponse>>> {
+    let events = state.event_repo
+        .find_recent_with_cursor(None, params.limit())
         .await?;
-
-    let has_more = events.len() > size;
-    if has_more { events.truncate(size); }
-    let next_cursor = if has_more {
-        events.last().map(|e| encode_cursor(e.created_at, &e.id))
-    } else {
-        None
-    };
     let items = events.iter().map(RawEventResponse::from).collect();
-    Ok(Json(CursorPage { items, has_more, next_cursor }))
+    Ok(Json(items))
 }
 
 /// Get a single raw event by ID (debug/admin only)
@@ -210,31 +212,18 @@ async fn get_raw_event(
 // Handlers - Raw Dispatch Jobs
 // ============================================================================
 
-/// List raw dispatch jobs (debug/admin only). Cursor-paginated;
-/// `msg_dispatch_jobs` is unbounded so we keyset on `(created_at, id) DESC`
-/// and never count.
+/// List raw dispatch jobs (debug/admin). Returns the most recent rows; no
+/// pagination — `msg_dispatch_jobs` ingests at high rates and page
+/// navigation is meaningless.
 async fn list_raw_dispatch_jobs(
     State(state): State<DebugState>,
-    Query(params): Query<CursorParams>,
-) -> Result<Json<CursorPage<RawDispatchJobResponse>>> {
-    let size = params.size() as usize;
-    let cursor = match params.after.as_deref() {
-        Some(c) => Some(decode_cursor(c).map_err(|_| PlatformError::validation("Invalid cursor"))?),
-        None => None,
-    };
-    let mut jobs = state.dispatch_job_repo
-        .find_recent_with_cursor(cursor.as_ref(), params.fetch_limit())
+    Query(params): Query<DebugListQuery>,
+) -> Result<Json<Vec<RawDispatchJobResponse>>> {
+    let jobs = state.dispatch_job_repo
+        .find_recent_with_cursor(None, params.limit())
         .await?;
-
-    let has_more = jobs.len() > size;
-    if has_more { jobs.truncate(size); }
-    let next_cursor = if has_more {
-        jobs.last().map(|j| encode_cursor(j.created_at, &j.id))
-    } else {
-        None
-    };
     let items = jobs.iter().map(RawDispatchJobResponse::from).collect();
-    Ok(Json(CursorPage { items, has_more, next_cursor }))
+    Ok(Json(items))
 }
 
 /// Get a single raw dispatch job by ID (debug/admin only)

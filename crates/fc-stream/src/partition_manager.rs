@@ -28,6 +28,8 @@ const PARTITIONED_PARENTS: &[&str] = &[
     "msg_dispatch_jobs",
     "msg_dispatch_jobs_read",
     "msg_dispatch_job_attempts",
+    "msg_scheduled_job_instances",
+    "msg_scheduled_job_instance_logs",
 ];
 
 /// Configuration for the partition manager.

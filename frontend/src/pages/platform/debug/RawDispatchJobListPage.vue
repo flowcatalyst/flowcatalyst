@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { bffFetch } from "@/api/client";
-import { useCursorPagination } from "@/composables/useCursorPagination";
 
 interface RawDispatchJob {
 	id: string;
@@ -37,28 +36,31 @@ interface RawDispatchJob {
 	attemptHistoryCount: number;
 }
 
-const pageSize = 20;
+// Most-recent-first window. msg_dispatch_jobs ingests at high rates so
+// there's no pagination — set the size, hit refresh.
+const pageSize = ref(200);
+const sizeOptions = [50, 100, 200, 500, 1000];
+const dispatchJobs = ref<RawDispatchJob[]>([]);
+const loading = ref(false);
 
-const cursor = useCursorPagination<RawDispatchJob>({
-	fetchPage: async (after) => {
-		const qs = new URLSearchParams();
-		qs.set("size", String(pageSize));
-		if (after) qs.set("after", after);
-		return bffFetch<{ items: RawDispatchJob[]; hasMore: boolean; nextCursor?: string }>(
-			`/debug/dispatch-jobs?${qs}`,
+async function load() {
+	loading.value = true;
+	try {
+		dispatchJobs.value = await bffFetch<RawDispatchJob[]>(
+			`/debug/dispatch-jobs?size=${pageSize.value}`,
 		);
-	},
-});
-const dispatchJobs = cursor.items;
-const loading = cursor.loading;
+	} catch (err) {
+		console.error("Failed to load raw dispatch jobs:", err);
+	} finally {
+		loading.value = false;
+	}
+}
 
 // Detail dialog
 const selectedJob = ref<RawDispatchJob | null>(null);
 const showDetailDialog = ref(false);
 
-onMounted(async () => {
-	await cursor.loadFirst();
-});
+onMounted(load);
 
 async function viewJobDetail(job: RawDispatchJob) {
 	selectedJob.value = job;
@@ -128,9 +130,16 @@ function formatAttempts(job: RawDispatchJob): string {
 
     <div class="fc-card">
       <div class="toolbar">
-        <Button icon="pi pi-refresh" text rounded @click="cursor.refresh" v-tooltip="'Refresh'" />
+        <Select
+          v-model="pageSize"
+          :options="sizeOptions"
+          class="size-select"
+          @change="load"
+          v-tooltip="'Result size'"
+        />
+        <Button icon="pi pi-refresh" text rounded @click="load" v-tooltip="'Refresh'" />
         <span class="text-muted ml-2">
-          Showing raw dispatch jobs (no filtering - queries would be slow on this collection)
+          Showing raw dispatch jobs (no filtering — queries would be slow on this collection)
         </span>
       </div>
 
@@ -194,24 +203,8 @@ function formatAttempts(job: RawDispatchJob): string {
         </Column>
       </DataTable>
 
-      <!-- Cursor pager. msg_dispatch_jobs is unbounded; we never count. -->
-      <div class="cursor-pager">
-        <Button
-          icon="pi pi-angle-left"
-          label="Newer"
-          text
-          :disabled="!cursor.hasPrev.value || cursor.loading.value"
-          @click="cursor.loadPrev"
-        />
-        <span class="page-indicator">Page {{ cursor.page.value }}</span>
-        <Button
-          icon="pi pi-angle-right"
-          iconPos="right"
-          label="Older"
-          text
-          :disabled="!cursor.hasMore.value || cursor.loading.value"
-          @click="cursor.loadNext"
-        />
+      <div class="result-summary">
+        Showing the {{ dispatchJobs.length }} most recent raw dispatch jobs
       </div>
     </div>
 
@@ -315,19 +308,15 @@ function formatAttempts(job: RawDispatchJob): string {
   margin-bottom: 16px;
 }
 
-.cursor-pager {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  padding: 0.75rem 0 0.25rem;
+.size-select {
+  width: 6rem;
 }
 
-.page-indicator {
-  font-size: 0.875rem;
-  color: var(--text-color-secondary);
-  min-width: 4.5rem;
+.result-summary {
   text-align: center;
+  font-size: 0.8125rem;
+  color: var(--text-color-secondary);
+  padding: 0.75rem 0 0.25rem;
 }
 
 .font-mono {

@@ -1,0 +1,85 @@
+<?php
+
+namespace FlowCatalyst\Generated\Normalizer;
+
+use Jane\Component\JsonSchemaRuntime\Reference;
+use FlowCatalyst\Generated\Runtime\Normalizer\CheckArray;
+use FlowCatalyst\Generated\Runtime\Normalizer\ValidatorTrait;
+use Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
+use Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
+use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
+use Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
+use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+class AuthenticateCompleteRequestNormalizer implements DenormalizerInterface, NormalizerInterface, DenormalizerAwareInterface, NormalizerAwareInterface
+{
+    use DenormalizerAwareTrait;
+    use NormalizerAwareTrait;
+    use CheckArray;
+    use ValidatorTrait;
+    public function supportsDenormalization(mixed $data, string $type, ?string $format = null, array $context = []): bool
+    {
+        return $type === \FlowCatalyst\Generated\Model\AuthenticateCompleteRequest::class;
+    }
+    public function supportsNormalization(mixed $data, ?string $format = null, array $context = []): bool
+    {
+        return is_object($data) && get_class($data) === \FlowCatalyst\Generated\Model\AuthenticateCompleteRequest::class;
+    }
+    public function denormalize(mixed $data, string $type, ?string $format = null, array $context = []): mixed
+    {
+        if (isset($data['$ref'])) {
+            return new Reference($data['$ref'], $context['document-origin']);
+        }
+        if (isset($data['$recursiveRef'])) {
+            return new Reference($data['$recursiveRef'], $context['document-origin']);
+        }
+        $object = new \FlowCatalyst\Generated\Model\AuthenticateCompleteRequest();
+        if (null === $data || false === \is_array($data)) {
+            return $object;
+        }
+        if (\array_key_exists('credential', $data) && $data['credential'] !== null) {
+            $values = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+            foreach ($data['credential'] as $key => $value) {
+                $values[$key] = $value;
+            }
+            $object->setCredential($values);
+            unset($data['credential']);
+        }
+        elseif (\array_key_exists('credential', $data) && $data['credential'] === null) {
+            $object->setCredential(null);
+        }
+        if (\array_key_exists('stateId', $data) && $data['stateId'] !== null) {
+            $object->setStateId($data['stateId']);
+            unset($data['stateId']);
+        }
+        elseif (\array_key_exists('stateId', $data) && $data['stateId'] === null) {
+            $object->setStateId(null);
+        }
+        foreach ($data as $key_1 => $value_1) {
+            if (preg_match('/.*/', (string) $key_1)) {
+                $object[$key_1] = $value_1;
+            }
+        }
+        return $object;
+    }
+    public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
+    {
+        $dataArray = [];
+        $values = [];
+        foreach ($data->getCredential() as $key => $value) {
+            $values[$key] = $value;
+        }
+        $dataArray['credential'] = $values;
+        $dataArray['stateId'] = $data->getStateId();
+        foreach ($data as $key_1 => $value_1) {
+            if (preg_match('/.*/', (string) $key_1)) {
+                $dataArray[$key_1] = $value_1;
+            }
+        }
+        return $dataArray;
+    }
+    public function getSupportedTypes(?string $format = null): array
+    {
+        return [\FlowCatalyst\Generated\Model\AuthenticateCompleteRequest::class => false];
+    }
+}

@@ -250,6 +250,7 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
         // production gets it as a precursor to 019's partition DDL.
         include_str!("../../../../migrations/018_partition_prep.sql"),
         include_str!("../../../../migrations/020_webauthn_credentials.sql"),
+        include_str!("../../../../migrations/021_scheduled_jobs.sql"),
     ];
 
     for (i, sql) in core_migrations.iter().enumerate() {
@@ -261,6 +262,7 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
     if profile == MigrationProfile::Production {
         let production_migrations = [
             ("019_partition_messaging_tables", include_str!("../../../../migrations/019_partition_messaging_tables.sql")),
+            ("022_partition_scheduled_job_history", include_str!("../../../../migrations/022_partition_scheduled_job_history.sql")),
         ];
         for (name, sql) in production_migrations.iter() {
             apply_migration(pool, sql).await?;

@@ -30,6 +30,7 @@ pub mod event_type;
 pub mod subscription;
 pub mod dispatch_pool;
 pub mod dispatch_job;
+pub mod scheduled_job;
 
 // Authentication & authorization
 pub mod auth;
@@ -83,6 +84,7 @@ pub use event_type::entity::{EventType, EventTypeStatus, SpecVersion};
 pub use subscription::entity::{Subscription, SubscriptionStatus, EventTypeBinding};
 pub use dispatch_pool::entity::{DispatchPool, DispatchPoolStatus};
 pub use dispatch_job::entity::{DispatchJob, DispatchJobRead, DispatchStatus, DispatchMode, DispatchKind, DispatchAttempt, RetryStrategy, DispatchMetadata, ErrorType};
+pub use scheduled_job::entity::{ScheduledJob, ScheduledJobStatus, ScheduledJobInstance, ScheduledJobInstanceLog, InstanceStatus, CompletionStatus, LogLevel, TriggerKind};
 pub use audit::entity::AuditLog;
 pub use auth::config_entity::ClientAuthConfig;
 pub use connection::entity::{Connection, ConnectionStatus};
@@ -106,6 +108,8 @@ pub use event_type::repository::EventTypeRepository;
 pub use subscription::repository::SubscriptionRepository;
 pub use dispatch_pool::repository::DispatchPoolRepository;
 pub use dispatch_job::repository::DispatchJobRepository;
+pub use scheduled_job::repository::ScheduledJobRepository;
+pub use scheduled_job::instance_repository::{ScheduledJobInstanceRepository, InstanceListFilters};
 pub use audit::repository::AuditLogRepository;
 pub use connection::repository::ConnectionRepository;
 pub use cors::repository::CorsOriginRepository;

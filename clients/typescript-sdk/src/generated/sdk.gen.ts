@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { DeleteApiAdminClientsByIdData, DeleteApiAdminClientsByIdErrors, DeleteApiAdminClientsByIdResponses, DeleteApiAdminEventTypesByIdData, DeleteApiAdminEventTypesByIdErrors, DeleteApiAdminEventTypesByIdResponses, DeleteApiAdminOauthClientsByIdData, DeleteApiAdminOauthClientsByIdErrors, DeleteApiAdminOauthClientsByIdResponses, DeleteApiAdminPrincipalsByIdClientAccessByClientIdData, DeleteApiAdminPrincipalsByIdClientAccessByClientIdErrors, DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponses, DeleteApiAdminPrincipalsByIdData, DeleteApiAdminPrincipalsByIdErrors, DeleteApiAdminPrincipalsByIdResponses, DeleteApiAdminPrincipalsByIdRolesByRoleNameData, DeleteApiAdminPrincipalsByIdRolesByRoleNameErrors, DeleteApiAdminPrincipalsByIdRolesByRoleNameResponses, DeleteApiAdminRolesByNameData, DeleteApiAdminRolesByNameErrors, DeleteApiAdminRolesByNamePermissionsByPermissionData, DeleteApiAdminRolesByNamePermissionsByPermissionErrors, DeleteApiAdminRolesByNamePermissionsByPermissionResponses, DeleteApiAdminRolesByNameResponses, DeleteApiAdminSubscriptionsByIdData, DeleteApiAdminSubscriptionsByIdErrors, DeleteApiAdminSubscriptionsByIdResponses, GetApiAdminAuditLogsApplicationIdsData, GetApiAdminAuditLogsApplicationIdsResponses, GetApiAdminAuditLogsByIdData, GetApiAdminAuditLogsByIdErrors, GetApiAdminAuditLogsByIdResponses, GetApiAdminAuditLogsClientIdsData, GetApiAdminAuditLogsClientIdsResponses, GetApiAdminAuditLogsData, GetApiAdminAuditLogsEntityByEntityTypeByEntityIdData, GetApiAdminAuditLogsEntityByEntityTypeByEntityIdResponses, GetApiAdminAuditLogsEntityTypesData, GetApiAdminAuditLogsEntityTypesResponses, GetApiAdminAuditLogsOperationsData, GetApiAdminAuditLogsOperationsResponses, GetApiAdminAuditLogsPrincipalByPrincipalIdData, GetApiAdminAuditLogsPrincipalByPrincipalIdResponses, GetApiAdminAuditLogsRecentData, GetApiAdminAuditLogsRecentResponses, GetApiAdminAuditLogsResponses, GetApiAdminClientsByIdApplicationsData, GetApiAdminClientsByIdApplicationsErrors, GetApiAdminClientsByIdApplicationsResponses, GetApiAdminClientsByIdData, GetApiAdminClientsByIdentifierByIdentifierData, GetApiAdminClientsByIdentifierByIdentifierErrors, GetApiAdminClientsByIdentifierByIdentifierResponses, GetApiAdminClientsByIdErrors, GetApiAdminClientsByIdResponses, GetApiAdminClientsData, GetApiAdminClientsResponses, GetApiAdminClientsSearchData, GetApiAdminClientsSearchResponses, GetApiAdminDispatchJobsByEventByEventIdData, GetApiAdminDispatchJobsByEventByEventIdResponses, GetApiAdminDispatchJobsByIdAttemptsData, GetApiAdminDispatchJobsByIdAttemptsErrors, GetApiAdminDispatchJobsByIdAttemptsResponses, GetApiAdminDispatchJobsByIdData, GetApiAdminDispatchJobsByIdErrors, GetApiAdminDispatchJobsByIdRawData, GetApiAdminDispatchJobsByIdRawErrors, GetApiAdminDispatchJobsByIdRawResponses, GetApiAdminDispatchJobsByIdResponses, GetApiAdminDispatchJobsData, GetApiAdminDispatchJobsFilterOptionsData, GetApiAdminDispatchJobsFilterOptionsResponses, GetApiAdminDispatchJobsRawData, GetApiAdminDispatchJobsRawResponses, GetApiAdminDispatchJobsResponses, GetApiAdminEventsByIdData, GetApiAdminEventsByIdErrors, GetApiAdminEventsByIdResponses, GetApiAdminEventsData, GetApiAdminEventsFilterOptionsData, GetApiAdminEventsFilterOptionsResponses, GetApiAdminEventsRawData, GetApiAdminEventsRawResponses, GetApiAdminEventsResponses, GetApiAdminEventTypesByCodeByCodeData, GetApiAdminEventTypesByCodeByCodeErrors, GetApiAdminEventTypesByCodeByCodeResponses, GetApiAdminEventTypesByIdData, GetApiAdminEventTypesByIdErrors, GetApiAdminEventTypesByIdResponses, GetApiAdminEventTypesData, GetApiAdminEventTypesResponses, GetApiAdminFilterOptionsClientsData, GetApiAdminFilterOptionsClientsResponses, GetApiAdminFilterOptionsData, GetApiAdminFilterOptionsDispatchJobsData, GetApiAdminFilterOptionsDispatchJobsResponses, GetApiAdminFilterOptionsDispatchPoolsData, GetApiAdminFilterOptionsDispatchPoolsResponses, GetApiAdminFilterOptionsEventTypesData, GetApiAdminFilterOptionsEventTypesFiltersAggregatesData, GetApiAdminFilterOptionsEventTypesFiltersAggregatesResponses, GetApiAdminFilterOptionsEventTypesFiltersApplicationsData, GetApiAdminFilterOptionsEventTypesFiltersApplicationsResponses, GetApiAdminFilterOptionsEventTypesFiltersSubdomainsData, GetApiAdminFilterOptionsEventTypesFiltersSubdomainsResponses, GetApiAdminFilterOptionsEventTypesResponses, GetApiAdminFilterOptionsResponses, GetApiAdminFilterOptionsSubscriptionsData, GetApiAdminFilterOptionsSubscriptionsResponses, GetApiAdminMonitoringCircuitBreakersData, GetApiAdminMonitoringCircuitBreakersResponses, GetApiAdminMonitoringDashboardData, GetApiAdminMonitoringDashboardResponses, GetApiAdminMonitoringInFlightMessagesData, GetApiAdminMonitoringInFlightMessagesResponses, GetApiAdminMonitoringPoolStatsData, GetApiAdminMonitoringPoolStatsResponses, GetApiAdminMonitoringStandbyStatusData, GetApiAdminMonitoringStandbyStatusResponses, GetApiAdminOauthClientsByClientIdData, GetApiAdminOauthClientsByClientIdErrors, GetApiAdminOauthClientsByClientIdResponses, GetApiAdminOauthClientsByIdData, GetApiAdminOauthClientsByIdErrors, GetApiAdminOauthClientsByIdResponses, GetApiAdminOauthClientsData, GetApiAdminOauthClientsResponses, GetApiAdminPrincipalsByIdApplicationAccessData, GetApiAdminPrincipalsByIdApplicationAccessErrors, GetApiAdminPrincipalsByIdApplicationAccessResponses, GetApiAdminPrincipalsByIdAvailableApplicationsData, GetApiAdminPrincipalsByIdAvailableApplicationsErrors, GetApiAdminPrincipalsByIdAvailableApplicationsResponses, GetApiAdminPrincipalsByIdClientAccessData, GetApiAdminPrincipalsByIdClientAccessErrors, GetApiAdminPrincipalsByIdClientAccessResponses, GetApiAdminPrincipalsByIdData, GetApiAdminPrincipalsByIdErrors, GetApiAdminPrincipalsByIdResponses, GetApiAdminPrincipalsByIdRolesData, GetApiAdminPrincipalsByIdRolesErrors, GetApiAdminPrincipalsByIdRolesResponses, GetApiAdminPrincipalsCheckEmailDomainData, GetApiAdminPrincipalsCheckEmailDomainResponses, GetApiAdminPrincipalsData, GetApiAdminPrincipalsResponses, GetApiAdminRolesByApplicationByApplicationIdData, GetApiAdminRolesByApplicationByApplicationIdResponses, GetApiAdminRolesByCodeByCodeData, GetApiAdminRolesByCodeByCodeErrors, GetApiAdminRolesByCodeByCodeResponses, GetApiAdminRolesByNameData, GetApiAdminRolesByNameErrors, GetApiAdminRolesByNameResponses, GetApiAdminRolesBySourceBySourceData, GetApiAdminRolesBySourceBySourceErrors, GetApiAdminRolesBySourceBySourceResponses, GetApiAdminRolesData, GetApiAdminRolesFiltersApplicationsData, GetApiAdminRolesFiltersApplicationsResponses, GetApiAdminRolesPermissionsByPermissionData, GetApiAdminRolesPermissionsByPermissionErrors, GetApiAdminRolesPermissionsByPermissionResponses, GetApiAdminRolesPermissionsData, GetApiAdminRolesPermissionsResponses, GetApiAdminRolesResponses, GetApiAdminSubscriptionsByIdData, GetApiAdminSubscriptionsByIdErrors, GetApiAdminSubscriptionsByIdResponses, GetApiAdminSubscriptionsData, GetApiAdminSubscriptionsResponses, GetAuthCheckDomainData, GetAuthCheckDomainResponses, GetAuthMeData, GetAuthMeErrors, GetAuthMeResponses, PostApiAdminClientsByIdActivateData, PostApiAdminClientsByIdActivateErrors, PostApiAdminClientsByIdActivateResponses, PostApiAdminClientsByIdApplicationsByAppIdDisableData, PostApiAdminClientsByIdApplicationsByAppIdDisableErrors, PostApiAdminClientsByIdApplicationsByAppIdDisableResponses, PostApiAdminClientsByIdApplicationsByAppIdEnableData, PostApiAdminClientsByIdApplicationsByAppIdEnableErrors, PostApiAdminClientsByIdApplicationsByAppIdEnableResponses, PostApiAdminClientsByIdDeactivateData, PostApiAdminClientsByIdDeactivateErrors, PostApiAdminClientsByIdDeactivateResponses, PostApiAdminClientsByIdNotesData, PostApiAdminClientsByIdNotesErrors, PostApiAdminClientsByIdNotesResponses, PostApiAdminClientsByIdSuspendData, PostApiAdminClientsByIdSuspendErrors, PostApiAdminClientsByIdSuspendResponses, PostApiAdminClientsData, PostApiAdminClientsErrors, PostApiAdminClientsResponses, PostApiAdminDispatchJobsBatchData, PostApiAdminDispatchJobsBatchErrors, PostApiAdminDispatchJobsBatchResponses, PostApiAdminDispatchJobsData, PostApiAdminDispatchJobsErrors, PostApiAdminDispatchJobsResponses, PostApiAdminEventsBatchData, PostApiAdminEventsBatchErrors, PostApiAdminEventsBatchResponses, PostApiAdminEventsData, PostApiAdminEventsErrors, PostApiAdminEventsResponses, PostApiAdminEventTypesByIdSchemasData, PostApiAdminEventTypesByIdSchemasErrors, PostApiAdminEventTypesByIdSchemasResponses, PostApiAdminEventTypesData, PostApiAdminEventTypesErrors, PostApiAdminEventTypesResponses, PostApiAdminEventTypesSyncData, PostApiAdminEventTypesSyncErrors, PostApiAdminEventTypesSyncResponses, PostApiAdminOauthClientsActivateData, PostApiAdminOauthClientsActivateErrors, PostApiAdminOauthClientsActivateResponses, PostApiAdminOauthClientsData, PostApiAdminOauthClientsDeactivateData, PostApiAdminOauthClientsDeactivateErrors, PostApiAdminOauthClientsDeactivateResponses, PostApiAdminOauthClientsErrors, PostApiAdminOauthClientsRegenerateSecretData, PostApiAdminOauthClientsRegenerateSecretErrors, PostApiAdminOauthClientsRegenerateSecretResponses, PostApiAdminOauthClientsResponses, PostApiAdminOauthClientsRotateSecretData, PostApiAdminOauthClientsRotateSecretErrors, PostApiAdminOauthClientsRotateSecretResponses, PostApiAdminPrincipalsByIdActivateData, PostApiAdminPrincipalsByIdActivateErrors, PostApiAdminPrincipalsByIdActivateResponses, PostApiAdminPrincipalsByIdClientAccessData, PostApiAdminPrincipalsByIdClientAccessErrors, PostApiAdminPrincipalsByIdClientAccessResponses, PostApiAdminPrincipalsByIdDeactivateData, PostApiAdminPrincipalsByIdDeactivateErrors, PostApiAdminPrincipalsByIdDeactivateResponses, PostApiAdminPrincipalsByIdResetPasswordData, PostApiAdminPrincipalsByIdResetPasswordErrors, PostApiAdminPrincipalsByIdResetPasswordResponses, PostApiAdminPrincipalsByIdRolesData, PostApiAdminPrincipalsByIdRolesErrors, PostApiAdminPrincipalsByIdRolesResponses, PostApiAdminPrincipalsByIdSendPasswordResetData, PostApiAdminPrincipalsByIdSendPasswordResetErrors, PostApiAdminPrincipalsByIdSendPasswordResetResponses, PostApiAdminPrincipalsUsersData, PostApiAdminPrincipalsUsersErrors, PostApiAdminPrincipalsUsersResponses, PostApiAdminRolesByNamePermissionsData, PostApiAdminRolesByNamePermissionsErrors, PostApiAdminRolesByNamePermissionsResponses, PostApiAdminRolesData, PostApiAdminRolesErrors, PostApiAdminRolesResponses, PostApiAdminSubscriptionsByIdPauseData, PostApiAdminSubscriptionsByIdPauseErrors, PostApiAdminSubscriptionsByIdPauseResponses, PostApiAdminSubscriptionsByIdResumeData, PostApiAdminSubscriptionsByIdResumeErrors, PostApiAdminSubscriptionsByIdResumeResponses, PostApiAdminSubscriptionsData, PostApiAdminSubscriptionsErrors, PostApiAdminSubscriptionsResponses, PostApiAdminSubscriptionsSyncData, PostApiAdminSubscriptionsSyncErrors, PostApiAdminSubscriptionsSyncResponses, PostAuthLoginData, PostAuthLoginErrors, PostAuthLoginResponses, PostAuthLogoutData, PostAuthLogoutResponses, PostAuthRefreshData, PostAuthRefreshErrors, PostAuthRefreshResponses, PutApiAdminClientsByIdApplicationsData, PutApiAdminClientsByIdApplicationsErrors, PutApiAdminClientsByIdApplicationsResponses, PutApiAdminClientsByIdData, PutApiAdminClientsByIdErrors, PutApiAdminClientsByIdResponses, PutApiAdminEventTypesByIdData, PutApiAdminEventTypesByIdErrors, PutApiAdminEventTypesByIdResponses, PutApiAdminOauthClientsByIdData, PutApiAdminOauthClientsByIdErrors, PutApiAdminOauthClientsByIdResponses, PutApiAdminPrincipalsByIdApplicationAccessData, PutApiAdminPrincipalsByIdApplicationAccessErrors, PutApiAdminPrincipalsByIdApplicationAccessResponses, PutApiAdminPrincipalsByIdData, PutApiAdminPrincipalsByIdErrors, PutApiAdminPrincipalsByIdResponses, PutApiAdminPrincipalsByIdRolesData, PutApiAdminPrincipalsByIdRolesErrors, PutApiAdminPrincipalsByIdRolesResponses, PutApiAdminRolesByNameData, PutApiAdminRolesByNameErrors, PutApiAdminRolesByNameResponses, PutApiAdminSubscriptionsByIdData, PutApiAdminSubscriptionsByIdErrors, PutApiAdminSubscriptionsByIdResponses } from './types.gen';
+import type { DeleteApiAdminClientsByIdData, DeleteApiAdminClientsByIdErrors, DeleteApiAdminClientsByIdResponses, DeleteApiAdminEventTypesByIdData, DeleteApiAdminEventTypesByIdErrors, DeleteApiAdminEventTypesByIdResponses, DeleteApiAdminOauthClientsByIdData, DeleteApiAdminOauthClientsByIdErrors, DeleteApiAdminOauthClientsByIdResponses, DeleteApiAdminPrincipalsByIdClientAccessByClientIdData, DeleteApiAdminPrincipalsByIdClientAccessByClientIdErrors, DeleteApiAdminPrincipalsByIdClientAccessByClientIdResponses, DeleteApiAdminPrincipalsByIdData, DeleteApiAdminPrincipalsByIdErrors, DeleteApiAdminPrincipalsByIdResponses, DeleteApiAdminPrincipalsByIdRolesByRoleNameData, DeleteApiAdminPrincipalsByIdRolesByRoleNameErrors, DeleteApiAdminPrincipalsByIdRolesByRoleNameResponses, DeleteApiAdminRolesByNameData, DeleteApiAdminRolesByNameErrors, DeleteApiAdminRolesByNamePermissionsByPermissionData, DeleteApiAdminRolesByNamePermissionsByPermissionErrors, DeleteApiAdminRolesByNamePermissionsByPermissionResponses, DeleteApiAdminRolesByNameResponses, DeleteApiAdminSubscriptionsByIdData, DeleteApiAdminSubscriptionsByIdErrors, DeleteApiAdminSubscriptionsByIdResponses, DeleteWebauthnCredentialData, DeleteWebauthnCredentialErrors, DeleteWebauthnCredentialResponses, GetApiAdminAuditLogsApplicationIdsData, GetApiAdminAuditLogsApplicationIdsResponses, GetApiAdminAuditLogsByIdData, GetApiAdminAuditLogsByIdErrors, GetApiAdminAuditLogsByIdResponses, GetApiAdminAuditLogsClientIdsData, GetApiAdminAuditLogsClientIdsResponses, GetApiAdminAuditLogsData, GetApiAdminAuditLogsEntityByEntityTypeByEntityIdData, GetApiAdminAuditLogsEntityByEntityTypeByEntityIdResponses, GetApiAdminAuditLogsEntityTypesData, GetApiAdminAuditLogsEntityTypesResponses, GetApiAdminAuditLogsOperationsData, GetApiAdminAuditLogsOperationsResponses, GetApiAdminAuditLogsPrincipalByPrincipalIdData, GetApiAdminAuditLogsPrincipalByPrincipalIdResponses, GetApiAdminAuditLogsRecentData, GetApiAdminAuditLogsRecentResponses, GetApiAdminAuditLogsResponses, GetApiAdminClientsByIdApplicationsData, GetApiAdminClientsByIdApplicationsErrors, GetApiAdminClientsByIdApplicationsResponses, GetApiAdminClientsByIdData, GetApiAdminClientsByIdentifierByIdentifierData, GetApiAdminClientsByIdentifierByIdentifierErrors, GetApiAdminClientsByIdentifierByIdentifierResponses, GetApiAdminClientsByIdErrors, GetApiAdminClientsByIdResponses, GetApiAdminClientsData, GetApiAdminClientsResponses, GetApiAdminClientsSearchData, GetApiAdminClientsSearchResponses, GetApiAdminDispatchJobs2Data, GetApiAdminDispatchJobs2Responses, GetApiAdminDispatchJobsByEventByEventId2Data, GetApiAdminDispatchJobsByEventByEventId2Responses, GetApiAdminDispatchJobsByEventByEventIdData, GetApiAdminDispatchJobsByEventByEventIdResponses, GetApiAdminDispatchJobsById2Data, GetApiAdminDispatchJobsById2Errors, GetApiAdminDispatchJobsById2Responses, GetApiAdminDispatchJobsByIdAttempts2Data, GetApiAdminDispatchJobsByIdAttempts2Errors, GetApiAdminDispatchJobsByIdAttempts2Responses, GetApiAdminDispatchJobsByIdAttemptsData, GetApiAdminDispatchJobsByIdAttemptsErrors, GetApiAdminDispatchJobsByIdAttemptsResponses, GetApiAdminDispatchJobsByIdData, GetApiAdminDispatchJobsByIdErrors, GetApiAdminDispatchJobsByIdRaw2Data, GetApiAdminDispatchJobsByIdRaw2Errors, GetApiAdminDispatchJobsByIdRaw2Responses, GetApiAdminDispatchJobsByIdRawData, GetApiAdminDispatchJobsByIdRawErrors, GetApiAdminDispatchJobsByIdRawResponses, GetApiAdminDispatchJobsByIdResponses, GetApiAdminDispatchJobsData, GetApiAdminDispatchJobsFilterOptions2Data, GetApiAdminDispatchJobsFilterOptions2Responses, GetApiAdminDispatchJobsFilterOptionsData, GetApiAdminDispatchJobsFilterOptionsResponses, GetApiAdminDispatchJobsRaw2Data, GetApiAdminDispatchJobsRaw2Responses, GetApiAdminDispatchJobsRawData, GetApiAdminDispatchJobsRawResponses, GetApiAdminDispatchJobsResponses, GetApiAdminEvents2Data, GetApiAdminEvents2Responses, GetApiAdminEventsById2Data, GetApiAdminEventsById2Errors, GetApiAdminEventsById2Responses, GetApiAdminEventsByIdData, GetApiAdminEventsByIdErrors, GetApiAdminEventsByIdResponses, GetApiAdminEventsData, GetApiAdminEventsFilterOptions2Data, GetApiAdminEventsFilterOptions2Responses, GetApiAdminEventsFilterOptions3Data, GetApiAdminEventsFilterOptions3Responses, GetApiAdminEventsFilterOptionsData, GetApiAdminEventsFilterOptionsResponses, GetApiAdminEventsRaw2Data, GetApiAdminEventsRaw2Responses, GetApiAdminEventsRawData, GetApiAdminEventsRawResponses, GetApiAdminEventsResponses, GetApiAdminEventTypesByCodeByCodeData, GetApiAdminEventTypesByCodeByCodeErrors, GetApiAdminEventTypesByCodeByCodeResponses, GetApiAdminEventTypesByIdData, GetApiAdminEventTypesByIdErrors, GetApiAdminEventTypesByIdResponses, GetApiAdminEventTypesData, GetApiAdminEventTypesResponses, GetApiAdminFilterOptionsClientsData, GetApiAdminFilterOptionsClientsResponses, GetApiAdminFilterOptionsData, GetApiAdminFilterOptionsDispatchJobsData, GetApiAdminFilterOptionsDispatchJobsResponses, GetApiAdminFilterOptionsDispatchPoolsData, GetApiAdminFilterOptionsDispatchPoolsResponses, GetApiAdminFilterOptionsEventTypesData, GetApiAdminFilterOptionsEventTypesFiltersAggregatesData, GetApiAdminFilterOptionsEventTypesFiltersAggregatesResponses, GetApiAdminFilterOptionsEventTypesFiltersApplicationsData, GetApiAdminFilterOptionsEventTypesFiltersApplicationsResponses, GetApiAdminFilterOptionsEventTypesFiltersSubdomainsData, GetApiAdminFilterOptionsEventTypesFiltersSubdomainsResponses, GetApiAdminFilterOptionsEventTypesResponses, GetApiAdminFilterOptionsResponses, GetApiAdminFilterOptionsSubscriptionsData, GetApiAdminFilterOptionsSubscriptionsResponses, GetApiAdminMonitoringCircuitBreakersData, GetApiAdminMonitoringCircuitBreakersResponses, GetApiAdminMonitoringDashboardData, GetApiAdminMonitoringDashboardResponses, GetApiAdminMonitoringInFlightMessagesData, GetApiAdminMonitoringInFlightMessagesResponses, GetApiAdminMonitoringPoolStatsData, GetApiAdminMonitoringPoolStatsResponses, GetApiAdminMonitoringStandbyStatusData, GetApiAdminMonitoringStandbyStatusResponses, GetApiAdminOauthClientsByClientIdData, GetApiAdminOauthClientsByClientIdErrors, GetApiAdminOauthClientsByClientIdResponses, GetApiAdminOauthClientsByIdData, GetApiAdminOauthClientsByIdErrors, GetApiAdminOauthClientsByIdResponses, GetApiAdminOauthClientsData, GetApiAdminOauthClientsResponses, GetApiAdminPrincipalsByIdApplicationAccessData, GetApiAdminPrincipalsByIdApplicationAccessErrors, GetApiAdminPrincipalsByIdApplicationAccessResponses, GetApiAdminPrincipalsByIdAvailableApplicationsData, GetApiAdminPrincipalsByIdAvailableApplicationsErrors, GetApiAdminPrincipalsByIdAvailableApplicationsResponses, GetApiAdminPrincipalsByIdClientAccessData, GetApiAdminPrincipalsByIdClientAccessErrors, GetApiAdminPrincipalsByIdClientAccessResponses, GetApiAdminPrincipalsByIdData, GetApiAdminPrincipalsByIdErrors, GetApiAdminPrincipalsByIdResponses, GetApiAdminPrincipalsByIdRolesData, GetApiAdminPrincipalsByIdRolesErrors, GetApiAdminPrincipalsByIdRolesResponses, GetApiAdminPrincipalsCheckEmailDomainData, GetApiAdminPrincipalsCheckEmailDomainResponses, GetApiAdminPrincipalsData, GetApiAdminPrincipalsResponses, GetApiAdminRolesByApplicationByApplicationIdData, GetApiAdminRolesByApplicationByApplicationIdResponses, GetApiAdminRolesByCodeByCodeData, GetApiAdminRolesByCodeByCodeErrors, GetApiAdminRolesByCodeByCodeResponses, GetApiAdminRolesByNameData, GetApiAdminRolesByNameErrors, GetApiAdminRolesByNameResponses, GetApiAdminRolesBySourceBySourceData, GetApiAdminRolesBySourceBySourceErrors, GetApiAdminRolesBySourceBySourceResponses, GetApiAdminRolesData, GetApiAdminRolesFiltersApplicationsData, GetApiAdminRolesFiltersApplicationsResponses, GetApiAdminRolesPermissionsByPermissionData, GetApiAdminRolesPermissionsByPermissionErrors, GetApiAdminRolesPermissionsByPermissionResponses, GetApiAdminRolesPermissionsData, GetApiAdminRolesPermissionsResponses, GetApiAdminRolesResponses, GetApiAdminSubscriptionsByIdData, GetApiAdminSubscriptionsByIdErrors, GetApiAdminSubscriptionsByIdResponses, GetApiAdminSubscriptionsData, GetApiAdminSubscriptionsResponses, GetAuthCheckDomainData, GetAuthCheckDomainResponses, GetAuthMeData, GetAuthMeErrors, GetAuthMeResponses, GetWebauthnCredentialsData, GetWebauthnCredentialsErrors, GetWebauthnCredentialsResponses, PostApiAdminClientsByIdActivateData, PostApiAdminClientsByIdActivateErrors, PostApiAdminClientsByIdActivateResponses, PostApiAdminClientsByIdApplicationsByAppIdDisableData, PostApiAdminClientsByIdApplicationsByAppIdDisableErrors, PostApiAdminClientsByIdApplicationsByAppIdDisableResponses, PostApiAdminClientsByIdApplicationsByAppIdEnableData, PostApiAdminClientsByIdApplicationsByAppIdEnableErrors, PostApiAdminClientsByIdApplicationsByAppIdEnableResponses, PostApiAdminClientsByIdDeactivateData, PostApiAdminClientsByIdDeactivateErrors, PostApiAdminClientsByIdDeactivateResponses, PostApiAdminClientsByIdNotesData, PostApiAdminClientsByIdNotesErrors, PostApiAdminClientsByIdNotesResponses, PostApiAdminClientsByIdSuspendData, PostApiAdminClientsByIdSuspendErrors, PostApiAdminClientsByIdSuspendResponses, PostApiAdminClientsData, PostApiAdminClientsErrors, PostApiAdminClientsResponses, PostApiAdminDispatchJobs2Data, PostApiAdminDispatchJobs2Errors, PostApiAdminDispatchJobs2Responses, PostApiAdminDispatchJobsBatchData, PostApiAdminDispatchJobsBatchErrors, PostApiAdminDispatchJobsBatchResponses, PostApiAdminDispatchJobsData, PostApiAdminDispatchJobsErrors, PostApiAdminDispatchJobsResponses, PostApiAdminEvents2Data, PostApiAdminEvents2Errors, PostApiAdminEvents2Responses, PostApiAdminEventsBatchData, PostApiAdminEventsBatchErrors, PostApiAdminEventsBatchResponses, PostApiAdminEventsData, PostApiAdminEventsErrors, PostApiAdminEventsResponses, PostApiAdminEventTypesByIdSchemasData, PostApiAdminEventTypesByIdSchemasErrors, PostApiAdminEventTypesByIdSchemasResponses, PostApiAdminEventTypesData, PostApiAdminEventTypesErrors, PostApiAdminEventTypesResponses, PostApiAdminEventTypesSyncData, PostApiAdminEventTypesSyncErrors, PostApiAdminEventTypesSyncResponses, PostApiAdminOauthClientsActivateData, PostApiAdminOauthClientsActivateErrors, PostApiAdminOauthClientsActivateResponses, PostApiAdminOauthClientsData, PostApiAdminOauthClientsDeactivateData, PostApiAdminOauthClientsDeactivateErrors, PostApiAdminOauthClientsDeactivateResponses, PostApiAdminOauthClientsErrors, PostApiAdminOauthClientsRegenerateSecretData, PostApiAdminOauthClientsRegenerateSecretErrors, PostApiAdminOauthClientsRegenerateSecretResponses, PostApiAdminOauthClientsResponses, PostApiAdminOauthClientsRotateSecretData, PostApiAdminOauthClientsRotateSecretErrors, PostApiAdminOauthClientsRotateSecretResponses, PostApiAdminPrincipalsByIdActivateData, PostApiAdminPrincipalsByIdActivateErrors, PostApiAdminPrincipalsByIdActivateResponses, PostApiAdminPrincipalsByIdClientAccessData, PostApiAdminPrincipalsByIdClientAccessErrors, PostApiAdminPrincipalsByIdClientAccessResponses, PostApiAdminPrincipalsByIdDeactivateData, PostApiAdminPrincipalsByIdDeactivateErrors, PostApiAdminPrincipalsByIdDeactivateResponses, PostApiAdminPrincipalsByIdResetPasswordData, PostApiAdminPrincipalsByIdResetPasswordErrors, PostApiAdminPrincipalsByIdResetPasswordResponses, PostApiAdminPrincipalsByIdRolesData, PostApiAdminPrincipalsByIdRolesErrors, PostApiAdminPrincipalsByIdRolesResponses, PostApiAdminPrincipalsByIdSendPasswordResetData, PostApiAdminPrincipalsByIdSendPasswordResetErrors, PostApiAdminPrincipalsByIdSendPasswordResetResponses, PostApiAdminPrincipalsUsersData, PostApiAdminPrincipalsUsersErrors, PostApiAdminPrincipalsUsersResponses, PostApiAdminRolesByNamePermissionsData, PostApiAdminRolesByNamePermissionsErrors, PostApiAdminRolesByNamePermissionsResponses, PostApiAdminRolesData, PostApiAdminRolesErrors, PostApiAdminRolesResponses, PostApiAdminSubscriptionsByIdPauseData, PostApiAdminSubscriptionsByIdPauseErrors, PostApiAdminSubscriptionsByIdPauseResponses, PostApiAdminSubscriptionsByIdResumeData, PostApiAdminSubscriptionsByIdResumeErrors, PostApiAdminSubscriptionsByIdResumeResponses, PostApiAdminSubscriptionsData, PostApiAdminSubscriptionsErrors, PostApiAdminSubscriptionsResponses, PostApiAdminSubscriptionsSyncData, PostApiAdminSubscriptionsSyncErrors, PostApiAdminSubscriptionsSyncResponses, PostAuthLoginData, PostAuthLoginErrors, PostAuthLoginResponses, PostAuthLogoutData, PostAuthLogoutResponses, PostAuthRefreshData, PostAuthRefreshErrors, PostAuthRefreshResponses, PostWebauthnAuthenticateBeginData, PostWebauthnAuthenticateBeginResponses, PostWebauthnAuthenticateCompleteData, PostWebauthnAuthenticateCompleteErrors, PostWebauthnAuthenticateCompleteResponses, PostWebauthnRegisterBeginData, PostWebauthnRegisterBeginErrors, PostWebauthnRegisterBeginResponses, PostWebauthnRegisterCompleteData, PostWebauthnRegisterCompleteErrors, PostWebauthnRegisterCompleteResponses, PutApiAdminClientsByIdApplicationsData, PutApiAdminClientsByIdApplicationsErrors, PutApiAdminClientsByIdApplicationsResponses, PutApiAdminClientsByIdData, PutApiAdminClientsByIdErrors, PutApiAdminClientsByIdResponses, PutApiAdminEventTypesByIdData, PutApiAdminEventTypesByIdErrors, PutApiAdminEventTypesByIdResponses, PutApiAdminOauthClientsByIdData, PutApiAdminOauthClientsByIdErrors, PutApiAdminOauthClientsByIdResponses, PutApiAdminPrincipalsByIdApplicationAccessData, PutApiAdminPrincipalsByIdApplicationAccessErrors, PutApiAdminPrincipalsByIdApplicationAccessResponses, PutApiAdminPrincipalsByIdData, PutApiAdminPrincipalsByIdErrors, PutApiAdminPrincipalsByIdResponses, PutApiAdminPrincipalsByIdRolesData, PutApiAdminPrincipalsByIdRolesErrors, PutApiAdminPrincipalsByIdRolesResponses, PutApiAdminRolesByNameData, PutApiAdminRolesByNameErrors, PutApiAdminRolesByNameResponses, PutApiAdminSubscriptionsByIdData, PutApiAdminSubscriptionsByIdErrors, PutApiAdminSubscriptionsByIdResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -187,6 +187,64 @@ export const postApiAdminClientsByIdSuspend = <ThrowOnError extends boolean = fa
 });
 
 /**
+ * List dispatch jobs. Returns the most recent rows matching the filters;
+ * no pagination — see `DispatchJobsQuery` for the rationale.
+ */
+export const getApiAdminDispatchJobs = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminDispatchJobsData, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminDispatchJobsResponses, unknown, ThrowOnError>({ url: '/api/dispatch-jobs', ...options });
+
+/**
+ * Create a new dispatch job
+ *
+ * Creates and queues a new dispatch job for webhook delivery.
+ */
+export const postApiAdminDispatchJobs = <ThrowOnError extends boolean = false>(options: Options<PostApiAdminDispatchJobsData, ThrowOnError>) => (options.client ?? client).post<PostApiAdminDispatchJobsResponses, PostApiAdminDispatchJobsErrors, ThrowOnError>({
+    url: '/api/dispatch-jobs',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get dispatch jobs for an event
+ */
+export const getApiAdminDispatchJobsByEventByEventId = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminDispatchJobsByEventByEventIdData, ThrowOnError>) => (options.client ?? client).get<GetApiAdminDispatchJobsByEventByEventIdResponses, unknown, ThrowOnError>({ url: '/api/dispatch-jobs/by-event/{event_id}', ...options });
+
+/**
+ * Get filter options for dispatch jobs
+ *
+ * Returns distinct values from the read projection for cascading filter dropdowns.
+ */
+export const getApiAdminDispatchJobsFilterOptions = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminDispatchJobsFilterOptionsData, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminDispatchJobsFilterOptionsResponses, unknown, ThrowOnError>({ url: '/api/dispatch-jobs/filter-options', ...options });
+
+/**
+ * List raw dispatch jobs (from msg_dispatch_jobs, not the read projection).
+ * Returns the most recent rows; no pagination — msg_dispatch_jobs ingests
+ * at high rates and page navigation is meaningless.
+ */
+export const getApiAdminDispatchJobsRaw = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminDispatchJobsRawData, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminDispatchJobsRawResponses, unknown, ThrowOnError>({ url: '/api/dispatch-jobs/raw', ...options });
+
+/**
+ * Get dispatch job by ID
+ */
+export const getApiAdminDispatchJobsById = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminDispatchJobsByIdData, ThrowOnError>) => (options.client ?? client).get<GetApiAdminDispatchJobsByIdResponses, GetApiAdminDispatchJobsByIdErrors, ThrowOnError>({ url: '/api/dispatch-jobs/{id}', ...options });
+
+/**
+ * Get all attempts for a dispatch job
+ *
+ * Retrieves the full history of webhook delivery attempts for a job.
+ */
+export const getApiAdminDispatchJobsByIdAttempts = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminDispatchJobsByIdAttemptsData, ThrowOnError>) => (options.client ?? client).get<GetApiAdminDispatchJobsByIdAttemptsResponses, GetApiAdminDispatchJobsByIdAttemptsErrors, ThrowOnError>({ url: '/api/dispatch-jobs/{id}/attempts', ...options });
+
+/**
+ * Get raw dispatch job data by ID
+ *
+ * Returns the full DispatchJob entity serialized directly as JSON (not the DTO).
+ */
+export const getApiAdminDispatchJobsByIdRaw = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminDispatchJobsByIdRawData, ThrowOnError>) => (options.client ?? client).get<GetApiAdminDispatchJobsByIdRawResponses, GetApiAdminDispatchJobsByIdRawErrors, ThrowOnError>({ url: '/api/dispatch-jobs/{id}/raw', ...options });
+
+/**
  * List event types
  */
 export const getApiAdminEventTypes = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminEventTypesData, ThrowOnError>) => (options.client ?? client).get<GetApiAdminEventTypesResponses, unknown, ThrowOnError>({ url: '/api/event-types', ...options });
@@ -253,6 +311,45 @@ export const postApiAdminEventTypesByIdSchemas = <ThrowOnError extends boolean =
         ...options.headers
     }
 });
+
+/**
+ * List events. Returns the most recent rows matching the filters; no
+ * pagination — see `EventsQuery` for the rationale.
+ */
+export const getApiAdminEvents = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminEventsData, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminEventsResponses, unknown, ThrowOnError>({ url: '/api/events', ...options });
+
+/**
+ * Create a new event
+ *
+ * Creates a new event in the event store. If a deduplicationId is provided and
+ * an event with that ID already exists, the existing event is returned (idempotent operation).
+ * Dispatch jobs are automatically created for matching subscriptions.
+ */
+export const postApiAdminEvents = <ThrowOnError extends boolean = false>(options: Options<PostApiAdminEventsData, ThrowOnError>) => (options.client ?? client).post<PostApiAdminEventsResponses, PostApiAdminEventsErrors, ThrowOnError>({
+    url: '/api/events',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get filter options for the events read model.
+ */
+export const getApiAdminEventsFilterOptions = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminEventsFilterOptionsData, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminEventsFilterOptionsResponses, unknown, ThrowOnError>({ url: '/api/events/filter-options', ...options });
+
+/**
+ * List raw events (from msg_events, not the read projection). Returns the
+ * most recent rows; no pagination — msg_events ingests at high rates and
+ * page navigation through the firehose is meaningless.
+ */
+export const getApiAdminEventsRaw = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminEventsRawData, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminEventsRawResponses, unknown, ThrowOnError>({ url: '/api/events/raw', ...options });
+
+/**
+ * Get event by ID
+ */
+export const getApiAdminEventsById = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminEventsByIdData, ThrowOnError>) => (options.client ?? client).get<GetApiAdminEventsByIdResponses, GetApiAdminEventsByIdErrors, ThrowOnError>({ url: '/api/events/{id}', ...options });
 
 /**
  * Get circuit breaker states
@@ -719,16 +816,91 @@ export const postAuthRefresh = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
- * List dispatch jobs
+ * Begin passkey authentication
+ *
+ * Returns a `PublicKeyCredentialRequestOptions` challenge. The response
+ * shape is identical for known and unknown emails (deterministic-fake
+ * `allowCredentials` is generated for unknown / federated / no-credentials
+ * cases) — clients cannot distinguish them.
  */
-export const getApiAdminDispatchJobs = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminDispatchJobsData, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminDispatchJobsResponses, unknown, ThrowOnError>({ url: '/bff/dispatch-jobs', ...options });
+export const postWebauthnAuthenticateBegin = <ThrowOnError extends boolean = false>(options: Options<PostWebauthnAuthenticateBeginData, ThrowOnError>) => (options.client ?? client).post<PostWebauthnAuthenticateBeginResponses, unknown, ThrowOnError>({
+    url: '/auth/webauthn/authenticate/begin',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Complete passkey authentication
+ *
+ * Validates the assertion, applies counter / backup-state updates,
+ * re-checks the federation gate (hard cutover), and on success issues a
+ * session cookie. All failure modes return 401 `INVALID_CREDENTIALS` with
+ * an identical shape to defeat enumeration.
+ */
+export const postWebauthnAuthenticateComplete = <ThrowOnError extends boolean = false>(options: Options<PostWebauthnAuthenticateCompleteData, ThrowOnError>) => (options.client ?? client).post<PostWebauthnAuthenticateCompleteResponses, PostWebauthnAuthenticateCompleteErrors, ThrowOnError>({
+    url: '/auth/webauthn/authenticate/complete',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List the caller's registered passkeys
+ */
+export const getWebauthnCredentials = <ThrowOnError extends boolean = false>(options?: Options<GetWebauthnCredentialsData, ThrowOnError>) => (options?.client ?? client).get<GetWebauthnCredentialsResponses, GetWebauthnCredentialsErrors, ThrowOnError>({ url: '/auth/webauthn/credentials', ...options });
+
+/**
+ * Revoke one of the caller's passkeys
+ */
+export const deleteWebauthnCredential = <ThrowOnError extends boolean = false>(options: Options<DeleteWebauthnCredentialData, ThrowOnError>) => (options.client ?? client).delete<DeleteWebauthnCredentialResponses, DeleteWebauthnCredentialErrors, ThrowOnError>({ url: '/auth/webauthn/credentials/{id}', ...options });
+
+/**
+ * Begin passkey registration
+ *
+ * Returns a WebAuthn `PublicKeyCredentialCreationOptions` challenge. The
+ * browser passes this to `navigator.credentials.create()` and posts the
+ * result to `/auth/webauthn/register/complete`.
+ */
+export const postWebauthnRegisterBegin = <ThrowOnError extends boolean = false>(options: Options<PostWebauthnRegisterBeginData, ThrowOnError>) => (options.client ?? client).post<PostWebauthnRegisterBeginResponses, PostWebauthnRegisterBeginErrors, ThrowOnError>({
+    url: '/auth/webauthn/register/begin',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Complete passkey registration
+ *
+ * Validates the browser's attestation response and stores the credential.
+ */
+export const postWebauthnRegisterComplete = <ThrowOnError extends boolean = false>(options: Options<PostWebauthnRegisterCompleteData, ThrowOnError>) => (options.client ?? client).post<PostWebauthnRegisterCompleteResponses, PostWebauthnRegisterCompleteErrors, ThrowOnError>({
+    url: '/auth/webauthn/register/complete',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List dispatch jobs. Returns the most recent rows matching the filters;
+ * no pagination — see `DispatchJobsQuery` for the rationale.
+ */
+export const getApiAdminDispatchJobs2 = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminDispatchJobs2Data, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminDispatchJobs2Responses, unknown, ThrowOnError>({ url: '/bff/dispatch-jobs', ...options });
 
 /**
  * Create a new dispatch job
  *
  * Creates and queues a new dispatch job for webhook delivery.
  */
-export const postApiAdminDispatchJobs = <ThrowOnError extends boolean = false>(options: Options<PostApiAdminDispatchJobsData, ThrowOnError>) => (options.client ?? client).post<PostApiAdminDispatchJobsResponses, PostApiAdminDispatchJobsErrors, ThrowOnError>({
+export const postApiAdminDispatchJobs2 = <ThrowOnError extends boolean = false>(options: Options<PostApiAdminDispatchJobs2Data, ThrowOnError>) => (options.client ?? client).post<PostApiAdminDispatchJobs2Responses, PostApiAdminDispatchJobs2Errors, ThrowOnError>({
     url: '/bff/dispatch-jobs',
     ...options,
     headers: {
@@ -754,43 +926,46 @@ export const postApiAdminDispatchJobsBatch = <ThrowOnError extends boolean = fal
 /**
  * Get dispatch jobs for an event
  */
-export const getApiAdminDispatchJobsByEventByEventId = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminDispatchJobsByEventByEventIdData, ThrowOnError>) => (options.client ?? client).get<GetApiAdminDispatchJobsByEventByEventIdResponses, unknown, ThrowOnError>({ url: '/bff/dispatch-jobs/by-event/{event_id}', ...options });
+export const getApiAdminDispatchJobsByEventByEventId2 = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminDispatchJobsByEventByEventId2Data, ThrowOnError>) => (options.client ?? client).get<GetApiAdminDispatchJobsByEventByEventId2Responses, unknown, ThrowOnError>({ url: '/bff/dispatch-jobs/by-event/{event_id}', ...options });
 
 /**
  * Get filter options for dispatch jobs
  *
  * Returns distinct values from the read projection for cascading filter dropdowns.
  */
-export const getApiAdminDispatchJobsFilterOptions = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminDispatchJobsFilterOptionsData, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminDispatchJobsFilterOptionsResponses, unknown, ThrowOnError>({ url: '/bff/dispatch-jobs/filter-options', ...options });
+export const getApiAdminDispatchJobsFilterOptions2 = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminDispatchJobsFilterOptions2Data, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminDispatchJobsFilterOptions2Responses, unknown, ThrowOnError>({ url: '/bff/dispatch-jobs/filter-options', ...options });
 
 /**
- * List raw dispatch jobs (from msg_dispatch_jobs, not read projection)
+ * List raw dispatch jobs (from msg_dispatch_jobs, not the read projection).
+ * Returns the most recent rows; no pagination — msg_dispatch_jobs ingests
+ * at high rates and page navigation is meaningless.
  */
-export const getApiAdminDispatchJobsRaw = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminDispatchJobsRawData, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminDispatchJobsRawResponses, unknown, ThrowOnError>({ url: '/bff/dispatch-jobs/raw', ...options });
+export const getApiAdminDispatchJobsRaw2 = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminDispatchJobsRaw2Data, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminDispatchJobsRaw2Responses, unknown, ThrowOnError>({ url: '/bff/dispatch-jobs/raw', ...options });
 
 /**
  * Get dispatch job by ID
  */
-export const getApiAdminDispatchJobsById = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminDispatchJobsByIdData, ThrowOnError>) => (options.client ?? client).get<GetApiAdminDispatchJobsByIdResponses, GetApiAdminDispatchJobsByIdErrors, ThrowOnError>({ url: '/bff/dispatch-jobs/{id}', ...options });
+export const getApiAdminDispatchJobsById2 = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminDispatchJobsById2Data, ThrowOnError>) => (options.client ?? client).get<GetApiAdminDispatchJobsById2Responses, GetApiAdminDispatchJobsById2Errors, ThrowOnError>({ url: '/bff/dispatch-jobs/{id}', ...options });
 
 /**
  * Get all attempts for a dispatch job
  *
  * Retrieves the full history of webhook delivery attempts for a job.
  */
-export const getApiAdminDispatchJobsByIdAttempts = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminDispatchJobsByIdAttemptsData, ThrowOnError>) => (options.client ?? client).get<GetApiAdminDispatchJobsByIdAttemptsResponses, GetApiAdminDispatchJobsByIdAttemptsErrors, ThrowOnError>({ url: '/bff/dispatch-jobs/{id}/attempts', ...options });
+export const getApiAdminDispatchJobsByIdAttempts2 = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminDispatchJobsByIdAttempts2Data, ThrowOnError>) => (options.client ?? client).get<GetApiAdminDispatchJobsByIdAttempts2Responses, GetApiAdminDispatchJobsByIdAttempts2Errors, ThrowOnError>({ url: '/bff/dispatch-jobs/{id}/attempts', ...options });
 
 /**
  * Get raw dispatch job data by ID
  *
  * Returns the full DispatchJob entity serialized directly as JSON (not the DTO).
  */
-export const getApiAdminDispatchJobsByIdRaw = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminDispatchJobsByIdRawData, ThrowOnError>) => (options.client ?? client).get<GetApiAdminDispatchJobsByIdRawResponses, GetApiAdminDispatchJobsByIdRawErrors, ThrowOnError>({ url: '/bff/dispatch-jobs/{id}/raw', ...options });
+export const getApiAdminDispatchJobsByIdRaw2 = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminDispatchJobsByIdRaw2Data, ThrowOnError>) => (options.client ?? client).get<GetApiAdminDispatchJobsByIdRaw2Responses, GetApiAdminDispatchJobsByIdRaw2Errors, ThrowOnError>({ url: '/bff/dispatch-jobs/{id}/raw', ...options });
 
 /**
- * List events
+ * List events. Returns the most recent rows matching the filters; no
+ * pagination — see `EventsQuery` for the rationale.
  */
-export const getApiAdminEvents = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminEventsData, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminEventsResponses, unknown, ThrowOnError>({ url: '/bff/events', ...options });
+export const getApiAdminEvents2 = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminEvents2Data, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminEvents2Responses, unknown, ThrowOnError>({ url: '/bff/events', ...options });
 
 /**
  * Create a new event
@@ -799,7 +974,7 @@ export const getApiAdminEvents = <ThrowOnError extends boolean = false>(options?
  * an event with that ID already exists, the existing event is returned (idempotent operation).
  * Dispatch jobs are automatically created for matching subscriptions.
  */
-export const postApiAdminEvents = <ThrowOnError extends boolean = false>(options: Options<PostApiAdminEventsData, ThrowOnError>) => (options.client ?? client).post<PostApiAdminEventsResponses, PostApiAdminEventsErrors, ThrowOnError>({
+export const postApiAdminEvents2 = <ThrowOnError extends boolean = false>(options: Options<PostApiAdminEvents2Data, ThrowOnError>) => (options.client ?? client).post<PostApiAdminEvents2Responses, PostApiAdminEvents2Errors, ThrowOnError>({
     url: '/bff/events',
     ...options,
     headers: {
@@ -825,14 +1000,21 @@ export const postApiAdminEventsBatch = <ThrowOnError extends boolean = false>(op
 });
 
 /**
- * List raw events (from msg_events, not read projection)
+ * Get filter options for the events read model.
  */
-export const getApiAdminEventsRaw = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminEventsRawData, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminEventsRawResponses, unknown, ThrowOnError>({ url: '/bff/events/raw', ...options });
+export const getApiAdminEventsFilterOptions2 = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminEventsFilterOptions2Data, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminEventsFilterOptions2Responses, unknown, ThrowOnError>({ url: '/bff/events/filter-options', ...options });
+
+/**
+ * List raw events (from msg_events, not the read projection). Returns the
+ * most recent rows; no pagination — msg_events ingests at high rates and
+ * page navigation through the firehose is meaningless.
+ */
+export const getApiAdminEventsRaw2 = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminEventsRaw2Data, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminEventsRaw2Responses, unknown, ThrowOnError>({ url: '/bff/events/raw', ...options });
 
 /**
  * Get event by ID
  */
-export const getApiAdminEventsById = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminEventsByIdData, ThrowOnError>) => (options.client ?? client).get<GetApiAdminEventsByIdResponses, GetApiAdminEventsByIdErrors, ThrowOnError>({ url: '/bff/events/{id}', ...options });
+export const getApiAdminEventsById2 = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminEventsById2Data, ThrowOnError>) => (options.client ?? client).get<GetApiAdminEventsById2Responses, GetApiAdminEventsById2Errors, ThrowOnError>({ url: '/bff/events/{id}', ...options });
 
 /**
  * Get all filter options at once
@@ -877,7 +1059,7 @@ export const getApiAdminFilterOptionsEventTypesFiltersSubdomains = <ThrowOnError
 /**
  * Get events filter options (cascading)
  */
-export const getApiAdminEventsFilterOptions = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminEventsFilterOptionsData, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminEventsFilterOptionsResponses, unknown, ThrowOnError>({ url: '/bff/filter-options/events', ...options });
+export const getApiAdminEventsFilterOptions3 = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminEventsFilterOptions3Data, ThrowOnError>) => (options?.client ?? client).get<GetApiAdminEventsFilterOptions3Responses, unknown, ThrowOnError>({ url: '/bff/filter-options/events', ...options });
 
 /**
  * Get subscription filter options

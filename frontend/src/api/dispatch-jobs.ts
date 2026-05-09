@@ -1,6 +1,8 @@
 /**
- * Dispatch jobs API client. Cursor-paginated; backend keysets on
- * `(created_at, id) DESC` and never counts.
+ * Dispatch jobs API client. No pagination — `msg_dispatch_jobs_read`
+ * ingests at high rates, page navigation is meaningless. The endpoint
+ * returns the most recent N rows matching the filters; configure with
+ * `?size=` (default 50, max 1000).
  */
 
 import { apiFetch } from "./client";
@@ -30,14 +32,7 @@ export interface DispatchJobRead {
 	[key: string]: unknown;
 }
 
-export interface DispatchJobsCursorPage {
-	items: DispatchJobRead[];
-	hasMore: boolean;
-	nextCursor?: string;
-}
-
 export interface DispatchJobsListParams {
-	after?: string | undefined;
 	size?: number;
 	clientIds?: string[] | undefined;
 	statuses?: string[] | undefined;
@@ -58,7 +53,6 @@ export interface DispatchJobFilterOptions {
 
 function buildQuery(params: DispatchJobsListParams): string {
 	const qp = new URLSearchParams();
-	if (params.after) qp.set("after", params.after);
 	if (params.size != null) qp.set("size", String(params.size));
 	if (params.clientIds?.length) qp.set("clientIds", params.clientIds.join(","));
 	if (params.statuses?.length) qp.set("statuses", params.statuses.join(","));
@@ -72,7 +66,7 @@ function buildQuery(params: DispatchJobsListParams): string {
 }
 
 export const dispatchJobsApi = {
-	list(params: DispatchJobsListParams): Promise<DispatchJobsCursorPage> {
+	list(params: DispatchJobsListParams): Promise<DispatchJobRead[]> {
 		return apiFetch(`/dispatch-jobs${buildQuery(params)}`);
 	},
 	filterOptions(): Promise<DispatchJobFilterOptions> {

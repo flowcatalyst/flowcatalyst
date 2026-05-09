@@ -395,12 +395,15 @@ async fn main() -> Result<()> {
             events_batch_size: 100,
             dispatch_jobs_enabled: true,
             dispatch_jobs_batch_size: 100,
+            fan_out_enabled: true,
+            fan_out_batch_size: 200,
+            fan_out_subscription_refresh_secs: 5,
             // fc-dev uses embedded postgres which skips the partitioning
             // migration; the partition manager has nothing to do here.
             partition_manager_enabled: false,
         };
         let (handle, _health) = fc_stream::start_stream_processor(pg_pool.clone(), config);
-        info!("Stream processor started (event + dispatch job projections)");
+        info!("Stream processor started (event + dispatch job + fan-out projections)");
         handle
     };
 
@@ -528,26 +531,8 @@ async fn main() -> Result<()> {
         },
     );
 
-    // 8e.1 Start event fan-out as a background service. Reads unfanned events
-    // from msg_events, matches against active subscriptions, creates PENDING
-    // dispatch jobs. The scheduler picks them up and publishes. Replaces the
-    // previous synchronous fan-out that ran inside the batch_events handler.
-    let _fan_out_service = {
-        use fc_platform::shared::event_fan_out_service::{EventFanOutConfig, EventFanOutService};
-        let config = EventFanOutConfig {
-            batch_size: 200,
-            subscription_refresh: std::time::Duration::from_secs(5),
-        };
-        let svc = EventFanOutService::new(
-            pg_pool.clone(),
-            repos.subscription_repo.clone(),
-            repos.dispatch_job_repo.clone(),
-            config,
-        );
-        let _handle = svc.start();
-        svc
-    };
-    info!("Event fan-out service started");
+    // Event fan-out runs inside the stream processor (fc-stream) configured
+    // above; nothing to start here.
     let (platform_app, _openapi) = routes.build();
 
     // Dev-specific extra route states (the shared builder doesn't wire

@@ -131,13 +131,13 @@ export type AuditLogDetailResponse = {
 };
 
 /**
- * Audit logs list response (matches Java AuditLogListResponse)
+ * Cursor-paginated audit logs response. `aud_logs` grows unbounded, so we
+ * keyset-paginate on `(performed_at, id) DESC` and never count.
  */
 export type AuditLogListResponse = {
     auditLogs: Array<AuditLogResponse>;
-    page: number;
-    pageSize: number;
-    total: number;
+    hasMore: boolean;
+    nextCursor?: string | null;
 };
 
 /**
@@ -159,6 +159,39 @@ export type AuditLogResponse = {
  * Authentication method
  */
 export type AuthMethod = 'INTERNAL' | 'OIDC' | 'SAML';
+
+export type AuthenticateBeginRequest = {
+    email: string;
+};
+
+/**
+ * WebAuthn authentication challenge to hand to `navigator.credentials.get()`.
+ * The shape is identical for known and unknown emails — see the enumeration
+ * defence note in the source.
+ */
+export type AuthenticateBeginResponse = {
+    options: {
+        [key: string]: unknown;
+    };
+    stateId: string;
+};
+
+export type AuthenticateCompleteRequest = {
+    /**
+     * The `PublicKeyCredential` returned by `navigator.credentials.get()`.
+     */
+    credential: {
+        [key: string]: unknown;
+    };
+    stateId: string;
+};
+
+export type AuthenticateCompleteResponse = {
+    email?: string | null;
+    name: string;
+    principalId: string;
+    roles: Array<string>;
+};
 
 /**
  * Available application response (slim DTO)
@@ -822,6 +855,13 @@ export type CreatedResponse = {
     id: string;
 };
 
+export type CredentialSummary = {
+    createdAt: string;
+    id: string;
+    lastUsedAt?: string | null;
+    name?: string | null;
+};
+
 /**
  * Current user info response
  */
@@ -861,7 +901,18 @@ export type CurrentUserResponse = {
 };
 
 /**
- * Dashboard metrics response
+ * Dashboard metrics response.
+ *
+ * `total_events` and `total_jobs` are **approximate** — read from
+ * `pg_class.reltuples` (the planner's row estimate maintained by autovacuum/
+ * ANALYZE). Within a few % of accurate; sub-millisecond regardless of row
+ * count, where exact counts on `msg_events` / `msg_dispatch_jobs` would be a
+ * non-starter at production scale.
+ *
+ * `jobs_by_status` was removed: migration 015 dropped the status index on
+ * `msg_dispatch_jobs` (it's a write-optimized table; the read projection
+ * has the index). Per-status counts are now full table scans, so they're
+ * not surfaced here. If you need them, query the read projection directly.
  */
 export type DashboardMetrics = {
     /**
@@ -873,7 +924,8 @@ export type DashboardMetrics = {
      */
     activeSubscriptions: number;
     /**
-     * Events in last hour
+     * Events in last hour. Currently always 0 — needs a time-windowed
+     * counter on the projection or an external metrics store.
      */
     eventsLastHour: number;
     /**
@@ -881,17 +933,11 @@ export type DashboardMetrics = {
      */
     health: SystemHealth;
     /**
-     * Jobs by status
-     */
-    jobsByStatus: {
-        [key: string]: number;
-    };
-    /**
-     * Total events received
+     * Approximate total events received (planner estimate).
      */
     totalEvents: number;
     /**
-     * Total dispatch jobs
+     * Approximate total dispatch jobs (planner estimate).
      */
     totalJobs: number;
 };
@@ -1105,6 +1151,18 @@ export type ErrorResponse = {
      * Human-readable error message suitable for display
      */
     message: string;
+};
+
+/**
+ * Filter options for the events read model (cascading filters).
+ * Clients are served by the canonical `/bff/filter-options/clients` endpoint,
+ * so they aren't duplicated here.
+ */
+export type EventFilterOptions = {
+    aggregates: Array<string>;
+    applications: Array<string>;
+    subdomains: Array<string>;
+    types: Array<string>;
 };
 
 /**
@@ -1366,44 +1424,6 @@ export type OperationsResponse = {
     operations: Array<string>;
 };
 
-/**
- * Paginated dispatch job list response
- */
-export type PagedDispatchJobResponse = {
-    items: Array<DispatchJobReadResponse>;
-    page: number;
-    size: number;
-    totalItems: number;
-};
-
-/**
- * Paginated events list response (read projection)
- */
-export type PagedEventsResponse = {
-    items: Array<EventRead>;
-    page: number;
-    size: number;
-    totalItems: number;
-};
-
-/**
- * Paginated dispatch jobs response
- */
-export type PaginatedDispatchJobsResponse = {
-    items: Array<DispatchJobResponse>;
-    page: number;
-    size: number;
-};
-
-/**
- * Paginated response (matches TS: { items, page, size })
- */
-export type PaginatedEventsResponse = {
-    items: Array<EventSummaryResponse>;
-    page: number;
-    size: number;
-};
-
 export type PaginationParams = {
     /**
      * Page number (1-based)
@@ -1553,6 +1573,53 @@ export type RegenerateSecretResponse = {
      * The new plaintext client secret (shown once)
      */
     clientSecret: string;
+};
+
+/**
+ * Optional metadata for a passkey registration ceremony.
+ */
+export type RegisterBeginRequest = {
+    /**
+     * Display name shown in the authenticator UI (defaults to the user's name).
+     */
+    displayName?: string | null;
+};
+
+/**
+ * WebAuthn registration challenge to hand to `navigator.credentials.create()`.
+ */
+export type RegisterBeginResponse = {
+    /**
+     * `PublicKeyCredentialCreationOptions` JSON for the browser.
+     */
+    options: {
+        [key: string]: unknown;
+    };
+    /**
+     * Opaque ceremony state token; pass back unchanged on `register/complete`.
+     */
+    stateId: string;
+};
+
+/**
+ * Browser's registration response, plus the ceremony state token.
+ */
+export type RegisterCompleteRequest = {
+    /**
+     * The `PublicKeyCredential` returned by `navigator.credentials.create()`.
+     */
+    credential: {
+        [key: string]: unknown;
+    };
+    /**
+     * User-supplied label (e.g. "Andrew's iPhone").
+     */
+    name?: string | null;
+    stateId: string;
+};
+
+export type RegisterCompleteResponse = {
+    credentialId: string;
 };
 
 /**
@@ -2058,11 +2125,12 @@ export type GetApiAdminAuditLogsData = {
     path?: never;
     query?: {
         /**
-         * Page number (0-based, matches Java)
+         * Opaque cursor returned by a previous page's `nextCursor`. Omit for
+         * the first page.
          */
-        page?: number;
+        after?: string;
         /**
-         * Page size (default 50)
+         * Page size (default 50, capped at 200).
          */
         pageSize?: number;
         /**
@@ -2681,6 +2749,234 @@ export type PostApiAdminClientsByIdSuspendResponses = {
 
 export type PostApiAdminClientsByIdSuspendResponse = PostApiAdminClientsByIdSuspendResponses[keyof PostApiAdminClientsByIdSuspendResponses];
 
+export type GetApiAdminDispatchJobsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Result size. Default 50, capped at 1000.
+         */
+        size?: number;
+        /**
+         * Filter by event ID
+         */
+        eventId?: string;
+        /**
+         * Filter by correlation ID
+         */
+        correlationId?: string;
+        /**
+         * Filter by subscription ID
+         */
+        subscriptionId?: string;
+        /**
+         * Filter by client IDs (comma-separated)
+         */
+        clientIds?: string;
+        /**
+         * Filter by statuses (comma-separated)
+         */
+        statuses?: string;
+        /**
+         * Filter by application codes (comma-separated)
+         */
+        applications?: string;
+        /**
+         * Filter by subdomains (comma-separated)
+         */
+        subdomains?: string;
+        /**
+         * Filter by aggregates (comma-separated)
+         */
+        aggregates?: string;
+        /**
+         * Filter by codes (comma-separated)
+         */
+        codes?: string;
+        /**
+         * Free-text search across code, subject, source
+         */
+        source?: string;
+    };
+    url: '/api/dispatch-jobs';
+};
+
+export type GetApiAdminDispatchJobsResponses = {
+    /**
+     * List of dispatch jobs
+     */
+    200: Array<DispatchJobReadResponse>;
+};
+
+export type GetApiAdminDispatchJobsResponse = GetApiAdminDispatchJobsResponses[keyof GetApiAdminDispatchJobsResponses];
+
+export type PostApiAdminDispatchJobsData = {
+    body: CreateDispatchJobRequest;
+    path?: never;
+    query?: never;
+    url: '/api/dispatch-jobs';
+};
+
+export type PostApiAdminDispatchJobsErrors = {
+    /**
+     * Invalid request
+     */
+    400: unknown;
+    /**
+     * No access to client
+     */
+    403: unknown;
+};
+
+export type PostApiAdminDispatchJobsResponses = {
+    /**
+     * Dispatch job created
+     */
+    201: CreatedResponse;
+};
+
+export type PostApiAdminDispatchJobsResponse = PostApiAdminDispatchJobsResponses[keyof PostApiAdminDispatchJobsResponses];
+
+export type GetApiAdminDispatchJobsByEventByEventIdData = {
+    body?: never;
+    path: {
+        /**
+         * Event ID
+         */
+        event_id: string;
+    };
+    query?: never;
+    url: '/api/dispatch-jobs/by-event/{event_id}';
+};
+
+export type GetApiAdminDispatchJobsByEventByEventIdResponses = {
+    /**
+     * Dispatch jobs for event
+     */
+    200: Array<DispatchJobResponse>;
+};
+
+export type GetApiAdminDispatchJobsByEventByEventIdResponse = GetApiAdminDispatchJobsByEventByEventIdResponses[keyof GetApiAdminDispatchJobsByEventByEventIdResponses];
+
+export type GetApiAdminDispatchJobsFilterOptionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/dispatch-jobs/filter-options';
+};
+
+export type GetApiAdminDispatchJobsFilterOptionsResponses = {
+    /**
+     * Filter options
+     */
+    200: DispatchJobFilterOptionsResponse;
+};
+
+export type GetApiAdminDispatchJobsFilterOptionsResponse = GetApiAdminDispatchJobsFilterOptionsResponses[keyof GetApiAdminDispatchJobsFilterOptionsResponses];
+
+export type GetApiAdminDispatchJobsRawData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Result size. Default 50, capped at 1000.
+         */
+        size?: number;
+    };
+    url: '/api/dispatch-jobs/raw';
+};
+
+export type GetApiAdminDispatchJobsRawResponses = {
+    /**
+     * Raw dispatch jobs
+     */
+    200: Array<DispatchJobResponse>;
+};
+
+export type GetApiAdminDispatchJobsRawResponse = GetApiAdminDispatchJobsRawResponses[keyof GetApiAdminDispatchJobsRawResponses];
+
+export type GetApiAdminDispatchJobsByIdData = {
+    body?: never;
+    path: {
+        /**
+         * Dispatch job ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/dispatch-jobs/{id}';
+};
+
+export type GetApiAdminDispatchJobsByIdErrors = {
+    /**
+     * Dispatch job not found
+     */
+    404: unknown;
+};
+
+export type GetApiAdminDispatchJobsByIdResponses = {
+    /**
+     * Dispatch job found
+     */
+    200: DispatchJobResponse;
+};
+
+export type GetApiAdminDispatchJobsByIdResponse = GetApiAdminDispatchJobsByIdResponses[keyof GetApiAdminDispatchJobsByIdResponses];
+
+export type GetApiAdminDispatchJobsByIdAttemptsData = {
+    body?: never;
+    path: {
+        /**
+         * Dispatch job ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/dispatch-jobs/{id}/attempts';
+};
+
+export type GetApiAdminDispatchJobsByIdAttemptsErrors = {
+    /**
+     * Dispatch job not found
+     */
+    404: unknown;
+};
+
+export type GetApiAdminDispatchJobsByIdAttemptsResponses = {
+    /**
+     * Attempts list returned
+     */
+    200: Array<DispatchAttemptResponse>;
+};
+
+export type GetApiAdminDispatchJobsByIdAttemptsResponse = GetApiAdminDispatchJobsByIdAttemptsResponses[keyof GetApiAdminDispatchJobsByIdAttemptsResponses];
+
+export type GetApiAdminDispatchJobsByIdRawData = {
+    body?: never;
+    path: {
+        /**
+         * Dispatch job ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/dispatch-jobs/{id}/raw';
+};
+
+export type GetApiAdminDispatchJobsByIdRawErrors = {
+    /**
+     * Dispatch job not found
+     */
+    404: unknown;
+};
+
+export type GetApiAdminDispatchJobsByIdRawResponses = {
+    /**
+     * Raw dispatch job data
+     */
+    200: unknown;
+};
+
 export type GetApiAdminEventTypesData = {
     body?: never;
     path?: never;
@@ -2909,6 +3205,148 @@ export type PostApiAdminEventTypesByIdSchemasResponses = {
 };
 
 export type PostApiAdminEventTypesByIdSchemasResponse = PostApiAdminEventTypesByIdSchemasResponses[keyof PostApiAdminEventTypesByIdSchemasResponses];
+
+export type GetApiAdminEventsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Result size. Default 50, capped at 1000.
+         */
+        size?: number;
+        /**
+         * Filter by client IDs (comma-separated)
+         */
+        clientIds?: string;
+        /**
+         * Filter by event types (comma-separated)
+         */
+        types?: string;
+        /**
+         * Filter by application codes (comma-separated)
+         */
+        applications?: string;
+        /**
+         * Filter by subdomains (comma-separated)
+         */
+        subdomains?: string;
+        /**
+         * Filter by aggregates (comma-separated)
+         */
+        aggregates?: string;
+        /**
+         * Filter by correlation ID
+         */
+        correlationId?: string;
+        /**
+         * Free-text search across type, source, subject
+         */
+        source?: string;
+    };
+    url: '/api/events';
+};
+
+export type GetApiAdminEventsResponses = {
+    /**
+     * List of events
+     */
+    200: Array<EventRead>;
+};
+
+export type GetApiAdminEventsResponse = GetApiAdminEventsResponses[keyof GetApiAdminEventsResponses];
+
+export type PostApiAdminEventsData = {
+    body: CreateEventRequest;
+    path?: never;
+    query?: never;
+    url: '/api/events';
+};
+
+export type PostApiAdminEventsErrors = {
+    /**
+     * Validation error
+     */
+    400: unknown;
+    /**
+     * No access to client
+     */
+    403: unknown;
+};
+
+export type PostApiAdminEventsResponses = {
+    /**
+     * Event already exists (idempotent)
+     */
+    200: CreateEventResponse;
+    /**
+     * Event created
+     */
+    201: CreateEventResponse;
+};
+
+export type PostApiAdminEventsResponse = PostApiAdminEventsResponses[keyof PostApiAdminEventsResponses];
+
+export type GetApiAdminEventsFilterOptionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/events/filter-options';
+};
+
+export type GetApiAdminEventsFilterOptionsResponses = {
+    200: EventFilterOptions;
+};
+
+export type GetApiAdminEventsFilterOptionsResponse = GetApiAdminEventsFilterOptionsResponses[keyof GetApiAdminEventsFilterOptionsResponses];
+
+export type GetApiAdminEventsRawData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Result size. Default 50, capped at 1000.
+         */
+        size?: number;
+    };
+    url: '/api/events/raw';
+};
+
+export type GetApiAdminEventsRawResponses = {
+    /**
+     * Raw events
+     */
+    200: Array<EventSummaryResponse>;
+};
+
+export type GetApiAdminEventsRawResponse = GetApiAdminEventsRawResponses[keyof GetApiAdminEventsRawResponses];
+
+export type GetApiAdminEventsByIdData = {
+    body?: never;
+    path: {
+        /**
+         * Event ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/events/{id}';
+};
+
+export type GetApiAdminEventsByIdErrors = {
+    /**
+     * Event not found
+     */
+    404: unknown;
+};
+
+export type GetApiAdminEventsByIdResponses = {
+    /**
+     * Event found
+     */
+    200: EventResponse;
+};
+
+export type GetApiAdminEventsByIdResponse = GetApiAdminEventsByIdResponses[keyof GetApiAdminEventsByIdResponses];
 
 export type GetApiAdminMonitoringCircuitBreakersData = {
     body?: never;
@@ -4541,26 +4979,166 @@ export type PostAuthRefreshResponses = {
 
 export type PostAuthRefreshResponse = PostAuthRefreshResponses[keyof PostAuthRefreshResponses];
 
-export type GetApiAdminDispatchJobsData = {
+export type PostWebauthnAuthenticateBeginData = {
+    body: AuthenticateBeginRequest;
+    path?: never;
+    query?: never;
+    url: '/auth/webauthn/authenticate/begin';
+};
+
+export type PostWebauthnAuthenticateBeginResponses = {
+    /**
+     * Authentication challenge issued
+     */
+    200: AuthenticateBeginResponse;
+};
+
+export type PostWebauthnAuthenticateBeginResponse = PostWebauthnAuthenticateBeginResponses[keyof PostWebauthnAuthenticateBeginResponses];
+
+export type PostWebauthnAuthenticateCompleteData = {
+    body: AuthenticateCompleteRequest;
+    path?: never;
+    query?: never;
+    url: '/auth/webauthn/authenticate/complete';
+};
+
+export type PostWebauthnAuthenticateCompleteErrors = {
+    /**
+     * Invalid credentials
+     */
+    401: unknown;
+};
+
+export type PostWebauthnAuthenticateCompleteResponses = {
+    /**
+     * Login successful, session cookie set
+     */
+    200: AuthenticateCompleteResponse;
+};
+
+export type PostWebauthnAuthenticateCompleteResponse = PostWebauthnAuthenticateCompleteResponses[keyof PostWebauthnAuthenticateCompleteResponses];
+
+export type GetWebauthnCredentialsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/webauthn/credentials';
+};
+
+export type GetWebauthnCredentialsErrors = {
+    /**
+     * Authentication required
+     */
+    401: unknown;
+};
+
+export type GetWebauthnCredentialsResponses = {
+    /**
+     * Caller's passkeys
+     */
+    200: Array<CredentialSummary>;
+};
+
+export type GetWebauthnCredentialsResponse = GetWebauthnCredentialsResponses[keyof GetWebauthnCredentialsResponses];
+
+export type DeleteWebauthnCredentialData = {
+    body?: never;
+    path: {
+        /**
+         * Credential id (pkc_…)
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/auth/webauthn/credentials/{id}';
+};
+
+export type DeleteWebauthnCredentialErrors = {
+    /**
+     * Authentication required
+     */
+    401: unknown;
+    /**
+     * Credential not found or not owned by caller
+     */
+    404: unknown;
+};
+
+export type DeleteWebauthnCredentialResponses = {
+    /**
+     * Passkey revoked
+     */
+    204: void;
+};
+
+export type DeleteWebauthnCredentialResponse = DeleteWebauthnCredentialResponses[keyof DeleteWebauthnCredentialResponses];
+
+export type PostWebauthnRegisterBeginData = {
+    body: RegisterBeginRequest;
+    path?: never;
+    query?: never;
+    url: '/auth/webauthn/register/begin';
+};
+
+export type PostWebauthnRegisterBeginErrors = {
+    /**
+     * Domain is federated or email malformed
+     */
+    400: unknown;
+    /**
+     * Authentication required
+     */
+    401: unknown;
+};
+
+export type PostWebauthnRegisterBeginResponses = {
+    /**
+     * Registration challenge issued
+     */
+    200: RegisterBeginResponse;
+};
+
+export type PostWebauthnRegisterBeginResponse = PostWebauthnRegisterBeginResponses[keyof PostWebauthnRegisterBeginResponses];
+
+export type PostWebauthnRegisterCompleteData = {
+    body: RegisterCompleteRequest;
+    path?: never;
+    query?: never;
+    url: '/auth/webauthn/register/complete';
+};
+
+export type PostWebauthnRegisterCompleteErrors = {
+    /**
+     * Ceremony state expired or attestation invalid
+     */
+    400: unknown;
+    /**
+     * Authentication required
+     */
+    401: unknown;
+    /**
+     * Ceremony belongs to a different principal
+     */
+    403: unknown;
+};
+
+export type PostWebauthnRegisterCompleteResponses = {
+    /**
+     * Passkey registered
+     */
+    200: RegisterCompleteResponse;
+};
+
+export type PostWebauthnRegisterCompleteResponse = PostWebauthnRegisterCompleteResponses[keyof PostWebauthnRegisterCompleteResponses];
+
+export type GetApiAdminDispatchJobs2Data = {
     body?: never;
     path?: never;
     query?: {
         /**
-         * Page number (1-based). Falls back to 1.
-         */
-        page?: number;
-        /**
-         * Page size. Capped at 500.
+         * Result size. Default 50, capped at 1000.
          */
         size?: number;
-        /**
-         * Sort field. Allow-listed; unknown values fall back to `createdAt`.
-         */
-        sortField?: string;
-        /**
-         * Sort order: `asc` or `desc`. Defaults to `desc`.
-         */
-        sortOrder?: string;
         /**
          * Filter by event ID
          */
@@ -4605,23 +5183,23 @@ export type GetApiAdminDispatchJobsData = {
     url: '/bff/dispatch-jobs';
 };
 
-export type GetApiAdminDispatchJobsResponses = {
+export type GetApiAdminDispatchJobs2Responses = {
     /**
      * List of dispatch jobs
      */
-    200: PagedDispatchJobResponse;
+    200: Array<DispatchJobReadResponse>;
 };
 
-export type GetApiAdminDispatchJobsResponse = GetApiAdminDispatchJobsResponses[keyof GetApiAdminDispatchJobsResponses];
+export type GetApiAdminDispatchJobs2Response = GetApiAdminDispatchJobs2Responses[keyof GetApiAdminDispatchJobs2Responses];
 
-export type PostApiAdminDispatchJobsData = {
+export type PostApiAdminDispatchJobs2Data = {
     body: CreateDispatchJobRequest;
     path?: never;
     query?: never;
     url: '/bff/dispatch-jobs';
 };
 
-export type PostApiAdminDispatchJobsErrors = {
+export type PostApiAdminDispatchJobs2Errors = {
     /**
      * Invalid request
      */
@@ -4632,14 +5210,14 @@ export type PostApiAdminDispatchJobsErrors = {
     403: unknown;
 };
 
-export type PostApiAdminDispatchJobsResponses = {
+export type PostApiAdminDispatchJobs2Responses = {
     /**
      * Dispatch job created
      */
     201: CreatedResponse;
 };
 
-export type PostApiAdminDispatchJobsResponse = PostApiAdminDispatchJobsResponses[keyof PostApiAdminDispatchJobsResponses];
+export type PostApiAdminDispatchJobs2Response = PostApiAdminDispatchJobs2Responses[keyof PostApiAdminDispatchJobs2Responses];
 
 export type PostApiAdminDispatchJobsBatchData = {
     body: BatchCreateDispatchJobsRequest;
@@ -4664,7 +5242,7 @@ export type PostApiAdminDispatchJobsBatchResponses = {
 
 export type PostApiAdminDispatchJobsBatchResponse = PostApiAdminDispatchJobsBatchResponses[keyof PostApiAdminDispatchJobsBatchResponses];
 
-export type GetApiAdminDispatchJobsByEventByEventIdData = {
+export type GetApiAdminDispatchJobsByEventByEventId2Data = {
     body?: never;
     path: {
         /**
@@ -4676,51 +5254,53 @@ export type GetApiAdminDispatchJobsByEventByEventIdData = {
     url: '/bff/dispatch-jobs/by-event/{event_id}';
 };
 
-export type GetApiAdminDispatchJobsByEventByEventIdResponses = {
+export type GetApiAdminDispatchJobsByEventByEventId2Responses = {
     /**
      * Dispatch jobs for event
      */
     200: Array<DispatchJobResponse>;
 };
 
-export type GetApiAdminDispatchJobsByEventByEventIdResponse = GetApiAdminDispatchJobsByEventByEventIdResponses[keyof GetApiAdminDispatchJobsByEventByEventIdResponses];
+export type GetApiAdminDispatchJobsByEventByEventId2Response = GetApiAdminDispatchJobsByEventByEventId2Responses[keyof GetApiAdminDispatchJobsByEventByEventId2Responses];
 
-export type GetApiAdminDispatchJobsFilterOptionsData = {
+export type GetApiAdminDispatchJobsFilterOptions2Data = {
     body?: never;
     path?: never;
     query?: never;
     url: '/bff/dispatch-jobs/filter-options';
 };
 
-export type GetApiAdminDispatchJobsFilterOptionsResponses = {
+export type GetApiAdminDispatchJobsFilterOptions2Responses = {
     /**
      * Filter options
      */
     200: DispatchJobFilterOptionsResponse;
 };
 
-export type GetApiAdminDispatchJobsFilterOptionsResponse = GetApiAdminDispatchJobsFilterOptionsResponses[keyof GetApiAdminDispatchJobsFilterOptionsResponses];
+export type GetApiAdminDispatchJobsFilterOptions2Response = GetApiAdminDispatchJobsFilterOptions2Responses[keyof GetApiAdminDispatchJobsFilterOptions2Responses];
 
-export type GetApiAdminDispatchJobsRawData = {
+export type GetApiAdminDispatchJobsRaw2Data = {
     body?: never;
     path?: never;
     query?: {
-        page?: number;
+        /**
+         * Result size. Default 50, capped at 1000.
+         */
         size?: number;
     };
     url: '/bff/dispatch-jobs/raw';
 };
 
-export type GetApiAdminDispatchJobsRawResponses = {
+export type GetApiAdminDispatchJobsRaw2Responses = {
     /**
-     * Raw dispatch jobs page
+     * Raw dispatch jobs
      */
-    200: PaginatedDispatchJobsResponse;
+    200: Array<DispatchJobResponse>;
 };
 
-export type GetApiAdminDispatchJobsRawResponse = GetApiAdminDispatchJobsRawResponses[keyof GetApiAdminDispatchJobsRawResponses];
+export type GetApiAdminDispatchJobsRaw2Response = GetApiAdminDispatchJobsRaw2Responses[keyof GetApiAdminDispatchJobsRaw2Responses];
 
-export type GetApiAdminDispatchJobsByIdData = {
+export type GetApiAdminDispatchJobsById2Data = {
     body?: never;
     path: {
         /**
@@ -4732,23 +5312,23 @@ export type GetApiAdminDispatchJobsByIdData = {
     url: '/bff/dispatch-jobs/{id}';
 };
 
-export type GetApiAdminDispatchJobsByIdErrors = {
+export type GetApiAdminDispatchJobsById2Errors = {
     /**
      * Dispatch job not found
      */
     404: unknown;
 };
 
-export type GetApiAdminDispatchJobsByIdResponses = {
+export type GetApiAdminDispatchJobsById2Responses = {
     /**
      * Dispatch job found
      */
     200: DispatchJobResponse;
 };
 
-export type GetApiAdminDispatchJobsByIdResponse = GetApiAdminDispatchJobsByIdResponses[keyof GetApiAdminDispatchJobsByIdResponses];
+export type GetApiAdminDispatchJobsById2Response = GetApiAdminDispatchJobsById2Responses[keyof GetApiAdminDispatchJobsById2Responses];
 
-export type GetApiAdminDispatchJobsByIdAttemptsData = {
+export type GetApiAdminDispatchJobsByIdAttempts2Data = {
     body?: never;
     path: {
         /**
@@ -4760,23 +5340,23 @@ export type GetApiAdminDispatchJobsByIdAttemptsData = {
     url: '/bff/dispatch-jobs/{id}/attempts';
 };
 
-export type GetApiAdminDispatchJobsByIdAttemptsErrors = {
+export type GetApiAdminDispatchJobsByIdAttempts2Errors = {
     /**
      * Dispatch job not found
      */
     404: unknown;
 };
 
-export type GetApiAdminDispatchJobsByIdAttemptsResponses = {
+export type GetApiAdminDispatchJobsByIdAttempts2Responses = {
     /**
      * Attempts list returned
      */
     200: Array<DispatchAttemptResponse>;
 };
 
-export type GetApiAdminDispatchJobsByIdAttemptsResponse = GetApiAdminDispatchJobsByIdAttemptsResponses[keyof GetApiAdminDispatchJobsByIdAttemptsResponses];
+export type GetApiAdminDispatchJobsByIdAttempts2Response = GetApiAdminDispatchJobsByIdAttempts2Responses[keyof GetApiAdminDispatchJobsByIdAttempts2Responses];
 
-export type GetApiAdminDispatchJobsByIdRawData = {
+export type GetApiAdminDispatchJobsByIdRaw2Data = {
     body?: never;
     path: {
         /**
@@ -4788,40 +5368,28 @@ export type GetApiAdminDispatchJobsByIdRawData = {
     url: '/bff/dispatch-jobs/{id}/raw';
 };
 
-export type GetApiAdminDispatchJobsByIdRawErrors = {
+export type GetApiAdminDispatchJobsByIdRaw2Errors = {
     /**
      * Dispatch job not found
      */
     404: unknown;
 };
 
-export type GetApiAdminDispatchJobsByIdRawResponses = {
+export type GetApiAdminDispatchJobsByIdRaw2Responses = {
     /**
      * Raw dispatch job data
      */
     200: unknown;
 };
 
-export type GetApiAdminEventsData = {
+export type GetApiAdminEvents2Data = {
     body?: never;
     path?: never;
     query?: {
         /**
-         * Page number (1-based). Falls back to 1.
-         */
-        page?: number;
-        /**
-         * Page size. Capped at 500.
+         * Result size. Default 50, capped at 1000.
          */
         size?: number;
-        /**
-         * Sort field. Allow-listed; unknown values fall back to `time`.
-         */
-        sortField?: string;
-        /**
-         * Sort order: `asc` or `desc`. Defaults to `desc`.
-         */
-        sortOrder?: string;
         /**
          * Filter by client IDs (comma-separated)
          */
@@ -4854,23 +5422,23 @@ export type GetApiAdminEventsData = {
     url: '/bff/events';
 };
 
-export type GetApiAdminEventsResponses = {
+export type GetApiAdminEvents2Responses = {
     /**
      * List of events
      */
-    200: PagedEventsResponse;
+    200: Array<EventRead>;
 };
 
-export type GetApiAdminEventsResponse = GetApiAdminEventsResponses[keyof GetApiAdminEventsResponses];
+export type GetApiAdminEvents2Response = GetApiAdminEvents2Responses[keyof GetApiAdminEvents2Responses];
 
-export type PostApiAdminEventsData = {
+export type PostApiAdminEvents2Data = {
     body: CreateEventRequest;
     path?: never;
     query?: never;
     url: '/bff/events';
 };
 
-export type PostApiAdminEventsErrors = {
+export type PostApiAdminEvents2Errors = {
     /**
      * Validation error
      */
@@ -4881,7 +5449,7 @@ export type PostApiAdminEventsErrors = {
     403: unknown;
 };
 
-export type PostApiAdminEventsResponses = {
+export type PostApiAdminEvents2Responses = {
     /**
      * Event already exists (idempotent)
      */
@@ -4892,7 +5460,7 @@ export type PostApiAdminEventsResponses = {
     201: CreateEventResponse;
 };
 
-export type PostApiAdminEventsResponse = PostApiAdminEventsResponses[keyof PostApiAdminEventsResponses];
+export type PostApiAdminEvents2Response = PostApiAdminEvents2Responses[keyof PostApiAdminEvents2Responses];
 
 export type PostApiAdminEventsBatchData = {
     body: BatchCreateEventsRequest;
@@ -4917,26 +5485,41 @@ export type PostApiAdminEventsBatchResponses = {
 
 export type PostApiAdminEventsBatchResponse = PostApiAdminEventsBatchResponses[keyof PostApiAdminEventsBatchResponses];
 
-export type GetApiAdminEventsRawData = {
+export type GetApiAdminEventsFilterOptions2Data = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/bff/events/filter-options';
+};
+
+export type GetApiAdminEventsFilterOptions2Responses = {
+    200: EventFilterOptions;
+};
+
+export type GetApiAdminEventsFilterOptions2Response = GetApiAdminEventsFilterOptions2Responses[keyof GetApiAdminEventsFilterOptions2Responses];
+
+export type GetApiAdminEventsRaw2Data = {
     body?: never;
     path?: never;
     query?: {
-        page?: number;
+        /**
+         * Result size. Default 50, capped at 1000.
+         */
         size?: number;
     };
     url: '/bff/events/raw';
 };
 
-export type GetApiAdminEventsRawResponses = {
+export type GetApiAdminEventsRaw2Responses = {
     /**
-     * Raw events page
+     * Raw events
      */
-    200: PaginatedEventsResponse;
+    200: Array<EventSummaryResponse>;
 };
 
-export type GetApiAdminEventsRawResponse = GetApiAdminEventsRawResponses[keyof GetApiAdminEventsRawResponses];
+export type GetApiAdminEventsRaw2Response = GetApiAdminEventsRaw2Responses[keyof GetApiAdminEventsRaw2Responses];
 
-export type GetApiAdminEventsByIdData = {
+export type GetApiAdminEventsById2Data = {
     body?: never;
     path: {
         /**
@@ -4948,21 +5531,21 @@ export type GetApiAdminEventsByIdData = {
     url: '/bff/events/{id}';
 };
 
-export type GetApiAdminEventsByIdErrors = {
+export type GetApiAdminEventsById2Errors = {
     /**
      * Event not found
      */
     404: unknown;
 };
 
-export type GetApiAdminEventsByIdResponses = {
+export type GetApiAdminEventsById2Responses = {
     /**
      * Event found
      */
     200: EventResponse;
 };
 
-export type GetApiAdminEventsByIdResponse = GetApiAdminEventsByIdResponses[keyof GetApiAdminEventsByIdResponses];
+export type GetApiAdminEventsById2Response = GetApiAdminEventsById2Responses[keyof GetApiAdminEventsById2Responses];
 
 export type GetApiAdminFilterOptionsData = {
     body?: never;
@@ -5110,21 +5693,21 @@ export type GetApiAdminFilterOptionsEventTypesFiltersSubdomainsResponses = {
 
 export type GetApiAdminFilterOptionsEventTypesFiltersSubdomainsResponse = GetApiAdminFilterOptionsEventTypesFiltersSubdomainsResponses[keyof GetApiAdminFilterOptionsEventTypesFiltersSubdomainsResponses];
 
-export type GetApiAdminEventsFilterOptionsData = {
+export type GetApiAdminEventsFilterOptions3Data = {
     body?: never;
     path?: never;
     query?: never;
     url: '/bff/filter-options/events';
 };
 
-export type GetApiAdminEventsFilterOptionsResponses = {
+export type GetApiAdminEventsFilterOptions3Responses = {
     /**
      * Events filter options
      */
     200: EventsFilterOptions;
 };
 
-export type GetApiAdminEventsFilterOptionsResponse = GetApiAdminEventsFilterOptionsResponses[keyof GetApiAdminEventsFilterOptionsResponses];
+export type GetApiAdminEventsFilterOptions3Response = GetApiAdminEventsFilterOptions3Responses[keyof GetApiAdminEventsFilterOptions3Responses];
 
 export type GetApiAdminFilterOptionsSubscriptionsData = {
     body?: never;

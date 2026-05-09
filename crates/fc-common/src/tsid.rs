@@ -50,6 +50,9 @@ pub enum EntityType {
     ConfigAccess,
     PasswordResetToken,
     WebauthnCredential,
+    ScheduledJob,
+    ScheduledJobInstance,
+    ScheduledJobInstanceLog,
 }
 
 impl EntityType {
@@ -87,6 +90,9 @@ impl EntityType {
             EntityType::ConfigAccess => "cfa",
             EntityType::PasswordResetToken => "prt",
             EntityType::WebauthnCredential => "pkc",
+            EntityType::ScheduledJob => "sjb",
+            EntityType::ScheduledJobInstance => "sji",
+            EntityType::ScheduledJobInstanceLog => "sjl",
         }
     }
 }

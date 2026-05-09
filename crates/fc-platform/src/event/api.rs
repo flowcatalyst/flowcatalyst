@@ -185,21 +185,18 @@ impl From<EventRead> for EventReadResponse {
     }
 }
 
-/// Query parameters for events list (cursor-paginated).
+/// Query parameters for events list.
 ///
-/// `msg_events_read` can grow to billions of rows, so we keyset-paginate on
-/// `(time DESC, id DESC)` rather than counting + offsetting. Sort order is
-/// fixed to most-recent-first; if you need an alphabetical scan, build a
-/// separate report rather than paginating the firehose.
+/// `msg_events_read` is an append-only firehose ingesting at high rates,
+/// so this endpoint returns the most recent N rows only — no pagination.
+/// Sort order is fixed to most-recent-first (`time DESC, id DESC`); if you
+/// need to scan back further, narrow the filters or build a separate
+/// report.
 #[derive(Debug, Default, Deserialize, IntoParams)]
 #[serde(rename_all = "camelCase")]
 #[into_params(parameter_in = Query)]
 pub struct EventsQuery {
-    /// Opaque cursor returned by a previous page's `nextCursor`. Omit for
-    /// the first page.
-    pub after: Option<String>,
-
-    /// Page size. Capped at 200.
+    /// Result size. Default 50, capped at 1000.
     pub size: Option<u32>,
 
     /// Filter by client IDs (comma-separated)
@@ -375,10 +372,8 @@ pub async fn get_event(
     Ok(Json(event.into()))
 }
 
-/// Cursor-paginated events list response.
-pub type EventsCursorResponse = crate::shared::api_common::CursorPage<super::entity::EventRead>;
-
-/// List events
+/// List events. Returns the most recent rows matching the filters; no
+/// pagination — see `EventsQuery` for the rationale.
 #[utoipa::path(
     get,
     path = "",
@@ -386,7 +381,7 @@ pub type EventsCursorResponse = crate::shared::api_common::CursorPage<super::ent
     operation_id = "getApiAdminEvents",
     params(EventsQuery),
     responses(
-        (status = 200, description = "List of events", body = EventsCursorResponse)
+        (status = 200, description = "List of events", body = Vec<super::entity::EventRead>)
     ),
     security(("bearer_auth" = []))
 )]
@@ -394,9 +389,7 @@ pub async fn list_events(
     State(state): State<EventsState>,
     auth: Authenticated,
     Query(query): Query<EventsQuery>,
-) -> Result<Json<EventsCursorResponse>, PlatformError> {
-    use crate::shared::api_common::{CursorPage, decode_cursor};
-
+) -> Result<Json<Vec<super::entity::EventRead>>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_events(&auth.0)?;
 
     let mut client_ids = split_csv(query.client_ids.as_deref());
@@ -418,15 +411,11 @@ pub async fn list_events(
             .cloned()
             .collect();
         if client_ids.is_empty() {
-            return Ok(Json(CursorPage { items: vec![], has_more: false, next_cursor: None }));
+            return Ok(Json(vec![]));
         }
     }
 
-    let size = query.size.unwrap_or(50).min(200) as usize;
-    let cursor = match query.after.as_deref() {
-        Some(c) => Some(decode_cursor(c).map_err(|_| PlatformError::validation("Invalid cursor"))?),
-        None => None,
-    };
+    let size = query.size.unwrap_or(50).clamp(1, 1000) as i64;
 
     let rows = state.event_repo.find_read_with_cursor(
         &client_ids,
@@ -436,11 +425,11 @@ pub async fn list_events(
         &event_types,
         query.correlation_id.as_deref(),
         query.source.as_deref(),
-        cursor.as_ref(),
-        (size as i64) + 1,
+        None,
+        size,
     ).await?;
 
-    Ok(Json(CursorPage::from_overfetch(rows, size, |r| (r.time, r.id.clone()))))
+    Ok(Json(rows))
 }
 
 
@@ -621,50 +610,42 @@ pub struct PaginatedEventsResponse {
     pub size: u32,
 }
 
-/// Cursor-paginated raw events response.
-pub type EventsRawCursorResponse = crate::shared::api_common::CursorPage<EventSummaryResponse>;
+/// Query for raw events list — `?size=` only.
+#[derive(Debug, Default, Deserialize, IntoParams)]
+#[serde(rename_all = "camelCase")]
+#[into_params(parameter_in = Query)]
+pub struct RawEventsQuery {
+    /// Result size. Default 50, capped at 1000.
+    pub size: Option<u32>,
+}
 
-/// List raw events (from msg_events, not read projection). Cursor-paginated
-/// because msg_events grows unbounded.
+/// List raw events (from msg_events, not the read projection). Returns the
+/// most recent rows; no pagination — msg_events ingests at high rates and
+/// page navigation through the firehose is meaningless.
 #[utoipa::path(
     get,
     path = "/raw",
     tag = "events",
     operation_id = "getApiAdminEventsRaw",
-    params(crate::shared::api_common::CursorParams),
+    params(RawEventsQuery),
     responses(
-        (status = 200, description = "Raw events page", body = EventsRawCursorResponse)
+        (status = 200, description = "Raw events", body = Vec<EventSummaryResponse>)
     ),
     security(("bearer_auth" = []))
 )]
 pub async fn list_events_raw(
     State(state): State<EventsState>,
     auth: Authenticated,
-    Query(params): Query<crate::shared::api_common::CursorParams>,
-) -> Result<Json<EventsRawCursorResponse>, PlatformError> {
-    use crate::shared::api_common::{CursorPage, decode_cursor, encode_cursor};
+    Query(params): Query<RawEventsQuery>,
+) -> Result<Json<Vec<EventSummaryResponse>>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_events(&auth.0)?;
 
-    let size = params.size() as usize;
-    let cursor = match params.after.as_deref() {
-        Some(c) => Some(decode_cursor(c).map_err(|_| PlatformError::validation("Invalid cursor"))?),
-        None => None,
-    };
-    let mut events = state.event_repo
-        .find_recent_with_cursor(cursor.as_ref(), params.fetch_limit())
+    let size = params.size.unwrap_or(50).clamp(1, 1000) as i64;
+    let events = state.event_repo
+        .find_recent_with_cursor(None, size)
         .await?;
-
-    let has_more = events.len() > size;
-    if has_more { events.truncate(size); }
-    // Compute cursor on the typed entity before converting; the response
-    // DTO's `time` is an RFC3339 string and not suitable for keyset compares.
-    let next_cursor = if has_more {
-        events.last().map(|e| encode_cursor(e.created_at, &e.id))
-    } else {
-        None
-    };
     let items = events.into_iter().map(EventSummaryResponse::from).collect();
-    Ok(Json(CursorPage { items, has_more, next_cursor }))
+    Ok(Json(items))
 }
 
 /// Get filter options for the events read model.

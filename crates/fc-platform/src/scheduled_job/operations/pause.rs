@@ -1,0 +1,82 @@
+//! Pause ScheduledJob — stops further cron firings until resumed. In-flight
+//! instances are NOT cancelled; the SDK is responsible for its own runtime.
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+
+use super::events::ScheduledJobPaused;
+use crate::scheduled_job::entity::ScheduledJobStatus;
+use crate::scheduled_job::ScheduledJobRepository;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PauseScheduledJobCommand {
+    pub scheduled_job_id: String,
+}
+
+pub struct PauseScheduledJobUseCase<U: UnitOfWork> {
+    repo: Arc<ScheduledJobRepository>,
+    uow: Arc<U>,
+}
+
+impl<U: UnitOfWork> PauseScheduledJobUseCase<U> {
+    pub fn new(repo: Arc<ScheduledJobRepository>, uow: Arc<U>) -> Self {
+        Self { repo, uow }
+    }
+}
+
+#[async_trait]
+impl<U: UnitOfWork> UseCase for PauseScheduledJobUseCase<U> {
+    type Command = PauseScheduledJobCommand;
+    type Event = ScheduledJobPaused;
+
+    async fn validate(&self, cmd: &Self::Command) -> Result<(), UseCaseError> {
+        if cmd.scheduled_job_id.trim().is_empty() {
+            return Err(UseCaseError::validation("ID_REQUIRED", "ID required"));
+        }
+        Ok(())
+    }
+
+    async fn authorize(&self, _: &Self::Command, _: &ExecutionContext) -> Result<(), UseCaseError> {
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        cmd: Self::Command,
+        ctx: ExecutionContext,
+    ) -> UseCaseResult<Self::Event> {
+        let mut job = match self.repo.find_by_id(&cmd.scheduled_job_id).await {
+            Ok(Some(j)) => j,
+            Ok(None) => {
+                return UseCaseResult::failure(UseCaseError::not_found(
+                    "SCHEDULED_JOB_NOT_FOUND",
+                    format!("ScheduledJob '{}' not found", cmd.scheduled_job_id),
+                ))
+            }
+            Err(e) => {
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to load ScheduledJob: {}", e
+                )))
+            }
+        };
+
+        if job.status == ScheduledJobStatus::Paused {
+            return UseCaseResult::failure(UseCaseError::business_rule(
+                "ALREADY_PAUSED", "ScheduledJob is already paused",
+            ));
+        }
+        if job.status == ScheduledJobStatus::Archived {
+            return UseCaseResult::failure(UseCaseError::business_rule(
+                "ARCHIVED", "Cannot pause an archived ScheduledJob",
+            ));
+        }
+
+        job.pause();
+        let event = ScheduledJobPaused::new(&ctx, &job.id, job.client_id.as_deref(), &job.code);
+        self.uow.commit(&job, &*self.repo, event, &cmd).await
+    }
+}

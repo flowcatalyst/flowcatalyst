@@ -95,52 +95,17 @@ pub struct PaginatedResponse<T> {
 
 // ─── Cursor pagination ────────────────────────────────────────────────────
 //
-// Used by high-volume tables (msg_events, msg_dispatch_jobs, aud_logs,
-// iam_login_attempts) where `SELECT COUNT(*)` is prohibitive. Keyset on
-// `(created_at DESC, id DESC)` — the cursor encodes the last row of the
+// Used by `aud_logs` and `iam_login_attempts` — admin-style grids where
+// operators legitimately scroll back through history. Keyset on
+// `(created_at DESC, id DESC)`; the cursor encodes the last row of the
 // page; the next request asks for rows strictly older than that key.
+//
+// The high-volume firehose tables (msg_events, msg_dispatch_jobs) do NOT
+// use cursors — they expose `?size=` only and return the most recent rows.
+// At ingest rates of 100/s+, page navigation is meaningless.
 //
 // Wire format is opaque base64 of "{created_at_micros}:{id}". Callers pass
 // it back verbatim; the API never promises stability across major versions.
-
-/// Query parameters for cursor-paginated list endpoints.
-#[derive(Debug, Deserialize, ToSchema, IntoParams, Default)]
-#[serde(rename_all = "camelCase")]
-#[into_params(parameter_in = Query)]
-pub struct CursorParams {
-    /// Opaque cursor returned by a previous response's `nextCursor`.
-    /// Omit for the first page.
-    #[serde(default)]
-    pub after: Option<String>,
-    /// Page size. Defaults to 50, capped at 200.
-    #[serde(
-        default,
-        alias = "limit",
-        alias = "pageSize",
-        alias = "page_size",
-        deserialize_with = "string_or_number::deserialize_u32_opt"
-    )]
-    size: Option<u32>,
-}
-
-impl CursorParams {
-    pub fn size(&self) -> u32 {
-        self.size.unwrap_or(50).clamp(1, 200)
-    }
-    /// One past the page size — fetched so the repo can detect `hasMore`
-    /// without a count.
-    pub fn fetch_limit(&self) -> i64 {
-        self.size() as i64 + 1
-    }
-}
-
-/// Decoded cursor key. `created_at` is in microseconds since the Unix epoch
-/// to keep the wire format compact and unambiguous across timezones.
-#[derive(Debug, Clone, Copy)]
-pub struct CursorKey {
-    pub created_at_micros: i64,
-    pub id_tail: u64,
-}
 
 #[derive(Debug)]
 pub struct CursorDecodeError;
@@ -184,46 +149,6 @@ pub fn decode_cursor(cursor: &str) -> Result<DecodedCursor, CursorDecodeError> {
     let created_at = chrono::DateTime::<chrono::Utc>::from_timestamp_micros(micros)
         .ok_or(CursorDecodeError)?;
     Ok(DecodedCursor { created_at, id: id.to_string() })
-}
-
-/// Cursor-paginated response wrapper used by high-volume list endpoints.
-/// No `total` — counting billions of rows isn't free, and consumers don't
-/// need it for "older / newer" navigation.
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct CursorPage<T> {
-    pub items: Vec<T>,
-    /// True when more items exist after the last one in `items`.
-    pub has_more: bool,
-    /// Pass back as `?after=` to fetch the next page. `None` on the last
-    /// page.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub next_cursor: Option<String>,
-}
-
-impl<T> CursorPage<T> {
-    /// Build a page from a query that fetched `size + 1` rows. The repo
-    /// passes a closure that extracts the cursor key from the last
-    /// included row so the encoder doesn't need to know the row type.
-    pub fn from_overfetch(
-        mut rows: Vec<T>,
-        page_size: usize,
-        cursor_key: impl FnOnce(&T) -> (chrono::DateTime<chrono::Utc>, String),
-    ) -> Self {
-        let has_more = rows.len() > page_size;
-        if has_more {
-            rows.truncate(page_size);
-        }
-        let next_cursor = if has_more {
-            rows.last().map(|row| {
-                let (at, id) = cursor_key(row);
-                encode_cursor(at, &id)
-            })
-        } else {
-            None
-        };
-        Self { items: rows, has_more, next_cursor }
-    }
 }
 
 impl<T> PaginatedResponse<T> {

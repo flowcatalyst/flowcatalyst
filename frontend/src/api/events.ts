@@ -1,6 +1,8 @@
 /**
- * Events API client. Cursor-paginated — `msg_events_read` can be billions
- * of rows, so the backend keysets on `(time, id) DESC` and never counts.
+ * Events API client. No pagination — `msg_events_read` ingests at high
+ * rates, page navigation is meaningless. The endpoint returns the most
+ * recent N rows matching the filters; configure with `?size=` (default
+ * 50, max 1000).
  */
 
 import { apiFetch } from "./client";
@@ -28,14 +30,7 @@ export interface EventDetail extends EventRead {
 	contextData?: { key: string; value: string }[];
 }
 
-export interface EventsCursorPage {
-	items: EventRead[];
-	hasMore: boolean;
-	nextCursor?: string;
-}
-
 export interface EventsListParams {
-	after?: string | undefined;
 	size?: number;
 	clientIds?: string[] | undefined;
 	applications?: string[] | undefined;
@@ -54,7 +49,6 @@ export interface EventFilterOptions {
 
 function buildQuery(params: EventsListParams): string {
 	const qp = new URLSearchParams();
-	if (params.after) qp.set("after", params.after);
 	if (params.size != null) qp.set("size", String(params.size));
 	if (params.clientIds?.length) qp.set("clientIds", params.clientIds.join(","));
 	if (params.applications?.length) qp.set("applications", params.applications.join(","));
@@ -68,7 +62,7 @@ function buildQuery(params: EventsListParams): string {
 }
 
 export const eventsApi = {
-	list(params: EventsListParams): Promise<EventsCursorPage> {
+	list(params: EventsListParams): Promise<EventRead[]> {
 		return apiFetch(`/events${buildQuery(params)}`);
 	},
 	get(id: string): Promise<EventDetail> {

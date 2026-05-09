@@ -1,9 +1,10 @@
 //! SDK Batch APIs — batch event ingest.
 //!
 //! The handler durably stores events; fan-out (subscription matching →
-//! dispatch jobs → queue) runs out-of-band in `EventFanOutService`. The
-//! request returns as soon as the events are committed; the fan-out
-//! service picks them up off the partial `idx_msg_events_unfanned` index.
+//! dispatch jobs → queue) runs out-of-band in the stream processor's
+//! `EventFanOutService` (fc-stream). The request returns as soon as the
+//! events are committed; the fan-out service picks them up off the
+//! partial `idx_msg_events_unfanned` index.
 
 use axum::{
     routing::post,

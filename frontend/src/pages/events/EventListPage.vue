@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import ClientFilter from "@/components/ClientFilter.vue";
-import { useCursorPagination } from "@/composables/useCursorPagination";
 import {
 	eventsApi,
 	type EventRead,
@@ -14,8 +13,6 @@ interface FilterOption {
 	label: string;
 }
 
-// Filters live as plain refs — the cursor stack invalidates on every filter
-// change so the URL-synced `useListState` machinery isn't useful here.
 const filters = {
 	clients: ref<string[]>([]),
 	applications: ref<string[]>([]),
@@ -24,7 +21,10 @@ const filters = {
 	types: ref<string[]>([]),
 	search: ref<string>(""),
 };
-const pageSize = ref(100);
+// Most-recent-first window. `msg_events_read` ingests at high rates so
+// there's no pagination — set the size, hit refresh.
+const pageSize = ref(200);
+const sizeOptions = [50, 100, 200, 500, 1000];
 
 const hasActiveFilters = computed(() =>
 	Boolean(
@@ -37,9 +37,8 @@ const hasActiveFilters = computed(() =>
 	),
 );
 
-function buildParams(after: string | undefined): EventsListParams {
+function buildParams(): EventsListParams {
 	return {
-		after,
 		size: pageSize.value,
 		clientIds: filters.clients.value.length ? filters.clients.value : undefined,
 		applications: filters.applications.value.length ? filters.applications.value : undefined,
@@ -50,11 +49,19 @@ function buildParams(after: string | undefined): EventsListParams {
 	};
 }
 
-const cursor = useCursorPagination<EventRead>({
-	fetchPage: (after) => eventsApi.list(buildParams(after)),
-});
-const events = cursor.items;
-const loading = cursor.loading;
+const events = ref<EventRead[]>([]);
+const loading = ref(false);
+
+async function load() {
+	loading.value = true;
+	try {
+		events.value = await eventsApi.list(buildParams());
+	} catch (error) {
+		console.error("Failed to load events:", error);
+	} finally {
+		loading.value = false;
+	}
+}
 
 // Filter options (from server)
 const applicationOptions = ref<FilterOption[]>([]);
@@ -73,7 +80,7 @@ const loadingDetail = ref(false);
 
 onMounted(async () => {
 	await loadFilterOptions();
-	await cursor.loadFirst();
+	await load();
 });
 
 // Unified filter change handler to prevent loops
@@ -106,7 +113,7 @@ async function onFilterChange(
 		}
 
 		await loadFilterOptions();
-		await cursor.reset();
+		await load();
 	} finally {
 		isUpdating.value = false;
 	}
@@ -129,7 +136,7 @@ async function loadFilterOptions() {
 }
 
 async function onSearchChange() {
-	await cursor.reset();
+	await load();
 }
 
 async function clearAllFilters() {
@@ -140,7 +147,7 @@ async function clearAllFilters() {
 	filters.types.value = [];
 	filters.search.value = "";
 	await loadFilterOptions();
-	await cursor.reset();
+	await load();
 }
 
 async function viewEventDetail(event: EventRead) {
@@ -285,7 +292,14 @@ function truncateId(id: string | undefined): string {
             v-tooltip="'Clear all filters'"
             :disabled="!hasActiveFilters"
           />
-          <Button icon="pi pi-refresh" text rounded @click="cursor.refresh" v-tooltip="'Refresh'" />
+          <Select
+            v-model="pageSize"
+            :options="sizeOptions"
+            class="size-select"
+            @change="load"
+            v-tooltip="'Result size — most recent N events'"
+          />
+          <Button icon="pi pi-refresh" text rounded @click="load" v-tooltip="'Refresh'" />
         </div>
       </div>
 
@@ -338,26 +352,11 @@ function truncateId(id: string | undefined): string {
         </Column>
       </DataTable>
 
-      <!-- Cursor pager. No "Page X of N" — counting billions of rows isn't
-           free. Use ← Prev / Next → for in-session navigation; refresh resets
-           to the first page. -->
-      <div class="cursor-pager">
-        <Button
-          icon="pi pi-angle-left"
-          label="Newer"
-          text
-          :disabled="!cursor.hasPrev.value || cursor.loading.value"
-          @click="cursor.loadPrev"
-        />
-        <span class="page-indicator">Page {{ cursor.page.value }}</span>
-        <Button
-          icon="pi pi-angle-right"
-          iconPos="right"
-          label="Older"
-          text
-          :disabled="!cursor.hasMore.value || cursor.loading.value"
-          @click="cursor.loadNext"
-        />
+      <!-- No pagination — events ingest at high rates and "page 2" is
+           meaningless. Adjust size or narrow filters to see more. -->
+      <div class="result-summary">
+        Showing the {{ events.length }} most recent events
+        <span v-if="events.length === pageSize"> (size limit reached — narrow filters or increase size)</span>
       </div>
     </div>
 
@@ -500,19 +499,15 @@ function truncateId(id: string | undefined): string {
   width: 250px;
 }
 
-.cursor-pager {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  padding: 0.75rem 0 0.25rem;
+.size-select {
+  width: 6rem;
 }
 
-.page-indicator {
-  font-size: 0.875rem;
-  color: var(--text-color-secondary);
-  min-width: 4.5rem;
+.result-summary {
   text-align: center;
+  font-size: 0.8125rem;
+  color: var(--text-color-secondary);
+  padding: 0.75rem 0 0.25rem;
 }
 
 .font-mono {

@@ -9,8 +9,8 @@
 //! 2. Optional static asset directory for SPA serving.
 //!
 //! Event fan-out (subscriptions → dispatch jobs → queue) runs out-of-band
-//! in `EventFanOutService`; the request path no longer needs queue/dispatch
-//! deps wired in here.
+//! in the stream processor (fc-stream::EventFanOutService); the request
+//! path no longer needs queue/dispatch deps wired in here.
 //!
 //! In addition, external base URLs for the well-known, OIDC login, and
 //! password-reset endpoints are passed directly so each binary can read

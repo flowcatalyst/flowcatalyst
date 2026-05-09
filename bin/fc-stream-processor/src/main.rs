@@ -41,6 +41,9 @@ async fn main() -> Result<()> {
         events_batch_size: env_or_parse("FC_STREAM_EVENTS_BATCH_SIZE", 100),
         dispatch_jobs_enabled: env_bool("FC_STREAM_DISPATCH_JOBS_ENABLED", true),
         dispatch_jobs_batch_size: env_or_parse("FC_STREAM_DISPATCH_JOBS_BATCH_SIZE", 100),
+        fan_out_enabled: env_bool("FC_STREAM_FAN_OUT_ENABLED", true),
+        fan_out_batch_size: env_or_parse("FC_STREAM_FAN_OUT_BATCH_SIZE", 200),
+        fan_out_subscription_refresh_secs: env_or_parse("FC_STREAM_FAN_OUT_SUBS_REFRESH_SECS", 5),
         partition_manager_enabled: env_bool("FC_STREAM_PARTITION_MANAGER_ENABLED", true),
     };
 

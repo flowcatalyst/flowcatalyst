@@ -1,10 +1,12 @@
 pub mod config;
+pub mod event_fan_out;
 pub mod event_projection;
 pub mod dispatch_job_projection;
 pub mod health;
 pub mod partition_manager;
 
 pub use config::StreamProcessorConfig;
+pub use event_fan_out::{EventFanOutConfig, EventFanOutService};
 pub use event_projection::EventProjectionService;
 pub use dispatch_job_projection::DispatchJobProjectionService;
 pub use partition_manager::{PartitionManagerConfig, PartitionManagerService};
@@ -18,9 +20,11 @@ pub use health::{
 pub struct StreamProcessorHandle {
     event_handle: Option<tokio::task::JoinHandle<()>>,
     dispatch_handle: Option<tokio::task::JoinHandle<()>>,
+    fan_out_handle: Option<tokio::task::JoinHandle<()>>,
     partition_handle: Option<tokio::task::JoinHandle<()>>,
     event_service: Option<EventProjectionService>,
     dispatch_service: Option<DispatchJobProjectionService>,
+    fan_out_service: Option<EventFanOutService>,
     partition_service: Option<PartitionManagerService>,
 }
 
@@ -33,6 +37,9 @@ impl StreamProcessorHandle {
         if let Some(svc) = &self.dispatch_service {
             svc.stop();
         }
+        if let Some(svc) = &self.fan_out_service {
+            svc.stop();
+        }
         if let Some(svc) = &self.partition_service {
             svc.stop();
         }
@@ -40,6 +47,9 @@ impl StreamProcessorHandle {
             let _ = h.await;
         }
         if let Some(h) = self.dispatch_handle {
+            let _ = h.await;
+        }
+        if let Some(h) = self.fan_out_handle {
             let _ = h.await;
         }
         if let Some(h) = self.partition_handle {
@@ -76,6 +86,23 @@ pub fn start_stream_processor(
         (None, None)
     };
 
+    let (fan_out_service, fan_out_handle) = if config.fan_out_enabled {
+        let svc = EventFanOutService::new(
+            pool.clone(),
+            EventFanOutConfig {
+                batch_size: config.fan_out_batch_size,
+                subscription_refresh: std::time::Duration::from_secs(
+                    config.fan_out_subscription_refresh_secs,
+                ),
+            },
+        );
+        health_service.register(svc.health());
+        let handle = svc.start();
+        (Some(svc), Some(handle))
+    } else {
+        (None, None)
+    };
+
     let (partition_service, partition_handle) = if config.partition_manager_enabled {
         let svc = PartitionManagerService::new(pool, PartitionManagerConfig::default());
         health_service.register(svc.health());
@@ -88,9 +115,11 @@ pub fn start_stream_processor(
     let handle = StreamProcessorHandle {
         event_handle,
         dispatch_handle,
+        fan_out_handle,
         partition_handle,
         event_service,
         dispatch_service,
+        fan_out_service,
         partition_service,
     };
 

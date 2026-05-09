@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import ClientFilter from "@/components/ClientFilter.vue";
-import { useCursorPagination } from "@/composables/useCursorPagination";
 import {
 	dispatchJobsApi,
 	type DispatchJobRead as DispatchJob,
@@ -22,11 +21,13 @@ const filters = {
 	statuses: ref<string[]>([]),
 	search: ref<string>(""),
 };
-const pageSize = ref(100);
+// Most-recent-first window. `msg_dispatch_jobs_read` ingests at high
+// rates so there's no pagination — set the size, hit refresh.
+const pageSize = ref(200);
+const sizeOptions = [50, 100, 200, 500, 1000];
 
-function buildParams(after: string | undefined): DispatchJobsListParams {
+function buildParams(): DispatchJobsListParams {
 	return {
-		after,
 		size: pageSize.value,
 		clientIds: filters.clients.value.length ? filters.clients.value : undefined,
 		statuses: filters.statuses.value.length ? filters.statuses.value : undefined,
@@ -38,11 +39,19 @@ function buildParams(after: string | undefined): DispatchJobsListParams {
 	};
 }
 
-const cursor = useCursorPagination<DispatchJob>({
-	fetchPage: (after) => dispatchJobsApi.list(buildParams(after)),
-});
-const dispatchJobs = cursor.items;
-const loading = cursor.loading;
+const dispatchJobs = ref<DispatchJob[]>([]);
+const loading = ref(false);
+
+async function load() {
+	loading.value = true;
+	try {
+		dispatchJobs.value = await dispatchJobsApi.list(buildParams());
+	} catch (error) {
+		console.error("Failed to load dispatch jobs:", error);
+	} finally {
+		loading.value = false;
+	}
+}
 
 // Filter options
 const applicationOptions = ref<FilterOption[]>([]);
@@ -56,7 +65,7 @@ const isUpdating = ref(false);
 
 onMounted(async () => {
 	await loadFilterOptions();
-	await cursor.loadFirst();
+	await load();
 });
 
 async function loadFilterOptions() {
@@ -100,18 +109,18 @@ async function onFilterChange(
 		}
 
 		await loadFilterOptions();
-		await cursor.reset();
+		await load();
 	} finally {
 		isUpdating.value = false;
 	}
 }
 
 async function onStatusChange() {
-	await cursor.reset();
+	await load();
 }
 
 async function onSearchChange() {
-	await cursor.reset();
+	await load();
 }
 
 function getSeverity(
@@ -264,11 +273,18 @@ function formatCode(code: string | undefined): {
               @keyup.enter="onSearchChange"
             />
           </IconField>
+          <Select
+            v-model="pageSize"
+            :options="sizeOptions"
+            class="size-select"
+            @change="load"
+            v-tooltip="'Result size — most recent N jobs'"
+          />
           <Button
             icon="pi pi-refresh"
             text
             rounded
-            @click="cursor.refresh"
+            @click="load"
             v-tooltip="'Refresh'"
           />
         </div>
@@ -344,44 +360,26 @@ function formatCode(code: string | undefined): {
         </Column>
       </DataTable>
 
-      <!-- Cursor pager. msg_dispatch_jobs is unbounded so we keyset rather
-           than count. ← Newer / Older → for in-session navigation. -->
-      <div class="cursor-pager">
-        <Button
-          icon="pi pi-angle-left"
-          label="Newer"
-          text
-          :disabled="!cursor.hasPrev.value || cursor.loading.value"
-          @click="cursor.loadPrev"
-        />
-        <span class="page-indicator">Page {{ cursor.page.value }}</span>
-        <Button
-          icon="pi pi-angle-right"
-          iconPos="right"
-          label="Older"
-          text
-          :disabled="!cursor.hasMore.value || cursor.loading.value"
-          @click="cursor.loadNext"
-        />
+      <!-- No pagination — dispatch jobs ingest at high rates and "page 2"
+           is meaningless. Adjust size or narrow filters to see more. -->
+      <div class="result-summary">
+        Showing the {{ dispatchJobs.length }} most recent dispatch jobs
+        <span v-if="dispatchJobs.length === pageSize"> (size limit reached — narrow filters or increase size)</span>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.cursor-pager {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  padding: 0.75rem 0 0.25rem;
+.size-select {
+  width: 6rem;
 }
 
-.page-indicator {
-  font-size: 0.875rem;
-  color: var(--text-color-secondary);
-  min-width: 4.5rem;
+.result-summary {
   text-align: center;
+  font-size: 0.8125rem;
+  color: var(--text-color-secondary);
+  padding: 0.75rem 0 0.25rem;
 }
 
 .toolbar {
