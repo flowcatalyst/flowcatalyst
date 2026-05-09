@@ -260,6 +260,41 @@ const router = createRouter({
 					component: () =>
 						import("@/pages/event-types/EventTypeAddSchemaPage.vue"),
 				},
+				// Scheduled Jobs
+				{
+					path: "scheduled-jobs",
+					name: "scheduled-jobs",
+					component: () =>
+						import("@/pages/scheduled-jobs/ScheduledJobListPage.vue"),
+				},
+				{
+					path: "scheduled-jobs/create",
+					name: "scheduled-job-create",
+					component: () =>
+						import("@/pages/scheduled-jobs/ScheduledJobCreatePage.vue"),
+				},
+				{
+					path: "scheduled-jobs/:id",
+					name: "scheduled-job-detail",
+					component: () =>
+						import("@/pages/scheduled-jobs/ScheduledJobDetailPage.vue"),
+				},
+				{
+					path: "scheduled-jobs/:id/instances",
+					name: "scheduled-job-instances",
+					component: () =>
+						import(
+							"@/pages/scheduled-jobs/ScheduledJobInstanceListPage.vue"
+						),
+				},
+				{
+					path: "scheduled-jobs/instances/:instanceId",
+					name: "scheduled-job-instance-detail",
+					component: () =>
+						import(
+							"@/pages/scheduled-jobs/ScheduledJobInstanceDetailPage.vue"
+						),
+				},
 				// Subscriptions
 				{
 					path: "subscriptions",

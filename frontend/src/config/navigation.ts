@@ -154,6 +154,11 @@ export const NAVIGATION_CONFIG: NavGroup[] = [
 				icon: "pi pi-send",
 				route: "/dispatch-jobs",
 			},
+			{
+				label: "Scheduled Jobs",
+				icon: "pi pi-clock",
+				route: "/scheduled-jobs",
+			},
 		],
 	},
 ];
