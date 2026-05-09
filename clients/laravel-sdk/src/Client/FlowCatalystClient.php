@@ -17,6 +17,7 @@ use FlowCatalyst\Client\Resources\Principals;
 use FlowCatalyst\Client\Resources\Roles;
 use FlowCatalyst\Client\Resources\Connections;
 use FlowCatalyst\Client\Resources\Router;
+use FlowCatalyst\Client\Resources\ScheduledJobs;
 use FlowCatalyst\Client\Resources\Subscriptions;
 use FlowCatalyst\Exceptions\AuthenticationException;
 use FlowCatalyst\Exceptions\FlowCatalystException;
@@ -42,6 +43,7 @@ class FlowCatalystClient
     private ?Connections $connections = null;
     private ?Me $me = null;
     private ?Router $router = null;
+    private ?ScheduledJobs $scheduledJobs = null;
 
     /**
      * Create a new FlowCatalyst client.
@@ -196,6 +198,15 @@ class FlowCatalystClient
     public function router(): Router
     {
         return $this->router ??= new Router($this);
+    }
+
+    /**
+     * Get the Scheduled Jobs resource (CRUD + state transitions + history
+     * reads + the SDK callback paths used by `ScheduledJobRunner`).
+     */
+    public function scheduledJobs(): ScheduledJobs
+    {
+        return $this->scheduledJobs ??= new ScheduledJobs($this);
     }
 
     /**
