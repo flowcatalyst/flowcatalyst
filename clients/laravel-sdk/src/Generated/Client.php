@@ -1116,6 +1116,196 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param array{
+     *    "clientId"?: string, //Filter by client. Pass the literal `platform` to filter platform-scoped.
+     *    "status"?: string,
+     *    "search"?: string,
+     *    "pagination": array,
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PaginatedResponseScheduledJobResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getApiScheduledJobs(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApiScheduledJobs($queryParameters), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\CreateScheduledJobRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\PostApiScheduledJobsBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\PostApiScheduledJobsForbiddenException
+     * @throws \FlowCatalyst\Generated\Exception\PostApiScheduledJobsConflictException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\CreatedResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postApiScheduledJobs(?\FlowCatalyst\Generated\Model\CreateScheduledJobRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiScheduledJobs($requestBody), $fetch);
+    }
+    /**
+     * @param string $code Scheduled job code
+     * @param array{
+     *    "clientId"?: string,
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\GetApiScheduledJobsByCodeNotFoundException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ScheduledJobResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getApiScheduledJobsByCode(string $code, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApiScheduledJobsByCode($code, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $instanceId Instance ID
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\GetApiScheduledJobsInstancesByIdNotFoundException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ScheduledJobInstanceResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getApiScheduledJobsInstancesById(string $instanceId, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApiScheduledJobsInstancesById($instanceId), $fetch);
+    }
+    /**
+     * @param string $instanceId Instance ID
+     * @param null|\FlowCatalyst\Generated\Model\InstanceCompleteRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\PostApiScheduledJobsInstancesByIdCompleteForbiddenException
+     * @throws \FlowCatalyst\Generated\Exception\PostApiScheduledJobsInstancesByIdCompleteNotFoundException
+     *
+     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postApiScheduledJobsInstancesByIdComplete(string $instanceId, ?\FlowCatalyst\Generated\Model\InstanceCompleteRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiScheduledJobsInstancesByIdComplete($instanceId, $requestBody), $fetch);
+    }
+    /**
+     * @param string $instanceId Instance ID
+     * @param null|\FlowCatalyst\Generated\Model\InstanceLogRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\PostApiScheduledJobsInstancesByIdLogForbiddenException
+     * @throws \FlowCatalyst\Generated\Exception\PostApiScheduledJobsInstancesByIdLogNotFoundException
+     *
+     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postApiScheduledJobsInstancesByIdLog(string $instanceId, ?\FlowCatalyst\Generated\Model\InstanceLogRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiScheduledJobsInstancesByIdLog($instanceId, $requestBody), $fetch);
+    }
+    /**
+     * @param string $instanceId Instance ID
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\GetApiScheduledJobsInstancesByIdLogsNotFoundException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\InstanceLogResponse[] : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getApiScheduledJobsInstancesByIdLogs(string $instanceId, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApiScheduledJobsInstancesByIdLogs($instanceId), $fetch);
+    }
+    /**
+     * @param string $id Scheduled job ID
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\DeleteApiScheduledJobsByIdNotFoundException
+     *
+     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     */
+    public function deleteApiScheduledJobsById(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeleteApiScheduledJobsById($id), $fetch);
+    }
+    /**
+     * @param string $id Scheduled job ID
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\GetApiScheduledJobsByIdNotFoundException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ScheduledJobResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getApiScheduledJobsById(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApiScheduledJobsById($id), $fetch);
+    }
+    /**
+     * @param string $id Scheduled job ID
+     * @param null|\FlowCatalyst\Generated\Model\UpdateScheduledJobRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\PutApiScheduledJobsByIdNotFoundException
+     *
+     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     */
+    public function putApiScheduledJobsById(string $id, ?\FlowCatalyst\Generated\Model\UpdateScheduledJobRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PutApiScheduledJobsById($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id Scheduled job ID
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\PostApiScheduledJobsByIdArchiveNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\PostApiScheduledJobsByIdArchiveConflictException
+     *
+     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postApiScheduledJobsByIdArchive(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiScheduledJobsByIdArchive($id), $fetch);
+    }
+    /**
+     * @param string $id Scheduled job ID
+     * @param null|\FlowCatalyst\Generated\Model\FireRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\PostApiScheduledJobsByIdFireNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\PostApiScheduledJobsByIdFireConflictException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\CreatedResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postApiScheduledJobsByIdFire(string $id, ?\FlowCatalyst\Generated\Model\FireRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiScheduledJobsByIdFire($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id Scheduled job ID
+     * @param array{
+     *    "status"?: string,
+     *    "triggerKind"?: string,
+     *    "from"?: string,
+     *    "to"?: string,
+     *    "pagination": array,
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PaginatedResponseScheduledJobInstanceResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getApiScheduledJobsByIdInstances(string $id, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApiScheduledJobsByIdInstances($id, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $id Scheduled job ID
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\PostApiScheduledJobsByIdPauseNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\PostApiScheduledJobsByIdPauseConflictException
+     *
+     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postApiScheduledJobsByIdPause(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiScheduledJobsByIdPause($id), $fetch);
+    }
+    /**
+     * @param string $id Scheduled job ID
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\PostApiScheduledJobsByIdResumeNotFoundException
+     * @throws \FlowCatalyst\Generated\Exception\PostApiScheduledJobsByIdResumeConflictException
+     *
+     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postApiScheduledJobsByIdResume(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiScheduledJobsByIdResume($id), $fetch);
+    }
+    /**
+     * @param array{
      *    "pagination": array,
      *    "clientId"?: string, //Filter by client ID
      *    "status"?: string, //Filter by status

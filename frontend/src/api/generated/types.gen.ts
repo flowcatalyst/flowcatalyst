@@ -464,6 +464,8 @@ export type ClusterMember = {
     role: string;
 };
 
+export type CompletionStatusDto = 'SUCCESS' | 'FAILURE';
+
 /**
  * Config entry response (matches Java ConfigEntry)
  */
@@ -759,6 +761,24 @@ export type CreateRoleRequest = {
      * Role name (will be combined with app code to form code)
      */
     roleName: string;
+};
+
+export type CreateScheduledJobRequest = {
+    /**
+     * None = platform-scoped (anchor only); Some = client-scoped.
+     */
+    clientId?: string | null;
+    code: string;
+    concurrent?: boolean;
+    crons: Array<string>;
+    deliveryMaxAttempts?: number;
+    description?: string | null;
+    name: string;
+    payload?: unknown;
+    targetUrl?: string | null;
+    timeoutSeconds?: number | null;
+    timezone?: string;
+    tracksCompletion?: boolean;
 };
 
 /**
@@ -1297,6 +1317,10 @@ export type FilterOption = {
     value: string;
 };
 
+export type FireRequest = {
+    correlationId?: string | null;
+};
+
 /**
  * Grant client access request
  */
@@ -1344,6 +1368,28 @@ export type InFlightMessagesResponse = {
     messages: Array<InFlightMessage>;
     totalInFlight: number;
 };
+
+export type InstanceCompleteRequest = {
+    result?: unknown;
+    status: CompletionStatusDto;
+};
+
+export type InstanceLogRequest = {
+    level?: LogLevelDto;
+    message: string;
+    metadata?: unknown;
+};
+
+export type InstanceLogResponse = {
+    createdAt: string;
+    id: string;
+    instanceId: string;
+    level: string;
+    message: string;
+    metadata?: unknown;
+};
+
+export type LogLevelDto = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
 /**
  * Login request
@@ -1422,6 +1468,70 @@ export type OAuthClientResponse = {
  */
 export type OperationsResponse = {
     operations: Array<string>;
+};
+
+/**
+ * Paginated response wrapper
+ */
+export type PaginatedResponseScheduledJobInstanceResponse = {
+    data: Array<{
+        clientId?: string | null;
+        completedAt?: string | null;
+        completionResult?: unknown;
+        completionStatus?: string | null;
+        correlationId?: string | null;
+        createdAt: string;
+        deliveredAt?: string | null;
+        deliveryAttempts: number;
+        deliveryError?: string | null;
+        firedAt: string;
+        id: string;
+        jobCode: string;
+        scheduledFor?: string | null;
+        scheduledJobId: string;
+        status: string;
+        triggerKind: string;
+    }>;
+    page: number;
+    size: number;
+    total: number;
+    total_pages: number;
+};
+
+/**
+ * Paginated response wrapper
+ */
+export type PaginatedResponseScheduledJobResponse = {
+    data: Array<{
+        clientId?: string | null;
+        code: string;
+        concurrent: boolean;
+        createdAt: string;
+        createdBy?: string | null;
+        crons: Array<string>;
+        deliveryMaxAttempts: number;
+        description?: string | null;
+        /**
+         * Computed: true if any non-terminal instance currently exists.
+         */
+        hasActiveInstance: boolean;
+        id: string;
+        lastFiredAt?: string | null;
+        name: string;
+        payload?: unknown;
+        status: string;
+        targetUrl?: string | null;
+        timeoutSeconds?: number | null;
+        timezone: string;
+        tracksCompletion: boolean;
+        updatedAt: string;
+        updatedBy?: string | null;
+        version: number;
+    }>;
+    page: number;
+    size: number;
+    total: number;
+    total_pages: number;
 };
 
 export type PaginationParams = {
@@ -1679,6 +1789,52 @@ export type RoleResponse = {
  */
 export type RolesListResponse = {
     roles: Array<RoleAssignmentDto>;
+};
+
+export type ScheduledJobInstanceResponse = {
+    clientId?: string | null;
+    completedAt?: string | null;
+    completionResult?: unknown;
+    completionStatus?: string | null;
+    correlationId?: string | null;
+    createdAt: string;
+    deliveredAt?: string | null;
+    deliveryAttempts: number;
+    deliveryError?: string | null;
+    firedAt: string;
+    id: string;
+    jobCode: string;
+    scheduledFor?: string | null;
+    scheduledJobId: string;
+    status: string;
+    triggerKind: string;
+};
+
+export type ScheduledJobResponse = {
+    clientId?: string | null;
+    code: string;
+    concurrent: boolean;
+    createdAt: string;
+    createdBy?: string | null;
+    crons: Array<string>;
+    deliveryMaxAttempts: number;
+    description?: string | null;
+    /**
+     * Computed: true if any non-terminal instance currently exists.
+     */
+    hasActiveInstance: boolean;
+    id: string;
+    lastFiredAt?: string | null;
+    name: string;
+    payload?: unknown;
+    status: string;
+    targetUrl?: string | null;
+    timeoutSeconds?: number | null;
+    timezone: string;
+    tracksCompletion: boolean;
+    updatedAt: string;
+    updatedBy?: string | null;
+    version: number;
 };
 
 /**
@@ -2050,6 +2206,19 @@ export type UpdateRoleRequest = {
      * Replace the role's permission set. Omit to leave permissions unchanged.
      */
     permissions?: Array<string> | null;
+};
+
+export type UpdateScheduledJobRequest = {
+    concurrent?: boolean | null;
+    crons?: Array<string> | null;
+    deliveryMaxAttempts?: number | null;
+    description?: string | null;
+    name?: string | null;
+    payload?: unknown;
+    targetUrl?: string | null;
+    timeoutSeconds?: number | null;
+    timezone?: string | null;
+    tracksCompletion?: boolean | null;
 };
 
 /**
@@ -4647,6 +4816,340 @@ export type DeleteApiAdminRolesByNamePermissionsByPermissionResponses = {
 };
 
 export type DeleteApiAdminRolesByNamePermissionsByPermissionResponse = DeleteApiAdminRolesByNamePermissionsByPermissionResponses[keyof DeleteApiAdminRolesByNamePermissionsByPermissionResponses];
+
+export type GetApiScheduledJobsData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Filter by client. Pass the literal `platform` to filter platform-scoped.
+         */
+        clientId?: string;
+        status?: string;
+        search?: string;
+        pagination: PaginationParams;
+    };
+    url: '/api/scheduled-jobs';
+};
+
+export type GetApiScheduledJobsResponses = {
+    200: PaginatedResponseScheduledJobResponse;
+};
+
+export type GetApiScheduledJobsResponse = GetApiScheduledJobsResponses[keyof GetApiScheduledJobsResponses];
+
+export type PostApiScheduledJobsData = {
+    body: CreateScheduledJobRequest;
+    path?: never;
+    query?: never;
+    url: '/api/scheduled-jobs';
+};
+
+export type PostApiScheduledJobsErrors = {
+    400: unknown;
+    403: unknown;
+    409: unknown;
+};
+
+export type PostApiScheduledJobsResponses = {
+    201: CreatedResponse;
+};
+
+export type PostApiScheduledJobsResponse = PostApiScheduledJobsResponses[keyof PostApiScheduledJobsResponses];
+
+export type GetApiScheduledJobsByCodeData = {
+    body?: never;
+    path: {
+        /**
+         * Scheduled job code
+         */
+        code: string;
+    };
+    query?: {
+        clientId?: string;
+    };
+    url: '/api/scheduled-jobs/by-code/{code}';
+};
+
+export type GetApiScheduledJobsByCodeErrors = {
+    404: unknown;
+};
+
+export type GetApiScheduledJobsByCodeResponses = {
+    200: ScheduledJobResponse;
+};
+
+export type GetApiScheduledJobsByCodeResponse = GetApiScheduledJobsByCodeResponses[keyof GetApiScheduledJobsByCodeResponses];
+
+export type GetApiScheduledJobsInstancesByIdData = {
+    body?: never;
+    path: {
+        /**
+         * Instance ID
+         */
+        instance_id: string;
+    };
+    query?: never;
+    url: '/api/scheduled-jobs/instances/{instance_id}';
+};
+
+export type GetApiScheduledJobsInstancesByIdErrors = {
+    404: unknown;
+};
+
+export type GetApiScheduledJobsInstancesByIdResponses = {
+    200: ScheduledJobInstanceResponse;
+};
+
+export type GetApiScheduledJobsInstancesByIdResponse = GetApiScheduledJobsInstancesByIdResponses[keyof GetApiScheduledJobsInstancesByIdResponses];
+
+export type PostApiScheduledJobsInstancesByIdCompleteData = {
+    body: InstanceCompleteRequest;
+    path: {
+        /**
+         * Instance ID
+         */
+        instance_id: string;
+    };
+    query?: never;
+    url: '/api/scheduled-jobs/instances/{instance_id}/complete';
+};
+
+export type PostApiScheduledJobsInstancesByIdCompleteErrors = {
+    403: unknown;
+    404: unknown;
+};
+
+export type PostApiScheduledJobsInstancesByIdCompleteResponses = {
+    204: void;
+};
+
+export type PostApiScheduledJobsInstancesByIdCompleteResponse = PostApiScheduledJobsInstancesByIdCompleteResponses[keyof PostApiScheduledJobsInstancesByIdCompleteResponses];
+
+export type PostApiScheduledJobsInstancesByIdLogData = {
+    body: InstanceLogRequest;
+    path: {
+        /**
+         * Instance ID
+         */
+        instance_id: string;
+    };
+    query?: never;
+    url: '/api/scheduled-jobs/instances/{instance_id}/log';
+};
+
+export type PostApiScheduledJobsInstancesByIdLogErrors = {
+    403: unknown;
+    404: unknown;
+};
+
+export type PostApiScheduledJobsInstancesByIdLogResponses = {
+    202: unknown;
+};
+
+export type GetApiScheduledJobsInstancesByIdLogsData = {
+    body?: never;
+    path: {
+        /**
+         * Instance ID
+         */
+        instance_id: string;
+    };
+    query?: never;
+    url: '/api/scheduled-jobs/instances/{instance_id}/logs';
+};
+
+export type GetApiScheduledJobsInstancesByIdLogsErrors = {
+    404: unknown;
+};
+
+export type GetApiScheduledJobsInstancesByIdLogsResponses = {
+    200: Array<InstanceLogResponse>;
+};
+
+export type GetApiScheduledJobsInstancesByIdLogsResponse = GetApiScheduledJobsInstancesByIdLogsResponses[keyof GetApiScheduledJobsInstancesByIdLogsResponses];
+
+export type DeleteApiScheduledJobsByIdData = {
+    body?: never;
+    path: {
+        /**
+         * Scheduled job ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/scheduled-jobs/{id}';
+};
+
+export type DeleteApiScheduledJobsByIdErrors = {
+    404: unknown;
+};
+
+export type DeleteApiScheduledJobsByIdResponses = {
+    204: void;
+};
+
+export type DeleteApiScheduledJobsByIdResponse = DeleteApiScheduledJobsByIdResponses[keyof DeleteApiScheduledJobsByIdResponses];
+
+export type GetApiScheduledJobsByIdData = {
+    body?: never;
+    path: {
+        /**
+         * Scheduled job ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/scheduled-jobs/{id}';
+};
+
+export type GetApiScheduledJobsByIdErrors = {
+    404: unknown;
+};
+
+export type GetApiScheduledJobsByIdResponses = {
+    200: ScheduledJobResponse;
+};
+
+export type GetApiScheduledJobsByIdResponse = GetApiScheduledJobsByIdResponses[keyof GetApiScheduledJobsByIdResponses];
+
+export type PutApiScheduledJobsByIdData = {
+    body: UpdateScheduledJobRequest;
+    path: {
+        /**
+         * Scheduled job ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/scheduled-jobs/{id}';
+};
+
+export type PutApiScheduledJobsByIdErrors = {
+    404: unknown;
+};
+
+export type PutApiScheduledJobsByIdResponses = {
+    204: void;
+};
+
+export type PutApiScheduledJobsByIdResponse = PutApiScheduledJobsByIdResponses[keyof PutApiScheduledJobsByIdResponses];
+
+export type PostApiScheduledJobsByIdArchiveData = {
+    body?: never;
+    path: {
+        /**
+         * Scheduled job ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/scheduled-jobs/{id}/archive';
+};
+
+export type PostApiScheduledJobsByIdArchiveErrors = {
+    404: unknown;
+    409: unknown;
+};
+
+export type PostApiScheduledJobsByIdArchiveResponses = {
+    204: void;
+};
+
+export type PostApiScheduledJobsByIdArchiveResponse = PostApiScheduledJobsByIdArchiveResponses[keyof PostApiScheduledJobsByIdArchiveResponses];
+
+export type PostApiScheduledJobsByIdFireData = {
+    body: FireRequest;
+    path: {
+        /**
+         * Scheduled job ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/scheduled-jobs/{id}/fire';
+};
+
+export type PostApiScheduledJobsByIdFireErrors = {
+    404: unknown;
+    409: unknown;
+};
+
+export type PostApiScheduledJobsByIdFireResponses = {
+    202: CreatedResponse;
+};
+
+export type PostApiScheduledJobsByIdFireResponse = PostApiScheduledJobsByIdFireResponses[keyof PostApiScheduledJobsByIdFireResponses];
+
+export type GetApiScheduledJobsByIdInstancesData = {
+    body?: never;
+    path: {
+        /**
+         * Scheduled job ID
+         */
+        id: string;
+    };
+    query: {
+        status?: string;
+        triggerKind?: string;
+        from?: string;
+        to?: string;
+        pagination: PaginationParams;
+    };
+    url: '/api/scheduled-jobs/{id}/instances';
+};
+
+export type GetApiScheduledJobsByIdInstancesResponses = {
+    200: PaginatedResponseScheduledJobInstanceResponse;
+};
+
+export type GetApiScheduledJobsByIdInstancesResponse = GetApiScheduledJobsByIdInstancesResponses[keyof GetApiScheduledJobsByIdInstancesResponses];
+
+export type PostApiScheduledJobsByIdPauseData = {
+    body?: never;
+    path: {
+        /**
+         * Scheduled job ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/scheduled-jobs/{id}/pause';
+};
+
+export type PostApiScheduledJobsByIdPauseErrors = {
+    404: unknown;
+    409: unknown;
+};
+
+export type PostApiScheduledJobsByIdPauseResponses = {
+    204: void;
+};
+
+export type PostApiScheduledJobsByIdPauseResponse = PostApiScheduledJobsByIdPauseResponses[keyof PostApiScheduledJobsByIdPauseResponses];
+
+export type PostApiScheduledJobsByIdResumeData = {
+    body?: never;
+    path: {
+        /**
+         * Scheduled job ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/scheduled-jobs/{id}/resume';
+};
+
+export type PostApiScheduledJobsByIdResumeErrors = {
+    404: unknown;
+    409: unknown;
+};
+
+export type PostApiScheduledJobsByIdResumeResponses = {
+    204: void;
+};
+
+export type PostApiScheduledJobsByIdResumeResponse = PostApiScheduledJobsByIdResumeResponses[keyof PostApiScheduledJobsByIdResumeResponses];
 
 export type GetApiAdminSubscriptionsData = {
     body?: never;
