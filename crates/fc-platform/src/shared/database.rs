@@ -222,51 +222,157 @@ pub enum MigrationProfile {
 }
 
 /// Run all SQL migrations from the migrations/ directory.
+///
+/// Each migration is applied at most once. Tracking lives in
+/// `_schema_migrations`; SQL execution and the tracker INSERT happen in the
+/// same transaction, so a partial migration never gets marked applied.
+///
+/// First-run on a pre-tracker DB: if the tracker is empty but a legacy
+/// table (`tnt_clients` from 001) exists, every defined migration is
+/// marked applied so the no-tracker era's idempotent migrations don't
+/// get re-run on top of schema mutations they predate (e.g. running
+/// migration 4's `CREATE UNIQUE INDEX … (deduplication_id)` on top of
+/// a partitioned `msg_events`).
 pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<(), sqlx::Error> {
     info!(?profile, "Running database migrations...");
 
     // Migrations applied to every profile.
-    let core_migrations = [
-        include_str!("../../../../migrations/001_tenant_tables.sql"),
-        include_str!("../../../../migrations/002_iam_tables.sql"),
-        include_str!("../../../../migrations/003_application_tables.sql"),
-        include_str!("../../../../migrations/004_messaging_tables.sql"),
-        include_str!("../../../../migrations/005_outbox_tables.sql"),
-        include_str!("../../../../migrations/006_audit_tables.sql"),
-        include_str!("../../../../migrations/007_oauth_tables.sql"),
-        include_str!("../../../../migrations/008_auth_tracking_tables.sql"),
-        include_str!("../../../../migrations/009_p0_alignment.sql"),
-        include_str!("../../../../migrations/010_auth_state_tables.sql"),
-        include_str!("../../../../migrations/011_dispatch_job_tables.sql"),
-        include_str!("../../../../migrations/012_projection_columns.sql"),
-        include_str!("../../../../migrations/013_drop_connection_endpoint.sql"),
-        include_str!("../../../../migrations/014_widen_attempt_type.sql"),
-        include_str!("../../../../migrations/015_dispatch_jobs_write_indexes.sql"),
-        include_str!("../../../../migrations/016_clean_orphaned_role_assignments.sql"),
-        include_str!("../../../../migrations/017_dispatch_pool_rate_limit_nullable.sql"),
+    let core_migrations: &[(&str, &str)] = &[
+        ("001_tenant_tables", include_str!("../../../../migrations/001_tenant_tables.sql")),
+        ("002_iam_tables", include_str!("../../../../migrations/002_iam_tables.sql")),
+        ("003_application_tables", include_str!("../../../../migrations/003_application_tables.sql")),
+        ("004_messaging_tables", include_str!("../../../../migrations/004_messaging_tables.sql")),
+        ("005_outbox_tables", include_str!("../../../../migrations/005_outbox_tables.sql")),
+        ("006_audit_tables", include_str!("../../../../migrations/006_audit_tables.sql")),
+        ("007_oauth_tables", include_str!("../../../../migrations/007_oauth_tables.sql")),
+        ("008_auth_tracking_tables", include_str!("../../../../migrations/008_auth_tracking_tables.sql")),
+        ("009_p0_alignment", include_str!("../../../../migrations/009_p0_alignment.sql")),
+        ("010_auth_state_tables", include_str!("../../../../migrations/010_auth_state_tables.sql")),
+        ("011_dispatch_job_tables", include_str!("../../../../migrations/011_dispatch_job_tables.sql")),
+        ("012_projection_columns", include_str!("../../../../migrations/012_projection_columns.sql")),
+        ("013_drop_connection_endpoint", include_str!("../../../../migrations/013_drop_connection_endpoint.sql")),
+        ("014_widen_attempt_type", include_str!("../../../../migrations/014_widen_attempt_type.sql")),
+        ("015_dispatch_jobs_write_indexes", include_str!("../../../../migrations/015_dispatch_jobs_write_indexes.sql")),
+        ("016_clean_orphaned_role_assignments", include_str!("../../../../migrations/016_clean_orphaned_role_assignments.sql")),
+        ("017_dispatch_pool_rate_limit_nullable", include_str!("../../../../migrations/017_dispatch_pool_rate_limit_nullable.sql")),
         // 018 reshapes the messaging tables into the partitioning-ready
         // schema (composite PKs, fanned_out_at, read-table created_at). Runs
         // on every profile — embedded gets the new shape on regular tables;
         // production gets it as a precursor to 019's partition DDL.
-        include_str!("../../../../migrations/018_partition_prep.sql"),
-        include_str!("../../../../migrations/020_webauthn_credentials.sql"),
-        include_str!("../../../../migrations/021_scheduled_jobs.sql"),
+        ("018_partition_prep", include_str!("../../../../migrations/018_partition_prep.sql")),
+        ("020_webauthn_credentials", include_str!("../../../../migrations/020_webauthn_credentials.sql")),
+        ("021_scheduled_jobs", include_str!("../../../../migrations/021_scheduled_jobs.sql")),
     ];
 
-    for (i, sql) in core_migrations.iter().enumerate() {
-        apply_migration(pool, sql).await?;
-        info!("Migration {} applied successfully", i + 1);
+    let production_migrations: &[(&str, &str)] = &[
+        ("019_partition_messaging_tables", include_str!("../../../../migrations/019_partition_messaging_tables.sql")),
+        ("022_partition_scheduled_job_history", include_str!("../../../../migrations/022_partition_scheduled_job_history.sql")),
+    ];
+
+    // Bootstrap the tracker. CREATE IF NOT EXISTS is safe to re-run.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS _schema_migrations (
+            migration_id VARCHAR(100) PRIMARY KEY,
+            applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            duration_ms INTEGER
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Per-migration probes for the recently-added migrations: a SQL
+    // expression returning true iff the migration's effects are visible.
+    // Older migrations (001–019) are assumed applied if the legacy `tnt_clients`
+    // table exists (any pre-tracker prod DB was already running them every
+    // deploy). Recent migrations need their own probe because they may have
+    // been defined but not yet successfully applied — the deploy that broke
+    // on migration 4 is the canonical example.
+    let probes: &[(&str, &str)] = &[
+        (
+            "020_webauthn_credentials",
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables \
+             WHERE table_schema = 'public' AND table_name = 'webauthn_credentials')",
+        ),
+        (
+            "021_scheduled_jobs",
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables \
+             WHERE table_schema = 'public' AND table_name = 'msg_scheduled_jobs')",
+        ),
+        (
+            "022_partition_scheduled_job_history",
+            "SELECT EXISTS (SELECT 1 FROM pg_partitioned_table pt \
+             JOIN pg_class c ON c.oid = pt.partrelid \
+             WHERE c.relname = 'msg_scheduled_job_instances')",
+        ),
+    ];
+
+    // Auto-backfill for pre-tracker DBs.
+    let tracker_count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM _schema_migrations")
+            .fetch_one(pool)
+            .await?;
+    if tracker_count.0 == 0 {
+        let legacy_present: (bool,) = sqlx::query_as(
+            "SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'tnt_clients'
+            )",
+        )
+        .fetch_one(pool)
+        .await?;
+        if legacy_present.0 {
+            warn!(
+                "Pre-tracker DB detected (tnt_clients exists, _schema_migrations empty). \
+                 Backfilling defined migrations whose effects are visible — recently-added \
+                 migrations without visible effects will run on this deploy."
+            );
+            let mut tx = pool.begin().await?;
+            let mut backfilled = 0;
+            let mut skipped = Vec::new();
+            for (id, _) in core_migrations.iter().chain(production_migrations.iter()) {
+                let probe_says_applied = if let Some((_, probe_sql)) =
+                    probes.iter().find(|(p_id, _)| *p_id == *id)
+                {
+                    let r: (bool,) = sqlx::query_as(*probe_sql)
+                        .fetch_one(&mut *tx)
+                        .await?;
+                    r.0
+                } else {
+                    true
+                };
+                if probe_says_applied {
+                    sqlx::query(
+                        "INSERT INTO _schema_migrations (migration_id) VALUES ($1) \
+                         ON CONFLICT (migration_id) DO NOTHING",
+                    )
+                    .bind(*id)
+                    .execute(&mut *tx)
+                    .await?;
+                    backfilled += 1;
+                } else {
+                    skipped.push(*id);
+                }
+            }
+            tx.commit().await?;
+            info!(
+                backfilled,
+                skipped = ?skipped,
+                "Backfill complete; skipped entries will run as fresh migrations"
+            );
+        } else {
+            info!("Fresh DB — running all migrations.");
+        }
     }
 
-    // Production-only migrations.
+    // Apply each migration if not already tracked.
+    for (id, sql) in core_migrations.iter() {
+        apply_tracked(pool, id, sql).await?;
+    }
     if profile == MigrationProfile::Production {
-        let production_migrations = [
-            ("019_partition_messaging_tables", include_str!("../../../../migrations/019_partition_messaging_tables.sql")),
-            ("022_partition_scheduled_job_history", include_str!("../../../../migrations/022_partition_scheduled_job_history.sql")),
-        ];
-        for (name, sql) in production_migrations.iter() {
-            apply_migration(pool, sql).await?;
-            info!(migration = %name, "Production migration applied");
+        for (id, sql) in production_migrations.iter() {
+            apply_tracked(pool, id, sql).await?;
         }
     }
 
@@ -274,7 +380,24 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
     Ok(())
 }
 
-async fn apply_migration(pool: &PgPool, sql: &str) -> Result<(), sqlx::Error> {
+/// Apply one migration in its own transaction.
+///
+/// SQL execution and the `_schema_migrations` insert are atomic — if any
+/// statement fails the whole thing rolls back, so the migration is not
+/// marked applied and the next deploy retries it.
+async fn apply_tracked(pool: &PgPool, id: &str, sql: &str) -> Result<(), sqlx::Error> {
+    let already_applied: Option<(String,)> = sqlx::query_as(
+        "SELECT migration_id FROM _schema_migrations WHERE migration_id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    if already_applied.is_some() {
+        return Ok(());
+    }
+
+    let mut tx = pool.begin().await?;
+    let start = std::time::Instant::now();
     for statement in split_sql_statements(sql) {
         let cleaned: String = statement
             .lines()
@@ -285,8 +408,19 @@ async fn apply_migration(pool: &PgPool, sql: &str) -> Result<(), sqlx::Error> {
         if trimmed.is_empty() {
             continue;
         }
-        sqlx::query(trimmed).execute(pool).await?;
+        sqlx::query(trimmed).execute(&mut *tx).await?;
     }
+    let duration_ms = start.elapsed().as_millis() as i32;
+    sqlx::query(
+        "INSERT INTO _schema_migrations (migration_id, duration_ms) VALUES ($1, $2)",
+    )
+    .bind(id)
+    .bind(duration_ms)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    info!(migration = id, duration_ms = duration_ms, "Migration applied");
     Ok(())
 }
 
