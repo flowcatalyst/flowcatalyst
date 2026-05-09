@@ -17,7 +17,6 @@
  * fires return immediately without invoking the handler.
  */
 
-import type { FlowCatalystClient } from "../client";
 import type { ScheduledJobsResource } from "../resources/scheduled-jobs";
 import { type LockProvider, NoOpLockProvider } from "./lock-provider";
 
@@ -75,7 +74,6 @@ export type RunResult =
 
 export class ScheduledJobRunner {
 	private readonly handlers: Map<string, Handler> = new Map();
-	private readonly client: FlowCatalystClient;
 	private readonly resource: ScheduledJobsResource;
 	private readonly lockProvider: LockProvider;
 	private readonly lockKey: (e: ScheduledJobEnvelope) => string;
@@ -84,11 +82,10 @@ export class ScheduledJobRunner {
 	private readonly onError?: (err: unknown, e: ScheduledJobEnvelope) => void;
 
 	constructor(
-		client: FlowCatalystClient,
+		_client: unknown,
 		resource: ScheduledJobsResource,
 		options: RunnerOptions = {},
 	) {
-		this.client = client;
 		this.resource = resource;
 		this.lockProvider = options.lockProvider ?? new NoOpLockProvider();
 		this.lockKey =
@@ -241,30 +238,29 @@ function validateEnvelope(
 			return { ok: false, error: `Envelope missing string field '${k}'` };
 		}
 	}
-	if (
-		typeof o.tracksCompletion !== "boolean"
-	) {
+	if (typeof o["tracksCompletion"] !== "boolean") {
 		return { ok: false, error: "Envelope missing boolean field 'tracksCompletion'" };
 	}
-	const trigger = o.triggerKind as string;
+	const trigger = o["triggerKind"] as string;
 	if (trigger !== "CRON" && trigger !== "MANUAL") {
 		return { ok: false, error: `Invalid triggerKind '${trigger}'` };
 	}
 	return {
 		ok: true,
 		envelope: {
-			jobId: o.jobId as string,
-			jobCode: o.jobCode as string,
-			instanceId: o.instanceId as string,
-			scheduledFor: typeof o.scheduledFor === "string" ? o.scheduledFor : undefined,
-			firedAt: o.firedAt as string,
+			jobId: o["jobId"] as string,
+			jobCode: o["jobCode"] as string,
+			instanceId: o["instanceId"] as string,
+			scheduledFor:
+				typeof o["scheduledFor"] === "string" ? (o["scheduledFor"] as string) : undefined,
+			firedAt: o["firedAt"] as string,
 			triggerKind: trigger as "CRON" | "MANUAL",
 			correlationId:
-				typeof o.correlationId === "string" ? o.correlationId : undefined,
-			payload: o.payload,
-			tracksCompletion: o.tracksCompletion as boolean,
+				typeof o["correlationId"] === "string" ? (o["correlationId"] as string) : undefined,
+			payload: o["payload"],
+			tracksCompletion: o["tracksCompletion"] as boolean,
 			timeoutSeconds:
-				typeof o.timeoutSeconds === "number" ? o.timeoutSeconds : undefined,
+				typeof o["timeoutSeconds"] === "number" ? (o["timeoutSeconds"] as number) : undefined,
 		},
 	};
 }

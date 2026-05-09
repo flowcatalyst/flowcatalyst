@@ -87,7 +87,45 @@ export {
 	ApplicationsResource,
 	ClientsResource,
 	PrincipalsResource,
+	ScheduledJobsResource,
 } from "./resources";
+
+// Scheduled-job runner (handler registration + lock + completion callback).
+export {
+	ScheduledJobRunner,
+	type ScheduledJobEnvelope,
+	type Handler as ScheduledJobHandler,
+	type HandlerContext as ScheduledJobHandlerContext,
+	type RunnerOptions as ScheduledJobRunnerOptions,
+	type RunResult as ScheduledJobRunResult,
+} from "./runner/scheduled-job-runner";
+export {
+	type LockProvider,
+	type LockHandle,
+	NoOpLockProvider,
+	InMemoryLockProvider,
+} from "./runner/lock-provider";
+
+// Scheduled-job DTOs (re-exported here so consumers don't need to drill in).
+export type {
+	ScheduledJob,
+	ScheduledJobInstance,
+	ScheduledJobInstanceLog,
+	ScheduledJobStatus,
+	TriggerKind,
+	InstanceStatus,
+	CompletionStatus,
+	LogLevel,
+	CreateScheduledJobRequest,
+	UpdateScheduledJobRequest,
+	ListJobsFilters,
+	ListInstancesFilters,
+	FireRequest,
+	InstanceLogRequest,
+	InstanceCompleteRequest,
+	PaginatedJobs,
+	PaginatedInstances,
+} from "./resources/scheduled-jobs";
 
 // Re-export generated types for convenience
 export type * from "./generated/types.gen";

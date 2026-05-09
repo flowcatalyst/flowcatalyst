@@ -173,7 +173,10 @@ export class ScheduledJobsResource {
 	}
 
 	list(filters: ListJobsFilters = {}): ResultAsync<PaginatedJobs, SdkError> {
-		return this.fetch<PaginatedJobs>("GET", `${PATH}${qs(filters)}`);
+		return this.fetch<PaginatedJobs>(
+			"GET",
+			`${PATH}${qs(filters as Record<string, unknown>)}`,
+		);
 	}
 
 	get(id: string): ResultAsync<ScheduledJob, SdkError> {
@@ -226,7 +229,7 @@ export class ScheduledJobsResource {
 	): ResultAsync<PaginatedInstances, SdkError> {
 		return this.fetch<PaginatedInstances>(
 			"GET",
-			`${PATH}/${encodeURIComponent(jobId)}/instances${qs(filters)}`,
+			`${PATH}/${encodeURIComponent(jobId)}/instances${qs(filters as Record<string, unknown>)}`,
 		);
 	}
 
