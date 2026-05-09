@@ -36,16 +36,18 @@ pub struct UpdateScheduledJobCommand {
     pub timeout_seconds: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delivery_max_attempts: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_url: Option<String>,
 }
 
 pub struct UpdateScheduledJobUseCase<U: UnitOfWork> {
     repo: Arc<ScheduledJobRepository>,
-    uow: Arc<U>,
+    unit_of_work: Arc<U>,
 }
 
 impl<U: UnitOfWork> UpdateScheduledJobUseCase<U> {
-    pub fn new(repo: Arc<ScheduledJobRepository>, uow: Arc<U>) -> Self {
-        Self { repo, uow }
+    pub fn new(repo: Arc<ScheduledJobRepository>, unit_of_work: Arc<U>) -> Self {
+        Self { repo, unit_of_work }
     }
 }
 
@@ -153,6 +155,11 @@ impl<U: UnitOfWork> UseCase for UpdateScheduledJobUseCase<U> {
                 job.delivery_max_attempts = v; changed.push("deliveryMaxAttempts".into());
             }
         }
+        if let Some(v) = &cmd.target_url {
+            if Some(v) != job.target_url.as_ref() {
+                job.target_url = Some(v.clone()); changed.push("targetUrl".into());
+            }
+        }
 
         if changed.is_empty() {
             return UseCaseResult::failure(UseCaseError::business_rule(
@@ -172,6 +179,6 @@ impl<U: UnitOfWork> UseCase for UpdateScheduledJobUseCase<U> {
             job.version,
         );
 
-        self.uow.commit(&job, &*self.repo, event, &cmd).await
+        self.unit_of_work.commit(&job, &*self.repo, event, &cmd).await
     }
 }

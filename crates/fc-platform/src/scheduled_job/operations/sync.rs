@@ -40,6 +40,8 @@ pub struct ScheduledJobSyncEntry {
     pub timeout_seconds: Option<i32>,
     #[serde(default = "default_attempts")]
     pub delivery_max_attempts: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_url: Option<String>,
 }
 fn default_timezone() -> String { "UTC".into() }
 fn default_attempts() -> i32 { 3 }
@@ -60,12 +62,12 @@ pub struct SyncScheduledJobsCommand {
 
 pub struct SyncScheduledJobsUseCase<U: UnitOfWork> {
     repo: Arc<ScheduledJobRepository>,
-    uow: Arc<U>,
+    unit_of_work: Arc<U>,
 }
 
 impl<U: UnitOfWork> SyncScheduledJobsUseCase<U> {
-    pub fn new(repo: Arc<ScheduledJobRepository>, uow: Arc<U>) -> Self {
-        Self { repo, uow }
+    pub fn new(repo: Arc<ScheduledJobRepository>, unit_of_work: Arc<U>) -> Self {
+        Self { repo, unit_of_work }
     }
 }
 
@@ -149,6 +151,9 @@ impl<U: UnitOfWork> UseCase for SyncScheduledJobsUseCase<U> {
                     if job.delivery_max_attempts != entry.delivery_max_attempts {
                         job.delivery_max_attempts = entry.delivery_max_attempts; changed = true;
                     }
+                    if job.target_url.as_ref() != entry.target_url.as_ref() {
+                        job.target_url = entry.target_url.clone(); changed = true;
+                    }
                     // Sync re-activates archived/paused jobs that reappear in
                     // the payload — that's the contract.
                     if job.status != ScheduledJobStatus::Active {
@@ -171,6 +176,7 @@ impl<U: UnitOfWork> UseCase for SyncScheduledJobsUseCase<U> {
                     if let Some(d) = &entry.description { job = job.with_description(d); }
                     if let Some(p) = &entry.payload { job = job.with_payload(p.clone()); }
                     if let Some(t) = entry.timeout_seconds { job = job.with_timeout_seconds(t); }
+                    if let Some(u) = &entry.target_url { job = job.with_target_url(u); }
                     created.push(job.id.clone());
                     to_persist.push(job);
                 }
@@ -200,9 +206,9 @@ impl<U: UnitOfWork> UseCase for SyncScheduledJobsUseCase<U> {
         if to_persist.is_empty() {
             // No changes to write; emit a summary event anyway so the audit
             // log records that a sync run occurred (matches event_type sync).
-            return self.uow.emit_event(event, &cmd).await;
+            return self.unit_of_work.emit_event(event, &cmd).await;
         }
 
-        self.uow.commit_all(&to_persist, &*self.repo, event, &cmd).await
+        self.unit_of_work.commit_all(&to_persist, &*self.repo, event, &cmd).await
     }
 }

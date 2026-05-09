@@ -77,6 +77,12 @@ pub struct ScheduledJob {
     /// marking the instance DELIVERY_FAILED. Distinct from business retries,
     /// which are the SDK/consumer's responsibility.
     pub delivery_max_attempts: i32,
+    /// HTTP endpoint the dispatcher POSTs to on every fire. The SDK exposes
+    /// one URL per app/client and routes by `code` server-side. None means
+    /// the job has no destination yet — the dispatcher will mark instances
+    /// DELIVERY_FAILED with a clear error until configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_url: Option<String>,
     /// Last cron-slot timestamp the poller fired for this job. Used to skip
     /// already-fired slots and compute the next due slot.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -114,6 +120,7 @@ impl ScheduledJob {
             tracks_completion: false,
             timeout_seconds: None,
             delivery_max_attempts: 3,
+            target_url: None,
             last_fired_at: None,
             created_at: now,
             updated_at: now,
@@ -153,6 +160,10 @@ impl ScheduledJob {
     }
     pub fn with_delivery_max_attempts(mut self, n: i32) -> Self {
         self.delivery_max_attempts = n;
+        self
+    }
+    pub fn with_target_url(mut self, u: impl Into<String>) -> Self {
+        self.target_url = Some(u.into());
         self
     }
     pub fn with_created_by(mut self, p: impl Into<String>) -> Self {

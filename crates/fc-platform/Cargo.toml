@@ -53,6 +53,8 @@ aes-gcm = { workspace = true }
 # Utilities
 uuid = { workspace = true }
 chrono = { workspace = true }
+chrono-tz = "0.10"
+cron = "0.15"
 tracing = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }

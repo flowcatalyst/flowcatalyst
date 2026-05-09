@@ -311,6 +311,17 @@ pub mod permissions {
         pub const DISPATCH_JOB_READ: &str = "platform:messaging:dispatch-job:view";
         pub const DISPATCH_JOB_VIEW_RAW: &str = "platform:messaging:dispatch-job:view-raw";
 
+        // Scheduled job management (messaging context in DB)
+        pub const SCHEDULED_JOB_READ: &str = "platform:messaging:scheduled-job:view";
+        pub const SCHEDULED_JOB_CREATE: &str = "platform:messaging:scheduled-job:create";
+        pub const SCHEDULED_JOB_UPDATE: &str = "platform:messaging:scheduled-job:update";
+        pub const SCHEDULED_JOB_DELETE: &str = "platform:messaging:scheduled-job:delete";
+        pub const SCHEDULED_JOB_PAUSE: &str = "platform:messaging:scheduled-job:pause";
+        pub const SCHEDULED_JOB_FIRE: &str = "platform:messaging:scheduled-job:fire";
+        pub const SCHEDULED_JOB_MANAGE: &str = "platform:messaging:scheduled-job:manage";
+        pub const SCHEDULED_JOB_SYNC: &str = "platform:messaging:scheduled-job:sync";
+        pub const SCHEDULED_JOB_INSTANCE_READ: &str = "platform:messaging:scheduled-job-instance:view";
+
         // Identity provider management (iam context in DB)
         pub const IDENTITY_PROVIDER_READ: &str = "platform:iam:idp:view";
         pub const IDENTITY_PROVIDER_CREATE: &str = "platform:iam:idp:create";
@@ -366,6 +377,9 @@ pub mod permissions {
             SUBSCRIPTION_READ, SUBSCRIPTION_CREATE, SUBSCRIPTION_UPDATE, SUBSCRIPTION_DELETE, SUBSCRIPTION_MANAGE, SUBSCRIPTION_SYNC,
             EVENT_READ, EVENT_VIEW_RAW,
             DISPATCH_JOB_READ, DISPATCH_JOB_VIEW_RAW,
+            SCHEDULED_JOB_READ, SCHEDULED_JOB_CREATE, SCHEDULED_JOB_UPDATE, SCHEDULED_JOB_DELETE,
+            SCHEDULED_JOB_PAUSE, SCHEDULED_JOB_FIRE, SCHEDULED_JOB_MANAGE, SCHEDULED_JOB_SYNC,
+            SCHEDULED_JOB_INSTANCE_READ,
             IDENTITY_PROVIDER_READ, IDENTITY_PROVIDER_CREATE, IDENTITY_PROVIDER_UPDATE, IDENTITY_PROVIDER_DELETE, IDENTITY_PROVIDER_MANAGE,
             EMAIL_DOMAIN_MAPPING_READ, EMAIL_DOMAIN_MAPPING_CREATE, EMAIL_DOMAIN_MAPPING_UPDATE, EMAIL_DOMAIN_MAPPING_DELETE, EMAIL_DOMAIN_MAPPING_MANAGE,
             SERVICE_ACCOUNT_READ, SERVICE_ACCOUNT_CREATE, SERVICE_ACCOUNT_UPDATE, SERVICE_ACCOUNT_DELETE, SERVICE_ACCOUNT_MANAGE,
@@ -469,6 +483,13 @@ pub mod permissions {
         pub const PERMISSION_READ: &str = "platform:application-service:permission:view";
         pub const PERMISSION_SYNC: &str = "platform:application-service:permission:sync";
 
+        // Scheduled job: SDK callback path (log/complete an instance the platform fired)
+        pub const SCHEDULED_JOB_INSTANCE_WRITE: &str =
+            "platform:application-service:scheduled-job-instance:write";
+        // Scheduled job: SDK sync of definitions
+        pub const SCHEDULED_JOB_SYNC: &str =
+            "platform:application-service:scheduled-job:sync";
+
         /// All application service permissions
         pub const ALL: &[&str] = &[
             EVENT_CREATE,
@@ -476,6 +497,7 @@ pub mod permissions {
             SUBSCRIPTION_READ, SUBSCRIPTION_CREATE, SUBSCRIPTION_UPDATE, SUBSCRIPTION_DELETE,
             ROLE_READ, ROLE_CREATE, ROLE_UPDATE, ROLE_DELETE,
             PERMISSION_READ, PERMISSION_SYNC,
+            SCHEDULED_JOB_INSTANCE_WRITE, SCHEDULED_JOB_SYNC,
         ];
     }
 

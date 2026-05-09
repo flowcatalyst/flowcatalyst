@@ -33,6 +33,8 @@ pub struct CreateScheduledJobCommand {
     pub timeout_seconds: Option<i32>,
     #[serde(default = "default_delivery_attempts")]
     pub delivery_max_attempts: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_url: Option<String>,
 }
 
 fn default_timezone() -> String { "UTC".into() }
@@ -40,12 +42,12 @@ fn default_delivery_attempts() -> i32 { 3 }
 
 pub struct CreateScheduledJobUseCase<U: UnitOfWork> {
     repo: Arc<ScheduledJobRepository>,
-    uow: Arc<U>,
+    unit_of_work: Arc<U>,
 }
 
 impl<U: UnitOfWork> CreateScheduledJobUseCase<U> {
-    pub fn new(repo: Arc<ScheduledJobRepository>, uow: Arc<U>) -> Self {
-        Self { repo, uow }
+    pub fn new(repo: Arc<ScheduledJobRepository>, unit_of_work: Arc<U>) -> Self {
+        Self { repo, unit_of_work }
     }
 }
 
@@ -128,6 +130,9 @@ impl<U: UnitOfWork> UseCase for CreateScheduledJobUseCase<U> {
         if let Some(t) = cmd.timeout_seconds {
             job = job.with_timeout_seconds(t);
         }
+        if let Some(u) = &cmd.target_url {
+            job = job.with_target_url(u);
+        }
 
         let event = ScheduledJobCreated::new(
             &ctx,
@@ -141,7 +146,7 @@ impl<U: UnitOfWork> UseCase for CreateScheduledJobUseCase<U> {
             job.tracks_completion,
         );
 
-        self.uow.commit(&job, &*self.repo, event, &cmd).await
+        self.unit_of_work.commit(&job, &*self.repo, event, &cmd).await
     }
 }
 

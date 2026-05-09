@@ -20,3 +20,23 @@ export {
 	type MyApplicationsResponse,
 } from "./me";
 export { ConnectionsResource } from "./connections";
+export {
+	ScheduledJobsResource,
+	type ScheduledJob,
+	type ScheduledJobInstance,
+	type ScheduledJobInstanceLog,
+	type ScheduledJobStatus,
+	type TriggerKind,
+	type InstanceStatus,
+	type CompletionStatus,
+	type LogLevel,
+	type CreateScheduledJobRequest,
+	type UpdateScheduledJobRequest,
+	type ListJobsFilters,
+	type ListInstancesFilters,
+	type FireRequest,
+	type InstanceLogRequest,
+	type InstanceCompleteRequest,
+	type PaginatedJobs,
+	type PaginatedInstances,
+} from "./scheduled-jobs";

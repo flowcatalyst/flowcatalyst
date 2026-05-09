@@ -193,13 +193,15 @@ async fn main() -> Result<()> {
     // update the pool's connect options when the password rotates. This avoids
     // the failure mode where AWS rotates the password and the pool keeps using
     // the now-stale credentials. Mirrors the TS implementation.
-    if let Some(provider) = secret_provider {
-        let interval_ms: u64 = env_or_parse("DB_SECRET_REFRESH_INTERVAL_MS", 300_000);
+    let secret_refresh_interval = std::time::Duration::from_millis(
+        env_or_parse::<u64>("DB_SECRET_REFRESH_INTERVAL_MS", 300_000),
+    );
+    if let Some(provider) = secret_provider.clone() {
         fc_platform::shared::database::start_secret_refresh(
             provider,
             pg_pool.clone(),
             database_url.clone(),
-            std::time::Duration::from_millis(interval_ms),
+            secret_refresh_interval,
         );
     }
 
@@ -339,12 +341,18 @@ async fn main() -> Result<()> {
     if scheduler_enabled {
         info!("Starting scheduler subsystem...");
         spawn_scheduler(&pg_pool, active_rx.clone()).await?;
+        spawn_scheduled_job_scheduler(&repos, active_rx.clone()).await?;
     }
 
     // Stream processor (CQRS projections)
     let _stream_handle = if stream_enabled {
         info!("Starting stream processor subsystem...");
-        Some(spawn_stream_processor(&database_url, active_rx.clone()).await?)
+        Some(spawn_stream_processor(
+            &database_url,
+            secret_provider.clone(),
+            secret_refresh_interval,
+            active_rx.clone(),
+        ).await?)
     } else {
         None
     };
@@ -725,6 +733,60 @@ async fn spawn_scheduler(
     Ok(())
 }
 
+/// Spawn the scheduled-job scheduler (cron poller + webhook dispatcher),
+/// gated on leadership. Single-replica assumption inside the active region.
+async fn spawn_scheduled_job_scheduler(
+    repos: &fc_platform::repository::Repositories,
+    mut active_rx: watch::Receiver<bool>,
+) -> Result<()> {
+    use fc_platform::scheduled_job::scheduler::{
+        ScheduledJobSchedulerConfig, ScheduledJobSchedulerService,
+    };
+
+    let svc = Arc::new(ScheduledJobSchedulerService::new(
+        ScheduledJobSchedulerConfig::from_env(),
+        repos.scheduled_job_repo.clone(),
+        repos.scheduled_job_instance_repo.clone(),
+    ));
+
+    tokio::spawn(async move {
+        let mut handles: Option<(tokio::task::JoinHandle<()>, tokio::task::JoinHandle<()>)>;
+        loop {
+            // Wait until active.
+            if !*active_rx.borrow() {
+                info!("Scheduled-job scheduler: waiting for leadership...");
+                loop {
+                    if active_rx.changed().await.is_err() { return; }
+                    if *active_rx.borrow() { break; }
+                }
+                info!("Scheduled-job scheduler: acquired leadership, starting");
+            }
+
+            // Start. svc holds the shutdown channel internally; abort handles
+            // on leadership loss to avoid blocking on in-flight HTTP.
+            handles = Some(svc.start());
+
+            // Wait for leadership loss.
+            let mut lost_rx = active_rx.clone();
+            loop {
+                if lost_rx.changed().await.is_err() {
+                    svc.shutdown();
+                    if let Some((p, d)) = handles.take() { p.abort(); d.abort(); }
+                    return;
+                }
+                if !*lost_rx.borrow() {
+                    info!("Scheduled-job scheduler: lost leadership, stopping");
+                    svc.shutdown();
+                    if let Some((p, d)) = handles.take() { p.abort(); d.abort(); }
+                    break;
+                }
+            }
+        }
+    });
+
+    Ok(())
+}
+
 fn load_scheduler_config() -> fc_platform::scheduler::SchedulerConfig {
     let config = fc_config::AppConfig::load().unwrap_or_default();
     fc_platform::scheduler::SchedulerConfig {
@@ -742,8 +804,17 @@ fn load_scheduler_config() -> fc_platform::scheduler::SchedulerConfig {
 }
 
 /// Spawn the CQRS stream processor, gated on leadership.
+///
+/// Builds a small dedicated pool (4 conns) so the projection loops don't
+/// contend with the platform API. When credentials come from a secret
+/// provider, the same refresh task is started against this pool — without
+/// it, rotation (RDS-managed Secrets Manager) silently invalidates the
+/// stream pool while the platform's pool keeps working, since each pool
+/// caches connect options independently.
 async fn spawn_stream_processor(
     database_url: &str,
+    secret_provider: Option<Arc<dyn fc_platform::shared::database::SecretProvider>>,
+    secret_refresh_interval: Duration,
     mut active_rx: watch::Receiver<bool>,
 ) -> Result<StreamProcessorShutdown> {
     use fc_stream::{StreamProcessorConfig, start_stream_processor};
@@ -766,6 +837,15 @@ async fn spawn_stream_processor(
         .connect(database_url)
         .await
         .map_err(|e| anyhow::anyhow!("Stream processor PG pool failed: {}", e))?;
+
+    if let Some(provider) = secret_provider {
+        fc_platform::shared::database::start_secret_refresh(
+            provider,
+            pool.clone(),
+            database_url.to_string(),
+            secret_refresh_interval,
+        );
+    }
 
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
     let pool_clone = pool.clone();

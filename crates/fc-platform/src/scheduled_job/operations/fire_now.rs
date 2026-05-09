@@ -35,16 +35,16 @@ pub struct FireScheduledJobCommand {
 pub struct FireScheduledJobUseCase<U: UnitOfWork> {
     repo: Arc<ScheduledJobRepository>,
     instance_repo: Arc<ScheduledJobInstanceRepository>,
-    uow: Arc<U>,
+    unit_of_work: Arc<U>,
 }
 
 impl<U: UnitOfWork> FireScheduledJobUseCase<U> {
     pub fn new(
         repo: Arc<ScheduledJobRepository>,
         instance_repo: Arc<ScheduledJobInstanceRepository>,
-        uow: Arc<U>,
+        unit_of_work: Arc<U>,
     ) -> Self {
-        Self { repo, instance_repo, uow }
+        Self { repo, instance_repo, unit_of_work }
     }
 }
 
@@ -126,6 +126,6 @@ impl<U: UnitOfWork> UseCase for FireScheduledJobUseCase<U> {
             &instance.id,
         );
 
-        self.uow.emit_event(event, &cmd).await
+        self.unit_of_work.emit_event(event, &cmd).await
     }
 }

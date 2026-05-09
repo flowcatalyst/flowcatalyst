@@ -24,6 +24,7 @@ pub mod sdk_dispatch_jobs_api;
 pub mod public_api;
 pub mod bff_roles_api;
 pub mod bff_event_types_api;
+pub mod bff_scheduled_jobs_api;
 pub mod bff_dashboard_api;
 pub mod dispatch_process_api;
 

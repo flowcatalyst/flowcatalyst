@@ -174,6 +174,19 @@ so creating an event via UoW would mean emitting an event about the event):
 - **Built-in role seeding**: startup-time hydration of code-defined roles via
   `shared/database.rs::seed_built_in_roles` and `shared/role_sync_service.rs`.
   Bootstrap-only, runs before HTTP serving begins, no executing principal.
+- **Scheduled-job firings**: every cron tick (and the dispatcher's status
+  transitions during webhook delivery) writes to
+  `msg_scheduled_job_instances` directly. The SDK callback paths
+  (`POST /api/scheduled-jobs/instances/:id/log`,
+  `POST /api/scheduled-jobs/instances/:id/complete`) write to
+  `msg_scheduled_job_instance_logs` / update the instance row directly.
+  Wrapping any of these in UoW would emit one domain event per firing /
+  log line, swamping the event log. The *definitions* (`ScheduledJob`
+  CRUD: create / update / pause / resume / archive / delete / sync) DO go
+  through UoW with full event + audit. `ScheduledJobFiredManually` is the
+  exception that proves the rule: it is the audit record for the human
+  action; the instance row inserted alongside is still the infrastructure
+  path.
 
 These go directly to the repository. They are the platform's internal plumbing.
 

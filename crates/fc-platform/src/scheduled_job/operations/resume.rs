@@ -18,12 +18,12 @@ pub struct ResumeScheduledJobCommand {
 
 pub struct ResumeScheduledJobUseCase<U: UnitOfWork> {
     repo: Arc<ScheduledJobRepository>,
-    uow: Arc<U>,
+    unit_of_work: Arc<U>,
 }
 
 impl<U: UnitOfWork> ResumeScheduledJobUseCase<U> {
-    pub fn new(repo: Arc<ScheduledJobRepository>, uow: Arc<U>) -> Self {
-        Self { repo, uow }
+    pub fn new(repo: Arc<ScheduledJobRepository>, unit_of_work: Arc<U>) -> Self {
+        Self { repo, unit_of_work }
     }
 }
 
@@ -76,6 +76,6 @@ impl<U: UnitOfWork> UseCase for ResumeScheduledJobUseCase<U> {
 
         job.resume();
         let event = ScheduledJobResumed::new(&ctx, &job.id, job.client_id.as_deref(), &job.code);
-        self.uow.commit(&job, &*self.repo, event, &cmd).await
+        self.unit_of_work.commit(&job, &*self.repo, event, &cmd).await
     }
 }

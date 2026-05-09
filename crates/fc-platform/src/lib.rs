@@ -163,6 +163,8 @@ pub mod repository {
     pub use crate::subscription::repository::SubscriptionRepository;
     pub use crate::dispatch_pool::repository::DispatchPoolRepository;
     pub use crate::dispatch_job::repository::DispatchJobRepository;
+    pub use crate::scheduled_job::repository::ScheduledJobRepository;
+    pub use crate::scheduled_job::instance_repository::ScheduledJobInstanceRepository;
     pub use crate::audit::repository::AuditLogRepository;
     pub use crate::auth::config_repository::{ClientAuthConfigRepository, AnchorDomainRepository, ClientAccessGrantRepository, IdpRoleMappingRepository};
     pub use crate::auth::refresh_token_repository::RefreshTokenRepository;
@@ -192,6 +194,8 @@ pub mod repository {
     pub struct Repositories {
         pub event_repo: Arc<EventRepository>,
         pub dispatch_job_repo: Arc<DispatchJobRepository>,
+        pub scheduled_job_repo: Arc<ScheduledJobRepository>,
+        pub scheduled_job_instance_repo: Arc<ScheduledJobInstanceRepository>,
         pub event_type_repo: Arc<EventTypeRepository>,
         pub role_repo: Arc<RoleRepository>,
         pub service_account_repo: Arc<ServiceAccountRepository>,
@@ -230,6 +234,8 @@ pub mod repository {
             Self {
                 event_repo: Arc::new(EventRepository::new(pool)),
                 dispatch_job_repo: Arc::new(DispatchJobRepository::new(pool)),
+                scheduled_job_repo: Arc::new(ScheduledJobRepository::new(pool)),
+                scheduled_job_instance_repo: Arc::new(ScheduledJobInstanceRepository::new(pool)),
                 cors_repo: Arc::new(CorsOriginRepository::new(pool)),
                 password_reset_repo: Arc::new(PasswordResetTokenRepository::new(pool)),
                 platform_config_access_repo: Arc::new(PlatformConfigAccessRepository::new(pool)),
@@ -287,6 +293,7 @@ pub mod api {
     pub use crate::event_type::api::{event_types_router, EventTypesState};
     pub use crate::dispatch_job::api::{dispatch_jobs_router, dispatch_jobs_api_router, DispatchJobsState};
     pub use crate::dispatch_pool::api::{dispatch_pools_router, DispatchPoolsState};
+    pub use crate::scheduled_job::api::{scheduled_jobs_router, ScheduledJobsState};
     pub use crate::subscription::api::{subscriptions_router, SubscriptionsState};
     pub use crate::client::api::{clients_router, ClientsState};
     pub use crate::principal::api::{principals_router, PrincipalsState};
@@ -317,6 +324,7 @@ pub mod api {
     pub use crate::shared::sdk_dispatch_jobs_api::{sdk_dispatch_jobs_batch_router, SdkDispatchJobsState};
     pub use crate::shared::bff_roles_api::{bff_roles_router, BffRolesState};
     pub use crate::shared::bff_event_types_api::{bff_event_types_router, BffEventTypesState};
+    pub use crate::shared::bff_scheduled_jobs_api::{bff_scheduled_jobs_router, BffScheduledJobsState};
     pub use crate::shared::bff_dashboard_api::{bff_dashboard_router, BffDashboardState};
     pub use crate::shared::dispatch_process_api::{dispatch_process_router, DispatchProcessState};
 

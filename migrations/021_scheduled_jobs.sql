@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS msg_scheduled_jobs (
     tracks_completion BOOLEAN NOT NULL DEFAULT FALSE,
     timeout_seconds INTEGER,
     delivery_max_attempts INTEGER NOT NULL DEFAULT 3,
+    target_url VARCHAR(500),
     last_fired_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

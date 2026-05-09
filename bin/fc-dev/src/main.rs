@@ -504,6 +504,32 @@ async fn main() -> Result<()> {
         None
     };
 
+    // 7d. Start scheduled-job scheduler (cron-driven instance creation +
+    // webhook delivery). Independent of the dispatch_job scheduler above.
+    let _scheduled_job_scheduler: Option<tokio::task::JoinHandle<()>> = {
+        use fc_platform::scheduled_job::scheduler::{
+            ScheduledJobSchedulerConfig, ScheduledJobSchedulerService,
+        };
+        let svc = ScheduledJobSchedulerService::new(
+            ScheduledJobSchedulerConfig::from_env(),
+            repos.scheduled_job_repo.clone(),
+            repos.scheduled_job_instance_repo.clone(),
+        );
+        let (poller_h, dispatcher_h) = svc.start();
+        let mut shutdown_rx = shutdown_tx.subscribe();
+        let svc_arc = Arc::new(svc);
+        let svc_clone = svc_arc.clone();
+        let handle = tokio::spawn(async move {
+            let _ = shutdown_rx.recv().await;
+            info!("Scheduled-job scheduler received shutdown signal");
+            svc_clone.shutdown();
+            let _ = poller_h.await;
+            let _ = dispatcher_h.await;
+        });
+        info!("Scheduled-job scheduler started (cron poller + dispatcher)");
+        Some(handle)
+    };
+
     // 8d. Create AppState for authentication middleware
     let app_state = AppState {
         auth_service: auth_services.auth.clone(),

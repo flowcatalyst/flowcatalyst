@@ -10,6 +10,8 @@ pub mod entity;
 pub mod repository;
 pub mod instance_repository;
 pub mod operations;
+pub mod api;
+pub mod scheduler;
 
 pub use entity::{
     CompletionStatus, InstanceStatus, LogLevel, ScheduledJob, ScheduledJobInstance,

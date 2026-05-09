@@ -14,6 +14,7 @@ use crate::api::{
     events_router, events_api_router, EventsState,
     event_types_router, EventTypesState,
     dispatch_jobs_router, dispatch_jobs_api_router, DispatchJobsState,
+    scheduled_jobs_router, ScheduledJobsState,
     filter_options_router, FilterOptionsState,
     clients_router, ClientsState,
     principals_router, PrincipalsState,
@@ -26,6 +27,7 @@ use crate::api::{
     // Plain Router routes
     bff_roles_router, BffRolesState,
     bff_event_types_router, BffEventTypesState,
+    bff_scheduled_jobs_router, BffScheduledJobsState,
     bff_dashboard_router, BffDashboardState,
     debug_events_router, debug_dispatch_jobs_router, DebugState,
     anchor_domains_router, client_auth_configs_router, idp_role_mappings_router, AuthConfigState,
@@ -69,6 +71,7 @@ pub const PATH_BFF_DISPATCH_JOBS: &str = "/bff/dispatch-jobs";
 pub const PATH_BFF_FILTER_OPTIONS: &str = "/bff/filter-options";
 pub const PATH_BFF_ROLES: &str = "/bff/roles";
 pub const PATH_BFF_EVENT_TYPES: &str = "/bff/event-types";
+pub const PATH_BFF_SCHEDULED_JOBS: &str = "/bff/scheduled-jobs";
 pub const PATH_BFF_DASHBOARD: &str = "/bff/dashboard";
 pub const PATH_BFF_DEBUG_EVENTS: &str = "/bff/debug/events";
 pub const PATH_BFF_DEBUG_DISPATCH_JOBS: &str = "/bff/debug/dispatch-jobs";
@@ -88,6 +91,7 @@ pub const PATH_API_AUTH_CONFIGS: &str = "/api/auth-configs";
 pub const PATH_API_IDP_ROLE_MAPPINGS: &str = "/api/idp-role-mappings";
 pub const PATH_API_DISPATCH_JOBS: &str = "/api/dispatch-jobs";
 pub const PATH_API_DISPATCH_POOLS: &str = "/api/dispatch-pools";
+pub const PATH_API_SCHEDULED_JOBS: &str = "/api/scheduled-jobs";
 pub const PATH_API_SERVICE_ACCOUNTS: &str = "/api/service-accounts";
 pub const PATH_API_CONNECTIONS: &str = "/api/connections";
 pub const PATH_API_CORS: &str = "/api/platform/cors";
@@ -146,6 +150,7 @@ pub struct PlatformRoutes<U: UnitOfWork + Clone + 'static> {
     pub events: EventsState,
     pub event_types: EventTypesState,
     pub dispatch_jobs: DispatchJobsState,
+    pub scheduled_jobs: ScheduledJobsState,
     pub filter_options: FilterOptionsState,
     pub clients: ClientsState,
     pub principals: PrincipalsState,
@@ -159,6 +164,7 @@ pub struct PlatformRoutes<U: UnitOfWork + Clone + 'static> {
     // -- Plain Router routes (NOT in Swagger) --
     pub bff_roles: BffRolesState,
     pub bff_event_types: BffEventTypesState,
+    pub bff_scheduled_jobs: BffScheduledJobsState,
     pub bff_dashboard: BffDashboardState,
     pub debug: DebugState,
     pub auth_config: AuthConfigState,
@@ -230,6 +236,7 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
             .nest(PATH_API_EVENTS, events_api_router(self.events.clone()))
             .nest(PATH_BFF_EVENTS, events_router(self.events))
             .nest(PATH_API_EVENT_TYPES, event_types_router(self.event_types))
+            .nest(PATH_API_SCHEDULED_JOBS, scheduled_jobs_router(self.scheduled_jobs))
             // Cursor-paginated read handlers serve both API + BFF tiers.
             // The API tier excludes `batch_create_dispatch_jobs` so it
             // doesn't collide with `sdk_dispatch_jobs_batch_router::POST
@@ -312,6 +319,7 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
             // BFF
             .nest(PATH_BFF_ROLES, bff_roles_router(self.bff_roles).into())
             .nest(PATH_BFF_EVENT_TYPES, bff_event_types_router(self.bff_event_types).into())
+            .nest(PATH_BFF_SCHEDULED_JOBS, bff_scheduled_jobs_router(self.bff_scheduled_jobs))
             .nest(PATH_BFF_DASHBOARD, bff_dashboard_router(self.bff_dashboard))
             .nest(PATH_BFF_DEBUG_EVENTS, debug_events_router(self.debug.clone()))
             .nest(PATH_BFF_DEBUG_DISPATCH_JOBS, debug_dispatch_jobs_router(self.debug))

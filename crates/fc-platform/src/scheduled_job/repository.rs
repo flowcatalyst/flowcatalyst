@@ -32,6 +32,7 @@ struct ScheduledJobRow {
     tracks_completion: bool,
     timeout_seconds: Option<i32>,
     delivery_max_attempts: i32,
+    target_url: Option<String>,
     last_fired_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -56,6 +57,7 @@ impl From<ScheduledJobRow> for ScheduledJob {
             tracks_completion: r.tracks_completion,
             timeout_seconds: r.timeout_seconds,
             delivery_max_attempts: r.delivery_max_attempts,
+            target_url: r.target_url,
             last_fired_at: r.last_fired_at,
             created_at: r.created_at,
             updated_at: r.updated_at,
@@ -68,8 +70,8 @@ impl From<ScheduledJobRow> for ScheduledJob {
 
 const SELECT_COLS: &str = "id, client_id, code, name, description, status, crons, timezone, \
                             payload, concurrent, tracks_completion, timeout_seconds, \
-                            delivery_max_attempts, last_fired_at, created_at, updated_at, \
-                            created_by, updated_by, version";
+                            delivery_max_attempts, target_url, last_fired_at, created_at, \
+                            updated_at, created_by, updated_by, version";
 
 pub struct ScheduledJobRepository {
     pool: PgPool,
@@ -292,10 +294,10 @@ impl crate::usecase::Persist<ScheduledJob> for ScheduledJobRepository {
             "INSERT INTO msg_scheduled_jobs \
                 (id, client_id, code, name, description, status, crons, timezone, \
                  payload, concurrent, tracks_completion, timeout_seconds, \
-                 delivery_max_attempts, last_fired_at, created_at, updated_at, \
-                 created_by, updated_by, version) \
+                 delivery_max_attempts, target_url, last_fired_at, created_at, \
+                 updated_at, created_by, updated_by, version) \
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, \
-                     $14, $15, $16, $17, $18, $19) \
+                     $14, $15, $16, $17, $18, $19, $20) \
              ON CONFLICT (id) DO UPDATE SET \
                 code = EXCLUDED.code, \
                 name = EXCLUDED.name, \
@@ -308,6 +310,7 @@ impl crate::usecase::Persist<ScheduledJob> for ScheduledJobRepository {
                 tracks_completion = EXCLUDED.tracks_completion, \
                 timeout_seconds = EXCLUDED.timeout_seconds, \
                 delivery_max_attempts = EXCLUDED.delivery_max_attempts, \
+                target_url = EXCLUDED.target_url, \
                 updated_at = EXCLUDED.updated_at, \
                 updated_by = EXCLUDED.updated_by, \
                 version = EXCLUDED.version",
@@ -325,6 +328,7 @@ impl crate::usecase::Persist<ScheduledJob> for ScheduledJobRepository {
         .bind(sj.tracks_completion)
         .bind(sj.timeout_seconds)
         .bind(sj.delivery_max_attempts)
+        .bind(&sj.target_url)
         .bind(sj.last_fired_at)
         .bind(sj.created_at)
         .bind(sj.updated_at)

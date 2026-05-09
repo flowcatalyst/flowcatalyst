@@ -25,6 +25,11 @@ import { MeResource } from "./resources/me";
 import { ConnectionsResource } from "./resources/connections";
 import { DefinitionSynchronizer } from "./sync/definition-synchronizer";
 import { RouterResource } from "./resources/router";
+import { ScheduledJobsResource } from "./resources/scheduled-jobs";
+import {
+	ScheduledJobRunner,
+	type RunnerOptions,
+} from "./runner/scheduled-job-runner";
 
 /**
  * Configuration for client credentials authentication.
@@ -129,6 +134,7 @@ export class FlowCatalystClient {
 	private _connections?: ConnectionsResource;
 	private _definitions?: DefinitionSynchronizer;
 	private _router?: RouterResource;
+	private _scheduledJobs?: ScheduledJobsResource;
 
 	constructor(config: FlowCatalystConfig) {
 		this.config = {
@@ -231,6 +237,22 @@ export class FlowCatalystClient {
 	 */
 	router(): RouterResource {
 		return (this._router ??= new RouterResource(this));
+	}
+
+	/** Scheduled Jobs resource (CRUD + state transitions + history reads). */
+	scheduledJobs(): ScheduledJobsResource {
+		return (this._scheduledJobs ??= new ScheduledJobsResource(this));
+	}
+
+	/**
+	 * Build a `ScheduledJobRunner` you can mount on your HTTP framework.
+	 * Register handlers per job code, then call `.process(envelope)` from
+	 * your route handler. The runner enforces single-instance concurrency
+	 * via the injected `LockProvider` (default: NoOp — provide a real one
+	 * for production).
+	 */
+	scheduledJobRunner(options?: RunnerOptions): ScheduledJobRunner {
+		return new ScheduledJobRunner(this, this.scheduledJobs(), options);
 	}
 
 	/** Base URL of the message router (used by `router()`). */

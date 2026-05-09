@@ -134,6 +134,51 @@ pub fn build_platform_routes(
         add_schema_use_case,
     };
 
+    // ── Scheduled jobs (use cases + API state) ────────────────────────────
+    let scheduled_jobs_state = {
+        use crate::scheduled_job::operations::*;
+        let create_uc = Arc::new(CreateScheduledJobUseCase::new(
+            repos.scheduled_job_repo.clone(),
+            unit_of_work.clone(),
+        ));
+        let update_uc = Arc::new(UpdateScheduledJobUseCase::new(
+            repos.scheduled_job_repo.clone(),
+            unit_of_work.clone(),
+        ));
+        let pause_uc = Arc::new(PauseScheduledJobUseCase::new(
+            repos.scheduled_job_repo.clone(),
+            unit_of_work.clone(),
+        ));
+        let resume_uc = Arc::new(ResumeScheduledJobUseCase::new(
+            repos.scheduled_job_repo.clone(),
+            unit_of_work.clone(),
+        ));
+        let archive_uc = Arc::new(ArchiveScheduledJobUseCase::new(
+            repos.scheduled_job_repo.clone(),
+            unit_of_work.clone(),
+        ));
+        let delete_uc = Arc::new(DeleteScheduledJobUseCase::new(
+            repos.scheduled_job_repo.clone(),
+            unit_of_work.clone(),
+        ));
+        let fire_uc = Arc::new(FireScheduledJobUseCase::new(
+            repos.scheduled_job_repo.clone(),
+            repos.scheduled_job_instance_repo.clone(),
+            unit_of_work.clone(),
+        ));
+        crate::api::ScheduledJobsState {
+            repo: repos.scheduled_job_repo.clone(),
+            instance_repo: repos.scheduled_job_instance_repo.clone(),
+            create_use_case: create_uc,
+            update_use_case: update_uc,
+            pause_use_case: pause_uc,
+            resume_use_case: resume_uc,
+            archive_use_case: archive_uc,
+            delete_use_case: delete_uc,
+            fire_use_case: fire_uc,
+        }
+    };
+
     let audit_service = Arc::new(AuditService::new(repos.audit_log_repo.clone()));
     let create_client_use_case = Arc::new(
         crate::client::operations::CreateClientUseCase::new(
@@ -827,12 +872,19 @@ pub fn build_platform_routes(
             unit_of_work.clone(),
         ),
     );
+    let sync_scheduled_jobs_use_case = Arc::new(
+        crate::scheduled_job::operations::SyncScheduledJobsUseCase::new(
+            repos.scheduled_job_repo.clone(),
+            unit_of_work.clone(),
+        ),
+    );
     let sdk_sync_state = SdkSyncState {
         sync_roles_use_case,
         sync_event_types_use_case: sync_event_types_use_case.clone(),
         sync_subscriptions_use_case: sync_subscriptions_use_case.clone(),
         sync_dispatch_pools_use_case: sync_dispatch_pools_use_case.clone(),
         sync_principals_use_case,
+        sync_scheduled_jobs_use_case,
     };
 
     let sdk_audit_batch_state = SdkAuditBatchState {
@@ -858,6 +910,12 @@ pub fn build_platform_routes(
             crate::shared::role_sync_service::RoleSyncService::new(repos.role_repo.clone()),
         ),
     };
+    let bff_scheduled_jobs_state = crate::shared::bff_scheduled_jobs_api::BffScheduledJobsState {
+        repo: repos.scheduled_job_repo.clone(),
+        instance_repo: repos.scheduled_job_instance_repo.clone(),
+        client_repo: repos.client_repo.clone(),
+    };
+
     let bff_event_types_state = BffEventTypesState {
         event_type_repo: repos.event_type_repo.clone(),
         application_repo: Some(repos.application_repo.clone()),
@@ -907,6 +965,7 @@ pub fn build_platform_routes(
     PlatformRoutes {
         events: events_state,
         event_types: event_types_state,
+        scheduled_jobs: scheduled_jobs_state,
         dispatch_jobs: dispatch_jobs_state,
         filter_options: filter_options_state,
         clients: clients_state,
@@ -919,6 +978,7 @@ pub fn build_platform_routes(
         auth: embedded_auth_state,
         bff_roles: bff_roles_state,
         bff_event_types: bff_event_types_state,
+        bff_scheduled_jobs: bff_scheduled_jobs_state,
         bff_dashboard: bff_dashboard_state,
         debug: debug_state,
         auth_config: auth_config_state,

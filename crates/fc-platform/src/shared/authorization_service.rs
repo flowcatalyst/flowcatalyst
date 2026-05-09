@@ -420,6 +420,127 @@ pub mod checks {
             Err(PlatformError::forbidden("Cannot write dispatch jobs"))
         }
     }
+
+    // ── Scheduled jobs ──────────────────────────────────────────────────────
+
+    pub fn can_read_scheduled_jobs(context: &AuthContext) -> Result<()> {
+        if context.has_permission(permissions::admin::SCHEDULED_JOB_READ) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot read scheduled jobs"))
+        }
+    }
+
+    pub fn can_create_scheduled_jobs(context: &AuthContext) -> Result<()> {
+        if context.has_permission(permissions::admin::SCHEDULED_JOB_CREATE) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot create scheduled jobs"))
+        }
+    }
+
+    pub fn can_update_scheduled_jobs(context: &AuthContext) -> Result<()> {
+        if context.has_permission(permissions::admin::SCHEDULED_JOB_UPDATE) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot update scheduled jobs"))
+        }
+    }
+
+    pub fn can_delete_scheduled_jobs(context: &AuthContext) -> Result<()> {
+        if context.has_permission(permissions::admin::SCHEDULED_JOB_DELETE) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot delete scheduled jobs"))
+        }
+    }
+
+    pub fn can_pause_scheduled_jobs(context: &AuthContext) -> Result<()> {
+        if context.has_permission(permissions::admin::SCHEDULED_JOB_PAUSE) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot pause scheduled jobs"))
+        }
+    }
+
+    pub fn can_fire_scheduled_jobs(context: &AuthContext) -> Result<()> {
+        if context.has_permission(permissions::admin::SCHEDULED_JOB_FIRE) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot fire scheduled jobs"))
+        }
+    }
+
+    /// Umbrella check: any write permission on scheduled jobs.
+    pub fn can_write_scheduled_jobs(context: &AuthContext) -> Result<()> {
+        if context.has_any_permission(&[
+            permissions::admin::SCHEDULED_JOB_CREATE,
+            permissions::admin::SCHEDULED_JOB_UPDATE,
+            permissions::admin::SCHEDULED_JOB_DELETE,
+            permissions::admin::SCHEDULED_JOB_PAUSE,
+            permissions::admin::SCHEDULED_JOB_FIRE,
+            permissions::admin::SCHEDULED_JOB_MANAGE,
+            permissions::admin::SCHEDULED_JOB_SYNC,
+        ]) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot write scheduled jobs"))
+        }
+    }
+
+    /// Sync endpoints: admin path. Application-scoped sync uses the
+    /// application_service permission below.
+    pub fn can_sync_scheduled_jobs(context: &AuthContext) -> Result<()> {
+        if context.has_any_permission(&[
+            permissions::admin::SCHEDULED_JOB_SYNC,
+            permissions::admin::SCHEDULED_JOB_MANAGE,
+        ]) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot sync scheduled jobs"))
+        }
+    }
+
+    pub fn can_read_scheduled_job_instances(context: &AuthContext) -> Result<()> {
+        if context.has_any_permission(&[
+            permissions::admin::SCHEDULED_JOB_INSTANCE_READ,
+            permissions::admin::SCHEDULED_JOB_READ,
+        ]) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot read scheduled job instances"))
+        }
+    }
+
+    /// SDK callback path — log/complete an instance the platform fired.
+    /// Granted to application service accounts via
+    /// `application_service::SCHEDULED_JOB_INSTANCE_WRITE`. Anchor /
+    /// `ADMIN_ALL` also work.
+    pub fn can_write_scheduled_job_instance(context: &AuthContext) -> Result<()> {
+        if context.has_any_permission(&[
+            permissions::application_service::SCHEDULED_JOB_INSTANCE_WRITE,
+            permissions::admin::SCHEDULED_JOB_MANAGE,
+        ]) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden(
+                "Cannot write to scheduled job instance",
+            ))
+        }
+    }
+
+    /// SDK-driven sync of scheduled-job definitions for an application.
+    pub fn can_sync_scheduled_jobs_app(context: &AuthContext) -> Result<()> {
+        if context.has_any_permission(&[
+            permissions::application_service::SCHEDULED_JOB_SYNC,
+            permissions::admin::SCHEDULED_JOB_SYNC,
+            permissions::admin::SCHEDULED_JOB_MANAGE,
+        ]) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot sync scheduled jobs"))
+        }
+    }
 }
 
 #[cfg(test)]

@@ -28,6 +28,9 @@ use crate::dispatch_pool::operations::{
 use crate::principal::operations::{
     SyncPrincipalsCommand, SyncPrincipalsUseCase, SyncPrincipalInput,
 };
+use crate::scheduled_job::operations::{
+    ScheduledJobSyncEntry, SyncScheduledJobsCommand, SyncScheduledJobsUseCase,
+};
 use crate::usecase::{ExecutionContext, UseCase, UseCaseResult};
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
@@ -217,6 +220,58 @@ pub struct SdkSyncState {
     pub sync_subscriptions_use_case: Arc<SyncSubscriptionsUseCase<crate::usecase::PgUnitOfWork>>,
     pub sync_dispatch_pools_use_case: Arc<SyncDispatchPoolsUseCase<crate::usecase::PgUnitOfWork>>,
     pub sync_principals_use_case: Arc<SyncPrincipalsUseCase<crate::usecase::PgUnitOfWork>>,
+    pub sync_scheduled_jobs_use_case:
+        Arc<SyncScheduledJobsUseCase<crate::usecase::PgUnitOfWork>>,
+}
+
+// ---------------------------------------------------------------------------
+// Scheduled jobs sync
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncScheduledJobsRequest {
+    /// None = sync platform-scoped jobs (anchor only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    pub jobs: Vec<SyncScheduledJobInputRequest>,
+    #[serde(default)]
+    pub archive_unlisted: bool,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncScheduledJobInputRequest {
+    pub code: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub crons: Vec<String>,
+    #[serde(default = "default_tz")]
+    pub timezone: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload: Option<serde_json::Value>,
+    #[serde(default)]
+    pub concurrent: bool,
+    #[serde(default)]
+    pub tracks_completion: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_seconds: Option<i32>,
+    #[serde(default = "default_attempts")]
+    pub delivery_max_attempts: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_url: Option<String>,
+}
+fn default_tz() -> String { "UTC".into() }
+fn default_attempts() -> i32 { 3 }
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncScheduledJobsResultResponse {
+    pub application_code: String,
+    pub created: Vec<String>,
+    pub updated: Vec<String>,
+    pub archived: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -493,6 +548,85 @@ async fn sync_principals(
     }
 }
 
+/// Sync scheduled jobs for an application.
+///
+/// Body specifies the target client (or null for platform-scoped). Caller
+/// must have access to that client (or be anchor for platform-scoped).
+#[utoipa::path(
+    post,
+    path = "/{app_code}/scheduled-jobs/sync",
+    tag = "sdk-sync",
+    operation_id = "postApiApplicationsByAppCodeScheduledJobsSync",
+    params(("app_code" = String, Path, description = "Application code")),
+    request_body = SyncScheduledJobsRequest,
+    responses(
+        (status = 200, description = "Scheduled jobs synced", body = SyncScheduledJobsResultResponse),
+        (status = 400, description = "Validation error"),
+        (status = 403, description = "Forbidden")
+    ),
+    security(("bearer_auth" = []))
+)]
+async fn sync_scheduled_jobs(
+    State(state): State<SdkSyncState>,
+    auth: Authenticated,
+    Path(app_code): Path<String>,
+    Json(req): Json<SyncScheduledJobsRequest>,
+) -> Result<Json<SyncScheduledJobsResultResponse>, PlatformError> {
+    crate::shared::authorization_service::checks::can_sync_scheduled_jobs_app(&auth.0)?;
+
+    // Resource-level scope check: caller must have access to the target client
+    // (or be anchor when targeting platform-scoped jobs).
+    match req.client_id.as_deref() {
+        Some(cid) => {
+            if !auth.0.can_access_client(cid) {
+                return Err(PlatformError::forbidden(format!(
+                    "No access to client: {}", cid
+                )));
+            }
+        }
+        None => {
+            if !auth.0.is_anchor()
+                && !auth.0.has_permission(crate::permissions::ADMIN_ALL)
+            {
+                return Err(PlatformError::forbidden(
+                    "Only anchor users can sync platform-scoped scheduled jobs",
+                ));
+            }
+        }
+    }
+
+    let command = SyncScheduledJobsCommand {
+        scope: app_code.clone(),
+        client_id: req.client_id,
+        jobs: req.jobs.into_iter().map(|j| ScheduledJobSyncEntry {
+            code: j.code,
+            name: j.name,
+            description: j.description,
+            crons: j.crons,
+            timezone: j.timezone,
+            payload: j.payload,
+            concurrent: j.concurrent,
+            tracks_completion: j.tracks_completion,
+            timeout_seconds: j.timeout_seconds,
+            delivery_max_attempts: j.delivery_max_attempts,
+            target_url: j.target_url,
+        }).collect(),
+        archive_unlisted: req.archive_unlisted,
+    };
+
+    let ctx = ExecutionContext::create(auth.0.principal_id.clone());
+
+    match state.sync_scheduled_jobs_use_case.run(command, ctx).await {
+        UseCaseResult::Success(event) => Ok(Json(SyncScheduledJobsResultResponse {
+            application_code: app_code,
+            created: event.created,
+            updated: event.updated,
+            archived: event.archived,
+        })),
+        UseCaseResult::Failure(err) => Err(err.into()),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -505,6 +639,7 @@ async fn sync_principals(
 /// - POST /{app_code}/subscriptions/sync
 /// - POST /{app_code}/dispatch-pools/sync
 /// - POST /{app_code}/principals/sync
+/// - POST /{app_code}/scheduled-jobs/sync
 pub fn sdk_sync_router(state: SdkSyncState) -> Router {
     Router::new()
         .route("/{app_code}/roles/sync", post(sync_roles))
@@ -512,5 +647,6 @@ pub fn sdk_sync_router(state: SdkSyncState) -> Router {
         .route("/{app_code}/subscriptions/sync", post(sync_subscriptions))
         .route("/{app_code}/dispatch-pools/sync", post(sync_dispatch_pools))
         .route("/{app_code}/principals/sync", post(sync_principals))
+        .route("/{app_code}/scheduled-jobs/sync", post(sync_scheduled_jobs))
         .with_state(state)
 }
