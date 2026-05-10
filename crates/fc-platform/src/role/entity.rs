@@ -642,10 +642,10 @@ pub mod roles {
             ])
     }
 
-    /// Messaging admin — manages event types, subscriptions, dispatch
+    /// Messaging admin — manages event types, subscriptions, dispatch, scheduled jobs
     pub fn messaging_admin() -> AuthRole {
         AuthRole::new("platform", "messaging-admin", "Messaging Administrator")
-            .with_description("Manages event types, subscriptions, and dispatch jobs")
+            .with_description("Manages event types, subscriptions, dispatch jobs, and scheduled jobs")
             .with_source(RoleSource::Code)
             .with_permissions([
                 permissions::admin::EVENT_TYPE_READ, permissions::admin::EVENT_TYPE_CREATE,
@@ -662,6 +662,35 @@ pub mod roles {
                 permissions::admin::CONNECTION_UPDATE, permissions::admin::CONNECTION_DELETE,
                 permissions::admin::EVENT_READ, permissions::admin::EVENT_VIEW_RAW,
                 permissions::admin::DISPATCH_JOB_READ, permissions::admin::DISPATCH_JOB_VIEW_RAW,
+                permissions::admin::SCHEDULED_JOB_READ, permissions::admin::SCHEDULED_JOB_CREATE,
+                permissions::admin::SCHEDULED_JOB_UPDATE, permissions::admin::SCHEDULED_JOB_DELETE,
+                permissions::admin::SCHEDULED_JOB_PAUSE, permissions::admin::SCHEDULED_JOB_FIRE,
+                permissions::admin::SCHEDULED_JOB_SYNC,
+                permissions::admin::SCHEDULED_JOB_INSTANCE_READ,
+            ])
+    }
+
+    /// Platform viewer — read-only across IAM, admin, and messaging.
+    /// Kept for compatibility with the legacy `platform:viewer` role.
+    pub fn viewer() -> AuthRole {
+        AuthRole::new("platform", "viewer", "Platform Viewer")
+            .with_description("Read-only access across IAM, admin, and messaging")
+            .with_source(RoleSource::Code)
+            .with_permissions([
+                permissions::iam::USER_READ,
+                permissions::iam::ROLE_READ,
+                permissions::iam::CLIENT_ACCESS_READ,
+                permissions::admin::CLIENT_READ,
+                permissions::admin::APPLICATION_READ,
+                permissions::admin::EVENT_READ,
+                permissions::admin::EVENT_TYPE_READ,
+                permissions::admin::SUBSCRIPTION_READ,
+                permissions::admin::DISPATCH_JOB_READ,
+                permissions::admin::DISPATCH_POOL_READ,
+                permissions::admin::SCHEDULED_JOB_READ,
+                permissions::admin::SCHEDULED_JOB_INSTANCE_READ,
+                permissions::admin::AUDIT_LOG_READ,
+                permissions::admin::LOGIN_ATTEMPT_READ,
             ])
     }
 
@@ -688,6 +717,7 @@ pub mod roles {
             auth_readonly(),
             ai_agent_readonly(),
             messaging_admin(),
+            viewer(),
             application_service(),
         ]
     }
