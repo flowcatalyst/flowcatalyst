@@ -47,7 +47,7 @@ FlowCatalyst is a distributed event processing system composed of specialized se
 | **Stream Processor** | Watches for new events and creates dispatch jobs from subscriptions | [docs/stream-processor.md](docs/stream-processor.md) |
 | **Scheduler** | Polls pending dispatch jobs and queues them for delivery | [docs/scheduler.md](docs/scheduler.md) |
 | **Shared Crates** | Common libraries used across services | [docs/shared-crates.md](docs/shared-crates.md) |
-| **Partitioning** | Monthly RANGE partitioning for the high-volume messaging tables; pg_partman in prod, in-Rust manager in fc-dev | [docs/partitioning.md](docs/partitioning.md) |
+| **Partitioning** | Monthly RANGE partitioning for the high-volume messaging tables; in-Rust manager (no Postgres extensions) | [docs/partitioning.md](docs/partitioning.md) |
 
 ## Binaries
 
@@ -80,6 +80,41 @@ Development URLs:
 - Router API: http://localhost:8081
 - Metrics: http://localhost:9090/metrics
 
+### Installing fc-dev from a release
+
+Prebuilt fc-dev binaries are published as GitHub Releases for macOS-arm64,
+Linux-x64, Linux-arm64 and Windows-x64. Download the archive for your
+platform from the [releases page](https://github.com/flowcatalyst/flowcatalyst/releases),
+extract, and put `fc-dev` on your PATH.
+
+```bash
+# verify the download
+shasum -a 256 -c fc-dev-vX.Y.Z-<target>.tar.gz.sha256
+```
+
+On startup fc-dev does a best-effort check against GitHub for newer
+releases (24h cached, disable with `FC_DEV_UPDATE_CHECK=false`). To
+upgrade in place:
+
+```bash
+fc-dev upgrade           # download & replace if a newer version exists
+fc-dev upgrade --check   # check only, no download
+fc-dev upgrade --force   # re-install even if already current
+```
+
+The upgrade subcommand is atomic: on Windows it does the rename-then-replace
+dance for the live exe; on Unix it overwrites in place. Restart any running
+fc-dev processes after upgrading.
+
+### Releasing fc-dev
+
+1. Bump `version` in [`bin/fc-dev/Cargo.toml`](bin/fc-dev/Cargo.toml).
+2. Commit, then tag: `git tag fc-dev/v0.2.0 && git push --tags`.
+3. The [`Release fc-dev`](.github/workflows/release-fc-dev.yml) workflow
+   builds binaries for all four target triples in parallel and publishes
+   a GitHub Release with the archives + SHA256 sidecars.
+4. fc-dev's tag is independent of the workspace version and other crates.
+
 ### Production
 
 Each service runs independently:
@@ -96,17 +131,13 @@ cargo build --release
 ./target/release/fc-outbox-processor
 ```
 
-#### Required PostgreSQL extension
+#### Postgres requirements
 
-Production deployments require **`pg_partman`** for managing the partitioned
-messaging tables. Install via IaC (parameter group + `CREATE EXTENSION`)
-**before first deploy** — migration `023_partman_takeover` will fail
-otherwise. Full setup, including parameter-group settings, the bastion
-`CREATE EXTENSION` step, and how to change retention later, is in
+Vanilla PostgreSQL — **no extensions required**. The high-volume messaging
+tables are partitioned via native `PARTITION BY RANGE (created_at)` and
+maintained at runtime by an in-Rust partition manager that runs in every
+environment (dev and prod alike). Details in
 [docs/partitioning.md](docs/partitioning.md).
-
-fc-dev's embedded PostgreSQL does **not** require pg_partman; an in-Rust
-partition manager handles forward-rolling and retention there.
 
 ## Project Structure
 

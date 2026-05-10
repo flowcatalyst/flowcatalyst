@@ -1,0 +1,212 @@
+name: Release fc-dev
+
+# Triggered by pushing a tag like `fc-dev/v0.2.0`. Builds native binaries
+# for macOS-arm64, Linux-x64, Linux-arm64 and Windows-x64, then publishes
+# a GitHub Release with all four archives + their SHA256 sidecars.
+#
+# The frontend is built once on Ubuntu and shared via artifact — every
+# platform job sets FC_SKIP_FRONTEND_BUILD=1 and links against the prebuilt
+# frontend/dist. This saves ~30s per platform and guarantees identical
+# embedded UI bytes across architectures.
+#
+# Why native runners (no cross-compile): `postgresql_embedded` with the
+# `bundled` feature embeds platform-specific PG binaries at build time;
+# cross-compiling would need fragile pre-fetched bundles per target.
+
+on:
+  push:
+    tags:
+      - "fc-dev/v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build, e.g. fc-dev/v0.2.0"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    name: Resolve version
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Resolve tag + version
+        id: meta
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          if [[ ! "$TAG" =~ ^fc-dev/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag '$TAG' does not match fc-dev/vX.Y.Z[-suffix]" >&2
+            exit 1
+          fi
+          VERSION="${TAG#fc-dev/v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  build-frontend:
+    name: Build frontend (shared)
+    runs-on: ubuntu-24.04
+    needs: prepare
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install + build
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 1
+
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    needs: [prepare, build-frontend]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-14
+            archive_ext: tar.gz
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            archive_ext: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+            archive_ext: tar.gz
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+            archive_ext: tar.gz
+            bin_suffix: .exe
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      - name: Build
+        env:
+          FC_SKIP_FRONTEND_BUILD: "1"
+        run: cargo build --release -p fc-dev --target ${{ matrix.target }}
+
+      - name: Package archive
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          BIN="fc-dev${{ matrix.bin_suffix }}"
+          STAGE="fc-dev-v${VERSION}-${{ matrix.target }}"
+          ARCHIVE="${STAGE}.${{ matrix.archive_ext }}"
+
+          mkdir -p "$STAGE"
+          cp "target/${{ matrix.target }}/release/${BIN}" "$STAGE/"
+          cp README.md LICENSE 2>/dev/null "$STAGE/" || true
+
+          # tar.gz everywhere — Windows 10+ ships tar; keeps self_update
+          # asset-matching uniform.
+          tar -czf "$ARCHIVE" "$STAGE"
+
+          # SHA256 sidecar. shasum is preinstalled on macOS, sha256sum on
+          # Ubuntu; Git Bash on Windows runners has shasum.
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$ARCHIVE" > "${ARCHIVE}.sha256"
+          else
+            shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
+          fi
+
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-24.04
+    needs: [prepare, build]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: release-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh dist/
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          NOTES="fc-dev v${VERSION}
+
+          See [\`bin/fc-dev/CHANGELOG.md\`](bin/fc-dev/CHANGELOG.md) for changes.
+
+          ### Installation
+
+          Download the archive for your platform, extract, and put \`fc-dev\` on your PATH.
+
+          To upgrade an existing install: \`fc-dev upgrade\`.
+
+          ### Verifying
+
+          Each archive ships with an \`*.sha256\` sidecar:
+          \`\`\`
+          shasum -a 256 -c fc-dev-v${VERSION}-<target>.tar.gz.sha256
+          \`\`\`"
+
+          # If a draft release for this tag already exists (manual prep),
+          # upload to it; otherwise create a fresh one.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* \
+              --title "fc-dev v${VERSION}" \
+              --notes "$NOTES" \
+              --verify-tag
+          fi

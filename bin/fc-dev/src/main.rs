@@ -57,11 +57,43 @@ use fc_platform::repository::{
 };
 use fc_platform::usecase::PgUnitOfWork;
 
-/// FlowCatalyst Development Server
+/// FlowCatalyst Development Monolith — top-level CLI.
+///
+/// Default invocation (`fc-dev` with flags) runs the dev server. The
+/// `upgrade` subcommand replaces the binary with the latest GitHub release.
 #[derive(Parser, Debug)]
 #[command(name = "fc-dev")]
+#[command(version)]
 #[command(about = "FlowCatalyst Development Monolith - All components in one binary")]
-struct Args {
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+
+    #[command(flatten)]
+    run: RunArgs,
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum Command {
+    /// Download the latest fc-dev release and replace this binary.
+    Upgrade(UpgradeArgs),
+}
+
+#[derive(clap::Args, Debug)]
+struct UpgradeArgs {
+    /// Re-install even if the running binary is already on the latest version.
+    #[arg(long)]
+    force: bool,
+
+    /// Check for a newer version without downloading.
+    #[arg(long)]
+    check: bool,
+}
+
+/// Flags for the (default) run-server path. Flattened into `Cli` so existing
+/// invocations like `fc-dev --api-port 3000` keep working unchanged.
+#[derive(clap::Args, Debug)]
+struct RunArgs {
     /// API server port
     #[arg(long, env = "FC_API_PORT", default_value = "3000")]
     api_port: u16,
@@ -219,8 +251,21 @@ mod embedded_pg {
     }
 }
 
+mod upgrade;
+mod version_check;
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Subcommand fast path — handle these before booting the dev server,
+    // so `fc-dev upgrade` doesn't need a running database, env vars, or
+    // anything else expensive.
+    let cli = Cli::parse();
+    if let Some(Command::Upgrade(opts)) = &cli.command {
+        // Just enough logging to stream progress to the user.
+        fc_common::logging::init_logging("fc-dev");
+        return upgrade::run(opts).await;
+    }
+
     // Load .env.development (or .env) if present
     let _ = dotenvy::from_filename(".env.development")
         .or_else(|_| dotenvy::dotenv());
@@ -261,10 +306,14 @@ async fn main() -> Result<()> {
     fc_common::logging::init_logging("fc-dev");
 
     #[allow(unused_mut)]
-    let mut args = Args::parse();
+    let mut args = cli.run;
 
     info!("Starting FlowCatalyst Dev Monolith (Rust)");
     info!("API port: {}, Metrics port: {}", args.api_port, args.metrics_port);
+
+    // Best-effort, non-blocking startup version check. Spawned (not awaited)
+    // so it never delays boot; result is logged + exposed via /health.
+    version_check::spawn();
 
     // 0. If embedded-pg is enabled, start it before anything else touches
     //    the database and override the URL that downstream code will use.

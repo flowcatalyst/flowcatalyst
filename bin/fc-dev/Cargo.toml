@@ -1,6 +1,9 @@
 [package]
 name = "fc-dev"
-version.workspace = true
+# fc-dev releases on its own cadence — not tied to the workspace version.
+# Bump this, then tag `fc-dev/vX.Y.Z` to cut a release; the
+# release-fc-dev workflow does the rest.
+version = "0.1.0"
 edition.workspace = true
 description = "FlowCatalyst Development Monolith - All components in a single binary"
 
@@ -28,6 +31,7 @@ metrics-exporter-prometheus = { workspace = true }
 clap = { version = "4.5", features = ["derive", "env"] }
 uuid = { workspace = true }
 async-trait = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
 dotenvy = "0.15.7"
@@ -45,6 +49,14 @@ postgresql_embedded = { version = "0.19", features = ["bundled"], optional = tru
 # Used for both the embedded-pg data dir and the JWT key cache dir, so it's
 # unconditional even though the embedded-pg bundle is feature-gated.
 dirs = "5"
+# Self-update: drives `fc-dev upgrade` against GitHub Releases. Uses rustls
+# (not native TLS) to avoid macOS Security framework / Windows schannel
+# linking quirks in our cross-platform release bundles.
+self_update = { version = "0.41", default-features = false, features = ["rustls", "compression-flate2", "archive-tar"] }
+# Version comparison for both the upgrade subcommand and the startup check.
+semver = "1"
+# Startup version check: serde_json already in deps; chrono used for cache TTL.
+chrono = { workspace = true }
 
 [features]
 default = ["embedded-db"]

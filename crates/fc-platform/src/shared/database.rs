@@ -273,12 +273,10 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
         ("024_scheduled_jobs_add_target_url", include_str!("../../../../migrations/024_scheduled_jobs_add_target_url.sql")),
     ];
 
-    // Production-only: hand the partitioned tables over to pg_partman. The
-    // extension itself is installed via IaC; this migration registers each
-    // parent and sets retention. fc-dev keeps the in-Rust manager.
-    let production_migrations: &[(&str, &str)] = &[
-        ("023_partman_takeover", include_str!("../../../../migrations/023_partman_takeover.sql")),
-    ];
+    // No production-only migrations at the moment. Partitioning runs the
+    // same way in every profile — bootstrapped by 019/022 (both core) and
+    // maintained by `fc_stream::PartitionManagerService` everywhere.
+    let production_migrations: &[(&str, &str)] = &[];
 
     // Bootstrap the tracker. CREATE IF NOT EXISTS is safe to re-run.
     // The `checksum` column lets us detect drift — i.e. a migration whose
