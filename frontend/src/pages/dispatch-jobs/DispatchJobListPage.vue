@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
+import { useListState } from "@/composables/useListState";
 import ClientFilter from "@/components/ClientFilter.vue";
 import {
 	dispatchJobsApi,
@@ -12,19 +13,21 @@ interface FilterOption {
 	value: string;
 }
 
-const filters = {
-	clients: ref<string[]>([]),
-	applications: ref<string[]>([]),
-	subdomains: ref<string[]>([]),
-	aggregates: ref<string[]>([]),
-	codes: ref<string[]>([]),
-	statuses: ref<string[]>([]),
-	search: ref<string>(""),
-};
-// Most-recent-first window. `msg_dispatch_jobs_read` ingests at high
-// rates so there's no pagination — set the size, hit refresh.
-const pageSize = ref(200);
 const sizeOptions = [50, 100, 200, 500, 1000];
+
+const { filters, pageSize, hasActiveFilters, clearFilters, syncToUrl, withSuppressed } =
+	useListState({
+		filters: {
+			clients: { type: "array", key: "clients" },
+			applications: { type: "array", key: "applications" },
+			subdomains: { type: "array", key: "subdomains" },
+			aggregates: { type: "array", key: "aggregates" },
+			codes: { type: "array", key: "codes" },
+			statuses: { type: "array", key: "statuses" },
+			search: { type: "string", key: "q" },
+		},
+		pageSize: 200,
+	});
 
 function buildParams(): DispatchJobsListParams {
 	return {
@@ -60,9 +63,6 @@ const aggregateOptions = ref<FilterOption[]>([]);
 const codeOptions = ref<FilterOption[]>([]);
 const statusOptions = ref<FilterOption[]>([]);
 
-// Prevent infinite loops from cascading updates
-const isUpdating = ref(false);
-
 onMounted(async () => {
 	await loadFilterOptions();
 	await load();
@@ -81,46 +81,45 @@ async function loadFilterOptions() {
 	}
 }
 
-async function onFilterChange(
-	clearDownstream:
-		| "applications"
-		| "subdomains"
-		| "aggregates"
-		| "codes"
-		| "none" = "none",
-) {
-	if (isUpdating.value) return;
-	isUpdating.value = true;
-	try {
-		if (clearDownstream === "applications") {
-			filters.applications.value = [];
-			filters.subdomains.value = [];
-			filters.aggregates.value = [];
-			filters.codes.value = [];
-		} else if (clearDownstream === "subdomains") {
-			filters.subdomains.value = [];
-			filters.aggregates.value = [];
-			filters.codes.value = [];
-		} else if (clearDownstream === "aggregates") {
-			filters.aggregates.value = [];
-			filters.codes.value = [];
-		} else if (clearDownstream === "codes") {
-			filters.codes.value = [];
-		}
-
-		await loadFilterOptions();
-		await load();
-	} finally {
-		isUpdating.value = false;
-	}
+// Cascading clears: changing a parent wipes its dependent children. The
+// child writes are wrapped in `withSuppressed` so useListState's per-ref
+// watchers don't each spam syncToUrl; we sync once at the end.
+function onClientsChange() {
+	withSuppressed(() => {
+		filters.applications.value = [];
+		filters.subdomains.value = [];
+		filters.aggregates.value = [];
+		filters.codes.value = [];
+	});
+	syncToUrl();
+	load();
 }
 
-async function onStatusChange() {
-	await load();
+function onApplicationsChange() {
+	withSuppressed(() => {
+		filters.subdomains.value = [];
+		filters.aggregates.value = [];
+		filters.codes.value = [];
+	});
+	syncToUrl();
+	load();
 }
 
-async function onSearchChange() {
-	await load();
+function onSubdomainsChange() {
+	withSuppressed(() => {
+		filters.aggregates.value = [];
+		filters.codes.value = [];
+	});
+	syncToUrl();
+	load();
+}
+
+function onAggregatesChange() {
+	withSuppressed(() => {
+		filters.codes.value = [];
+	});
+	syncToUrl();
+	load();
 }
 
 function getSeverity(
@@ -216,7 +215,7 @@ function formatCode(code: string | undefined): {
           <ClientFilter
             v-model="filters.clients.value"
             class="filter-select"
-            @change="onFilterChange('applications')"
+            @change="onClientsChange"
           />
           <MultiSelect
             v-model="filters.applications.value"
@@ -225,7 +224,7 @@ function formatCode(code: string | undefined): {
             optionValue="value"
             placeholder="All Applications"
             class="filter-select"
-            @change="onFilterChange('subdomains')"
+            @change="onApplicationsChange"
           />
           <MultiSelect
             v-model="filters.subdomains.value"
@@ -234,7 +233,7 @@ function formatCode(code: string | undefined): {
             optionValue="value"
             placeholder="All Subdomains"
             class="filter-select"
-            @change="onFilterChange('aggregates')"
+            @change="onSubdomainsChange"
           />
           <MultiSelect
             v-model="filters.aggregates.value"
@@ -243,7 +242,7 @@ function formatCode(code: string | undefined): {
             optionValue="value"
             placeholder="All Aggregates"
             class="filter-select"
-            @change="onFilterChange('codes')"
+            @change="onAggregatesChange"
           />
           <MultiSelect
             v-model="filters.codes.value"
@@ -252,7 +251,7 @@ function formatCode(code: string | undefined): {
             optionValue="value"
             placeholder="All Codes"
             class="filter-select"
-            @change="onFilterChange('none')"
+            @change="load"
           />
         </div>
         <div class="filter-row">
@@ -263,14 +262,14 @@ function formatCode(code: string | undefined): {
             optionValue="value"
             placeholder="All Statuses"
             class="filter-select"
-            @change="onStatusChange"
+            @change="load"
           />
           <IconField>
             <InputIcon class="pi pi-search" />
             <InputText
               v-model="filters.search.value"
               placeholder="Search by source..."
-              @keyup.enter="onSearchChange"
+              @keyup.enter="load"
             />
           </IconField>
           <Select
@@ -279,6 +278,14 @@ function formatCode(code: string | undefined): {
             class="size-select"
             @change="load"
             v-tooltip="'Result size — most recent N jobs'"
+          />
+          <Button
+            v-if="hasActiveFilters"
+            icon="pi pi-filter-slash"
+            text
+            rounded
+            @click="() => { clearFilters(); load(); }"
+            v-tooltip="'Clear filters'"
           />
           <Button
             icon="pi pi-refresh"

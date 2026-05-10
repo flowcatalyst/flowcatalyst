@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import { useConfirm } from "primevue/useconfirm";
+import { useReturnTo } from "@/composables/useReturnTo";
 import { toast } from "@/utils/errorBus";
 import {
 	scheduledJobsApi,
@@ -10,8 +11,8 @@ import {
 } from "@/api/scheduled-jobs";
 
 const route = useRoute();
-const router = useRouter();
 const confirm = useConfirm();
+const { returnTo, forwardFrom } = useReturnTo();
 
 const id = String(route.params["id"]);
 const job = ref<ScheduledJob | null>(null);
@@ -105,7 +106,7 @@ function deleteJob() {
 			try {
 				await scheduledJobsApi.delete(job.value!.id);
 				toast.success("Deleted", "Scheduled job deleted");
-				router.push("/scheduled-jobs");
+				returnTo("/scheduled-jobs");
 			} finally { acting.value = false; }
 		},
 	});
@@ -122,7 +123,7 @@ async function fireNow() {
 }
 
 function onRecentRowClick(event: { data: ScheduledJobInstance }) {
-	router.push(`/scheduled-jobs/instances/${event.data.id}`);
+	forwardFrom(`/scheduled-jobs/instances/${event.data.id}`);
 }
 </script>
 
@@ -136,7 +137,11 @@ function onRecentRowClick(event: { data: ScheduledJobInstance }) {
 			<div class="flex items-start justify-between gap-4">
 				<div>
 					<div class="text-sm text-gray-500">
-						<router-link to="/scheduled-jobs" class="hover:underline">Scheduled Jobs</router-link>
+						<a
+							href="#"
+							class="hover:underline"
+							@click.prevent="returnTo('/scheduled-jobs')"
+						>Scheduled Jobs</a>
 						/ {{ job.code }}
 					</div>
 					<h2 class="mt-1">{{ job.name }}</h2>
@@ -194,9 +199,13 @@ function onRecentRowClick(event: { data: ScheduledJobInstance }) {
 		<div class="card">
 			<div class="flex justify-between items-center">
 				<h3>Recent Firings</h3>
-				<router-link :to="`/scheduled-jobs/${job.id}/instances`" class="text-sm text-blue-500 hover:underline">
+				<a
+					href="#"
+					class="text-sm text-blue-500 hover:underline"
+					@click.prevent="forwardFrom(`/scheduled-jobs/${job.id}/instances`)"
+				>
 					View all →
-				</router-link>
+				</a>
 			</div>
 			<DataTable
 				:value="recentInstances"

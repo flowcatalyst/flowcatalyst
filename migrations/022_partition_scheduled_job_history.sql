@@ -1,14 +1,16 @@
 -- Partition msg_scheduled_job_instances and msg_scheduled_job_instance_logs
 -- by RANGE (created_at), monthly. Mirrors the dispatch-job partitioning in 019.
 --
--- Production-only. Drops and recreates these tables — assumed empty (i.e.,
--- this migration is applied either pre-launch or immediately after 021
--- introduces the unpartitioned tables, before any traffic hits them).
+-- Runs on every profile (fc-dev too) — dev mirrors prod's partitioned shape.
+-- Drops and recreates these tables — assumed empty (this migration is applied
+-- either pre-launch or immediately after 021 introduces the unpartitioned
+-- tables, before any traffic hits them).
 --
 -- Idempotent: skips if msg_scheduled_job_instances is already partitioned.
 --
--- Forward partitions and retention drops are managed by the partition manager
--- service in fc-stream (PARTITIONED_PARENTS const).
+-- Forward and retention managed by pg_partman_bgw in production (registered
+-- in migration 023) and by `PartitionManagerService` in fc-dev. The Rust
+-- manager auto-defers when partman is detected.
 
 DO $migration022$
 DECLARE
@@ -20,7 +22,7 @@ DECLARE
     ];
     m INTEGER;
     months_back CONSTANT INTEGER := 1;
-    months_forward CONSTANT INTEGER := 12;
+    months_forward CONSTANT INTEGER := 3;
     start_ts TIMESTAMPTZ;
     end_ts TIMESTAMPTZ;
     partition_name TEXT;

@@ -47,6 +47,7 @@ FlowCatalyst is a distributed event processing system composed of specialized se
 | **Stream Processor** | Watches for new events and creates dispatch jobs from subscriptions | [docs/stream-processor.md](docs/stream-processor.md) |
 | **Scheduler** | Polls pending dispatch jobs and queues them for delivery | [docs/scheduler.md](docs/scheduler.md) |
 | **Shared Crates** | Common libraries used across services | [docs/shared-crates.md](docs/shared-crates.md) |
+| **Partitioning** | Monthly RANGE partitioning for the high-volume messaging tables; pg_partman in prod, in-Rust manager in fc-dev | [docs/partitioning.md](docs/partitioning.md) |
 
 ## Binaries
 
@@ -94,6 +95,18 @@ cargo build --release
 ./target/release/fc-router
 ./target/release/fc-outbox-processor
 ```
+
+#### Required PostgreSQL extension
+
+Production deployments require **`pg_partman`** for managing the partitioned
+messaging tables. Install via IaC (parameter group + `CREATE EXTENSION`)
+**before first deploy** — migration `023_partman_takeover` will fail
+otherwise. Full setup, including parameter-group settings, the bastion
+`CREATE EXTENSION` step, and how to change retention later, is in
+[docs/partitioning.md](docs/partitioning.md).
+
+fc-dev's embedded PostgreSQL does **not** require pg_partman; an in-Rust
+partition manager handles forward-rolling and retention there.
 
 ## Project Structure
 

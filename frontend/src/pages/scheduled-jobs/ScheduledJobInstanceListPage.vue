@@ -1,27 +1,36 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
+import { useListState } from "@/composables/useListState";
+import { useReturnTo } from "@/composables/useReturnTo";
 import {
 	scheduledJobsApi,
-	type InstanceStatus,
 	type ScheduledJob,
 	type ScheduledJobInstance,
-	type TriggerKind,
 } from "@/api/scheduled-jobs";
 
 const route = useRoute();
-const router = useRouter();
 const jobId = String(route.params["id"]);
+const { returnTo, forwardFrom } = useReturnTo();
 
 const job = ref<ScheduledJob | null>(null);
 const instances = ref<ScheduledJobInstance[]>([]);
 const total = ref(0);
-const page = ref(0);
-const size = ref(50);
 const loading = ref(false);
 
-const filterStatus = ref<InstanceStatus | "">("");
-const filterTriggerKind = ref<TriggerKind | "">("");
+const { filters, page, pageSize, hasActiveFilters, clearFilters, onPage } =
+	useListState(
+		{
+			filters: {
+				status: { type: "string", key: "status" },
+				triggerKind: { type: "string", key: "trigger" },
+			},
+			pageSize: 50,
+			sortField: "firedAt",
+			sortOrder: "desc",
+		},
+		() => load(),
+	);
 
 const STATUS_OPTIONS = [
 	{ label: "Queued", value: "QUEUED" },
@@ -42,10 +51,10 @@ async function load() {
 		const [jobResult, listResult] = await Promise.all([
 			scheduledJobsApi.get(jobId),
 			scheduledJobsApi.listInstances(jobId, {
-				status: filterStatus.value || undefined,
-				triggerKind: filterTriggerKind.value || undefined,
+				status: filters.status.value || undefined,
+				triggerKind: filters.triggerKind.value || undefined,
 				page: page.value,
-				size: size.value,
+				size: pageSize.value,
 			}),
 		]);
 		job.value = jobResult;
@@ -59,17 +68,6 @@ async function load() {
 }
 
 onMounted(load);
-
-function onFilterChange() {
-	page.value = 0;
-	load();
-}
-
-function onPageChange(event: { page: number; rows: number }) {
-	page.value = event.page;
-	size.value = event.rows;
-	load();
-}
 
 function statusSeverity(s: string): string {
 	switch (s) {
@@ -91,15 +89,25 @@ function fmt(s?: string): string {
 }
 
 function onRowClick(event: { data: ScheduledJobInstance }) {
-	router.push(`/scheduled-jobs/instances/${event.data.id}`);
+	forwardFrom(`/scheduled-jobs/instances/${event.data.id}`);
 }
 </script>
 
 <template>
 	<div class="card">
 		<div class="text-sm text-gray-500">
-			<router-link to="/scheduled-jobs" class="hover:underline">Scheduled Jobs</router-link>
-			<span v-if="job"> / <router-link :to="`/scheduled-jobs/${job.id}`" class="hover:underline">{{ job.code }}</router-link></span>
+			<a
+				href="#"
+				class="hover:underline"
+				@click.prevent="returnTo('/scheduled-jobs')"
+			>Scheduled Jobs</a>
+			<span v-if="job"> /
+				<a
+					href="#"
+					class="hover:underline"
+					@click.prevent="forwardFrom(`/scheduled-jobs/${job.id}`)"
+				>{{ job.code }}</a>
+			</span>
 			/ Firings
 		</div>
 		<h2 v-if="job" class="mt-1">Firings: {{ job.name }}</h2>
@@ -108,25 +116,33 @@ function onRowClick(event: { data: ScheduledJobInstance }) {
 			<div>
 				<label class="block text-sm font-medium mb-1">Status</label>
 				<Select
-					v-model="filterStatus"
+					v-model="filters.status.value"
 					:options="STATUS_OPTIONS"
 					option-label="label"
 					option-value="value"
 					placeholder="All statuses"
 					show-clear
-					@change="onFilterChange"
 				/>
 			</div>
 			<div>
 				<label class="block text-sm font-medium mb-1">Trigger</label>
 				<Select
-					v-model="filterTriggerKind"
+					v-model="filters.triggerKind.value"
 					:options="TRIGGER_OPTIONS"
 					option-label="label"
 					option-value="value"
 					placeholder="All triggers"
 					show-clear
-					@change="onFilterChange"
+				/>
+			</div>
+			<div class="flex items-end">
+				<Button
+					v-if="hasActiveFilters"
+					label="Clear"
+					icon="pi pi-filter-slash"
+					text
+					severity="secondary"
+					@click="clearFilters"
 				/>
 			</div>
 		</div>
@@ -135,8 +151,8 @@ function onRowClick(event: { data: ScheduledJobInstance }) {
 			:value="instances"
 			:loading="loading"
 			:total-records="total"
-			:rows="size"
-			:first="page * size"
+			:rows="pageSize"
+			:first="page * pageSize"
 			lazy
 			paginator
 			:rows-per-page-options="[20, 50, 100, 200]"
@@ -145,7 +161,7 @@ function onRowClick(event: { data: ScheduledJobInstance }) {
 			selection-mode="single"
 			class="mt-4"
 			@row-click="onRowClick"
-			@page="onPageChange"
+			@page="onPage"
 		>
 			<Column header="Fired At">
 				<template #body="{ data }">{{ fmt(data.firedAt) }}</template>

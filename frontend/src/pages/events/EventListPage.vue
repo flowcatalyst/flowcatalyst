@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted } from "vue";
+import { useListState } from "@/composables/useListState";
 import ClientFilter from "@/components/ClientFilter.vue";
 import {
 	eventsApi,
@@ -13,29 +14,20 @@ interface FilterOption {
 	label: string;
 }
 
-const filters = {
-	clients: ref<string[]>([]),
-	applications: ref<string[]>([]),
-	subdomains: ref<string[]>([]),
-	aggregates: ref<string[]>([]),
-	types: ref<string[]>([]),
-	search: ref<string>(""),
-};
-// Most-recent-first window. `msg_events_read` ingests at high rates so
-// there's no pagination — set the size, hit refresh.
-const pageSize = ref(200);
 const sizeOptions = [50, 100, 200, 500, 1000];
 
-const hasActiveFilters = computed(() =>
-	Boolean(
-		filters.clients.value.length ||
-			filters.applications.value.length ||
-			filters.subdomains.value.length ||
-			filters.aggregates.value.length ||
-			filters.types.value.length ||
-			filters.search.value,
-	),
-);
+const { filters, pageSize, hasActiveFilters, clearFilters, syncToUrl, withSuppressed } =
+	useListState({
+		filters: {
+			clients: { type: "array", key: "clients" },
+			applications: { type: "array", key: "applications" },
+			subdomains: { type: "array", key: "subdomains" },
+			aggregates: { type: "array", key: "aggregates" },
+			types: { type: "array", key: "types" },
+			search: { type: "string", key: "q" },
+		},
+		pageSize: 200,
+	});
 
 function buildParams(): EventsListParams {
 	return {
@@ -70,9 +62,6 @@ const aggregateOptions = ref<FilterOption[]>([]);
 const typeOptions = ref<FilterOption[]>([]);
 const loadingOptions = ref(false);
 
-// Prevent infinite loops from cascading watchers
-const isUpdating = ref(false);
-
 // Detail dialog
 const selectedEvent = ref<(EventRead & Partial<EventDetail>) | null>(null);
 const showDetailDialog = ref(false);
@@ -83,40 +72,45 @@ onMounted(async () => {
 	await load();
 });
 
-// Unified filter change handler to prevent loops
-async function onFilterChange(
-	clearDownstream:
-		| "applications"
-		| "subdomains"
-		| "aggregates"
-		| "types"
-		| "none" = "none",
-) {
-	if (isUpdating.value) return;
+// Cascading clears: changing a parent wipes its dependent children. The
+// child writes are wrapped in `withSuppressed` so useListState's per-ref
+// watchers don't each spam syncToUrl; we sync once at the end.
+function onClientsChange() {
+	withSuppressed(() => {
+		filters.applications.value = [];
+		filters.subdomains.value = [];
+		filters.aggregates.value = [];
+		filters.types.value = [];
+	});
+	syncToUrl();
+	load();
+}
 
-	isUpdating.value = true;
-	try {
-		if (clearDownstream === "applications") {
-			filters.applications.value = [];
-			filters.subdomains.value = [];
-			filters.aggregates.value = [];
-			filters.types.value = [];
-		} else if (clearDownstream === "subdomains") {
-			filters.subdomains.value = [];
-			filters.aggregates.value = [];
-			filters.types.value = [];
-		} else if (clearDownstream === "aggregates") {
-			filters.aggregates.value = [];
-			filters.types.value = [];
-		} else if (clearDownstream === "types") {
-			filters.types.value = [];
-		}
+function onApplicationsChange() {
+	withSuppressed(() => {
+		filters.subdomains.value = [];
+		filters.aggregates.value = [];
+		filters.types.value = [];
+	});
+	syncToUrl();
+	load();
+}
 
-		await loadFilterOptions();
-		await load();
-	} finally {
-		isUpdating.value = false;
-	}
+function onSubdomainsChange() {
+	withSuppressed(() => {
+		filters.aggregates.value = [];
+		filters.types.value = [];
+	});
+	syncToUrl();
+	load();
+}
+
+function onAggregatesChange() {
+	withSuppressed(() => {
+		filters.types.value = [];
+	});
+	syncToUrl();
+	load();
 }
 
 async function loadFilterOptions() {
@@ -135,19 +129,9 @@ async function loadFilterOptions() {
 	}
 }
 
-async function onSearchChange() {
-	await load();
-}
-
-async function clearAllFilters() {
-	filters.clients.value = [];
-	filters.applications.value = [];
-	filters.subdomains.value = [];
-	filters.aggregates.value = [];
-	filters.types.value = [];
-	filters.search.value = "";
-	await loadFilterOptions();
-	await load();
+function clearAllFilters() {
+	clearFilters();
+	load();
 }
 
 async function viewEventDetail(event: EventRead) {
@@ -210,7 +194,7 @@ function truncateId(id: string | undefined): string {
             <ClientFilter
               v-model="filters.clients.value"
               class="filter-select"
-              @change="onFilterChange('applications')"
+              @change="onClientsChange"
             />
           </div>
           <div class="filter-group">
@@ -225,7 +209,7 @@ function truncateId(id: string | undefined): string {
               :loading="loadingOptions"
               class="filter-select"
               filter
-              @change="onFilterChange('subdomains')"
+              @change="onApplicationsChange"
             />
           </div>
           <div class="filter-group">
@@ -240,7 +224,7 @@ function truncateId(id: string | undefined): string {
               :loading="loadingOptions"
               class="filter-select"
               filter
-              @change="onFilterChange('aggregates')"
+              @change="onSubdomainsChange"
             />
           </div>
           <div class="filter-group">
@@ -255,7 +239,7 @@ function truncateId(id: string | undefined): string {
               :loading="loadingOptions"
               class="filter-select"
               filter
-              @change="onFilterChange('types')"
+              @change="onAggregatesChange"
             />
           </div>
           <div class="filter-group">
@@ -270,7 +254,7 @@ function truncateId(id: string | undefined): string {
               :loading="loadingOptions"
               class="filter-select filter-select-wide"
               filter
-              @change="onFilterChange('none')"
+              @change="load"
             />
           </div>
         </div>
@@ -280,7 +264,7 @@ function truncateId(id: string | undefined): string {
             <InputText
               v-model="filters.search.value"
               placeholder="Search by source..."
-              @keyup.enter="onSearchChange"
+              @keyup.enter="load"
               class="search-input"
             />
           </IconField>

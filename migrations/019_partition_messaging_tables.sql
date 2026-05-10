@@ -1,6 +1,11 @@
 -- Partition the high-volume messaging tables by `created_at`, monthly.
 --
--- Production-only migration. fc-dev (embedded postgres) skips this.
+-- Runs on every profile, including fc-dev's embedded postgres, so dev mirrors
+-- production's table shape (queries that don't include the partition key, or
+-- UNIQUE constraints missing it, fail in dev instead of getting discovered in
+-- prod). Forward-rolling and retention are managed in production by
+-- pg_partman_bgw (registered in migration 023) and in fc-dev by the in-Rust
+-- `PartitionManagerService`, which auto-defers when partman is detected.
 --
 -- Why: cleanup at this throughput is not viable via DELETE — every batched
 -- DELETE generates WAL equal to the deleted volume and competes with ingest
@@ -21,9 +26,9 @@
 --   - msg_dispatch_job_attempts
 --
 -- All partitioned by RANGE (created_at), monthly granularity.
--- Initial partitions cover (current month - 1) through (current month + 12).
--- Forward partitions and retention drops are managed by the partition manager
--- service in fc-stream.
+-- Initial partitions cover (current month - 1) through (current month + 3),
+-- matching the runtime cadence — whichever manager is in charge (Rust or
+-- partman) extends from there.
 --
 -- Constraints introduced by partitioning:
 --   - Partition key must be NOT NULL → `created_at` made NOT NULL DEFAULT NOW().
@@ -46,7 +51,7 @@ DECLARE
     ];
     m INTEGER;
     months_back CONSTANT INTEGER := 1;
-    months_forward CONSTANT INTEGER := 12;
+    months_forward CONSTANT INTEGER := 3;
     start_ts TIMESTAMPTZ;
     end_ts TIMESTAMPTZ;
     partition_name TEXT;

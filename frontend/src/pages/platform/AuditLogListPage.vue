@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from "vue";
+import { ref, onMounted } from "vue";
 import {
 	fetchAuditLogs,
 	fetchAuditLogById,
@@ -11,6 +11,7 @@ import {
 } from "@/api/audit-logs";
 import { applicationsApi } from "@/api/applications";
 import { useCursorPagination } from "@/composables/useCursorPagination";
+import { useListState } from "@/composables/useListState";
 import { useClientOptions } from "@/composables/useClientOptions";
 import ClientFilter from "@/components/ClientFilter.vue";
 
@@ -25,23 +26,25 @@ const operations = ref<string[]>([]);
 const applicationOptions = ref<Option[]>([]);
 const { ensureLoaded: ensureClients, getLabel: getClientLabel } = useClientOptions();
 
-// Filters live as plain refs — cursor invalidates on filter change.
-const filters = {
-	entityType: ref<string>(""),
-	operation: ref<string>(""),
-	applicationIds: ref<string[]>([]),
-	clientIds: ref<string[]>([]),
-};
-const pageSize = ref(100);
-
-const hasActiveFilters = computed(() =>
-	Boolean(
-		filters.entityType.value ||
-			filters.operation.value ||
-			filters.applicationIds.value.length ||
-			filters.clientIds.value.length,
-	),
-);
+// Filters synced to URL. Page size is controlled by the cursor pager, not
+// in URL — cursor pagination doesn't have stable page numbers anyway.
+const { filters, pageSize, hasActiveFilters, clearFilters: clearListFilters } =
+	useListState(
+		{
+			filters: {
+				entityType: { type: "string", key: "entityType" },
+				operation: { type: "string", key: "operation" },
+				applicationIds: { type: "array", key: "applicationIds" },
+				clientIds: { type: "array", key: "clientIds" },
+			},
+			pageSize: 100,
+			debounceFields: [],
+		},
+		() => {
+			if (initialLoading.value) return;
+			void cursor.reset();
+		},
+	);
 
 const cursor = useCursorPagination<AuditLog>({
 	fetchPage: async (after) => {
@@ -97,18 +100,6 @@ async function loadFilters() {
 	}
 }
 
-// Re-fetch from page 1 when any filter changes. The deep flag is needed for
-// the array filters; without it Vue won't see push/splice mutations.
-let suppressFilterReload = true;
-watch(
-	[filters.entityType, filters.operation, filters.applicationIds, filters.clientIds],
-	() => {
-		if (suppressFilterReload) return;
-		void cursor.reset();
-	},
-	{ deep: true },
-);
-
 async function viewDetails(log: AuditLog) {
 	loadingDetail.value = true;
 	showDetailDialog.value = true;
@@ -122,11 +113,7 @@ async function viewDetails(log: AuditLog) {
 }
 
 async function clearFilters() {
-	filters.entityType.value = "";
-	filters.operation.value = "";
-	filters.applicationIds.value = [];
-	filters.clientIds.value = [];
-	await cursor.reset();
+	clearListFilters();
 }
 
 function formatDateTime(isoString: string): string {
@@ -165,9 +152,6 @@ onMounted(async () => {
 	await loadFilters();
 	await cursor.loadFirst();
 	initialLoading.value = false;
-	// Re-enable the filter watcher only after the initial load so the
-	// watcher doesn't fire from filter-option hydration.
-	suppressFilterReload = false;
 });
 </script>
 

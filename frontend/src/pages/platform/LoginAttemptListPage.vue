@@ -1,29 +1,30 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from "vue";
+import { ref, onMounted } from "vue";
 import { useCursorPagination } from "@/composables/useCursorPagination";
+import { useListState } from "@/composables/useListState";
 import {
   fetchLoginAttempts,
   type LoginAttempt,
 } from "@/api/login-attempts";
 
-const filters = {
-  attemptType: ref<string>(""),
-  outcome: ref<string>(""),
-  identifier: ref<string>(""),
-  dateFrom: ref<string>(""),
-  dateTo: ref<string>(""),
-};
-const pageSize = ref(100);
-
-const hasActiveFilters = computed(() =>
-  Boolean(
-    filters.attemptType.value ||
-      filters.outcome.value ||
-      filters.identifier.value.trim() ||
-      filters.dateFrom.value ||
-      filters.dateTo.value,
-  ),
-);
+const { filters, pageSize, hasActiveFilters, clearFilters: clearListFilters } =
+  useListState(
+    {
+      filters: {
+        attemptType: { type: "string", key: "attemptType" },
+        outcome: { type: "string", key: "outcome" },
+        identifier: { type: "string", key: "identifier" },
+        dateFrom: { type: "string", key: "from" },
+        dateTo: { type: "string", key: "to" },
+      },
+      pageSize: 100,
+      debounceFields: ["identifier"],
+    },
+    () => {
+      if (initialLoading.value) return;
+      void cursor.reset();
+    },
+  );
 
 const cursor = useCursorPagination<LoginAttempt>({
   fetchPage: async (after) => {
@@ -47,28 +48,8 @@ const attempts = cursor.items;
 const loading = cursor.loading;
 const initialLoading = ref(true);
 
-let suppressFilterReload = true;
-watch(
-  [
-    filters.attemptType,
-    filters.outcome,
-    filters.identifier,
-    filters.dateFrom,
-    filters.dateTo,
-  ],
-  () => {
-    if (suppressFilterReload) return;
-    void cursor.reset();
-  },
-);
-
 async function clearFilters() {
-  filters.attemptType.value = "";
-  filters.outcome.value = "";
-  filters.identifier.value = "";
-  filters.dateFrom.value = "";
-  filters.dateTo.value = "";
-  await cursor.reset();
+  clearListFilters();
 }
 
 // Detail dialog
@@ -110,7 +91,6 @@ function attemptTypeSeverity(type: string): string {
 onMounted(async () => {
   await cursor.loadFirst();
   initialLoading.value = false;
-  suppressFilterReload = false;
 });
 </script>
 

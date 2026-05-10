@@ -6,8 +6,16 @@
 //!   - Drops partitions whose date range falls before the retention cutoff
 //!     (default: 90 days).
 //!
-//! Partition naming convention (set in migration 018): `<parent>_YYYY_MM`.
+//! Partition naming convention (set in migration 019/022): `<parent>_YYYY_MM`.
 //! The manager parses the `YYYY_MM` suffix to determine partition age.
+//!
+//! **Auto-defers to pg_partman.** In production, migration 023 registers
+//! every parent with `partman.create_parent` and pg_partman_bgw runs the
+//! same forward+retention loop in-database. On startup we probe
+//! `partman.part_config`; if every parent we manage is already registered
+//! there, this service exits cleanly and lets bgw do its job. fc-dev (no
+//! extension) sees no partman config and runs as before, so dev mirrors
+//! prod's partitioned shape without needing the extension installed.
 //!
 //! Ticks once on startup, then daily. Idempotent — safe to run any number
 //! of times.
@@ -86,9 +94,8 @@ impl PartitionManagerService {
         let health = self.health.clone();
 
         tokio::spawn(async move {
-            // Auto-detect: if msg_events is not partitioned (e.g. fc-dev with
-            // embedded postgres skipping migration 018), there's nothing to
-            // manage. Exit cleanly without flapping.
+            // Auto-detect 1: if msg_events isn't partitioned, nothing to do.
+            // (Shouldn't happen now that 019 is core, but defensive.)
             match is_partitioned(&pool, "msg_events").await {
                 Ok(true) => {}
                 Ok(false) => {
@@ -100,6 +107,26 @@ impl PartitionManagerService {
                     warn!(error = %e, "Partition manager: detection query failed; assuming not partitioned");
                     health.set_running(false);
                     return;
+                }
+            }
+
+            // Auto-detect 2: if pg_partman owns every parent we'd manage,
+            // step aside — bgw is doing the same work in-database and we'd
+            // just be running the same CREATE/DROP twice.
+            match partman_owns_all_parents(&pool).await {
+                Ok(true) => {
+                    info!(
+                        "Partition manager: pg_partman has all {} parents registered; deferring to bgw",
+                        PARTITIONED_PARENTS.len()
+                    );
+                    health.set_running(false);
+                    return;
+                }
+                Ok(false) => {
+                    debug!("Partition manager: pg_partman not managing our parents; running");
+                }
+                Err(e) => {
+                    debug!(error = %e, "Partition manager: partman probe failed; running anyway");
                 }
             }
 
@@ -282,6 +309,43 @@ async fn is_partitioned(pool: &PgPool, table: &str) -> anyhow::Result<bool> {
     .fetch_one(pool)
     .await?;
     Ok(row.0)
+}
+
+/// True if pg_partman is installed AND has a `part_config` row for every
+/// parent in `PARTITIONED_PARENTS`. Used to decide whether we should defer
+/// to `pg_partman_bgw` instead of running our own forward+retention loop.
+///
+/// Returns `Ok(false)` (rather than erroring) if the `partman.part_config`
+/// table doesn't exist — the typical fc-dev case.
+async fn partman_owns_all_parents(pool: &PgPool) -> anyhow::Result<bool> {
+    let table_exists: (bool,) = sqlx::query_as(
+        r#"
+        SELECT EXISTS (
+            SELECT 1
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'partman' AND c.relname = 'part_config'
+        )
+        "#,
+    )
+    .fetch_one(pool)
+    .await?;
+    if !table_exists.0 {
+        return Ok(false);
+    }
+
+    let qualified: Vec<String> = PARTITIONED_PARENTS
+        .iter()
+        .map(|p| format!("public.{}", p))
+        .collect();
+    let registered: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM partman.part_config WHERE parent_table = ANY($1)",
+    )
+    .bind(&qualified)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(registered.0 as usize == PARTITIONED_PARENTS.len())
 }
 
 /// First instant of the month at `offset` months from `now`.

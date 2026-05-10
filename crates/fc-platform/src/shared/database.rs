@@ -256,31 +256,54 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
         ("016_clean_orphaned_role_assignments", include_str!("../../../../migrations/016_clean_orphaned_role_assignments.sql")),
         ("017_dispatch_pool_rate_limit_nullable", include_str!("../../../../migrations/017_dispatch_pool_rate_limit_nullable.sql")),
         // 018 reshapes the messaging tables into the partitioning-ready
-        // schema (composite PKs, fanned_out_at, read-table created_at). Runs
-        // on every profile — embedded gets the new shape on regular tables;
-        // production gets it as a precursor to 019's partition DDL.
+        // schema (composite PKs, fanned_out_at, read-table created_at).
         ("018_partition_prep", include_str!("../../../../migrations/018_partition_prep.sql")),
+        // 019/022 partition the high-volume tables. They used to be
+        // production-only, but fc-dev now mirrors prod's partitioned shape so
+        // partition-related schema bugs (UNIQUE missing the partition key,
+        // queries without it in WHERE) surface in dev rather than getting
+        // discovered in prod. Forward-rolling and retention are managed by
+        // pg_partman_bgw in production (registered in 023) and by
+        // `PartitionManagerService` in fc-dev.
+        ("019_partition_messaging_tables", include_str!("../../../../migrations/019_partition_messaging_tables.sql")),
         ("020_webauthn_credentials", include_str!("../../../../migrations/020_webauthn_credentials.sql")),
         ("021_scheduled_jobs", include_str!("../../../../migrations/021_scheduled_jobs.sql")),
+        ("022_partition_scheduled_job_history", include_str!("../../../../migrations/022_partition_scheduled_job_history.sql")),
+        // Bridges DBs that ran 021 before `target_url` was added to it.
+        ("024_scheduled_jobs_add_target_url", include_str!("../../../../migrations/024_scheduled_jobs_add_target_url.sql")),
     ];
 
+    // Production-only: hand the partitioned tables over to pg_partman. The
+    // extension itself is installed via IaC; this migration registers each
+    // parent and sets retention. fc-dev keeps the in-Rust manager.
     let production_migrations: &[(&str, &str)] = &[
-        ("019_partition_messaging_tables", include_str!("../../../../migrations/019_partition_messaging_tables.sql")),
-        ("022_partition_scheduled_job_history", include_str!("../../../../migrations/022_partition_scheduled_job_history.sql")),
+        ("023_partman_takeover", include_str!("../../../../migrations/023_partman_takeover.sql")),
     ];
 
     // Bootstrap the tracker. CREATE IF NOT EXISTS is safe to re-run.
+    // The `checksum` column lets us detect drift — i.e. a migration whose
+    // SQL has been edited after it was applied. Editing shipped migrations
+    // is a sharp edge: the tracker treats them as immutable, so the new SQL
+    // never runs, and we'd silently miss schema changes. Instead we store
+    // a sha256 of each migration's contents on apply and warn loudly if a
+    // later run sees a different hash for the same id.
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS _schema_migrations (
             migration_id VARCHAR(100) PRIMARY KEY,
             applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            duration_ms INTEGER
+            duration_ms INTEGER,
+            checksum TEXT
         )
         "#,
     )
     .execute(pool)
     .await?;
+    // For DBs whose tracker was created by an earlier build that didn't
+    // have the checksum column yet.
+    sqlx::query("ALTER TABLE _schema_migrations ADD COLUMN IF NOT EXISTS checksum TEXT")
+        .execute(pool)
+        .await?;
 
     // Per-migration probes for the recently-added migrations: a SQL
     // expression returning true iff the migration's effects are visible.
@@ -331,7 +354,7 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
             let mut tx = pool.begin().await?;
             let mut backfilled = 0;
             let mut skipped = Vec::new();
-            for (id, _) in core_migrations.iter().chain(production_migrations.iter()) {
+            for (id, sql) in core_migrations.iter().chain(production_migrations.iter()) {
                 let probe_says_applied = if let Some((_, probe_sql)) =
                     probes.iter().find(|(p_id, _)| *p_id == *id)
                 {
@@ -344,10 +367,11 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
                 };
                 if probe_says_applied {
                     sqlx::query(
-                        "INSERT INTO _schema_migrations (migration_id) VALUES ($1) \
+                        "INSERT INTO _schema_migrations (migration_id, checksum) VALUES ($1, $2) \
                          ON CONFLICT (migration_id) DO NOTHING",
                     )
                     .bind(*id)
+                    .bind(sha256_hex(sql))
                     .execute(&mut *tx)
                     .await?;
                     backfilled += 1;
@@ -385,14 +409,53 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
 /// SQL execution and the `_schema_migrations` insert are atomic — if any
 /// statement fails the whole thing rolls back, so the migration is not
 /// marked applied and the next deploy retries it.
+///
+/// Drift detection: every migration is tracked with a sha256 of its SQL
+/// content. Re-runs compare the current hash against the stored one:
+/// - match → no-op (the normal case).
+/// - stored is NULL → row predates the checksum column; silently backfill.
+/// - mismatch → warn loudly (the migration's content was edited after it
+///   was applied; the new SQL will NOT run, since migrations are immutable
+///   once shipped). Operator should fix by writing a follow-up migration.
 async fn apply_tracked(pool: &PgPool, id: &str, sql: &str) -> Result<(), sqlx::Error> {
-    let already_applied: Option<(String,)> = sqlx::query_as(
-        "SELECT migration_id FROM _schema_migrations WHERE migration_id = $1",
+    let current_checksum = sha256_hex(sql);
+
+    let row: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT migration_id, checksum FROM _schema_migrations WHERE migration_id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
     .await?;
-    if already_applied.is_some() {
+
+    if let Some((_, tracked_checksum)) = row {
+        match tracked_checksum {
+            None => {
+                // Pre-checksum row: backfill silently so future runs can
+                // detect drift.
+                sqlx::query(
+                    "UPDATE _schema_migrations SET checksum = $1 WHERE migration_id = $2",
+                )
+                .bind(&current_checksum)
+                .bind(id)
+                .execute(pool)
+                .await?;
+            }
+            Some(stored) if stored == current_checksum => {
+                // Match — already applied, content unchanged.
+            }
+            Some(stored) => {
+                warn!(
+                    migration = id,
+                    stored_checksum = %stored,
+                    current_checksum = %current_checksum,
+                    "Migration content changed since it was applied. The new SQL has \
+                     NOT been executed — migrations are immutable once shipped. If you \
+                     intended a schema change, write a new migration. If the edit was \
+                     benign (e.g. comment-only) you can silence this warning with: \
+                     UPDATE _schema_migrations SET checksum = '<current>' WHERE migration_id = '<id>'."
+                );
+            }
+        }
         return Ok(());
     }
 
@@ -412,16 +475,27 @@ async fn apply_tracked(pool: &PgPool, id: &str, sql: &str) -> Result<(), sqlx::E
     }
     let duration_ms = start.elapsed().as_millis() as i32;
     sqlx::query(
-        "INSERT INTO _schema_migrations (migration_id, duration_ms) VALUES ($1, $2)",
+        "INSERT INTO _schema_migrations (migration_id, duration_ms, checksum) \
+         VALUES ($1, $2, $3)",
     )
     .bind(id)
     .bind(duration_ms)
+    .bind(&current_checksum)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
 
     info!(migration = id, duration_ms = duration_ms, "Migration applied");
     Ok(())
+}
+
+/// SHA-256 of a migration's SQL body, hex-encoded. Used for drift
+/// detection on re-runs of an already-applied migration.
+fn sha256_hex(content: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(content.as_bytes());
+    hex::encode(hasher.finalize())
 }
 
 /// Split a SQL script into top-level statements on `;`, respecting:

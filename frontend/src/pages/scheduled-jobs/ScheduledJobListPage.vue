@@ -1,24 +1,35 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import { useListState } from "@/composables/useListState";
+import { useReturnTo } from "@/composables/useReturnTo";
 import {
 	scheduledJobsApi,
 	type ScheduledJob,
 	type ScheduledJobsFilterOptions,
-	type ScheduledJobStatus,
 } from "@/api/scheduled-jobs";
 
 const router = useRouter();
+const { navigateToDetail } = useReturnTo();
 
 const jobs = ref<ScheduledJob[]>([]);
 const total = ref(0);
-const page = ref(0);
-const size = ref(20);
 const loading = ref(false);
 
-const filterClientId = ref<string>("");
-const filterStatus = ref<ScheduledJobStatus | "">("");
-const filterSearch = ref<string>("");
+const { filters, page, pageSize, hasActiveFilters, clearFilters, onPage } =
+	useListState(
+		{
+			filters: {
+				clientId: { type: "string", key: "clientId" },
+				status: { type: "string", key: "status" },
+				search: { type: "string", key: "q" },
+			},
+			pageSize: 20,
+			sortField: "createdAt",
+			sortOrder: "desc",
+		},
+		() => load(),
+	);
 
 const filterOptions = ref<ScheduledJobsFilterOptions>({
 	clients: [],
@@ -37,11 +48,11 @@ async function load() {
 	loading.value = true;
 	try {
 		const result = await scheduledJobsApi.list({
-			clientId: filterClientId.value || undefined,
-			status: filterStatus.value || undefined,
-			search: filterSearch.value || undefined,
+			clientId: filters.clientId.value || undefined,
+			status: filters.status.value || undefined,
+			search: filters.search.value || undefined,
 			page: page.value,
-			size: size.value,
+			size: pageSize.value,
 		});
 		jobs.value = result.data;
 		total.value = result.total;
@@ -57,19 +68,8 @@ onMounted(async () => {
 	await load();
 });
 
-function onFilterChange() {
-	page.value = 0;
-	load();
-}
-
-function onPageChange(event: { page: number; rows: number }) {
-	page.value = event.page;
-	size.value = event.rows;
-	load();
-}
-
 function viewJob(job: ScheduledJob) {
-	router.push(`/scheduled-jobs/${job.id}`);
+	navigateToDetail(`/scheduled-jobs/${job.id}`);
 }
 
 function onRowClick(event: { data: ScheduledJob }) {
@@ -117,34 +117,41 @@ function formatDate(s?: string): string {
 			<div>
 				<label class="block text-sm font-medium mb-1">Client</label>
 				<Select
-					v-model="filterClientId"
+					v-model="filters.clientId.value"
 					:options="filterOptions.clients"
 					option-label="label"
 					option-value="value"
 					placeholder="All clients"
 					show-clear
-					@change="onFilterChange"
 				/>
 			</div>
 			<div>
 				<label class="block text-sm font-medium mb-1">Status</label>
 				<Select
-					v-model="filterStatus"
+					v-model="filters.status.value"
 					:options="filterOptions.statuses"
 					option-label="label"
 					option-value="value"
 					placeholder="All statuses"
 					show-clear
-					@change="onFilterChange"
 				/>
 			</div>
-			<div class="md:col-span-2">
-				<label class="block text-sm font-medium mb-1">Search</label>
-				<InputText
-					v-model="filterSearch"
-					placeholder="Code or name…"
-					class="w-full"
-					@keyup.enter="onFilterChange"
+			<div class="md:col-span-2 flex gap-2 items-end">
+				<div class="flex-1">
+					<label class="block text-sm font-medium mb-1">Search</label>
+					<InputText
+						v-model="filters.search.value"
+						placeholder="Code or name…"
+						class="w-full"
+					/>
+				</div>
+				<Button
+					v-if="hasActiveFilters"
+					label="Clear"
+					icon="pi pi-filter-slash"
+					text
+					severity="secondary"
+					@click="clearFilters"
 				/>
 			</div>
 		</div>
@@ -153,8 +160,8 @@ function formatDate(s?: string): string {
 			:value="jobs"
 			:loading="loading"
 			:total-records="total"
-			:rows="size"
-			:first="page * size"
+			:rows="pageSize"
+			:first="page * pageSize"
 			lazy
 			paginator
 			:rows-per-page-options="[10, 20, 50, 100]"
@@ -162,7 +169,7 @@ function formatDate(s?: string): string {
 			row-hover
 			selection-mode="single"
 			@row-click="onRowClick"
-			@page="onPageChange"
+			@page="onPage"
 		>
 			<Column header="Code" field="code" style="width: 22%">
 				<template #body="{ data }">

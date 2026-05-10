@@ -398,9 +398,12 @@ async fn main() -> Result<()> {
             fan_out_enabled: true,
             fan_out_batch_size: 200,
             fan_out_subscription_refresh_secs: 5,
-            // fc-dev uses embedded postgres which skips the partitioning
-            // migration; the partition manager has nothing to do here.
-            partition_manager_enabled: false,
+            // fc-dev's embedded postgres now runs the partitioning migrations
+            // (019/022 are core, not production-only) so dev mirrors prod's
+            // partitioned table shape. The Rust partition manager handles
+            // forward+retention here; in production migration 023 hands the
+            // job to pg_partman_bgw and the manager auto-defers.
+            partition_manager_enabled: true,
         };
         let (handle, _health) = fc_stream::start_stream_processor(pg_pool.clone(), config);
         info!("Stream processor started (event + dispatch job + fan-out projections)");

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
+import { useListState } from "@/composables/useListState";
 import { bffFetch } from "@/api/client";
 
 interface RawDispatchJob {
@@ -38,8 +39,8 @@ interface RawDispatchJob {
 
 // Most-recent-first window. msg_dispatch_jobs ingests at high rates so
 // there's no pagination — set the size, hit refresh.
-const pageSize = ref(200);
 const sizeOptions = [50, 100, 200, 500, 1000];
+const { pageSize } = useListState({ filters: {}, pageSize: 200 });
 const dispatchJobs = ref<RawDispatchJob[]>([]);
 const loading = ref(false);
 
