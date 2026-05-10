@@ -76,7 +76,7 @@ function onRowClick(event: { data: ScheduledJob }) {
 	viewJob(event.data);
 }
 
-function statusSeverity(status: string): string {
+function statusSeverity(status: string): "success" | "warn" | "secondary" | "info" {
 	switch (status) {
 		case "ACTIVE":
 			return "success";
@@ -102,116 +102,169 @@ function formatDate(s?: string): string {
 </script>
 
 <template>
-	<div class="card">
-		<div class="flex justify-between items-center mb-4">
-			<h2>Scheduled Jobs</h2>
-			<Button
-				label="New Scheduled Job"
-				icon="pi pi-plus"
-				@click="router.push('/scheduled-jobs/create')"
-			/>
-		</div>
+  <div class="page-container">
+    <header class="page-header">
+      <div>
+        <h1 class="page-title">Scheduled Jobs</h1>
+        <p class="page-subtitle">Cron-triggered webhook jobs</p>
+      </div>
+      <Button
+        label="New Scheduled Job"
+        icon="pi pi-plus"
+        @click="router.push('/scheduled-jobs/create')"
+      />
+    </header>
 
-		<!-- Filters -->
-		<div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-			<div>
-				<label class="block text-sm font-medium mb-1">Client</label>
-				<Select
-					v-model="filters.clientId.value"
-					:options="filterOptions.clients"
-					option-label="label"
-					option-value="value"
-					placeholder="All clients"
-					show-clear
-				/>
-			</div>
-			<div>
-				<label class="block text-sm font-medium mb-1">Status</label>
-				<Select
-					v-model="filters.status.value"
-					:options="filterOptions.statuses"
-					option-label="label"
-					option-value="value"
-					placeholder="All statuses"
-					show-clear
-				/>
-			</div>
-			<div class="md:col-span-2 flex gap-2 items-end">
-				<div class="flex-1">
-					<label class="block text-sm font-medium mb-1">Search</label>
-					<InputText
-						v-model="filters.search.value"
-						placeholder="Code or name…"
-						class="w-full"
-					/>
-				</div>
-				<Button
-					v-if="hasActiveFilters"
-					label="Clear"
-					icon="pi pi-filter-slash"
-					text
-					severity="secondary"
-					@click="clearFilters"
-				/>
-			</div>
-		</div>
+    <div class="fc-card">
+      <div class="toolbar">
+        <div class="filter-row">
+          <Select
+            v-model="filters.clientId.value"
+            :options="filterOptions.clients"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="All clients"
+            class="filter-select"
+            showClear
+          />
+          <Select
+            v-model="filters.status.value"
+            :options="filterOptions.statuses"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="All statuses"
+            class="filter-select"
+            showClear
+          />
+          <IconField class="search-field">
+            <InputIcon class="pi pi-search" />
+            <InputText
+              v-model="filters.search.value"
+              placeholder="Code or name…"
+            />
+          </IconField>
+          <Button
+            v-if="hasActiveFilters"
+            icon="pi pi-filter-slash"
+            text
+            rounded
+            severity="secondary"
+            v-tooltip="'Clear filters'"
+            @click="clearFilters"
+          />
+        </div>
+      </div>
 
-		<DataTable
-			:value="jobs"
-			:loading="loading"
-			:total-records="total"
-			:rows="pageSize"
-			:first="page * pageSize"
-			lazy
-			paginator
-			:rows-per-page-options="[10, 20, 50, 100]"
-			data-key="id"
-			row-hover
-			selection-mode="single"
-			@row-click="onRowClick"
-			@page="onPage"
-		>
-			<Column header="Code" field="code" style="width: 22%">
-				<template #body="{ data }">
-					<span class="font-mono text-sm">{{ data.code }}</span>
-					<div v-if="data.hasActiveInstance" class="text-xs text-orange-500 mt-1">
-						<i class="pi pi-spinner pi-spin mr-1" /> running
-					</div>
-				</template>
-			</Column>
-			<Column header="Name" field="name" style="width: 18%" />
-			<Column header="Scope" style="width: 14%">
-				<template #body="{ data }">
-					<span v-if="data.clientName">{{ data.clientName }}</span>
-					<span v-else class="text-gray-500 italic">Platform</span>
-				</template>
-			</Column>
-			<Column header="Crons" style="width: 18%">
-				<template #body="{ data }">
-					<span class="font-mono text-xs">{{ formatCrons(data.crons) }}</span>
-					<div class="text-xs text-gray-500">{{ data.timezone }}</div>
-				</template>
-			</Column>
-			<Column header="Status" style="width: 8%">
-				<template #body="{ data }">
-					<Tag :value="data.status" :severity="statusSeverity(data.status)" />
-				</template>
-			</Column>
-			<Column header="Last Fired" style="width: 14%">
-				<template #body="{ data }">
-					<span class="text-sm">{{ formatDate(data.lastFiredAt) }}</span>
-				</template>
-			</Column>
-			<Column header="" style="width: 6%">
-				<template #body="{ data }">
-					<Button
-						icon="pi pi-arrow-right"
-						severity="secondary"
-						text
-						@click.stop="viewJob(data)"
-					/>
-				</template>
-			</Column>
-		</DataTable>
-	</div>
+      <DataTable
+        :value="jobs"
+        :loading="loading"
+        :total-records="total"
+        :rows="pageSize"
+        :first="page * pageSize"
+        lazy
+        paginator
+        :rows-per-page-options="[10, 20, 50, 100]"
+        data-key="id"
+        row-hover
+        selection-mode="single"
+        stripedRows
+        emptyMessage="No scheduled jobs found"
+        @row-click="onRowClick"
+        @page="onPage"
+      >
+        <Column header="Code" field="code" style="width: 22%">
+          <template #body="{ data }">
+            <span class="font-mono text-sm">{{ data.code }}</span>
+            <div v-if="data.hasActiveInstance" class="active-flag">
+              <i class="pi pi-spinner pi-spin" /> running
+            </div>
+          </template>
+        </Column>
+        <Column header="Name" field="name" style="width: 18%" />
+        <Column header="Scope" style="width: 14%">
+          <template #body="{ data }">
+            <span v-if="data.clientName">{{ data.clientName }}</span>
+            <span v-else class="scope-platform">Platform</span>
+          </template>
+        </Column>
+        <Column header="Crons" style="width: 18%">
+          <template #body="{ data }">
+            <span class="font-mono text-sm">{{ formatCrons(data.crons) }}</span>
+            <div class="text-muted text-xs">{{ data.timezone }}</div>
+          </template>
+        </Column>
+        <Column header="Status" style="width: 8rem">
+          <template #body="{ data }">
+            <Tag :value="data.status" :severity="statusSeverity(data.status)" />
+          </template>
+        </Column>
+        <Column header="Last Fired" style="width: 14%">
+          <template #body="{ data }">
+            <span class="text-sm">{{ formatDate(data.lastFiredAt) }}</span>
+          </template>
+        </Column>
+        <Column header="" style="width: 4rem">
+          <template #body="{ data }">
+            <Button
+              icon="pi pi-arrow-right"
+              severity="secondary"
+              text
+              rounded
+              @click.stop="viewJob(data)"
+            />
+          </template>
+        </Column>
+      </DataTable>
+    </div>
+  </div>
 </template>
+
+<style scoped>
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 16px;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.filter-select {
+  min-width: 200px;
+}
+
+.search-field {
+  flex: 1 1 240px;
+}
+
+.search-field :deep(.p-inputtext) {
+  width: 100%;
+}
+
+.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.text-sm { font-size: 0.875rem; }
+.text-xs { font-size: 0.75rem; }
+.text-muted { color: var(--text-color-secondary); }
+
+.active-flag {
+  font-size: 0.75rem;
+  color: var(--orange-500, #f97316);
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.scope-platform {
+  color: var(--text-color-secondary);
+  font-style: italic;
+}
+</style>
