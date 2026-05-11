@@ -5,14 +5,13 @@ use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum AuthProvider {
+    #[default]
     Internal,
     Oidc,
 }
 
-impl Default for AuthProvider {
-    fn default() -> Self { Self::Internal }
-}
 
 impl AuthProvider {
     pub fn as_str(&self) -> &'static str {
@@ -25,15 +24,14 @@ impl AuthProvider {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum AuthConfigType {
     Anchor,
     Partner,
+    #[default]
     Client,
 }
 
-impl Default for AuthConfigType {
-    fn default() -> Self { Self::Client }
-}
 
 impl AuthConfigType {
     pub fn as_str(&self) -> &'static str {

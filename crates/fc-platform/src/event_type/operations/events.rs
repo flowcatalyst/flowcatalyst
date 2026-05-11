@@ -122,8 +122,11 @@ impl EventTypeCreatedBuilder {
         }
     }
 
-    /// Initialize from execution context (like Java's .from(ctx))
-    pub fn from_context(mut self, ctx: &ExecutionContext) -> Self {
+    /// Initialize from execution context (like Java's .from(ctx)).
+    /// Named `with_context` (not `from_context`) so it doesn't trigger
+    /// clippy's `wrong_self_convention` — `from_*` is conventionally for
+    /// constructors taking no `self`.
+    pub fn with_context(mut self, ctx: &ExecutionContext) -> Self {
         self.event_id = Some(TsidGenerator::generate_untyped());
         self.execution_id = Some(ctx.execution_id.clone());
         self.correlation_id = Some(ctx.correlation_id.clone());
@@ -178,7 +181,7 @@ impl EventTypeCreatedBuilder {
     }
 
     pub fn build(self) -> EventTypeCreated {
-        let event_id = self.event_id.unwrap_or_else(|| TsidGenerator::generate_untyped());
+        let event_id = self.event_id.unwrap_or_else(TsidGenerator::generate_untyped);
         let event_type_id = self.event_type_id.expect("event_type_id is required");
         let subject = format!("platform.eventtype.{}", event_type_id);
         let message_group = format!("platform:eventtype:{}", event_type_id);
@@ -530,7 +533,7 @@ mod tests {
         let ctx = ExecutionContext::create("user-123");
 
         let event = EventTypeCreated::builder()
-            .from_context(&ctx)
+            .with_context(&ctx)
             .event_type_id("0HZXEQ5Y8JY5Z")
             .code("orders:fulfillment:shipment:shipped")
             .name("Shipment Shipped")

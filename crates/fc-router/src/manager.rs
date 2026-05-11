@@ -1784,7 +1784,7 @@ impl QueueManager {
             .collect();
 
         // Sort by elapsed time descending (oldest first)
-        messages.sort_by(|a, b| b.elapsed_time_ms.cmp(&a.elapsed_time_ms));
+        messages.sort_by_key(|m| std::cmp::Reverse(m.elapsed_time_ms));
 
         // Apply limit
         messages.truncate(limit);
@@ -1863,6 +1863,9 @@ mod callback_drop_tests {
         async fn stop(&self) {}
     }
 
+    // Test helper — tuple return is intentionally ad-hoc; a type alias
+    // would only obscure intent for a single call site.
+    #[allow(clippy::type_complexity)]
     fn build_callback(
         consumer: Arc<RecordingConsumer>,
     ) -> (

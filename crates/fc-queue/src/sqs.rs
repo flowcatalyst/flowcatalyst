@@ -72,7 +72,7 @@ impl SqsQueueConsumer {
     pub async fn from_queue_url(client: Client, queue_url: String, visibility_timeout_seconds: i32) -> Self {
         let queue_name = queue_url
             .split('/')
-            .last()
+            .next_back()
             .unwrap_or("unknown")
             .to_string();
 

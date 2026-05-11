@@ -89,7 +89,7 @@ pub struct RoleResponse {
 impl From<AuthRole> for RoleResponse {
     fn from(r: AuthRole) -> Self {
         // Extract short name (part after colon, e.g., "platform:admin" -> "admin")
-        let short_name = r.name.split(':').last().unwrap_or(&r.name).to_string();
+        let short_name = r.name.split(':').next_back().unwrap_or(&r.name).to_string();
         Self {
             id: r.id,
             name: r.name,

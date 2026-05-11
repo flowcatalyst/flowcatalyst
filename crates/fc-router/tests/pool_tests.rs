@@ -1,3 +1,7 @@
+// `for i in 0..N { assert_eq!(processed[i], …) }` reads more naturally
+// in assertion-heavy tests than the enumerate() rewrite the lint pushes.
+#![allow(clippy::needless_range_loop)]
+
 //! ProcessPool Unit Tests
 //!
 //! Tests for:

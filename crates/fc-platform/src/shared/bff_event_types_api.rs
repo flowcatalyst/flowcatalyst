@@ -927,11 +927,11 @@ pub async fn get_filter_aggregates(
             let app_match = query
                 .application
                 .as_ref()
-                .map_or(true, |app| &et.application == app);
+                .is_none_or(|app| &et.application == app);
             let sub_match = query
                 .subdomain
                 .as_ref()
-                .map_or(true, |sub| &et.subdomain == sub);
+                .is_none_or(|sub| &et.subdomain == sub);
             app_match && sub_match
         })
         .collect();

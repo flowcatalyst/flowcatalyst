@@ -11,18 +11,15 @@ pub use fc_common::DispatchStatus;
 /// Dispatch job kind
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum DispatchKind {
     /// Dispatching an event
+    #[default]
     Event,
     /// Dispatching a task/command
     Task,
 }
 
-impl Default for DispatchKind {
-    fn default() -> Self {
-        Self::Event
-    }
-}
 
 impl DispatchKind {
     pub fn as_str(&self) -> &'static str {
@@ -36,15 +33,12 @@ impl DispatchKind {
 /// Target protocol for dispatch
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum DispatchProtocol {
+    #[default]
     HttpWebhook,
 }
 
-impl Default for DispatchProtocol {
-    fn default() -> Self {
-        Self::HttpWebhook
-    }
-}
 
 impl DispatchProtocol {
     pub fn as_str(&self) -> &'static str { "HTTP_WEBHOOK" }
@@ -54,20 +48,17 @@ impl DispatchProtocol {
 /// Retry strategy for failed jobs
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum RetryStrategy {
     /// Immediate retry
     Immediate,
     /// Fixed delay between retries
     FixedDelay,
     /// Exponential backoff
+    #[default]
     ExponentialBackoff,
 }
 
-impl Default for RetryStrategy {
-    fn default() -> Self {
-        Self::ExponentialBackoff
-    }
-}
 
 impl RetryStrategy {
     pub fn as_str(&self) -> &'static str {
@@ -997,7 +988,7 @@ mod tests {
         let scheduled = job.scheduled_for.expect("retry scheduled");
         // Immediate → delay 0. Allow 5s slack for test clock.
         let diff = (scheduled - before).num_seconds();
-        assert!(diff >= 0 && diff < 5, "immediate delay should be ~0, got {}s", diff);
+        assert!((0..5).contains(&diff), "immediate delay should be ~0, got {}s", diff);
     }
 
     #[test]
@@ -1008,7 +999,7 @@ mod tests {
         let scheduled = job.scheduled_for.expect("retry scheduled");
         let diff = (scheduled - before).num_seconds();
         // FixedDelay = 5s. Allow 1s slack either side.
-        assert!(diff >= 4 && diff <= 7, "fixed delay should be ~5s, got {}s", diff);
+        assert!((4..=7).contains(&diff), "fixed delay should be ~5s, got {}s", diff);
     }
 
     #[test]
@@ -1022,17 +1013,17 @@ mod tests {
         let t0 = Utc::now();
         job.record_failure("boom".into(), ErrorType::HttpError, None);
         let d1 = (job.scheduled_for.unwrap() - t0).num_seconds();
-        assert!(d1 >= 4 && d1 <= 7, "attempt 1 delay should be ~5s, got {}s", d1);
+        assert!((4..=7).contains(&d1), "attempt 1 delay should be ~5s, got {}s", d1);
 
         let t1 = Utc::now();
         job.record_failure("boom".into(), ErrorType::HttpError, None);
         let d2 = (job.scheduled_for.unwrap() - t1).num_seconds();
-        assert!(d2 >= 23 && d2 <= 28, "attempt 2 delay should be ~25s, got {}s", d2);
+        assert!((23..=28).contains(&d2), "attempt 2 delay should be ~25s, got {}s", d2);
 
         let t2 = Utc::now();
         job.record_failure("boom".into(), ErrorType::HttpError, None);
         let d3 = (job.scheduled_for.unwrap() - t2).num_seconds();
-        assert!(d3 >= 120 && d3 <= 130, "attempt 3 delay should be ~125s, got {}s", d3);
+        assert!((120..=130).contains(&d3), "attempt 3 delay should be ~125s, got {}s", d3);
     }
 
     #[test]
@@ -1047,7 +1038,7 @@ mod tests {
         job.record_failure("boom".into(), ErrorType::HttpError, None);
         let d = (job.scheduled_for.unwrap() - t).num_seconds();
         // After 7 failures, attempt_count=7 but .min(5) keeps delay at 5^5 = 3125s.
-        assert!(d >= 3100 && d <= 3150, "capped delay should be ~3125s, got {}s", d);
+        assert!((3100..=3150).contains(&d), "capped delay should be ~3125s, got {}s", d);
     }
 
     // ── Attempt-list integrity through a failure→success sequence ─────────

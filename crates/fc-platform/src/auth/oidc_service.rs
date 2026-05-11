@@ -315,7 +315,7 @@ impl OidcService {
             .keys
             .iter()
             .find(|k| {
-                header.kid.as_ref().map_or(true, |kid| k.kid.as_ref() == Some(kid))
+                header.kid.as_ref().is_none_or(|kid| k.kid.as_ref() == Some(kid))
             })
             .ok_or_else(|| PlatformError::InvalidToken {
                 message: "No matching key found in JWKS".to_string(),

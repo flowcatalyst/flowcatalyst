@@ -640,8 +640,7 @@ async fn oidc_flow_auth(state: &AuthState, request: Request, next: Next) -> Resp
         .map(|s| s.to_string());
 
     if let Some(ref auth) = auth_header {
-        if auth.starts_with("Bearer ") {
-            let token = &auth[7..];
+        if let Some(token) = auth.strip_prefix("Bearer ") {
             if !token.is_empty() {
                 if let Some(ref validator) = state.oidc_validator {
                     match validator.validate_token(token).await {
@@ -654,8 +653,8 @@ async fn oidc_flow_auth(state: &AuthState, request: Request, next: Next) -> Resp
                         }
                         Err(e) => {
                             // Try JWKS refresh on signature/key errors
-                            if e.contains("signature") || e.contains("key") {
-                                if validator.refresh_jwks().await.is_ok() {
+                            if (e.contains("signature") || e.contains("key"))
+                                && validator.refresh_jwks().await.is_ok() {
                                     if let Ok(claims) = validator.validate_token(token).await {
                                         debug!(
                                             sub = %claims.sub,
@@ -664,7 +663,6 @@ async fn oidc_flow_auth(state: &AuthState, request: Request, next: Next) -> Resp
                                         return next.run(request).await;
                                     }
                                 }
-                            }
                             debug!(error = %e, "OIDC flow: Bearer token validation failed");
                         }
                     }

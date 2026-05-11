@@ -1655,6 +1655,29 @@ pub async fn get_available_applications(
     Ok(Json(AvailableApplicationsResponse { applications, total }))
 }
 
+/// Create principals router
+pub fn principals_router(state: PrincipalsState) -> OpenApiRouter {
+    OpenApiRouter::new()
+        // `routes!(...)` groups handlers on the SAME path; `create_user` is
+        // `/users` and `list_principals` is `""`, so they must be registered
+        // separately or only one gets mounted (previously the cause of 405s).
+        .routes(routes!(list_principals))
+        .routes(routes!(create_user))
+        .routes(routes!(check_email_domain))
+        .routes(routes!(get_principal, update_principal, delete_principal))
+        .routes(routes!(activate_principal))
+        .routes(routes!(deactivate_principal))
+        .routes(routes!(reset_password))
+        .routes(routes!(send_password_reset))
+        .routes(routes!(get_roles, assign_role, batch_assign_roles))
+        .routes(routes!(remove_role))
+        .routes(routes!(get_client_access, grant_client_access))
+        .routes(routes!(revoke_client_access))
+        .routes(routes!(get_application_access, set_application_access))
+        .routes(routes!(get_available_applications))
+        .with_state(state)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1834,27 +1857,4 @@ mod tests {
         let result = serde_json::from_value::<AssignRoleRequest>(json);
         assert!(result.is_err(), "Should fail without role");
     }
-}
-
-/// Create principals router
-pub fn principals_router(state: PrincipalsState) -> OpenApiRouter {
-    OpenApiRouter::new()
-        // `routes!(...)` groups handlers on the SAME path; `create_user` is
-        // `/users` and `list_principals` is `""`, so they must be registered
-        // separately or only one gets mounted (previously the cause of 405s).
-        .routes(routes!(list_principals))
-        .routes(routes!(create_user))
-        .routes(routes!(check_email_domain))
-        .routes(routes!(get_principal, update_principal, delete_principal))
-        .routes(routes!(activate_principal))
-        .routes(routes!(deactivate_principal))
-        .routes(routes!(reset_password))
-        .routes(routes!(send_password_reset))
-        .routes(routes!(get_roles, assign_role, batch_assign_roles))
-        .routes(routes!(remove_role))
-        .routes(routes!(get_client_access, grant_client_access))
-        .routes(routes!(revoke_client_access))
-        .routes(routes!(get_application_access, set_application_access))
-        .routes(routes!(get_available_applications))
-        .with_state(state)
 }

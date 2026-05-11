@@ -27,6 +27,13 @@ const DEFAULT_GROUP: &str = "__DEFAULT__";
 const QUEUE_CAPACITY_MULTIPLIER: u32 = 20;  // Java: QUEUE_CAPACITY_MULTIPLIER = 20
 const MIN_QUEUE_CAPACITY: u32 = 50;          // Java: MIN_QUEUE_CAPACITY = 50
 
+/// Pool-wide rate limiter shared across all message groups in a pool.
+/// Wrapped in `RwLock<Option<...>>` so the limiter can be hot-swapped at
+/// runtime when a pool's configured rate changes — readers (workers) keep
+/// using their snapshot, the next acquire picks up the new limit.
+type SharedRateLimiter =
+    Arc<parking_lot::RwLock<Option<Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock>>>>>;
+
 /// Composite key for batch+group tracking - avoids format!() string allocation
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BatchGroupKey {
@@ -125,7 +132,7 @@ pub struct ProcessPool {
     batch_group_message_count: Arc<DashMap<BatchGroupKey, AtomicU32>>,
 
     /// Rate limiter (optional, behind Arc<RwLock> for sharing with workers and in-place updates)
-    rate_limiter: Arc<parking_lot::RwLock<Option<Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock>>>>>,
+    rate_limiter: SharedRateLimiter,
 
     /// Current rate limit value for comparison during updates
     rate_limit_per_minute: Arc<parking_lot::RwLock<Option<u32>>>,
@@ -781,7 +788,7 @@ impl ProcessPool {
     /// wait. Across groups, each drain task has its own future, so one
     /// waiter doesn't block other groups.
     async fn wait_for_rate_limit_permit(
-        rate_limiter: &Arc<parking_lot::RwLock<Option<Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock>>>>>,
+        rate_limiter: &SharedRateLimiter,
         metrics_collector: &Arc<PoolMetricsCollector>,
     ) {
         let limiter = rate_limiter.read().clone();

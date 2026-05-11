@@ -237,7 +237,7 @@ async fn main() -> Result<()> {
     };
 
     let is_leader = move || {
-        leader_election.as_ref().map_or(true, |e| e.is_leader())
+        leader_election.as_ref().is_none_or(|e| e.is_leader())
     };
 
     // ── Platform API ─────────────────────────────────────────────────────────
@@ -402,7 +402,7 @@ async fn main() -> Result<()> {
         scheduler_enabled,
         stream_enabled,
         outbox_enabled,
-        is_leader: Arc::new(move || is_leader_for_health()),
+        is_leader: Arc::new(is_leader_for_health),
     };
 
     let metrics_app = Router::new()

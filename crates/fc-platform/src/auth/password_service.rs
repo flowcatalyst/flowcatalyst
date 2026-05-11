@@ -448,8 +448,8 @@ mod tests {
         // expires_at should be ~1 hour from now
         let diff_from_before = (token.expires_at - before).num_seconds();
         let diff_from_after = (token.expires_at - after).num_seconds();
-        assert!(diff_from_before >= 3599 && diff_from_before <= 3601);
-        assert!(diff_from_after >= 3599 && diff_from_after <= 3601);
+        assert!((3599..=3601).contains(&diff_from_before));
+        assert!((3599..=3601).contains(&diff_from_after));
     }
 
     #[test]

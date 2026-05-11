@@ -163,6 +163,12 @@ impl StandbyAwareProcessor {
 /// No-op standby processor for when standby mode is disabled
 pub struct DisabledStandbyProcessor;
 
+impl Default for DisabledStandbyProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DisabledStandbyProcessor {
     pub fn new() -> Self {
         Self

@@ -249,12 +249,14 @@ pub async fn list_service_accounts<U: UnitOfWork>(
     _auth: Authenticated,
     Query(query): Query<ServiceAccountsQuery>,
 ) -> Result<Json<ServiceAccountListResponse>, PlatformError> {
+    // `find_active()` is the default regardless of the requested `active`
+    // filter — inactive lookups are then handled by the `.retain()` below.
+    // (Worth revisiting: inactive accounts are currently unreachable via
+    // the unfiltered list.)
     let mut accounts = if let Some(client_id) = query.client_id {
         state.repo.find_by_client(&client_id).await?
     } else if let Some(app_id) = query.application_id {
         state.repo.find_by_application(&app_id).await?
-    } else if query.active == Some(true) {
-        state.repo.find_active().await?
     } else {
         state.repo.find_active().await?
     };

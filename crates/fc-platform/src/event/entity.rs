@@ -179,6 +179,26 @@ pub struct EventFilterOptions {
     pub types: Vec<String>,
 }
 
+impl From<&Event> for EventRead {
+    fn from(event: &Event) -> Self {
+        Self {
+            id: event.id.clone(),
+            event_type: event.event_type.clone(),
+            source: event.source.clone(),
+            subject: event.subject.clone(),
+            time: event.time,
+            application: event.application().map(String::from),
+            subdomain: event.subdomain().map(String::from),
+            aggregate: event.aggregate().map(String::from),
+            message_group: event.message_group.clone(),
+            correlation_id: event.correlation_id.clone(),
+            client_id: event.client_id.clone(),
+            client_name: None,
+            projected_at: event.created_at,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,25 +312,5 @@ mod tests {
         assert_eq!(read.message_group, Some("g1".to_string()));
         assert_eq!(read.correlation_id, Some("corr1".to_string()));
         assert!(read.client_name.is_none(), "client_name is not populated from Event");
-    }
-}
-
-impl From<&Event> for EventRead {
-    fn from(event: &Event) -> Self {
-        Self {
-            id: event.id.clone(),
-            event_type: event.event_type.clone(),
-            source: event.source.clone(),
-            subject: event.subject.clone(),
-            time: event.time,
-            application: event.application().map(String::from),
-            subdomain: event.subdomain().map(String::from),
-            aggregate: event.aggregate().map(String::from),
-            message_group: event.message_group.clone(),
-            correlation_id: event.correlation_id.clone(),
-            client_id: event.client_id.clone(),
-            client_name: None,
-            projected_at: event.created_at,
-        }
     }
 }

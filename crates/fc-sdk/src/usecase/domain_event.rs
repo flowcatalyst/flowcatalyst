@@ -88,6 +88,10 @@ pub struct EventMetadata {
 }
 
 impl EventMetadata {
+    // EventMetadata maps 1:1 to CloudEvents fields — each is mandatory and
+    // not naturally groupable. A builder would add ceremony without
+    // shrinking the call site (every field is required).
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         event_id: String,
         event_type: &str,

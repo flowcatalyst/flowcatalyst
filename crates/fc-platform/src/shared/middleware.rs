@@ -281,7 +281,7 @@ where
         req.extensions_mut().insert(self.state.clone());
 
         let future = self.inner.call(req);
-        Box::pin(async move { future.await })
+        Box::pin(future)
     }
 }
 

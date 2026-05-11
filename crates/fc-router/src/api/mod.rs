@@ -143,7 +143,7 @@ impl CachedBrokerStats {
         let cutoff = now.checked_sub(COUNTER_HISTORY_WINDOW).unwrap_or(now);
         let mut history = self.counter_history.write().await;
         history.push_back(CounterHistoryEntry { ts: now, per_queue });
-        while history.front().map_or(false, |e| e.ts < cutoff) {
+        while history.front().is_some_and(|e| e.ts < cutoff) {
             history.pop_front();
         }
     }
@@ -465,6 +465,10 @@ pub fn create_router(
 /// If the `oidc-flow` feature is enabled and auth mode is `OidcFlow`, the
 /// `/auth/login`, `/auth/callback`, and `/auth/logout` routes are automatically
 /// merged into the router.
+// Router wiring requires every component as an explicit param so the caller
+// can swap individual pieces (different queue, no-op health service, etc.)
+// in tests. A builder would just be a rename of the same surface.
+#[allow(clippy::too_many_arguments)]
 pub fn create_router_with_options(
     publisher: Arc<dyn QueuePublisher>,
     queue_manager: Arc<QueueManager>,
@@ -1021,7 +1025,7 @@ async fn list_warnings(
     }
 
     // Sort by created_at descending (newest first)
-    warnings.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    warnings.sort_by_key(|w| std::cmp::Reverse(w.created_at));
 
     Json(warnings)
 }
@@ -1155,9 +1159,9 @@ async fn dashboard_health_handler(State(state): State<AppState>) -> Json<Dashboa
         timestamp: Utc::now().to_rfc3339(),
         uptime_millis: get_uptime_millis(),
         details: Some(DashboardHealthDetails {
-            total_queues: (health_report.consumers_healthy + health_report.consumers_unhealthy) as u32,
+            total_queues: (health_report.consumers_healthy + health_report.consumers_unhealthy),
             healthy_queues: health_report.consumers_healthy,
-            total_pools: (health_report.pools_healthy + health_report.pools_unhealthy) as u32,
+            total_pools: (health_report.pools_healthy + health_report.pools_unhealthy),
             healthy_pools: health_report.pools_healthy,
             active_warnings: health_report.active_warnings,
             critical_warnings: health_report.critical_warnings,

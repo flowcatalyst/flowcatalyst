@@ -10,18 +10,15 @@ use crate::service_account::entity::RoleAssignment;
 /// Principal type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum PrincipalType {
     /// Human user
+    #[default]
     User,
     /// Machine service account
     Service,
 }
 
-impl Default for PrincipalType {
-    fn default() -> Self {
-        Self::User
-    }
-}
 
 impl PrincipalType {
     pub fn as_str(&self) -> &str {
@@ -31,6 +28,8 @@ impl PrincipalType {
         }
     }
 
+    // Lenient: unknown input maps to User by design (legacy DB rows).
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "SERVICE" => Self::Service,
@@ -42,20 +41,17 @@ impl PrincipalType {
 /// User scope determines client access level
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum UserScope {
     /// Platform admin - access to all clients
     Anchor,
     /// Partner user - access to multiple assigned clients
     Partner,
     /// Client user - access to single home client
+    #[default]
     Client,
 }
 
-impl Default for UserScope {
-    fn default() -> Self {
-        Self::Client
-    }
-}
 
 impl UserScope {
     pub fn as_str(&self) -> &str {
@@ -66,6 +62,8 @@ impl UserScope {
         }
     }
 
+    // Lenient: unknown input maps to Client (most restrictive scope).
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "ANCHOR" => Self::Anchor,

@@ -168,7 +168,7 @@ impl<U: UnitOfWork> UseCase for CreateEventTypeUseCase<U> {
 
         // Create domain event
         let event = EventTypeCreated::builder()
-            .from_context(&ctx)
+            .with_context(&ctx)
             .event_type_id(&event_type.id)
             .code(&event_type.code)
             .name(&event_type.name)

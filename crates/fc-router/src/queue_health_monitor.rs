@@ -43,19 +43,12 @@ impl Default for QueueHealthConfig {
 }
 
 /// Queue size history for growth detection
+#[derive(Default)]
 struct QueueSizeHistory {
     last_size: Option<u64>,
     consecutive_growth_periods: u32,
 }
 
-impl Default for QueueSizeHistory {
-    fn default() -> Self {
-        Self {
-            last_size: None,
-            consecutive_growth_periods: 0,
-        }
-    }
-}
 
 /// Queue Health Monitor
 pub struct QueueHealthMonitor {

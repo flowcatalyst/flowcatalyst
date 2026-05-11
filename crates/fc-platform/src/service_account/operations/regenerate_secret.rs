@@ -15,7 +15,7 @@ use super::events::ServiceAccountSecretRegenerated;
 /// Generate a signing secret (URL-safe base64)
 fn generate_signing_secret() -> String {
     let bytes: [u8; 32] = rand::rng().random();
-    base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, &bytes)
+    base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, bytes)
 }
 
 /// Command for regenerating a service account's signing secret.

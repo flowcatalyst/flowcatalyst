@@ -68,7 +68,7 @@ impl<U: UnitOfWork> UseCase for UpdateScheduledJobUseCase<U> {
                 ));
             }
             for c in crons {
-                let fields = c.trim().split_whitespace().count();
+                let fields = c.split_whitespace().count();
                 if c.trim().is_empty() || !(5..=7).contains(&fields) {
                     return Err(UseCaseError::validation(
                         "CRON_INVALID_SHAPE",

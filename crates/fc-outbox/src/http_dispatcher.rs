@@ -188,7 +188,7 @@ impl HttpDispatcher {
                         401 => OutboxStatus::UNAUTHORIZED,
                         403 => OutboxStatus::FORBIDDEN,
                         500 => OutboxStatus::INTERNAL_ERROR,
-                        502 | 503 | 504 => OutboxStatus::GATEWAY_ERROR,
+                        502..=504 => OutboxStatus::GATEWAY_ERROR,
                         _ => OutboxStatus::INTERNAL_ERROR,
                     };
 
@@ -218,7 +218,7 @@ impl HttpDispatcher {
 #[async_trait]
 impl MessageDispatcher for HttpDispatcher {
     async fn dispatch(&self, item: &OutboxItem) -> DispatchResult {
-        let results = self.send_outbox_batch(&[item.clone()]).await;
+        let results = self.send_outbox_batch(std::slice::from_ref(item)).await;
 
         match results.first() {
             Some(result) => {

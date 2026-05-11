@@ -356,7 +356,7 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
                 let probe_says_applied = if let Some((_, probe_sql)) =
                     probes.iter().find(|(p_id, _)| *p_id == *id)
                 {
-                    let r: (bool,) = sqlx::query_as(*probe_sql)
+                    let r: (bool,) = sqlx::query_as(probe_sql)
                         .fetch_one(&mut *tx)
                         .await?;
                     r.0
@@ -608,41 +608,6 @@ fn split_sql_statements(sql: &str) -> Vec<String> {
     out
 }
 
-#[cfg(test)]
-mod sql_split_tests {
-    use super::split_sql_statements;
-
-    #[test]
-    fn splits_simple_statements() {
-        let sql = "SELECT 1; SELECT 2;";
-        let parts = split_sql_statements(sql);
-        assert_eq!(parts.len(), 2);
-    }
-
-    #[test]
-    fn preserves_dollar_quoted_block() {
-        let sql = "DO $$ BEGIN SELECT 1; SELECT 2; END $$; SELECT 3;";
-        let parts = split_sql_statements(sql);
-        assert_eq!(parts.len(), 2);
-        assert!(parts[0].contains("BEGIN"));
-        assert!(parts[0].contains("END"));
-    }
-
-    #[test]
-    fn handles_tagged_dollar_quote() {
-        let sql = "CREATE FUNCTION f() RETURNS void AS $body$ BEGIN END; $body$ LANGUAGE plpgsql; SELECT 1;";
-        let parts = split_sql_statements(sql);
-        assert_eq!(parts.len(), 2);
-    }
-
-    #[test]
-    fn ignores_semicolons_in_strings() {
-        let sql = "INSERT INTO t VALUES ('a;b'); SELECT 1;";
-        let parts = split_sql_statements(sql);
-        assert_eq!(parts.len(), 2);
-    }
-}
-
 // ── Built-in role seeding ────────────────────────────────────────────────────
 
 /// Ensure the platform's built-in roles (defined in `role::entity::roles::all()`)
@@ -678,4 +643,39 @@ pub async fn seed_builtin_roles(pool: &PgPool) -> Result<(), sqlx::Error> {
         info!(count = inserted, "Built-in role seeding complete");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod sql_split_tests {
+    use super::split_sql_statements;
+
+    #[test]
+    fn splits_simple_statements() {
+        let sql = "SELECT 1; SELECT 2;";
+        let parts = split_sql_statements(sql);
+        assert_eq!(parts.len(), 2);
+    }
+
+    #[test]
+    fn preserves_dollar_quoted_block() {
+        let sql = "DO $$ BEGIN SELECT 1; SELECT 2; END $$; SELECT 3;";
+        let parts = split_sql_statements(sql);
+        assert_eq!(parts.len(), 2);
+        assert!(parts[0].contains("BEGIN"));
+        assert!(parts[0].contains("END"));
+    }
+
+    #[test]
+    fn handles_tagged_dollar_quote() {
+        let sql = "CREATE FUNCTION f() RETURNS void AS $body$ BEGIN END; $body$ LANGUAGE plpgsql; SELECT 1;";
+        let parts = split_sql_statements(sql);
+        assert_eq!(parts.len(), 2);
+    }
+
+    #[test]
+    fn ignores_semicolons_in_strings() {
+        let sql = "INSERT INTO t VALUES ('a;b'); SELECT 1;";
+        let parts = split_sql_statements(sql);
+        assert_eq!(parts.len(), 2);
+    }
 }

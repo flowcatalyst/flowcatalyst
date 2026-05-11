@@ -722,6 +722,13 @@ pub struct InMemoryUnitOfWork {
 }
 
 #[cfg(test)]
+impl Default for InMemoryUnitOfWork {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
 impl InMemoryUnitOfWork {
     pub fn new() -> Self {
         Self { committed_events: std::sync::Mutex::new(Vec::new()) }

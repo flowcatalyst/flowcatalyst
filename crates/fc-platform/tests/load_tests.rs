@@ -61,7 +61,7 @@ async fn test_client_sequential_insert_throughput() {
 
     let start = Instant::now();
     for i in 0..count {
-        let client = Client::new(&format!("Load Test {}", i), &format!("load-test-{}", i));
+        let client = Client::new(format!("Load Test {}", i), format!("load-test-{}", i));
         repo.insert(&client).await.expect("Failed to insert client");
     }
     let elapsed = start.elapsed();
@@ -106,11 +106,11 @@ async fn test_dispatch_job_batch_insert_throughput() {
     let jobs: Vec<DispatchJob> = (0..100)
         .map(|i| {
             DispatchJob::for_event(
-                &format!("evt-{}", i),
+                format!("evt-{}", i),
                 "load:test:event",
                 "load-test",
                 "https://example.com/webhook",
-                &format!("{{\"index\":{}}}", i),
+                format!("{{\"index\":{}}}", i),
             )
         })
         .collect();
@@ -131,7 +131,7 @@ async fn test_dispatch_job_batch_insert_throughput() {
         let jobs: Vec<DispatchJob> = (0..100)
             .map(|i| {
                 DispatchJob::for_event(
-                    &format!("evt-b{}-{}", batch, i),
+                    format!("evt-b{}-{}", batch, i),
                     "load:test:event",
                     "load-test",
                     "https://example.com/webhook",
@@ -171,7 +171,7 @@ async fn test_concurrent_event_inserts() {
             for i in 0..per_task {
                 let event = Event::new(
                     "load:concurrent:event",
-                    &format!("task-{}", task_id),
+                    format!("task-{}", task_id),
                     serde_json::json!({"task": task_id, "index": i}),
                 );
                 repo.insert(&event).await.expect("Failed to insert event");
@@ -208,8 +208,8 @@ async fn test_concurrent_client_inserts() {
         let handle = tokio::spawn(async move {
             for i in 0..per_task {
                 let client = Client::new(
-                    &format!("Concurrent {} - {}", task_id, i),
-                    &format!("conc-{}-{}", task_id, i),
+                    format!("Concurrent {} - {}", task_id, i),
+                    format!("conc-{}-{}", task_id, i),
                 );
                 repo.insert(&client).await.expect("Failed to insert client");
             }
@@ -241,7 +241,7 @@ async fn test_dispatch_job_query_performance() {
         let jobs: Vec<DispatchJob> = (0..100)
             .map(|i| {
                 let mut job = DispatchJob::for_event(
-                    &format!("evt-q{}-{}", batch, i),
+                    format!("evt-q{}-{}", batch, i),
                     "load:query:event",
                     "load-test",
                     "https://example.com/webhook",
@@ -288,7 +288,6 @@ async fn test_dispatch_job_query_performance() {
 async fn test_api_batch_events_throughput() {
     use axum::{body::Body, http::Request, Router};
     use tower::ServiceExt;
-    use http_body_util::BodyExt;
     use fc_platform::auth::auth_service::{AuthConfig, AuthService};
     use fc_platform::domain::{Principal, UserScope};
     use fc_platform::{RoleRepository, AuthorizationService};

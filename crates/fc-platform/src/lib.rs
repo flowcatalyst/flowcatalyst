@@ -1,3 +1,14 @@
+// Domain enums across this crate expose `pub fn from_str(s: &str) -> Self`
+// helpers that intentionally don't follow `std::str::FromStr` semantics —
+// they map unknown input to a sane default rather than returning a parse
+// error. Doing this per-enum with `#[allow]` would noise up ~30 call sites.
+#![allow(clippy::should_implement_trait)]
+// Domain events and use case constructors naturally take many parameters —
+// every CloudEvents field is required, every command needs its full set of
+// inputs. A builder per type would replace one rename with several without
+// reducing the surface.
+#![allow(clippy::too_many_arguments)]
+
 //! FlowCatalyst Platform
 //!
 //! Core platform providing:

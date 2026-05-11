@@ -514,19 +514,12 @@ impl Default for PkceConfig {
 /// Remote authentication configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct RemoteAuthConfig {
     pub jwks_url: String,
     pub issuer: String,
 }
 
-impl Default for RemoteAuthConfig {
-    fn default() -> Self {
-        Self {
-            jwks_url: String::new(),
-            issuer: String::new(),
-        }
-    }
-}
 
 impl AppConfig {
     /// Load configuration from a TOML file

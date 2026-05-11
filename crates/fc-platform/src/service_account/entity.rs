@@ -8,8 +8,10 @@ use chrono::{DateTime, Utc};
 /// Webhook authentication type — matches TypeScript WebhookAuthType
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum WebhookAuthType {
     /// No authentication
+    #[default]
     None,
     /// Bearer token in Authorization header
     BearerToken,
@@ -21,11 +23,6 @@ pub enum WebhookAuthType {
     HmacSignature,
 }
 
-impl Default for WebhookAuthType {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 impl WebhookAuthType {
     pub fn as_str(&self) -> &str {

@@ -6,7 +6,7 @@
 use std::cell::RefCell;
 
 thread_local! {
-    static TRACING_CONTEXT: RefCell<Option<TracingContext>> = RefCell::new(None);
+    static TRACING_CONTEXT: RefCell<Option<TracingContext>> = const { RefCell::new(None) };
 }
 
 /// Distributed tracing context for correlation and causation tracking.

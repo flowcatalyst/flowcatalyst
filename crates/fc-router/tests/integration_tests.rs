@@ -17,7 +17,6 @@ use fc_common::{
 };
 use fc_queue::{QueueConsumer, QueueError};
 use fc_router::{QueueManager, HttpMediator, HttpMediatorConfig};
-use chrono::Utc;
 
 /// Mock queue consumer that provides test messages
 struct TestQueueConsumer {

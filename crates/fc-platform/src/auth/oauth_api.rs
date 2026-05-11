@@ -328,7 +328,7 @@ pub async fn authorize(
         if let Some(ref token) = session_token {
             if let Ok(claims) = state.auth_service.validate_token(token) {
                 // Check max_age: if session is older than max_age seconds, force re-authentication
-                let session_too_old = req.max_age.map_or(false, |max_age| {
+                let session_too_old = req.max_age.is_some_and(|max_age| {
                     let now = Utc::now().timestamp();
                     now - claims.iat > max_age
                 });
@@ -1470,7 +1470,12 @@ fn generate_random_string(len: usize) -> String {
         .collect()
 }
 
-/// Helper to extract and validate bearer token from request headers
+/// Helper to extract and validate bearer token from request headers.
+/// The `Err` is an `axum::Response` (~128 bytes) which clippy flags as
+/// large — boxing would add an allocation per failed lookup with no real
+/// benefit, since the response is consumed immediately by `?` in the
+/// caller and returned to axum.
+#[allow(clippy::result_large_err)]
 fn extract_and_validate_token(headers: &HeaderMap, auth_service: &AuthService) -> Result<AccessTokenClaims, Response> {
     let auth_header = headers
         .get(header::AUTHORIZATION)

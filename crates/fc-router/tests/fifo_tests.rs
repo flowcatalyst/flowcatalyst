@@ -1,3 +1,7 @@
+// Assertion-heavy tests read more naturally with `for i in 0..N` than with
+// `enumerate()`.
+#![allow(clippy::needless_range_loop)]
+
 //! FIFO Ordering Tests
 //!
 //! Tests for message ordering within groups:
@@ -15,7 +19,6 @@ use fc_common::{
 };
 use fc_queue::{QueueConsumer, QueueError};
 use fc_router::{QueueManager, Mediator};
-use chrono::Utc;
 
 /// Mediator that tracks processing order
 struct OrderTrackingMediator {

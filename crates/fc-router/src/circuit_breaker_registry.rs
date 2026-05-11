@@ -15,8 +15,10 @@ use utoipa::ToSchema;
 /// Circuit breaker state (matches Java Resilience4j states)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum CircuitBreakerState {
     /// Circuit is closed (normal operation)
+    #[default]
     Closed,
     /// Circuit is open (rejecting requests)
     Open,
@@ -24,11 +26,6 @@ pub enum CircuitBreakerState {
     HalfOpen,
 }
 
-impl Default for CircuitBreakerState {
-    fn default() -> Self {
-        Self::Closed
-    }
-}
 
 /// Statistics for a single circuit breaker (matches Java format)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

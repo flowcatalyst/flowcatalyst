@@ -10,15 +10,14 @@ use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum ScheduledJobStatus {
+    #[default]
     Active,
     Paused,
     Archived,
 }
 
-impl Default for ScheduledJobStatus {
-    fn default() -> Self { Self::Active }
-}
 
 impl ScheduledJobStatus {
     pub fn as_str(&self) -> &'static str {
@@ -286,14 +285,15 @@ impl CompletionStatus {
 /// Log severity for `logForScheduledJobInstance` writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
+#[derive(Default)]
 pub enum LogLevel {
     Debug,
+    #[default]
     Info,
     Warn,
     Error,
 }
 
-impl Default for LogLevel { fn default() -> Self { Self::Info } }
 
 impl LogLevel {
     pub fn as_str(&self) -> &'static str {

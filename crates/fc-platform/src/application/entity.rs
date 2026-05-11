@@ -5,16 +5,13 @@ use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum ApplicationType {
+    #[default]
     Application,
     Integration,
 }
 
-impl Default for ApplicationType {
-    fn default() -> Self {
-        Self::Application
-    }
-}
 
 impl ApplicationType {
     pub fn as_str(&self) -> &'static str {

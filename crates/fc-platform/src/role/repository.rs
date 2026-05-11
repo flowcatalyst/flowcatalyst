@@ -389,7 +389,7 @@ impl RoleRepository {
             return Ok(());
         }
 
-        let role_ids: Vec<String> = std::iter::repeat(role_id.to_string()).take(permissions.len()).collect();
+        let role_ids: Vec<String> = std::iter::repeat_n(role_id.to_string(), permissions.len()).collect();
         let perms: Vec<String> = permissions.iter().cloned().collect();
 
         sqlx::query(

@@ -18,6 +18,7 @@ fc-outbox = { path = "../../crates/fc-outbox", features = ["sqlite", "postgres",
 fc-stream = { path = "../../crates/fc-stream" }
 fc-standby = { path = "../../crates/fc-standby" }
 fc-platform = { path = "../../crates/fc-platform" }
+fc-mcp = { path = "../../crates/fc-mcp" }
 tokio = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }

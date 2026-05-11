@@ -417,9 +417,9 @@ impl PrincipalRepository {
 
         if !principal.accessible_application_ids.is_empty() {
             let count = principal.accessible_application_ids.len();
-            let principal_ids: Vec<String> = std::iter::repeat(principal.id.clone()).take(count).collect();
+            let principal_ids: Vec<String> = std::iter::repeat_n(principal.id.clone(), count).collect();
             let app_ids: Vec<String> = principal.accessible_application_ids.clone();
-            let granted_ats: Vec<DateTime<Utc>> = std::iter::repeat(now).take(count).collect();
+            let granted_ats: Vec<DateTime<Utc>> = std::iter::repeat_n(now, count).collect();
 
             sqlx::query(
                 "INSERT INTO iam_principal_application_access (principal_id, application_id, granted_at)
@@ -524,7 +524,7 @@ impl PrincipalRepository {
         }
 
         let count = roles.len();
-        let pids: Vec<String> = std::iter::repeat(principal_id.to_string()).take(count).collect();
+        let pids: Vec<String> = std::iter::repeat_n(principal_id.to_string(), count).collect();
         let role_names: Vec<String> = roles.iter().map(|r| r.role.clone()).collect();
         let sources: Vec<Option<String>> = roles.iter().map(|r| r.assignment_source.clone()).collect();
         let assigned_ats: Vec<DateTime<Utc>> = roles.iter().map(|r| r.assigned_at).collect();

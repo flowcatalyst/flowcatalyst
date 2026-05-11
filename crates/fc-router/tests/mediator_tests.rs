@@ -14,7 +14,6 @@ use wiremock::matchers::{method, path, header, body_json};
 
 use fc_common::{Message, MediationType, MediationResult};
 use fc_router::{HttpMediator, HttpMediatorConfig, Mediator};
-use chrono::Utc;
 
 fn create_test_message(target: &str) -> Message {
     Message {

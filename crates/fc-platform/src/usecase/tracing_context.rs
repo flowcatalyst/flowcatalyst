@@ -8,7 +8,7 @@ use crate::shared::tsid::TsidGenerator;
 
 thread_local! {
     /// Thread-local storage for tracing context.
-    static TRACING_CONTEXT: RefCell<Option<TracingContext>> = RefCell::new(None);
+    static TRACING_CONTEXT: RefCell<Option<TracingContext>> = const { RefCell::new(None) };
 }
 
 /// Context for distributed tracing.

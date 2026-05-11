@@ -5,14 +5,13 @@ use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum EventTypeStatus {
+    #[default]
     Current,
     Archived,
 }
 
-impl Default for EventTypeStatus {
-    fn default() -> Self { Self::Current }
-}
 
 impl EventTypeStatus {
     pub fn as_str(&self) -> &'static str {
@@ -25,15 +24,14 @@ impl EventTypeStatus {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum EventTypeSource {
     Code,
     Api,
+    #[default]
     Ui,
 }
 
-impl Default for EventTypeSource {
-    fn default() -> Self { Self::Ui }
-}
 
 impl EventTypeSource {
     pub fn as_str(&self) -> &'static str {
@@ -46,15 +44,14 @@ impl EventTypeSource {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum SpecVersionStatus {
+    #[default]
     Finalising,
     Current,
     Deprecated,
 }
 
-impl Default for SpecVersionStatus {
-    fn default() -> Self { Self::Finalising }
-}
 
 impl SpecVersionStatus {
     pub fn as_str(&self) -> &'static str {
@@ -74,8 +71,10 @@ impl SpecVersionStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum SchemaType {
     #[serde(rename = "JSON_SCHEMA")]
+    #[default]
     JsonSchema,
     #[serde(rename = "XSD")]
     Xsd,
@@ -83,9 +82,6 @@ pub enum SchemaType {
     Proto,
 }
 
-impl Default for SchemaType {
-    fn default() -> Self { Self::JsonSchema }
-}
 
 impl SchemaType {
     pub fn as_str(&self) -> &'static str {

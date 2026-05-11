@@ -177,9 +177,8 @@ impl SecretService {
         }
 
         // Encrypted local storage: encrypted:BASE64_CIPHERTEXT
-        if reference.starts_with("encrypted:") {
+        if let Some(key) = reference.strip_prefix("encrypted:") {
             if let Some(provider) = &self.encrypted_provider {
-                let key = &reference["encrypted:".len()..];
                 return provider.get(key).await;
             } else {
                 return Err(SecretsError::ProviderError(
@@ -258,11 +257,10 @@ impl SecretService {
         }
 
         // Encrypted local storage
-        if reference.starts_with("encrypted:") {
+        if let Some(ciphertext) = reference.strip_prefix("encrypted:") {
             if self.encrypted_provider.is_some() {
                 // For encrypted, we can't validate without decrypting
                 // Just check that the format looks correct
-                let ciphertext = &reference["encrypted:".len()..];
                 if ciphertext.is_empty() {
                     return ValidationResult::failure("Encrypted reference has no ciphertext");
                 }
@@ -329,9 +327,8 @@ impl SecretService {
         }
 
         // If it's a plaintext reference (encrypt:PLAINTEXT), encrypt it
-        if reference.starts_with("encrypt:") {
+        if let Some(plaintext) = reference.strip_prefix("encrypt:") {
             if let Some(provider) = &self.encrypted_provider {
-                let plaintext = &reference["encrypt:".len()..];
                 debug!("Encrypting plaintext secret reference for storage");
                 provider.set("temp_encrypt", plaintext).await?;
                 // The encrypted provider stores with encryption, so we need to retrieve the key

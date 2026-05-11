@@ -105,7 +105,7 @@ async fn fourth_failure_triggers_pair_backoff() {
         BackoffDecision::Reject { retry_after_secs, reason } => {
             assert_eq!(reason, BackoffReason::PairBackoff);
             // Required delay = 2s; elapsed ~0; expect ~2s remaining.
-            assert!(retry_after_secs >= 1 && retry_after_secs <= 2,
+            assert!((1..=2).contains(&retry_after_secs),
                 "expected ~2s, got {}", retry_after_secs);
         }
         other => panic!("expected Reject, got {:?}", other),

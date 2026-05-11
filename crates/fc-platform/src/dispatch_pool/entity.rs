@@ -5,15 +5,14 @@ use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum DispatchPoolStatus {
+    #[default]
     Active,
     Suspended,
     Archived,
 }
 
-impl Default for DispatchPoolStatus {
-    fn default() -> Self { Self::Active }
-}
 
 impl DispatchPoolStatus {
     pub fn as_str(&self) -> &'static str {

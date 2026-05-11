@@ -429,7 +429,7 @@ fn test_user_logged_in_event() {
 
 #[test]
 fn test_user_logged_in_event_internal() {
-    use fc_platform::usecase::domain_event::DomainEvent;
+    
     use fc_platform::principal::operations::events::{UserLoggedIn, FlowcatalystClaims};
     use fc_platform::usecase::ExecutionContext;
 
@@ -518,7 +518,7 @@ fn test_auth_context_multiple_permissions_check() {
 
 #[test]
 fn test_password_hashing_and_verification() {
-    use fc_platform::PasswordService;
+    
 
     let service = fc_platform::PasswordService::new(Default::default(), Default::default());
     let password = "MySecurePassword123!";
@@ -536,7 +536,7 @@ fn test_password_hashing_and_verification() {
 
 #[test]
 fn test_password_hash_uniqueness() {
-    use fc_platform::PasswordService;
+    
 
     let service = fc_platform::PasswordService::new(Default::default(), Default::default());
     let password = "SamePassword123!";

@@ -6,14 +6,13 @@ pub use fc_common::DispatchMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum SubscriptionStatus {
+    #[default]
     Active,
     Paused,
 }
 
-impl Default for SubscriptionStatus {
-    fn default() -> Self { Self::Active }
-}
 
 impl SubscriptionStatus {
     pub fn as_str(&self) -> &'static str {
@@ -32,15 +31,14 @@ impl SubscriptionStatus {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum SubscriptionSource {
     Code,
     Api,
+    #[default]
     Ui,
 }
 
-impl Default for SubscriptionSource {
-    fn default() -> Self { Self::Ui }
-}
 
 impl SubscriptionSource {
     pub fn as_str(&self) -> &'static str {

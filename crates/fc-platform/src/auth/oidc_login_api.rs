@@ -921,7 +921,7 @@ async fn validate_id_token_with_jwks(
     // Find the matching key by kid
     let jwk = jwks.keys.iter()
         .find(|k| {
-            header.kid.as_ref().map_or(true, |kid| k.kid.as_ref() == Some(kid))
+            header.kid.as_ref().is_none_or(|kid| k.kid.as_ref() == Some(kid))
         })
         .ok_or_else(|| format!(
             "No matching key found in JWKS for kid: {:?}",
@@ -974,11 +974,10 @@ async fn validate_id_token_with_jwks(
     let subject = payload["sub"].as_str().ok_or("Missing subject claim")?.to_string();
 
     // For multi-tenant: manually validate issuer against pattern
-    if idp.oidc_multi_tenant {
-        if !is_valid_issuer_for_idp(idp, &issuer) {
+    if idp.oidc_multi_tenant
+        && !is_valid_issuer_for_idp(idp, &issuer) {
             return Err(format!("Invalid issuer for multi-tenant IDP: {}", issuer));
         }
-    }
 
     // Validate nonce
     let nonce = payload["nonce"].as_str();

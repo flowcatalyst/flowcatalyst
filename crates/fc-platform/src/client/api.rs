@@ -809,6 +809,23 @@ pub async fn update_client_applications(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Create clients router
+pub fn clients_router(state: ClientsState) -> OpenApiRouter {
+    OpenApiRouter::new()
+        .routes(routes!(create_client, list_clients))
+        .routes(routes!(search_clients))
+        .routes(routes!(get_client_by_identifier))
+        .routes(routes!(get_client, update_client, delete_client))
+        .routes(routes!(activate_client))
+        .routes(routes!(suspend_client))
+        .routes(routes!(deactivate_client))
+        .routes(routes!(add_note))
+        .routes(routes!(get_client_applications, update_client_applications))
+        .routes(routes!(enable_application))
+        .routes(routes!(disable_application))
+        .with_state(state)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -994,21 +1011,4 @@ mod tests {
         let result = serde_json::from_value::<AddNoteRequest>(json);
         assert!(result.is_err(), "Should fail without text");
     }
-}
-
-/// Create clients router
-pub fn clients_router(state: ClientsState) -> OpenApiRouter {
-    OpenApiRouter::new()
-        .routes(routes!(create_client, list_clients))
-        .routes(routes!(search_clients))
-        .routes(routes!(get_client_by_identifier))
-        .routes(routes!(get_client, update_client, delete_client))
-        .routes(routes!(activate_client))
-        .routes(routes!(suspend_client))
-        .routes(routes!(deactivate_client))
-        .routes(routes!(add_note))
-        .routes(routes!(get_client_applications, update_client_applications))
-        .routes(routes!(enable_application))
-        .routes(routes!(disable_application))
-        .with_state(state)
 }

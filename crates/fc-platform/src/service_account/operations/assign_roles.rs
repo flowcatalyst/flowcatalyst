@@ -87,7 +87,7 @@ impl<U: UnitOfWork> UseCase for AssignRolesUseCase<U> {
 
         // Replace roles
         service_account.roles = command.roles.iter()
-            .map(|r| RoleAssignment::new(r))
+            .map(RoleAssignment::new)
             .collect();
         service_account.updated_at = Utc::now();
 

@@ -878,6 +878,24 @@ async fn build_client_config_response<U: UnitOfWork>(
     }))
 }
 
+/// Create applications router
+pub fn applications_router<U: UnitOfWork + Clone>(state: ApplicationsState<U>) -> Router {
+    Router::new()
+        .route("/", post(create_application::<U>).get(list_applications::<U>))
+        .route("/{id}", get(get_application::<U>).put(update_application::<U>).delete(delete_application::<U>))
+        .route("/{id}/activate", post(activate_application::<U>))
+        .route("/{id}/deactivate", post(deactivate_application::<U>))
+        .route("/{id}/provision-service-account", post(provision_service_account::<U>))
+        .route("/{id}/service-account", get(get_application_service_account::<U>))
+        .route("/by-id/{id}/roles", get(list_application_roles::<U>))
+        .route("/{id}/clients", get(list_client_configs::<U>))
+        .route("/{id}/clients/{client_id}", put(update_client_config::<U>))
+        .route("/{id}/clients/{client_id}/enable", post(enable_for_client::<U>))
+        .route("/{id}/clients/{client_id}/disable", post(disable_for_client::<U>))
+        .route("/by-code/{code}", get(get_application_by_code::<U>))
+        .with_state(state)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1093,22 +1111,4 @@ mod tests {
         assert_eq!(req.base_url_override, Some("https://custom.example.com".to_string()));
         assert!(req.config.is_some());
     }
-}
-
-/// Create applications router
-pub fn applications_router<U: UnitOfWork + Clone>(state: ApplicationsState<U>) -> Router {
-    Router::new()
-        .route("/", post(create_application::<U>).get(list_applications::<U>))
-        .route("/{id}", get(get_application::<U>).put(update_application::<U>).delete(delete_application::<U>))
-        .route("/{id}/activate", post(activate_application::<U>))
-        .route("/{id}/deactivate", post(deactivate_application::<U>))
-        .route("/{id}/provision-service-account", post(provision_service_account::<U>))
-        .route("/{id}/service-account", get(get_application_service_account::<U>))
-        .route("/by-id/{id}/roles", get(list_application_roles::<U>))
-        .route("/{id}/clients", get(list_client_configs::<U>))
-        .route("/{id}/clients/{client_id}", put(update_client_config::<U>))
-        .route("/{id}/clients/{client_id}/enable", post(enable_for_client::<U>))
-        .route("/{id}/clients/{client_id}/disable", post(disable_for_client::<U>))
-        .route("/by-code/{code}", get(get_application_by_code::<U>))
-        .with_state(state)
 }

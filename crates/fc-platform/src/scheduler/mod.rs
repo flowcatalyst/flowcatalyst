@@ -124,6 +124,12 @@ pub struct MessageGroupQueue {
     job_in_flight: bool,
 }
 
+impl Default for MessageGroupQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MessageGroupQueue {
     pub fn new() -> Self {
         Self {
@@ -200,7 +206,7 @@ impl MessageGroupDispatcher {
         let next_job = {
             let mut queues = self.inner.lock().unwrap();
             let queue = queues.entry(message_group.to_string())
-                .or_insert_with(MessageGroupQueue::new);
+                .or_default();
             queue.add_jobs(jobs);
             queue.try_take_next()
         };

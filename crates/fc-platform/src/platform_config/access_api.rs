@@ -167,7 +167,7 @@ pub async fn update_access(
 
     crate::checks::require_anchor(&auth.0)?;
     if state.access_repo.find_by_application_and_role(&app_code, &role_code).await?.is_none() {
-        return Err(PlatformError::not_found("PlatformConfigAccess", &format!("{}/{}", app_code, role_code)));
+        return Err(PlatformError::not_found("PlatformConfigAccess", format!("{}/{}", app_code, role_code)));
     }
 
     let cmd = GrantPlatformConfigAccessCommand {

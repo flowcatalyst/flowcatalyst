@@ -8,8 +8,10 @@ use chrono::{DateTime, Utc};
 /// Client status — matches TypeScript ClientStatus enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum ClientStatus {
     /// Client is active and operational
+    #[default]
     Active,
     /// Client is inactive
     Inactive,
@@ -17,11 +19,6 @@ pub enum ClientStatus {
     Suspended,
 }
 
-impl Default for ClientStatus {
-    fn default() -> Self {
-        Self::Active
-    }
-}
 
 impl ClientStatus {
     pub fn as_str(&self) -> &'static str {
@@ -32,6 +29,8 @@ impl ClientStatus {
         }
     }
 
+    // Lenient: unknown input maps to Active by design (legacy DB rows).
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "ACTIVE" => Self::Active,

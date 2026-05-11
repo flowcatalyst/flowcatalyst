@@ -138,7 +138,7 @@ impl PoolMetricsCollector {
     /// Add a sample to the sliding window and all-time histogram
     fn add_sample(&self, duration_ms: u64, success: bool) {
         // Record in HdrHistogram (clamp to histogram bounds)
-        let clamped = duration_ms.max(1).min(900_000);
+        let clamped = duration_ms.clamp(1, 900_000);
         self.histogram.write().record(clamped).ok();
 
         let sample = MetricSample {
@@ -201,7 +201,7 @@ impl PoolMetricsCollector {
             .expect("valid histogram bounds");
 
         for s in samples {
-            hist.record(s.duration_ms.max(1).min(900_000)).ok();
+            hist.record(s.duration_ms.clamp(1, 900_000)).ok();
         }
 
         Self::metrics_from_histogram(&hist)

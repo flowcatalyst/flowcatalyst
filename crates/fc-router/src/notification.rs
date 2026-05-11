@@ -746,7 +746,7 @@ impl BatchingNotificationService {
         let mut by_severity: HashMap<WarningSeverity, Vec<&Warning>> = HashMap::new();
         for warning in &warnings {
             by_severity
-                .entry(warning.severity.clone())
+                .entry(warning.severity)
                 .or_default()
                 .push(warning);
         }
@@ -898,7 +898,7 @@ pub fn create_notification_service(config: &NotificationConfig) -> Arc<dyn Notif
     if config.batch_interval_seconds > 0 {
         Arc::new(BatchingNotificationService::new(
             delegates,
-            config.min_severity.clone(),
+            config.min_severity,
         ))
     } else {
         // If only one delegate and no batching, return it directly
@@ -908,7 +908,7 @@ pub fn create_notification_service(config: &NotificationConfig) -> Arc<dyn Notif
             // Multiple delegates but no batching - wrap anyway
             Arc::new(BatchingNotificationService::new(
                 delegates,
-                config.min_severity.clone(),
+                config.min_severity,
             ))
         }
     }
@@ -965,7 +965,7 @@ pub fn create_notification_service_with_scheduler(
 
     let service = Arc::new(BatchingNotificationService::new(
         delegates,
-        config.min_severity.clone(),
+        config.min_severity,
     ));
 
     let scheduler_handle = if config.batch_interval_seconds > 0 {
@@ -997,7 +997,7 @@ pub fn create_notification_service_with_scheduler(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fc_common::WarningCategory;
+    
 
     #[test]
     fn test_severity_ordering() {

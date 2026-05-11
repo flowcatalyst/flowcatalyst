@@ -75,6 +75,17 @@ struct Cli {
 
 #[derive(clap::Subcommand, Debug)]
 enum Command {
+    /// Run the dev monolith. Identical to invoking `fc-dev` with no
+    /// subcommand — kept for discoverability.
+    Start(RunArgs),
+
+    /// Run the FlowCatalyst MCP server (read-only access to event types
+    /// and subscriptions for AI agents).
+    ///
+    /// Reads `FLOWCATALYST_URL`, `FLOWCATALYST_CLIENT_ID`, and
+    /// `FLOWCATALYST_CLIENT_SECRET` from the environment.
+    Mcp(McpArgs),
+
     /// Download the latest fc-dev release and replace this binary.
     Upgrade(UpgradeArgs),
 }
@@ -88,6 +99,17 @@ struct UpgradeArgs {
     /// Check for a newer version without downloading.
     #[arg(long)]
     check: bool,
+}
+
+#[derive(clap::Args, Debug)]
+struct McpArgs {
+    /// Run as a streamable HTTP server instead of stdio.
+    #[arg(long)]
+    http: bool,
+
+    /// Bind address for `--http` mode.
+    #[arg(long, env = "FC_MCP_BIND", default_value = "127.0.0.1:3100")]
+    bind: std::net::SocketAddr,
 }
 
 /// Flags for the (default) run-server path. Flattened into `Cli` so existing
@@ -256,14 +278,33 @@ mod version_check;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Subcommand fast path — handle these before booting the dev server,
-    // so `fc-dev upgrade` doesn't need a running database, env vars, or
-    // anything else expensive.
+    // Subcommand fast path — handle the ones that don't need a database,
+    // env vars, or anything else expensive before booting the dev server.
     let cli = Cli::parse();
-    if let Some(Command::Upgrade(opts)) = &cli.command {
-        // Just enough logging to stream progress to the user.
-        fc_common::logging::init_logging("fc-dev");
-        return upgrade::run(opts).await;
+    match cli.command {
+        Some(Command::Upgrade(opts)) => {
+            fc_common::logging::init_logging("fc-dev");
+            return upgrade::run(&opts).await;
+        }
+        Some(Command::Mcp(opts)) => {
+            // MCP over stdio uses stdout for JSON-RPC, so we MUST send tracing
+            // to stderr regardless of what the rest of fc-dev does.
+            tracing_subscriber::fmt()
+                .with_env_filter(
+                    tracing_subscriber::EnvFilter::try_from_default_env()
+                        .unwrap_or_else(|_| "info".into()),
+                )
+                .with_writer(std::io::stderr)
+                .with_ansi(false)
+                .init();
+            let config = fc_mcp::Config::from_env()?;
+            return if opts.http {
+                fc_mcp::run_http(config, opts.bind).await
+            } else {
+                fc_mcp::run_stdio(config).await
+            };
+        }
+        _ => {}
     }
 
     // Load .env.development (or .env) if present
@@ -305,8 +346,14 @@ async fn main() -> Result<()> {
     // Initialize logging (JSON if LOG_FORMAT=json, text otherwise)
     fc_common::logging::init_logging("fc-dev");
 
+    // `fc-dev` (bare) and `fc-dev start` are equivalent — `start` exists for
+    // discoverability. Subcommand args take precedence if both forms are
+    // mixed; matters only for `start --foo`, which clap routes here.
     #[allow(unused_mut)]
-    let mut args = cli.run;
+    let mut args = match cli.command {
+        Some(Command::Start(start_args)) => start_args,
+        _ => cli.run,
+    };
 
     info!("Starting FlowCatalyst Dev Monolith (Rust)");
     info!("API port: {}, Metrics port: {}", args.api_port, args.metrics_port);
@@ -636,7 +683,7 @@ async fn main() -> Result<()> {
     // job list/get endpoints remain available under `/bff/dispatch-jobs/*`.
     let _ = dispatch_jobs_state; // kept for future expansion; not mounted
     let platform_router = platform_app
-        .nest("/api/event-types/filters", event_type_filters_router(filter_options_state).into())
+        .nest("/api/event-types/filters", event_type_filters_router(filter_options_state))
         // Add auth middleware
         .layer(AuthLayer::new(app_state));
 

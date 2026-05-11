@@ -51,7 +51,7 @@ pub struct BffRoleResponse {
 
 impl From<AuthRole> for BffRoleResponse {
     fn from(r: AuthRole) -> Self {
-        let short_name = r.name.split(':').last().unwrap_or(&r.name).to_string();
+        let short_name = r.name.split(':').next_back().unwrap_or(&r.name).to_string();
         Self {
             id: r.id,
             name: r.name,

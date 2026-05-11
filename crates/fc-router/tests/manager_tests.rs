@@ -19,7 +19,6 @@ use fc_common::{
 };
 use fc_queue::{QueueConsumer, QueueError};
 use fc_router::{QueueManager, Mediator};
-use chrono::Utc;
 
 /// Mock mediator for testing
 struct MockMediator {

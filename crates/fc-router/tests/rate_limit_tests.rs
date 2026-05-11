@@ -16,7 +16,6 @@ use fc_common::{
 };
 use fc_queue::{QueueConsumer, QueueError};
 use fc_router::{QueueManager, Mediator};
-use chrono::Utc;
 
 /// Mediator that tracks timing and counts
 struct TimingMediator {

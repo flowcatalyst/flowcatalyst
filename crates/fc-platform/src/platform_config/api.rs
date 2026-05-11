@@ -204,7 +204,7 @@ pub async fn get_property(
     let config = state.config_repo.find_by_key(
         &app_code, &section, &property, scope_str, query.client_id.as_deref(),
     ).await?
-        .ok_or_else(|| PlatformError::not_found("PlatformConfig", &format!("{}/{}/{}", app_code, section, property)))?;
+        .ok_or_else(|| PlatformError::not_found("PlatformConfig", format!("{}/{}/{}", app_code, section, property)))?;
 
     let value = config.masked_value().to_string();
     Ok(Json(ConfigValueResponse {
@@ -309,7 +309,7 @@ pub async fn delete_property(
     if deleted {
         Ok(axum::http::StatusCode::NO_CONTENT)
     } else {
-        Err(PlatformError::not_found("PlatformConfig", &format!("{}/{}/{}", app_code, section, property)))
+        Err(PlatformError::not_found("PlatformConfig", format!("{}/{}/{}", app_code, section, property)))
     }
 }
 

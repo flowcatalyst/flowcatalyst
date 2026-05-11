@@ -200,7 +200,7 @@ async fn enrich_single_principal_name(
     principal_repo: &PrincipalRepository,
 ) {
     if let Some(pid) = &log.principal_id {
-        if let Ok(name_map) = principal_repo.find_names_by_ids(&[pid.clone()]).await {
+        if let Ok(name_map) = principal_repo.find_names_by_ids(std::slice::from_ref(pid)).await {
             log.principal_name = name_map.get(pid).cloned();
         }
     }

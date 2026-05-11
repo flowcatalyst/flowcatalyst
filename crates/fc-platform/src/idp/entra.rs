@@ -19,8 +19,10 @@ use super::{IdpAdapter, IdpRoleMappingConfig, IdpUserInfo, apply_role_mappings};
 /// Azure cloud environment
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum AzureCloud {
     /// Azure Public Cloud (default)
+    #[default]
     Public,
     /// Azure Government Cloud
     Government,
@@ -30,11 +32,6 @@ pub enum AzureCloud {
     Germany,
 }
 
-impl Default for AzureCloud {
-    fn default() -> Self {
-        Self::Public
-    }
-}
 
 impl AzureCloud {
     /// Get the base URL for this Azure cloud

@@ -25,6 +25,7 @@ pub struct RoleMapping {
 
 /// Configuration for IDP role mapping
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct IdpRoleMappingConfig {
     /// Role mappings from IDP to FlowCatalyst
     pub role_mappings: Vec<RoleMapping>,
@@ -34,15 +35,6 @@ pub struct IdpRoleMappingConfig {
     pub auto_create_roles: bool,
 }
 
-impl Default for IdpRoleMappingConfig {
-    fn default() -> Self {
-        Self {
-            role_mappings: vec![],
-            default_role: None,
-            auto_create_roles: false,
-        }
-    }
-}
 
 /// Extracted user information from IDP token
 #[derive(Debug, Clone)]

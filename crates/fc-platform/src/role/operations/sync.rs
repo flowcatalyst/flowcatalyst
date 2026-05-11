@@ -146,7 +146,7 @@ impl<U: UnitOfWork> UseCase for SyncRolesUseCase<U> {
                 None => {
                     let mut role = AuthRole::new(
                         &command.application_code,
-                        &input.name.to_lowercase(),
+                        input.name.to_lowercase(),
                         input.display_name.as_deref().unwrap_or(&input.name),
                     );
                     role.application_id = Some(application.id.clone());

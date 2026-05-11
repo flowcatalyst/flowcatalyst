@@ -5,14 +5,13 @@ use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum ConnectionStatus {
+    #[default]
     Active,
     Paused,
 }
 
-impl Default for ConnectionStatus {
-    fn default() -> Self { Self::Active }
-}
 
 impl ConnectionStatus {
     pub fn as_str(&self) -> &'static str {

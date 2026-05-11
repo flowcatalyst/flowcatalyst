@@ -8,18 +8,15 @@ use chrono::{DateTime, Utc};
 /// OAuth client type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum OAuthClientType {
     /// Public client (SPA, mobile app) - cannot keep secrets
+    #[default]
     Public,
     /// Confidential client (server-side) - can keep secrets
     Confidential,
 }
 
-impl Default for OAuthClientType {
-    fn default() -> Self {
-        Self::Public
-    }
-}
 
 impl OAuthClientType {
     pub fn as_str(&self) -> &'static str {

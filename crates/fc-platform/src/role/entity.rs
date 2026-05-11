@@ -9,20 +9,17 @@ use std::collections::HashSet;
 /// Role source - where the role definition came from
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum RoleSource {
     /// Defined in code (cannot be modified)
     Code,
     /// Defined in database (can be modified)
+    #[default]
     Database,
     /// Synced from external SDK/IDP
     Sdk,
 }
 
-impl Default for RoleSource {
-    fn default() -> Self {
-        Self::Database
-    }
-}
 
 impl RoleSource {
     pub fn as_str(&self) -> &str {
@@ -33,6 +30,8 @@ impl RoleSource {
         }
     }
 
+    // Lenient: unknown input maps to Database by design (DB rows).
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "CODE" => Self::Code,

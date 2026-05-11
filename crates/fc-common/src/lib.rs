@@ -68,6 +68,11 @@ impl DispatchMode {
         }
     }
 
+    // Lenient: unknown input maps to Immediate by design (legacy
+    // databases contain free-form values). FromStr's `Result` shape
+    // would force callers to handle a parse failure that this API
+    // intentionally swallows — hence the allow.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s.to_uppercase().as_str() {
             "NEXT_ON_ERROR" => Self::NextOnError,
@@ -127,6 +132,10 @@ impl DispatchStatus {
         }
     }
 
+    // Lenient: legacy aliases (IN_PROGRESS, ERROR) and unknown values
+    // both map to a sane default rather than parse failures. See the
+    // matching note on `DispatchMode::from_str`.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s.to_uppercase().as_str() {
             "PENDING" => Self::Pending,
@@ -469,11 +478,12 @@ impl MediationOutcome {
 
 /// Outbox status codes matching Java implementation
 /// These are stored as integers in the database for Java compatibility
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[allow(non_camel_case_types)]
 pub enum OutboxStatus {
     /// Item is pending processing (code: 0)
+    #[default]
     PENDING,
     /// Item was successfully processed (code: 1)
     SUCCESS,
@@ -558,18 +568,13 @@ impl OutboxStatus {
     }
 }
 
-impl Default for OutboxStatus {
-    fn default() -> Self {
-        OutboxStatus::PENDING
-    }
-}
-
 /// Outbox item type matching Java implementation
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[allow(non_camel_case_types)]
 pub enum OutboxItemType {
     /// Event items - sent to /api/events/batch
+    #[default]
     EVENT,
     /// Dispatch job items - sent to /api/dispatch/jobs/batch
     DISPATCH_JOB,
@@ -603,7 +608,12 @@ impl OutboxItemType {
         }
     }
 
-    /// Parse from string
+    /// Parse from string. Accepts case-insensitive plus the underscore/
+    /// hyphen/run-together forms used by various legacy callers. Returns
+    /// `None` on unknown input — fallible, like FromStr would be, but the
+    /// `Option` return shape doesn't match the trait so it's not the
+    /// trait method.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
             "EVENT" => Some(OutboxItemType::EVENT),
@@ -611,12 +621,6 @@ impl OutboxItemType {
             "AUDIT_LOG" | "AUDITLOG" | "AUDIT-LOG" => Some(OutboxItemType::AUDIT_LOG),
             _ => None,
         }
-    }
-}
-
-impl Default for OutboxItemType {
-    fn default() -> Self {
-        OutboxItemType::EVENT
     }
 }
 

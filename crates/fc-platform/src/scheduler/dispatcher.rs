@@ -161,8 +161,10 @@ mod tests {
 
     #[test]
     fn message_mediation_target_comes_from_config() {
-        let mut config = SchedulerConfig::default();
-        config.processing_endpoint = "https://custom.host/dispatch".to_string();
+        let config = SchedulerConfig {
+            processing_endpoint: "https://custom.host/dispatch".to_string(),
+            ..SchedulerConfig::default()
+        };
         let job = make_job("job_3", None, None, "IMMEDIATE");
 
         let message = fc_common::Message {

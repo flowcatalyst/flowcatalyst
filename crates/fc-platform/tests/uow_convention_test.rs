@@ -76,7 +76,7 @@ fn extract_use_case_execute_bodies(content: &str) -> Vec<(String, String)> {
             // Extract the struct name.
             let after = line.split(" UseCase for ").nth(1).unwrap_or("");
             let struct_name = after
-                .split(|c: char| c == ' ' || c == '<' || c == '{')
+                .split([' ', '<', '{'])
                 .find(|s| !s.is_empty())
                 .unwrap_or("")
                 .to_string();
