@@ -69,7 +69,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `packageManager` field lives in frontend/package.json, not the
+      # repo-root package.json — point pnpm/action-setup at it explicitly.
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
 
       - uses: actions/setup-node@v4
         with:
