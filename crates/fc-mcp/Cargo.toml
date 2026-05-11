@@ -29,3 +29,6 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
+# Used by Config::from_env() to locate the credentials file that
+# fc-dev's mcp_bootstrap writes (`~/.cache/flowcatalyst-dev/mcp-credentials.json`).
+dirs = "5"

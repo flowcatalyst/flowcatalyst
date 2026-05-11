@@ -34,6 +34,10 @@ opt-level = 0
 opt-level = 2
 
 [profile.release]
-# Link-time optimization for smaller/faster release builds
+# Thin LTO + single codegen unit — biggest size win for the binaries we
+# ship to users. Measured trade-off vs `codegen-units = 16`: 57 MB vs
+# 98 MB fc-dev (+41 MB), ~2x faster build. Build cost is paid once per
+# release; download size is paid by every user on every `fc-dev upgrade`.
+# Revisit only if Windows release builds become genuinely blocking.
 lto = "thin"
 codegen-units = 1

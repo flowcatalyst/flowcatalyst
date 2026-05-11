@@ -109,8 +109,9 @@ struct McpArgs {
 /// invocations like `fc-dev --api-port 3000` keep working unchanged.
 #[derive(clap::Args, Debug)]
 struct RunArgs {
-    /// API server port
-    #[arg(long, env = "FC_API_PORT", default_value = "3000")]
+    /// API server port. Matches the project-wide convention used by the
+    /// justfile and .env.development; production binaries also use 8080.
+    #[arg(long, env = "FC_API_PORT", default_value = "8080")]
     api_port: u16,
 
     /// Metrics server port
@@ -278,6 +279,7 @@ mod embedded_pg {
     }
 }
 
+mod mcp_bootstrap;
 mod upgrade;
 mod version_check;
 
@@ -487,6 +489,13 @@ async fn main() -> Result<()> {
     // 8c. Initialize all repositories
     let repos = Repositories::new(&pg_pool);
     info!("Platform repositories initialized");
+
+    // 8c.1 Auto-provision OAuth credentials for `fc-dev mcp`. Best-effort
+    // (a failure here doesn't block fc-dev from serving); gated on
+    // FC_DEV_MODE so production binaries never run it.
+    if let Err(e) = mcp_bootstrap::run(&repos).await {
+        warn!(error = %e, "MCP credential bootstrap skipped — `fc-dev mcp` may need manual setup");
+    }
 
     // 8b1.5 Start CQRS stream processor (projects msg_events → msg_events_read, etc.)
     let stream_handle = {

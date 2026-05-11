@@ -38,8 +38,37 @@ fn build_server(config: &Config) -> FcMcpServer {
     FcMcpServer::new(api)
 }
 
+/// Probe `base_url` for liveness before booting the MCP server. Without
+/// this, a missing fc-dev surfaces as a confusing OAuth token failure
+/// later; with it, the user sees an actionable "start fc-dev first"
+/// message and exits cleanly.
+async fn assert_platform_reachable(base_url: &str) -> Result<()> {
+    // `/q/ready` is the canonical readiness probe; it doesn't require
+    // auth and returns 200 once migrations are done and the server is
+    // accepting traffic. 3s is generous for a localhost call but won't
+    // make the user wait forever if they typoed the URL.
+    let url = format!("{}/q/ready", base_url.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .user_agent(concat!("fc-mcp/", env!("CARGO_PKG_VERSION")))
+        .build()?;
+
+    match client.get(&url).send().await {
+        Ok(resp) if resp.status().is_success() => Ok(()),
+        Ok(resp) => Err(anyhow::anyhow!(
+            "FlowCatalyst at {base_url} replied {} to /q/ready — the platform is reachable but not ready",
+            resp.status()
+        )),
+        Err(e) => Err(anyhow::anyhow!(
+            "Cannot reach FlowCatalyst at {base_url}: {e}\n\n\
+             Start the dev server in another terminal first:\n  ./fc-dev",
+        )),
+    }
+}
+
 /// Run the MCP server over stdio. Blocks until the client disconnects.
 pub async fn run_stdio(config: Config) -> Result<()> {
+    assert_platform_reachable(&config.base_url).await?;
     let server = build_server(&config);
     tracing::info!("fc-mcp: stdio transport, base={}", config.base_url);
     let service = server.serve(stdio()).await?;
@@ -49,6 +78,7 @@ pub async fn run_stdio(config: Config) -> Result<()> {
 
 /// Run the MCP server as a streamable HTTP service on `addr` at `/mcp`.
 pub async fn run_http(config: Config, addr: std::net::SocketAddr) -> Result<()> {
+    assert_platform_reachable(&config.base_url).await?;
     let cancel = tokio_util::sync::CancellationToken::new();
     let factory_config = config.clone();
     let service = StreamableHttpService::new(

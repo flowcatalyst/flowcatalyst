@@ -52,8 +52,9 @@ postgresql_embedded = { version = "0.19", features = ["bundled"], optional = tru
 dirs = "5"
 # Self-update: drives `fc-dev upgrade` against GitHub Releases. Uses rustls
 # (not native TLS) to avoid macOS Security framework / Windows schannel
-# linking quirks in our cross-platform release bundles.
-self_update = { version = "0.41", default-features = false, features = ["rustls", "compression-flate2", "archive-tar"] }
+# linking quirks in our cross-platform release bundles. Both archive
+# formats are enabled: tar.gz for macOS/Linux, zip for Windows.
+self_update = { version = "0.41", default-features = false, features = ["rustls", "compression-flate2", "archive-tar", "archive-zip"] }
 # Version comparison for both the upgrade subcommand and the startup check.
 semver = "1"
 # Startup version check: serde_json already in deps; chrono used for cache TTL.

@@ -88,8 +88,12 @@ platform from the [releases page](https://github.com/flowcatalyst/flowcatalyst/r
 extract, and put `fc-dev` on your PATH.
 
 ```bash
-# Every archive ships with a SHA256 sidecar
+# macOS / Linux (tar.gz archives)
 shasum -a 256 -c fc-dev-vX.Y.Z-<target>.tar.gz.sha256
+
+# Windows (zip archive)
+certutil -hashfile fc-dev-vX.Y.Z-x86_64-pc-windows-msvc.zip SHA256
+# …then compare against the value in the .sha256 sidecar
 ```
 
 Linux archives are additionally signed with [cosign](https://docs.sigstore.dev/)
