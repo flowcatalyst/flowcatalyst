@@ -30,6 +30,13 @@ const AUTH_CHECK_PATTERNS: &[&str] = &[
     "can_update_",
     "can_delete_",
     "can_retry_",
+    // State-transition verbs (currently used by scheduled_job for lifecycle
+    // actions that aren't a plain CRUD update). Keep additions narrow —
+    // adding a new prefix here is documenting that the project considers
+    // it a recognised permission family.
+    "can_pause_",
+    "can_resume_",
+    "can_fire_",
     // AuthorizationService method calls
     ".authorize(",
     // AuthContext inline checks (used in conditionals that return 403)
@@ -66,6 +73,13 @@ const FILE_SKIPLIST: &[&str] = &[
     // /api/me — returns the caller's own identity; authenticated but no
     // further permission needed.
     "shared/me_api.rs",
+    // WebAuthn credential management is principal-scoped: the
+    // `Authenticated` extractor proves identity, and every operation
+    // (register/authenticate/delete) is implicitly scoped to the caller's
+    // own credentials (`principal_id == credential.owner`). There is no
+    // "manage other people's passkeys" surface to permission-gate, so the
+    // `can_*` family doesn't apply. Authentication is the gate.
+    "webauthn/api.rs",
     // The legacy SDK dispatch-jobs batch endpoint is being retired into the
     // main dispatch-jobs router; its auth is the bearer JWT of the calling
     // service account, not a granular permission.
