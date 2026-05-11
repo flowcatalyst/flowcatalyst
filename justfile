@@ -273,8 +273,44 @@ release bump:
         exit 1
     fi
 
-    current=$(grep -E '^version = ' bin/fc-dev/Cargo.toml | head -1 | sed -E 's/^version = "([^"]+)"/\1/')
+    cargo_version=$(grep -E '^version = ' bin/fc-dev/Cargo.toml | head -1 | sed -E 's/^version = "([^"]+)"/\1/')
     clean_re='^[0-9]+\.[0-9]+\.[0-9]+$'
+
+    # The bump base is max(Cargo.toml version, latest published GitHub
+    # release). This catches the case where someone hand-tagged a release
+    # without going through this recipe — without it, the next bump
+    # collides with an already-published tag.
+    gh_latest=""
+    if command -v curl >/dev/null 2>&1; then
+        gh_latest=$(curl -fsSL "https://api.github.com/repos/flowcatalyst/flowcatalyst/releases?per_page=100" 2>/dev/null \
+            | tr ',' '\n' \
+            | grep '"tag_name"' \
+            | sed -e 's/.*"tag_name"[[:space:]]*:[[:space:]]*"//' -e 's/".*//' \
+            | grep '^fc-dev/v' \
+            | sed 's|^fc-dev/v||' \
+            | awk -F. '/^[0-9]+\.[0-9]+\.[0-9]+$/ { printf "%010d%010d%010d %s\n", $1, $2, $3, $0 }' \
+            | sort -r \
+            | awk 'NR==1 {print $2}')
+    fi
+
+    # Pick whichever is higher. Awk's printf-padded sort key works for any
+    # plain X.Y.Z; pre-release suffixes are handled below by erroring out.
+    if [ -n "$gh_latest" ] && [[ "$gh_latest" =~ $clean_re ]] && [[ "$cargo_version" =~ $clean_re ]]; then
+        higher=$(printf '%s\n%s\n' "$cargo_version" "$gh_latest" \
+            | awk -F. '{ printf "%010d%010d%010d %s\n", $1, $2, $3, $0 }' \
+            | sort -r | awk 'NR==1 {print $2}')
+        current=$higher
+        if [ "$higher" = "$gh_latest" ] && [ "$gh_latest" != "$cargo_version" ]; then
+            echo "  Cargo.toml: $cargo_version (behind)"
+            echo "  GitHub:     $gh_latest (latest published)"
+            echo "  ↑ bumping from GitHub's latest, not Cargo.toml."
+        fi
+    else
+        current=$cargo_version
+        if [ -z "$gh_latest" ]; then
+            echo "  (couldn't reach GitHub — falling back to Cargo.toml version: $current)"
+        fi
+    fi
 
     case "{{ bump }}" in
         patch|minor|major)
