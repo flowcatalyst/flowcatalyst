@@ -32,6 +32,7 @@ use anyhow::{Context, Result};
 use tracing::{info, warn};
 use uuid::Uuid;
 
+use fc_common::tsid::{EntityType, TsidGenerator};
 use fc_platform::auth::oauth_entity::{GrantType, OAuthClient};
 use fc_platform::repository::Repositories;
 use fc_platform::service_account::entity::RoleAssignment;
@@ -91,15 +92,24 @@ pub async fn run(repos: &Repositories) -> Result<()> {
         .context("FLOWCATALYST_APP_KEY not set — cannot encrypt MCP client secret")?;
 
     // 1. Service principal with super-admin role.
-    let mut principal = Principal::new_service(CLIENT_ID, PRINCIPAL_NAME);
+    //
+    // `Principal::service_account_id` is a VARCHAR(17) column expecting a
+    // TSID, NOT the OAuth `client_id`. We generate a proper TSID here and
+    // keep `CLIENT_ID` (the human-readable OAuth public identifier) only
+    // on the OAuthClient row.
+    let service_account_id = TsidGenerator::generate(EntityType::ServiceAccount);
+    let mut principal = Principal::new_service(service_account_id, PRINCIPAL_NAME);
     principal.scope = UserScope::Anchor; // matches the role's reach
     principal.roles = vec![RoleAssignment::new(SUPER_ADMIN_ROLE)];
 
+    // The `{:?}` formatter on the source error shows the full sqlx error
+    // message (chain). Plain `Context::context` would mask it as just
+    // "inserting MCP service principal", which we hit before.
     repos
         .principal_repo
         .insert(&principal)
         .await
-        .context("inserting MCP service principal")?;
+        .map_err(|e| anyhow::anyhow!("inserting MCP service principal: {e:?}"))?;
 
     // 2. Fresh plaintext secret. UUIDv4 has 122 bits of entropy — plenty
     // for a local-only credential.
@@ -124,7 +134,7 @@ pub async fn run(repos: &Repositories) -> Result<()> {
         .oauth_client_repo
         .insert(&oauth_client)
         .await
-        .context("inserting MCP OAuth client")?;
+        .map_err(|e| anyhow::anyhow!("inserting MCP OAuth client: {e:?}"))?;
 
     // 4. Persist plaintext creds for `fc-dev mcp` to find.
     write_credentials_file(CLIENT_ID, &secret_plaintext)?;

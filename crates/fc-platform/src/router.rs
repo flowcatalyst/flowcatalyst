@@ -324,6 +324,17 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
             )
             .split_for_parts();
 
+        // Strip `/bff/*` paths from the spec. The BFF tier is internal to the
+        // frontend and intentionally not part of the programmable surface; it
+        // shouldn't appear in Swagger or `/q/openapi`. Some BFF routers share
+        // handlers with their `/api/*` siblings and have to be mounted via
+        // `OpenApiRouter` for routing, so we filter post-build rather than
+        // requiring every contributor to remember the convention.
+        openapi
+            .paths
+            .paths
+            .retain(|path, _| !path.starts_with("/bff/"));
+
         // 2. Hand-curated schemas for types referenced via #[serde(flatten)] or
         //    via raw JSON responses — utoipa can't auto-collect these.
         //    Keep these in sync with the actual structs in
