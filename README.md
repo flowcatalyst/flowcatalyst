@@ -88,9 +88,28 @@ platform from the [releases page](https://github.com/flowcatalyst/flowcatalyst/r
 extract, and put `fc-dev` on your PATH.
 
 ```bash
-# verify the download
+# Every archive ships with a SHA256 sidecar
 shasum -a 256 -c fc-dev-vX.Y.Z-<target>.tar.gz.sha256
 ```
+
+Linux archives are additionally signed with [cosign](https://docs.sigstore.dev/)
+keyless — GitHub Actions' OIDC identity, recorded in the public Rekor
+transparency log. No keys to manage; verification is provably tied to
+the release workflow that built it:
+
+```bash
+cosign verify-blob \
+  --signature fc-dev-vX.Y.Z-<target>.tar.gz.sig \
+  --certificate fc-dev-vX.Y.Z-<target>.tar.gz.pem \
+  --certificate-identity-regexp '^https://github.com/flowcatalyst/flowcatalyst/.github/workflows/release-fc-dev.yml@refs/tags/fc-dev/v' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  fc-dev-vX.Y.Z-<target>.tar.gz
+```
+
+macOS and Windows archives are not yet codesigned (see
+[`docs/release-signing.md`](docs/release-signing.md)). Gatekeeper and
+SmartScreen will prompt on first launch — bypass once and the cache
+remembers the binary.
 
 On startup fc-dev does a best-effort check against GitHub for newer
 releases (24h cached, disable with `FC_DEV_UPDATE_CHECK=false`). To

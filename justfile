@@ -165,8 +165,8 @@ watch-test-platform:
 build:
     cargo build --all-targets
 
-# Build all binaries (release)
-release:
+# Build all binaries with --release profile
+build-release:
     cargo build --release --all-targets
 
 # Fast compile check
@@ -246,6 +246,97 @@ clean:
 nuke: down
     docker volume rm flowcatalyst-rust_fc-pgdata 2>/dev/null || true
     @echo "All data removed. Run 'just setup' to start fresh."
+
+# ─── Release ───────────────────────────────────────────────────────────────
+
+# Show the current fc-dev version
+release-version:
+    @grep -E '^version = ' bin/fc-dev/Cargo.toml | head -1 | sed -E 's/^version = "([^"]+)"/\1/'
+
+# Cut an fc-dev release. Pass `patch`, `minor`, `major`, or `X.Y.Z[-suffix]`
+release bump:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ -n "$(git status --porcelain)" ]; then
+        echo "✗ Working tree is dirty. Commit or stash first." >&2
+        git status --short
+        exit 1
+    fi
+
+    current=$(grep -E '^version = ' bin/fc-dev/Cargo.toml | head -1 | sed -E 's/^version = "([^"]+)"/\1/')
+    clean_re='^[0-9]+\.[0-9]+\.[0-9]+$'
+
+    case "{{ bump }}" in
+        patch|minor|major)
+            if [[ ! "$current" =~ $clean_re ]]; then
+                echo "✗ Cannot auto-bump '$current' (has prerelease suffix). Pass an explicit version." >&2
+                exit 1
+            fi
+            ;;
+    esac
+
+    case "{{ bump }}" in
+        patch) new=$(echo "$current" | awk -F. -v OFS=. '{$3++; print}') ;;
+        minor) new=$(echo "$current" | awk -F. -v OFS=. '{$2++; $3=0; print}') ;;
+        major) new=$(echo "$current" | awk -F. -v OFS=. '{$1++; $2=0; $3=0; print}') ;;
+        *)
+            if [[ "{{ bump }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+                new="{{ bump }}"
+            else
+                echo "✗ '{{ bump }}' is not patch|minor|major|X.Y.Z[-suffix]" >&2
+                exit 1
+            fi
+            ;;
+    esac
+
+    if [ "$new" = "$current" ]; then
+        echo "✗ Computed version $new is the same as current. Did you forget to bump?" >&2
+        exit 1
+    fi
+
+    echo ""
+    echo "  fc-dev: $current → $new"
+    echo ""
+
+    # The bare `version = "..."` line is unique in this file (workspace
+    # bump uses `version.workspace = true` elsewhere in the workspace,
+    # but fc-dev pins its own version literal).
+    awk -v new="$new" '/^version = "[^"]+"$/ && !done {print "version = \"" new "\""; done=1; next} {print}' \
+        bin/fc-dev/Cargo.toml > bin/fc-dev/Cargo.toml.tmp
+    mv bin/fc-dev/Cargo.toml.tmp bin/fc-dev/Cargo.toml
+
+    echo "Refreshing Cargo.lock…"
+    if ! FC_SKIP_FRONTEND_BUILD=1 cargo check -p fc-dev --quiet; then
+        echo "✗ cargo check failed. Reverting." >&2
+        git checkout -- bin/fc-dev/Cargo.toml Cargo.lock 2>/dev/null || true
+        exit 1
+    fi
+
+    echo ""
+    echo "Changes:"
+    git --no-pager diff --stat bin/fc-dev/Cargo.toml Cargo.lock
+    echo ""
+    read -r -p "Commit 'fc-dev v$new', tag fc-dev/v$new, and push? [y/N] " confirm || confirm="n"
+    case "$confirm" in
+        y|Y|yes|YES) ;;
+        *)
+            echo "Aborted. Reverting."
+            git checkout -- bin/fc-dev/Cargo.toml Cargo.lock
+            exit 1
+            ;;
+    esac
+
+    git add bin/fc-dev/Cargo.toml Cargo.lock
+    git commit -m "fc-dev v$new"
+    git tag "fc-dev/v$new"
+    git push origin HEAD "fc-dev/v$new"
+
+    echo ""
+    echo "✓ Released fc-dev v$new"
+    echo ""
+    echo "  Workflow:  https://github.com/flowcatalyst/flowcatalyst/actions/workflows/release-fc-dev.yml"
+    echo "  Release:   https://github.com/flowcatalyst/flowcatalyst/releases/tag/fc-dev/v$new"
 
 # ─── Tools ─────────────────────────────────────────────────────────────────
 

@@ -18,14 +18,15 @@ loop.
 
 ## Cost summary
 
-| Platform | One-time effort | Ongoing | Notes |
-|---|---|---|---|
-| macOS  | ~half day | $99/year | Apple Developer Program. DUNS verification can take 1–2 weeks for orgs that don't already have one. |
-| Windows | ~half day | $120/year | Azure Trusted Signing ($9.99/mo). Requires an Azure subscription. |
-| Linux (cosign + GPG) | ~1.5 hours | $0 | Both are free. Cosign uses GitHub OIDC, no key management. GPG needs a keypair stored in CI secrets. |
-| Verification in upgrade | ~1 day | n/a | ~150 LOC across platforms in `bin/fc-dev/src/upgrade.rs`. |
+| Platform | Status | One-time effort | Ongoing | Notes |
+|---|---|---|---|---|
+| macOS  | not done | ~half day | $99/year | Apple Developer Program. DUNS verification can take 1–2 weeks for orgs that don't already have one. |
+| Windows | not done | ~half day | $120/year | Azure Trusted Signing ($9.99/mo). Requires an Azure subscription. |
+| Linux (cosign) | **implemented** | — | $0 | Done in `release-fc-dev.yml`. Uses GitHub OIDC, no keys to manage. |
+| Linux (GPG) | not done | ~1 hour | $0 | Adds a detached `.asc` for corporate reviewers who expect PGP. |
+| Verification in upgrade | not done | ~1 day | n/a | ~150 LOC across platforms in `bin/fc-dev/src/upgrade.rs`. |
 
-**Total Phase 2 effort: ~2 days work, ~$220/year ongoing.**
+**Remaining Phase 2 effort: ~2 days work, ~$220/year ongoing** (macOS + Windows + GPG + upgrade-time verification).
 
 ---
 
@@ -277,47 +278,23 @@ Get-AuthenticodeSignature fc-dev.exe
 Both are free; cosign needs no key management; GPG is what corporate
 reviewers expect to see.
 
-### Cosign keyless
+### Cosign keyless — IMPLEMENTED
+
+> **Status:** shipped. Linux archives produced by `release-fc-dev.yml`
+> are signed automatically. See the workflow file for the actual steps;
+> the section below documents the design.
 
 Cosign uses GitHub Actions' OIDC token as the signing identity. No keys
 stored anywhere — every signature is bound to "the GitHub Actions workflow
-that ran on tag X in repo Y". Verifiers check that binding.
+that ran on tag X in repo Y". Verifiers check that binding by passing
+`--certificate-identity-regexp` and `--certificate-oidc-issuer` flags;
+the verification command is in the README and in every release's notes.
 
-**No setup required outside the repo.** Just add to the workflow.
-
-#### Workflow changes — Linux jobs and publish job
-
-In each Linux build job (`x86_64-unknown-linux-gnu` and
-`aarch64-unknown-linux-gnu`), **after** `Package archive`:
-
-```yaml
-- uses: sigstore/cosign-installer@v3
-
-- name: Sign archive with cosign (keyless)
-  env:
-    COSIGN_EXPERIMENTAL: "true"
-  run: |
-    cosign sign-blob --yes \
-      --output-signature "${ARCHIVE}.sig" \
-      --output-certificate "${ARCHIVE}.pem" \
-      "$ARCHIVE"
-```
-
-Update `actions/upload-artifact` to also upload `.sig` and `.pem`:
-
-```yaml
-- uses: actions/upload-artifact@v4
-  with:
-    name: release-${{ matrix.target }}
-    path: |
-      ${{ env.ARCHIVE }}
-      ${{ env.ARCHIVE }}.sha256
-      ${{ env.ARCHIVE }}.sig    # cosign signature
-      ${{ env.ARCHIVE }}.pem    # cosign certificate
-```
-
-Top-level workflow `permissions` needs `id-token: write` (the same one
-Azure needs).
+The workflow needs `permissions.id-token: write` to mint the OIDC token,
+runs `sigstore/cosign-installer@v3`, then `cosign sign-blob --yes` per
+Linux archive, producing `.sig` (signature) and `.pem` (cert chain)
+sidecars. The upload-artifact `path` is a glob (`${{ env.ARCHIVE }}*`)
+so both Linux sidecars and the SHA256 are picked up uniformly.
 
 ### GPG detached signature
 

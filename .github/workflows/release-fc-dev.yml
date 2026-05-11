@@ -25,6 +25,11 @@ on:
 
 permissions:
   contents: write
+  # Required for cosign keyless signing on Linux artifacts: cosign asks
+  # for a short-lived OIDC token from GitHub Actions, exchanges it with
+  # Sigstore's Fulcio for a code-signing cert, and records the signature
+  # in the public Rekor transparency log. No long-lived keys involved.
+  id-token: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -150,13 +155,33 @@ jobs:
 
           echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
 
+      # Cosign keyless signing on Linux only. macOS/Windows binaries are
+      # unsigned for now (see docs/release-signing.md for the eventual
+      # codesigning path). Cosign uses GitHub Actions' OIDC identity, so
+      # there's nothing to manage — every signature is provably tied to
+      # this repo + this tag + this workflow run, recorded in Rekor.
+      - name: Install cosign
+        if: runner.os == 'Linux'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign archive (cosign keyless)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes \
+            --output-signature "${ARCHIVE}.sig" \
+            --output-certificate "${ARCHIVE}.pem" \
+            "$ARCHIVE"
+
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.target }}
-          path: |
-            ${{ env.ARCHIVE }}
-            ${{ env.ARCHIVE }}.sha256
+          # Glob captures the archive, .sha256, and (on Linux) .sig + .pem
+          # cosign sidecars. Non-Linux runs simply have no sig/pem to match.
+          path: ${{ env.ARCHIVE }}*
           retention-days: 7
+          if-no-files-found: error
 
   publish:
     name: Publish GitHub Release
@@ -195,9 +220,19 @@ jobs:
 
           ### Verifying
 
-          Each archive ships with an \`*.sha256\` sidecar:
+          Every archive ships with a \`*.sha256\` sidecar:
           \`\`\`
           shasum -a 256 -c fc-dev-v${VERSION}-<target>.tar.gz.sha256
+          \`\`\`
+
+          Linux archives are additionally signed with [cosign](https://docs.sigstore.dev/) keyless (GitHub Actions OIDC identity, recorded in the public Rekor transparency log):
+          \`\`\`
+          cosign verify-blob \\
+            --signature fc-dev-v${VERSION}-<target>.tar.gz.sig \\
+            --certificate fc-dev-v${VERSION}-<target>.tar.gz.pem \\
+            --certificate-identity-regexp '^https://github.com/flowcatalyst/flowcatalyst/.github/workflows/release-fc-dev.yml@refs/tags/fc-dev/v' \\
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \\
+            fc-dev-v${VERSION}-<target>.tar.gz
           \`\`\`"
 
           # If a draft release for this tag already exists (manual prep),

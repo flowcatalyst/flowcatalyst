@@ -327,3 +327,48 @@ The `AuthorizationService` struct also provides general-purpose methods:
 - `require_anchor(ctx)` — require anchor scope
 - `require_permission(ctx, permission)` — require a specific permission string
 - `require_client_access(ctx, client_id)` — require access to a specific client
+
+## Frontend UI Conventions
+
+**Tailwind is not installed.** Don't write Tailwind utility classes
+(`grid grid-cols-N`, `flex justify-between`, `mb-4`, `text-gray-500`,
+`md:col-span-2`, etc.). They silently no-op and you'll ship a layout that
+visually flattens — every list page that's tried this has needed a
+rewrite. Search the project: `grep -r tailwind` returns nothing.
+
+When building or modifying any frontend page, **mirror the existing list
+pages** (`DispatchJobListPage.vue`, `EventListPage.vue`,
+`AuditLogListPage.vue`). The conventions are:
+
+- **Layout primitives** — global classes from `frontend/src/style.css`:
+  - `page-container` — root `<div>` for every page.
+  - `page-header` with `page-title` (h1) and `page-subtitle` (p) — the
+    standard header block; right-aligned action buttons sit alongside.
+  - `fc-card` — content card wrapper.
+- **Filter rows** — scoped `.toolbar` (column flex) wrapping `.filter-row`
+  (row flex, `gap: 0.5rem`, `flex-wrap: wrap`). Each filter widget gets
+  `class="filter-select"` (min-width via scoped CSS — typically 160–200px).
+  Search uses `IconField` + `InputIcon` + `InputText`.
+- **Components — PrimeVue, not bare HTML or Tailwind components.**
+  `Select` (not `Dropdown`, the renamed v4 form), `MultiSelect`,
+  `DataTable` + `Column`, `Button`, `Tag`, `IconField`, `InputText`. They
+  are auto-imported via `unplugin-vue-components` (see
+  `frontend/components.d.ts`); don't add explicit imports.
+- **List state** — use the `useListState` composable
+  (`frontend/src/composables/useListState.ts`) for filter + page state
+  with URL sync. Use `useReturnTo` for detail-page navigation.
+- **Pagination** — `DataTable lazy paginator` with `:rows-per-page-options`
+  for offset-paginated lists. **High-volume firehose tables** (events,
+  dispatch jobs, debug grids) get `?size=` only and no paginator at all;
+  see the per-page Vue files for the size-Select pattern.
+- **Scoped CSS for everything else.** Use real scoped CSS classes
+  (`.font-mono`, `.text-sm`, `.text-muted`, `.active-flag` etc.) instead
+  of inline Tailwind names. Common variables: `var(--text-color-secondary)`
+  for muted text, `var(--surface-border)` / `var(--surface-ground)` for
+  card chrome.
+
+**Rule of thumb when starting a new page**: open the closest existing list
+or detail page, copy its `<template>` + `<style scoped>` skeleton, and
+fill in the resource-specific bits. Don't invent layout from scratch —
+the visual standard is already in the codebase, and the project ships
+with no Tailwind to fall back on if you reach for it by reflex.
