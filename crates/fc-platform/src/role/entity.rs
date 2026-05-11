@@ -937,7 +937,10 @@ mod tests {
     #[test]
     fn test_built_in_roles() {
         let all_roles = roles::all();
-        assert_eq!(all_roles.len(), 10);
+        // Bump this number whenever you add a built-in role in `roles::all()`.
+        // The test is a tripwire against accidentally orphaning a new role
+        // from `role_sync_service::seed_built_in_roles`'s consumption path.
+        assert_eq!(all_roles.len(), 11);
 
         // Super admin has wildcard
         let super_admin = roles::super_admin();

@@ -2334,7 +2334,7 @@ dependencies = [
 
 [[package]]
 name = "fc-dev"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "async-trait",
