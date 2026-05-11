@@ -125,6 +125,10 @@ fn install(tag: &str) -> Result<()> {
         .repo_owner(REPO_OWNER)
         .repo_name(REPO_NAME)
         .bin_name(BIN_NAME)
+        // self_update requires the running binary's version so it can
+        // print a sensible status (and skip if equal — though we already
+        // gate that ourselves in run() against the prefix-filtered tag).
+        .current_version(env!("CARGO_PKG_VERSION"))
         .target(target)
         .target_version_tag(tag)
         .show_download_progress(true)
