@@ -279,6 +279,7 @@ mod embedded_pg {
     }
 }
 
+mod banner;
 mod mcp_bootstrap;
 mod upgrade;
 mod version_check;
@@ -850,7 +851,7 @@ async fn main() -> Result<()> {
         })
     };
 
-    info!("FlowCatalyst Dev Monolith started successfully");
+    banner::print(args.api_port, args.metrics_port);
     info!("Press Ctrl+C to shutdown");
 
     // Wait for shutdown signal

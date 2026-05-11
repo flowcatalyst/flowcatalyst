@@ -139,6 +139,22 @@ fn cache_path() -> Option<PathBuf> {
     )
 }
 
+/// Synchronous accessor for the startup banner: returns the latest version
+/// observed on a previous run *if* it's newer than the running binary, else
+/// `None`. Reads `~/.cache/flowcatalyst-dev/update-check.json` (24h TTL).
+/// On a true first run the cache is empty — banner shows no upgrade info
+/// until the spawned check populates it for next time.
+pub fn cached_upgrade_available() -> Option<String> {
+    let entry = read_cache()?;
+    let current = Version::parse(env!("CARGO_PKG_VERSION")).ok()?;
+    let latest = Version::parse(&entry.latest_version).ok()?;
+    if latest > current {
+        Some(latest.to_string())
+    } else {
+        None
+    }
+}
+
 fn read_cache() -> Option<CacheEntry> {
     let path = cache_path()?;
     let bytes = std::fs::read(&path).ok()?;
