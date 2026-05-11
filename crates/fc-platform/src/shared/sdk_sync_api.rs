@@ -4,36 +4,34 @@
 //! roles, event types, subscriptions, dispatch pools, and principals.
 
 use axum::{
+    extract::{Path, Query, State},
     routing::post,
-    extract::{State, Path, Query},
     Json, Router,
 };
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
 
-use crate::role::operations::{
-    SyncRolesCommand, SyncRolesUseCase, SyncRoleInput,
+use crate::dispatch_pool::operations::{
+    SyncDispatchPoolInput, SyncDispatchPoolsCommand, SyncDispatchPoolsUseCase,
 };
 use crate::event_type::operations::{
-    SyncEventTypesCommand, SyncEventTypesUseCase, SyncEventTypeInput,
-};
-use crate::subscription::operations::{
-    SyncSubscriptionsCommand, SyncSubscriptionsUseCase, SyncSubscriptionInput,
-    EventTypeBindingInput,
-};
-use crate::dispatch_pool::operations::{
-    SyncDispatchPoolsCommand, SyncDispatchPoolsUseCase, SyncDispatchPoolInput,
+    SyncEventTypeInput, SyncEventTypesCommand, SyncEventTypesUseCase,
 };
 use crate::principal::operations::{
-    SyncPrincipalsCommand, SyncPrincipalsUseCase, SyncPrincipalInput,
+    SyncPrincipalInput, SyncPrincipalsCommand, SyncPrincipalsUseCase,
 };
+use crate::role::operations::{SyncRoleInput, SyncRolesCommand, SyncRolesUseCase};
 use crate::scheduled_job::operations::{
     ScheduledJobSyncEntry, SyncScheduledJobsCommand, SyncScheduledJobsUseCase,
 };
-use crate::usecase::{ExecutionContext, UseCase, UseCaseResult};
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
+use crate::subscription::operations::{
+    EventTypeBindingInput, SyncSubscriptionInput, SyncSubscriptionsCommand,
+    SyncSubscriptionsUseCase,
+};
+use crate::usecase::{ExecutionContext, UseCase, UseCaseResult};
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -177,7 +175,9 @@ pub struct SyncDispatchPoolInputRequest {
     pub concurrency: u32,
 }
 
-fn default_concurrency() -> u32 { 10 }
+fn default_concurrency() -> u32 {
+    10
+}
 
 // ---------------------------------------------------------------------------
 // Principals sync
@@ -206,7 +206,9 @@ pub struct SyncPrincipalInputRequest {
     pub active: bool,
 }
 
-fn default_active() -> bool { true }
+fn default_active() -> bool {
+    true
+}
 
 // ---------------------------------------------------------------------------
 // State
@@ -220,8 +222,7 @@ pub struct SdkSyncState {
     pub sync_subscriptions_use_case: Arc<SyncSubscriptionsUseCase<crate::usecase::PgUnitOfWork>>,
     pub sync_dispatch_pools_use_case: Arc<SyncDispatchPoolsUseCase<crate::usecase::PgUnitOfWork>>,
     pub sync_principals_use_case: Arc<SyncPrincipalsUseCase<crate::usecase::PgUnitOfWork>>,
-    pub sync_scheduled_jobs_use_case:
-        Arc<SyncScheduledJobsUseCase<crate::usecase::PgUnitOfWork>>,
+    pub sync_scheduled_jobs_use_case: Arc<SyncScheduledJobsUseCase<crate::usecase::PgUnitOfWork>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -262,8 +263,12 @@ pub struct SyncScheduledJobInputRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_url: Option<String>,
 }
-fn default_tz() -> String { "UTC".into() }
-fn default_attempts() -> i32 { 3 }
+fn default_tz() -> String {
+    "UTC".into()
+}
+fn default_attempts() -> i32 {
+    3
+}
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -305,28 +310,30 @@ async fn sync_roles(
 ) -> Result<Json<SyncResultResponse>, PlatformError> {
     let command = SyncRolesCommand {
         application_code: app_code,
-        roles: req.roles.into_iter().map(|r| SyncRoleInput {
-            name: r.name,
-            display_name: r.display_name,
-            description: r.description,
-            permissions: r.permissions,
-            client_managed: r.client_managed,
-        }).collect(),
+        roles: req
+            .roles
+            .into_iter()
+            .map(|r| SyncRoleInput {
+                name: r.name,
+                display_name: r.display_name,
+                description: r.description,
+                permissions: r.permissions,
+                client_managed: r.client_managed,
+            })
+            .collect(),
         remove_unlisted: query.remove_unlisted,
     };
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
     match state.sync_roles_use_case.run(command, ctx).await {
-        UseCaseResult::Success(event) => {
-            Ok(Json(SyncResultResponse {
-                application_code: event.application_code,
-                created: event.created,
-                updated: event.updated,
-                deleted: event.deleted,
-                synced_codes: event.synced_names,
-            }))
-        }
+        UseCaseResult::Success(event) => Ok(Json(SyncResultResponse {
+            application_code: event.application_code,
+            created: event.created,
+            updated: event.updated,
+            deleted: event.deleted,
+            synced_codes: event.synced_names,
+        })),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
 }
@@ -357,27 +364,29 @@ async fn sync_event_types(
 ) -> Result<Json<SyncResultResponse>, PlatformError> {
     let command = SyncEventTypesCommand {
         application_code: app_code,
-        event_types: req.event_types.into_iter().map(|et| SyncEventTypeInput {
-            code: et.code,
-            name: et.name,
-            description: et.description,
-            schema: None,
-        }).collect(),
+        event_types: req
+            .event_types
+            .into_iter()
+            .map(|et| SyncEventTypeInput {
+                code: et.code,
+                name: et.name,
+                description: et.description,
+                schema: None,
+            })
+            .collect(),
         remove_unlisted: query.remove_unlisted,
     };
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
     match state.sync_event_types_use_case.run(command, ctx).await {
-        UseCaseResult::Success(event) => {
-            Ok(Json(SyncResultResponse {
-                application_code: event.application_code,
-                created: event.created,
-                updated: event.updated,
-                deleted: event.deleted,
-                synced_codes: event.synced_codes,
-            }))
-        }
+        UseCaseResult::Success(event) => Ok(Json(SyncResultResponse {
+            application_code: event.application_code,
+            created: event.created,
+            updated: event.updated,
+            deleted: event.deleted,
+            synced_codes: event.synced_codes,
+        })),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
 }
@@ -409,37 +418,43 @@ async fn sync_subscriptions(
 ) -> Result<Json<SyncResultResponse>, PlatformError> {
     let command = SyncSubscriptionsCommand {
         application_code: app_code,
-        subscriptions: req.subscriptions.into_iter().map(|s| SyncSubscriptionInput {
-            code: s.code,
-            name: s.name,
-            description: s.description,
-            target: s.target,
-            connection_id: s.connection_id,
-            event_types: s.event_types.into_iter().map(|et| EventTypeBindingInput {
-                event_type_code: et.event_type_code,
-                filter: et.filter,
-            }).collect(),
-            dispatch_pool_code: s.dispatch_pool_code,
-            mode: s.mode,
-            max_retries: s.max_retries,
-            timeout_seconds: s.timeout_seconds,
-            data_only: s.data_only,
-        }).collect(),
+        subscriptions: req
+            .subscriptions
+            .into_iter()
+            .map(|s| SyncSubscriptionInput {
+                code: s.code,
+                name: s.name,
+                description: s.description,
+                target: s.target,
+                connection_id: s.connection_id,
+                event_types: s
+                    .event_types
+                    .into_iter()
+                    .map(|et| EventTypeBindingInput {
+                        event_type_code: et.event_type_code,
+                        filter: et.filter,
+                    })
+                    .collect(),
+                dispatch_pool_code: s.dispatch_pool_code,
+                mode: s.mode,
+                max_retries: s.max_retries,
+                timeout_seconds: s.timeout_seconds,
+                data_only: s.data_only,
+            })
+            .collect(),
         remove_unlisted: query.remove_unlisted,
     };
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
     match state.sync_subscriptions_use_case.run(command, ctx).await {
-        UseCaseResult::Success(event) => {
-            Ok(Json(SyncResultResponse {
-                application_code: event.application_code,
-                created: event.created,
-                updated: event.updated,
-                deleted: event.deleted,
-                synced_codes: event.synced_codes,
-            }))
-        }
+        UseCaseResult::Success(event) => Ok(Json(SyncResultResponse {
+            application_code: event.application_code,
+            created: event.created,
+            updated: event.updated,
+            deleted: event.deleted,
+            synced_codes: event.synced_codes,
+        })),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
 }
@@ -470,28 +485,30 @@ async fn sync_dispatch_pools(
 ) -> Result<Json<SyncResultResponse>, PlatformError> {
     let command = SyncDispatchPoolsCommand {
         application_code: app_code,
-        pools: req.pools.into_iter().map(|p| SyncDispatchPoolInput {
-            code: p.code,
-            name: p.name,
-            description: p.description,
-            rate_limit: p.rate_limit,
-            concurrency: p.concurrency,
-        }).collect(),
+        pools: req
+            .pools
+            .into_iter()
+            .map(|p| SyncDispatchPoolInput {
+                code: p.code,
+                name: p.name,
+                description: p.description,
+                rate_limit: p.rate_limit,
+                concurrency: p.concurrency,
+            })
+            .collect(),
         remove_unlisted: query.remove_unlisted,
     };
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
     match state.sync_dispatch_pools_use_case.run(command, ctx).await {
-        UseCaseResult::Success(event) => {
-            Ok(Json(SyncResultResponse {
-                application_code: event.application_code,
-                created: event.created,
-                updated: event.updated,
-                deleted: event.deleted,
-                synced_codes: event.synced_codes,
-            }))
-        }
+        UseCaseResult::Success(event) => Ok(Json(SyncResultResponse {
+            application_code: event.application_code,
+            created: event.created,
+            updated: event.updated,
+            deleted: event.deleted,
+            synced_codes: event.synced_codes,
+        })),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
 }
@@ -523,27 +540,29 @@ async fn sync_principals(
 ) -> Result<Json<SyncResultResponse>, PlatformError> {
     let command = SyncPrincipalsCommand {
         application_code: app_code,
-        principals: req.principals.into_iter().map(|p| SyncPrincipalInput {
-            email: p.email,
-            name: p.name,
-            roles: p.roles,
-            active: p.active,
-        }).collect(),
+        principals: req
+            .principals
+            .into_iter()
+            .map(|p| SyncPrincipalInput {
+                email: p.email,
+                name: p.name,
+                roles: p.roles,
+                active: p.active,
+            })
+            .collect(),
         remove_unlisted: query.remove_unlisted,
     };
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
     match state.sync_principals_use_case.run(command, ctx).await {
-        UseCaseResult::Success(event) => {
-            Ok(Json(SyncResultResponse {
-                application_code: event.application_code,
-                created: event.created,
-                updated: event.updated,
-                deleted: event.deactivated,
-                synced_codes: event.synced_emails,
-            }))
-        }
+        UseCaseResult::Success(event) => Ok(Json(SyncResultResponse {
+            application_code: event.application_code,
+            created: event.created,
+            updated: event.updated,
+            deleted: event.deactivated,
+            synced_codes: event.synced_emails,
+        })),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
 }
@@ -580,14 +599,13 @@ async fn sync_scheduled_jobs(
         Some(cid) => {
             if !auth.0.can_access_client(cid) {
                 return Err(PlatformError::forbidden(format!(
-                    "No access to client: {}", cid
+                    "No access to client: {}",
+                    cid
                 )));
             }
         }
         None => {
-            if !auth.0.is_anchor()
-                && !auth.0.has_permission(crate::permissions::ADMIN_ALL)
-            {
+            if !auth.0.is_anchor() && !auth.0.has_permission(crate::permissions::ADMIN_ALL) {
                 return Err(PlatformError::forbidden(
                     "Only anchor users can sync platform-scoped scheduled jobs",
                 ));
@@ -598,19 +616,23 @@ async fn sync_scheduled_jobs(
     let command = SyncScheduledJobsCommand {
         scope: app_code.clone(),
         client_id: req.client_id,
-        jobs: req.jobs.into_iter().map(|j| ScheduledJobSyncEntry {
-            code: j.code,
-            name: j.name,
-            description: j.description,
-            crons: j.crons,
-            timezone: j.timezone,
-            payload: j.payload,
-            concurrent: j.concurrent,
-            tracks_completion: j.tracks_completion,
-            timeout_seconds: j.timeout_seconds,
-            delivery_max_attempts: j.delivery_max_attempts,
-            target_url: j.target_url,
-        }).collect(),
+        jobs: req
+            .jobs
+            .into_iter()
+            .map(|j| ScheduledJobSyncEntry {
+                code: j.code,
+                name: j.name,
+                description: j.description,
+                crons: j.crons,
+                timezone: j.timezone,
+                payload: j.payload,
+                concurrent: j.concurrent,
+                tracks_completion: j.tracks_completion,
+                timeout_seconds: j.timeout_seconds,
+                delivery_max_attempts: j.delivery_max_attempts,
+                target_url: j.target_url,
+            })
+            .collect(),
         archive_unlisted: req.archive_unlisted,
     };
 

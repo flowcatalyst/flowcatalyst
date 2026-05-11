@@ -70,9 +70,8 @@ struct Release {
 }
 
 async fn find_latest_release() -> Result<Release> {
-    let url = format!(
-        "https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases?per_page=100"
-    );
+    let url =
+        format!("https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases?per_page=100");
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .user_agent(concat!("fc-dev/", env!("CARGO_PKG_VERSION")))

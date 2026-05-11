@@ -1,14 +1,14 @@
 //! Create Email Domain Mapping Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::EmailDomainMappingRepository;
-use crate::IdentityProviderRepository;
+use super::events::EmailDomainMappingCreated;
 use crate::email_domain_mapping::entity::{EmailDomainMapping, ScopeType};
 use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
-use super::events::EmailDomainMappingCreated;
+use crate::EmailDomainMappingRepository;
+use crate::IdentityProviderRepository;
 
 /// Command for creating a new email domain mapping.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,7 +43,11 @@ impl<U: UnitOfWork> CreateEmailDomainMappingUseCase<U> {
         idp_repo: Arc<IdentityProviderRepository>,
         unit_of_work: Arc<U>,
     ) -> Self {
-        Self { edm_repo, idp_repo, unit_of_work }
+        Self {
+            edm_repo,
+            idp_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -52,24 +56,33 @@ impl<U: UnitOfWork> UseCase for CreateEmailDomainMappingUseCase<U> {
     type Command = CreateEmailDomainMappingCommand;
     type Event = EmailDomainMappingCreated;
 
-    async fn validate(&self, command: &CreateEmailDomainMappingCommand) -> Result<(), UseCaseError> {
+    async fn validate(
+        &self,
+        command: &CreateEmailDomainMappingCommand,
+    ) -> Result<(), UseCaseError> {
         let email_domain = command.email_domain.trim().to_lowercase();
         if email_domain.is_empty() {
             return Err(UseCaseError::validation(
-                "EMAIL_DOMAIN_REQUIRED", "Email domain is required",
+                "EMAIL_DOMAIN_REQUIRED",
+                "Email domain is required",
             ));
         }
 
         if command.identity_provider_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "IDENTITY_PROVIDER_ID_REQUIRED", "Identity provider ID is required",
+                "IDENTITY_PROVIDER_ID_REQUIRED",
+                "Identity provider ID is required",
             ));
         }
 
         Ok(())
     }
 
-    async fn authorize(&self, _command: &CreateEmailDomainMappingCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &CreateEmailDomainMappingCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -81,17 +94,25 @@ impl<U: UnitOfWork> UseCase for CreateEmailDomainMappingUseCase<U> {
         let email_domain = command.email_domain.trim().to_lowercase();
 
         // Verify identity provider exists
-        match self.idp_repo.find_by_id(&command.identity_provider_id).await {
+        match self
+            .idp_repo
+            .find_by_id(&command.identity_provider_id)
+            .await
+        {
             Ok(Some(_)) => {}
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
                     "IDENTITY_PROVIDER_NOT_FOUND",
-                    format!("Identity provider '{}' not found", command.identity_provider_id),
+                    format!(
+                        "Identity provider '{}' not found",
+                        command.identity_provider_id
+                    ),
                 ));
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to validate identity provider: {}", e
+                    "Failed to validate identity provider: {}",
+                    e
                 )));
             }
         }
@@ -107,7 +128,8 @@ impl<U: UnitOfWork> UseCase for CreateEmailDomainMappingUseCase<U> {
             Ok(None) => {}
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to check email domain: {}", e
+                    "Failed to check email domain: {}",
+                    e
                 )));
             }
         }
@@ -119,7 +141,8 @@ impl<U: UnitOfWork> UseCase for CreateEmailDomainMappingUseCase<U> {
             _ => ScopeType::Client,
         };
 
-        let mut mapping = EmailDomainMapping::new(&email_domain, &command.identity_provider_id, scope_type);
+        let mut mapping =
+            EmailDomainMapping::new(&email_domain, &command.identity_provider_id, scope_type);
         mapping.primary_client_id = command.primary_client_id.clone();
         mapping.additional_client_ids = command.additional_client_ids.clone();
         mapping.granted_client_ids = command.granted_client_ids.clone();
@@ -129,7 +152,8 @@ impl<U: UnitOfWork> UseCase for CreateEmailDomainMappingUseCase<U> {
 
         if let Err(e) = self.edm_repo.insert(&mapping).await {
             return UseCaseResult::failure(UseCaseError::commit(format!(
-                "Failed to insert email domain mapping: {}", e
+                "Failed to insert email domain mapping: {}",
+                e
             )));
         }
 
@@ -181,7 +205,10 @@ mod tests {
         assert_eq!(deserialized.email_domain, "example.com");
         assert_eq!(deserialized.identity_provider_id, "idp-123");
         assert_eq!(deserialized.scope_type, "ANCHOR");
-        assert_eq!(deserialized.primary_client_id, Some("client-456".to_string()));
+        assert_eq!(
+            deserialized.primary_client_id,
+            Some("client-456".to_string())
+        );
         assert!(deserialized.sync_roles_from_idp);
     }
 
@@ -219,7 +246,10 @@ mod tests {
             allowed_role_ids: vec![],
         };
         let trimmed = cmd.email_domain.trim().to_lowercase();
-        assert!(trimmed.is_empty(), "Whitespace-only email domain should be treated as empty");
+        assert!(
+            trimmed.is_empty(),
+            "Whitespace-only email domain should be treated as empty"
+        );
     }
 
     #[test]
@@ -235,7 +265,10 @@ mod tests {
             required_oidc_tenant_id: None,
             allowed_role_ids: vec![],
         };
-        assert!(cmd.identity_provider_id.trim().is_empty(), "Whitespace-only IDP ID should be treated as empty");
+        assert!(
+            cmd.identity_provider_id.trim().is_empty(),
+            "Whitespace-only IDP ID should be treated as empty"
+        );
     }
 
     #[test]

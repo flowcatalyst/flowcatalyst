@@ -5,18 +5,16 @@
 //! config json). All writes commit atomically via UoW with an
 //! `ApplicationClientConfigUpdated` event + audit log.
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::ApplicationClientConfigUpdated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 use crate::ApplicationClientConfig;
 use crate::ApplicationClientConfigRepository;
 use crate::ApplicationRepository;
 use crate::ClientRepository;
-use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
-};
-use super::events::ApplicationClientConfigUpdated;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,7 +44,12 @@ impl<U: UnitOfWork> UpdateApplicationClientConfigUseCase<U> {
         config_repo: Arc<ApplicationClientConfigRepository>,
         unit_of_work: Arc<U>,
     ) -> Self {
-        Self { application_repo, client_repo, config_repo, unit_of_work }
+        Self {
+            application_repo,
+            client_repo,
+            config_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -55,21 +58,30 @@ impl<U: UnitOfWork> UseCase for UpdateApplicationClientConfigUseCase<U> {
     type Command = UpdateApplicationClientConfigCommand;
     type Event = ApplicationClientConfigUpdated;
 
-    async fn validate(&self, command: &UpdateApplicationClientConfigCommand) -> Result<(), UseCaseError> {
+    async fn validate(
+        &self,
+        command: &UpdateApplicationClientConfigCommand,
+    ) -> Result<(), UseCaseError> {
         if command.application_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "APPLICATION_ID_REQUIRED", "Application ID is required",
+                "APPLICATION_ID_REQUIRED",
+                "Application ID is required",
             ));
         }
         if command.client_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "CLIENT_ID_REQUIRED", "Client ID is required",
+                "CLIENT_ID_REQUIRED",
+                "Client ID is required",
             ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &UpdateApplicationClientConfigCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &UpdateApplicationClientConfigCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -79,23 +91,35 @@ impl<U: UnitOfWork> UseCase for UpdateApplicationClientConfigUseCase<U> {
         ctx: ExecutionContext,
     ) -> UseCaseResult<ApplicationClientConfigUpdated> {
         // Verify application exists
-        if self.application_repo.find_by_id(&command.application_id).await
+        if self
+            .application_repo
+            .find_by_id(&command.application_id)
+            .await
             .map_err(|e| UseCaseError::commit(format!("fetch application: {}", e)))
-            .and_then(|opt| opt.ok_or_else(|| UseCaseError::not_found(
-                "APPLICATION_NOT_FOUND",
-                format!("Application '{}' not found", command.application_id),
-            )))
+            .and_then(|opt| {
+                opt.ok_or_else(|| {
+                    UseCaseError::not_found(
+                        "APPLICATION_NOT_FOUND",
+                        format!("Application '{}' not found", command.application_id),
+                    )
+                })
+            })
             .is_err()
         {
             // Re-run without collapsing to get the exact error back
-            return match self.application_repo.find_by_id(&command.application_id).await {
+            return match self
+                .application_repo
+                .find_by_id(&command.application_id)
+                .await
+            {
                 Ok(Some(_)) => unreachable!(),
                 Ok(None) => UseCaseResult::failure(UseCaseError::not_found(
                     "APPLICATION_NOT_FOUND",
                     format!("Application '{}' not found", command.application_id),
                 )),
                 Err(e) => UseCaseResult::failure(UseCaseError::commit(format!(
-                    "fetch application: {}", e,
+                    "fetch application: {}",
+                    e,
                 ))),
             };
         }
@@ -111,13 +135,15 @@ impl<U: UnitOfWork> UseCase for UpdateApplicationClientConfigUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "fetch client: {}", e,
+                    "fetch client: {}",
+                    e,
                 )));
             }
         }
 
         // Load-or-create the config and apply the patch
-        let existing = self.config_repo
+        let existing = self
+            .config_repo
             .find_by_application_and_client(&command.application_id, &command.client_id)
             .await;
 
@@ -126,7 +152,8 @@ impl<U: UnitOfWork> UseCase for UpdateApplicationClientConfigUseCase<U> {
             Ok(None) => ApplicationClientConfig::new(&command.application_id, &command.client_id),
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "fetch config: {}", e,
+                    "fetch config: {}",
+                    e,
                 )));
             }
         };
@@ -135,7 +162,11 @@ impl<U: UnitOfWork> UseCase for UpdateApplicationClientConfigUseCase<U> {
             config.enabled = enabled;
         }
         if let Some(ref url) = command.base_url_override {
-            config.base_url_override = if url.is_empty() { None } else { Some(url.clone()) };
+            config.base_url_override = if url.is_empty() {
+                None
+            } else {
+                Some(url.clone())
+            };
         }
         let config_changed = command.config.is_some();
         if let Some(ref cfg) = command.config {

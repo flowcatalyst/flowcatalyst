@@ -4,14 +4,14 @@
 //! during OAuth authorize/token flows), matching the TS oidc-provider
 //! adapter caching pattern.
 
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use sqlx::PgPool;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use async_trait::async_trait;
-use sqlx::PgPool;
-use chrono::{DateTime, Utc};
 use tokio::sync::RwLock;
 
-use crate::auth::oauth_entity::{OAuthClient, OAuthClientType, GrantType};
+use crate::auth::oauth_entity::{GrantType, OAuthClient, OAuthClientType};
 use crate::shared::error::Result;
 
 // ── Row structs ─────────────────────────────────────────────────────
@@ -33,8 +33,14 @@ struct OAuthClientRow {
 
 impl From<OAuthClientRow> for OAuthClient {
     fn from(r: OAuthClientRow) -> Self {
-        let default_scopes: Vec<String> = r.default_scopes
-            .map(|s| s.split(',').filter(|v| !v.is_empty()).map(String::from).collect())
+        let default_scopes: Vec<String> = r
+            .default_scopes
+            .map(|s| {
+                s.split(',')
+                    .filter(|v| !v.is_empty())
+                    .map(String::from)
+                    .collect()
+            })
             .unwrap_or_default();
 
         Self {
@@ -43,8 +49,8 @@ impl From<OAuthClientRow> for OAuthClient {
             client_name: r.client_name,
             client_type: OAuthClientType::from_str(&r.client_type),
             client_secret_ref: r.client_secret_ref,
-            redirect_uris: vec![],   // loaded separately
-            grant_types: vec![],     // loaded separately
+            redirect_uris: vec![], // loaded separately
+            grant_types: vec![],   // loaded separately
             default_scopes,
             pkce_required: r.pkce_required,
             application_ids: vec![], // loaded separately
@@ -81,14 +87,17 @@ impl OAuthClientRepository {
 
     /// Invalidate cache entries for a client
     async fn invalidate_cache(&self, client: &OAuthClient) {
-        self.cache_by_client_id.write().await.remove(&client.client_id);
+        self.cache_by_client_id
+            .write()
+            .await
+            .remove(&client.client_id);
     }
 
     // ── Junction table helpers ───────────────────────────────────
 
     async fn load_redirect_uris(&self, oauth_client_id: &str) -> Result<Vec<String>> {
         let rows = sqlx::query_scalar::<_, String>(
-            "SELECT redirect_uri FROM oauth_client_redirect_uris WHERE oauth_client_id = $1"
+            "SELECT redirect_uri FROM oauth_client_redirect_uris WHERE oauth_client_id = $1",
         )
         .bind(oauth_client_id)
         .fetch_all(&self.pool)
@@ -98,17 +107,20 @@ impl OAuthClientRepository {
 
     async fn load_grant_types(&self, oauth_client_id: &str) -> Result<Vec<GrantType>> {
         let rows = sqlx::query_scalar::<_, String>(
-            "SELECT grant_type FROM oauth_client_grant_types WHERE oauth_client_id = $1"
+            "SELECT grant_type FROM oauth_client_grant_types WHERE oauth_client_id = $1",
         )
         .bind(oauth_client_id)
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows.into_iter().filter_map(|s| GrantType::from_str(&s)).collect())
+        Ok(rows
+            .into_iter()
+            .filter_map(|s| GrantType::from_str(&s))
+            .collect())
     }
 
     async fn load_application_ids(&self, oauth_client_id: &str) -> Result<Vec<String>> {
         let rows = sqlx::query_scalar::<_, String>(
-            "SELECT application_id FROM oauth_client_application_ids WHERE oauth_client_id = $1"
+            "SELECT application_id FROM oauth_client_application_ids WHERE oauth_client_id = $1",
         )
         .bind(oauth_client_id)
         .fetch_all(&self.pool)
@@ -118,7 +130,7 @@ impl OAuthClientRepository {
 
     async fn load_allowed_origins(&self, oauth_client_id: &str) -> Result<Vec<String>> {
         let rows = sqlx::query_scalar::<_, String>(
-            "SELECT allowed_origin FROM oauth_client_allowed_origins WHERE oauth_client_id = $1"
+            "SELECT allowed_origin FROM oauth_client_allowed_origins WHERE oauth_client_id = $1",
         )
         .bind(oauth_client_id)
         .fetch_all(&self.pool)
@@ -150,13 +162,25 @@ impl OAuthClientRepository {
 
         // Batch-load all junction tables concurrently
         #[derive(sqlx::FromRow)]
-        struct UriRow { oauth_client_id: String, redirect_uri: String }
+        struct UriRow {
+            oauth_client_id: String,
+            redirect_uri: String,
+        }
         #[derive(sqlx::FromRow)]
-        struct GrantRow { oauth_client_id: String, grant_type: String }
+        struct GrantRow {
+            oauth_client_id: String,
+            grant_type: String,
+        }
         #[derive(sqlx::FromRow)]
-        struct AppRow { oauth_client_id: String, application_id: String }
+        struct AppRow {
+            oauth_client_id: String,
+            application_id: String,
+        }
         #[derive(sqlx::FromRow)]
-        struct OriginRow { oauth_client_id: String, allowed_origin: String }
+        struct OriginRow {
+            oauth_client_id: String,
+            allowed_origin: String,
+        }
 
         let (uri_rows, grant_rows, app_rows, origin_rows) = tokio::try_join!(
             sqlx::query_as::<_, UriRow>(
@@ -175,7 +199,12 @@ impl OAuthClientRepository {
 
         // Group by parent ID
         let mut uri_map: HashMap<String, Vec<String>> = HashMap::new();
-        for r in uri_rows { uri_map.entry(r.oauth_client_id).or_default().push(r.redirect_uri); }
+        for r in uri_rows {
+            uri_map
+                .entry(r.oauth_client_id)
+                .or_default()
+                .push(r.redirect_uri);
+        }
 
         let mut grant_map: HashMap<String, Vec<GrantType>> = HashMap::new();
         for r in grant_rows {
@@ -185,16 +214,34 @@ impl OAuthClientRepository {
         }
 
         let mut app_map: HashMap<String, Vec<String>> = HashMap::new();
-        for r in app_rows { app_map.entry(r.oauth_client_id).or_default().push(r.application_id); }
+        for r in app_rows {
+            app_map
+                .entry(r.oauth_client_id)
+                .or_default()
+                .push(r.application_id);
+        }
 
         let mut origin_map: HashMap<String, Vec<String>> = HashMap::new();
-        for r in origin_rows { origin_map.entry(r.oauth_client_id).or_default().push(r.allowed_origin); }
+        for r in origin_rows {
+            origin_map
+                .entry(r.oauth_client_id)
+                .or_default()
+                .push(r.allowed_origin);
+        }
 
         for client in &mut clients {
-            if let Some(v) = uri_map.remove(&client.id) { client.redirect_uris = v; }
-            if let Some(v) = grant_map.remove(&client.id) { client.grant_types = v; }
-            if let Some(v) = app_map.remove(&client.id) { client.application_ids = v; }
-            if let Some(v) = origin_map.remove(&client.id) { client.allowed_origins = v; }
+            if let Some(v) = uri_map.remove(&client.id) {
+                client.redirect_uris = v;
+            }
+            if let Some(v) = grant_map.remove(&client.id) {
+                client.grant_types = v;
+            }
+            if let Some(v) = app_map.remove(&client.id) {
+                client.application_ids = v;
+            }
+            if let Some(v) = origin_map.remove(&client.id) {
+                client.allowed_origins = v;
+            }
         }
 
         Ok(clients)
@@ -217,7 +264,11 @@ impl OAuthClientRepository {
         Ok(())
     }
 
-    async fn save_grant_types(&self, oauth_client_id: &str, grant_types: &[GrantType]) -> Result<()> {
+    async fn save_grant_types(
+        &self,
+        oauth_client_id: &str,
+        grant_types: &[GrantType],
+    ) -> Result<()> {
         sqlx::query("DELETE FROM oauth_client_grant_types WHERE oauth_client_id = $1")
             .bind(oauth_client_id)
             .execute(&self.pool)
@@ -282,7 +333,7 @@ impl OAuthClientRepository {
                 (id, client_id, client_name, client_type, client_secret_ref,
                  default_scopes, pkce_required, service_account_principal_id, active,
                  created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())"#
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())"#,
         )
         .bind(&client.id)
         .bind(&client.client_id)
@@ -296,21 +347,23 @@ impl OAuthClientRepository {
         .execute(&self.pool)
         .await?;
 
-        self.save_redirect_uris(&client.id, &client.redirect_uris).await?;
-        self.save_grant_types(&client.id, &client.grant_types).await?;
-        self.save_application_ids(&client.id, &client.application_ids).await?;
-        self.save_allowed_origins(&client.id, &client.allowed_origins).await?;
+        self.save_redirect_uris(&client.id, &client.redirect_uris)
+            .await?;
+        self.save_grant_types(&client.id, &client.grant_types)
+            .await?;
+        self.save_application_ids(&client.id, &client.application_ids)
+            .await?;
+        self.save_allowed_origins(&client.id, &client.allowed_origins)
+            .await?;
         self.invalidate_cache(client).await;
         Ok(())
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<OAuthClient>> {
-        let row = sqlx::query_as::<_, OAuthClientRow>(
-            "SELECT * FROM oauth_clients WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query_as::<_, OAuthClientRow>("SELECT * FROM oauth_clients WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
         match row {
             Some(r) => Ok(Some(self.hydrate(OAuthClient::from(r)).await?)),
             None => Ok(None),
@@ -328,19 +381,21 @@ impl OAuthClientRepository {
             }
         }
 
-        let row = sqlx::query_as::<_, OAuthClientRow>(
-            "SELECT * FROM oauth_clients WHERE client_id = $1"
-        )
-        .bind(client_id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row =
+            sqlx::query_as::<_, OAuthClientRow>("SELECT * FROM oauth_clients WHERE client_id = $1")
+                .bind(client_id)
+                .fetch_optional(&self.pool)
+                .await?;
         match row {
             Some(r) => {
                 let client = self.hydrate(OAuthClient::from(r)).await?;
                 // Populate cache
                 self.cache_by_client_id.write().await.insert(
                     client_id.to_string(),
-                    CacheEntry { client: client.clone(), inserted_at: Instant::now() },
+                    CacheEntry {
+                        client: client.clone(),
+                        inserted_at: Instant::now(),
+                    },
                 );
                 Ok(Some(client))
             }
@@ -349,28 +404,25 @@ impl OAuthClientRepository {
     }
 
     pub async fn find_active(&self) -> Result<Vec<OAuthClient>> {
-        let rows = sqlx::query_as::<_, OAuthClientRow>(
-            "SELECT * FROM oauth_clients WHERE active = true"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows =
+            sqlx::query_as::<_, OAuthClientRow>("SELECT * FROM oauth_clients WHERE active = true")
+                .fetch_all(&self.pool)
+                .await?;
         let clients: Vec<OAuthClient> = rows.into_iter().map(OAuthClient::from).collect();
         self.hydrate_all(clients).await
     }
 
     pub async fn find_all(&self) -> Result<Vec<OAuthClient>> {
-        let rows = sqlx::query_as::<_, OAuthClientRow>(
-            "SELECT * FROM oauth_clients"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query_as::<_, OAuthClientRow>("SELECT * FROM oauth_clients")
+            .fetch_all(&self.pool)
+            .await?;
         let clients: Vec<OAuthClient> = rows.into_iter().map(OAuthClient::from).collect();
         self.hydrate_all(clients).await
     }
 
     pub async fn find_by_application(&self, application_id: &str) -> Result<Vec<OAuthClient>> {
         let client_ids = sqlx::query_scalar::<_, String>(
-            "SELECT oauth_client_id FROM oauth_client_application_ids WHERE application_id = $1"
+            "SELECT oauth_client_id FROM oauth_client_application_ids WHERE application_id = $1",
         )
         .bind(application_id)
         .fetch_all(&self.pool)
@@ -380,23 +432,21 @@ impl OAuthClientRepository {
             return Ok(vec![]);
         }
 
-        let rows = sqlx::query_as::<_, OAuthClientRow>(
-            "SELECT * FROM oauth_clients WHERE id = ANY($1)"
-        )
-        .bind(&client_ids)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows =
+            sqlx::query_as::<_, OAuthClientRow>("SELECT * FROM oauth_clients WHERE id = ANY($1)")
+                .bind(&client_ids)
+                .fetch_all(&self.pool)
+                .await?;
         let clients: Vec<OAuthClient> = rows.into_iter().map(OAuthClient::from).collect();
         self.hydrate_all(clients).await
     }
 
     pub async fn exists_by_client_id(&self, client_id: &str) -> Result<bool> {
-        let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM oauth_clients WHERE client_id = $1)"
-        )
-        .bind(client_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let exists: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM oauth_clients WHERE client_id = $1)")
+                .bind(client_id)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(exists)
     }
 
@@ -413,7 +463,7 @@ impl OAuthClientRepository {
                 client_secret_ref = $5, default_scopes = $6,
                 pkce_required = $7, service_account_principal_id = $8,
                 active = $9, updated_at = NOW()
-            WHERE id = $1"#
+            WHERE id = $1"#,
         )
         .bind(&client.id)
         .bind(&client.client_id)
@@ -427,10 +477,14 @@ impl OAuthClientRepository {
         .execute(&self.pool)
         .await?;
 
-        self.save_redirect_uris(&client.id, &client.redirect_uris).await?;
-        self.save_grant_types(&client.id, &client.grant_types).await?;
-        self.save_application_ids(&client.id, &client.application_ids).await?;
-        self.save_allowed_origins(&client.id, &client.allowed_origins).await?;
+        self.save_redirect_uris(&client.id, &client.redirect_uris)
+            .await?;
+        self.save_grant_types(&client.id, &client.grant_types)
+            .await?;
+        self.save_application_ids(&client.id, &client.application_ids)
+            .await?;
+        self.save_allowed_origins(&client.id, &client.allowed_origins)
+            .await?;
         self.invalidate_cache(client).await;
         Ok(())
     }
@@ -440,7 +494,8 @@ impl OAuthClientRepository {
         {
             let cache = self.cache_by_client_id.read().await;
             // Find the client_id key to evict (reverse lookup)
-            let client_id_key: Option<String> = cache.iter()
+            let client_id_key: Option<String> = cache
+                .iter()
                 .find(|(_, entry)| entry.client.id == id)
                 .map(|(k, _)| k.clone());
             drop(cache);
@@ -451,13 +506,21 @@ impl OAuthClientRepository {
 
         // Junction tables have ON DELETE CASCADE, but delete explicitly for safety
         sqlx::query("DELETE FROM oauth_client_redirect_uris WHERE oauth_client_id = $1")
-            .bind(id).execute(&self.pool).await?;
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
         sqlx::query("DELETE FROM oauth_client_grant_types WHERE oauth_client_id = $1")
-            .bind(id).execute(&self.pool).await?;
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
         sqlx::query("DELETE FROM oauth_client_application_ids WHERE oauth_client_id = $1")
-            .bind(id).execute(&self.pool).await?;
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
         sqlx::query("DELETE FROM oauth_client_allowed_origins WHERE oauth_client_id = $1")
-            .bind(id).execute(&self.pool).await?;
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
 
         let result = sqlx::query("DELETE FROM oauth_clients WHERE id = $1")
             .bind(id)
@@ -470,7 +533,9 @@ impl OAuthClientRepository {
 // ── Persist<OAuthClient> ────────────────────────────────────────────────────
 
 impl crate::usecase::HasId for OAuthClient {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]
@@ -497,7 +562,7 @@ impl crate::usecase::Persist<OAuthClient> for OAuthClientRepository {
                 pkce_required = EXCLUDED.pkce_required,
                 service_account_principal_id = EXCLUDED.service_account_principal_id,
                 active = EXCLUDED.active,
-                updated_at = EXCLUDED.updated_at"#
+                updated_at = EXCLUDED.updated_at"#,
         )
         .bind(&c.id)
         .bind(&c.client_id)
@@ -515,7 +580,9 @@ impl crate::usecase::Persist<OAuthClient> for OAuthClientRepository {
 
         // Sync junction tables: delete-then-reinsert all in the same tx
         sqlx::query("DELETE FROM oauth_client_redirect_uris WHERE oauth_client_id = $1")
-            .bind(&c.id).execute(&mut **tx.inner).await?;
+            .bind(&c.id)
+            .execute(&mut **tx.inner)
+            .await?;
         for uri in &c.redirect_uris {
             sqlx::query(
                 "INSERT INTO oauth_client_redirect_uris (oauth_client_id, redirect_uri) VALUES ($1, $2)"
@@ -524,7 +591,9 @@ impl crate::usecase::Persist<OAuthClient> for OAuthClientRepository {
         }
 
         sqlx::query("DELETE FROM oauth_client_grant_types WHERE oauth_client_id = $1")
-            .bind(&c.id).execute(&mut **tx.inner).await?;
+            .bind(&c.id)
+            .execute(&mut **tx.inner)
+            .await?;
         for gt in &c.grant_types {
             sqlx::query(
                 "INSERT INTO oauth_client_grant_types (oauth_client_id, grant_type) VALUES ($1, $2)"
@@ -533,7 +602,9 @@ impl crate::usecase::Persist<OAuthClient> for OAuthClientRepository {
         }
 
         sqlx::query("DELETE FROM oauth_client_application_ids WHERE oauth_client_id = $1")
-            .bind(&c.id).execute(&mut **tx.inner).await?;
+            .bind(&c.id)
+            .execute(&mut **tx.inner)
+            .await?;
         for app_id in &c.application_ids {
             sqlx::query(
                 "INSERT INTO oauth_client_application_ids (oauth_client_id, application_id) VALUES ($1, $2)"
@@ -542,7 +613,9 @@ impl crate::usecase::Persist<OAuthClient> for OAuthClientRepository {
         }
 
         sqlx::query("DELETE FROM oauth_client_allowed_origins WHERE oauth_client_id = $1")
-            .bind(&c.id).execute(&mut **tx.inner).await?;
+            .bind(&c.id)
+            .execute(&mut **tx.inner)
+            .await?;
         for origin in &c.allowed_origins {
             sqlx::query(
                 "INSERT INTO oauth_client_allowed_origins (oauth_client_id, allowed_origin) VALUES ($1, $2)"
@@ -556,15 +629,25 @@ impl crate::usecase::Persist<OAuthClient> for OAuthClientRepository {
 
     async fn delete(&self, c: &OAuthClient, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM oauth_client_redirect_uris WHERE oauth_client_id = $1")
-            .bind(&c.id).execute(&mut **tx.inner).await?;
+            .bind(&c.id)
+            .execute(&mut **tx.inner)
+            .await?;
         sqlx::query("DELETE FROM oauth_client_grant_types WHERE oauth_client_id = $1")
-            .bind(&c.id).execute(&mut **tx.inner).await?;
+            .bind(&c.id)
+            .execute(&mut **tx.inner)
+            .await?;
         sqlx::query("DELETE FROM oauth_client_application_ids WHERE oauth_client_id = $1")
-            .bind(&c.id).execute(&mut **tx.inner).await?;
+            .bind(&c.id)
+            .execute(&mut **tx.inner)
+            .await?;
         sqlx::query("DELETE FROM oauth_client_allowed_origins WHERE oauth_client_id = $1")
-            .bind(&c.id).execute(&mut **tx.inner).await?;
+            .bind(&c.id)
+            .execute(&mut **tx.inner)
+            .await?;
         sqlx::query("DELETE FROM oauth_clients WHERE id = $1")
-            .bind(&c.id).execute(&mut **tx.inner).await?;
+            .bind(&c.id)
+            .execute(&mut **tx.inner)
+            .await?;
         self.invalidate_cache(c).await;
         Ok(())
     }

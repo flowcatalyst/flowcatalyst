@@ -9,15 +9,13 @@
 //! so both commits live in one DB transaction — either both succeed or
 //! both roll back.
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::ApplicationRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::ApplicationServiceAccountProvisioned;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::ApplicationRepository;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,7 +32,10 @@ pub struct AttachServiceAccountToApplicationUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> AttachServiceAccountToApplicationUseCase<U> {
     pub fn new(application_repo: Arc<ApplicationRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { application_repo, unit_of_work }
+        Self {
+            application_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -43,21 +44,30 @@ impl<U: UnitOfWork> UseCase for AttachServiceAccountToApplicationUseCase<U> {
     type Command = AttachServiceAccountToApplicationCommand;
     type Event = ApplicationServiceAccountProvisioned;
 
-    async fn validate(&self, command: &AttachServiceAccountToApplicationCommand) -> Result<(), UseCaseError> {
+    async fn validate(
+        &self,
+        command: &AttachServiceAccountToApplicationCommand,
+    ) -> Result<(), UseCaseError> {
         if command.application_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "APPLICATION_ID_REQUIRED", "Application ID is required",
+                "APPLICATION_ID_REQUIRED",
+                "Application ID is required",
             ));
         }
         if command.service_account_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "SERVICE_ACCOUNT_ID_REQUIRED", "Service account ID is required",
+                "SERVICE_ACCOUNT_ID_REQUIRED",
+                "Service account ID is required",
             ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &AttachServiceAccountToApplicationCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &AttachServiceAccountToApplicationCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -66,7 +76,11 @@ impl<U: UnitOfWork> UseCase for AttachServiceAccountToApplicationUseCase<U> {
         command: AttachServiceAccountToApplicationCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<ApplicationServiceAccountProvisioned> {
-        let mut application = match self.application_repo.find_by_id(&command.application_id).await {
+        let mut application = match self
+            .application_repo
+            .find_by_id(&command.application_id)
+            .await
+        {
             Ok(Some(a)) => a,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
@@ -76,7 +90,8 @@ impl<U: UnitOfWork> UseCase for AttachServiceAccountToApplicationUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "fetch application: {}", e,
+                    "fetch application: {}",
+                    e,
                 )));
             }
         };

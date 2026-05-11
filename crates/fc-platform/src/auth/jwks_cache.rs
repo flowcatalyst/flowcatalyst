@@ -4,11 +4,11 @@
 //! Supports automatic discovery via `.well-known/openid-configuration` and
 //! manual JWKS URI resolution. Cached entries expire after a configurable TTL.
 
+use chrono::{DateTime, Utc};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Utc};
-use serde::Deserialize;
 use tracing::{debug, warn};
 
 /// Cached JWKS entry for a single issuer
@@ -84,10 +84,13 @@ impl JwksCache {
         // Store in cache
         {
             let mut cache = self.cache.write().await;
-            cache.insert(issuer_url.to_string(), CachedJwks {
-                jwks: jwks.clone(),
-                fetched_at: Utc::now(),
-            });
+            cache.insert(
+                issuer_url.to_string(),
+                CachedJwks {
+                    jwks: jwks.clone(),
+                    fetched_at: Utc::now(),
+                },
+            );
         }
 
         Ok(jwks)
@@ -100,18 +103,25 @@ impl JwksCache {
 
         debug!(url = %discovery_url, "Fetching OIDC discovery document");
 
-        let discovery: DiscoveryDoc = self.http_client
+        let discovery: DiscoveryDoc = self
+            .http_client
             .get(&discovery_url)
             .send()
             .await
-            .map_err(|e| format!("Failed to fetch OIDC discovery from {}: {}", discovery_url, e))?
+            .map_err(|e| {
+                format!(
+                    "Failed to fetch OIDC discovery from {}: {}",
+                    discovery_url, e
+                )
+            })?
             .json()
             .await
             .map_err(|e| format!("Failed to parse OIDC discovery: {}", e))?;
 
         debug!(jwks_uri = %discovery.jwks_uri, "Fetching JWKS");
 
-        let jwks: Jwks = self.http_client
+        let jwks: Jwks = self
+            .http_client
             .get(&discovery.jwks_uri)
             .send()
             .await
@@ -173,14 +183,20 @@ mod tests {
 
         let jwks = Jwks { keys: vec![] };
 
-        inner.insert("https://issuer-a.example.com".to_string(), CachedJwks {
-            jwks: jwks.clone(),
-            fetched_at: Utc::now(),
-        });
-        inner.insert("https://issuer-b.example.com".to_string(), CachedJwks {
-            jwks: jwks.clone(),
-            fetched_at: Utc::now(),
-        });
+        inner.insert(
+            "https://issuer-a.example.com".to_string(),
+            CachedJwks {
+                jwks: jwks.clone(),
+                fetched_at: Utc::now(),
+            },
+        );
+        inner.insert(
+            "https://issuer-b.example.com".to_string(),
+            CachedJwks {
+                jwks: jwks.clone(),
+                fetched_at: Utc::now(),
+            },
+        );
 
         assert_eq!(inner.len(), 2);
         assert!(inner.contains_key("https://issuer-a.example.com"));
@@ -193,15 +209,21 @@ mod tests {
         let mut inner = cache.cache.write().await;
 
         let jwks = Jwks { keys: vec![] };
-        inner.insert("https://issuer.example.com".to_string(), CachedJwks {
-            jwks: jwks.clone(),
-            fetched_at: Utc::now(),
-        });
+        inner.insert(
+            "https://issuer.example.com".to_string(),
+            CachedJwks {
+                jwks: jwks.clone(),
+                fetched_at: Utc::now(),
+            },
+        );
         // Inserting same key overwrites
-        inner.insert("https://issuer.example.com".to_string(), CachedJwks {
-            jwks,
-            fetched_at: Utc::now(),
-        });
+        inner.insert(
+            "https://issuer.example.com".to_string(),
+            CachedJwks {
+                jwks,
+                fetched_at: Utc::now(),
+            },
+        );
 
         assert_eq!(inner.len(), 1);
     }
@@ -211,10 +233,13 @@ mod tests {
         let cache = JwksCache::new(60);
         {
             let mut inner = cache.cache.write().await;
-            inner.insert("https://issuer.example.com".to_string(), CachedJwks {
-                jwks: Jwks { keys: vec![] },
-                fetched_at: Utc::now(),
-            });
+            inner.insert(
+                "https://issuer.example.com".to_string(),
+                CachedJwks {
+                    jwks: Jwks { keys: vec![] },
+                    fetched_at: Utc::now(),
+                },
+            );
         }
 
         cache.invalidate("https://issuer.example.com").await;
@@ -238,10 +263,13 @@ mod tests {
         {
             let mut inner = cache.cache.write().await;
             // Insert an entry with a timestamp 10 seconds in the past
-            inner.insert("https://expired.example.com".to_string(), CachedJwks {
-                jwks: Jwks { keys: vec![] },
-                fetched_at: Utc::now() - chrono::Duration::seconds(10),
-            });
+            inner.insert(
+                "https://expired.example.com".to_string(),
+                CachedJwks {
+                    jwks: Jwks { keys: vec![] },
+                    fetched_at: Utc::now() - chrono::Duration::seconds(10),
+                },
+            );
         }
 
         // get_jwks should try to refetch (will fail since no server),

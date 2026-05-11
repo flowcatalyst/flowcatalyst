@@ -1,7 +1,7 @@
 //! PasswordResetToken Repository — PostgreSQL via SQLx
 
-use sqlx::PgPool;
 use chrono::{DateTime, Utc};
+use sqlx::PgPool;
 
 use super::entity::PasswordResetToken;
 use crate::shared::error::Result;
@@ -40,7 +40,7 @@ impl PasswordResetTokenRepository {
         sqlx::query(
             r#"INSERT INTO iam_password_reset_tokens
                 (id, principal_id, token_hash, expires_at, created_at)
-            VALUES ($1, $2, $3, $4, NOW())"#
+            VALUES ($1, $2, $3, $4, NOW())"#,
         )
         .bind(&token.id)
         .bind(&token.principal_id)
@@ -53,7 +53,7 @@ impl PasswordResetTokenRepository {
 
     pub async fn find_by_token_hash(&self, hash: &str) -> Result<Option<PasswordResetToken>> {
         let row = sqlx::query_as::<_, PasswordResetTokenRow>(
-            "SELECT * FROM iam_password_reset_tokens WHERE token_hash = $1"
+            "SELECT * FROM iam_password_reset_tokens WHERE token_hash = $1",
         )
         .bind(hash)
         .fetch_optional(&self.pool)

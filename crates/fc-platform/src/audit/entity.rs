@@ -1,7 +1,7 @@
 //! Audit Log Entity — matches TypeScript AuditLog domain
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -64,7 +64,13 @@ impl AuditLog {
             .unwrap_or("Unknown")
             .to_string();
         let operation_json = serde_json::to_value(command).ok();
-        Self::new(entity_type, entity_id, command_name, operation_json, principal_id)
+        Self::new(
+            entity_type,
+            entity_id,
+            command_name,
+            operation_json,
+            principal_id,
+        )
     }
 }
 
@@ -83,8 +89,16 @@ mod tests {
         );
 
         assert!(!log.id.is_empty());
-        assert_eq!(log.id.len(), 13, "Untyped ID should be 13 chars, got: {}", log.id.len());
-        assert!(!log.id.contains('_'), "Untyped ID should not have prefix underscore");
+        assert_eq!(
+            log.id.len(),
+            13,
+            "Untyped ID should be 13 chars, got: {}",
+            log.id.len()
+        );
+        assert!(
+            !log.id.contains('_'),
+            "Untyped ID should not have prefix underscore"
+        );
         assert_eq!(log.entity_type, "Client");
         assert_eq!(log.entity_id, "clt_0HZXEQ5Y8JY5Z");
         assert_eq!(log.operation, "CreateClient");
@@ -136,12 +150,7 @@ mod tests {
             identifier: "test".to_string(),
         };
 
-        let log = AuditLog::from_command(
-            "Client",
-            "clt_123",
-            &cmd,
-            Some("prn_456".to_string()),
-        );
+        let log = AuditLog::from_command("Client", "clt_123", &cmd, Some("prn_456".to_string()));
 
         assert_eq!(log.entity_type, "Client");
         assert_eq!(log.entity_id, "clt_123");
@@ -162,4 +171,3 @@ mod tests {
         assert_eq!(log.client_id, Some("clt1".to_string()));
     }
 }
-

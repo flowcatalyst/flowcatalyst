@@ -26,21 +26,21 @@
 //! | `FC_METRICS_PORT` | `9090` | Metrics/health port |
 //! | `RUST_LOG` | `info` | Log level |
 
+use anyhow::Result;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use std::net::SocketAddr;
-use anyhow::Result;
-use tracing::info;
 use tokio::signal;
 use tokio::sync::broadcast;
+use tracing::info;
 
-use fc_outbox::repository::OutboxTableConfig;
-use fc_outbox::{EnhancedOutboxProcessor, EnhancedProcessorConfig};
 use fc_outbox::http_dispatcher::HttpDispatcherConfig;
 use fc_outbox::repository::OutboxRepository;
+use fc_outbox::repository::OutboxTableConfig;
+use fc_outbox::{EnhancedOutboxProcessor, EnhancedProcessorConfig};
 
-use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::postgres::PgPoolOptions;
+use sqlx::sqlite::SqlitePoolOptions;
 
 use fc_common::config::{env_or, env_or_parse, env_required};
 
@@ -65,10 +65,7 @@ async fn main() -> Result<()> {
     let metrics_port: u16 = env_or_parse("FC_METRICS_PORT", 9090);
 
     let table_config = build_table_config();
-    info!(
-        "Table config: {:?}",
-        table_config.unique_tables()
-    );
+    info!("Table config: {:?}", table_config.unique_tables());
 
     // Setup shutdown signal
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
@@ -87,8 +84,10 @@ async fn main() -> Result<()> {
     let api_batch_size: usize = env_or_parse("FC_API_BATCH_SIZE", 100);
 
     info!("Sending to {} with message group ordering", api_base_url);
-    info!("  max_in_flight: {}, buffer_size: {}, concurrent_groups: {}",
-        max_in_flight, global_buffer_size, max_concurrent_groups);
+    info!(
+        "  max_in_flight: {}, buffer_size: {}, concurrent_groups: {}",
+        max_in_flight, global_buffer_size, max_concurrent_groups
+    );
 
     let config = EnhancedProcessorConfig {
         poll_interval: Duration::from_millis(poll_interval_ms),
@@ -121,7 +120,10 @@ async fn main() -> Result<()> {
 
     // Start metrics server
     let metrics_addr = SocketAddr::from(([0, 0, 0, 0], metrics_port));
-    info!("Metrics server listening on http://{}/metrics", metrics_addr);
+    info!(
+        "Metrics server listening on http://{}/metrics",
+        metrics_addr
+    );
 
     let metrics_app = axum::Router::new()
         .route("/metrics", axum::routing::get(metrics_handler))
@@ -153,13 +155,17 @@ async fn main() -> Result<()> {
     let _ = tokio::time::timeout(Duration::from_secs(30), async {
         let _ = processor_handle.await;
         let _ = metrics_handle.await;
-    }).await;
+    })
+    .await;
 
     info!("FlowCatalyst Outbox Processor shutdown complete");
     Ok(())
 }
 
-async fn create_outbox_repository(db_type: &str, table_config: OutboxTableConfig) -> Result<Arc<dyn OutboxRepository>> {
+async fn create_outbox_repository(
+    db_type: &str,
+    table_config: OutboxTableConfig,
+) -> Result<Arc<dyn OutboxRepository>> {
     match db_type {
         "sqlite" => {
             let url = env_required("FC_OUTBOX_DB_URL")?;
@@ -178,7 +184,8 @@ async fn create_outbox_repository(db_type: &str, table_config: OutboxTableConfig
                 .max_connections(10)
                 .connect(&url)
                 .await?;
-            let repo = fc_outbox::postgres::PostgresOutboxRepository::with_config(pool, table_config);
+            let repo =
+                fc_outbox::postgres::PostgresOutboxRepository::with_config(pool, table_config);
             repo.init_schema().await?;
             info!("Using PostgreSQL outbox");
             Ok(Arc::new(repo))
@@ -187,19 +194,25 @@ async fn create_outbox_repository(db_type: &str, table_config: OutboxTableConfig
             let url = env_required("FC_OUTBOX_DB_URL")?;
             let db_name = env_or("FC_OUTBOX_MONGO_DB", "flowcatalyst");
             let client = mongodb::Client::with_uri_str(&url).await?;
-            let repo = fc_outbox::mongo::MongoOutboxRepository::with_config(client, &db_name, table_config);
+            let repo = fc_outbox::mongo::MongoOutboxRepository::with_config(
+                client,
+                &db_name,
+                table_config,
+            );
             repo.init_schema().await?;
             info!("Using MongoDB outbox: {}", db_name);
             Ok(Arc::new(repo))
         }
-        other => {
-            Err(anyhow::anyhow!("Unknown database type: {}. Use sqlite, postgres, or mongo", other))
-        }
+        other => Err(anyhow::anyhow!(
+            "Unknown database type: {}. Use sqlite, postgres, or mongo",
+            other
+        )),
     }
 }
 
 async fn metrics_handler() -> String {
-    "# HELP fc_outbox_up Outbox processor is up\n# TYPE fc_outbox_up gauge\nfc_outbox_up 1\n".to_string()
+    "# HELP fc_outbox_up Outbox processor is up\n# TYPE fc_outbox_up gauge\nfc_outbox_up 1\n"
+        .to_string()
 }
 
 async fn health_handler() -> axum::Json<serde_json::Value> {
@@ -217,7 +230,9 @@ async fn ready_handler() -> axum::Json<serde_json::Value> {
 
 async fn shutdown_signal() {
     let ctrl_c = async {
-        signal::ctrl_c().await.expect("failed to install Ctrl+C handler");
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
     };
 
     #[cfg(unix)]

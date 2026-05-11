@@ -5,27 +5,31 @@
 //! and exits when the group's queue is empty. This matches the TS MessageGroupHandler
 //! pattern and uses ~200 bytes per idle group vs ~100KB with the old design.
 
-use std::collections::VecDeque;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::time::Duration;
-use std::num::NonZeroU32;
 use dashmap::{DashMap, DashSet};
-use tokio::sync::Semaphore;
-use governor::{Quota, RateLimiter, state::{NotKeyed, InMemoryState}, clock::DefaultClock};
-use tracing::{info, warn, error, debug};
-
-use fc_common::{
-    Message, BatchMessage, MessageCallback, PoolConfig, PoolStats,
-    MediationResult, EnhancedPoolMetrics,
+use governor::{
+    clock::DefaultClock,
+    state::{InMemoryState, NotKeyed},
+    Quota, RateLimiter,
 };
+use std::collections::VecDeque;
+use std::num::NonZeroU32;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Semaphore;
+use tracing::{debug, error, info, warn};
+
 use crate::mediator::Mediator;
 use crate::metrics::PoolMetricsCollector;
 use crate::Result;
+use fc_common::{
+    BatchMessage, EnhancedPoolMetrics, MediationResult, Message, MessageCallback, PoolConfig,
+    PoolStats,
+};
 
 const DEFAULT_GROUP: &str = "__DEFAULT__";
-const QUEUE_CAPACITY_MULTIPLIER: u32 = 20;  // Java: QUEUE_CAPACITY_MULTIPLIER = 20
-const MIN_QUEUE_CAPACITY: u32 = 50;          // Java: MIN_QUEUE_CAPACITY = 50
+const QUEUE_CAPACITY_MULTIPLIER: u32 = 20; // Java: QUEUE_CAPACITY_MULTIPLIER = 20
+const MIN_QUEUE_CAPACITY: u32 = 50; // Java: MIN_QUEUE_CAPACITY = 50
 
 /// Pool-wide rate limiter shared across all message groups in a pool.
 /// Wrapped in `RwLock<Option<...>>` so the limiter can be hot-swapped at
@@ -95,7 +99,9 @@ impl MessageGroupHandler {
 
     /// Dequeue next task, high priority first.
     fn dequeue(&mut self) -> Option<PoolTask> {
-        self.high_priority.pop_front().or_else(|| self.regular.pop_front())
+        self.high_priority
+            .pop_front()
+            .or_else(|| self.regular.pop_front())
     }
 
     fn is_empty(&self) -> bool {
@@ -160,7 +166,8 @@ impl ProcessPool {
     pub fn new(config: PoolConfig, mediator: Arc<dyn Mediator>) -> Self {
         // Java: effectiveConcurrency() — if concurrency is 0, fall back to max(rateLimitPerMinute/60, 1)
         let concurrency_val = if config.concurrency == 0 {
-            config.rate_limit_per_minute
+            config
+                .rate_limit_per_minute
                 .map(|rpm| (rpm / 60).max(1))
                 .unwrap_or(1)
         } else {
@@ -168,9 +175,7 @@ impl ProcessPool {
         };
 
         let rate_limiter = config.rate_limit_per_minute.and_then(|rpm| {
-            NonZeroU32::new(rpm).map(|nz| {
-                Arc::new(RateLimiter::direct(Quota::per_minute(nz)))
-            })
+            NonZeroU32::new(rpm).map(|nz| Arc::new(RateLimiter::direct(Quota::per_minute(nz))))
         });
 
         Self {
@@ -188,18 +193,26 @@ impl ProcessPool {
             queue_size: Arc::new(AtomicU32::new(0)),
             active_workers: Arc::new(AtomicU32::new(0)),
             metrics_collector: Arc::new(PoolMetricsCollector::new()),
-            circuit_breaker_registry: Arc::new(crate::circuit_breaker_registry::CircuitBreakerRegistry::default()),
+            circuit_breaker_registry: Arc::new(
+                crate::circuit_breaker_registry::CircuitBreakerRegistry::default(),
+            ),
             warning_service: Arc::new(crate::warning::WarningService::noop()),
         }
     }
 
     /// Set the shared circuit breaker registry
-    pub fn set_circuit_breaker_registry(&mut self, registry: Arc<crate::circuit_breaker_registry::CircuitBreakerRegistry>) {
+    pub fn set_circuit_breaker_registry(
+        &mut self,
+        registry: Arc<crate::circuit_breaker_registry::CircuitBreakerRegistry>,
+    ) {
         self.circuit_breaker_registry = registry;
     }
 
     /// Set the warning service for generating warnings
-    pub fn with_warning_service(mut self, warning_service: Arc<crate::warning::WarningService>) -> Self {
+    pub fn with_warning_service(
+        mut self,
+        warning_service: Arc<crate::warning::WarningService>,
+    ) -> Self {
         self.warning_service = warning_service;
         self
     }
@@ -252,14 +265,18 @@ impl ProcessPool {
         self.queue_size.fetch_add(1, Ordering::Relaxed);
 
         // Get message group
-        let group_id: Arc<str> = batch_msg.message.message_group_id
+        let group_id: Arc<str> = batch_msg
+            .message
+            .message_group_id
             .as_ref()
             .filter(|s| !s.is_empty())
             .map(|s| Arc::from(s.as_str()))
             .unwrap_or_else(|| Arc::from(DEFAULT_GROUP));
 
         // Track batch+group message count for cleanup
-        let batch_group_key = batch_msg.batch_id.as_ref()
+        let batch_group_key = batch_msg
+            .batch_id
+            .as_ref()
             .map(|batch_id| BatchGroupKey::new(batch_id, &group_id));
 
         if let Some(ref key) = batch_group_key {
@@ -312,7 +329,8 @@ impl ProcessPool {
 
         // Ordered mode: enqueue to group handler and spawn drain task if idle
         let should_spawn = {
-            let entry = self.group_handlers
+            let entry = self
+                .group_handlers
                 .entry(Arc::clone(&group_id))
                 .or_insert_with(|| parking_lot::Mutex::new(MessageGroupHandler::new()));
             let mut handler = entry.lock();
@@ -357,7 +375,11 @@ impl ProcessPool {
                 Err(_) => {
                     queue_size.fetch_sub(1, Ordering::Relaxed);
                     if let Some(ref key) = task.batch_group_key {
-                        Self::decrement_and_cleanup_batch_group_static(key, &batch_group_message_count, &failed_batch_groups);
+                        Self::decrement_and_cleanup_batch_group_static(
+                            key,
+                            &batch_group_message_count,
+                            &failed_batch_groups,
+                        );
                     }
                     task.callback.nack(Some(10)).await;
                     return;
@@ -379,8 +401,12 @@ impl ProcessPool {
                 let duration_ms = start.elapsed().as_millis() as u64;
 
                 match outcome.result {
-                    MediationResult::Success | MediationResult::ErrorConfig => cb_registry.record_success(endpoint),
-                    MediationResult::ErrorProcess | MediationResult::ErrorConnection => cb_registry.record_failure(endpoint),
+                    MediationResult::Success | MediationResult::ErrorConfig => {
+                        cb_registry.record_success(endpoint)
+                    }
+                    MediationResult::ErrorProcess | MediationResult::ErrorConnection => {
+                        cb_registry.record_failure(endpoint)
+                    }
                     // RateLimited is destination throttling, not a real failure —
                     // do not affect the circuit breaker either way.
                     MediationResult::RateLimited => {}
@@ -414,7 +440,11 @@ impl ProcessPool {
             }
 
             if let Some(ref key) = task.batch_group_key {
-                Self::decrement_and_cleanup_batch_group_static(key, &batch_group_message_count, &failed_batch_groups);
+                Self::decrement_and_cleanup_batch_group_static(
+                    key,
+                    &batch_group_message_count,
+                    &failed_batch_groups,
+                );
             }
 
             active_workers.fetch_sub(1, Ordering::Relaxed);
@@ -817,8 +847,8 @@ impl ProcessPool {
 
     /// Check if fully drained
     pub fn is_fully_drained(&self) -> bool {
-        self.queue_size.load(Ordering::Relaxed) == 0 &&
-        self.active_workers.load(Ordering::Relaxed) == 0
+        self.queue_size.load(Ordering::Relaxed) == 0
+            && self.active_workers.load(Ordering::Relaxed) == 0
     }
 
     /// Shutdown the pool
@@ -862,7 +892,9 @@ impl ProcessPool {
     }
 
     /// Get the circuit breaker registry (for monitoring APIs)
-    pub fn circuit_breaker_registry(&self) -> &Arc<crate::circuit_breaker_registry::CircuitBreakerRegistry> {
+    pub fn circuit_breaker_registry(
+        &self,
+    ) -> &Arc<crate::circuit_breaker_registry::CircuitBreakerRegistry> {
         &self.circuit_breaker_registry
     }
 
@@ -964,9 +996,7 @@ impl ProcessPool {
             if rpm == 0 {
                 None
             } else {
-                NonZeroU32::new(rpm).map(|nz| {
-                    Arc::new(RateLimiter::direct(Quota::per_minute(nz)))
-                })
+                NonZeroU32::new(rpm).map(|nz| Arc::new(RateLimiter::direct(Quota::per_minute(nz))))
             }
         });
 

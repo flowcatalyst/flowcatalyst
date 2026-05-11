@@ -1,15 +1,13 @@
 //! Update Event Type Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::EventTypeStatus;
-use crate::EventTypeRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::EventTypeUpdated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::EventTypeRepository;
+use crate::EventTypeStatus;
 
 /// Command for updating an existing event type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,7 +63,11 @@ impl<U: UnitOfWork> UseCase for UpdateEventTypeUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &UpdateEventTypeCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &UpdateEventTypeCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -75,7 +77,11 @@ impl<U: UnitOfWork> UseCase for UpdateEventTypeUseCase<U> {
         ctx: ExecutionContext,
     ) -> UseCaseResult<EventTypeUpdated> {
         // Fetch existing event type
-        let mut event_type = match self.event_type_repo.find_by_id(&command.event_type_id).await {
+        let mut event_type = match self
+            .event_type_repo
+            .find_by_id(&command.event_type_id)
+            .await
+        {
             Ok(Some(et)) => et,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
@@ -131,12 +137,7 @@ impl<U: UnitOfWork> UseCase for UpdateEventTypeUseCase<U> {
         event_type.updated_at = chrono::Utc::now();
 
         // Create domain event
-        let event = EventTypeUpdated::new(
-            &ctx,
-            &event_type.id,
-            updated_name,
-            updated_description,
-        );
+        let event = EventTypeUpdated::new(&ctx, &event_type.id, updated_name, updated_description);
 
         // Atomic commit
         self.unit_of_work

@@ -40,7 +40,6 @@ const CHECKS: &[Check] = &[
         sql: "SELECT COUNT(*) FROM iam_principal_roles pr \
               WHERE NOT EXISTS (SELECT 1 FROM iam_principals p WHERE p.id = pr.principal_id)",
     },
-
     // --- iam_principal_application_access junction ---
     Check {
         name: "iam_principal_application_access.principal_id → iam_principals.id",
@@ -52,7 +51,6 @@ const CHECKS: &[Check] = &[
         sql: "SELECT COUNT(*) FROM iam_principal_application_access a \
               WHERE NOT EXISTS (SELECT 1 FROM app_applications x WHERE x.id = a.application_id)",
     },
-
     // --- iam_client_access_grants ---
     Check {
         name: "iam_client_access_grants.principal_id → iam_principals.id",
@@ -64,7 +62,6 @@ const CHECKS: &[Check] = &[
         sql: "SELECT COUNT(*) FROM iam_client_access_grants g \
               WHERE NOT EXISTS (SELECT 1 FROM tnt_clients c WHERE c.id = g.client_id)",
     },
-
     // --- app_client_configs (ApplicationClientConfig) ---
     Check {
         name: "app_client_configs.application_id → app_applications.id",
@@ -76,7 +73,6 @@ const CHECKS: &[Check] = &[
         sql: "SELECT COUNT(*) FROM app_client_configs c \
               WHERE NOT EXISTS (SELECT 1 FROM tnt_clients t WHERE t.id = c.client_id)",
     },
-
     // --- iam_principals nullable refs ---
     Check {
         name: "iam_principals.client_id → tnt_clients.id (nullable)",
@@ -90,7 +86,6 @@ const CHECKS: &[Check] = &[
               WHERE p.application_id IS NOT NULL \
                 AND NOT EXISTS (SELECT 1 FROM app_applications a WHERE a.id = p.application_id)",
     },
-
     // --- iam_service_accounts nullable refs ---
     Check {
         name: "iam_service_accounts.application_id → app_applications.id (nullable)",
@@ -98,7 +93,6 @@ const CHECKS: &[Check] = &[
               WHERE s.application_id IS NOT NULL \
                 AND NOT EXISTS (SELECT 1 FROM app_applications a WHERE a.id = s.application_id)",
     },
-
     // --- iam_roles nullable refs ---
     Check {
         name: "iam_roles.application_id → app_applications.id (nullable)",
@@ -113,7 +107,10 @@ pub async fn run(pool: &PgPool) {
     let mut drifted = 0usize;
 
     for check in CHECKS {
-        match sqlx::query_scalar::<_, i64>(check.sql).fetch_one(pool).await {
+        match sqlx::query_scalar::<_, i64>(check.sql)
+            .fetch_one(pool)
+            .await
+        {
             Ok(0) => {}
             Ok(count) => {
                 warn!(

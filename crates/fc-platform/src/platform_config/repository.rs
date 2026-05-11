@@ -1,10 +1,10 @@
 //! PlatformConfig Repository — PostgreSQL via SQLx
 
 use async_trait::async_trait;
-use sqlx::PgPool;
 use chrono::{DateTime, Utc};
+use sqlx::PgPool;
 
-use super::entity::{PlatformConfig, ConfigScope, ConfigValueType};
+use super::entity::{ConfigScope, ConfigValueType, PlatformConfig};
 use crate::shared::error::Result;
 
 #[derive(sqlx::FromRow)]
@@ -51,7 +51,7 @@ impl PlatformConfigRepository {
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<PlatformConfig>> {
         let row = sqlx::query_as::<_, PlatformConfigRow>(
-            "SELECT * FROM app_platform_configs WHERE id = $1"
+            "SELECT * FROM app_platform_configs WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -71,7 +71,7 @@ impl PlatformConfigRepository {
             sqlx::query_as::<_, PlatformConfigRow>(
                 "SELECT * FROM app_platform_configs \
                  WHERE application_code = $1 AND section = $2 AND property = $3 \
-                 AND scope = $4 AND client_id = $5"
+                 AND scope = $4 AND client_id = $5",
             )
             .bind(app_code)
             .bind(section)
@@ -84,7 +84,7 @@ impl PlatformConfigRepository {
             sqlx::query_as::<_, PlatformConfigRow>(
                 "SELECT * FROM app_platform_configs \
                  WHERE application_code = $1 AND section = $2 AND property = $3 \
-                 AND scope = $4 AND client_id IS NULL"
+                 AND scope = $4 AND client_id IS NULL",
             )
             .bind(app_code)
             .bind(section)
@@ -173,7 +173,7 @@ impl PlatformConfigRepository {
             r#"INSERT INTO app_platform_configs
                 (id, application_code, section, property, scope, client_id,
                  value_type, value, description, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())"#
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())"#,
         )
         .bind(&config.id)
         .bind(&config.application_code)
@@ -195,7 +195,7 @@ impl PlatformConfigRepository {
                 application_code = $2, section = $3, property = $4, scope = $5,
                 client_id = $6, value_type = $7, value = $8, description = $9,
                 updated_at = NOW()
-            WHERE id = $1"#
+            WHERE id = $1"#,
         )
         .bind(&config.id)
         .bind(&config.application_code)
@@ -223,7 +223,7 @@ impl PlatformConfigRepository {
             sqlx::query(
                 "DELETE FROM app_platform_configs \
                  WHERE application_code = $1 AND section = $2 AND property = $3 \
-                 AND scope = $4 AND client_id = $5"
+                 AND scope = $4 AND client_id = $5",
             )
             .bind(app_code)
             .bind(section)
@@ -236,7 +236,7 @@ impl PlatformConfigRepository {
             sqlx::query(
                 "DELETE FROM app_platform_configs \
                  WHERE application_code = $1 AND section = $2 AND property = $3 \
-                 AND scope = $4 AND client_id IS NULL"
+                 AND scope = $4 AND client_id IS NULL",
             )
             .bind(app_code)
             .bind(section)
@@ -250,7 +250,9 @@ impl PlatformConfigRepository {
 }
 
 impl crate::usecase::HasId for PlatformConfig {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]

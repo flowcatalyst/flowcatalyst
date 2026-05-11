@@ -1,7 +1,7 @@
 //! Principal (user/service) management operations.
 
+use super::{ClientError, FlowCatalystClient};
 use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError};
 
 /// Request to create a user principal.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -243,8 +243,7 @@ impl FlowCatalystClient {
         &self,
         id: &str,
     ) -> Result<PrincipalRoleListResponse, ClientError> {
-        self.get(&format!("/api/principals/{}/roles", id))
-            .await
+        self.get(&format!("/api/principals/{}/roles", id)).await
     }
 
     /// Assign a single role to a principal (additive — keeps existing roles).
@@ -268,11 +267,8 @@ impl FlowCatalystClient {
         id: &str,
         role_name: &str,
     ) -> Result<(), ClientError> {
-        self.delete_req(&format!(
-            "/api/principals/{}/roles/{}",
-            id, role_name
-        ))
-        .await
+        self.delete_req(&format!("/api/principals/{}/roles/{}", id, role_name))
+            .await
     }
 
     /// Replace all roles on a principal.

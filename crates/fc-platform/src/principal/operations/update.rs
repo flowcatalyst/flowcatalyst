@@ -1,15 +1,13 @@
 //! Update User Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::UserUpdated;
 use crate::principal::entity::UserScope;
 use crate::principal::repository::PrincipalRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::UserUpdated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 /// Command for updating an existing user / principal.
 ///
@@ -91,7 +89,10 @@ impl<U: UnitOfWork> UseCase for UpdateUserUseCase<U> {
                 other => {
                     return Err(UseCaseError::validation(
                         "INVALID_SCOPE",
-                        format!("Invalid scope '{}'. Must be ANCHOR, PARTNER, or CLIENT.", other),
+                        format!(
+                            "Invalid scope '{}'. Must be ANCHOR, PARTNER, or CLIENT.",
+                            other
+                        ),
                     ));
                 }
             }
@@ -100,7 +101,11 @@ impl<U: UnitOfWork> UseCase for UpdateUserUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &UpdateUserCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &UpdateUserCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -141,16 +146,20 @@ impl<U: UnitOfWork> UseCase for UpdateUserUseCase<U> {
 
         if let Some(active) = command.active {
             if active != principal.active {
-                if active { principal.activate(); } else { principal.deactivate(); }
+                if active {
+                    principal.activate();
+                } else {
+                    principal.deactivate();
+                }
                 changed = true;
             }
         }
 
         // Scope change (+ consequent client_id rules).
         let new_scope = match command.scope.as_deref().map(str::to_uppercase) {
-            Some(s) if s == "ANCHOR"  => Some(UserScope::Anchor),
+            Some(s) if s == "ANCHOR" => Some(UserScope::Anchor),
             Some(s) if s == "PARTNER" => Some(UserScope::Partner),
-            Some(s) if s == "CLIENT"  => Some(UserScope::Client),
+            Some(s) if s == "CLIENT" => Some(UserScope::Client),
             Some(_) => unreachable!("validate() rejects invalid scope"),
             None => None,
         };
@@ -165,12 +174,16 @@ impl<U: UnitOfWork> UseCase for UpdateUserUseCase<U> {
         if command.client_id.is_some() || new_scope.is_some() {
             match principal.scope {
                 UserScope::Client => {
-                    let cid = command.client_id.clone()
+                    let cid = command
+                        .client_id
+                        .clone()
                         .or_else(|| principal.client_id.clone())
-                        .ok_or_else(|| UseCaseError::validation(
-                            "CLIENT_ID_REQUIRED",
-                            "client_id is required when scope is CLIENT",
-                        ));
+                        .ok_or_else(|| {
+                            UseCaseError::validation(
+                                "CLIENT_ID_REQUIRED",
+                                "client_id is required when scope is CLIENT",
+                            )
+                        });
                     let cid = match cid {
                         Ok(v) => v,
                         Err(e) => return UseCaseResult::failure(e),

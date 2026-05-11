@@ -1,17 +1,15 @@
 //! Assign Roles to Service Account Use Case
 
-use std::sync::Arc;
-use std::collections::HashSet;
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::sync::Arc;
 
-use crate::service_account::RoleAssignment;
-use crate::ServiceAccountRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::ServiceAccountRolesAssigned;
+use crate::service_account::RoleAssignment;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::ServiceAccountRepository;
 
 /// Command for assigning roles to a service account (declarative - replaces all).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,10 +29,7 @@ pub struct AssignRolesUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> AssignRolesUseCase<U> {
-    pub fn new(
-        service_account_repo: Arc<ServiceAccountRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
+    pub fn new(service_account_repo: Arc<ServiceAccountRepository>, unit_of_work: Arc<U>) -> Self {
         Self {
             service_account_repo,
             unit_of_work,
@@ -51,7 +46,11 @@ impl<U: UnitOfWork> UseCase for AssignRolesUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &AssignRolesCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &AssignRolesCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -61,23 +60,33 @@ impl<U: UnitOfWork> UseCase for AssignRolesUseCase<U> {
         ctx: ExecutionContext,
     ) -> UseCaseResult<ServiceAccountRolesAssigned> {
         // Find the service account
-        let mut service_account = match self.service_account_repo.find_by_id(&command.service_account_id).await {
+        let mut service_account = match self
+            .service_account_repo
+            .find_by_id(&command.service_account_id)
+            .await
+        {
             Ok(Some(sa)) => sa,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
                     "SERVICE_ACCOUNT_NOT_FOUND",
-                    format!("Service account with ID '{}' not found", command.service_account_id),
+                    format!(
+                        "Service account with ID '{}' not found",
+                        command.service_account_id
+                    ),
                 ));
             }
             Err(e) => {
-                return UseCaseResult::failure(UseCaseError::commit(
-                    format!("Failed to find service account: {}", e),
-                ));
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to find service account: {}",
+                    e
+                )));
             }
         };
 
         // Calculate diff
-        let current_roles: HashSet<String> = service_account.roles.iter()
+        let current_roles: HashSet<String> = service_account
+            .roles
+            .iter()
             .map(|r| r.role.clone())
             .collect();
         let new_roles: HashSet<String> = command.roles.iter().cloned().collect();
@@ -86,22 +95,21 @@ impl<U: UnitOfWork> UseCase for AssignRolesUseCase<U> {
         let roles_removed: Vec<String> = current_roles.difference(&new_roles).cloned().collect();
 
         // Replace roles
-        service_account.roles = command.roles.iter()
-            .map(RoleAssignment::new)
-            .collect();
+        service_account.roles = command.roles.iter().map(RoleAssignment::new).collect();
         service_account.updated_at = Utc::now();
 
         // Create domain event
-        let event = ServiceAccountRolesAssigned::new(
-            &ctx,
-            &service_account.id,
-            roles_added,
-            roles_removed,
-        );
+        let event =
+            ServiceAccountRolesAssigned::new(&ctx, &service_account.id, roles_added, roles_removed);
 
         // Atomic commit
         self.unit_of_work
-            .commit(&service_account, &*self.service_account_repo, event, &command)
+            .commit(
+                &service_account,
+                &*self.service_account_repo,
+                event,
+                &command,
+            )
             .await
     }
 }

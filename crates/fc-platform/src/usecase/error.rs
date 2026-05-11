@@ -280,7 +280,10 @@ mod tests {
     fn test_details_macro_single() {
         let email = "user@example.com";
         let details = details! { "email" => email };
-        assert_eq!(details.get("email"), Some(&serde_json::json!("user@example.com")));
+        assert_eq!(
+            details.get("email"),
+            Some(&serde_json::json!("user@example.com"))
+        );
     }
 
     #[test]
@@ -292,8 +295,14 @@ mod tests {
             "clientId" => client_id,
             "count" => 42,
         };
-        assert_eq!(details.get("email"), Some(&serde_json::json!("user@example.com")));
-        assert_eq!(details.get("clientId"), Some(&serde_json::json!("client-123")));
+        assert_eq!(
+            details.get("email"),
+            Some(&serde_json::json!("user@example.com"))
+        );
+        assert_eq!(
+            details.get("clientId"),
+            Some(&serde_json::json!("client-123"))
+        );
         assert_eq!(details.get("count"), Some(&serde_json::json!(42)));
     }
 
@@ -308,7 +317,10 @@ mod tests {
 
         assert_eq!(err.code(), "EMAIL_EXISTS");
         if let UseCaseError::BusinessRuleViolation { details, .. } = err {
-            assert_eq!(details.get("email"), Some(&serde_json::json!("duplicate@example.com")));
+            assert_eq!(
+                details.get("email"),
+                Some(&serde_json::json!("duplicate@example.com"))
+            );
         }
     }
 }

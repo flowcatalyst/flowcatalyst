@@ -5,14 +5,14 @@
 //! - `FC_WEBAUTHN_RP_NAME`   (default: `FlowCatalyst`)
 //! - `FC_WEBAUTHN_ORIGINS`   (default: `https://{RP_ID}`; comma-separated allow-list)
 
-use std::env;
 use base64::Engine;
+use std::env;
 use uuid::Uuid;
 use webauthn_rs::fake::{FakePasskeyDistribution, WebauthnFakeCredentialGenerator};
 use webauthn_rs::prelude::{
-    AuthenticationResult, CreationChallengeResponse, CredentialID, Passkey,
-    PasskeyAuthentication, PasskeyRegistration, PublicKeyCredential,
-    RegisterPublicKeyCredential, RequestChallengeResponse, Url, Webauthn, WebauthnBuilder,
+    AuthenticationResult, CreationChallengeResponse, CredentialID, Passkey, PasskeyAuthentication,
+    PasskeyRegistration, PublicKeyCredential, RegisterPublicKeyCredential,
+    RequestChallengeResponse, Url, Webauthn, WebauthnBuilder,
 };
 
 use crate::shared::error::{PlatformError, Result};
@@ -30,24 +30,35 @@ pub struct WebauthnService {
 
 impl WebauthnService {
     pub fn from_env() -> Result<Self> {
-        let rp_id = env::var("FC_WEBAUTHN_RP_ID")
-            .unwrap_or_else(|_| "auth.flowcatalyst.io".to_string());
-        let rp_name = env::var("FC_WEBAUTHN_RP_NAME")
-            .unwrap_or_else(|_| "FlowCatalyst".to_string());
-        let origins_raw = env::var("FC_WEBAUTHN_ORIGINS")
-            .unwrap_or_else(|_| format!("https://{}", rp_id));
+        let rp_id =
+            env::var("FC_WEBAUTHN_RP_ID").unwrap_or_else(|_| "auth.flowcatalyst.io".to_string());
+        let rp_name =
+            env::var("FC_WEBAUTHN_RP_NAME").unwrap_or_else(|_| "FlowCatalyst".to_string());
+        let origins_raw =
+            env::var("FC_WEBAUTHN_ORIGINS").unwrap_or_else(|_| format!("https://{}", rp_id));
         let origins: Vec<Url> = origins_raw
             .split(',')
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .map(|s| Url::parse(s).map_err(|e| PlatformError::internal(
-                format!("invalid FC_WEBAUTHN_ORIGINS entry {:?}: {}", s, e))))
+            .map(|s| {
+                Url::parse(s).map_err(|e| {
+                    PlatformError::internal(format!(
+                        "invalid FC_WEBAUTHN_ORIGINS entry {:?}: {}",
+                        s, e
+                    ))
+                })
+            })
             .collect::<Result<Vec<_>>>()?;
 
         let fake_hmac_key = match env::var("FC_WEBAUTHN_FAKE_HMAC_KEY") {
-            Ok(b64) => base64::engine::general_purpose::STANDARD.decode(&b64)
-                .map_err(|e| PlatformError::internal(
-                    format!("FC_WEBAUTHN_FAKE_HMAC_KEY must be base64: {}", e)))?,
+            Ok(b64) => base64::engine::general_purpose::STANDARD
+                .decode(&b64)
+                .map_err(|e| {
+                    PlatformError::internal(format!(
+                        "FC_WEBAUTHN_FAKE_HMAC_KEY must be base64: {}",
+                        e
+                    ))
+                })?,
             Err(_) => {
                 // Per-process random key — degrades enumeration defence to
                 // "fake creds vary across restarts" but never leaks signal
@@ -64,22 +75,30 @@ impl WebauthnService {
     }
 
     pub fn new(rp_id: &str, rp_name: &str, origins: &[Url], fake_hmac_key: &[u8]) -> Result<Self> {
-        let primary = origins.first().ok_or_else(||
-            PlatformError::internal("FC_WEBAUTHN_ORIGINS must contain at least one origin"))?;
+        let primary = origins.first().ok_or_else(|| {
+            PlatformError::internal("FC_WEBAUTHN_ORIGINS must contain at least one origin")
+        })?;
         let mut builder = WebauthnBuilder::new(rp_id, primary)
             .map_err(|e| PlatformError::internal(format!("WebauthnBuilder: {}", e)))?
             .rp_name(rp_name);
         for extra in origins.iter().skip(1) {
             builder = builder.append_allowed_origin(extra);
         }
-        let inner = builder.build()
+        let inner = builder
+            .build()
             .map_err(|e| PlatformError::internal(format!("Webauthn build: {}", e)))?;
         let fake_generator = WebauthnFakeCredentialGenerator::new(fake_hmac_key)
             .map_err(|e| PlatformError::internal(format!("fake generator: {}", e)))?;
-        Ok(Self { inner, rp_id: rp_id.to_string(), fake_generator })
+        Ok(Self {
+            inner,
+            rp_id: rp_id.to_string(),
+            fake_generator,
+        })
     }
 
-    pub fn rp_id(&self) -> &str { &self.rp_id }
+    pub fn rp_id(&self) -> &str {
+        &self.rp_id
+    }
 
     /// Build a realistic-looking authentication challenge for an unknown,
     /// federated, or no-credential user. Deterministic per email under the
@@ -90,15 +109,20 @@ impl WebauthnService {
         use base64::Engine;
         use rand::RngCore;
 
-        let creds = self.fake_generator.generate(email.as_bytes())
+        let creds = self
+            .fake_generator
+            .generate(email.as_bytes())
             .map_err(|e| PlatformError::internal(format!("fake generator: {}", e)))?;
-        let allow_credentials: Vec<serde_json::Value> = creds.iter().map(|cid| {
-            let bytes: &[u8] = cid.as_ref();
-            serde_json::json!({
-                "type": "public-key",
-                "id": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes),
+        let allow_credentials: Vec<serde_json::Value> = creds
+            .iter()
+            .map(|cid| {
+                let bytes: &[u8] = cid.as_ref();
+                serde_json::json!({
+                    "type": "public-key",
+                    "id": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes),
+                })
             })
-        }).collect();
+            .collect();
 
         let mut challenge = vec![0u8; 32];
         rand::rng().fill_bytes(&mut challenge);
@@ -211,8 +235,12 @@ mod tests {
     #[test]
     fn fake_challenge_is_deterministic_per_email() {
         let svc = build("auth.example.com", "https://auth.example.com").unwrap();
-        let a = svc.fake_authentication_challenge("alice@unknown.com").unwrap();
-        let b = svc.fake_authentication_challenge("alice@unknown.com").unwrap();
+        let a = svc
+            .fake_authentication_challenge("alice@unknown.com")
+            .unwrap();
+        let b = svc
+            .fake_authentication_challenge("alice@unknown.com")
+            .unwrap();
         // Challenge bytes are random; allowCredentials is HMAC-deterministic.
         let a_creds = a["publicKey"]["allowCredentials"].clone();
         let b_creds = b["publicKey"]["allowCredentials"].clone();
@@ -222,8 +250,12 @@ mod tests {
     #[test]
     fn fake_challenge_varies_with_email() {
         let svc = build("auth.example.com", "https://auth.example.com").unwrap();
-        let a = svc.fake_authentication_challenge("alice@unknown.com").unwrap();
-        let b = svc.fake_authentication_challenge("bob@unknown.com").unwrap();
+        let a = svc
+            .fake_authentication_challenge("alice@unknown.com")
+            .unwrap();
+        let b = svc
+            .fake_authentication_challenge("bob@unknown.com")
+            .unwrap();
         let a_creds = a["publicKey"]["allowCredentials"].clone();
         let b_creds = b["publicKey"]["allowCredentials"].clone();
         // With overwhelming probability these differ.
@@ -233,17 +265,28 @@ mod tests {
     #[test]
     fn fake_challenge_varies_with_key() {
         let svc_a = WebauthnService::new(
-            "auth.example.com", "Test",
+            "auth.example.com",
+            "Test",
             &[Url::parse("https://auth.example.com").unwrap()],
             &[0u8; 32],
-        ).unwrap();
+        )
+        .unwrap();
         let svc_b = WebauthnService::new(
-            "auth.example.com", "Test",
+            "auth.example.com",
+            "Test",
             &[Url::parse("https://auth.example.com").unwrap()],
             &[1u8; 32],
-        ).unwrap();
-        let a = svc_a.fake_authentication_challenge("alice@unknown.com").unwrap();
-        let b = svc_b.fake_authentication_challenge("alice@unknown.com").unwrap();
-        assert_ne!(a["publicKey"]["allowCredentials"], b["publicKey"]["allowCredentials"]);
+        )
+        .unwrap();
+        let a = svc_a
+            .fake_authentication_challenge("alice@unknown.com")
+            .unwrap();
+        let b = svc_b
+            .fake_authentication_challenge("alice@unknown.com")
+            .unwrap();
+        assert_ne!(
+            a["publicKey"]["allowCredentials"],
+            b["publicKey"]["allowCredentials"]
+        );
     }
 }

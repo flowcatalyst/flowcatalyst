@@ -3,12 +3,12 @@
 //! Implements the OutboxRepository trait for MySQL with a single shared
 //! `outbox_messages` table using a `type` column, matching Java/TypeScript.
 
-use async_trait::async_trait;
-use fc_common::{OutboxItem, OutboxItemType, OutboxStatus};
 use crate::repository::{OutboxRepository, OutboxTableConfig};
 use anyhow::Result;
-use sqlx::{MySqlPool, Row};
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use fc_common::{OutboxItem, OutboxItemType, OutboxStatus};
+use sqlx::{MySqlPool, Row};
 use std::time::Duration;
 use tracing::{debug, info, trace};
 
@@ -44,7 +44,11 @@ impl MySqlOutboxRepository {
     }
 
     /// Parse a row into an OutboxItem
-    fn parse_row(&self, row: &sqlx::mysql::MySqlRow, item_type: OutboxItemType) -> Result<OutboxItem> {
+    fn parse_row(
+        &self,
+        row: &sqlx::mysql::MySqlRow,
+        item_type: OutboxItemType,
+    ) -> Result<OutboxItem> {
         let created_at: DateTime<Utc> = row.get("created_at");
         let updated_at: DateTime<Utc> = row.get("updated_at");
 
@@ -75,7 +79,11 @@ impl MySqlOutboxRepository {
 
 #[async_trait]
 impl OutboxRepository for MySqlOutboxRepository {
-    async fn fetch_pending_by_type(&self, item_type: OutboxItemType, limit: u32) -> Result<Vec<OutboxItem>> {
+    async fn fetch_pending_by_type(
+        &self,
+        item_type: OutboxItemType,
+        limit: u32,
+    ) -> Result<Vec<OutboxItem>> {
         let table = self.table_config.table_for_type(item_type);
         let query = format!(
             "SELECT id, type, message_group, payload, status, retry_count, error_message, \
@@ -176,7 +184,11 @@ impl OutboxRepository for MySqlOutboxRepository {
         Ok(())
     }
 
-    async fn increment_retry_count(&self, item_type: OutboxItemType, ids: Vec<String>) -> Result<()> {
+    async fn increment_retry_count(
+        &self,
+        item_type: OutboxItemType,
+        ids: Vec<String>,
+    ) -> Result<()> {
         if ids.is_empty() {
             return Ok(());
         }
@@ -238,7 +250,11 @@ impl OutboxRepository for MySqlOutboxRepository {
         Ok(items)
     }
 
-    async fn reset_recoverable_items(&self, item_type: OutboxItemType, ids: Vec<String>) -> Result<()> {
+    async fn reset_recoverable_items(
+        &self,
+        item_type: OutboxItemType,
+        ids: Vec<String>,
+    ) -> Result<()> {
         if ids.is_empty() {
             return Ok(());
         }
@@ -326,9 +342,7 @@ impl OutboxRepository for MySqlOutboxRepository {
                 safe_name = safe_name,
             );
 
-            sqlx::query(&schema)
-                .execute(&self.pool)
-                .await?;
+            sqlx::query(&schema).execute(&self.pool).await?;
         }
 
         info!(

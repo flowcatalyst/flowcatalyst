@@ -1,13 +1,13 @@
 //! Config Access Admin API
 
 use axum::{
-    extract::{State, Path},
+    extract::{Path, State},
     Json,
 };
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use super::access_entity::PlatformConfigAccess;
 use super::access_repository::PlatformConfigAccessRepository;
@@ -62,12 +62,10 @@ pub struct AccessListResponse {
 #[derive(Clone)]
 pub struct ConfigAccessState {
     pub access_repo: Arc<PlatformConfigAccessRepository>,
-    pub grant_access_use_case: Arc<
-        super::operations::GrantPlatformConfigAccessUseCase<crate::usecase::PgUnitOfWork>,
-    >,
-    pub revoke_access_use_case: Arc<
-        super::operations::RevokePlatformConfigAccessUseCase<crate::usecase::PgUnitOfWork>,
-    >,
+    pub grant_access_use_case:
+        Arc<super::operations::GrantPlatformConfigAccessUseCase<crate::usecase::PgUnitOfWork>>,
+    pub revoke_access_use_case:
+        Arc<super::operations::RevokePlatformConfigAccessUseCase<crate::usecase::PgUnitOfWork>>,
 }
 
 /// List config access grants for an application
@@ -121,8 +119,16 @@ pub async fn create_access(
     use crate::usecase::{ExecutionContext, UseCase};
 
     crate::checks::require_anchor(&auth.0)?;
-    if state.access_repo.find_by_application_and_role(&app_code, &req.role_code).await?.is_some() {
-        return Err(PlatformError::conflict(format!("Access grant already exists for {}/{}", app_code, req.role_code)));
+    if state
+        .access_repo
+        .find_by_application_and_role(&app_code, &req.role_code)
+        .await?
+        .is_some()
+    {
+        return Err(PlatformError::conflict(format!(
+            "Access grant already exists for {}/{}",
+            app_code, req.role_code
+        )));
     }
 
     let cmd = GrantPlatformConfigAccessCommand {
@@ -132,9 +138,16 @@ pub async fn create_access(
         can_write: req.can_write,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.grant_access_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .grant_access_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
-    let access = state.access_repo.find_by_application_and_role(&app_code, &req.role_code).await?
+    let access = state
+        .access_repo
+        .find_by_application_and_role(&app_code, &req.role_code)
+        .await?
         .ok_or_else(|| PlatformError::internal("Access grant committed but row not found"))?;
     Ok((axum::http::StatusCode::CREATED, Json(access.into())))
 }
@@ -166,8 +179,16 @@ pub async fn update_access(
     use crate::usecase::{ExecutionContext, UseCase};
 
     crate::checks::require_anchor(&auth.0)?;
-    if state.access_repo.find_by_application_and_role(&app_code, &role_code).await?.is_none() {
-        return Err(PlatformError::not_found("PlatformConfigAccess", format!("{}/{}", app_code, role_code)));
+    if state
+        .access_repo
+        .find_by_application_and_role(&app_code, &role_code)
+        .await?
+        .is_none()
+    {
+        return Err(PlatformError::not_found(
+            "PlatformConfigAccess",
+            format!("{}/{}", app_code, role_code),
+        ));
     }
 
     let cmd = GrantPlatformConfigAccessCommand {
@@ -177,9 +198,16 @@ pub async fn update_access(
         can_write: req.can_write,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.grant_access_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .grant_access_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
-    let access = state.access_repo.find_by_application_and_role(&app_code, &role_code).await?
+    let access = state
+        .access_repo
+        .find_by_application_and_role(&app_code, &role_code)
+        .await?
         .ok_or_else(|| PlatformError::internal("Access grant committed but row not found"))?;
     Ok(Json(access.into()))
 }
@@ -215,7 +243,11 @@ pub async fn delete_access(
         role_code,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.revoke_access_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .revoke_access_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 

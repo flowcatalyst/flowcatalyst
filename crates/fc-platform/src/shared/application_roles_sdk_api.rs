@@ -4,23 +4,23 @@
 //! Used by application SDKs to sync role definitions.
 
 use axum::{
-    routing::{get, delete},
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
+    routing::{delete, get},
     Json, Router,
 };
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
 
-use crate::{AuthRole, RoleSource};
-use crate::{ApplicationRepository, RoleRepository};
 use crate::role::operations::{
-    CreateRoleCommand, CreateRoleUseCase, DeleteRoleCommand, DeleteRoleUseCase,
-    SyncRoleInput, SyncRolesCommand, SyncRolesUseCase,
+    CreateRoleCommand, CreateRoleUseCase, DeleteRoleCommand, DeleteRoleUseCase, SyncRoleInput,
+    SyncRolesCommand, SyncRolesUseCase,
 };
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
 use crate::usecase::{ExecutionContext, PgUnitOfWork, UseCase};
+use crate::{ApplicationRepository, RoleRepository};
+use crate::{AuthRole, RoleSource};
 
 /// Role DTO for SDK response
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -45,7 +45,10 @@ pub struct RoleDto {
 impl RoleDto {
     fn from_role(role: AuthRole) -> Self {
         // Extract short name from full name (e.g., "myapp:admin" -> "admin")
-        let short_name = role.name.split(':').nth(1)
+        let short_name = role
+            .name
+            .split(':')
+            .nth(1)
             .unwrap_or(&role.name)
             .to_string();
 
@@ -154,7 +157,10 @@ pub async fn list_roles(
     Query(query): Query<ListRolesQuery>,
 ) -> Result<Json<ListRolesResponse>, PlatformError> {
     // Verify application exists
-    state.application_repo.find_by_code(&app_code).await?
+    state
+        .application_repo
+        .find_by_code(&app_code)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Application", &app_code))?;
 
     // Get roles for this application
@@ -175,9 +181,7 @@ pub async fn list_roles(
     }
 
     let total = roles.len();
-    let role_dtos: Vec<RoleDto> = roles.into_iter()
-        .map(RoleDto::from_role)
-        .collect();
+    let role_dtos: Vec<RoleDto> = roles.into_iter().map(RoleDto::from_role).collect();
 
     Ok(Json(ListRolesResponse {
         roles: role_dtos,
@@ -210,7 +214,10 @@ pub async fn create_role(
 ) -> Result<Json<RoleDto>, PlatformError> {
     // Verify application exists (the use case doesn't load the app row,
     // so we keep this pre-check to surface a 404 cleanly).
-    state.application_repo.find_by_code(&app_code).await?
+    state
+        .application_repo
+        .find_by_code(&app_code)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Application", &app_code))?;
 
     let display_name = req.display_name.clone().unwrap_or_else(|| req.name.clone());
@@ -229,7 +236,10 @@ pub async fn create_role(
     // Re-load the persisted role so the response carries the canonical state
     // (id + role_id + permissions normalised).
     let role_code = format!("{}:{}", app_code, req.name);
-    let role = state.role_repo.find_by_name(&role_code).await?
+    let role = state
+        .role_repo
+        .find_by_name(&role_code)
+        .await?
         .ok_or_else(|| PlatformError::internal("Role disappeared after create"))?;
     Ok(Json(RoleDto::from_role(role)))
 }
@@ -281,7 +291,8 @@ pub async fn sync_roles(
 
     // Re-read SDK-sourced roles for the response payload.
     let updated_roles = state.role_repo.find_by_application(&app_code).await?;
-    let sdk_roles: Vec<RoleDto> = updated_roles.into_iter()
+    let sdk_roles: Vec<RoleDto> = updated_roles
+        .into_iter()
         .filter(|r| r.source == RoleSource::Sdk)
         .map(RoleDto::from_role)
         .collect();
@@ -317,16 +328,21 @@ pub async fn delete_role(
 
     // Look up the role first so we can enforce SDK-only deletion as a 400
     // before invoking the use case (use case is source-agnostic).
-    let role = state.role_repo.find_by_name(&role_code).await?
+    let role = state
+        .role_repo
+        .find_by_name(&role_code)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Role", &role_code))?;
 
     if role.source != RoleSource::Sdk {
         return Err(PlatformError::validation(
-            "Cannot delete non-SDK role. Only SDK-sourced roles can be deleted via API."
+            "Cannot delete non-SDK role. Only SDK-sourced roles can be deleted via API.",
         ));
     }
 
-    let cmd = DeleteRoleCommand { role_id: role.id.clone() };
+    let cmd = DeleteRoleCommand {
+        role_id: role.id.clone(),
+    };
     let ctx = ExecutionContext::from_auth(&auth.0);
     state.delete_use_case.run(cmd, ctx).await.into_result()?;
 

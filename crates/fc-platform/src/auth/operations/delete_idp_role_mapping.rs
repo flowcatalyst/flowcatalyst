@@ -1,14 +1,12 @@
 //! Delete IdpRoleMapping Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::auth::config_repository::IdpRoleMappingRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::IdpRoleMappingDeleted;
+use crate::auth::config_repository::IdpRoleMappingRepository;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,11 +20,11 @@ pub struct DeleteIdpRoleMappingUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> DeleteIdpRoleMappingUseCase<U> {
-    pub fn new(
-        idp_role_mapping_repo: Arc<IdpRoleMappingRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
-        Self { idp_role_mapping_repo, unit_of_work }
+    pub fn new(idp_role_mapping_repo: Arc<IdpRoleMappingRepository>, unit_of_work: Arc<U>) -> Self {
+        Self {
+            idp_role_mapping_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -38,13 +36,18 @@ impl<U: UnitOfWork> UseCase for DeleteIdpRoleMappingUseCase<U> {
     async fn validate(&self, command: &DeleteIdpRoleMappingCommand) -> Result<(), UseCaseError> {
         if command.mapping_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "ID_REQUIRED", "Mapping ID is required",
+                "ID_REQUIRED",
+                "Mapping ID is required",
             ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeleteIdpRoleMappingCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeleteIdpRoleMappingCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -53,7 +56,11 @@ impl<U: UnitOfWork> UseCase for DeleteIdpRoleMappingUseCase<U> {
         command: DeleteIdpRoleMappingCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<IdpRoleMappingDeleted> {
-        let mapping = match self.idp_role_mapping_repo.find_by_id(&command.mapping_id).await {
+        let mapping = match self
+            .idp_role_mapping_repo
+            .find_by_id(&command.mapping_id)
+            .await
+        {
             Ok(Some(m)) => m,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
@@ -63,7 +70,8 @@ impl<U: UnitOfWork> UseCase for DeleteIdpRoleMappingUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch mapping: {}", e,
+                    "Failed to fetch mapping: {}",
+                    e,
                 )));
             }
         };

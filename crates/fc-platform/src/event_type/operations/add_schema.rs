@@ -1,15 +1,13 @@
 //! Add Schema (Spec Version) Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::event_type::entity::{SpecVersion, SchemaType};
-use crate::EventTypeRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::SchemaAdded;
+use crate::event_type::entity::{SchemaType, SpecVersion};
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::EventTypeRepository;
 
 /// Command for adding a new schema version to an event type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,7 +44,10 @@ pub struct AddSchemaUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> AddSchemaUseCase<U> {
     pub fn new(event_type_repo: Arc<EventTypeRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { event_type_repo, unit_of_work }
+        Self {
+            event_type_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -81,7 +82,11 @@ impl<U: UnitOfWork> UseCase for AddSchemaUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &AddSchemaCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &AddSchemaCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -93,7 +98,11 @@ impl<U: UnitOfWork> UseCase for AddSchemaUseCase<U> {
         let version = command.version.trim();
 
         // Fetch event type
-        let mut event_type = match self.event_type_repo.find_by_id(&command.event_type_id).await {
+        let mut event_type = match self
+            .event_type_repo
+            .find_by_id(&command.event_type_id)
+            .await
+        {
             Ok(Some(et)) => et,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
@@ -103,7 +112,8 @@ impl<U: UnitOfWork> UseCase for AddSchemaUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch event type: {}", e
+                    "Failed to fetch event type: {}",
+                    e
                 )));
             }
         };
@@ -117,7 +127,11 @@ impl<U: UnitOfWork> UseCase for AddSchemaUseCase<U> {
         }
 
         // Business rule: version must not already exist
-        if event_type.spec_versions.iter().any(|sv| sv.version == version) {
+        if event_type
+            .spec_versions
+            .iter()
+            .any(|sv| sv.version == version)
+        {
             return UseCaseResult::failure(UseCaseError::business_rule(
                 "VERSION_EXISTS",
                 format!("Schema version '{}' already exists", version),
@@ -125,11 +139,8 @@ impl<U: UnitOfWork> UseCase for AddSchemaUseCase<U> {
         }
 
         // Create spec version
-        let mut spec_version = SpecVersion::new(
-            &event_type.id,
-            version,
-            command.schema_content.clone(),
-        );
+        let mut spec_version =
+            SpecVersion::new(&event_type.id, version, command.schema_content.clone());
         spec_version.mime_type = command.mime_type.clone();
         if let Some(ref st) = command.schema_type {
             spec_version.schema_type = SchemaType::from_str(st);

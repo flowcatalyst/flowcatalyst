@@ -1,11 +1,11 @@
 //! Client Domain Events
 
-use serde::{Deserialize, Serialize};
-use crate::usecase::ExecutionContext;
-use crate::usecase::domain_event::EventMetadata;
-use crate::TsidGenerator;
-use crate::impl_domain_event;
 use crate::client::entity::ClientStatus;
+use crate::impl_domain_event;
+use crate::usecase::domain_event::EventMetadata;
+use crate::usecase::ExecutionContext;
+use crate::TsidGenerator;
+use serde::{Deserialize, Serialize};
 
 /// Event emitted when a new client is created.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -259,7 +259,13 @@ impl ClientNoteAdded {
     const SPEC_VERSION: &'static str = "1.0";
     const SOURCE: &'static str = "platform:iam";
 
-    pub fn new(ctx: &ExecutionContext, client_id: &str, category: &str, text: &str, author: &str) -> Self {
+    pub fn new(
+        ctx: &ExecutionContext,
+        client_id: &str,
+        category: &str,
+        text: &str,
+        author: &str,
+    ) -> Self {
         let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.client.{}", client_id);
         let message_group = format!("platform:client:{}", client_id);

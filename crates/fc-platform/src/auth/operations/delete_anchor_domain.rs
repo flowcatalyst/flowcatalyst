@@ -1,14 +1,12 @@
 //! Delete Anchor Domain Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::auth::config_repository::AnchorDomainRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::AnchorDomainDeleted;
+use crate::auth::config_repository::AnchorDomainRepository;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,7 +21,10 @@ pub struct DeleteAnchorDomainUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> DeleteAnchorDomainUseCase<U> {
     pub fn new(anchor_domain_repo: Arc<AnchorDomainRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { anchor_domain_repo, unit_of_work }
+        Self {
+            anchor_domain_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -42,7 +43,11 @@ impl<U: UnitOfWork> UseCase for DeleteAnchorDomainUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeleteAnchorDomainCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeleteAnchorDomainCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -51,7 +56,11 @@ impl<U: UnitOfWork> UseCase for DeleteAnchorDomainUseCase<U> {
         command: DeleteAnchorDomainCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<AnchorDomainDeleted> {
-        let anchor_domain = match self.anchor_domain_repo.find_by_id(&command.anchor_domain_id).await {
+        let anchor_domain = match self
+            .anchor_domain_repo
+            .find_by_id(&command.anchor_domain_id)
+            .await
+        {
             Ok(Some(ad)) => ad,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
@@ -61,7 +70,8 @@ impl<U: UnitOfWork> UseCase for DeleteAnchorDomainUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch anchor domain: {}", e
+                    "Failed to fetch anchor domain: {}",
+                    e
                 )));
             }
         };

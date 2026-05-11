@@ -9,8 +9,8 @@ pub mod keycloak;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::UserScope;
 use crate::auth::oidc_service::IdTokenClaims;
+use crate::UserScope;
 
 /// Role mapping from IDP to FlowCatalyst
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,8 +24,7 @@ pub struct RoleMapping {
 }
 
 /// Configuration for IDP role mapping
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct IdpRoleMappingConfig {
     /// Role mappings from IDP to FlowCatalyst
     pub role_mappings: Vec<RoleMapping>,
@@ -34,7 +33,6 @@ pub struct IdpRoleMappingConfig {
     /// Whether to sync all IDP roles (create FC roles if they don't exist)
     pub auto_create_roles: bool,
 }
-
 
 /// Extracted user information from IDP token
 #[derive(Debug, Clone)]
@@ -84,11 +82,19 @@ pub trait IdpAdapter: Send + Sync {
     fn discovery_url(&self) -> String;
 
     /// Extract user information from ID token claims
-    fn extract_user_info(&self, claims: &IdTokenClaims, config: &IdpRoleMappingConfig) -> IdpUserInfo;
+    fn extract_user_info(
+        &self,
+        claims: &IdTokenClaims,
+        config: &IdpRoleMappingConfig,
+    ) -> IdpUserInfo;
 
     /// Get additional scopes required by this provider
     fn required_scopes(&self) -> Vec<String> {
-        vec!["openid".to_string(), "profile".to_string(), "email".to_string()]
+        vec![
+            "openid".to_string(),
+            "profile".to_string(),
+            "email".to_string(),
+        ]
     }
 }
 
@@ -101,7 +107,8 @@ pub fn apply_role_mappings(
     let mut mapped_roles = Vec::new();
 
     // Combine roles and groups for matching
-    let all_idp_items: Vec<&str> = idp_roles.iter()
+    let all_idp_items: Vec<&str> = idp_roles
+        .iter()
         .chain(idp_groups.iter())
         .map(|s| s.as_str())
         .collect();

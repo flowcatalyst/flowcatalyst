@@ -1,17 +1,15 @@
 //! Grant Client Access Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::principal::entity::{PrincipalType, UserScope, ClientAccessGrant};
-use crate::PrincipalRepository;
-use crate::ClientRepository;
-use crate::ClientAccessGrantRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::ClientAccessGranted;
+use crate::principal::entity::{ClientAccessGrant, PrincipalType, UserScope};
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::ClientAccessGrantRepository;
+use crate::ClientRepository;
+use crate::PrincipalRepository;
 
 /// Command for granting client access to a user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,7 +33,12 @@ impl<U: UnitOfWork> GrantClientAccessUseCase<U> {
         grant_repo: Arc<ClientAccessGrantRepository>,
         unit_of_work: Arc<U>,
     ) -> Self {
-        Self { principal_repo, client_repo, grant_repo, unit_of_work }
+        Self {
+            principal_repo,
+            client_repo,
+            grant_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -47,19 +50,25 @@ impl<U: UnitOfWork> UseCase for GrantClientAccessUseCase<U> {
     async fn validate(&self, command: &GrantClientAccessCommand) -> Result<(), UseCaseError> {
         if command.user_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "USER_ID_REQUIRED", "User ID is required",
+                "USER_ID_REQUIRED",
+                "User ID is required",
             ));
         }
         if command.client_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "CLIENT_ID_REQUIRED", "Client ID is required",
+                "CLIENT_ID_REQUIRED",
+                "Client ID is required",
             ));
         }
 
         Ok(())
     }
 
-    async fn authorize(&self, _command: &GrantClientAccessCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &GrantClientAccessCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -78,14 +87,16 @@ impl<U: UnitOfWork> UseCase for GrantClientAccessUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch user: {}", e
+                    "Failed to fetch user: {}",
+                    e
                 )));
             }
         };
 
         if principal.principal_type != PrincipalType::User {
             return UseCaseResult::failure(UseCaseError::business_rule(
-                "NOT_A_USER", "Client access can only be granted to USER type principals",
+                "NOT_A_USER",
+                "Client access can only be granted to USER type principals",
             ));
         }
 
@@ -108,13 +119,18 @@ impl<U: UnitOfWork> UseCase for GrantClientAccessUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to validate client: {}", e
+                    "Failed to validate client: {}",
+                    e
                 )));
             }
         }
 
         // Check grant doesn't already exist
-        match self.grant_repo.find_by_principal_and_client(&command.user_id, &command.client_id).await {
+        match self
+            .grant_repo
+            .find_by_principal_and_client(&command.user_id, &command.client_id)
+            .await
+        {
             Ok(Some(_)) => {
                 return UseCaseResult::failure(UseCaseError::business_rule(
                     "GRANT_EXISTS",
@@ -124,22 +140,15 @@ impl<U: UnitOfWork> UseCase for GrantClientAccessUseCase<U> {
             Ok(None) => {}
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to check existing grant: {}", e
+                    "Failed to check existing grant: {}",
+                    e
                 )));
             }
         }
 
-        let grant = ClientAccessGrant::new(
-            &command.user_id,
-            &command.client_id,
-            &ctx.principal_id,
-        );
+        let grant = ClientAccessGrant::new(&command.user_id, &command.client_id, &ctx.principal_id);
 
-        let event = ClientAccessGranted::new(
-            &ctx,
-            &principal.id,
-            &command.client_id,
-        );
+        let event = ClientAccessGranted::new(&ctx, &principal.id, &command.client_id);
 
         self.unit_of_work
             .commit(&grant, &*self.grant_repo, event, &command)

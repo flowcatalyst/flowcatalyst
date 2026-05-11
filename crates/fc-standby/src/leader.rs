@@ -6,14 +6,14 @@
 //! - Automatic leader change on lease expiry
 //! - Callback notifications for leadership changes
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 use redis::aio::ConnectionManager;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{broadcast, watch};
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 
-use crate::error::{StandbyError, Result};
+use crate::error::{Result, StandbyError};
 
 /// Leader election configuration. Re-exported from `fc_common` — a single
 /// unified type replacing the previous per-crate duplicates in fc-outbox and fc-standby.
@@ -93,9 +93,9 @@ impl LeaderElection {
         let mut shutdown_rx = self.shutdown_tx.subscribe();
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(
-                Duration::from_secs(election.config.heartbeat_interval_seconds)
-            );
+            let mut interval = tokio::time::interval(Duration::from_secs(
+                election.config.heartbeat_interval_seconds,
+            ));
 
             loop {
                 tokio::select! {

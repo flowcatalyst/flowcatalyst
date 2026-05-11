@@ -1,15 +1,13 @@
 //! Create Role Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::RoleCreated;
 use crate::role::entity::{AuthRole, RoleSource};
 use crate::role::repository::RoleRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::RoleCreated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 /// Command for creating a new role.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,7 +39,6 @@ pub struct CreateRoleCommand {
     #[serde(default)]
     pub source: RoleSource,
 }
-
 
 /// Use case for creating a new role.
 pub struct CreateRoleUseCase<U: UnitOfWork> {
@@ -91,7 +88,11 @@ impl<U: UnitOfWork> UseCase for CreateRoleUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &CreateRoleCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &CreateRoleCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 

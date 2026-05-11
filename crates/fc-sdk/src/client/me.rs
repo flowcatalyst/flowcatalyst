@@ -1,7 +1,7 @@
 //! User-scoped resource operations (current user context).
 
+use super::{ClientError, FlowCatalystClient};
 use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError};
 
 /// A client accessible to the current user.
 #[derive(Debug, Clone, Serialize, Deserialize)]

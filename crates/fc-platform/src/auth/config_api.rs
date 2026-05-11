@@ -4,24 +4,20 @@
 //! Includes anchor domains, client auth configs, and IDP role mappings.
 
 use axum::{
+    extract::{Path, Query, State},
     http::StatusCode,
-    routing::{get, post, delete},
-    extract::{State, Path, Query},
+    routing::{delete, get, post},
     Json, Router,
 };
-use utoipa::{ToSchema, IntoParams};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
 
-use crate::auth::config_entity::{
-    AnchorDomain, ClientAuthConfig, IdpRoleMapping,
-};
-use crate::{
-    AnchorDomainRepository, ClientAuthConfigRepository, IdpRoleMappingRepository,
-};
-use crate::shared::error::PlatformError;
+use crate::auth::config_entity::{AnchorDomain, ClientAuthConfig, IdpRoleMapping};
 use crate::shared::api_common::CreatedResponse;
+use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
+use crate::{AnchorDomainRepository, ClientAuthConfigRepository, IdpRoleMappingRepository};
 
 // ============================================================================
 // Anchor Domains
@@ -321,34 +317,26 @@ pub struct AuthConfigState {
     pub unit_of_work: Arc<crate::usecase::PgUnitOfWork>,
 
     // Anchor domain use cases
-    pub create_anchor_domain_use_case: Arc<
-        crate::auth::operations::CreateAnchorDomainUseCase<crate::usecase::PgUnitOfWork>,
-    >,
-    pub update_anchor_domain_use_case: Arc<
-        crate::auth::operations::UpdateAnchorDomainUseCase<crate::usecase::PgUnitOfWork>,
-    >,
-    pub delete_anchor_domain_use_case: Arc<
-        crate::auth::operations::DeleteAnchorDomainUseCase<crate::usecase::PgUnitOfWork>,
-    >,
+    pub create_anchor_domain_use_case:
+        Arc<crate::auth::operations::CreateAnchorDomainUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_anchor_domain_use_case:
+        Arc<crate::auth::operations::UpdateAnchorDomainUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_anchor_domain_use_case:
+        Arc<crate::auth::operations::DeleteAnchorDomainUseCase<crate::usecase::PgUnitOfWork>>,
 
     // Auth config use cases
-    pub create_auth_config_use_case: Arc<
-        crate::auth::operations::CreateAuthConfigUseCase<crate::usecase::PgUnitOfWork>,
-    >,
-    pub update_auth_config_use_case: Arc<
-        crate::auth::operations::UpdateAuthConfigUseCase<crate::usecase::PgUnitOfWork>,
-    >,
-    pub delete_auth_config_use_case: Arc<
-        crate::auth::operations::DeleteAuthConfigUseCase<crate::usecase::PgUnitOfWork>,
-    >,
+    pub create_auth_config_use_case:
+        Arc<crate::auth::operations::CreateAuthConfigUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_auth_config_use_case:
+        Arc<crate::auth::operations::UpdateAuthConfigUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_auth_config_use_case:
+        Arc<crate::auth::operations::DeleteAuthConfigUseCase<crate::usecase::PgUnitOfWork>>,
 
     // IdP role mapping use cases
-    pub create_idp_role_mapping_use_case: Arc<
-        crate::auth::operations::CreateIdpRoleMappingUseCase<crate::usecase::PgUnitOfWork>,
-    >,
-    pub delete_idp_role_mapping_use_case: Arc<
-        crate::auth::operations::DeleteIdpRoleMappingUseCase<crate::usecase::PgUnitOfWork>,
-    >,
+    pub create_idp_role_mapping_use_case:
+        Arc<crate::auth::operations::CreateIdpRoleMappingUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_idp_role_mapping_use_case:
+        Arc<crate::auth::operations::DeleteIdpRoleMappingUseCase<crate::usecase::PgUnitOfWork>>,
 }
 
 // ============================================================================
@@ -380,13 +368,24 @@ pub async fn create_anchor_domain(
     crate::checks::require_anchor(&auth.0)?;
 
     let domain = req.domain.to_lowercase();
-    let cmd = CreateAnchorDomainCommand { domain: domain.clone() };
+    let cmd = CreateAnchorDomainCommand {
+        domain: domain.clone(),
+    };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.create_anchor_domain_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .create_anchor_domain_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
     // Fetch by domain to return the created id (command doesn't echo it).
-    let created = state.anchor_domain_repo.find_by_domain(&domain).await?
-        .ok_or_else(|| PlatformError::internal("Anchor domain commit succeeded but row not found"))?;
+    let created = state
+        .anchor_domain_repo
+        .find_by_domain(&domain)
+        .await?
+        .ok_or_else(|| {
+            PlatformError::internal("Anchor domain commit succeeded but row not found")
+        })?;
     Ok(Json(CreatedResponse::new(created.id)))
 }
 
@@ -413,7 +412,10 @@ pub async fn list_anchor_domains(
     let mut domains = Vec::with_capacity(anchor_domains.len());
     for d in anchor_domains {
         let user_count = if let Some(ref principal_repo) = state.principal_repo {
-            principal_repo.count_by_email_domain(&d.domain).await.unwrap_or(0)
+            principal_repo
+                .count_by_email_domain(&d.domain)
+                .await
+                .unwrap_or(0)
         } else {
             0
         };
@@ -446,12 +448,18 @@ pub async fn get_anchor_domain(
 ) -> Result<Json<AnchorDomainResponse>, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
-    let domain = state.anchor_domain_repo.find_by_id(&id).await?
+    let domain = state
+        .anchor_domain_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("AnchorDomain", &id))?;
 
     // Count users from this domain (matches Java toDto)
     let user_count = if let Some(ref principal_repo) = state.principal_repo {
-        principal_repo.count_by_email_domain(&domain.domain).await.unwrap_or(0)
+        principal_repo
+            .count_by_email_domain(&domain.domain)
+            .await
+            .unwrap_or(0)
     } else {
         0
     };
@@ -488,7 +496,10 @@ pub async fn check_anchor_domain(
 ) -> Result<Json<CheckAnchorDomainResponse>, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
-    let is_anchor = state.anchor_domain_repo.is_anchor_domain(&domain.to_lowercase()).await?;
+    let is_anchor = state
+        .anchor_domain_repo
+        .is_anchor_domain(&domain.to_lowercase())
+        .await?;
 
     Ok(Json(CheckAnchorDomainResponse {
         is_anchor_domain: is_anchor,
@@ -520,9 +531,15 @@ pub async fn delete_anchor_domain(
 
     crate::checks::require_anchor(&auth.0)?;
 
-    let cmd = DeleteAnchorDomainCommand { anchor_domain_id: id };
+    let cmd = DeleteAnchorDomainCommand {
+        anchor_domain_id: id,
+    };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.delete_anchor_domain_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .delete_anchor_domain_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -566,7 +583,11 @@ pub async fn update_anchor_domain(
         domain: req.domain,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.update_anchor_domain_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .update_anchor_domain_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -601,7 +622,10 @@ pub async fn create_client_auth_config(
     let email_domain = req.email_domain.to_lowercase();
     let cmd = CreateAuthConfigCommand {
         email_domain: email_domain.clone(),
-        config_type: req.config_type.clone().unwrap_or_else(|| "CLIENT".to_string()),
+        config_type: req
+            .config_type
+            .clone()
+            .unwrap_or_else(|| "CLIENT".to_string()),
         primary_client_id: req.primary_client_id.clone(),
         auth_provider: req.auth_provider.clone(),
         oidc_issuer_url: req.oidc_issuer_url.clone(),
@@ -611,9 +635,16 @@ pub async fn create_client_auth_config(
         oidc_client_secret_ref: None,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.create_auth_config_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .create_auth_config_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
-    let created = state.client_auth_config_repo.find_by_email_domain(&email_domain).await?
+    let created = state
+        .client_auth_config_repo
+        .find_by_email_domain(&email_domain)
+        .await?
         .ok_or_else(|| PlatformError::internal("Auth config commit succeeded but row not found"))?;
     let id = created.id.clone();
 
@@ -642,7 +673,10 @@ pub async fn get_client_auth_config(
 ) -> Result<Json<ClientAuthConfigResponse>, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
-    let config = state.client_auth_config_repo.find_by_id(&id).await?
+    let config = state
+        .client_auth_config_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("ClientAuthConfig", &id))?;
 
     Ok(Json(config.into()))
@@ -666,9 +700,7 @@ pub async fn list_client_auth_configs(
     crate::checks::require_anchor(&auth.0)?;
 
     let configs = state.client_auth_config_repo.find_all().await?;
-    let configs: Vec<ClientAuthConfigResponse> = configs.into_iter()
-        .map(|c| c.into())
-        .collect();
+    let configs: Vec<ClientAuthConfigResponse> = configs.into_iter().map(|c| c.into()).collect();
     let total = configs.len();
 
     Ok(Json(AuthConfigListResponse { configs, total }))
@@ -714,7 +746,11 @@ pub async fn update_client_auth_config(
         config_type: None,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.update_auth_config_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .update_auth_config_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -745,7 +781,11 @@ pub async fn delete_client_auth_config(
 
     let cmd = DeleteAuthConfigCommand { auth_config_id: id };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.delete_auth_config_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .delete_auth_config_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -797,7 +837,11 @@ pub async fn update_config_type(
         config_type: Some(req.config_type),
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.update_auth_config_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .update_auth_config_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -823,7 +867,10 @@ pub async fn get_by_domain(
 ) -> Result<Json<ClientAuthConfigResponse>, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
-    let config = state.client_auth_config_repo.find_by_email_domain(&domain.to_lowercase()).await?
+    let config = state
+        .client_auth_config_repo
+        .find_by_email_domain(&domain.to_lowercase())
+        .await?
         .ok_or_else(|| PlatformError::not_found("ClientAuthConfig", &domain))?;
 
     Ok(Json(config.into()))
@@ -866,9 +913,16 @@ pub async fn create_internal_auth_config(
         oidc_client_secret_ref: None,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.create_auth_config_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .create_auth_config_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
-    let created = state.client_auth_config_repo.find_by_email_domain(&email_domain).await?
+    let created = state
+        .client_auth_config_repo
+        .find_by_email_domain(&email_domain)
+        .await?
         .ok_or_else(|| PlatformError::internal("Auth config commit succeeded but row not found"))?;
     Ok(Json(CreatedResponse::new(created.id)))
 }
@@ -910,9 +964,16 @@ pub async fn create_oidc_auth_config(
         oidc_client_secret_ref: None,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.create_auth_config_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .create_auth_config_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
-    let created = state.client_auth_config_repo.find_by_email_domain(&email_domain).await?
+    let created = state
+        .client_auth_config_repo
+        .find_by_email_domain(&email_domain)
+        .await?
         .ok_or_else(|| PlatformError::internal("Auth config commit succeeded but row not found"))?;
     Ok(Json(CreatedResponse::new(created.id)))
 }
@@ -957,7 +1018,11 @@ pub async fn update_oidc_config(
         config_type: None,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.update_auth_config_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .update_auth_config_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1001,7 +1066,11 @@ pub async fn update_client_binding(
         config_type: None,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.update_auth_config_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .update_auth_config_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1045,7 +1114,11 @@ pub async fn update_additional_clients(
         config_type: None,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.update_auth_config_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .update_auth_config_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1089,7 +1162,11 @@ pub async fn update_granted_clients(
         config_type: None,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.update_auth_config_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .update_auth_config_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1118,7 +1195,11 @@ pub async fn validate_secret(
 
     Ok(Json(ValidateSecretResponse {
         valid,
-        error: if valid { None } else { Some("Invalid secret reference format".to_string()) },
+        error: if valid {
+            None
+        } else {
+            Some("Invalid secret reference format".to_string())
+        },
     }))
 }
 
@@ -1156,11 +1237,19 @@ pub async fn create_idp_role_mapping(
         platform_role_name: req.platform_role_name,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.create_idp_role_mapping_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .create_idp_role_mapping_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
-    let created = state.idp_role_mapping_repo
-        .find_by_idp_role(&req.idp_type, &req.idp_role_name).await?
-        .ok_or_else(|| PlatformError::internal("IdP role mapping commit succeeded but row not found"))?;
+    let created = state
+        .idp_role_mapping_repo
+        .find_by_idp_role(&req.idp_type, &req.idp_role_name)
+        .await?
+        .ok_or_else(|| {
+            PlatformError::internal("IdP role mapping commit succeeded but row not found")
+        })?;
     Ok(Json(CreatedResponse::new(created.id)))
 }
 
@@ -1192,14 +1281,15 @@ pub async fn list_idp_role_mappings(
     crate::checks::require_anchor(&auth.0)?;
 
     let mappings = if let Some(ref idp_type) = query.idp_type {
-        state.idp_role_mapping_repo.find_by_idp_type(idp_type).await?
+        state
+            .idp_role_mapping_repo
+            .find_by_idp_type(idp_type)
+            .await?
     } else {
         state.idp_role_mapping_repo.find_all().await?
     };
 
-    let mappings: Vec<IdpRoleMappingResponse> = mappings.into_iter()
-        .map(|m| m.into())
-        .collect();
+    let mappings: Vec<IdpRoleMappingResponse> = mappings.into_iter().map(|m| m.into()).collect();
     let total = mappings.len();
 
     Ok(Json(IdpRoleMappingListResponse { mappings, total }))
@@ -1232,7 +1322,11 @@ pub async fn delete_idp_role_mapping(
 
     let cmd = DeleteIdpRoleMappingCommand { mapping_id: id };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.delete_idp_role_mapping_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .delete_idp_role_mapping_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1245,31 +1339,56 @@ pub fn anchor_domains_router(state: AuthConfigState) -> Router {
     Router::new()
         .route("/", post(create_anchor_domain).get(list_anchor_domains))
         .route("/check/{domain}", get(check_anchor_domain))
-        .route("/{id}", get(get_anchor_domain).put(update_anchor_domain).delete(delete_anchor_domain))
+        .route(
+            "/{id}",
+            get(get_anchor_domain)
+                .put(update_anchor_domain)
+                .delete(delete_anchor_domain),
+        )
         .with_state(state)
 }
 
 /// Create client auth configs router
 pub fn client_auth_configs_router(state: AuthConfigState) -> Router {
     Router::new()
-        .route("/", post(create_client_auth_config).get(list_client_auth_configs))
+        .route(
+            "/",
+            post(create_client_auth_config).get(list_client_auth_configs),
+        )
         .route("/internal", post(create_internal_auth_config))
         .route("/oidc", post(create_oidc_auth_config))
         .route("/validate-secret", post(validate_secret))
         .route("/by-domain/{domain}", get(get_by_domain))
-        .route("/{id}", get(get_client_auth_config).put(update_client_auth_config).delete(delete_client_auth_config))
+        .route(
+            "/{id}",
+            get(get_client_auth_config)
+                .put(update_client_auth_config)
+                .delete(delete_client_auth_config),
+        )
         .route("/{id}/config-type", axum::routing::put(update_config_type))
         .route("/{id}/oidc", axum::routing::put(update_oidc_config))
-        .route("/{id}/client-binding", axum::routing::put(update_client_binding))
-        .route("/{id}/additional-clients", axum::routing::put(update_additional_clients))
-        .route("/{id}/granted-clients", axum::routing::put(update_granted_clients))
+        .route(
+            "/{id}/client-binding",
+            axum::routing::put(update_client_binding),
+        )
+        .route(
+            "/{id}/additional-clients",
+            axum::routing::put(update_additional_clients),
+        )
+        .route(
+            "/{id}/granted-clients",
+            axum::routing::put(update_granted_clients),
+        )
         .with_state(state)
 }
 
 /// Create IDP role mappings router
 pub fn idp_role_mappings_router(state: AuthConfigState) -> Router {
     Router::new()
-        .route("/", post(create_idp_role_mapping).get(list_idp_role_mappings))
+        .route(
+            "/",
+            post(create_idp_role_mapping).get(list_idp_role_mappings),
+        )
         .route("/{id}", delete(delete_idp_role_mapping))
         .with_state(state)
 }

@@ -68,11 +68,18 @@ async fn process_dispatch(
     // 2. Check if already terminal
     if job.status.is_terminal() {
         debug!(job_id = %job_id, status = ?job.status, "Job already terminal, ACKing");
-        return Ok(Json(ProcessResponse { ack: true, message: None }));
+        return Ok(Json(ProcessResponse {
+            ack: true,
+            message: None,
+        }));
     }
 
     // 3. Update status to PROCESSING
-    if let Err(e) = state.dispatch_job_repo.update_status(job_id, job.created_at, DispatchStatus::Processing).await {
+    if let Err(e) = state
+        .dispatch_job_repo
+        .update_status(job_id, job.created_at, DispatchStatus::Processing)
+        .await
+    {
         error!(job_id = %job_id, error = %e, "Failed to update job to PROCESSING");
     }
 
@@ -80,7 +87,8 @@ async fn process_dispatch(
     let attempt_number = job.attempt_count + 1;
     let start = Instant::now();
 
-    let mut request = state.http_client
+    let mut request = state
+        .http_client
         .post(&job.target_url)
         .header(CONTENT_TYPE, "application/json")
         .header("X-Dispatch-Job-Id", job_id)
@@ -136,28 +144,78 @@ async fn process_dispatch(
                 if let Ok(resp) = serde_json::from_str::<serde_json::Value>(&body) {
                     if resp.get("ack") == Some(&serde_json::Value::Bool(false)) {
                         info!(job_id = %job_id, "Webhook deferred (ack=false)");
-                        AttemptResult { ack: false, new_status: DispatchStatus::Pending, response_code: Some(status_code), error_message: None, error_type: None, response_body: Some(body) }
+                        AttemptResult {
+                            ack: false,
+                            new_status: DispatchStatus::Pending,
+                            response_code: Some(status_code),
+                            error_message: None,
+                            error_type: None,
+                            response_body: Some(body),
+                        }
                     } else {
                         debug!(job_id = %job_id, status_code, "Webhook delivered successfully");
-                        AttemptResult { ack: true, new_status: DispatchStatus::Completed, response_code: Some(status_code), error_message: None, error_type: None, response_body: Some(body) }
+                        AttemptResult {
+                            ack: true,
+                            new_status: DispatchStatus::Completed,
+                            response_code: Some(status_code),
+                            error_message: None,
+                            error_type: None,
+                            response_body: Some(body),
+                        }
                     }
                 } else {
                     debug!(job_id = %job_id, status_code, "Webhook delivered successfully");
-                    AttemptResult { ack: true, new_status: DispatchStatus::Completed, response_code: Some(status_code), error_message: None, error_type: None, response_body: Some(body) }
+                    AttemptResult {
+                        ack: true,
+                        new_status: DispatchStatus::Completed,
+                        response_code: Some(status_code),
+                        error_message: None,
+                        error_type: None,
+                        response_body: Some(body),
+                    }
                 }
             } else if status_code == 429 {
                 warn!(job_id = %job_id, "Webhook rate limited (429)");
-                AttemptResult { ack: false, new_status: DispatchStatus::Pending, response_code: Some(status_code), error_message: Some("Rate limited".to_string()), error_type: Some("HTTP_ERROR"), response_body: Some(body) }
+                AttemptResult {
+                    ack: false,
+                    new_status: DispatchStatus::Pending,
+                    response_code: Some(status_code),
+                    error_message: Some("Rate limited".to_string()),
+                    error_type: Some("HTTP_ERROR"),
+                    response_body: Some(body),
+                }
             } else if (400..500).contains(&(status_code as i32)) {
                 warn!(job_id = %job_id, status_code, "Webhook rejected (4xx)");
                 let should_fail = attempt_number >= job.max_retries;
-                let status = if should_fail { DispatchStatus::Failed } else { DispatchStatus::Pending };
-                AttemptResult { ack: should_fail, new_status: status, response_code: Some(status_code), error_message: Some(format!("HTTP {}", status_code)), error_type: Some("HTTP_ERROR"), response_body: Some(body) }
+                let status = if should_fail {
+                    DispatchStatus::Failed
+                } else {
+                    DispatchStatus::Pending
+                };
+                AttemptResult {
+                    ack: should_fail,
+                    new_status: status,
+                    response_code: Some(status_code),
+                    error_message: Some(format!("HTTP {}", status_code)),
+                    error_type: Some("HTTP_ERROR"),
+                    response_body: Some(body),
+                }
             } else {
                 warn!(job_id = %job_id, status_code, "Webhook server error (5xx)");
                 let should_fail = attempt_number >= job.max_retries;
-                let status = if should_fail { DispatchStatus::Failed } else { DispatchStatus::Pending };
-                AttemptResult { ack: should_fail, new_status: status, response_code: Some(status_code), error_message: Some(format!("HTTP {}", status_code)), error_type: Some("HTTP_ERROR"), response_body: Some(body) }
+                let status = if should_fail {
+                    DispatchStatus::Failed
+                } else {
+                    DispatchStatus::Pending
+                };
+                AttemptResult {
+                    ack: should_fail,
+                    new_status: status,
+                    response_code: Some(status_code),
+                    error_message: Some(format!("HTTP {}", status_code)),
+                    error_type: Some("HTTP_ERROR"),
+                    response_body: Some(body),
+                }
             }
         }
         Err(e) => {
@@ -170,36 +228,59 @@ async fn process_dispatch(
             };
             warn!(job_id = %job_id, error = %error_msg, "Webhook delivery failed");
             let should_fail = attempt_number >= job.max_retries;
-            let status = if should_fail { DispatchStatus::Failed } else { DispatchStatus::Pending };
-            AttemptResult { ack: should_fail, new_status: status, response_code: None, error_message: Some(error_msg), error_type: Some(err_type), response_body: None }
+            let status = if should_fail {
+                DispatchStatus::Failed
+            } else {
+                DispatchStatus::Pending
+            };
+            AttemptResult {
+                ack: should_fail,
+                new_status: status,
+                response_code: None,
+                error_message: Some(error_msg),
+                error_type: Some(err_type),
+                response_body: None,
+            }
         }
     };
 
     // 6. Record attempt
-    let attempt_status = if outcome.new_status == DispatchStatus::Completed { "SUCCESS" } else { "FAILED" };
-    if let Err(e) = state.dispatch_job_repo.insert_attempt(
-        job_id,
-        attempt_number,
-        attempt_status,
-        outcome.response_code,
-        outcome.response_body.as_deref(),
-        outcome.error_message.as_deref(),
-        outcome.error_type,
-        None, // error_stack_trace — not applicable for HTTP delivery
-        duration_ms,
-    ).await {
+    let attempt_status = if outcome.new_status == DispatchStatus::Completed {
+        "SUCCESS"
+    } else {
+        "FAILED"
+    };
+    if let Err(e) = state
+        .dispatch_job_repo
+        .insert_attempt(
+            job_id,
+            attempt_number,
+            attempt_status,
+            outcome.response_code,
+            outcome.response_body.as_deref(),
+            outcome.error_message.as_deref(),
+            outcome.error_type,
+            None, // error_stack_trace — not applicable for HTTP delivery
+            duration_ms,
+        )
+        .await
+    {
         error!(job_id = %job_id, error = %e, "Failed to record dispatch attempt");
     }
 
     // 7. Update dispatch job status
-    if let Err(e) = state.dispatch_job_repo.update_after_attempt(
-        job_id,
-        job.created_at,
-        outcome.new_status,
-        attempt_number,
-        duration_ms,
-        outcome.error_message.as_deref(),
-    ).await {
+    if let Err(e) = state
+        .dispatch_job_repo
+        .update_after_attempt(
+            job_id,
+            job.created_at,
+            outcome.new_status,
+            attempt_number,
+            duration_ms,
+            outcome.error_message.as_deref(),
+        )
+        .await
+    {
         error!(job_id = %job_id, error = %e, "Failed to update dispatch job after attempt");
     }
 

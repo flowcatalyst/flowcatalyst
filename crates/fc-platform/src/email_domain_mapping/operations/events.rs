@@ -1,10 +1,10 @@
 //! Email Domain Mapping Domain Events
 
-use serde::{Deserialize, Serialize};
-use crate::usecase::ExecutionContext;
-use crate::usecase::domain_event::EventMetadata;
-use crate::TsidGenerator;
 use crate::impl_domain_event;
+use crate::usecase::domain_event::EventMetadata;
+use crate::usecase::ExecutionContext;
+use crate::TsidGenerator;
+use serde::{Deserialize, Serialize};
 
 /// Event emitted when a new email domain mapping is created.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,10 +39,16 @@ impl EmailDomainMappingCreated {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             mapping_id: mapping_id.to_string(),
             email_domain: email_domain.to_string(),
@@ -77,10 +83,16 @@ impl EmailDomainMappingUpdated {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             mapping_id: mapping_id.to_string(),
             email_domain: email_domain.to_string(),
@@ -113,10 +125,16 @@ impl EmailDomainMappingDeleted {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             mapping_id: mapping_id.to_string(),
             email_domain: email_domain.to_string(),
@@ -132,13 +150,8 @@ mod tests {
     #[test]
     fn test_email_domain_mapping_created_event() {
         let ctx = ExecutionContext::create("admin-123");
-        let event = EmailDomainMappingCreated::new(
-            &ctx,
-            "edm-1",
-            "example.com",
-            "idp-456",
-            "ANCHOR",
-        );
+        let event =
+            EmailDomainMappingCreated::new(&ctx, "edm-1", "example.com", "idp-456", "ANCHOR");
 
         assert_eq!(event.event_type(), "platform:admin:edm:created");
         assert_eq!(event.mapping_id, "edm-1");
@@ -153,9 +166,7 @@ mod tests {
     #[test]
     fn test_email_domain_mapping_created_serialization() {
         let ctx = ExecutionContext::create("user-1");
-        let event = EmailDomainMappingCreated::new(
-            &ctx, "edm-2", "test.org", "idp-1", "CLIENT",
-        );
+        let event = EmailDomainMappingCreated::new(&ctx, "edm-2", "test.org", "idp-1", "CLIENT");
 
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("edm-2"));
@@ -167,11 +178,7 @@ mod tests {
     #[test]
     fn test_email_domain_mapping_updated_event() {
         let ctx = ExecutionContext::create("admin-456");
-        let event = EmailDomainMappingUpdated::new(
-            &ctx,
-            "edm-2",
-            "updated.com",
-        );
+        let event = EmailDomainMappingUpdated::new(&ctx, "edm-2", "updated.com");
 
         assert_eq!(event.event_type(), "platform:admin:edm:updated");
         assert_eq!(event.mapping_id, "edm-2");
@@ -184,11 +191,7 @@ mod tests {
     #[test]
     fn test_email_domain_mapping_deleted_event() {
         let ctx = ExecutionContext::create("admin-789");
-        let event = EmailDomainMappingDeleted::new(
-            &ctx,
-            "edm-3",
-            "deleted.com",
-        );
+        let event = EmailDomainMappingDeleted::new(&ctx, "edm-3", "deleted.com");
 
         assert_eq!(event.event_type(), "platform:admin:edm:deleted");
         assert_eq!(event.mapping_id, "edm-3");

@@ -1,17 +1,15 @@
 //! Assign Roles Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::RolesAssigned;
 use crate::principal::entity::PrincipalType;
+use crate::service_account::entity::RoleAssignment;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 use crate::PrincipalRepository;
 use crate::RoleRepository;
-use crate::service_account::entity::RoleAssignment;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::RolesAssigned;
 
 /// Command for assigning roles to a user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,7 +31,11 @@ impl<U: UnitOfWork> AssignUserRolesUseCase<U> {
         role_repo: Arc<RoleRepository>,
         unit_of_work: Arc<U>,
     ) -> Self {
-        Self { principal_repo, role_repo, unit_of_work }
+        Self {
+            principal_repo,
+            role_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -45,14 +47,19 @@ impl<U: UnitOfWork> UseCase for AssignUserRolesUseCase<U> {
     async fn validate(&self, command: &AssignUserRolesCommand) -> Result<(), UseCaseError> {
         if command.user_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "USER_ID_REQUIRED", "User ID is required",
+                "USER_ID_REQUIRED",
+                "User ID is required",
             ));
         }
 
         Ok(())
     }
 
-    async fn authorize(&self, _command: &AssignUserRolesCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &AssignUserRolesCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -71,7 +78,8 @@ impl<U: UnitOfWork> UseCase for AssignUserRolesUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch user: {}", e
+                    "Failed to fetch user: {}",
+                    e
                 )));
             }
         };
@@ -98,7 +106,8 @@ impl<U: UnitOfWork> UseCase for AssignUserRolesUseCase<U> {
                 }
                 Err(e) => {
                     return UseCaseResult::failure(UseCaseError::commit(format!(
-                        "Failed to validate role: {}", e
+                        "Failed to validate role: {}",
+                        e
                     )));
                 }
             }
@@ -106,28 +115,27 @@ impl<U: UnitOfWork> UseCase for AssignUserRolesUseCase<U> {
 
         // Compute delta
         let previous_roles: Vec<String> = principal.roles.iter().map(|r| r.role.clone()).collect();
-        let added: Vec<String> = command.roles.iter()
+        let added: Vec<String> = command
+            .roles
+            .iter()
             .filter(|r| !previous_roles.contains(r))
             .cloned()
             .collect();
-        let removed: Vec<String> = previous_roles.iter()
+        let removed: Vec<String> = previous_roles
+            .iter()
             .filter(|r| !command.roles.contains(r))
             .cloned()
             .collect();
 
         // Replace roles with new assignments
-        principal.roles = command.roles.iter()
+        principal.roles = command
+            .roles
+            .iter()
             .map(|r| RoleAssignment::with_source(r, "ADMIN_ASSIGNED"))
             .collect();
         principal.updated_at = chrono::Utc::now();
 
-        let event = RolesAssigned::new(
-            &ctx,
-            &principal.id,
-            command.roles.clone(),
-            added,
-            removed,
-        );
+        let event = RolesAssigned::new(&ctx, &principal.id, command.roles.clone(), added, removed);
 
         self.unit_of_work
             .commit(&principal, &*self.principal_repo, event, &command)

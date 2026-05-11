@@ -4,30 +4,26 @@
 //! Provides a UI-friendly view of event types at `/bff/event-types`.
 
 use axum::{
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
     Json,
 };
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::{ToSchema, IntoParams};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::collections::HashSet;
+use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
+use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::event_type::entity::{EventType, EventTypeStatus, SpecVersion};
-use crate::event_type::repository::EventTypeRepository;
-use crate::event_type::operations::{
-    SyncEventTypesUseCase,
-    CreateEventTypeCommand, CreateEventTypeUseCase,
-    UpdateEventTypeCommand, UpdateEventTypeUseCase,
-    DeleteEventTypeCommand, DeleteEventTypeUseCase,
-    ArchiveEventTypeCommand, ArchiveEventTypeUseCase,
-    AddSchemaCommand, AddSchemaUseCase,
-    FinaliseSchemaCommand, FinaliseSchemaUseCase,
-    DeprecateSchemaCommand, DeprecateSchemaUseCase,
-};
 use crate::application::repository::ApplicationRepository;
-use crate::shared::error::PlatformError;
+use crate::event_type::entity::{EventType, EventTypeStatus, SpecVersion};
+use crate::event_type::operations::{
+    AddSchemaCommand, AddSchemaUseCase, ArchiveEventTypeCommand, ArchiveEventTypeUseCase,
+    CreateEventTypeCommand, CreateEventTypeUseCase, DeleteEventTypeCommand, DeleteEventTypeUseCase,
+    DeprecateSchemaCommand, DeprecateSchemaUseCase, FinaliseSchemaCommand, FinaliseSchemaUseCase,
+    SyncEventTypesUseCase, UpdateEventTypeCommand, UpdateEventTypeUseCase,
+};
+use crate::event_type::repository::EventTypeRepository;
 use crate::shared::api_common::CreatedResponse;
+use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
 use crate::usecase::{ExecutionContext, PgUnitOfWork, UseCase};
 
@@ -56,7 +52,9 @@ impl From<SpecVersion> for BffSpecVersionResponse {
             status: v.status.as_str().to_string(),
             schema_type: v.schema_type.as_str().to_string(),
             mime_type: v.mime_type,
-            schema: v.schema_content.map(|v| serde_json::to_string(&v).unwrap_or_default()),
+            schema: v
+                .schema_content
+                .map(|v| serde_json::to_string(&v).unwrap_or_default()),
             created_at: v.created_at.to_rfc3339(),
             updated_at: v.updated_at.to_rfc3339(),
         }
@@ -395,10 +393,8 @@ pub async fn create_event_type(
         schema: None,
     };
 
-    let use_case = CreateEventTypeUseCase::new(
-        state.event_type_repo.clone(),
-        state.unit_of_work.clone(),
-    );
+    let use_case =
+        CreateEventTypeUseCase::new(state.event_type_repo.clone(), state.unit_of_work.clone());
     let event = use_case.run(cmd, ctx.clone()).await.into_result()?;
     let id = event.event_type_id.clone();
 
@@ -411,10 +407,8 @@ pub async fn create_event_type(
             schema_content: Some(schema),
             schema_type: None,
         };
-        let schema_use_case = AddSchemaUseCase::new(
-            state.event_type_repo.clone(),
-            state.unit_of_work.clone(),
-        );
+        let schema_use_case =
+            AddSchemaUseCase::new(state.event_type_repo.clone(), state.unit_of_work.clone());
         schema_use_case.run(schema_cmd, ctx).await.into_result()?;
     }
 
@@ -472,10 +466,8 @@ pub async fn update_event_type(
         description: req.description,
     };
 
-    let use_case = UpdateEventTypeUseCase::new(
-        state.event_type_repo.clone(),
-        state.unit_of_work.clone(),
-    );
+    let use_case =
+        UpdateEventTypeUseCase::new(state.event_type_repo.clone(), state.unit_of_work.clone());
     use_case.run(cmd, ctx).await.into_result()?;
 
     Ok(axum::http::StatusCode::NO_CONTENT)
@@ -521,14 +513,10 @@ pub async fn delete_event_type(
     }
 
     let ctx = ExecutionContext::from_auth(&auth.0);
-    let cmd = DeleteEventTypeCommand {
-        event_type_id: id,
-    };
+    let cmd = DeleteEventTypeCommand { event_type_id: id };
 
-    let use_case = DeleteEventTypeUseCase::new(
-        state.event_type_repo.clone(),
-        state.unit_of_work.clone(),
-    );
+    let use_case =
+        DeleteEventTypeUseCase::new(state.event_type_repo.clone(), state.unit_of_work.clone());
     use_case.run(cmd, ctx).await.into_result()?;
 
     Ok(axum::http::StatusCode::NO_CONTENT)
@@ -578,10 +566,8 @@ pub async fn archive_event_type(
         event_type_id: id.clone(),
     };
 
-    let use_case = ArchiveEventTypeUseCase::new(
-        state.event_type_repo.clone(),
-        state.unit_of_work.clone(),
-    );
+    let use_case =
+        ArchiveEventTypeUseCase::new(state.event_type_repo.clone(), state.unit_of_work.clone());
     use_case.run(cmd, ctx).await.into_result()?;
 
     // Re-fetch for the response
@@ -644,10 +630,7 @@ pub async fn add_schema(
         schema_type: req.schema_type,
     };
 
-    let use_case = AddSchemaUseCase::new(
-        state.event_type_repo.clone(),
-        state.unit_of_work.clone(),
-    );
+    let use_case = AddSchemaUseCase::new(state.event_type_repo.clone(), state.unit_of_work.clone());
     use_case.run(cmd, ctx).await.into_result()?;
 
     // Re-fetch for the response
@@ -703,10 +686,8 @@ pub async fn finalise_schema(
         version,
     };
 
-    let use_case = FinaliseSchemaUseCase::new(
-        state.event_type_repo.clone(),
-        state.unit_of_work.clone(),
-    );
+    let use_case =
+        FinaliseSchemaUseCase::new(state.event_type_repo.clone(), state.unit_of_work.clone());
     use_case.run(cmd, ctx).await.into_result()?;
 
     // Re-fetch for the response
@@ -762,10 +743,8 @@ pub async fn deprecate_schema(
         version,
     };
 
-    let use_case = DeprecateSchemaUseCase::new(
-        state.event_type_repo.clone(),
-        state.unit_of_work.clone(),
-    );
+    let use_case =
+        DeprecateSchemaUseCase::new(state.event_type_repo.clone(), state.unit_of_work.clone());
     use_case.run(cmd, ctx).await.into_result()?;
 
     // Re-fetch for the response
@@ -798,19 +777,24 @@ pub async fn sync_platform(
     auth: Authenticated,
     body: Option<Json<BffSyncPlatformRequest>>,
 ) -> Result<Json<BffSyncPlatformResponse>, PlatformError> {
-    use crate::event_type::operations::{SyncEventTypesCommand, SyncEventTypeInput};
+    use crate::event_type::operations::{SyncEventTypeInput, SyncEventTypesCommand};
 
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
-    let application_code = body.map(|b| b.0.application_code).unwrap_or_else(|| "platform".to_string());
+    let application_code = body
+        .map(|b| b.0.application_code)
+        .unwrap_or_else(|| "platform".to_string());
 
     let definitions = crate::seed::platform_event_types::definitions();
-    let inputs: Vec<SyncEventTypeInput> = definitions.iter().map(|def| SyncEventTypeInput {
-        code: def.code.clone(),
-        name: def.name.clone(),
-        description: def.description.clone(),
-        schema: def.schema.clone(),
-    }).collect();
+    let inputs: Vec<SyncEventTypeInput> = definitions
+        .iter()
+        .map(|def| SyncEventTypeInput {
+            code: def.code.clone(),
+            name: def.name.clone(),
+            description: def.description.clone(),
+            schema: def.schema.clone(),
+        })
+        .collect();
 
     let cmd = SyncEventTypesCommand {
         application_code,
@@ -957,7 +941,11 @@ pub fn bff_event_types_router(state: BffEventTypesState) -> OpenApiRouter {
         .routes(routes!(get_filter_applications))
         .routes(routes!(get_filter_subdomains))
         .routes(routes!(get_filter_aggregates))
-        .routes(routes!(get_event_type, update_event_type, delete_event_type))
+        .routes(routes!(
+            get_event_type,
+            update_event_type,
+            delete_event_type
+        ))
         .routes(routes!(archive_event_type))
         .routes(routes!(add_schema))
         .routes(routes!(finalise_schema))

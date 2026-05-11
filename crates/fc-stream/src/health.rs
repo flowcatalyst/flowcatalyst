@@ -167,14 +167,12 @@ impl StreamHealthService {
 
     /// Live as long as at least one projection is running.
     pub fn is_live(&self) -> bool {
-        !self.stream_healths.is_empty()
-            && self.stream_healths.iter().any(|h| h.is_running())
+        !self.stream_healths.is_empty() && self.stream_healths.iter().any(|h| h.is_running())
     }
 
     /// Ready when all registered projections are healthy.
     pub fn is_ready(&self) -> bool {
-        !self.stream_healths.is_empty()
-            && self.stream_healths.iter().all(|h| h.is_healthy())
+        !self.stream_healths.is_empty() && self.stream_healths.iter().all(|h| h.is_healthy())
     }
 
     pub fn get_health(&self) -> StreamProcessorHealth {

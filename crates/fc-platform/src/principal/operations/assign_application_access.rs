@@ -3,17 +3,15 @@
 //! Sets which applications a user can access.
 //! Computes delta (added/removed) and persists via UnitOfWork.
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::PrincipalRepository;
-use crate::ApplicationRepository;
-use crate::principal::entity::PrincipalType;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::ApplicationAccessAssigned;
+use crate::principal::entity::PrincipalType;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::ApplicationRepository;
+use crate::PrincipalRepository;
 
 /// Command for assigning application access to a user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,7 +33,11 @@ impl<U: UnitOfWork> AssignApplicationAccessUseCase<U> {
         application_repo: Arc<ApplicationRepository>,
         unit_of_work: Arc<U>,
     ) -> Self {
-        Self { principal_repo, application_repo, unit_of_work }
+        Self {
+            principal_repo,
+            application_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -47,14 +49,19 @@ impl<U: UnitOfWork> UseCase for AssignApplicationAccessUseCase<U> {
     async fn validate(&self, command: &AssignApplicationAccessCommand) -> Result<(), UseCaseError> {
         if command.user_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "USER_ID_REQUIRED", "User ID is required",
+                "USER_ID_REQUIRED",
+                "User ID is required",
             ));
         }
 
         Ok(())
     }
 
-    async fn authorize(&self, _command: &AssignApplicationAccessCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &AssignApplicationAccessCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -74,7 +81,8 @@ impl<U: UnitOfWork> UseCase for AssignApplicationAccessUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch user: {}", e
+                    "Failed to fetch user: {}",
+                    e
                 )));
             }
         };
@@ -82,7 +90,8 @@ impl<U: UnitOfWork> UseCase for AssignApplicationAccessUseCase<U> {
         // Must be a USER type
         if principal.principal_type != PrincipalType::User {
             return UseCaseResult::failure(UseCaseError::business_rule(
-                "NOT_A_USER", "Principal is not a user",
+                "NOT_A_USER",
+                "Principal is not a user",
             ));
         }
 
@@ -105,22 +114,30 @@ impl<U: UnitOfWork> UseCase for AssignApplicationAccessUseCase<U> {
                 }
                 Err(e) => {
                     return UseCaseResult::failure(UseCaseError::commit(format!(
-                        "Failed to fetch application: {}", e
+                        "Failed to fetch application: {}",
+                        e
                     )));
                 }
             }
         }
 
         // Compute delta
-        let current: std::collections::HashSet<&str> = principal.accessible_application_ids
-            .iter().map(|s| s.as_str()).collect();
-        let requested: std::collections::HashSet<&str> = command.application_ids
-            .iter().map(|s| s.as_str()).collect();
+        let current: std::collections::HashSet<&str> = principal
+            .accessible_application_ids
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        let requested: std::collections::HashSet<&str> =
+            command.application_ids.iter().map(|s| s.as_str()).collect();
 
-        let added: Vec<String> = requested.difference(&current)
-            .map(|s| s.to_string()).collect();
-        let removed: Vec<String> = current.difference(&requested)
-            .map(|s| s.to_string()).collect();
+        let added: Vec<String> = requested
+            .difference(&current)
+            .map(|s| s.to_string())
+            .collect();
+        let removed: Vec<String> = current
+            .difference(&requested)
+            .map(|s| s.to_string())
+            .collect();
 
         // Update principal
         principal.accessible_application_ids = command.application_ids.clone();

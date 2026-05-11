@@ -2,8 +2,8 @@
 //!
 //! Machine-to-machine authentication for webhooks.
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// Webhook authentication type — matches TypeScript WebhookAuthType
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,7 +22,6 @@ pub enum WebhookAuthType {
     /// HMAC signature
     HmacSignature,
 }
-
 
 impl WebhookAuthType {
     pub fn as_str(&self) -> &str {
@@ -306,7 +305,11 @@ impl ServiceAccount {
         self.updated_at = Utc::now();
     }
 
-    pub fn assign_role_for_client(&mut self, role: impl Into<String>, client_id: impl Into<String>) {
+    pub fn assign_role_for_client(
+        &mut self,
+        role: impl Into<String>,
+        client_id: impl Into<String>,
+    ) {
         self.roles.push(RoleAssignment::for_client(role, client_id));
         self.updated_at = Utc::now();
     }
@@ -343,8 +346,17 @@ mod tests {
         let sa = ServiceAccount::new("app:my-app", "My App Service Account");
 
         assert!(!sa.id.is_empty());
-        assert!(sa.id.starts_with("sac_"), "ID should have sac_ prefix, got: {}", sa.id);
-        assert_eq!(sa.id.len(), 17, "Typed ID should be 17 chars, got: {}", sa.id.len());
+        assert!(
+            sa.id.starts_with("sac_"),
+            "ID should have sac_ prefix, got: {}",
+            sa.id
+        );
+        assert_eq!(
+            sa.id.len(),
+            17,
+            "Typed ID should be 17 chars, got: {}",
+            sa.id.len()
+        );
         assert_eq!(sa.code, "app:my-app");
         assert_eq!(sa.name, "My App Service Account");
         assert!(sa.description.is_none());
@@ -376,7 +388,10 @@ mod tests {
         assert_eq!(sa.description, Some("A test service account".to_string()));
         assert_eq!(sa.client_ids, vec!["client-1".to_string()]);
         assert_eq!(sa.application_id, Some("app-1".to_string()));
-        assert_eq!(sa.webhook_credentials.auth_type, WebhookAuthType::BearerToken);
+        assert_eq!(
+            sa.webhook_credentials.auth_type,
+            WebhookAuthType::BearerToken
+        );
         assert_eq!(sa.webhook_credentials.token, Some("my-token".to_string()));
     }
 
@@ -429,8 +444,7 @@ mod tests {
         // Empty client_ids means access to all
         assert!(sa_no_clients.has_client_access("any-client"));
 
-        let sa_with_clients = ServiceAccount::new("sa", "SA")
-            .with_client_id("client-1");
+        let sa_with_clients = ServiceAccount::new("sa", "SA").with_client_id("client-1");
         assert!(sa_with_clients.has_client_access("client-1"));
         assert!(!sa_with_clients.has_client_access("client-2"));
     }
@@ -458,10 +472,22 @@ mod tests {
     #[test]
     fn test_webhook_auth_type_from_str() {
         assert_eq!(WebhookAuthType::from_str("NONE"), WebhookAuthType::None);
-        assert_eq!(WebhookAuthType::from_str("BEARER_TOKEN"), WebhookAuthType::BearerToken);
-        assert_eq!(WebhookAuthType::from_str("BASIC_AUTH"), WebhookAuthType::BasicAuth);
-        assert_eq!(WebhookAuthType::from_str("API_KEY"), WebhookAuthType::ApiKey);
-        assert_eq!(WebhookAuthType::from_str("HMAC_SIGNATURE"), WebhookAuthType::HmacSignature);
+        assert_eq!(
+            WebhookAuthType::from_str("BEARER_TOKEN"),
+            WebhookAuthType::BearerToken
+        );
+        assert_eq!(
+            WebhookAuthType::from_str("BASIC_AUTH"),
+            WebhookAuthType::BasicAuth
+        );
+        assert_eq!(
+            WebhookAuthType::from_str("API_KEY"),
+            WebhookAuthType::ApiKey
+        );
+        assert_eq!(
+            WebhookAuthType::from_str("HMAC_SIGNATURE"),
+            WebhookAuthType::HmacSignature
+        );
         assert_eq!(WebhookAuthType::from_str("unknown"), WebhookAuthType::None);
     }
 
@@ -479,7 +505,12 @@ mod tests {
             WebhookAuthType::ApiKey,
             WebhookAuthType::HmacSignature,
         ] {
-            assert_eq!(WebhookAuthType::from_str(t.as_str()), t, "Roundtrip failed for {:?}", t);
+            assert_eq!(
+                WebhookAuthType::from_str(t.as_str()),
+                t,
+                "Roundtrip failed for {:?}",
+                t
+            );
         }
     }
 
@@ -573,4 +604,3 @@ mod tests {
         assert!(!ra_no_source.is_idp_sync());
     }
 }
-

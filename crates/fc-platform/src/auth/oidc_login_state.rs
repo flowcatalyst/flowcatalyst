@@ -4,8 +4,8 @@
 //! Used to correlate the callback with the original login request
 //! and prevent CSRF attacks.
 
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc, Duration};
 
 /// OIDC login state for authorization code flow
 ///
@@ -42,7 +42,6 @@ pub struct OidcLoginState {
     // ==================== OAuth Flow Chaining ====================
     // These fields are populated when login is triggered from /oauth/authorize
     // After OIDC login completes, we resume the original OAuth flow
-
     /// Original OAuth client ID (if login was triggered by /oauth/authorize)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth_client_id: Option<String>,
@@ -76,7 +75,6 @@ pub struct OidcLoginState {
     pub interaction_uid: Option<String>,
 
     // ==================== Timestamps ====================
-
     /// When this state was created
     pub created_at: DateTime<Utc>,
 
@@ -198,7 +196,8 @@ mod tests {
             "edm-id",
             "nonce",
             "verifier",
-        ).with_oauth_params(
+        )
+        .with_oauth_params(
             Some("client123".to_string()),
             Some("https://app.example.com/callback".to_string()),
             Some("openid profile".to_string()),

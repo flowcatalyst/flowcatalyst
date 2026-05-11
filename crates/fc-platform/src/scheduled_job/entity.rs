@@ -5,8 +5,8 @@
 //! instance is platform-infrastructure plumbing and is not modelled as an
 //! aggregate; see `repository.rs` for direct-write infrastructure methods.
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -17,7 +17,6 @@ pub enum ScheduledJobStatus {
     Paused,
     Archived,
 }
-
 
 impl ScheduledJobStatus {
     pub fn as_str(&self) -> &'static str {
@@ -99,11 +98,7 @@ impl ScheduledJob {
     /// Construct a new ACTIVE ScheduledJob with required fields. Cron syntax is
     /// validated at the use-case layer (uses the `cron` crate); this constructor
     /// trusts its inputs.
-    pub fn new(
-        code: impl Into<String>,
-        name: impl Into<String>,
-        crons: Vec<String>,
-    ) -> Self {
+    pub fn new(code: impl Into<String>, name: impl Into<String>, crons: Vec<String>) -> Self {
         let now = Utc::now();
         Self {
             id: crate::TsidGenerator::generate(crate::EntityType::ScheduledJob),
@@ -211,10 +206,16 @@ pub enum TriggerKind {
 
 impl TriggerKind {
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Cron => "CRON", Self::Manual => "MANUAL" }
+        match self {
+            Self::Cron => "CRON",
+            Self::Manual => "MANUAL",
+        }
     }
     pub fn from_str(s: &str) -> Self {
-        match s { "MANUAL" => Self::Manual, _ => Self::Cron }
+        match s {
+            "MANUAL" => Self::Manual,
+            _ => Self::Cron,
+        }
     }
 }
 
@@ -258,10 +259,7 @@ impl InstanceStatus {
     /// True if no further state transitions are expected (apart from manual
     /// admin actions).
     pub fn is_terminal(&self) -> bool {
-        matches!(
-            self,
-            Self::Completed | Self::Failed | Self::DeliveryFailed
-        )
+        matches!(self, Self::Completed | Self::Failed | Self::DeliveryFailed)
     }
 }
 
@@ -275,10 +273,17 @@ pub enum CompletionStatus {
 
 impl CompletionStatus {
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Success => "SUCCESS", Self::Failure => "FAILURE" }
+        match self {
+            Self::Success => "SUCCESS",
+            Self::Failure => "FAILURE",
+        }
     }
     pub fn from_str(s: &str) -> Option<Self> {
-        match s { "SUCCESS" => Some(Self::Success), "FAILURE" => Some(Self::Failure), _ => None }
+        match s {
+            "SUCCESS" => Some(Self::Success),
+            "FAILURE" => Some(Self::Failure),
+            _ => None,
+        }
     }
 }
 
@@ -293,7 +298,6 @@ pub enum LogLevel {
     Warn,
     Error,
 }
-
 
 impl LogLevel {
     pub fn as_str(&self) -> &'static str {
@@ -409,7 +413,10 @@ mod tests {
         ] {
             assert_eq!(ScheduledJobStatus::from_str(s.as_str()), s);
         }
-        assert_eq!(ScheduledJobStatus::from_str("UNKNOWN"), ScheduledJobStatus::Active);
+        assert_eq!(
+            ScheduledJobStatus::from_str("UNKNOWN"),
+            ScheduledJobStatus::Active
+        );
     }
 
     #[test]
@@ -438,7 +445,12 @@ mod tests {
 
     #[test]
     fn log_level_roundtrip() {
-        for s in [LogLevel::Debug, LogLevel::Info, LogLevel::Warn, LogLevel::Error] {
+        for s in [
+            LogLevel::Debug,
+            LogLevel::Info,
+            LogLevel::Warn,
+            LogLevel::Error,
+        ] {
             assert_eq!(LogLevel::from_str(s.as_str()), s);
         }
         assert_eq!(LogLevel::from_str("WHAT"), LogLevel::Info);

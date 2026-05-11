@@ -2,16 +2,13 @@
 //!
 //! REST endpoints for platform monitoring and observability.
 
-use axum::{
-    extract::State,
-    Json,
-};
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::ToSchema;
+use axum::{extract::State, Json};
 use serde::Serialize;
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::RwLock;
+use utoipa::ToSchema;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
@@ -258,7 +255,11 @@ pub async fn get_standby_status(
     Ok(Json(StandbyStatus {
         is_leader,
         instance_id: state.leader_state.instance_id.clone(),
-        role: if is_leader { "LEADER".to_string() } else { "STANDBY".to_string() },
+        role: if is_leader {
+            "LEADER".to_string()
+        } else {
+            "STANDBY".to_string()
+        },
         leader_id,
         last_heartbeat: Some(chrono::Utc::now().to_rfc3339()),
         cluster_members,
@@ -304,7 +305,7 @@ pub async fn get_dashboard(
         events_last_hour: 0, // Time-windowed counter not yet wired.
         total_jobs,
         active_subscriptions: 0, // Would need subscription repo.
-        active_pools: 0, // Would need pool repo.
+        active_pools: 0,         // Would need pool repo.
         health: SystemHealth {
             status: "UP".to_string(),
             uptime_seconds: state.start_time.elapsed().as_secs(),

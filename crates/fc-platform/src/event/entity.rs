@@ -1,7 +1,7 @@
 //! Event Entity — CloudEvents spec 1.0, matches msg_events PostgreSQL table
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// CloudEvents spec version
 pub const CLOUDEVENTS_SPEC_VERSION: &str = "1.0";
@@ -129,7 +129,10 @@ impl Event {
     }
 
     pub fn with_context(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.context_data.push(ContextData { key: key.into(), value: value.into() });
+        self.context_data.push(ContextData {
+            key: key.into(),
+            value: value.into(),
+        });
         self
     }
 
@@ -138,12 +141,19 @@ impl Event {
         self
     }
 
-    pub fn application(&self) -> Option<&str> { self.event_type.split(':').next() }
-    pub fn subdomain(&self) -> Option<&str> { self.event_type.split(':').nth(1) }
-    pub fn aggregate(&self) -> Option<&str> { self.event_type.split(':').nth(2) }
-    pub fn event_name(&self) -> Option<&str> { self.event_type.split(':').nth(3) }
+    pub fn application(&self) -> Option<&str> {
+        self.event_type.split(':').next()
+    }
+    pub fn subdomain(&self) -> Option<&str> {
+        self.event_type.split(':').nth(1)
+    }
+    pub fn aggregate(&self) -> Option<&str> {
+        self.event_type.split(':').nth(2)
+    }
+    pub fn event_name(&self) -> Option<&str> {
+        self.event_type.split(':').nth(3)
+    }
 }
-
 
 /// Event read projection — CQRS read model, matches msg_events_read table
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
@@ -165,7 +175,6 @@ pub struct EventRead {
     pub client_name: Option<String>,
     pub projected_at: DateTime<Utc>,
 }
-
 
 /// Filter options for the events read model (cascading filters).
 /// Clients are served by the canonical `/bff/filter-options/clients` endpoint,
@@ -213,8 +222,16 @@ mod tests {
         );
 
         assert!(!event.id.is_empty());
-        assert_eq!(event.id.len(), 13, "Untyped ID should be 13 chars, got: {}", event.id.len());
-        assert!(!event.id.contains('_'), "Untyped ID should not have prefix underscore");
+        assert_eq!(
+            event.id.len(),
+            13,
+            "Untyped ID should be 13 chars, got: {}",
+            event.id.len()
+        );
+        assert!(
+            !event.id.contains('_'),
+            "Untyped ID should not have prefix underscore"
+        );
         assert_eq!(event.event_type, "orders:fulfillment:shipment:shipped");
         assert_eq!(event.source, "my-app");
         assert!(event.subject.is_none());
@@ -260,18 +277,27 @@ mod tests {
     #[test]
     fn test_event_with_context_data() {
         let ctx = vec![
-            ContextData { key: "a".to_string(), value: "1".to_string() },
-            ContextData { key: "b".to_string(), value: "2".to_string() },
+            ContextData {
+                key: "a".to_string(),
+                value: "1".to_string(),
+            },
+            ContextData {
+                key: "b".to_string(),
+                value: "2".to_string(),
+            },
         ];
-        let event = Event::new("t", "s", serde_json::json!({}))
-            .with_context_data(ctx);
+        let event = Event::new("t", "s", serde_json::json!({})).with_context_data(ctx);
 
         assert_eq!(event.context_data.len(), 2);
     }
 
     #[test]
     fn test_event_code_parsing() {
-        let event = Event::new("orders:fulfillment:shipment:shipped", "app", serde_json::json!({}));
+        let event = Event::new(
+            "orders:fulfillment:shipment:shipped",
+            "app",
+            serde_json::json!({}),
+        );
         assert_eq!(event.application(), Some("orders"));
         assert_eq!(event.subdomain(), Some("fulfillment"));
         assert_eq!(event.aggregate(), Some("shipment"));
@@ -296,10 +322,14 @@ mod tests {
 
     #[test]
     fn test_event_read_from_event() {
-        let event = Event::new("orders:billing:invoice:created", "my-app", serde_json::json!({}))
-            .with_client_id("c1")
-            .with_message_group("g1")
-            .with_correlation_id("corr1");
+        let event = Event::new(
+            "orders:billing:invoice:created",
+            "my-app",
+            serde_json::json!({}),
+        )
+        .with_client_id("c1")
+        .with_message_group("g1")
+        .with_correlation_id("corr1");
 
         let read = EventRead::from(&event);
         assert_eq!(read.id, event.id);
@@ -311,6 +341,9 @@ mod tests {
         assert_eq!(read.client_id, Some("c1".to_string()));
         assert_eq!(read.message_group, Some("g1".to_string()));
         assert_eq!(read.correlation_id, Some("corr1".to_string()));
-        assert!(read.client_name.is_none(), "client_name is not populated from Event");
+        assert!(
+            read.client_name.is_none(),
+            "client_name is not populated from Event"
+        );
     }
 }

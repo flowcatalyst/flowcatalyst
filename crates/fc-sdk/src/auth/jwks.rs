@@ -3,12 +3,12 @@
 //! Fetches FlowCatalyst's public keys via OIDC discovery and validates
 //! JWT access tokens using RS256 signature verification.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 use chrono::{DateTime, Utc};
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::Deserialize;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
 use super::claims::{AccessTokenClaims, AuthContext};
@@ -120,7 +120,12 @@ impl JwksCache {
             .get(&discovery_url)
             .send()
             .await
-            .map_err(|e| AuthError::Discovery(format!("Failed to fetch discovery from {}: {}", discovery_url, e)))?
+            .map_err(|e| {
+                AuthError::Discovery(format!(
+                    "Failed to fetch discovery from {}: {}",
+                    discovery_url, e
+                ))
+            })?
             .json()
             .await
             .map_err(|e| AuthError::Discovery(format!("Failed to parse discovery: {}", e)))?;
@@ -132,7 +137,12 @@ impl JwksCache {
             .get(&discovery.jwks_uri)
             .send()
             .await
-            .map_err(|e| AuthError::Discovery(format!("Failed to fetch JWKS from {}: {}", discovery.jwks_uri, e)))?
+            .map_err(|e| {
+                AuthError::Discovery(format!(
+                    "Failed to fetch JWKS from {}: {}",
+                    discovery.jwks_uri, e
+                ))
+            })?
             .json()
             .await
             .map_err(|e| AuthError::Discovery(format!("Failed to parse JWKS: {}", e)))?;
@@ -244,12 +254,14 @@ impl TokenValidator {
         let key = self.find_key(&jwks, kid)?;
 
         // Build decoding key from RSA components
-        let n = key.n.as_deref().ok_or_else(|| {
-            AuthError::InvalidToken("JWK missing RSA modulus (n)".to_string())
-        })?;
-        let e = key.e.as_deref().ok_or_else(|| {
-            AuthError::InvalidToken("JWK missing RSA exponent (e)".to_string())
-        })?;
+        let n = key
+            .n
+            .as_deref()
+            .ok_or_else(|| AuthError::InvalidToken("JWK missing RSA modulus (n)".to_string()))?;
+        let e = key
+            .e
+            .as_deref()
+            .ok_or_else(|| AuthError::InvalidToken("JWK missing RSA exponent (e)".to_string()))?;
 
         let decoding_key = DecodingKey::from_rsa_components(n, e)
             .map_err(|e| AuthError::InvalidToken(format!("Invalid RSA components: {}", e)))?;
@@ -260,8 +272,10 @@ impl TokenValidator {
         validation.set_audience(&[&self.config.audience]);
         validation.leeway = self.config.clock_skew_secs;
 
-        let token_data = decode::<AccessTokenClaims>(token, &decoding_key, &validation)
-            .map_err(|e| match e.kind() {
+        let token_data =
+            decode::<AccessTokenClaims>(token, &decoding_key, &validation).map_err(|e| match e
+                .kind()
+            {
                 jsonwebtoken::errors::ErrorKind::ExpiredSignature => AuthError::TokenExpired,
                 jsonwebtoken::errors::ErrorKind::InvalidAudience => {
                     AuthError::InvalidToken(format!("Invalid audience: {}", e))
@@ -441,7 +455,10 @@ mod tests {
         assert_eq!(key.key_use.as_deref(), Some("sig"));
         assert_eq!(key.kid.as_deref(), Some("key-1"));
         assert_eq!(key.alg.as_deref(), Some("RS256"));
-        assert_eq!(key.n.as_deref(), Some("0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM"));
+        assert_eq!(
+            key.n.as_deref(),
+            Some("0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM")
+        );
         assert_eq!(key.e.as_deref(), Some("AQAB"));
     }
 
@@ -595,12 +612,7 @@ mod tests {
 
     // ─── HmacTokenValidator ─────────────────────────────────────────────
 
-    fn make_hs256_token(
-        sub: &str,
-        iss: &str,
-        aud: &str,
-        secret: &str,
-    ) -> String {
+    fn make_hs256_token(sub: &str, iss: &str, aud: &str, secret: &str) -> String {
         let now = chrono::Utc::now().timestamp();
         let claims = AccessTokenClaims {
             sub: sub.to_string(),
@@ -619,7 +631,12 @@ mod tests {
         };
 
         let header = Header::new(Algorithm::HS256);
-        encode(&header, &claims, &EncodingKey::from_secret(secret.as_bytes())).unwrap()
+        encode(
+            &header,
+            &claims,
+            &EncodingKey::from_secret(secret.as_bytes()),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -701,7 +718,9 @@ mod tests {
         let token = make_hs256_token("prn_1", "fc", "fc", secret);
         let validator = HmacTokenValidator::new(secret, "fc", "fc");
 
-        let ctx = validator.validate_bearer(&format!("Bearer {}", token)).unwrap();
+        let ctx = validator
+            .validate_bearer(&format!("Bearer {}", token))
+            .unwrap();
         assert_eq!(ctx.principal_id(), "prn_1");
     }
 

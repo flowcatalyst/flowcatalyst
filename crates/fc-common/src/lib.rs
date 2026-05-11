@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 use utoipa::ToSchema;
@@ -8,7 +8,7 @@ pub mod config;
 pub mod logging;
 pub mod tsid;
 
-pub use tsid::{TsidGenerator, EntityType};
+pub use tsid::{EntityType, TsidGenerator};
 
 // ============================================================================
 // Core Message Types
@@ -113,7 +113,10 @@ pub enum DispatchStatus {
 
 impl DispatchStatus {
     pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Completed | Self::Failed | Self::Cancelled | Self::Expired)
+        matches!(
+            self,
+            Self::Completed | Self::Failed | Self::Cancelled | Self::Expired
+        )
     }
 
     pub fn is_successful(&self) -> bool {
@@ -155,7 +158,7 @@ impl DispatchStatus {
 pub struct QueuedMessage {
     pub message: Message,
     pub receipt_handle: String,
-    pub broker_message_id: Option<String>,  // SQS/broker message ID for deduplication
+    pub broker_message_id: Option<String>, // SQS/broker message ID for deduplication
     pub queue_identifier: String,
 }
 
@@ -561,9 +564,7 @@ impl OutboxStatus {
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,
-            OutboxStatus::SUCCESS
-                | OutboxStatus::BAD_REQUEST
-                | OutboxStatus::FORBIDDEN
+            OutboxStatus::SUCCESS | OutboxStatus::BAD_REQUEST | OutboxStatus::FORBIDDEN
         )
     }
 }
@@ -695,7 +696,9 @@ pub enum WarningCategory {
 }
 
 /// Warning severity levels
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, ToSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, ToSchema,
+)]
 pub enum WarningSeverity {
     /// Informational warning
     Info,

@@ -1,7 +1,7 @@
 //! CorsAllowedOrigin Entity
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -15,7 +15,11 @@ pub struct CorsAllowedOrigin {
 }
 
 impl CorsAllowedOrigin {
-    pub fn new(origin: impl Into<String>, description: Option<String>, created_by: Option<String>) -> Self {
+    pub fn new(
+        origin: impl Into<String>,
+        description: Option<String>,
+        created_by: Option<String>,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: crate::TsidGenerator::generate(crate::EntityType::CorsOrigin),
@@ -27,4 +31,3 @@ impl CorsAllowedOrigin {
         }
     }
 }
-

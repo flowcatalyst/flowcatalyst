@@ -13,15 +13,15 @@
 //!
 //! See Java implementation: OidcSyncService.java
 
+use chrono::Utc;
 use std::collections::HashSet;
 use std::sync::Arc;
-use chrono::Utc;
 use tracing::{debug, info, warn};
 
-use crate::{Principal, UserScope, ExternalIdentity};
 use crate::auth::config_entity::IdpRoleMapping;
-use crate::{PrincipalRepository, IdpRoleMappingRepository};
 use crate::shared::error::Result;
+use crate::{ExternalIdentity, Principal, UserScope};
+use crate::{IdpRoleMappingRepository, PrincipalRepository};
 
 /// Assignment source for IDP-synced roles
 pub const IDP_SYNC_SOURCE: &str = "IDP_SYNC";
@@ -345,8 +345,16 @@ impl OidcSyncService {
         idp_role_names: &[String],
     ) -> Result<Principal> {
         self.sync_oidc_login_with_allowed_roles(
-            email, name, external_idp_id, provider_id, client_id, scope, idp_role_names, None,
-        ).await
+            email,
+            name,
+            external_idp_id,
+            provider_id,
+            client_id,
+            scope,
+            idp_role_names,
+            None,
+        )
+        .await
     }
 
     /// Full OIDC sync with optional allowed_role_ids filter from EmailDomainMapping.
@@ -369,7 +377,8 @@ impl OidcSyncService {
             .await?;
 
         // CRITICAL SECURITY: Sync IDP roles with authorization check
-        self.sync_idp_roles_filtered(&mut principal, idp_role_names, allowed_role_ids).await?;
+        self.sync_idp_roles_filtered(&mut principal, idp_role_names, allowed_role_ids)
+            .await?;
 
         Ok(principal)
     }
@@ -380,7 +389,9 @@ impl OidcSyncService {
         // In production, you might want to filter by IDP type
         let mappings = self.idp_role_mapping_repo.find_all().await?;
 
-        Ok(mappings.into_iter().find(|m| m.idp_role_name == idp_role_name))
+        Ok(mappings
+            .into_iter()
+            .find(|m| m.idp_role_name == idp_role_name))
     }
 
     /// Audit log all IDP role mappings for a principal.
@@ -390,9 +401,7 @@ impl OidcSyncService {
 
         match principal {
             Some(p) => {
-                let idp_roles: Vec<_> = p.roles.iter()
-                    .filter(|r| r.is_idp_sync())
-                    .collect();
+                let idp_roles: Vec<_> = p.roles.iter().filter(|r| r.is_idp_sync()).collect();
 
                 let mut audit = format!(
                     "Principal {} has {} IDP-sourced roles:\n",

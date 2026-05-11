@@ -8,17 +8,16 @@
 //! - Receipt handle updates
 //! - Shutdown behavior
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicBool, Ordering};
-use std::time::Duration;
 use async_trait::async_trait;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 use fc_common::{
-    Message, QueuedMessage, MediationType, MediationOutcome,
-    PoolConfig, RouterConfig,
+    MediationOutcome, MediationType, Message, PoolConfig, QueuedMessage, RouterConfig,
 };
 use fc_queue::{QueueConsumer, QueueError};
-use fc_router::{QueueManager, Mediator};
+use fc_router::{Mediator, QueueManager};
 
 /// Mock mediator for testing
 struct MockMediator {
@@ -107,11 +106,17 @@ impl QueueConsumer for MockQueueConsumer {
     }
 
     async fn nack(&self, receipt_handle: &str, delay_seconds: Option<u32>) -> fc_queue::Result<()> {
-        self.nacked.lock().push((receipt_handle.to_string(), delay_seconds));
+        self.nacked
+            .lock()
+            .push((receipt_handle.to_string(), delay_seconds));
         Ok(())
     }
 
-    async fn extend_visibility(&self, _receipt_handle: &str, _seconds: u32) -> fc_queue::Result<()> {
+    async fn extend_visibility(
+        &self,
+        _receipt_handle: &str,
+        _seconds: u32,
+    ) -> fc_queue::Result<()> {
         Ok(())
     }
 
@@ -186,7 +191,10 @@ async fn test_apply_config() {
     let default_pool = stats.iter().find(|s| s.pool_code == "DEFAULT").unwrap();
     assert_eq!(default_pool.concurrency, 10);
 
-    let high_priority = stats.iter().find(|s| s.pool_code == "HIGH_PRIORITY").unwrap();
+    let high_priority = stats
+        .iter()
+        .find(|s| s.pool_code == "HIGH_PRIORITY")
+        .unwrap();
     assert_eq!(high_priority.concurrency, 20);
     assert_eq!(high_priority.rate_limit_per_minute, Some(1000));
 }
@@ -194,7 +202,9 @@ async fn test_apply_config() {
 #[tokio::test]
 async fn test_route_single_message() {
     let mediator = Arc::new(MockMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     // Apply config
     let config = RouterConfig {
@@ -213,7 +223,10 @@ async fn test_route_single_message() {
 
     // Route the batch
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     // Wait for processing
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -226,7 +239,9 @@ async fn test_route_single_message() {
 #[tokio::test]
 async fn test_route_batch_multiple_messages() {
     let mediator = Arc::new(MockMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -244,7 +259,10 @@ async fn test_route_batch_multiple_messages() {
 
     let consumer = Arc::new(MockQueueConsumer::with_messages("test-queue", messages));
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     // Wait for processing
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -255,7 +273,9 @@ async fn test_route_batch_multiple_messages() {
 #[tokio::test]
 async fn test_route_to_different_pools() {
     let mediator = Arc::new(MockMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let config = RouterConfig {
         processing_pools: vec![
@@ -282,7 +302,10 @@ async fn test_route_to_different_pools() {
 
     let consumer = Arc::new(MockQueueConsumer::with_messages("test-queue", messages));
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
@@ -292,7 +315,9 @@ async fn test_route_to_different_pools() {
 #[tokio::test]
 async fn test_default_pool_for_empty_pool_code() {
     let mediator = Arc::new(MockMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -308,7 +333,10 @@ async fn test_default_pool_for_empty_pool_code() {
     let messages = vec![create_queued_message("msg-1", "", "test-queue")];
     let consumer = Arc::new(MockQueueConsumer::with_messages("test-queue", messages));
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -339,7 +367,9 @@ async fn test_memory_health_check() {
 #[tokio::test]
 async fn test_pool_hot_reload() {
     let mediator = Arc::new(MockMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     // Initial config
     let config = RouterConfig {
@@ -358,7 +388,10 @@ async fn test_pool_hot_reload() {
         concurrency: 20,
         rate_limit_per_minute: Some(500),
     };
-    manager.update_pool_config("TEST", new_config).await.unwrap();
+    manager
+        .update_pool_config("TEST", new_config)
+        .await
+        .unwrap();
 
     let stats = manager.get_pool_stats();
     let pool_stats = stats.iter().find(|s| s.pool_code == "TEST").unwrap();
@@ -404,9 +437,21 @@ async fn test_pool_codes() {
 
     let config = RouterConfig {
         processing_pools: vec![
-            PoolConfig { code: "A".to_string(), concurrency: 5, rate_limit_per_minute: None },
-            PoolConfig { code: "B".to_string(), concurrency: 5, rate_limit_per_minute: None },
-            PoolConfig { code: "C".to_string(), concurrency: 5, rate_limit_per_minute: None },
+            PoolConfig {
+                code: "A".to_string(),
+                concurrency: 5,
+                rate_limit_per_minute: None,
+            },
+            PoolConfig {
+                code: "B".to_string(),
+                concurrency: 5,
+                rate_limit_per_minute: None,
+            },
+            PoolConfig {
+                code: "C".to_string(),
+                concurrency: 5,
+                rate_limit_per_minute: None,
+            },
         ],
         queues: vec![],
     };

@@ -1,14 +1,12 @@
 //! Revoke Platform Config Access Use Case.
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::platform_config::access_repository::PlatformConfigAccessRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::PlatformConfigAccessRevoked;
+use crate::platform_config::access_repository::PlatformConfigAccessRepository;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,7 +22,10 @@ pub struct RevokePlatformConfigAccessUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> RevokePlatformConfigAccessUseCase<U> {
     pub fn new(access_repo: Arc<PlatformConfigAccessRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { access_repo, unit_of_work }
+        Self {
+            access_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -33,17 +34,30 @@ impl<U: UnitOfWork> UseCase for RevokePlatformConfigAccessUseCase<U> {
     type Command = RevokePlatformConfigAccessCommand;
     type Event = PlatformConfigAccessRevoked;
 
-    async fn validate(&self, command: &RevokePlatformConfigAccessCommand) -> Result<(), UseCaseError> {
+    async fn validate(
+        &self,
+        command: &RevokePlatformConfigAccessCommand,
+    ) -> Result<(), UseCaseError> {
         if command.application_code.trim().is_empty() {
-            return Err(UseCaseError::validation("APP_CODE_REQUIRED", "Application code is required"));
+            return Err(UseCaseError::validation(
+                "APP_CODE_REQUIRED",
+                "Application code is required",
+            ));
         }
         if command.role_code.trim().is_empty() {
-            return Err(UseCaseError::validation("ROLE_CODE_REQUIRED", "Role code is required"));
+            return Err(UseCaseError::validation(
+                "ROLE_CODE_REQUIRED",
+                "Role code is required",
+            ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &RevokePlatformConfigAccessCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &RevokePlatformConfigAccessCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -52,7 +66,8 @@ impl<U: UnitOfWork> UseCase for RevokePlatformConfigAccessUseCase<U> {
         command: RevokePlatformConfigAccessCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<PlatformConfigAccessRevoked> {
-        let access = match self.access_repo
+        let access = match self
+            .access_repo
             .find_by_application_and_role(&command.application_code, &command.role_code)
             .await
         {
@@ -60,12 +75,16 @@ impl<U: UnitOfWork> UseCase for RevokePlatformConfigAccessUseCase<U> {
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
                     "ACCESS_NOT_FOUND",
-                    format!("Config access for {}/{} not found", command.application_code, command.role_code),
+                    format!(
+                        "Config access for {}/{} not found",
+                        command.application_code, command.role_code
+                    ),
                 ));
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "fetch access: {}", e,
+                    "fetch access: {}",
+                    e,
                 )));
             }
         };

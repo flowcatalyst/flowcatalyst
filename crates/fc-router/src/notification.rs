@@ -6,12 +6,12 @@
 //! - Batching support for warning notifications
 //! - Severity filtering
 
-use std::collections::HashMap;
-use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use parking_lot::Mutex;
 use serde_json::json;
+use std::collections::HashMap;
+use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 
 use fc_common::{Warning, WarningSeverity};
@@ -419,13 +419,12 @@ impl EmailNotificationService {
 
         builder = builder.port(config.smtp_port);
 
-        if let (Some(username), Some(password)) =
-            (config.smtp_username.as_deref(), config.smtp_password.as_deref())
-        {
-            builder = builder.credentials(Credentials::new(
-                username.to_owned(),
-                password.to_owned(),
-            ));
+        if let (Some(username), Some(password)) = (
+            config.smtp_username.as_deref(),
+            config.smtp_password.as_deref(),
+        ) {
+            builder =
+                builder.credentials(Credentials::new(username.to_owned(), password.to_owned()));
         }
 
         let transport = builder.build();
@@ -489,7 +488,10 @@ impl EmailNotificationService {
         let colour = Self::severity_colour(&warning.severity);
         let severity_str = format!("{:?}", warning.severity);
         let category_str = format!("{:?}", warning.category);
-        let timestamp = warning.created_at.format("%Y-%m-%d %H:%M:%S UTC").to_string();
+        let timestamp = warning
+            .created_at
+            .format("%Y-%m-%d %H:%M:%S UTC")
+            .to_string();
 
         let body = format!(
             r#"<table style="width:100%;border-collapse:collapse;">
@@ -617,10 +619,7 @@ impl NotificationService for EmailNotificationService {
         if !self.enabled {
             return;
         }
-        let subject = format!(
-            "[FlowCatalyst] CRITICAL ERROR - {}",
-            truncate(source, 60),
-        );
+        let subject = format!("[FlowCatalyst] CRITICAL ERROR - {}", truncate(source, 60),);
         let html = Self::build_critical_error_html(message, source);
         self.send_email(&subject, &html).await;
     }
@@ -629,10 +628,7 @@ impl NotificationService for EmailNotificationService {
         if !self.enabled {
             return;
         }
-        let subject = format!(
-            "[FlowCatalyst] System Event: {}",
-            truncate(event_type, 60),
-        );
+        let subject = format!("[FlowCatalyst] System Event: {}", truncate(event_type, 60),);
         let html = Self::build_system_event_html(event_type, message);
         self.send_email(&subject, &html).await;
     }
@@ -666,7 +662,10 @@ pub struct BatchingNotificationService {
 }
 
 impl BatchingNotificationService {
-    pub fn new(delegates: Vec<Arc<dyn NotificationService>>, min_severity: WarningSeverity) -> Self {
+    pub fn new(
+        delegates: Vec<Arc<dyn NotificationService>>,
+        min_severity: WarningSeverity,
+    ) -> Self {
         info!(
             delegate_count = delegates.len(),
             min_severity = ?min_severity,
@@ -792,10 +791,8 @@ impl BatchingNotificationService {
                             category,
                             category_warnings.len()
                         ));
-                        summary.push_str(&format!(
-                            "    Example: {}\n",
-                            category_warnings[0].message
-                        ));
+                        summary
+                            .push_str(&format!("    Example: {}\n", category_warnings[0].message));
                     }
                 }
                 summary.push('\n');
@@ -997,7 +994,6 @@ pub fn create_notification_service_with_scheduler(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     #[test]
     fn test_severity_ordering() {
@@ -1017,10 +1013,8 @@ mod tests {
 
     #[test]
     fn test_teams_service_disabled() {
-        let service = TeamsWebhookNotificationService::new(
-            "https://example.com/webhook".to_string(),
-            false,
-        );
+        let service =
+            TeamsWebhookNotificationService::new("https://example.com/webhook".to_string(), false);
         assert!(!service.is_enabled());
     }
 

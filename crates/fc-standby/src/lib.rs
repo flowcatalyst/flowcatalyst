@@ -39,5 +39,5 @@
 mod error;
 mod leader;
 
-pub use error::{StandbyError, Result};
+pub use error::{Result, StandbyError};
 pub use leader::{LeaderElection, LeaderElectionConfig, LeadershipStatus, StandbyGuard};

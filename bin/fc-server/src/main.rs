@@ -40,30 +40,25 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::{
-    routing::get,
-    response::Json,
-    Router,
-};
-use tower_http::cors::{CorsLayer, AllowOrigin};
+use axum::{response::Json, routing::get, Router};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 // SetResponseHeaderLayer moved to PlatformRoutes
 use tower_http::trace::TraceLayer;
 // CACHE_CONTROL moved to PlatformRoutes
 // SPA serving is handled by PlatformRoutes::build()
-use axum::http::{Method, HeaderValue, header as http_header};
 use anyhow::Result;
-use tracing::{info, warn, error};
+use axum::http::{header as http_header, HeaderValue, Method};
 use tokio::{net::TcpListener, sync::watch};
+use tracing::{error, info, warn};
 
 use fc_platform::api::middleware::{AppState, AuthLayer};
-use fc_platform::repository::{
-    Repositories,
-    CorsOriginRepository,
-};
-use fc_platform::usecase::PgUnitOfWork;
+use fc_platform::repository::{CorsOriginRepository, Repositories};
 use fc_platform::seed::DevDataSeeder;
+use fc_platform::usecase::PgUnitOfWork;
 
-use fc_common::config::{env_or, env_or_alias, env_or_parse, env_or_alias_parse, env_bool, env_bool_alias};
+use fc_common::config::{
+    env_bool, env_bool_alias, env_or, env_or_alias, env_or_alias_parse, env_or_parse,
+};
 
 /// Resolve database URL and (optionally) the live `SecretProvider` it came from.
 ///
@@ -74,15 +69,19 @@ use fc_common::config::{env_or, env_or_alias, env_or_parse, env_or_alias_parse, 
 ///
 /// When mode 2 is used the returned `SecretProvider` is also returned so the
 /// caller can spawn the background credential-refresh task.
-async fn resolve_database_url() -> Result<(String, Option<Arc<dyn fc_platform::shared::database::SecretProvider>>)> {
+async fn resolve_database_url() -> Result<(
+    String,
+    Option<Arc<dyn fc_platform::shared::database::SecretProvider>>,
+)> {
     // Mode 1: Full connection string
     if let Ok(url) = std::env::var("FC_DATABASE_URL").or_else(|_| std::env::var("DATABASE_URL")) {
         return Ok((url, None));
     }
 
     // Mode 2/3: Build from components
-    let host = std::env::var("DB_HOST")
-        .map_err(|_| anyhow::anyhow!("No database config found. Set FC_DATABASE_URL or DB_HOST+DB_NAME"))?;
+    let host = std::env::var("DB_HOST").map_err(|_| {
+        anyhow::anyhow!("No database config found. Set FC_DATABASE_URL or DB_HOST+DB_NAME")
+    })?;
     let name = env_or("DB_NAME", "flowcatalyst");
     let port = env_or("DB_PORT", "5432");
 
@@ -97,9 +96,16 @@ async fn resolve_database_url() -> Result<(String, Option<Arc<dyn fc_platform::s
                 name.clone(),
                 port.clone(),
             ));
-            let url = fc_platform::shared::database::SecretProvider::get_db_url(provider.as_ref()).await?;
-            info!("Database URL resolved from Secrets Manager (host: {}, db: {})", host, name);
-            return Ok((url, Some(provider as Arc<dyn fc_platform::shared::database::SecretProvider>)));
+            let url = fc_platform::shared::database::SecretProvider::get_db_url(provider.as_ref())
+                .await?;
+            info!(
+                "Database URL resolved from Secrets Manager (host: {}, db: {})",
+                host, name
+            );
+            return Ok((
+                url,
+                Some(provider as Arc<dyn fc_platform::shared::database::SecretProvider>),
+            ));
         }
     }
 
@@ -115,7 +121,10 @@ async fn resolve_database_url() -> Result<(String, Option<Arc<dyn fc_platform::s
         format!("postgresql://{}@{}/{}", username, host_port, name)
     } else {
         let password_encoded = urlencoding::encode(&password);
-        format!("postgresql://{}:{}@{}/{}", username, password_encoded, host_port, name)
+        format!(
+            "postgresql://{}:{}@{}/{}",
+            username, password_encoded, host_port, name
+        )
     };
     Ok((url, None))
 }
@@ -143,13 +152,22 @@ async fn main() -> Result<()> {
     // Subsystem toggles (TS names: PLATFORM_ENABLED, MESSAGE_ROUTER_ENABLED, etc.)
     let platform_enabled = env_bool_alias("FC_PLATFORM_ENABLED", "PLATFORM_ENABLED", true);
     let router_enabled = env_bool_alias("FC_ROUTER_ENABLED", "MESSAGE_ROUTER_ENABLED", false);
-    let scheduler_enabled = env_bool_alias("FC_SCHEDULER_ENABLED", "DISPATCH_SCHEDULER_ENABLED", false);
-    let stream_enabled = env_bool_alias("FC_STREAM_PROCESSOR_ENABLED", "STREAM_PROCESSOR_ENABLED", false);
+    let scheduler_enabled =
+        env_bool_alias("FC_SCHEDULER_ENABLED", "DISPATCH_SCHEDULER_ENABLED", false);
+    let stream_enabled = env_bool_alias(
+        "FC_STREAM_PROCESSOR_ENABLED",
+        "STREAM_PROCESSOR_ENABLED",
+        false,
+    );
     let outbox_enabled = env_bool_alias("FC_OUTBOX_ENABLED", "OUTBOX_PROCESSOR_ENABLED", false);
 
     // Standby / HA
     let standby_enabled = env_bool_alias("FC_STANDBY_ENABLED", "STANDBY_ENABLED", false);
-    let standby_redis_url = env_or_alias("FC_STANDBY_REDIS_URL", "REDIS_URL", "redis://127.0.0.1:6379");
+    let standby_redis_url = env_or_alias(
+        "FC_STANDBY_REDIS_URL",
+        "REDIS_URL",
+        "redis://127.0.0.1:6379",
+    );
     let standby_lock_key = env_or("FC_STANDBY_LOCK_KEY", "fc:server:leader");
 
     info!(
@@ -164,7 +182,8 @@ async fn main() -> Result<()> {
 
     // ── Database ─────────────────────────────────────────────────────────────
     info!("Connecting to PostgreSQL...");
-    let pg_pool = fc_platform::shared::database::create_pool(&database_url).await
+    let pg_pool = fc_platform::shared::database::create_pool(&database_url)
+        .await
         .map_err(|e| anyhow::anyhow!("PostgreSQL connection failed: {}", e))?;
 
     fc_platform::shared::database::run_migrations(
@@ -174,7 +193,8 @@ async fn main() -> Result<()> {
     .await
     .map_err(|e| anyhow::anyhow!("PostgreSQL migrations failed: {}", e))?;
 
-    fc_platform::shared::database::seed_builtin_roles(&pg_pool).await
+    fc_platform::shared::database::seed_builtin_roles(&pg_pool)
+        .await
         .map_err(|e| anyhow::anyhow!("Built-in role seeding failed: {}", e))?;
 
     // Referential-integrity scan — warns about orphaned junction rows.
@@ -193,9 +213,10 @@ async fn main() -> Result<()> {
     // update the pool's connect options when the password rotates. This avoids
     // the failure mode where AWS rotates the password and the pool keeps using
     // the now-stale credentials. Mirrors the TS implementation.
-    let secret_refresh_interval = std::time::Duration::from_millis(
-        env_or_parse::<u64>("DB_SECRET_REFRESH_INTERVAL_MS", 300_000),
-    );
+    let secret_refresh_interval = std::time::Duration::from_millis(env_or_parse::<u64>(
+        "DB_SECRET_REFRESH_INTERVAL_MS",
+        300_000,
+    ));
     if let Some(provider) = secret_provider.clone() {
         fc_platform::shared::database::start_secret_refresh(
             provider,
@@ -213,9 +234,15 @@ async fn main() -> Result<()> {
         info!(redis_url = %standby_redis_url, lock_key = %standby_lock_key, "Initializing leader election");
         let config = fc_standby::LeaderElectionConfig::new(standby_redis_url)
             .with_lock_key(standby_lock_key);
-        let election = Arc::new(fc_standby::LeaderElection::new(config).await
-            .map_err(|e| anyhow::anyhow!("Leader election init failed: {}", e))?);
-        election.clone().start().await
+        let election = Arc::new(
+            fc_standby::LeaderElection::new(config)
+                .await
+                .map_err(|e| anyhow::anyhow!("Leader election init failed: {}", e))?,
+        );
+        election
+            .clone()
+            .start()
+            .await
             .map_err(|e| anyhow::anyhow!("Leader election start failed: {}", e))?;
 
         // Bridge leadership status changes to the active watch channel
@@ -236,9 +263,7 @@ async fn main() -> Result<()> {
         None
     };
 
-    let is_leader = move || {
-        leader_election.as_ref().is_none_or(|e| e.is_leader())
-    };
+    let is_leader = move || leader_election.as_ref().is_none_or(|e| e.is_leader());
 
     // ── Platform API ─────────────────────────────────────────────────────────
     // Repositories and auth are always initialized (needed by health checks and
@@ -277,7 +302,9 @@ async fn main() -> Result<()> {
                     Ok(origins) => {
                         let mut c = cache.write().unwrap();
                         c.clear();
-                        for origin in origins { c.insert(origin); }
+                        for origin in origins {
+                            c.insert(origin);
+                        }
                     }
                     Err(e) => warn!("Failed to refresh CORS origins: {}", e),
                 }
@@ -287,9 +314,9 @@ async fn main() -> Result<()> {
 
     // Sync code-defined roles
     {
-        let role_sync = fc_platform::service::RoleSyncService::new(
-            std::sync::Arc::new(fc_platform::repository::RoleRepository::new(&pg_pool)),
-        );
+        let role_sync = fc_platform::service::RoleSyncService::new(std::sync::Arc::new(
+            fc_platform::repository::RoleRepository::new(&pg_pool),
+        ));
         if let Err(e) = role_sync.sync_code_defined_roles().await {
             warn!("Role sync failed: {}", e);
         }
@@ -300,7 +327,8 @@ async fn main() -> Result<()> {
         issuer: jwt_issuer,
         ..fc_platform::shared::server_setup::AuthInitConfig::from_env("http://localhost:3000")
     };
-    let auth_services = fc_platform::shared::server_setup::init_auth_services(&repos, auth_init_config)?;
+    let auth_services =
+        fc_platform::shared::server_setup::init_auth_services(&repos, auth_init_config)?;
     info!("Auth services initialized");
 
     let unit_of_work = Arc::new(PgUnitOfWork::new(pg_pool.clone()));
@@ -347,12 +375,15 @@ async fn main() -> Result<()> {
     // Stream processor (CQRS projections)
     let _stream_handle = if stream_enabled {
         info!("Starting stream processor subsystem...");
-        Some(spawn_stream_processor(
-            &database_url,
-            secret_provider.clone(),
-            secret_refresh_interval,
-            active_rx.clone(),
-        ).await?)
+        Some(
+            spawn_stream_processor(
+                &database_url,
+                secret_provider.clone(),
+                secret_refresh_interval,
+                active_rx.clone(),
+            )
+            .await?,
+        )
     } else {
         None
     };
@@ -376,7 +407,10 @@ async fn main() -> Result<()> {
                 target_port: env_or_parse("FC_ALB_TARGET_PORT", 8080),
             };
             let aws_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-            let strategy = Arc::new(fc_router::AwsAlbTrafficStrategy::new(alb_config, &aws_config));
+            let strategy = Arc::new(fc_router::AwsAlbTrafficStrategy::new(
+                alb_config,
+                &aws_config,
+            ));
             fc_router::spawn_traffic_watcher(strategy, status_rx);
             info!("ALB traffic watcher started");
         } else {
@@ -393,7 +427,10 @@ async fn main() -> Result<()> {
     });
 
     let metrics_addr = format!("0.0.0.0:{}", metrics_port);
-    info!("Metrics server listening on http://{}/metrics", metrics_addr);
+    info!(
+        "Metrics server listening on http://{}/metrics",
+        metrics_addr
+    );
 
     let is_leader_for_health = is_leader.clone();
     let health_state = HealthState {
@@ -407,10 +444,13 @@ async fn main() -> Result<()> {
 
     let metrics_app = Router::new()
         .route("/metrics", get(metrics_handler))
-        .route("/health", get({
-            let state = health_state.clone();
-            move || combined_health_handler(state.clone())
-        }))
+        .route(
+            "/health",
+            get({
+                let state = health_state.clone();
+                move || combined_health_handler(state.clone())
+            }),
+        )
         .route("/ready", get(ready_handler));
 
     let metrics_listener = TcpListener::bind(&metrics_addr).await?;
@@ -420,11 +460,46 @@ async fn main() -> Result<()> {
 
     // ── Startup Summary ──────────────────────────────────────────────────────
     info!("=== FlowCatalyst Unified Server Started ===");
-    info!("  Platform API: {}", if platform_enabled { "ENABLED" } else { "DISABLED" });
-    info!("  Router:       {}", if router_enabled { "ENABLED" } else { "DISABLED" });
-    info!("  Scheduler:    {}", if scheduler_enabled { "ENABLED" } else { "DISABLED" });
-    info!("  Stream:       {}", if stream_enabled { "ENABLED" } else { "DISABLED" });
-    info!("  Outbox:       {}", if outbox_enabled { "ENABLED" } else { "DISABLED" });
+    info!(
+        "  Platform API: {}",
+        if platform_enabled {
+            "ENABLED"
+        } else {
+            "DISABLED"
+        }
+    );
+    info!(
+        "  Router:       {}",
+        if router_enabled {
+            "ENABLED"
+        } else {
+            "DISABLED"
+        }
+    );
+    info!(
+        "  Scheduler:    {}",
+        if scheduler_enabled {
+            "ENABLED"
+        } else {
+            "DISABLED"
+        }
+    );
+    info!(
+        "  Stream:       {}",
+        if stream_enabled {
+            "ENABLED"
+        } else {
+            "DISABLED"
+        }
+    );
+    info!(
+        "  Outbox:       {}",
+        if outbox_enabled {
+            "ENABLED"
+        } else {
+            "DISABLED"
+        }
+    );
     if standby_enabled {
         info!("  HA Mode:      STANDBY (Redis leader election)");
         info!("  Leader:       {}", is_leader());
@@ -500,33 +575,40 @@ fn build_platform_app(
         .layer({
             let cache = cors_origins_cache.clone();
             CorsLayer::new()
-                .allow_origin(AllowOrigin::predicate(move |origin: &HeaderValue, _parts| {
-                    let origin_str = match origin.to_str() {
-                        Ok(s) => s,
-                        Err(_) => return false,
-                    };
-                    let origins = cache.read().unwrap();
-                    if origins.contains(origin_str) {
-                        return true;
-                    }
-                    for pattern in origins.iter() {
-                        if pattern.contains('*') {
-                            let regex_str = format!(
-                                "^{}$",
-                                regex::escape(pattern).replace(r"\*", "[a-zA-Z0-9-]+")
-                            );
-                            if let Ok(re) = regex::Regex::new(&regex_str) {
-                                if re.is_match(origin_str) {
-                                    return true;
+                .allow_origin(AllowOrigin::predicate(
+                    move |origin: &HeaderValue, _parts| {
+                        let origin_str = match origin.to_str() {
+                            Ok(s) => s,
+                            Err(_) => return false,
+                        };
+                        let origins = cache.read().unwrap();
+                        if origins.contains(origin_str) {
+                            return true;
+                        }
+                        for pattern in origins.iter() {
+                            if pattern.contains('*') {
+                                let regex_str = format!(
+                                    "^{}$",
+                                    regex::escape(pattern).replace(r"\*", "[a-zA-Z0-9-]+")
+                                );
+                                if let Ok(re) = regex::Regex::new(&regex_str) {
+                                    if re.is_match(origin_str) {
+                                        return true;
+                                    }
                                 }
                             }
                         }
-                    }
-                    false
-                }))
+                        false
+                    },
+                ))
                 .allow_methods([
-                    Method::GET, Method::POST, Method::PUT, Method::PATCH,
-                    Method::DELETE, Method::OPTIONS, Method::HEAD,
+                    Method::GET,
+                    Method::POST,
+                    Method::PUT,
+                    Method::PATCH,
+                    Method::DELETE,
+                    Method::OPTIONS,
+                    Method::HEAD,
                 ])
                 .allow_headers([
                     http_header::AUTHORIZATION,
@@ -547,15 +629,12 @@ fn build_platform_app(
 // ── Background Processor Spawners ────────────────────────────────────────────
 
 /// Spawn the SQS message router, gated on leadership.
-async fn spawn_router(
-    mut active_rx: watch::Receiver<bool>,
-) -> Option<tokio::task::JoinHandle<()>> {
-    use fc_router::{
-        QueueManager, HttpMediatorConfig,
-        WarningService, WarningServiceConfig,
-        HealthService, HealthServiceConfig,
-    };
+async fn spawn_router(mut active_rx: watch::Receiver<bool>) -> Option<tokio::task::JoinHandle<()>> {
     use fc_queue::sqs::SqsQueueConsumer;
+    use fc_router::{
+        HealthService, HealthServiceConfig, HttpMediatorConfig, QueueManager, WarningService,
+        WarningServiceConfig,
+    };
 
     let dev_mode = env_bool("FLOWCATALYST_DEV_MODE", false);
 
@@ -592,20 +671,23 @@ async fn spawn_router(
 
     // Load configuration
     let router_config = if dev_mode {
-        use fc_common::{RouterConfig, PoolConfig, QueueConfig};
-        let sqs_host = env_or("LOCALSTACK_SQS_HOST", "http://sqs.eu-west-1.localhost.localstack.cloud:4566");
+        use fc_common::{PoolConfig, QueueConfig, RouterConfig};
+        let sqs_host = env_or(
+            "LOCALSTACK_SQS_HOST",
+            "http://sqs.eu-west-1.localhost.localstack.cloud:4566",
+        );
         RouterConfig {
-            processing_pools: vec![
-                PoolConfig { code: "DEFAULT".to_string(), concurrency: 10, rate_limit_per_minute: None },
-            ],
-            queues: vec![
-                QueueConfig {
-                    name: "fc-default.fifo".to_string(),
-                    uri: format!("{}/000000000000/fc-default.fifo", sqs_host),
-                    connections: 2,
-                    visibility_timeout: 120,
-                },
-            ],
+            processing_pools: vec![PoolConfig {
+                code: "DEFAULT".to_string(),
+                concurrency: 10,
+                rate_limit_per_minute: None,
+            }],
+            queues: vec![QueueConfig {
+                name: "fc-default.fifo".to_string(),
+                uri: format!("{}/000000000000/fc-default.fifo", sqs_host),
+                connections: 2,
+                visibility_timeout: 120,
+            }],
         }
     } else {
         let config_url = config_url.unwrap();
@@ -626,11 +708,14 @@ async fn spawn_router(
 
     // Add SQS consumers
     for queue_config in &router_config.queues {
-        let consumer = Arc::new(SqsQueueConsumer::from_queue_url(
-            sqs_client.clone(),
-            queue_config.uri.clone(),
-            queue_config.visibility_timeout as i32,
-        ).await);
+        let consumer = Arc::new(
+            SqsQueueConsumer::from_queue_url(
+                sqs_client.clone(),
+                queue_config.uri.clone(),
+                queue_config.visibility_timeout as i32,
+            )
+            .await,
+        );
         queue_manager.add_consumer(consumer).await;
     }
 
@@ -641,8 +726,12 @@ async fn spawn_router(
             if !*active_rx.borrow() {
                 info!("Router: waiting for leadership...");
                 loop {
-                    if active_rx.changed().await.is_err() { return; }
-                    if *active_rx.borrow() { break; }
+                    if active_rx.changed().await.is_err() {
+                        return;
+                    }
+                    if *active_rx.borrow() {
+                        break;
+                    }
                 }
                 info!("Router: acquired leadership, starting processing");
             }
@@ -682,12 +771,17 @@ async fn spawn_scheduler(
 
     #[async_trait::async_trait]
     impl fc_queue::QueuePublisher for NoopQueuePublisher {
-        fn identifier(&self) -> &str { "noop-scheduler" }
+        fn identifier(&self) -> &str {
+            "noop-scheduler"
+        }
         async fn publish(&self, message: fc_common::Message) -> fc_queue::Result<String> {
             info!(id = %message.id, "Scheduler: message published (noop)");
             Ok(message.id)
         }
-        async fn publish_batch(&self, messages: Vec<fc_common::Message>) -> fc_queue::Result<Vec<String>> {
+        async fn publish_batch(
+            &self,
+            messages: Vec<fc_common::Message>,
+        ) -> fc_queue::Result<Vec<String>> {
             let ids: Vec<String> = messages.iter().map(|m| m.id.clone()).collect();
             for m in &messages {
                 info!(id = %m.id, "Scheduler: message published (noop)");
@@ -698,7 +792,11 @@ async fn spawn_scheduler(
 
     let config = load_scheduler_config();
     let queue_publisher: Arc<dyn fc_queue::QueuePublisher> = Arc::new(NoopQueuePublisher);
-    let scheduler = Arc::new(DispatchScheduler::new(config, pg_pool.clone(), queue_publisher));
+    let scheduler = Arc::new(DispatchScheduler::new(
+        config,
+        pg_pool.clone(),
+        queue_publisher,
+    ));
 
     tokio::spawn(async move {
         loop {
@@ -706,8 +804,12 @@ async fn spawn_scheduler(
             if !*active_rx.borrow() {
                 info!("Scheduler: waiting for leadership...");
                 loop {
-                    if active_rx.changed().await.is_err() { return; }
-                    if *active_rx.borrow() { break; }
+                    if active_rx.changed().await.is_err() {
+                        return;
+                    }
+                    if *active_rx.borrow() {
+                        break;
+                    }
                 }
                 info!("Scheduler: acquired leadership, starting");
             }
@@ -756,8 +858,12 @@ async fn spawn_scheduled_job_scheduler(
             if !*active_rx.borrow() {
                 info!("Scheduled-job scheduler: waiting for leadership...");
                 loop {
-                    if active_rx.changed().await.is_err() { return; }
-                    if *active_rx.borrow() { break; }
+                    if active_rx.changed().await.is_err() {
+                        return;
+                    }
+                    if *active_rx.borrow() {
+                        break;
+                    }
                 }
                 info!("Scheduled-job scheduler: acquired leadership, starting");
             }
@@ -771,13 +877,19 @@ async fn spawn_scheduled_job_scheduler(
             loop {
                 if lost_rx.changed().await.is_err() {
                     svc.shutdown();
-                    if let Some((p, d)) = handles.take() { p.abort(); d.abort(); }
+                    if let Some((p, d)) = handles.take() {
+                        p.abort();
+                        d.abort();
+                    }
                     return;
                 }
                 if !*lost_rx.borrow() {
                     info!("Scheduled-job scheduler: lost leadership, stopping");
                     svc.shutdown();
-                    if let Some((p, d)) = handles.take() { p.abort(); d.abort(); }
+                    if let Some((p, d)) = handles.take() {
+                        p.abort();
+                        d.abort();
+                    }
                     break;
                 }
             }
@@ -794,10 +906,20 @@ fn load_scheduler_config() -> fc_platform::scheduler::SchedulerConfig {
         poll_interval: Duration::from_millis(config.scheduler.poll_interval_ms),
         batch_size: config.scheduler.batch_size,
         stale_threshold: Duration::from_secs(config.scheduler.stale_threshold_minutes * 60),
-        default_dispatch_mode: fc_common::DispatchMode::from_str(&config.scheduler.default_dispatch_mode),
+        default_dispatch_mode: fc_common::DispatchMode::from_str(
+            &config.scheduler.default_dispatch_mode,
+        ),
         default_pool_code: env_or("FC_SCHEDULER_DEFAULT_POOL_CODE", "DISPATCH-POOL"),
-        processing_endpoint: env_or_alias("FC_SCHEDULER_PROCESSING_ENDPOINT", "DISPATCH_SCHEDULER_PROCESSING_ENDPOINT", "http://localhost:8080/api/dispatch/process"),
-        app_key: if config.scheduler.app_key.is_empty() { None } else { Some(config.scheduler.app_key.clone()) },
+        processing_endpoint: env_or_alias(
+            "FC_SCHEDULER_PROCESSING_ENDPOINT",
+            "DISPATCH_SCHEDULER_PROCESSING_ENDPOINT",
+            "http://localhost:8080/api/dispatch/process",
+        ),
+        app_key: if config.scheduler.app_key.is_empty() {
+            None
+        } else {
+            Some(config.scheduler.app_key.clone())
+        },
         max_concurrent_groups: env_or_parse("FC_SCHEDULER_MAX_CONCURRENT_GROUPS", 10),
         connection_filter_enabled: true,
     }
@@ -817,7 +939,7 @@ async fn spawn_stream_processor(
     secret_refresh_interval: Duration,
     mut active_rx: watch::Receiver<bool>,
 ) -> Result<StreamProcessorShutdown> {
-    use fc_stream::{StreamProcessorConfig, start_stream_processor};
+    use fc_stream::{start_stream_processor, StreamProcessorConfig};
 
     let config = StreamProcessorConfig {
         events_enabled: env_bool("FC_STREAM_EVENTS_ENABLED", true),
@@ -909,7 +1031,9 @@ async fn spawn_stream_processor(
         }
     });
 
-    Ok(StreamProcessorShutdown { _stop_tx: Some(stop_tx) })
+    Ok(StreamProcessorShutdown {
+        _stop_tx: Some(stop_tx),
+    })
 }
 
 /// Handle for stopping the stream processor from the main shutdown path.
@@ -925,12 +1049,10 @@ impl StreamProcessorShutdown {
 }
 
 /// Spawn the outbox processor, gated on leadership.
-async fn spawn_outbox_processor(
-    mut active_rx: watch::Receiver<bool>,
-) -> Result<()> {
-    use fc_outbox::{EnhancedOutboxProcessor, EnhancedProcessorConfig};
+async fn spawn_outbox_processor(mut active_rx: watch::Receiver<bool>) -> Result<()> {
     use fc_outbox::http_dispatcher::HttpDispatcherConfig;
     use fc_outbox::repository::{OutboxRepository, OutboxTableConfig};
+    use fc_outbox::{EnhancedOutboxProcessor, EnhancedProcessorConfig};
 
     let db_type = env_or("FC_OUTBOX_DB_TYPE", "postgres");
     let poll_interval_ms: u64 = env_or_parse("FC_OUTBOX_POLL_INTERVAL_MS", 1000);
@@ -960,7 +1082,8 @@ async fn spawn_outbox_processor(
                 .max_connections(10)
                 .connect(&url)
                 .await?;
-            let repo = fc_outbox::postgres::PostgresOutboxRepository::with_config(pool, table_config);
+            let repo =
+                fc_outbox::postgres::PostgresOutboxRepository::with_config(pool, table_config);
             repo.init_schema().await?;
             Arc::new(repo)
         }
@@ -993,8 +1116,12 @@ async fn spawn_outbox_processor(
             if !*active_rx.borrow() {
                 info!("Outbox: waiting for leadership...");
                 loop {
-                    if active_rx.changed().await.is_err() { return; }
-                    if *active_rx.borrow() { break; }
+                    if active_rx.changed().await.is_err() {
+                        return;
+                    }
+                    if *active_rx.borrow() {
+                        break;
+                    }
                 }
                 info!("Outbox: acquired leadership, starting");
             }
@@ -1061,4 +1188,3 @@ async fn metrics_handler() -> &'static str {
 async fn ready_handler() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "status": "READY" }))
 }
-

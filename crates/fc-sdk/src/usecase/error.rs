@@ -322,7 +322,10 @@ mod tests {
         let deserialized: UseCaseError = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.code(), "BR");
         assert_eq!(deserialized.message(), "rule violated");
-        assert!(matches!(deserialized, UseCaseError::BusinessRuleViolation { .. }));
+        assert!(matches!(
+            deserialized,
+            UseCaseError::BusinessRuleViolation { .. }
+        ));
     }
 
     #[test]

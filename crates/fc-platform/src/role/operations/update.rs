@@ -1,16 +1,14 @@
 //! Update Role Use Case
 
-use std::sync::Arc;
-use std::collections::HashSet;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::sync::Arc;
 
+use super::events::RoleUpdated;
 use crate::role::entity::RoleSource;
 use crate::role::repository::RoleRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::RoleUpdated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 /// Command for updating an existing role.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,7 +76,11 @@ impl<U: UnitOfWork> UseCase for UpdateRoleUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &UpdateRoleCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &UpdateRoleCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 

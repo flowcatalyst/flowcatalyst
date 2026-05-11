@@ -1,7 +1,7 @@
 //! Subscription management operations.
 
+use super::{ClientError, FlowCatalystClient};
 use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError};
 
 /// Paginated list of subscriptions — `GET /api/subscriptions`.
 #[derive(Debug, Clone, Serialize, Deserialize)]

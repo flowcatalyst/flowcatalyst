@@ -1,15 +1,13 @@
 //! Set Platform Config Property Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::PlatformConfigPropertySet;
 use crate::platform_config::entity::{ConfigScope, ConfigValueType, PlatformConfig};
 use crate::platform_config::repository::PlatformConfigRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::PlatformConfigPropertySet;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,7 +32,10 @@ pub struct SetPlatformConfigPropertyUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> SetPlatformConfigPropertyUseCase<U> {
     pub fn new(config_repo: Arc<PlatformConfigRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { config_repo, unit_of_work }
+        Self {
+            config_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -43,20 +44,36 @@ impl<U: UnitOfWork> UseCase for SetPlatformConfigPropertyUseCase<U> {
     type Command = SetPlatformConfigPropertyCommand;
     type Event = PlatformConfigPropertySet;
 
-    async fn validate(&self, command: &SetPlatformConfigPropertyCommand) -> Result<(), UseCaseError> {
+    async fn validate(
+        &self,
+        command: &SetPlatformConfigPropertyCommand,
+    ) -> Result<(), UseCaseError> {
         if command.application_code.trim().is_empty() {
-            return Err(UseCaseError::validation("APP_CODE_REQUIRED", "Application code is required"));
+            return Err(UseCaseError::validation(
+                "APP_CODE_REQUIRED",
+                "Application code is required",
+            ));
         }
         if command.section.trim().is_empty() {
-            return Err(UseCaseError::validation("SECTION_REQUIRED", "Section is required"));
+            return Err(UseCaseError::validation(
+                "SECTION_REQUIRED",
+                "Section is required",
+            ));
         }
         if command.property.trim().is_empty() {
-            return Err(UseCaseError::validation("PROPERTY_REQUIRED", "Property is required"));
+            return Err(UseCaseError::validation(
+                "PROPERTY_REQUIRED",
+                "Property is required",
+            ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &SetPlatformConfigPropertyCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &SetPlatformConfigPropertyCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -66,7 +83,8 @@ impl<U: UnitOfWork> UseCase for SetPlatformConfigPropertyUseCase<U> {
         ctx: ExecutionContext,
     ) -> UseCaseResult<PlatformConfigPropertySet> {
         // Upsert by natural key: (app_code, section, property, scope, client_id).
-        let existing = match self.config_repo
+        let existing = match self
+            .config_repo
             .find_by_key(
                 &command.application_code,
                 &command.section,
@@ -77,9 +95,11 @@ impl<U: UnitOfWork> UseCase for SetPlatformConfigPropertyUseCase<U> {
             .await
         {
             Ok(v) => v,
-            Err(e) => return UseCaseResult::failure(UseCaseError::commit(format!(
-                "fetch config: {}", e,
-            ))),
+            Err(e) => {
+                return UseCaseResult::failure(UseCaseError::commit(
+                    format!("fetch config: {}", e,),
+                ))
+            }
         };
 
         let (mut config, was_created) = match existing {

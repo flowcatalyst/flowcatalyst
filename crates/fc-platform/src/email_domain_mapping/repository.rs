@@ -1,8 +1,8 @@
 //! EmailDomainMapping Repository — PostgreSQL via SQLx
 
-use std::collections::HashMap;
-use sqlx::PgPool;
 use chrono::{DateTime, Utc};
+use sqlx::PgPool;
+use std::collections::HashMap;
 
 use super::entity::{EmailDomainMapping, ScopeType};
 use crate::shared::error::Result;
@@ -33,7 +33,7 @@ impl From<EmailDomainMappingRow> for EmailDomainMapping {
             additional_client_ids: Vec::new(), // loaded separately
             granted_client_ids: Vec::new(),    // loaded separately
             required_oidc_tenant_id: r.required_oidc_tenant_id,
-            allowed_role_ids: Vec::new(),      // loaded separately
+            allowed_role_ids: Vec::new(), // loaded separately
             sync_roles_from_idp: r.sync_roles_from_idp,
             created_at: r.created_at,
             updated_at: r.updated_at,
@@ -69,7 +69,10 @@ impl EmailDomainMappingRepository {
     }
 
     /// Batch-hydrate junction tables for multiple email domain mappings (avoids N+1)
-    async fn hydrate_all(&self, mut edms: Vec<EmailDomainMapping>) -> Result<Vec<EmailDomainMapping>> {
+    async fn hydrate_all(
+        &self,
+        mut edms: Vec<EmailDomainMapping>,
+    ) -> Result<Vec<EmailDomainMapping>> {
         if edms.is_empty() {
             return Ok(edms);
         }
@@ -77,9 +80,15 @@ impl EmailDomainMappingRepository {
         let ids: Vec<&str> = edms.iter().map(|e| e.id.as_str()).collect();
 
         #[derive(sqlx::FromRow)]
-        struct ClientRow { email_domain_mapping_id: String, client_id: String }
+        struct ClientRow {
+            email_domain_mapping_id: String,
+            client_id: String,
+        }
         #[derive(sqlx::FromRow)]
-        struct RoleRow { email_domain_mapping_id: String, role_id: String }
+        struct RoleRow {
+            email_domain_mapping_id: String,
+            role_id: String,
+        }
 
         let (additional_rows, granted_rows, role_rows) = tokio::try_join!(
             sqlx::query_as::<_, ClientRow>(
@@ -94,18 +103,39 @@ impl EmailDomainMappingRepository {
         )?;
 
         let mut additional_map: HashMap<String, Vec<String>> = HashMap::new();
-        for r in additional_rows { additional_map.entry(r.email_domain_mapping_id).or_default().push(r.client_id); }
+        for r in additional_rows {
+            additional_map
+                .entry(r.email_domain_mapping_id)
+                .or_default()
+                .push(r.client_id);
+        }
 
         let mut granted_map: HashMap<String, Vec<String>> = HashMap::new();
-        for r in granted_rows { granted_map.entry(r.email_domain_mapping_id).or_default().push(r.client_id); }
+        for r in granted_rows {
+            granted_map
+                .entry(r.email_domain_mapping_id)
+                .or_default()
+                .push(r.client_id);
+        }
 
         let mut roles_map: HashMap<String, Vec<String>> = HashMap::new();
-        for r in role_rows { roles_map.entry(r.email_domain_mapping_id).or_default().push(r.role_id); }
+        for r in role_rows {
+            roles_map
+                .entry(r.email_domain_mapping_id)
+                .or_default()
+                .push(r.role_id);
+        }
 
         for edm in &mut edms {
-            if let Some(v) = additional_map.remove(&edm.id) { edm.additional_client_ids = v; }
-            if let Some(v) = granted_map.remove(&edm.id) { edm.granted_client_ids = v; }
-            if let Some(v) = roles_map.remove(&edm.id) { edm.allowed_role_ids = v; }
+            if let Some(v) = additional_map.remove(&edm.id) {
+                edm.additional_client_ids = v;
+            }
+            if let Some(v) = granted_map.remove(&edm.id) {
+                edm.granted_client_ids = v;
+            }
+            if let Some(v) = roles_map.remove(&edm.id) {
+                edm.allowed_role_ids = v;
+            }
         }
 
         Ok(edms)
@@ -113,7 +143,7 @@ impl EmailDomainMappingRepository {
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<EmailDomainMapping>> {
         let row = sqlx::query_as::<_, EmailDomainMappingRow>(
-            "SELECT * FROM tnt_email_domain_mappings WHERE id = $1"
+            "SELECT * FROM tnt_email_domain_mappings WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -126,7 +156,7 @@ impl EmailDomainMappingRepository {
 
     pub async fn find_by_email_domain(&self, domain: &str) -> Result<Option<EmailDomainMapping>> {
         let row = sqlx::query_as::<_, EmailDomainMappingRow>(
-            "SELECT * FROM tnt_email_domain_mappings WHERE email_domain = $1"
+            "SELECT * FROM tnt_email_domain_mappings WHERE email_domain = $1",
         )
         .bind(domain)
         .fetch_optional(&self.pool)
@@ -139,11 +169,12 @@ impl EmailDomainMappingRepository {
 
     pub async fn find_all(&self) -> Result<Vec<EmailDomainMapping>> {
         let rows = sqlx::query_as::<_, EmailDomainMappingRow>(
-            "SELECT * FROM tnt_email_domain_mappings ORDER BY email_domain"
+            "SELECT * FROM tnt_email_domain_mappings ORDER BY email_domain",
         )
         .fetch_all(&self.pool)
         .await?;
-        let edms: Vec<EmailDomainMapping> = rows.into_iter().map(EmailDomainMapping::from).collect();
+        let edms: Vec<EmailDomainMapping> =
+            rows.into_iter().map(EmailDomainMapping::from).collect();
         self.hydrate_all(edms).await
     }
 
@@ -153,7 +184,7 @@ impl EmailDomainMappingRepository {
                 (id, email_domain, identity_provider_id, scope_type,
                  primary_client_id, required_oidc_tenant_id, sync_roles_from_idp,
                  created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())"#
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())"#,
         )
         .bind(&edm.id)
         .bind(&edm.email_domain)
@@ -174,7 +205,7 @@ impl EmailDomainMappingRepository {
                 email_domain = $2, identity_provider_id = $3, scope_type = $4,
                 primary_client_id = $5, required_oidc_tenant_id = $6,
                 sync_roles_from_idp = $7, updated_at = NOW()
-            WHERE id = $1"#
+            WHERE id = $1"#,
         )
         .bind(&edm.id)
         .bind(&edm.email_domain)
@@ -235,8 +266,12 @@ impl EmailDomainMappingRepository {
             .bind(id).execute(&self.pool).await?;
         sqlx::query("DELETE FROM tnt_email_domain_mapping_granted_clients WHERE email_domain_mapping_id = $1")
             .bind(id).execute(&self.pool).await?;
-        sqlx::query("DELETE FROM tnt_email_domain_mapping_allowed_roles WHERE email_domain_mapping_id = $1")
-            .bind(id).execute(&self.pool).await?;
+        sqlx::query(
+            "DELETE FROM tnt_email_domain_mapping_allowed_roles WHERE email_domain_mapping_id = $1",
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 }

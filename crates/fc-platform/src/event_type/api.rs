@@ -3,24 +3,24 @@
 //! REST endpoints for event type management.
 
 use axum::{
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::{ToSchema, IntoParams};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
+use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::{EventType, SpecVersion};
-use crate::EventTypeRepository;
 use crate::event_type::operations::{
-    SyncEventTypesCommand, SyncEventTypesUseCase, SyncEventTypeInput,
+    SyncEventTypeInput, SyncEventTypesCommand, SyncEventTypesUseCase,
 };
-use crate::usecase::{ExecutionContext, UseCase, UseCaseResult};
-use crate::shared::error::{PlatformError, NotFoundExt};
 use crate::shared::api_common::PaginationParams;
+use crate::shared::error::{NotFoundExt, PlatformError};
 use crate::shared::middleware::Authenticated;
+use crate::usecase::{ExecutionContext, UseCase, UseCaseResult};
+use crate::EventTypeRepository;
+use crate::{EventType, SpecVersion};
 
 /// Create event type request
 #[derive(Debug, Deserialize, ToSchema)]
@@ -195,10 +195,14 @@ pub struct SyncResultResponse {
 pub struct EventTypesState {
     pub event_type_repo: Arc<EventTypeRepository>,
     pub sync_use_case: Arc<SyncEventTypesUseCase<crate::usecase::PgUnitOfWork>>,
-    pub create_use_case: Arc<crate::event_type::operations::CreateEventTypeUseCase<crate::usecase::PgUnitOfWork>>,
-    pub update_use_case: Arc<crate::event_type::operations::UpdateEventTypeUseCase<crate::usecase::PgUnitOfWork>>,
-    pub delete_use_case: Arc<crate::event_type::operations::DeleteEventTypeUseCase<crate::usecase::PgUnitOfWork>>,
-    pub add_schema_use_case: Arc<crate::event_type::operations::AddSchemaUseCase<crate::usecase::PgUnitOfWork>>,
+    pub create_use_case:
+        Arc<crate::event_type::operations::CreateEventTypeUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_use_case:
+        Arc<crate::event_type::operations::UpdateEventTypeUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_use_case:
+        Arc<crate::event_type::operations::DeleteEventTypeUseCase<crate::usecase::PgUnitOfWork>>,
+    pub add_schema_use_case:
+        Arc<crate::event_type::operations::AddSchemaUseCase<crate::usecase::PgUnitOfWork>>,
 }
 
 /// Create a new event type
@@ -230,10 +234,15 @@ pub async fn create_event_type(
     // event types require access to the client).
     if let Some(ref cid) = req.client_id {
         if !auth.0.can_access_client(cid) {
-            return Err(PlatformError::forbidden(format!("No access to client: {}", cid)));
+            return Err(PlatformError::forbidden(format!(
+                "No access to client: {}",
+                cid
+            )));
         }
     } else if !auth.0.is_anchor() {
-        return Err(PlatformError::forbidden("Only anchor users can create anchor-level event types"));
+        return Err(PlatformError::forbidden(
+            "Only anchor users can create anchor-level event types",
+        ));
     }
 
     let cmd = CreateEventTypeCommand {
@@ -246,7 +255,12 @@ pub async fn create_event_type(
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     let event = state.create_use_case.run(cmd, ctx).await.into_result()?;
 
-    Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(event.event_type_id))))
+    Ok((
+        StatusCode::CREATED,
+        Json(crate::shared::api_common::CreatedResponse::new(
+            event.event_type_id,
+        )),
+    ))
 }
 
 /// Get event type by ID
@@ -271,7 +285,10 @@ pub async fn get_event_type(
 ) -> Result<Json<EventTypeResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_event_types(&auth.0)?;
 
-    let event_type = state.event_type_repo.find_by_id(&id).await?
+    let event_type = state
+        .event_type_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("EventType", &id)?;
 
     // Check client access
@@ -306,7 +323,10 @@ pub async fn get_event_type_by_code(
 ) -> Result<Json<EventTypeResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_event_types(&auth.0)?;
 
-    let event_type = state.event_type_repo.find_by_code(&code).await?
+    let event_type = state
+        .event_type_repo
+        .find_by_code(&code)
+        .await?
         .ok_or_else(|| PlatformError::EventTypeNotFound { code: code.clone() })?;
 
     // Check client access
@@ -339,20 +359,25 @@ pub async fn list_event_types(
     crate::shared::authorization_service::checks::can_read_event_types(&auth.0)?;
 
     // Default to CURRENT status when no filters are provided (matches find_active behavior)
-    let default_status = if query.application.is_none() && query.client_id.is_none() && query.status.is_none() {
-        Some("CURRENT".to_string())
-    } else {
-        query.status.clone()
-    };
+    let default_status =
+        if query.application.is_none() && query.client_id.is_none() && query.status.is_none() {
+            Some("CURRENT".to_string())
+        } else {
+            query.status.clone()
+        };
 
-    let event_types = state.event_type_repo.find_with_filters(
-        query.application.as_deref(),
-        query.client_id.as_deref(),
-        default_status.as_deref(),
-    ).await?;
+    let event_types = state
+        .event_type_repo
+        .find_with_filters(
+            query.application.as_deref(),
+            query.client_id.as_deref(),
+            default_status.as_deref(),
+        )
+        .await?;
 
     // Filter by client access
-    let items: Vec<EventTypeResponse> = event_types.into_iter()
+    let items: Vec<EventTypeResponse> = event_types
+        .into_iter()
         .filter(|et| {
             match &et.client_id {
                 Some(cid) => auth.0.can_access_client(cid),
@@ -393,14 +418,19 @@ pub async fn update_event_type(
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
     // Resource-level access check on the stored event type.
-    let event_type = state.event_type_repo.find_by_id(&id).await?
+    let event_type = state
+        .event_type_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("EventType", &id)?;
     if let Some(ref cid) = event_type.client_id {
         if !auth.0.can_access_client(cid) {
             return Err(PlatformError::forbidden("No access to this event type"));
         }
     } else if !auth.0.is_anchor() {
-        return Err(PlatformError::forbidden("Only anchor users can modify anchor-level event types"));
+        return Err(PlatformError::forbidden(
+            "Only anchor users can modify anchor-level event types",
+        ));
     }
 
     let cmd = UpdateEventTypeCommand {
@@ -441,7 +471,10 @@ pub async fn add_schema_version(
 
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
-    let event_type = state.event_type_repo.find_by_id(&id).await?
+    let event_type = state
+        .event_type_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("EventType", &id)?;
     if let Some(ref cid) = event_type.client_id {
         if !auth.0.can_access_client(cid) {
@@ -458,9 +491,16 @@ pub async fn add_schema_version(
         schema_type: None,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.add_schema_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .add_schema_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
-    let refreshed = state.event_type_repo.find_by_id(&id).await?
+    let refreshed = state
+        .event_type_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("EventType", &id)?;
     Ok(Json(refreshed.into()))
 }
@@ -490,14 +530,19 @@ pub async fn delete_event_type(
 
     crate::shared::authorization_service::checks::can_write_event_types(&auth.0)?;
 
-    let event_type = state.event_type_repo.find_by_id(&id).await?
+    let event_type = state
+        .event_type_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("EventType", &id)?;
     if let Some(ref cid) = event_type.client_id {
         if !auth.0.can_access_client(cid) {
             return Err(PlatformError::forbidden("No access to this event type"));
         }
     } else if !auth.0.is_anchor() {
-        return Err(PlatformError::forbidden("Only anchor users can delete anchor-level event types"));
+        return Err(PlatformError::forbidden(
+            "Only anchor users can delete anchor-level event types",
+        ));
     }
 
     let cmd = DeleteEventTypeCommand { event_type_id: id };
@@ -532,25 +577,27 @@ pub async fn sync_event_types(
 
     let command = SyncEventTypesCommand {
         application_code: req.application_code,
-        event_types: req.event_types.into_iter().map(|et| SyncEventTypeInput {
-            code: et.code,
-            name: et.name,
-            description: et.description,
-            schema: None,
-        }).collect(),
+        event_types: req
+            .event_types
+            .into_iter()
+            .map(|et| SyncEventTypeInput {
+                code: et.code,
+                name: et.name,
+                description: et.description,
+                schema: None,
+            })
+            .collect(),
         remove_unlisted: query.remove_unlisted,
     };
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
     match state.sync_use_case.run(command, ctx).await {
-        UseCaseResult::Success(event) => {
-            Ok(Json(SyncResultResponse {
-                created: event.created,
-                updated: event.updated,
-                deleted: event.deleted,
-            }))
-        }
+        UseCaseResult::Success(event) => Ok(Json(SyncResultResponse {
+            created: event.created,
+            updated: event.updated,
+            deleted: event.deleted,
+        })),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
 }
@@ -559,7 +606,11 @@ pub async fn sync_event_types(
 pub fn event_types_router(state: EventTypesState) -> OpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(create_event_type, list_event_types))
-        .routes(routes!(get_event_type, update_event_type, delete_event_type))
+        .routes(routes!(
+            get_event_type,
+            update_event_type,
+            delete_event_type
+        ))
         .routes(routes!(get_event_type_by_code))
         .routes(routes!(add_schema_version))
         .routes(routes!(sync_event_types))

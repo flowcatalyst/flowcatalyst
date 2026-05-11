@@ -45,10 +45,7 @@ impl EventProjectionService {
 
         tokio::spawn(async move {
             health.set_running(true);
-            info!(
-                "Event projection started (batch_size={})",
-                batch_size
-            );
+            info!("Event projection started (batch_size={})", batch_size);
 
             loop {
                 if *shutdown_rx.borrow() {
@@ -182,15 +179,15 @@ mod tests {
         // count >= batch_size → no sleep (0ms), more rows likely waiting
         assert_eq!(adaptive_sleep(100, 100), 0);
         assert_eq!(adaptive_sleep(200, 100), 0); // over batch_size
-        assert_eq!(adaptive_sleep(1, 1), 0);     // exactly batch_size of 1
+        assert_eq!(adaptive_sleep(1, 1), 0); // exactly batch_size of 1
     }
 
     #[test]
     fn adaptive_sleep_boundary_at_batch_size() {
         let batch = 50;
         assert_eq!(adaptive_sleep(batch - 1, batch), 100); // just under
-        assert_eq!(adaptive_sleep(batch, batch), 0);        // exactly at
-        assert_eq!(adaptive_sleep(batch + 1, batch), 0);    // just over
+        assert_eq!(adaptive_sleep(batch, batch), 0); // exactly at
+        assert_eq!(adaptive_sleep(batch + 1, batch), 0); // just over
     }
 
     // --- Service construction tests ---

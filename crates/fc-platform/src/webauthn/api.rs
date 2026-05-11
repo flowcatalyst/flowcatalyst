@@ -3,7 +3,6 @@
 //! Six endpoints: register/begin, register/complete, authenticate/begin,
 //! authenticate/complete, list credentials, delete credential.
 
-use std::sync::Arc;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -12,6 +11,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use time::Duration as TimeDuration;
 use tracing::warn;
 use utoipa::ToSchema;
@@ -23,15 +23,15 @@ use crate::auth::login_backoff::{self, BackoffDecision, BackoffPolicy};
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::{Authenticated, ClientIp};
 use crate::usecase::ExecutionContext;
+use crate::usecase::{PgUnitOfWork, UseCase};
 use crate::webauthn::ceremony_repository::WebauthnCeremonyRepository;
 use crate::webauthn::gate::ensure_internal_auth;
 use crate::webauthn::operations::{
-    AuthenticatePasskeyCommand, AuthenticatePasskeyUseCase,
-    RegisterPasskeyCommand, RegisterPasskeyUseCase, RevokePasskeyCommand, RevokePasskeyUseCase,
+    AuthenticatePasskeyCommand, AuthenticatePasskeyUseCase, RegisterPasskeyCommand,
+    RegisterPasskeyUseCase, RevokePasskeyCommand, RevokePasskeyUseCase,
 };
 use crate::webauthn::repository::WebauthnCredentialRepository;
 use crate::webauthn::webauthn_service::WebauthnService;
-use crate::usecase::{PgUnitOfWork, UseCase};
 use crate::{
     AttemptType, AuthService, EmailDomainMappingRepository, LoginAttempt, LoginAttemptRepository,
     LoginOutcome, PrincipalRepository,
@@ -167,7 +167,8 @@ fn invalid_credentials() -> Response {
             "error": "INVALID_CREDENTIALS",
             "message": "passkey authentication failed",
         })),
-    ).into_response()
+    )
+        .into_response()
 }
 
 fn build_session_cookie(state: &WebauthnApiState, token: String) -> Cookie<'static> {
@@ -209,16 +210,28 @@ pub async fn register_begin(
     auth: Authenticated,
     Json(req): Json<RegisterBeginRequest>,
 ) -> Result<Json<RegisterBeginResponse>, PlatformError> {
-    let email = auth.0.email.clone()
+    let email = auth
+        .0
+        .email
+        .clone()
         .ok_or_else(|| PlatformError::bad_request("session has no email"))?;
     ensure_internal_auth(&email, &state.email_domain_mapping_repo).await?;
 
-    let display_name = req.display_name.clone().unwrap_or_else(|| auth.0.name.clone());
+    let display_name = req
+        .display_name
+        .clone()
+        .unwrap_or_else(|| auth.0.name.clone());
 
     // Don't let a user register the same authenticator twice — exclude their
     // existing credential ids from the challenge.
-    let existing = state.credential_repo.find_by_principal(&auth.0.principal_id).await?;
-    let exclude: Vec<_> = existing.iter().map(|c| c.passkey.cred_id().clone()).collect();
+    let existing = state
+        .credential_repo
+        .find_by_principal(&auth.0.principal_id)
+        .await?;
+    let exclude: Vec<_> = existing
+        .iter()
+        .map(|c| c.passkey.cred_id().clone())
+        .collect();
 
     let (challenge, ceremony_state) = state.webauthn_service.start_registration(
         &auth.0.principal_id,
@@ -228,12 +241,15 @@ pub async fn register_begin(
     )?;
 
     let state_id = Uuid::new_v4().to_string();
-    state.ceremony_repo.store_registration(
-        &state_id,
-        &auth.0.principal_id,
-        &ceremony_state,
-        Some(&display_name),
-    ).await?;
+    state
+        .ceremony_repo
+        .store_registration(
+            &state_id,
+            &auth.0.principal_id,
+            &ceremony_state,
+            Some(&display_name),
+        )
+        .await?;
 
     let options = serde_json::to_value(&challenge)
         .map_err(|e| PlatformError::internal(format!("serialise challenge: {}", e)))?;
@@ -262,8 +278,13 @@ pub async fn register_complete(
     auth: Authenticated,
     Json(req): Json<RegisterCompleteRequest>,
 ) -> Result<Json<RegisterCompleteResponse>, PlatformError> {
-    let consumed = state.ceremony_repo.consume_registration(&req.state_id).await?
-        .ok_or_else(|| PlatformError::bad_request("registration ceremony state not found or expired"))?;
+    let consumed = state
+        .ceremony_repo
+        .consume_registration(&req.state_id)
+        .await?
+        .ok_or_else(|| {
+            PlatformError::bad_request("registration ceremony state not found or expired")
+        })?;
 
     if consumed.principal_id != auth.0.principal_id {
         return Err(PlatformError::Forbidden {
@@ -286,7 +307,9 @@ pub async fn register_complete(
     };
 
     let event = use_case.run(cmd, ctx).await.into_result()?;
-    Ok(Json(RegisterCompleteResponse { credential_id: event.credential_id }))
+    Ok(Json(RegisterCompleteResponse {
+        credential_id: event.credential_id,
+    }))
 }
 
 /// Begin passkey authentication
@@ -319,9 +342,13 @@ pub async fn authenticate_begin(
 
     match real_credentials_opt {
         Some(passkeys) if !passkeys.is_empty() => {
-            let (challenge, ceremony_state) = state.webauthn_service.start_authentication(&passkeys)?;
+            let (challenge, ceremony_state) =
+                state.webauthn_service.start_authentication(&passkeys)?;
             let state_id = Uuid::new_v4().to_string();
-            state.ceremony_repo.store_authentication(&state_id, None, &ceremony_state).await?;
+            state
+                .ceremony_repo
+                .store_authentication(&state_id, None, &ceremony_state)
+                .await?;
             let options = serde_json::to_value(&challenge)
                 .map_err(|e| PlatformError::internal(format!("serialise challenge: {}", e)))?;
             Ok(Json(AuthenticateBeginResponse { state_id, options }))
@@ -330,7 +357,9 @@ pub async fn authenticate_begin(
             // No real state stored — /complete will see "state not found"
             // and return the same INVALID_CREDENTIALS as a failed assertion.
             let state_id = Uuid::new_v4().to_string();
-            let options = state.webauthn_service.fake_authentication_challenge(&req.email)?;
+            let options = state
+                .webauthn_service
+                .fake_authentication_challenge(&req.email)?;
             Ok(Json(AuthenticateBeginResponse { state_id, options }))
         }
     }
@@ -340,12 +369,26 @@ async fn resolve_real_credentials(
     state: &WebauthnApiState,
     email: &str,
 ) -> Option<Vec<webauthn_rs::prelude::Passkey>> {
-    if ensure_internal_auth(email, &state.email_domain_mapping_repo).await.is_err() {
+    if ensure_internal_auth(email, &state.email_domain_mapping_repo)
+        .await
+        .is_err()
+    {
         return None;
     }
-    let principal = state.principal_repo.find_by_email(email).await.ok().flatten()?;
-    if !principal.active { return None; }
-    let creds = state.credential_repo.find_by_principal(&principal.id).await.ok()?;
+    let principal = state
+        .principal_repo
+        .find_by_email(email)
+        .await
+        .ok()
+        .flatten()?;
+    if !principal.active {
+        return None;
+    }
+    let creds = state
+        .credential_repo
+        .find_by_principal(&principal.id)
+        .await
+        .ok()?;
     Some(creds.into_iter().map(|c| c.passkey).collect())
 }
 
@@ -374,13 +417,22 @@ pub async fn authenticate_complete(
 ) -> Response {
     let ip = client_ip.unwrap_or_default();
 
-    let consumed = match state.ceremony_repo.consume_authentication(&req.state_id).await {
+    let consumed = match state
+        .ceremony_repo
+        .consume_authentication(&req.state_id)
+        .await
+    {
         Ok(Some(c)) => c,
         _ => {
             record_login_attempt(
-                &state.login_attempt_repo, None, None, &ip,
-                LoginOutcome::Failure, Some("STATE_NOT_FOUND"),
-            ).await;
+                &state.login_attempt_repo,
+                None,
+                None,
+                &ip,
+                LoginOutcome::Failure,
+                Some("STATE_NOT_FOUND"),
+            )
+            .await;
             return invalid_credentials();
         }
     };
@@ -417,9 +469,14 @@ pub async fn authenticate_complete(
                 "INVALID_CREDENTIALS"
             };
             record_login_attempt(
-                &state.login_attempt_repo, None, None, &ip,
-                LoginOutcome::Failure, Some(reason),
-            ).await;
+                &state.login_attempt_repo,
+                None,
+                None,
+                &ip,
+                LoginOutcome::Failure,
+                Some(reason),
+            )
+            .await;
             return invalid_credentials();
         }
     };
@@ -428,9 +485,14 @@ pub async fn authenticate_complete(
         Ok(Some(p)) => p,
         _ => {
             record_login_attempt(
-                &state.login_attempt_repo, None, Some(&event.principal_id), &ip,
-                LoginOutcome::Failure, Some("PRINCIPAL_NOT_FOUND"),
-            ).await;
+                &state.login_attempt_repo,
+                None,
+                Some(&event.principal_id),
+                &ip,
+                LoginOutcome::Failure,
+                Some("PRINCIPAL_NOT_FOUND"),
+            )
+            .await;
             return invalid_credentials();
         }
     };
@@ -440,13 +502,22 @@ pub async fn authenticate_complete(
     // determined attacker could chase fallback flows; locking out the same
     // email across both /auth/login and the passkey path closes that gap.
     if let Some(email) = principal.email() {
-        match login_backoff::check(&state.login_attempt_repo, &state.backoff_policy, email, &ip).await {
+        match login_backoff::check(&state.login_attempt_repo, &state.backoff_policy, email, &ip)
+            .await
+        {
             Ok(BackoffDecision::Allow) => {}
-            Ok(BackoffDecision::Reject { retry_after_secs, .. }) => {
+            Ok(BackoffDecision::Reject {
+                retry_after_secs, ..
+            }) => {
                 record_login_attempt(
-                    &state.login_attempt_repo, Some(email), Some(&principal.id), &ip,
-                    LoginOutcome::Failure, Some("RATE_LIMITED"),
-                ).await;
+                    &state.login_attempt_repo,
+                    Some(email),
+                    Some(&principal.id),
+                    &ip,
+                    LoginOutcome::Failure,
+                    Some("RATE_LIMITED"),
+                )
+                .await;
                 return login_backoff::rejection_error(retry_after_secs).into_response();
             }
             Err(e) => {
@@ -460,9 +531,14 @@ pub async fn authenticate_complete(
         Err(e) => {
             warn!(error = %e, "failed to generate session token after passkey login");
             record_login_attempt(
-                &state.login_attempt_repo, principal.email(), Some(&principal.id), &ip,
-                LoginOutcome::Failure, Some("SESSION_TOKEN_FAILED"),
-            ).await;
+                &state.login_attempt_repo,
+                principal.email(),
+                Some(&principal.id),
+                &ip,
+                LoginOutcome::Failure,
+                Some("SESSION_TOKEN_FAILED"),
+            )
+            .await;
             return invalid_credentials();
         }
     };
@@ -471,9 +547,14 @@ pub async fn authenticate_complete(
     let jar = jar.add(cookie);
 
     record_login_attempt(
-        &state.login_attempt_repo, principal.email(), Some(&principal.id), &ip,
-        LoginOutcome::Success, None,
-    ).await;
+        &state.login_attempt_repo,
+        principal.email(),
+        Some(&principal.id),
+        &ip,
+        LoginOutcome::Success,
+        None,
+    )
+    .await;
 
     let response = AuthenticateCompleteResponse {
         principal_id: principal.id.clone(),
@@ -499,13 +580,19 @@ pub async fn list_credentials(
     State(state): State<WebauthnApiState>,
     auth: Authenticated,
 ) -> Result<Json<Vec<CredentialSummary>>, PlatformError> {
-    let creds = state.credential_repo.find_by_principal(&auth.0.principal_id).await?;
-    let summaries = creds.into_iter().map(|c| CredentialSummary {
-        id: c.id,
-        name: c.name,
-        created_at: c.created_at,
-        last_used_at: c.last_used_at,
-    }).collect();
+    let creds = state
+        .credential_repo
+        .find_by_principal(&auth.0.principal_id)
+        .await?;
+    let summaries = creds
+        .into_iter()
+        .map(|c| CredentialSummary {
+            id: c.id,
+            name: c.name,
+            created_at: c.created_at,
+            last_used_at: c.last_used_at,
+        })
+        .collect();
     Ok(Json(summaries))
 }
 
@@ -527,10 +614,8 @@ pub async fn delete_credential(
     auth: Authenticated,
     Path(credential_id): Path<String>,
 ) -> Result<StatusCode, PlatformError> {
-    let use_case = RevokePasskeyUseCase::new(
-        state.credential_repo.clone(),
-        state.unit_of_work.clone(),
-    );
+    let use_case =
+        RevokePasskeyUseCase::new(state.credential_repo.clone(), state.unit_of_work.clone());
     let ctx = ExecutionContext::from_auth(&auth.0);
     let cmd = RevokePasskeyCommand { credential_id };
     use_case.run(cmd, ctx).await.into_result()?;
@@ -549,4 +634,3 @@ pub fn webauthn_router(state: WebauthnApiState) -> OpenApiRouter {
         .routes(routes!(delete_credential))
         .with_state(state)
 }
-

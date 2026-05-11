@@ -14,10 +14,10 @@
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
+use fc_platform::email_domain_mapping::entity::ScopeType;
 use fc_platform::shared::database::{create_pool, run_migrations, MigrationProfile};
 use fc_platform::webauthn::gate::ensure_internal_auth;
 use fc_platform::{EmailDomainMapping, EmailDomainMappingRepository};
-use fc_platform::email_domain_mapping::entity::ScopeType;
 
 async fn setup_test_db() -> (sqlx::PgPool, testcontainers::ContainerAsync<Postgres>) {
     let container = Postgres::default()
@@ -29,10 +29,15 @@ async fn setup_test_db() -> (sqlx::PgPool, testcontainers::ContainerAsync<Postgr
         .expect("Failed to start PostgreSQL container");
 
     let host = container.get_host().await.expect("Failed to get host");
-    let port = container.get_host_port_ipv4(5432).await.expect("Failed to get port");
+    let port = container
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("Failed to get port");
     let url = format!("postgresql://test:test@{}:{}/flowcatalyst_test", host, port);
     let pool = create_pool(&url).await.expect("Failed to connect");
-    run_migrations(&pool, MigrationProfile::Production).await.expect("Failed to run migrations");
+    run_migrations(&pool, MigrationProfile::Production)
+        .await
+        .expect("Failed to run migrations");
     (pool, container)
 }
 
@@ -47,16 +52,27 @@ async fn migration_creates_webauthn_credentials_table_with_expected_columns() {
           WHERE table_name = 'webauthn_credentials'
           ORDER BY ordinal_position",
     )
-    .fetch_all(&pool).await.expect("query columns");
+    .fetch_all(&pool)
+    .await
+    .expect("query columns");
 
     let names: Vec<&str> = columns.iter().map(|(n, _, _)| n.as_str()).collect();
-    assert_eq!(names, vec![
-        "id", "principal_id", "credential_id", "passkey_data",
-        "name", "created_at", "last_used_at",
-    ]);
+    assert_eq!(
+        names,
+        vec![
+            "id",
+            "principal_id",
+            "credential_id",
+            "passkey_data",
+            "name",
+            "created_at",
+            "last_used_at",
+        ]
+    );
 
     // Spot-check a few critical types/nullabilities.
-    let by_name: std::collections::HashMap<_, _> = columns.iter()
+    let by_name: std::collections::HashMap<_, _> = columns
+        .iter()
         .map(|(n, t, nullable)| (n.as_str(), (t.as_str(), nullable.as_str())))
         .collect();
     assert_eq!(by_name["id"].1, "NO");
@@ -73,7 +89,8 @@ async fn gate_allows_internal_domain_with_no_mapping() {
     let edm_repo = EmailDomainMappingRepository::new(&pool);
 
     // No mapping for example.com — gate must pass.
-    ensure_internal_auth("alice@example.com", &edm_repo).await
+    ensure_internal_auth("alice@example.com", &edm_repo)
+        .await
         .expect("internal-auth domain should be allowed");
 }
 
@@ -86,12 +103,17 @@ async fn gate_rejects_federated_domain() {
     let mapping = EmailDomainMapping::new("federated.com", "idp_FAKE12345678", ScopeType::Anchor);
     edm_repo.insert(&mapping).await.expect("insert mapping");
 
-    let err = ensure_internal_auth("user@federated.com", &edm_repo).await
+    let err = ensure_internal_auth("user@federated.com", &edm_repo)
+        .await
         .expect_err("federated domain should be rejected");
 
     // Should map to a 4xx, not a 5xx.
     let resp_kind = format!("{:?}", err);
-    assert!(resp_kind.contains("Validation"), "expected validation/bad_request, got: {}", resp_kind);
+    assert!(
+        resp_kind.contains("Validation"),
+        "expected validation/bad_request, got: {}",
+        resp_kind
+    );
 }
 
 #[tokio::test]
@@ -106,8 +128,12 @@ async fn gate_normalises_domain_case_when_matching_mapping() {
     let mapping = EmailDomainMapping::new("acme.com", "idp_FAKE87654321", ScopeType::Anchor);
     edm_repo.insert(&mapping).await.expect("insert mapping");
 
-    assert!(ensure_internal_auth("USER@ACME.COM", &edm_repo).await.is_err());
-    assert!(ensure_internal_auth("user@Acme.Com", &edm_repo).await.is_err());
+    assert!(ensure_internal_auth("USER@ACME.COM", &edm_repo)
+        .await
+        .is_err());
+    assert!(ensure_internal_auth("user@Acme.Com", &edm_repo)
+        .await
+        .is_err());
 }
 
 #[tokio::test]
@@ -119,7 +145,10 @@ async fn webauthn_credentials_cascade_when_principal_deleted() {
     // Create a principal directly via repo.
     let principal_repo = PrincipalRepository::new(&pool);
     let principal = Principal::new_user("alice@example.com", UserScope::Anchor);
-    principal_repo.insert(&principal).await.expect("insert principal");
+    principal_repo
+        .insert(&principal)
+        .await
+        .expect("insert principal");
 
     // Insert a stub webauthn_credentials row pointing at this principal.
     // (We bypass the entity here because constructing a real Passkey requires
@@ -134,20 +163,34 @@ async fn webauthn_credentials_cascade_when_principal_deleted() {
     .bind(&[1u8, 2, 3, 4][..])
     .bind(r#"{"placeholder": true}"#)
     .bind("Test Key")
-    .execute(&pool).await.expect("insert credential row");
+    .execute(&pool)
+    .await
+    .expect("insert credential row");
 
     // Sanity check before delete.
-    let count_before: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM webauthn_credentials WHERE principal_id = $1",
-    ).bind(&principal.id).fetch_one(&pool).await.unwrap();
+    let count_before: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM webauthn_credentials WHERE principal_id = $1")
+            .bind(&principal.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(count_before.0, 1);
 
     // Delete the principal — cascade should remove the credential.
     sqlx::query("DELETE FROM iam_principals WHERE id = $1")
-        .bind(&principal.id).execute(&pool).await.expect("delete principal");
+        .bind(&principal.id)
+        .execute(&pool)
+        .await
+        .expect("delete principal");
 
-    let count_after: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM webauthn_credentials WHERE principal_id = $1",
-    ).bind(&principal.id).fetch_one(&pool).await.unwrap();
-    assert_eq!(count_after.0, 0, "credential should have cascaded with principal");
+    let count_after: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM webauthn_credentials WHERE principal_id = $1")
+            .bind(&principal.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        count_after.0, 0,
+        "credential should have cascaded with principal"
+    );
 }

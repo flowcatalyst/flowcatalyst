@@ -13,56 +13,60 @@
 //! - Standby: Active/standby high availability with Redis leader election
 //! - API: HTTP API endpoints for monitoring, health, and message publishing
 
-pub mod error;
-pub mod manager;
-pub mod pool;
-pub mod mediator;
-pub mod lifecycle;
-pub mod router_metrics;
-pub mod warning;
-pub mod health;
-pub mod metrics;
+pub mod api;
 pub mod circuit_breaker_registry;
 pub mod config_sync;
-pub mod standby;
+pub mod error;
+pub mod health;
+pub mod lifecycle;
+pub mod manager;
+pub mod mediator;
+pub mod metrics;
 pub mod notification;
-pub mod traffic;
+pub mod pool;
 pub mod queue_health_monitor;
-pub mod api;
+pub mod router_metrics;
+pub mod standby;
+pub mod traffic;
+pub mod warning;
 
-pub use error::RouterError;
-pub use manager::{QueueManager, InFlightMessageInfo, ConsumerFactory};
-pub use pool::{ProcessPool, PoolConfigUpdate};
-pub use mediator::{Mediator, HttpMediator, HttpMediatorConfig, HttpVersion};
-pub use lifecycle::{LifecycleManager, LifecycleConfig};
-pub use warning::{WarningService, WarningServiceConfig};
-pub use health::{HealthService, HealthServiceConfig};
-pub use metrics::{PoolMetricsCollector, MetricsConfig};
-pub use circuit_breaker_registry::{CircuitBreakerRegistry, CircuitBreakerConfig, CircuitBreakerStats, CircuitBreakerState};
-pub use config_sync::{ConfigSyncService, ConfigSyncConfig, ConfigSyncResult, spawn_config_sync_task};
-pub use standby::{
-    StandbyProcessor, StandbyAwareProcessor, StandbyRouterConfig,
-    LeadershipStatus, spawn_leadership_monitor,
+#[cfg(feature = "oidc-flow")]
+pub use api::oidc_flow::{
+    oidc_flow_routes, OidcFlowConfig, OidcFlowState, PendingOidcStateStore, SessionStore,
 };
+pub use circuit_breaker_registry::{
+    CircuitBreakerConfig, CircuitBreakerRegistry, CircuitBreakerState, CircuitBreakerStats,
+};
+pub use config_sync::{
+    spawn_config_sync_task, ConfigSyncConfig, ConfigSyncResult, ConfigSyncService,
+};
+pub use error::RouterError;
+pub use health::{HealthService, HealthServiceConfig};
+pub use lifecycle::{LifecycleConfig, LifecycleManager};
+pub use manager::{ConsumerFactory, InFlightMessageInfo, QueueManager};
+pub use mediator::{HttpMediator, HttpMediatorConfig, HttpVersion, Mediator};
+pub use metrics::{MetricsConfig, PoolMetricsCollector};
 pub use notification::{
-    NotificationService, NotificationConfig, TeamsWebhookNotificationService,
-    BatchingNotificationService, NoOpNotificationService, create_notification_service,
-    create_notification_service_with_scheduler, NotificationServiceWithScheduler,
+    create_notification_service, create_notification_service_with_scheduler,
+    BatchingNotificationService, NoOpNotificationService, NotificationConfig, NotificationService,
+    NotificationServiceWithScheduler, TeamsWebhookNotificationService,
 };
 #[cfg(feature = "email")]
-pub use notification::{EmailNotificationService, EmailConfig};
-pub use traffic::{TrafficStrategy, TrafficError, NoopTrafficStrategy, spawn_traffic_watcher};
-#[cfg(feature = "alb")]
-pub use traffic::{AwsAlbTrafficStrategy, AlbTrafficConfig};
-#[cfg(feature = "oidc-flow")]
-pub use api::oidc_flow::{OidcFlowConfig, OidcFlowState, SessionStore, PendingOidcStateStore, oidc_flow_routes};
-pub use queue_health_monitor::{
-    QueueHealthMonitor, QueueHealthConfig, spawn_queue_health_monitor,
+pub use notification::{EmailConfig, EmailNotificationService};
+pub use pool::{PoolConfigUpdate, ProcessPool};
+pub use queue_health_monitor::{spawn_queue_health_monitor, QueueHealthConfig, QueueHealthMonitor};
+pub use standby::{
+    spawn_leadership_monitor, LeadershipStatus, StandbyAwareProcessor, StandbyProcessor,
+    StandbyRouterConfig,
 };
+pub use traffic::{spawn_traffic_watcher, NoopTrafficStrategy, TrafficError, TrafficStrategy};
+#[cfg(feature = "alb")]
+pub use traffic::{AlbTrafficConfig, AwsAlbTrafficStrategy};
+pub use warning::{WarningService, WarningServiceConfig};
 
 // Re-export QueueMetrics for API
+pub use api::{spawn_broker_stats_refresh, CachedBrokerStats};
 pub use fc_queue::QueueMetrics;
-pub use api::{CachedBrokerStats, spawn_broker_stats_refresh};
 
 pub type Result<T> = std::result::Result<T, RouterError>;
 

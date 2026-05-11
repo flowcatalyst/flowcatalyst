@@ -1,14 +1,12 @@
 //! Delete Client Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::ClientRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::ClientDeleted;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::ClientRepository;
 
 /// Command for deleting a client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,7 +22,10 @@ pub struct DeleteClientUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> DeleteClientUseCase<U> {
     pub fn new(client_repo: Arc<ClientRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { client_repo, unit_of_work }
+        Self {
+            client_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -36,13 +37,18 @@ impl<U: UnitOfWork> UseCase for DeleteClientUseCase<U> {
     async fn validate(&self, command: &DeleteClientCommand) -> Result<(), UseCaseError> {
         if command.client_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "CLIENT_ID_REQUIRED", "Client ID is required",
+                "CLIENT_ID_REQUIRED",
+                "Client ID is required",
             ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeleteClientCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeleteClientCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         // Authorization handled in handler
         Ok(())
     }
@@ -62,7 +68,8 @@ impl<U: UnitOfWork> UseCase for DeleteClientUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch client: {}", e
+                    "Failed to fetch client: {}",
+                    e
                 )));
             }
         };
@@ -75,7 +82,8 @@ impl<U: UnitOfWork> UseCase for DeleteClientUseCase<U> {
             Ok(n) => n,
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to count home principals: {}", e,
+                    "Failed to count home principals: {}",
+                    e,
                 )));
             }
         };
@@ -93,9 +101,15 @@ impl<U: UnitOfWork> UseCase for DeleteClientUseCase<U> {
         // Business rules: refuse when any code-enforced reference still
         // points at this client. None of these have DB-level FKs — each
         // must be explicitly unwired before deletion.
-        let grants = self.client_repo.count_access_grants(&client.id).await
+        let grants = self
+            .client_repo
+            .count_access_grants(&client.id)
+            .await
             .map_err(|e| UseCaseError::commit(format!("count access grants: {}", e)));
-        let configs = self.client_repo.count_client_configs(&client.id).await
+        let configs = self
+            .client_repo
+            .count_client_configs(&client.id)
+            .await
             .map_err(|e| UseCaseError::commit(format!("count client configs: {}", e)));
 
         let (grants, configs) = match (grants, configs) {
@@ -103,11 +117,9 @@ impl<U: UnitOfWork> UseCase for DeleteClientUseCase<U> {
             (Err(e), _) | (_, Err(e)) => return UseCaseResult::failure(e),
         };
 
-        let refs = [
-            ("access grants",        grants),
-            ("application configs",  configs),
-        ];
-        let blockers: Vec<String> = refs.iter()
+        let refs = [("access grants", grants), ("application configs", configs)];
+        let blockers: Vec<String> = refs
+            .iter()
             .filter(|(_, n)| *n > 0)
             .map(|(label, n)| format!("{n} {label}"))
             .collect();

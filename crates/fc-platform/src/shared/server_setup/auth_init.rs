@@ -68,16 +68,10 @@ impl AuthInitConfig {
             .and_then(|p| std::fs::read_to_string(&p).ok())
             .or_else(|| std::env::var("FLOWCATALYST_JWT_PUBLIC_KEY_PREVIOUS").ok());
 
-        let access_token_expiry_secs = env_or_alias_i64(
-            "FC_ACCESS_TOKEN_EXPIRY_SECS",
-            "OIDC_ACCESS_TOKEN_TTL",
-            3600,
-        );
-        let session_token_expiry_secs = env_or_alias_i64(
-            "FC_SESSION_TOKEN_EXPIRY_SECS",
-            "OIDC_SESSION_TTL",
-            86400,
-        );
+        let access_token_expiry_secs =
+            env_or_alias_i64("FC_ACCESS_TOKEN_EXPIRY_SECS", "OIDC_ACCESS_TOKEN_TTL", 3600);
+        let session_token_expiry_secs =
+            env_or_alias_i64("FC_SESSION_TOKEN_EXPIRY_SECS", "OIDC_SESSION_TTL", 86400);
         let refresh_token_expiry_secs = env_or_alias_i64(
             "FC_REFRESH_TOKEN_EXPIRY_SECS",
             "OIDC_REFRESH_TOKEN_TTL",

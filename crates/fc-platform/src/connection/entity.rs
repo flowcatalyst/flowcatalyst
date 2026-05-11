@@ -1,7 +1,7 @@
 //! Connection Entity
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -12,13 +12,18 @@ pub enum ConnectionStatus {
     Paused,
 }
 
-
 impl ConnectionStatus {
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Active => "ACTIVE", Self::Paused => "PAUSED" }
+        match self {
+            Self::Active => "ACTIVE",
+            Self::Paused => "PAUSED",
+        }
     }
     pub fn from_str(s: &str) -> Self {
-        match s { "PAUSED" => Self::Paused, _ => Self::Active }
+        match s {
+            "PAUSED" => Self::Paused,
+            _ => Self::Active,
+        }
     }
 }
 
@@ -60,10 +65,22 @@ impl Connection {
         }
     }
 
-    pub fn with_description(mut self, desc: impl Into<String>) -> Self { self.description = Some(desc.into()); self }
-    pub fn with_external_id(mut self, id: impl Into<String>) -> Self { self.external_id = Some(id.into()); self }
-    pub fn with_client_id(mut self, id: impl Into<String>) -> Self { self.client_id = Some(id.into()); self }
-    pub fn with_client_identifier(mut self, id: impl Into<String>) -> Self { self.client_identifier = Some(id.into()); self }
+    pub fn with_description(mut self, desc: impl Into<String>) -> Self {
+        self.description = Some(desc.into());
+        self
+    }
+    pub fn with_external_id(mut self, id: impl Into<String>) -> Self {
+        self.external_id = Some(id.into());
+        self
+    }
+    pub fn with_client_id(mut self, id: impl Into<String>) -> Self {
+        self.client_id = Some(id.into());
+        self
+    }
+    pub fn with_client_identifier(mut self, id: impl Into<String>) -> Self {
+        self.client_identifier = Some(id.into());
+        self
+    }
 
     pub fn pause(&mut self) {
         self.status = ConnectionStatus::Paused;
@@ -85,7 +102,11 @@ mod tests {
         let conn = Connection::new("webhook-1", "Webhook Connection", "sa-123");
 
         assert!(!conn.id.is_empty());
-        assert!(conn.id.starts_with("con_"), "ID should have con_ prefix, got: {}", conn.id);
+        assert!(
+            conn.id.starts_with("con_"),
+            "ID should have con_ prefix, got: {}",
+            conn.id
+        );
         assert_eq!(conn.code, "webhook-1");
         assert_eq!(conn.name, "Webhook Connection");
         assert_eq!(conn.service_account_id, "sa-123");
@@ -131,10 +152,19 @@ mod tests {
 
     #[test]
     fn test_connection_status_from_str() {
-        assert_eq!(ConnectionStatus::from_str("ACTIVE"), ConnectionStatus::Active);
-        assert_eq!(ConnectionStatus::from_str("PAUSED"), ConnectionStatus::Paused);
+        assert_eq!(
+            ConnectionStatus::from_str("ACTIVE"),
+            ConnectionStatus::Active
+        );
+        assert_eq!(
+            ConnectionStatus::from_str("PAUSED"),
+            ConnectionStatus::Paused
+        );
         // Default/fallback is Active
-        assert_eq!(ConnectionStatus::from_str("unknown"), ConnectionStatus::Active);
+        assert_eq!(
+            ConnectionStatus::from_str("unknown"),
+            ConnectionStatus::Active
+        );
         assert_eq!(ConnectionStatus::from_str(""), ConnectionStatus::Active);
     }
 
@@ -169,4 +199,3 @@ mod tests {
         assert!(conn.updated_at >= original_updated_at);
     }
 }
-

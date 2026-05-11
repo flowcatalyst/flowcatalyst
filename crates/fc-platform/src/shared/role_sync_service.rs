@@ -16,8 +16,8 @@ use std::collections::HashSet;
 use tracing::{info, warn};
 
 use crate::role::entity::roles;
-use crate::{AuthRole, RoleSource};
 use crate::RoleRepository;
+use crate::{AuthRole, RoleSource};
 
 /// Counts returned from `sync_code_defined_roles` so callers (the BFF
 /// sync-platform endpoint, dev seeding) can surface the diff back to the user.
@@ -91,13 +91,7 @@ impl RoleSyncService {
         // Remove stale CODE roles
         let removed = self.remove_stale_code_roles(&code_roles).await? as u32;
 
-        info!(
-            created,
-            updated,
-            removed,
-            total,
-            "Code role sync complete",
-        );
+        info!(created, updated, removed, total, "Code role sync complete",);
 
         Ok(RoleSyncCounts {
             created,
@@ -119,8 +113,7 @@ impl RoleSyncService {
         &self,
         code_roles: &[AuthRole],
     ) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
-        let code_role_names: HashSet<&str> =
-            code_roles.iter().map(|r| r.name.as_str()).collect();
+        let code_role_names: HashSet<&str> = code_roles.iter().map(|r| r.name.as_str()).collect();
 
         let code_roles_in_db = self.role_repo.find_by_source(RoleSource::Code).await?;
         let mut removed = 0;

@@ -1,7 +1,7 @@
 //! LoginAttempt Entity
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -34,10 +34,16 @@ pub enum LoginOutcome {
 
 impl LoginOutcome {
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Success => "SUCCESS", Self::Failure => "FAILURE" }
+        match self {
+            Self::Success => "SUCCESS",
+            Self::Failure => "FAILURE",
+        }
     }
     pub fn from_str(s: &str) -> Self {
-        match s { "FAILURE" => Self::Failure, _ => Self::Success }
+        match s {
+            "FAILURE" => Self::Failure,
+            _ => Self::Success,
+        }
     }
 }
 
@@ -78,7 +84,10 @@ mod tests {
     #[test]
     fn attempt_type_roundtrip_with_fallback() {
         assert_eq!(AttemptType::from_str("USER_LOGIN"), AttemptType::UserLogin);
-        assert_eq!(AttemptType::from_str("SERVICE_ACCOUNT_TOKEN"), AttemptType::ServiceAccountToken);
+        assert_eq!(
+            AttemptType::from_str("SERVICE_ACCOUNT_TOKEN"),
+            AttemptType::ServiceAccountToken
+        );
         // Unknown falls back to UserLogin
         assert_eq!(AttemptType::from_str("UNKNOWN"), AttemptType::UserLogin);
         for t in [AttemptType::UserLogin, AttemptType::ServiceAccountToken] {

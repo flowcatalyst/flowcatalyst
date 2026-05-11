@@ -63,9 +63,9 @@
 //! ```
 
 // Use case pattern (UnitOfWork + DomainEvent + PgPersist)
-pub mod unit_of_work;
 pub mod payload;
 pub mod schema;
+pub mod unit_of_work;
 
 // Simple outbox pattern (OutboxManager + DTOs + Driver)
 pub mod driver;
@@ -75,20 +75,18 @@ pub mod sqlx_pg_driver;
 
 // ─── Full DDD pattern re-exports ────────────────────────────────────────────
 
-pub use unit_of_work::{
-    OutboxUnitOfWork, OutboxConfig, InMemoryUnitOfWork,
-    UnitOfWork, HasId, PgPersist, PgAggregate,
-};
 pub use payload::{
-    DispatchJobPayload, AuditLogPayload,
-    write_dispatch_job, write_event, write_audit_log,
-    emit_event, emit_dispatch_job, emit_audit_log,
+    emit_audit_log, emit_dispatch_job, emit_event, write_audit_log, write_dispatch_job,
+    write_event, AuditLogPayload, DispatchJobPayload,
 };
 pub use schema::{init_outbox_schema, init_outbox_schema_with_table, CREATE_OUTBOX_TABLE_SQL};
+pub use unit_of_work::{
+    HasId, InMemoryUnitOfWork, OutboxConfig, OutboxUnitOfWork, PgAggregate, PgPersist, UnitOfWork,
+};
 
 // ─── Simple outbox pattern re-exports ───────────────────────────────────────
 
-pub use driver::{OutboxDriver, OutboxMessage, OutboxStatus, MessageType};
-pub use dto::{CreateEventDto, CreateDispatchJobDto, CreateAuditLogDto, ContextDataEntry};
+pub use driver::{MessageType, OutboxDriver, OutboxMessage, OutboxStatus};
+pub use dto::{ContextDataEntry, CreateAuditLogDto, CreateDispatchJobDto, CreateEventDto};
 pub use manager::OutboxManager;
 pub use sqlx_pg_driver::SqlxPgDriver;

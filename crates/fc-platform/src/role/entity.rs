@@ -2,8 +2,8 @@
 //!
 //! Authorization model for role-based access control.
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 /// Role source - where the role definition came from
@@ -19,7 +19,6 @@ pub enum RoleSource {
     /// Synced from external SDK/IDP
     Sdk,
 }
-
 
 impl RoleSource {
     pub fn as_str(&self) -> &str {
@@ -159,7 +158,10 @@ impl AuthRole {
         self
     }
 
-    pub fn with_permissions(mut self, permissions: impl IntoIterator<Item = impl Into<String>>) -> Self {
+    pub fn with_permissions(
+        mut self,
+        permissions: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
         for p in permissions {
             self.permissions.insert(p.into());
         }
@@ -319,7 +321,8 @@ pub mod permissions {
         pub const SCHEDULED_JOB_FIRE: &str = "platform:messaging:scheduled-job:fire";
         pub const SCHEDULED_JOB_MANAGE: &str = "platform:messaging:scheduled-job:manage";
         pub const SCHEDULED_JOB_SYNC: &str = "platform:messaging:scheduled-job:sync";
-        pub const SCHEDULED_JOB_INSTANCE_READ: &str = "platform:messaging:scheduled-job-instance:view";
+        pub const SCHEDULED_JOB_INSTANCE_READ: &str =
+            "platform:messaging:scheduled-job-instance:view";
 
         // Identity provider management (iam context in DB)
         pub const IDENTITY_PROVIDER_READ: &str = "platform:iam:idp:view";
@@ -364,28 +367,91 @@ pub mod permissions {
 
         /// All admin permissions
         pub const ALL: &[&str] = &[
-            CLIENT_READ, CLIENT_CREATE, CLIENT_UPDATE, CLIENT_DELETE, CLIENT_MANAGE,
-            CLIENT_ACTIVATE, CLIENT_SUSPEND, CLIENT_DEACTIVATE,
-            ANCHOR_DOMAIN_READ, ANCHOR_DOMAIN_CREATE, ANCHOR_DOMAIN_UPDATE, ANCHOR_DOMAIN_DELETE, ANCHOR_DOMAIN_MANAGE,
-            APPLICATION_READ, APPLICATION_CREATE, APPLICATION_UPDATE, APPLICATION_DELETE, APPLICATION_MANAGE,
-            APPLICATION_ACTIVATE, APPLICATION_DEACTIVATE, APPLICATION_ENABLE_CLIENT, APPLICATION_DISABLE_CLIENT,
-            EVENT_TYPE_READ, EVENT_TYPE_CREATE, EVENT_TYPE_UPDATE, EVENT_TYPE_DELETE, EVENT_TYPE_MANAGE,
-            EVENT_TYPE_ARCHIVE, EVENT_TYPE_MANAGE_SCHEMA, EVENT_TYPE_SYNC,
-            DISPATCH_POOL_READ, DISPATCH_POOL_CREATE, DISPATCH_POOL_UPDATE, DISPATCH_POOL_DELETE, DISPATCH_POOL_MANAGE, DISPATCH_POOL_SYNC,
-            CONNECTION_READ, CONNECTION_CREATE, CONNECTION_UPDATE, CONNECTION_DELETE, CONNECTION_MANAGE,
-            SUBSCRIPTION_READ, SUBSCRIPTION_CREATE, SUBSCRIPTION_UPDATE, SUBSCRIPTION_DELETE, SUBSCRIPTION_MANAGE, SUBSCRIPTION_SYNC,
-            EVENT_READ, EVENT_VIEW_RAW,
-            DISPATCH_JOB_READ, DISPATCH_JOB_VIEW_RAW,
-            SCHEDULED_JOB_READ, SCHEDULED_JOB_CREATE, SCHEDULED_JOB_UPDATE, SCHEDULED_JOB_DELETE,
-            SCHEDULED_JOB_PAUSE, SCHEDULED_JOB_FIRE, SCHEDULED_JOB_MANAGE, SCHEDULED_JOB_SYNC,
+            CLIENT_READ,
+            CLIENT_CREATE,
+            CLIENT_UPDATE,
+            CLIENT_DELETE,
+            CLIENT_MANAGE,
+            CLIENT_ACTIVATE,
+            CLIENT_SUSPEND,
+            CLIENT_DEACTIVATE,
+            ANCHOR_DOMAIN_READ,
+            ANCHOR_DOMAIN_CREATE,
+            ANCHOR_DOMAIN_UPDATE,
+            ANCHOR_DOMAIN_DELETE,
+            ANCHOR_DOMAIN_MANAGE,
+            APPLICATION_READ,
+            APPLICATION_CREATE,
+            APPLICATION_UPDATE,
+            APPLICATION_DELETE,
+            APPLICATION_MANAGE,
+            APPLICATION_ACTIVATE,
+            APPLICATION_DEACTIVATE,
+            APPLICATION_ENABLE_CLIENT,
+            APPLICATION_DISABLE_CLIENT,
+            EVENT_TYPE_READ,
+            EVENT_TYPE_CREATE,
+            EVENT_TYPE_UPDATE,
+            EVENT_TYPE_DELETE,
+            EVENT_TYPE_MANAGE,
+            EVENT_TYPE_ARCHIVE,
+            EVENT_TYPE_MANAGE_SCHEMA,
+            EVENT_TYPE_SYNC,
+            DISPATCH_POOL_READ,
+            DISPATCH_POOL_CREATE,
+            DISPATCH_POOL_UPDATE,
+            DISPATCH_POOL_DELETE,
+            DISPATCH_POOL_MANAGE,
+            DISPATCH_POOL_SYNC,
+            CONNECTION_READ,
+            CONNECTION_CREATE,
+            CONNECTION_UPDATE,
+            CONNECTION_DELETE,
+            CONNECTION_MANAGE,
+            SUBSCRIPTION_READ,
+            SUBSCRIPTION_CREATE,
+            SUBSCRIPTION_UPDATE,
+            SUBSCRIPTION_DELETE,
+            SUBSCRIPTION_MANAGE,
+            SUBSCRIPTION_SYNC,
+            EVENT_READ,
+            EVENT_VIEW_RAW,
+            DISPATCH_JOB_READ,
+            DISPATCH_JOB_VIEW_RAW,
+            SCHEDULED_JOB_READ,
+            SCHEDULED_JOB_CREATE,
+            SCHEDULED_JOB_UPDATE,
+            SCHEDULED_JOB_DELETE,
+            SCHEDULED_JOB_PAUSE,
+            SCHEDULED_JOB_FIRE,
+            SCHEDULED_JOB_MANAGE,
+            SCHEDULED_JOB_SYNC,
             SCHEDULED_JOB_INSTANCE_READ,
-            IDENTITY_PROVIDER_READ, IDENTITY_PROVIDER_CREATE, IDENTITY_PROVIDER_UPDATE, IDENTITY_PROVIDER_DELETE, IDENTITY_PROVIDER_MANAGE,
-            EMAIL_DOMAIN_MAPPING_READ, EMAIL_DOMAIN_MAPPING_CREATE, EMAIL_DOMAIN_MAPPING_UPDATE, EMAIL_DOMAIN_MAPPING_DELETE, EMAIL_DOMAIN_MAPPING_MANAGE,
-            SERVICE_ACCOUNT_READ, SERVICE_ACCOUNT_CREATE, SERVICE_ACCOUNT_UPDATE, SERVICE_ACCOUNT_DELETE, SERVICE_ACCOUNT_MANAGE,
-            CORS_ORIGIN_READ, CORS_ORIGIN_CREATE, CORS_ORIGIN_DELETE, CORS_ORIGIN_MANAGE,
+            IDENTITY_PROVIDER_READ,
+            IDENTITY_PROVIDER_CREATE,
+            IDENTITY_PROVIDER_UPDATE,
+            IDENTITY_PROVIDER_DELETE,
+            IDENTITY_PROVIDER_MANAGE,
+            EMAIL_DOMAIN_MAPPING_READ,
+            EMAIL_DOMAIN_MAPPING_CREATE,
+            EMAIL_DOMAIN_MAPPING_UPDATE,
+            EMAIL_DOMAIN_MAPPING_DELETE,
+            EMAIL_DOMAIN_MAPPING_MANAGE,
+            SERVICE_ACCOUNT_READ,
+            SERVICE_ACCOUNT_CREATE,
+            SERVICE_ACCOUNT_UPDATE,
+            SERVICE_ACCOUNT_DELETE,
+            SERVICE_ACCOUNT_MANAGE,
+            CORS_ORIGIN_READ,
+            CORS_ORIGIN_CREATE,
+            CORS_ORIGIN_DELETE,
+            CORS_ORIGIN_MANAGE,
             LOGIN_ATTEMPT_READ,
-            AUDIT_LOG_READ, AUDIT_LOG_EXPORT,
-            BATCH_EVENTS_WRITE, BATCH_DISPATCH_JOBS_WRITE, BATCH_AUDIT_LOGS_WRITE,
+            AUDIT_LOG_READ,
+            AUDIT_LOG_EXPORT,
+            BATCH_EVENTS_WRITE,
+            BATCH_DISPATCH_JOBS_WRITE,
+            BATCH_AUDIT_LOGS_WRITE,
         ];
     }
 
@@ -425,12 +491,28 @@ pub mod permissions {
 
         /// All IAM permissions
         pub const ALL: &[&str] = &[
-            USER_READ, USER_CREATE, USER_UPDATE, USER_DELETE, USER_MANAGE,
-            USER_ACTIVATE, USER_DEACTIVATE, USER_ASSIGN_ROLES,
-            ROLE_READ, ROLE_CREATE, ROLE_UPDATE, ROLE_DELETE, ROLE_MANAGE,
-            CLIENT_ACCESS_GRANT, CLIENT_ACCESS_REVOKE, CLIENT_ACCESS_READ,
+            USER_READ,
+            USER_CREATE,
+            USER_UPDATE,
+            USER_DELETE,
+            USER_MANAGE,
+            USER_ACTIVATE,
+            USER_DEACTIVATE,
+            USER_ASSIGN_ROLES,
+            ROLE_READ,
+            ROLE_CREATE,
+            ROLE_UPDATE,
+            ROLE_DELETE,
+            ROLE_MANAGE,
+            CLIENT_ACCESS_GRANT,
+            CLIENT_ACCESS_REVOKE,
+            CLIENT_ACCESS_READ,
             PERMISSION_READ,
-            AUTH_CONFIG_READ, AUTH_CONFIG_CREATE, AUTH_CONFIG_UPDATE, AUTH_CONFIG_DELETE, AUTH_CONFIG_MANAGE,
+            AUTH_CONFIG_READ,
+            AUTH_CONFIG_CREATE,
+            AUTH_CONFIG_UPDATE,
+            AUTH_CONFIG_DELETE,
+            AUTH_CONFIG_MANAGE,
         ];
     }
 
@@ -449,14 +531,22 @@ pub mod permissions {
         pub const OAUTH_CLIENT_UPDATE: &str = "platform:auth:oauth-client:update";
         pub const OAUTH_CLIENT_DELETE: &str = "platform:auth:oauth-client:delete";
         pub const OAUTH_CLIENT_MANAGE: &str = "platform:auth:oauth-client:manage";
-        pub const OAUTH_CLIENT_REGENERATE_SECRET: &str = "platform:auth:oauth-client:regenerate-secret";
+        pub const OAUTH_CLIENT_REGENERATE_SECRET: &str =
+            "platform:auth:oauth-client:regenerate-secret";
 
         /// All auth permissions
         pub const ALL: &[&str] = &[
-            CLIENT_AUTH_CONFIG_READ, CLIENT_AUTH_CONFIG_CREATE, CLIENT_AUTH_CONFIG_UPDATE,
-            CLIENT_AUTH_CONFIG_DELETE, CLIENT_AUTH_CONFIG_MANAGE,
-            OAUTH_CLIENT_READ, OAUTH_CLIENT_CREATE, OAUTH_CLIENT_UPDATE,
-            OAUTH_CLIENT_DELETE, OAUTH_CLIENT_MANAGE, OAUTH_CLIENT_REGENERATE_SECRET,
+            CLIENT_AUTH_CONFIG_READ,
+            CLIENT_AUTH_CONFIG_CREATE,
+            CLIENT_AUTH_CONFIG_UPDATE,
+            CLIENT_AUTH_CONFIG_DELETE,
+            CLIENT_AUTH_CONFIG_MANAGE,
+            OAUTH_CLIENT_READ,
+            OAUTH_CLIENT_CREATE,
+            OAUTH_CLIENT_UPDATE,
+            OAUTH_CLIENT_DELETE,
+            OAUTH_CLIENT_MANAGE,
+            OAUTH_CLIENT_REGENERATE_SECRET,
         ];
     }
 
@@ -486,17 +576,27 @@ pub mod permissions {
         pub const SCHEDULED_JOB_INSTANCE_WRITE: &str =
             "platform:application-service:scheduled-job-instance:write";
         // Scheduled job: SDK sync of definitions
-        pub const SCHEDULED_JOB_SYNC: &str =
-            "platform:application-service:scheduled-job:sync";
+        pub const SCHEDULED_JOB_SYNC: &str = "platform:application-service:scheduled-job:sync";
 
         /// All application service permissions
         pub const ALL: &[&str] = &[
             EVENT_CREATE,
-            EVENT_TYPE_READ, EVENT_TYPE_CREATE, EVENT_TYPE_UPDATE, EVENT_TYPE_DELETE,
-            SUBSCRIPTION_READ, SUBSCRIPTION_CREATE, SUBSCRIPTION_UPDATE, SUBSCRIPTION_DELETE,
-            ROLE_READ, ROLE_CREATE, ROLE_UPDATE, ROLE_DELETE,
-            PERMISSION_READ, PERMISSION_SYNC,
-            SCHEDULED_JOB_INSTANCE_WRITE, SCHEDULED_JOB_SYNC,
+            EVENT_TYPE_READ,
+            EVENT_TYPE_CREATE,
+            EVENT_TYPE_UPDATE,
+            EVENT_TYPE_DELETE,
+            SUBSCRIPTION_READ,
+            SUBSCRIPTION_CREATE,
+            SUBSCRIPTION_UPDATE,
+            SUBSCRIPTION_DELETE,
+            ROLE_READ,
+            ROLE_CREATE,
+            ROLE_UPDATE,
+            ROLE_DELETE,
+            PERMISSION_READ,
+            PERMISSION_SYNC,
+            SCHEDULED_JOB_INSTANCE_WRITE,
+            SCHEDULED_JOB_SYNC,
         ];
     }
 
@@ -508,22 +608,22 @@ pub mod permissions {
     // These allow existing code to compile while we migrate references.
     // =========================================================================
     pub mod messaging {
-        pub use super::admin::EVENT_READ as EVENT_VIEW;
-        pub use super::admin::EVENT_VIEW_RAW;
-        pub use super::admin::EVENT_TYPE_READ as EVENT_TYPE_VIEW;
-        pub use super::admin::EVENT_TYPE_CREATE;
-        pub use super::admin::EVENT_TYPE_UPDATE;
-        pub use super::admin::EVENT_TYPE_DELETE;
-        pub use super::admin::SUBSCRIPTION_READ as SUBSCRIPTION_VIEW;
-        pub use super::admin::SUBSCRIPTION_CREATE;
-        pub use super::admin::SUBSCRIPTION_UPDATE;
-        pub use super::admin::SUBSCRIPTION_DELETE;
         pub use super::admin::DISPATCH_JOB_READ as DISPATCH_JOB_VIEW;
         pub use super::admin::DISPATCH_JOB_VIEW_RAW;
-        pub use super::admin::DISPATCH_POOL_READ as DISPATCH_POOL_VIEW;
         pub use super::admin::DISPATCH_POOL_CREATE;
-        pub use super::admin::DISPATCH_POOL_UPDATE;
         pub use super::admin::DISPATCH_POOL_DELETE;
+        pub use super::admin::DISPATCH_POOL_READ as DISPATCH_POOL_VIEW;
+        pub use super::admin::DISPATCH_POOL_UPDATE;
+        pub use super::admin::EVENT_READ as EVENT_VIEW;
+        pub use super::admin::EVENT_TYPE_CREATE;
+        pub use super::admin::EVENT_TYPE_DELETE;
+        pub use super::admin::EVENT_TYPE_READ as EVENT_TYPE_VIEW;
+        pub use super::admin::EVENT_TYPE_UPDATE;
+        pub use super::admin::EVENT_VIEW_RAW;
+        pub use super::admin::SUBSCRIPTION_CREATE;
+        pub use super::admin::SUBSCRIPTION_DELETE;
+        pub use super::admin::SUBSCRIPTION_READ as SUBSCRIPTION_VIEW;
+        pub use super::admin::SUBSCRIPTION_UPDATE;
         // These don't have direct equivalents in admin — provide stubs
         pub const EVENT_CREATE: &str = "platform:messaging:event:create";
         pub const DISPATCH_JOB_CREATE: &str = "platform:messaging:dispatch-job:create";
@@ -549,15 +649,24 @@ pub mod roles {
             .with_description("Manages clients, applications, and platform configuration")
             .with_source(RoleSource::Code)
             .with_permissions([
-                permissions::admin::CLIENT_READ, permissions::admin::CLIENT_CREATE,
-                permissions::admin::CLIENT_UPDATE, permissions::admin::CLIENT_ACTIVATE,
-                permissions::admin::CLIENT_SUSPEND, permissions::admin::CLIENT_DEACTIVATE,
-                permissions::admin::ANCHOR_DOMAIN_READ, permissions::admin::ANCHOR_DOMAIN_CREATE,
-                permissions::admin::ANCHOR_DOMAIN_UPDATE, permissions::admin::ANCHOR_DOMAIN_DELETE,
-                permissions::admin::APPLICATION_READ, permissions::admin::APPLICATION_CREATE,
-                permissions::admin::APPLICATION_UPDATE, permissions::admin::APPLICATION_DELETE,
-                permissions::admin::APPLICATION_ENABLE_CLIENT, permissions::admin::APPLICATION_DISABLE_CLIENT,
-                permissions::admin::AUDIT_LOG_READ, permissions::admin::AUDIT_LOG_EXPORT,
+                permissions::admin::CLIENT_READ,
+                permissions::admin::CLIENT_CREATE,
+                permissions::admin::CLIENT_UPDATE,
+                permissions::admin::CLIENT_ACTIVATE,
+                permissions::admin::CLIENT_SUSPEND,
+                permissions::admin::CLIENT_DEACTIVATE,
+                permissions::admin::ANCHOR_DOMAIN_READ,
+                permissions::admin::ANCHOR_DOMAIN_CREATE,
+                permissions::admin::ANCHOR_DOMAIN_UPDATE,
+                permissions::admin::ANCHOR_DOMAIN_DELETE,
+                permissions::admin::APPLICATION_READ,
+                permissions::admin::APPLICATION_CREATE,
+                permissions::admin::APPLICATION_UPDATE,
+                permissions::admin::APPLICATION_DELETE,
+                permissions::admin::APPLICATION_ENABLE_CLIENT,
+                permissions::admin::APPLICATION_DISABLE_CLIENT,
+                permissions::admin::AUDIT_LOG_READ,
+                permissions::admin::AUDIT_LOG_EXPORT,
                 permissions::admin::LOGIN_ATTEMPT_READ,
             ])
     }
@@ -565,7 +674,9 @@ pub mod roles {
     /// PLATFORM_ADMIN_READONLY — view-only access to clients, applications, config
     pub fn platform_admin_readonly() -> AuthRole {
         AuthRole::new("platform", "admin-readonly", "Platform Admin Read-Only")
-            .with_description("View-only access to clients, applications, and platform configuration")
+            .with_description(
+                "View-only access to clients, applications, and platform configuration",
+            )
             .with_source(RoleSource::Code)
             .with_permissions([
                 permissions::admin::CLIENT_READ,
@@ -582,13 +693,19 @@ pub mod roles {
             .with_description("Manages users, roles, and access control")
             .with_source(RoleSource::Code)
             .with_permissions([
-                permissions::iam::USER_READ, permissions::iam::USER_CREATE,
-                permissions::iam::USER_UPDATE, permissions::iam::USER_DELETE,
-                permissions::iam::USER_ACTIVATE, permissions::iam::USER_DEACTIVATE,
+                permissions::iam::USER_READ,
+                permissions::iam::USER_CREATE,
+                permissions::iam::USER_UPDATE,
+                permissions::iam::USER_DELETE,
+                permissions::iam::USER_ACTIVATE,
+                permissions::iam::USER_DEACTIVATE,
                 permissions::iam::USER_ASSIGN_ROLES,
-                permissions::iam::ROLE_READ, permissions::iam::ROLE_CREATE,
-                permissions::iam::ROLE_UPDATE, permissions::iam::ROLE_DELETE,
-                permissions::iam::CLIENT_ACCESS_GRANT, permissions::iam::CLIENT_ACCESS_REVOKE,
+                permissions::iam::ROLE_READ,
+                permissions::iam::ROLE_CREATE,
+                permissions::iam::ROLE_UPDATE,
+                permissions::iam::ROLE_DELETE,
+                permissions::iam::CLIENT_ACCESS_GRANT,
+                permissions::iam::CLIENT_ACCESS_REVOKE,
                 permissions::iam::CLIENT_ACCESS_READ,
             ])
     }
@@ -611,10 +728,14 @@ pub mod roles {
             .with_description("Manages authentication configuration")
             .with_source(RoleSource::Code)
             .with_permissions([
-                permissions::auth::CLIENT_AUTH_CONFIG_READ, permissions::auth::CLIENT_AUTH_CONFIG_CREATE,
-                permissions::auth::CLIENT_AUTH_CONFIG_UPDATE, permissions::auth::CLIENT_AUTH_CONFIG_DELETE,
-                permissions::auth::OAUTH_CLIENT_READ, permissions::auth::OAUTH_CLIENT_CREATE,
-                permissions::auth::OAUTH_CLIENT_UPDATE, permissions::auth::OAUTH_CLIENT_DELETE,
+                permissions::auth::CLIENT_AUTH_CONFIG_READ,
+                permissions::auth::CLIENT_AUTH_CONFIG_CREATE,
+                permissions::auth::CLIENT_AUTH_CONFIG_UPDATE,
+                permissions::auth::CLIENT_AUTH_CONFIG_DELETE,
+                permissions::auth::OAUTH_CLIENT_READ,
+                permissions::auth::OAUTH_CLIENT_CREATE,
+                permissions::auth::OAUTH_CLIENT_UPDATE,
+                permissions::auth::OAUTH_CLIENT_DELETE,
                 permissions::auth::OAUTH_CLIENT_REGENERATE_SECRET,
             ])
     }
@@ -633,7 +754,9 @@ pub mod roles {
     /// PLATFORM_AI_AGENT_READONLY — read-only for AI agent integrations
     pub fn ai_agent_readonly() -> AuthRole {
         AuthRole::new("platform", "ai-agent-readonly", "AI Agent Read-Only")
-            .with_description("Read-only access to event types and subscriptions for AI agent integrations")
+            .with_description(
+                "Read-only access to event types and subscriptions for AI agent integrations",
+            )
             .with_source(RoleSource::Code)
             .with_permissions([
                 permissions::admin::EVENT_TYPE_READ,
@@ -644,26 +767,42 @@ pub mod roles {
     /// Messaging admin — manages event types, subscriptions, dispatch, scheduled jobs
     pub fn messaging_admin() -> AuthRole {
         AuthRole::new("platform", "messaging-admin", "Messaging Administrator")
-            .with_description("Manages event types, subscriptions, dispatch jobs, and scheduled jobs")
+            .with_description(
+                "Manages event types, subscriptions, dispatch jobs, and scheduled jobs",
+            )
             .with_source(RoleSource::Code)
             .with_permissions([
-                permissions::admin::EVENT_TYPE_READ, permissions::admin::EVENT_TYPE_CREATE,
-                permissions::admin::EVENT_TYPE_UPDATE, permissions::admin::EVENT_TYPE_DELETE,
-                permissions::admin::EVENT_TYPE_ARCHIVE, permissions::admin::EVENT_TYPE_MANAGE_SCHEMA,
+                permissions::admin::EVENT_TYPE_READ,
+                permissions::admin::EVENT_TYPE_CREATE,
+                permissions::admin::EVENT_TYPE_UPDATE,
+                permissions::admin::EVENT_TYPE_DELETE,
+                permissions::admin::EVENT_TYPE_ARCHIVE,
+                permissions::admin::EVENT_TYPE_MANAGE_SCHEMA,
                 permissions::admin::EVENT_TYPE_SYNC,
-                permissions::admin::SUBSCRIPTION_READ, permissions::admin::SUBSCRIPTION_CREATE,
-                permissions::admin::SUBSCRIPTION_UPDATE, permissions::admin::SUBSCRIPTION_DELETE,
+                permissions::admin::SUBSCRIPTION_READ,
+                permissions::admin::SUBSCRIPTION_CREATE,
+                permissions::admin::SUBSCRIPTION_UPDATE,
+                permissions::admin::SUBSCRIPTION_DELETE,
                 permissions::admin::SUBSCRIPTION_SYNC,
-                permissions::admin::DISPATCH_POOL_READ, permissions::admin::DISPATCH_POOL_CREATE,
-                permissions::admin::DISPATCH_POOL_UPDATE, permissions::admin::DISPATCH_POOL_DELETE,
+                permissions::admin::DISPATCH_POOL_READ,
+                permissions::admin::DISPATCH_POOL_CREATE,
+                permissions::admin::DISPATCH_POOL_UPDATE,
+                permissions::admin::DISPATCH_POOL_DELETE,
                 permissions::admin::DISPATCH_POOL_SYNC,
-                permissions::admin::CONNECTION_READ, permissions::admin::CONNECTION_CREATE,
-                permissions::admin::CONNECTION_UPDATE, permissions::admin::CONNECTION_DELETE,
-                permissions::admin::EVENT_READ, permissions::admin::EVENT_VIEW_RAW,
-                permissions::admin::DISPATCH_JOB_READ, permissions::admin::DISPATCH_JOB_VIEW_RAW,
-                permissions::admin::SCHEDULED_JOB_READ, permissions::admin::SCHEDULED_JOB_CREATE,
-                permissions::admin::SCHEDULED_JOB_UPDATE, permissions::admin::SCHEDULED_JOB_DELETE,
-                permissions::admin::SCHEDULED_JOB_PAUSE, permissions::admin::SCHEDULED_JOB_FIRE,
+                permissions::admin::CONNECTION_READ,
+                permissions::admin::CONNECTION_CREATE,
+                permissions::admin::CONNECTION_UPDATE,
+                permissions::admin::CONNECTION_DELETE,
+                permissions::admin::EVENT_READ,
+                permissions::admin::EVENT_VIEW_RAW,
+                permissions::admin::DISPATCH_JOB_READ,
+                permissions::admin::DISPATCH_JOB_VIEW_RAW,
+                permissions::admin::SCHEDULED_JOB_READ,
+                permissions::admin::SCHEDULED_JOB_CREATE,
+                permissions::admin::SCHEDULED_JOB_UPDATE,
+                permissions::admin::SCHEDULED_JOB_DELETE,
+                permissions::admin::SCHEDULED_JOB_PAUSE,
+                permissions::admin::SCHEDULED_JOB_FIRE,
                 permissions::admin::SCHEDULED_JOB_SYNC,
                 permissions::admin::SCHEDULED_JOB_INSTANCE_READ,
             ])
@@ -695,9 +834,15 @@ pub mod roles {
 
     /// Application service — auto-assigned to application service accounts
     pub fn application_service() -> AuthRole {
-        let mut role = AuthRole::new("platform", "application-service", "Application Service Account")
-            .with_description("Permissions for application service accounts (scoped to own application)")
-            .with_source(RoleSource::Code);
+        let mut role = AuthRole::new(
+            "platform",
+            "application-service",
+            "Application Service Account",
+        )
+        .with_description(
+            "Permissions for application service accounts (scoped to own application)",
+        )
+        .with_source(RoleSource::Code);
         for p in permissions::application_service::ALL {
             role.permissions.insert((*p).to_string());
         }
@@ -729,17 +874,35 @@ mod tests {
     #[test]
     fn test_matches_pattern() {
         // Exact match
-        assert!(matches_pattern("platform:admin:client:read", "platform:admin:client:read"));
+        assert!(matches_pattern(
+            "platform:admin:client:read",
+            "platform:admin:client:read"
+        ));
         // Action wildcard
-        assert!(matches_pattern("platform:admin:client:read", "platform:admin:client:*"));
+        assert!(matches_pattern(
+            "platform:admin:client:read",
+            "platform:admin:client:*"
+        ));
         // Aggregate + action wildcard
-        assert!(matches_pattern("platform:admin:client:read", "platform:admin:*:*"));
+        assert!(matches_pattern(
+            "platform:admin:client:read",
+            "platform:admin:*:*"
+        ));
         // Full wildcard
-        assert!(matches_pattern("platform:admin:client:read", "platform:*:*:*"));
+        assert!(matches_pattern(
+            "platform:admin:client:read",
+            "platform:*:*:*"
+        ));
         // Non-match
-        assert!(!matches_pattern("platform:admin:client:read", "platform:iam:client:read"));
+        assert!(!matches_pattern(
+            "platform:admin:client:read",
+            "platform:iam:client:read"
+        ));
         // Wrong part count
-        assert!(!matches_pattern("platform:admin:client:read", "platform:admin:*"));
+        assert!(!matches_pattern(
+            "platform:admin:client:read",
+            "platform:admin:*"
+        ));
         assert!(!matches_pattern("platform:admin", "platform:admin:*:*"));
     }
 

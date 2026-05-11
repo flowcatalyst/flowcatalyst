@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use chrono::{DateTime, Duration, Utc};
 use reqwest::Client;
 use serde::Deserialize;

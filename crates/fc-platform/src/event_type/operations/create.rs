@@ -2,16 +2,14 @@
 //!
 //! Use case for creating a new event type.
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::EventTypeCreated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 use crate::EventType;
 use crate::EventTypeRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::EventTypeCreated;
 
 /// Command for creating a new event type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,7 +34,6 @@ pub struct CreateEventTypeCommand {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub schema: Option<serde_json::Value>,
 }
-
 
 /// Use case for creating a new event type.
 ///
@@ -63,10 +60,7 @@ pub struct CreateEventTypeUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> CreateEventTypeUseCase<U> {
-    pub fn new(
-        event_type_repo: Arc<EventTypeRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
+    pub fn new(event_type_repo: Arc<EventTypeRepository>, unit_of_work: Arc<U>) -> Self {
         Self {
             event_type_repo,
             unit_of_work,
@@ -125,7 +119,11 @@ impl<U: UnitOfWork> UseCase for CreateEventTypeUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &CreateEventTypeCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &CreateEventTypeCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -159,10 +157,7 @@ impl<U: UnitOfWork> UseCase for CreateEventTypeUseCase<U> {
                 et
             }
             Err(e) => {
-                return UseCaseResult::failure(UseCaseError::validation(
-                    "INVALID_CODE_FORMAT",
-                    e,
-                ));
+                return UseCaseResult::failure(UseCaseError::validation("INVALID_CODE_FORMAT", e));
             }
         };
 
@@ -208,9 +203,6 @@ impl<U: UnitOfWork> UseCase for CreateEventTypeUseCase<U> {
 mod tests {
     use super::*;
     use crate::usecase::unit_of_work::HasId;
-
-
-
 
     // Helper to create a mock repository
     // For now, we'll just test the validation logic

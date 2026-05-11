@@ -14,7 +14,7 @@
 //! Frontend renders the message-plane numbers with a `~` prefix to make the
 //! approximation explicit.
 
-use axum::{routing::get, extract::State, Json, Router};
+use axum::{extract::State, routing::get, Json, Router};
 use serde::Serialize;
 use sqlx::PgPool;
 use utoipa::ToSchema;
@@ -88,12 +88,11 @@ pub async fn get_dashboard_stats(
         .fetch_one(&state.pool)
         .await
         .map_err(|e| PlatformError::internal(format!("count clients: {}", e)))?;
-    let (active_users,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM iam_principals WHERE type = 'USER' AND active = TRUE",
-    )
-    .fetch_one(&state.pool)
-    .await
-    .map_err(|e| PlatformError::internal(format!("count users: {}", e)))?;
+    let (active_users,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM iam_principals WHERE type = 'USER' AND active = TRUE")
+            .fetch_one(&state.pool)
+            .await
+            .map_err(|e| PlatformError::internal(format!("count users: {}", e)))?;
     let (roles_defined,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM iam_roles")
         .fetch_one(&state.pool)
         .await
@@ -104,17 +103,19 @@ pub async fn get_dashboard_stats(
 
     // Message plane: planner estimates from pg_class. Tables are batched
     // into one query.
-    let mut by_name: std::collections::HashMap<String, u64> =
-        fetch_reltuples(&state.pool, &[
+    let mut by_name: std::collections::HashMap<String, u64> = fetch_reltuples(
+        &state.pool,
+        &[
             "msg_events",
             "msg_dispatch_jobs",
             "aud_logs",
             "iam_login_attempts",
-        ])
-        .await
-        .map_err(|e| PlatformError::internal(format!("Failed to read pg_class.reltuples: {}", e)))?
-        .into_iter()
-        .collect();
+        ],
+    )
+    .await
+    .map_err(|e| PlatformError::internal(format!("Failed to read pg_class.reltuples: {}", e)))?
+    .into_iter()
+    .collect();
 
     Ok(Json(DashboardStatsResponse {
         total_clients,

@@ -3,9 +3,9 @@
 //! Helpers for SDK applications that authenticate users via FlowCatalyst's
 //! OIDC server using the OAuth2 authorization code grant with PKCE.
 
-use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
 use base64::Engine;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use super::AuthError;
 
@@ -158,11 +158,7 @@ impl OAuthClient {
             urlencoded(&pkce.code_challenge),
         );
 
-        let params = AuthorizeParams {
-            pkce,
-            state,
-            nonce,
-        };
+        let params = AuthorizeParams { pkce, state, nonce };
 
         (url, params)
     }
@@ -202,7 +198,10 @@ impl OAuthClient {
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(AuthError::TokenExchange(format!("Token exchange failed: {}", body)));
+            return Err(AuthError::TokenExchange(format!(
+                "Token exchange failed: {}",
+                body
+            )));
         }
 
         resp.json()
@@ -237,7 +236,10 @@ impl OAuthClient {
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(AuthError::TokenExchange(format!("Token refresh failed: {}", body)));
+            return Err(AuthError::TokenExchange(format!(
+                "Token refresh failed: {}",
+                body
+            )));
         }
 
         resp.json()
@@ -250,10 +252,7 @@ impl OAuthClient {
         let base = self.config.issuer_url.trim_end_matches('/');
         let url = format!("{}/oauth/revoke", base);
 
-        let mut form = vec![
-            ("token", token),
-            ("client_id", &self.config.client_id),
-        ];
+        let mut form = vec![("token", token), ("client_id", &self.config.client_id)];
 
         let secret_ref;
         if let Some(ref secret) = self.config.client_secret {
@@ -272,24 +271,21 @@ impl OAuthClient {
         // Revocation always returns 200 per RFC 7009
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(AuthError::TokenExchange(format!("Token revocation failed: {}", body)));
+            return Err(AuthError::TokenExchange(format!(
+                "Token revocation failed: {}",
+                body
+            )));
         }
 
         Ok(())
     }
 
     /// Introspect a token to check validity (RFC 7662).
-    pub async fn introspect_token(
-        &self,
-        token: &str,
-    ) -> Result<IntrospectionResponse, AuthError> {
+    pub async fn introspect_token(&self, token: &str) -> Result<IntrospectionResponse, AuthError> {
         let base = self.config.issuer_url.trim_end_matches('/');
         let url = format!("{}/oauth/introspect", base);
 
-        let mut form = vec![
-            ("token", token),
-            ("client_id", &self.config.client_id),
-        ];
+        let mut form = vec![("token", token), ("client_id", &self.config.client_id)];
 
         let secret_ref;
         if let Some(ref secret) = self.config.client_secret {
@@ -307,7 +303,10 @@ impl OAuthClient {
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(AuthError::TokenExchange(format!("Introspection failed: {}", body)));
+            return Err(AuthError::TokenExchange(format!(
+                "Introspection failed: {}",
+                body
+            )));
         }
 
         resp.json()
@@ -330,7 +329,10 @@ impl OAuthClient {
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(AuthError::TokenExchange(format!("UserInfo failed: {}", body)));
+            return Err(AuthError::TokenExchange(format!(
+                "UserInfo failed: {}",
+                body
+            )));
         }
 
         resp.json()
@@ -341,7 +343,11 @@ impl OAuthClient {
     /// Build the RP-Initiated Logout URL.
     ///
     /// Redirect the user to this URL to end their session at FlowCatalyst.
-    pub fn logout_url(&self, post_logout_redirect_uri: Option<&str>, state: Option<&str>) -> String {
+    pub fn logout_url(
+        &self,
+        post_logout_redirect_uri: Option<&str>,
+        state: Option<&str>,
+    ) -> String {
         let base = self.config.issuer_url.trim_end_matches('/');
         let mut url = format!("{}/auth/oidc/session/end", base);
 
@@ -506,7 +512,10 @@ mod tests {
         assert!(url.contains("redirect_uri="));
         assert!(url.contains("scope=openid%20profile"));
         assert!(url.contains("code_challenge_method=S256"));
-        assert!(url.contains(&format!("code_challenge={}", urlencoded(&params.pkce.code_challenge))));
+        assert!(url.contains(&format!(
+            "code_challenge={}",
+            urlencoded(&params.pkce.code_challenge)
+        )));
         assert!(url.contains(&format!("state={}", urlencoded(&params.state))));
         assert!(url.contains(&format!("nonce={}", urlencoded(&params.nonce))));
 

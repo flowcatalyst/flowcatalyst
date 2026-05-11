@@ -2,17 +2,15 @@
 //!
 //! Bulk creates/updates/archives dispatch pools from an application SDK.
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::DispatchPoolsSynced;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 use crate::DispatchPool;
 use crate::DispatchPoolRepository;
-use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
-};
-use super::events::DispatchPoolsSynced;
 
 fn pool_code_pattern() -> &'static Regex {
     static PATTERN: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
@@ -34,7 +32,9 @@ pub struct SyncDispatchPoolInput {
     pub concurrency: u32,
 }
 
-fn default_concurrency() -> u32 { 10 }
+fn default_concurrency() -> u32 {
+    10
+}
 
 /// Command for syncing dispatch pools from an application.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,10 +52,11 @@ pub struct SyncDispatchPoolsUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> SyncDispatchPoolsUseCase<U> {
-    pub fn new(dispatch_pool_repo: Arc<DispatchPoolRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
-        Self { dispatch_pool_repo, unit_of_work }
+    pub fn new(dispatch_pool_repo: Arc<DispatchPoolRepository>, unit_of_work: Arc<U>) -> Self {
+        Self {
+            dispatch_pool_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -67,7 +68,8 @@ impl<U: UnitOfWork> UseCase for SyncDispatchPoolsUseCase<U> {
     async fn validate(&self, command: &SyncDispatchPoolsCommand) -> Result<(), UseCaseError> {
         if command.application_code.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "APPLICATION_CODE_REQUIRED", "Application code is required",
+                "APPLICATION_CODE_REQUIRED",
+                "Application code is required",
             ));
         }
 
@@ -81,19 +83,22 @@ impl<U: UnitOfWork> UseCase for SyncDispatchPoolsUseCase<U> {
             }
             if input.name.trim().is_empty() {
                 return Err(UseCaseError::validation(
-                    "NAME_REQUIRED", "Pool name is required",
+                    "NAME_REQUIRED",
+                    "Pool name is required",
                 ));
             }
             if let Some(rl) = input.rate_limit {
                 if rl < 1 {
                     return Err(UseCaseError::validation(
-                        "INVALID_RATE_LIMIT", "Rate limit, when set, must be at least 1",
+                        "INVALID_RATE_LIMIT",
+                        "Rate limit, when set, must be at least 1",
                     ));
                 }
             }
             if input.concurrency < 1 {
                 return Err(UseCaseError::validation(
-                    "INVALID_CONCURRENCY", "Concurrency must be at least 1",
+                    "INVALID_CONCURRENCY",
+                    "Concurrency must be at least 1",
                 ));
             }
         }
@@ -101,7 +106,11 @@ impl<U: UnitOfWork> UseCase for SyncDispatchPoolsUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &SyncDispatchPoolsCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &SyncDispatchPoolsCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -115,7 +124,8 @@ impl<U: UnitOfWork> UseCase for SyncDispatchPoolsUseCase<U> {
             Ok(list) => list,
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch existing pools: {}", e
+                    "Failed to fetch existing pools: {}",
+                    e
                 )));
             }
         };
@@ -139,7 +149,8 @@ impl<U: UnitOfWork> UseCase for SyncDispatchPoolsUseCase<U> {
                     updated.updated_at = chrono::Utc::now();
                     if let Err(e) = self.dispatch_pool_repo.update(&updated).await {
                         return UseCaseResult::failure(UseCaseError::commit(format!(
-                            "Failed to update pool '{}': {}", input.code, e
+                            "Failed to update pool '{}': {}",
+                            input.code, e
                         )));
                     }
                     updated_count += 1;
@@ -151,7 +162,8 @@ impl<U: UnitOfWork> UseCase for SyncDispatchPoolsUseCase<U> {
                     pool.concurrency = input.concurrency as i32;
                     if let Err(e) = self.dispatch_pool_repo.insert(&pool).await {
                         return UseCaseResult::failure(UseCaseError::commit(format!(
-                            "Failed to create pool '{}': {}", input.code, e
+                            "Failed to create pool '{}': {}",
+                            input.code, e
                         )));
                     }
                     created_count += 1;
@@ -169,7 +181,8 @@ impl<U: UnitOfWork> UseCase for SyncDispatchPoolsUseCase<U> {
                     archived.archive();
                     if let Err(e) = self.dispatch_pool_repo.update(&archived).await {
                         return UseCaseResult::failure(UseCaseError::commit(format!(
-                            "Failed to archive pool '{}': {}", pool.code, e
+                            "Failed to archive pool '{}': {}",
+                            pool.code, e
                         )));
                     }
                     deleted_count += 1;

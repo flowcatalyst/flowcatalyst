@@ -2,16 +2,16 @@
 //!
 //! Handles authentication with external OIDC identity providers.
 
+use chrono::{DateTime, Utc};
+use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
 use tracing::info;
-use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 
-use crate::{Principal, UserScope, ExternalIdentity};
 use crate::shared::error::{PlatformError, Result};
+use crate::{ExternalIdentity, Principal, UserScope};
 
 /// OIDC provider discovery document
 #[derive(Debug, Clone, Deserialize)]
@@ -222,10 +222,12 @@ impl OidcService {
         nonce: Option<&str>,
     ) -> Result<String> {
         let providers = self.providers.read().await;
-        let provider = providers.get(provider_id).ok_or_else(|| PlatformError::NotFound {
-            entity_type: "OidcProvider".to_string(),
-            id: provider_id.to_string(),
-        })?;
+        let provider = providers
+            .get(provider_id)
+            .ok_or_else(|| PlatformError::NotFound {
+                entity_type: "OidcProvider".to_string(),
+                id: provider_id.to_string(),
+            })?;
 
         let scopes = provider.config.scopes.join(" ");
         let mut url = format!(
@@ -245,16 +247,14 @@ impl OidcService {
     }
 
     /// Exchange authorization code for tokens
-    pub async fn exchange_code(
-        &self,
-        provider_id: &str,
-        code: &str,
-    ) -> Result<TokenResponse> {
+    pub async fn exchange_code(&self, provider_id: &str, code: &str) -> Result<TokenResponse> {
         let providers = self.providers.read().await;
-        let provider = providers.get(provider_id).ok_or_else(|| PlatformError::NotFound {
-            entity_type: "OidcProvider".to_string(),
-            id: provider_id.to_string(),
-        })?;
+        let provider = providers
+            .get(provider_id)
+            .ok_or_else(|| PlatformError::NotFound {
+                entity_type: "OidcProvider".to_string(),
+                id: provider_id.to_string(),
+            })?;
 
         let mut params = vec![
             ("grant_type", "authorization_code"),
@@ -299,10 +299,12 @@ impl OidcService {
         expected_nonce: Option<&str>,
     ) -> Result<IdTokenClaims> {
         let providers = self.providers.read().await;
-        let provider = providers.get(provider_id).ok_or_else(|| PlatformError::NotFound {
-            entity_type: "OidcProvider".to_string(),
-            id: provider_id.to_string(),
-        })?;
+        let provider = providers
+            .get(provider_id)
+            .ok_or_else(|| PlatformError::NotFound {
+                entity_type: "OidcProvider".to_string(),
+                id: provider_id.to_string(),
+            })?;
 
         // Decode header to get kid
         let header = decode_header(id_token).map_err(|e| PlatformError::InvalidToken {
@@ -315,7 +317,10 @@ impl OidcService {
             .keys
             .iter()
             .find(|k| {
-                header.kid.as_ref().is_none_or(|kid| k.kid.as_ref() == Some(kid))
+                header
+                    .kid
+                    .as_ref()
+                    .is_none_or(|kid| k.kid.as_ref() == Some(kid))
             })
             .ok_or_else(|| PlatformError::InvalidToken {
                 message: "No matching key found in JWKS".to_string(),
@@ -347,9 +352,11 @@ impl OidcService {
         validation.set_audience(&[&provider.config.client_id]);
 
         // Decode and validate
-        let token_data = decode::<IdTokenClaims>(id_token, &decoding_key, &validation)
-            .map_err(|e| PlatformError::InvalidToken {
-                message: format!("Invalid ID token: {}", e),
+        let token_data =
+            decode::<IdTokenClaims>(id_token, &decoding_key, &validation).map_err(|e| {
+                PlatformError::InvalidToken {
+                    message: format!("Invalid ID token: {}", e),
+                }
             })?;
 
         let claims = token_data.claims;
@@ -380,10 +387,12 @@ impl OidcService {
         access_token: &str,
     ) -> Result<HashMap<String, serde_json::Value>> {
         let providers = self.providers.read().await;
-        let provider = providers.get(provider_id).ok_or_else(|| PlatformError::NotFound {
-            entity_type: "OidcProvider".to_string(),
-            id: provider_id.to_string(),
-        })?;
+        let provider = providers
+            .get(provider_id)
+            .ok_or_else(|| PlatformError::NotFound {
+                entity_type: "OidcProvider".to_string(),
+                id: provider_id.to_string(),
+            })?;
 
         let userinfo_endpoint = provider
             .discovery
@@ -417,10 +426,12 @@ impl OidcService {
     /// Refresh JWKS for a provider
     pub async fn refresh_jwks(&self, provider_id: &str) -> Result<()> {
         let providers = self.providers.read().await;
-        let provider = providers.get(provider_id).ok_or_else(|| PlatformError::NotFound {
-            entity_type: "OidcProvider".to_string(),
-            id: provider_id.to_string(),
-        })?;
+        let provider = providers
+            .get(provider_id)
+            .ok_or_else(|| PlatformError::NotFound {
+                entity_type: "OidcProvider".to_string(),
+                id: provider_id.to_string(),
+            })?;
 
         let jwks: Jwks = self
             .http_client
@@ -479,15 +490,20 @@ pub fn map_claims_to_principal(
     scope: UserScope,
     client_id: Option<String>,
 ) -> Principal {
-    let email = claims.email.clone().unwrap_or_else(|| format!("{}@{}", claims.sub, provider_id));
-    let name = claims.name.clone().unwrap_or_else(|| {
-        match (&claims.given_name, &claims.family_name) {
-            (Some(g), Some(f)) => format!("{} {}", g, f),
-            (Some(g), None) => g.clone(),
-            (None, Some(f)) => f.clone(),
-            _ => email.clone(),
-        }
-    });
+    let email = claims
+        .email
+        .clone()
+        .unwrap_or_else(|| format!("{}@{}", claims.sub, provider_id));
+    let name =
+        claims
+            .name
+            .clone()
+            .unwrap_or_else(|| match (&claims.given_name, &claims.family_name) {
+                (Some(g), Some(f)) => format!("{} {}", g, f),
+                (Some(g), None) => g.clone(),
+                (None, Some(f)) => f.clone(),
+                _ => email.clone(),
+            });
 
     let mut principal = Principal::new_user(&email, scope);
     principal.name = name;

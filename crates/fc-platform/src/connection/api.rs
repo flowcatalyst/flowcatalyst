@@ -1,17 +1,17 @@
 //! Connections Admin API
 
 use axum::{
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
     Json,
 };
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use super::entity::Connection;
 use super::repository::ConnectionRepository;
-use crate::shared::error::{PlatformError, NotFoundExt};
+use crate::shared::error::{NotFoundExt, PlatformError};
 use crate::shared::middleware::Authenticated;
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -86,9 +86,12 @@ pub struct ConnectionsQuery {
 #[derive(Clone)]
 pub struct ConnectionsState {
     pub connection_repo: Arc<ConnectionRepository>,
-    pub create_use_case: Arc<crate::connection::operations::CreateConnectionUseCase<crate::usecase::PgUnitOfWork>>,
-    pub update_use_case: Arc<crate::connection::operations::UpdateConnectionUseCase<crate::usecase::PgUnitOfWork>>,
-    pub delete_use_case: Arc<crate::connection::operations::DeleteConnectionUseCase<crate::usecase::PgUnitOfWork>>,
+    pub create_use_case:
+        Arc<crate::connection::operations::CreateConnectionUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_use_case:
+        Arc<crate::connection::operations::UpdateConnectionUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_use_case:
+        Arc<crate::connection::operations::DeleteConnectionUseCase<crate::usecase::PgUnitOfWork>>,
 }
 
 /// Create a new connection
@@ -109,7 +112,13 @@ pub async fn create_connection(
     State(state): State<ConnectionsState>,
     auth: Authenticated,
     Json(req): Json<CreateConnectionRequest>,
-) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
+) -> Result<
+    (
+        axum::http::StatusCode,
+        Json<crate::shared::api_common::CreatedResponse>,
+    ),
+    PlatformError,
+> {
     use crate::connection::operations::CreateConnectionCommand;
     use crate::usecase::{ExecutionContext, UseCase};
 
@@ -127,7 +136,9 @@ pub async fn create_connection(
     let event = state.create_use_case.run(cmd, ctx).await.into_result()?;
     Ok((
         axum::http::StatusCode::CREATED,
-        Json(crate::shared::api_common::CreatedResponse::new(event.connection_id)),
+        Json(crate::shared::api_common::CreatedResponse::new(
+            event.connection_id,
+        )),
     ))
 }
 
@@ -152,11 +163,14 @@ pub async fn list_connections(
     _auth: Authenticated,
     Query(query): Query<ConnectionsQuery>,
 ) -> Result<Json<ConnectionsListResponse>, PlatformError> {
-    let connections = state.connection_repo.find_with_filters(
-        query.client_id.as_deref(),
-        query.status.as_deref(),
-        query.service_account_id.as_deref(),
-    ).await?;
+    let connections = state
+        .connection_repo
+        .find_with_filters(
+            query.client_id.as_deref(),
+            query.status.as_deref(),
+            query.service_account_id.as_deref(),
+        )
+        .await?;
     let total = connections.len();
     Ok(Json(ConnectionsListResponse {
         connections: connections.into_iter().map(|c| c.into()).collect(),
@@ -184,7 +198,10 @@ pub async fn get_connection(
     _auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<ConnectionResponse>, PlatformError> {
-    let conn = state.connection_repo.find_by_id(&id).await?
+    let conn = state
+        .connection_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Connection", &id)?;
     Ok(Json(conn.into()))
 }
@@ -295,7 +312,10 @@ pub async fn pause_connection(
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     state.update_use_case.run(cmd, ctx).await.into_result()?;
-    let conn = state.connection_repo.find_by_id(&id).await?
+    let conn = state
+        .connection_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Connection", &id)?;
     Ok(Json(conn.into()))
 }
@@ -335,7 +355,10 @@ pub async fn activate_connection(
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     state.update_use_case.run(cmd, ctx).await.into_result()?;
-    let conn = state.connection_repo.find_by_id(&id).await?
+    let conn = state
+        .connection_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Connection", &id)?;
     Ok(Json(conn.into()))
 }
@@ -344,7 +367,11 @@ pub async fn activate_connection(
 pub fn connections_router(state: ConnectionsState) -> OpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(create_connection, list_connections))
-        .routes(routes!(get_connection, update_connection, delete_connection))
+        .routes(routes!(
+            get_connection,
+            update_connection,
+            delete_connection
+        ))
         .routes(routes!(pause_connection))
         .routes(routes!(activate_connection))
         .with_state(state)

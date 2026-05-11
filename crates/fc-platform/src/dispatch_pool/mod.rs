@@ -2,12 +2,12 @@
 //!
 //! Message dispatch pool management.
 
-pub mod entity;
-pub mod repository;
 pub mod api;
+pub mod entity;
 pub mod operations;
+pub mod repository;
 
 // Re-export main types
+pub use api::{dispatch_pools_router, DispatchPoolsState};
 pub use entity::{DispatchPool, DispatchPoolStatus};
 pub use repository::DispatchPoolRepository;
-pub use api::{DispatchPoolsState, dispatch_pools_router};

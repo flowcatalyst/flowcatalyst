@@ -18,16 +18,14 @@ impl StaleQueuedJobPoller {
     }
 
     pub async fn recover_stale_jobs(&self) -> Result<usize, SchedulerError> {
-        let threshold = Utc::now() - chrono::Duration::from_std(self.config.stale_threshold)
-            .unwrap_or_else(|_| chrono::Duration::minutes(15));
+        let threshold = Utc::now()
+            - chrono::Duration::from_std(self.config.stale_threshold)
+                .unwrap_or_else(|_| chrono::Duration::minutes(15));
 
         let sql = "UPDATE msg_dispatch_jobs SET status = 'PENDING', queued_at = NULL, updated_at = NOW() \
                     WHERE status = 'QUEUED' AND queued_at < $1";
 
-        let result = sqlx::query(sql)
-            .bind(threshold)
-            .execute(&self.pool)
-            .await?;
+        let result = sqlx::query(sql).bind(threshold).execute(&self.pool).await?;
 
         let count = result.rows_affected() as usize;
 
@@ -35,7 +33,11 @@ impl StaleQueuedJobPoller {
         metrics::gauge!("scheduler.stale_jobs.last_recovery_count").set(count as f64);
 
         if count > 0 {
-            info!(count = count, threshold_mins = self.config.stale_threshold.as_secs() / 60, "Recovered stale QUEUED jobs");
+            info!(
+                count = count,
+                threshold_mins = self.config.stale_threshold.as_secs() / 60,
+                "Recovered stale QUEUED jobs"
+            );
         } else {
             debug!("No stale jobs to recover");
         }
@@ -54,10 +56,12 @@ impl StaleQueuedJobPoller {
     }
 
     pub async fn count_near_stale_jobs(&self) -> Result<u64, SchedulerError> {
-        let warning_threshold = Utc::now() - chrono::Duration::from_std(self.config.stale_threshold / 2)
-            .unwrap_or_else(|_| chrono::Duration::minutes(7));
+        let warning_threshold = Utc::now()
+            - chrono::Duration::from_std(self.config.stale_threshold / 2)
+                .unwrap_or_else(|_| chrono::Duration::minutes(7));
 
-        let sql = "SELECT COUNT(*) FROM msg_dispatch_jobs WHERE status = 'QUEUED' AND queued_at < $1";
+        let sql =
+            "SELECT COUNT(*) FROM msg_dispatch_jobs WHERE status = 'QUEUED' AND queued_at < $1";
 
         let count: i64 = sqlx::query_scalar(sql)
             .bind(warning_threshold)

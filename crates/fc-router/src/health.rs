@@ -6,14 +6,14 @@
 //! - Pool and consumer health tracking
 //! - Integration with warning service
 
+use parking_lot::RwLock;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use parking_lot::RwLock;
 use tracing::{debug, warn};
 
-use fc_common::{HealthStatus, HealthReport, PoolStats, ConsumerHealth};
 use crate::warning::WarningService;
+use fc_common::{ConsumerHealth, HealthReport, HealthStatus, PoolStats};
 
 /// Configuration for health service
 #[derive(Debug, Clone)]
@@ -37,13 +37,13 @@ pub struct HealthServiceConfig {
 impl Default for HealthServiceConfig {
     fn default() -> Self {
         Self {
-            healthy_threshold: 0.90,  // 90% success rate
-            warning_threshold: 0.70,  // 70% success rate
-            rolling_window: Duration::from_secs(30 * 60),  // 30 minutes
+            healthy_threshold: 0.90,                      // 90% success rate
+            warning_threshold: 0.70,                      // 70% success rate
+            rolling_window: Duration::from_secs(30 * 60), // 30 minutes
             warning_age_minutes: 30,
             consumer_stall_threshold_secs: 60,
-            max_warnings_healthy: 5,   // Java: maxWarningsForHealthy = 5
-            max_warnings_warning: 20,  // Java: maxWarningsForWarning = 20
+            max_warnings_healthy: 5,  // Java: maxWarningsForHealthy = 5
+            max_warnings_warning: 20, // Java: maxWarningsForWarning = 20
         }
     }
 }
@@ -90,7 +90,9 @@ impl RollingCounter {
         for &(t, s) in events.iter() {
             if t > cutoff {
                 total += 1;
-                if s { successes += 1; }
+                if s {
+                    successes += 1;
+                }
             }
         }
 
@@ -170,7 +172,8 @@ impl HealthService {
     pub fn is_consumer_healthy(&self, consumer_id: &str) -> bool {
         let threshold = Duration::from_secs(self.config.consumer_stall_threshold_secs);
 
-        let is_running = self.consumer_running
+        let is_running = self
+            .consumer_running
             .read()
             .get(consumer_id)
             .copied()
@@ -205,7 +208,9 @@ impl HealthService {
 
         let is_healthy = is_running
             && last_poll_time
-                .map(|t| t.elapsed() < Duration::from_secs(self.config.consumer_stall_threshold_secs))
+                .map(|t| {
+                    t.elapsed() < Duration::from_secs(self.config.consumer_stall_threshold_secs)
+                })
                 .unwrap_or(false);
 
         ConsumerHealth {
@@ -226,10 +231,11 @@ impl HealthService {
         running
             .iter()
             .filter(|(id, &is_running)| {
-                is_running && last_poll
-                    .get(*id)
-                    .map(|t| t.elapsed() >= threshold)
-                    .unwrap_or(true)
+                is_running
+                    && last_poll
+                        .get(*id)
+                        .map(|t| t.elapsed() >= threshold)
+                        .unwrap_or(true)
             })
             .map(|(id, _)| id.clone())
             .collect()
@@ -273,7 +279,8 @@ impl HealthService {
         }
 
         // Check warnings
-        let active_warnings = self.warning_service
+        let active_warnings = self
+            .warning_service
             .get_active_warnings(self.config.warning_age_minutes);
         let active_warnings_count = active_warnings.len() as u32;
         let critical_warnings = self.warning_service.critical_count() as u32;
@@ -345,12 +352,19 @@ impl HealthService {
 
     /// Remove tracking entries for pools and consumers that no longer exist.
     /// Call this after config reload to prevent stale entries from accumulating.
-    pub fn remove_stale_entries(&self, active_pool_codes: &[String], active_consumer_ids: &[String]) {
+    pub fn remove_stale_entries(
+        &self,
+        active_pool_codes: &[String],
+        active_consumer_ids: &[String],
+    ) {
         // Remove pool counters for pools that no longer exist
         {
             let counters = self.pool_counters.read();
             // Only take write lock if there's something to remove
-            if counters.keys().any(|code| !active_pool_codes.contains(code)) {
+            if counters
+                .keys()
+                .any(|code| !active_pool_codes.contains(code))
+            {
                 drop(counters);
                 let mut counters = self.pool_counters.write();
                 let before = counters.len();
@@ -367,14 +381,18 @@ impl HealthService {
             let last_poll = self.consumer_last_poll.read();
             if last_poll.keys().any(|id| !active_consumer_ids.contains(id)) {
                 drop(last_poll);
-                self.consumer_last_poll.write().retain(|id, _| active_consumer_ids.contains(id));
+                self.consumer_last_poll
+                    .write()
+                    .retain(|id, _| active_consumer_ids.contains(id));
             }
         }
         {
             let running = self.consumer_running.read();
             if running.keys().any(|id| !active_consumer_ids.contains(id)) {
                 drop(running);
-                self.consumer_running.write().retain(|id, _| active_consumer_ids.contains(id));
+                self.consumer_running
+                    .write()
+                    .retain(|id, _| active_consumer_ids.contains(id));
             }
         }
     }

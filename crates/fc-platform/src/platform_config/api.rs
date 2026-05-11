@@ -1,14 +1,14 @@
 //! Platform Config Admin API
 
 use axum::{
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
     Json,
 };
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
+use utoipa::ToSchema;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use super::entity::PlatformConfig;
 use super::repository::PlatformConfigRepository;
@@ -95,9 +95,8 @@ pub struct ConfigValueResponse {
 #[derive(Clone)]
 pub struct PlatformConfigState {
     pub config_repo: Arc<PlatformConfigRepository>,
-    pub set_property_use_case: Arc<
-        super::operations::SetPlatformConfigPropertyUseCase<crate::usecase::PgUnitOfWork>,
-    >,
+    pub set_property_use_case:
+        Arc<super::operations::SetPlatformConfigPropertyUseCase<crate::usecase::PgUnitOfWork>>,
 }
 
 /// List all configs for an application
@@ -122,11 +121,14 @@ pub async fn list_configs(
     Path(app_code): Path<String>,
     Query(query): Query<ConfigQuery>,
 ) -> Result<Json<ConfigListResponse>, PlatformError> {
-    let items = state.config_repo.find_by_application(
-        &app_code,
-        query.scope.as_deref(),
-        query.client_id.as_deref(),
-    ).await?;
+    let items = state
+        .config_repo
+        .find_by_application(
+            &app_code,
+            query.scope.as_deref(),
+            query.client_id.as_deref(),
+        )
+        .await?;
     Ok(Json(ConfigListResponse {
         items: items.into_iter().map(ConfigResponse::from_config).collect(),
     }))
@@ -156,12 +158,15 @@ pub async fn get_section(
     Query(query): Query<ConfigQuery>,
 ) -> Result<Json<ConfigSectionResponse>, PlatformError> {
     let scope_str = query.scope.as_deref().unwrap_or("GLOBAL");
-    let items = state.config_repo.find_by_section(
-        &app_code,
-        &section,
-        Some(scope_str),
-        query.client_id.as_deref(),
-    ).await?;
+    let items = state
+        .config_repo
+        .find_by_section(
+            &app_code,
+            &section,
+            Some(scope_str),
+            query.client_id.as_deref(),
+        )
+        .await?;
     let mut values = HashMap::new();
     for item in &items {
         values.insert(item.property.clone(), item.masked_value().to_string());
@@ -201,10 +206,22 @@ pub async fn get_property(
     Query(query): Query<ConfigQuery>,
 ) -> Result<Json<ConfigValueResponse>, PlatformError> {
     let scope_str = query.scope.as_deref().unwrap_or("GLOBAL");
-    let config = state.config_repo.find_by_key(
-        &app_code, &section, &property, scope_str, query.client_id.as_deref(),
-    ).await?
-        .ok_or_else(|| PlatformError::not_found("PlatformConfig", format!("{}/{}/{}", app_code, section, property)))?;
+    let config = state
+        .config_repo
+        .find_by_key(
+            &app_code,
+            &section,
+            &property,
+            scope_str,
+            query.client_id.as_deref(),
+        )
+        .await?
+        .ok_or_else(|| {
+            PlatformError::not_found(
+                "PlatformConfig",
+                format!("{}/{}/{}", app_code, section, property),
+            )
+        })?;
 
     let value = config.masked_value().to_string();
     Ok(Json(ConfigValueResponse {
@@ -261,11 +278,22 @@ pub async fn set_property(
         description: req.description,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    let event = state.set_property_use_case.run(cmd, ctx).await.into_result()?;
+    let event = state
+        .set_property_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
-    let config = state.config_repo.find_by_key(
-        &app_code, &section, &property, &scope_str, query.client_id.as_deref(),
-    ).await?
+    let config = state
+        .config_repo
+        .find_by_key(
+            &app_code,
+            &section,
+            &property,
+            &scope_str,
+            query.client_id.as_deref(),
+        )
+        .await?
         .ok_or_else(|| PlatformError::internal("Config set committed but row not found"))?;
 
     let status = if event.was_created {
@@ -303,13 +331,23 @@ pub async fn delete_property(
 ) -> Result<axum::http::StatusCode, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
     let scope_str = query.scope.as_deref().unwrap_or("GLOBAL");
-    let deleted = state.config_repo.delete_by_key(
-        &app_code, &section, &property, scope_str, query.client_id.as_deref(),
-    ).await?;
+    let deleted = state
+        .config_repo
+        .delete_by_key(
+            &app_code,
+            &section,
+            &property,
+            scope_str,
+            query.client_id.as_deref(),
+        )
+        .await?;
     if deleted {
         Ok(axum::http::StatusCode::NO_CONTENT)
     } else {
-        Err(PlatformError::not_found("PlatformConfig", format!("{}/{}/{}", app_code, section, property)))
+        Err(PlatformError::not_found(
+            "PlatformConfig",
+            format!("{}/{}/{}", app_code, section, property),
+        ))
     }
 }
 

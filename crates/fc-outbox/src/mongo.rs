@@ -3,15 +3,15 @@
 //! Implements the OutboxRepository trait for MongoDB with a single shared
 //! `outbox_messages` collection using a `type` field, matching Java/TypeScript.
 
-use async_trait::async_trait;
-use fc_common::{OutboxItem, OutboxItemType, OutboxStatus};
 use crate::repository::{OutboxRepository, OutboxTableConfig};
 use anyhow::Result;
-use mongodb::{Client, Collection, Database, IndexModel};
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use fc_common::{OutboxItem, OutboxItemType, OutboxStatus};
+use futures::stream::TryStreamExt;
 use mongodb::bson::{doc, Document};
 use mongodb::options::{FindOptions, IndexOptions};
-use chrono::{DateTime, Utc};
-use futures::stream::TryStreamExt;
+use mongodb::{Client, Collection, Database, IndexModel};
 use std::time::Duration;
 use tracing::{debug, info, trace};
 
@@ -34,7 +34,10 @@ impl MongoOutboxRepository {
     /// Create with custom table configuration
     pub fn with_config(client: Client, db_name: &str, table_config: OutboxTableConfig) -> Self {
         let database = client.database(db_name);
-        Self { database, table_config }
+        Self {
+            database,
+            table_config,
+        }
     }
 
     /// Get the database reference
@@ -51,11 +54,13 @@ impl MongoOutboxRepository {
     /// Parse a document into an OutboxItem
     fn parse_doc(&self, doc: &Document, item_type: OutboxItemType) -> Result<OutboxItem> {
         let created_at_str = doc.get_str("created_at")?;
-        let created_at: DateTime<Utc> = created_at_str.parse()
+        let created_at: DateTime<Utc> = created_at_str
+            .parse()
             .map_err(|e| anyhow::anyhow!("Invalid created_at: {}", e))?;
 
         let updated_at_str = doc.get_str("updated_at")?;
-        let updated_at: DateTime<Utc> = updated_at_str.parse()
+        let updated_at: DateTime<Utc> = updated_at_str
+            .parse()
             .map_err(|e| anyhow::anyhow!("Invalid updated_at: {}", e))?;
 
         let status_code = doc.get_i32("status").unwrap_or(0);
@@ -76,7 +81,10 @@ impl MongoOutboxRepository {
             updated_at,
             client_id: doc.get_str("client_id").ok().map(String::from),
             payload_size: doc.get_i32("payload_size").ok(),
-            headers: doc.get_str("headers").ok().and_then(|s| serde_json::from_str(s).ok()),
+            headers: doc
+                .get_str("headers")
+                .ok()
+                .and_then(|s| serde_json::from_str(s).ok()),
         })
     }
 
@@ -88,7 +96,11 @@ impl MongoOutboxRepository {
 
 #[async_trait]
 impl OutboxRepository for MongoOutboxRepository {
-    async fn fetch_pending_by_type(&self, item_type: OutboxItemType, limit: u32) -> Result<Vec<OutboxItem>> {
+    async fn fetch_pending_by_type(
+        &self,
+        item_type: OutboxItemType,
+        limit: u32,
+    ) -> Result<Vec<OutboxItem>> {
         let collection = self.collection_for_type(item_type);
         let filter = doc! {
             "status": OutboxStatus::PENDING.code(),
@@ -198,7 +210,11 @@ impl OutboxRepository for MongoOutboxRepository {
         Ok(())
     }
 
-    async fn increment_retry_count(&self, item_type: OutboxItemType, ids: Vec<String>) -> Result<()> {
+    async fn increment_retry_count(
+        &self,
+        item_type: OutboxItemType,
+        ids: Vec<String>,
+    ) -> Result<()> {
         if ids.is_empty() {
             return Ok(());
         }
@@ -235,7 +251,8 @@ impl OutboxRepository for MongoOutboxRepository {
         limit: u32,
     ) -> Result<Vec<OutboxItem>> {
         let collection = self.collection_for_type(item_type);
-        let cutoff = (Utc::now() - chrono::Duration::from_std(timeout).unwrap_or_default()).to_rfc3339();
+        let cutoff =
+            (Utc::now() - chrono::Duration::from_std(timeout).unwrap_or_default()).to_rfc3339();
 
         let filter = doc! {
             "type": item_type.type_value(),
@@ -267,7 +284,11 @@ impl OutboxRepository for MongoOutboxRepository {
         Ok(items)
     }
 
-    async fn reset_recoverable_items(&self, item_type: OutboxItemType, ids: Vec<String>) -> Result<()> {
+    async fn reset_recoverable_items(
+        &self,
+        item_type: OutboxItemType,
+        ids: Vec<String>,
+    ) -> Result<()> {
         if ids.is_empty() {
             return Ok(());
         }
@@ -303,7 +324,8 @@ impl OutboxRepository for MongoOutboxRepository {
         limit: u32,
     ) -> Result<Vec<OutboxItem>> {
         let collection = self.collection_for_type(item_type);
-        let cutoff = (Utc::now() - chrono::Duration::from_std(timeout).unwrap_or_default()).to_rfc3339();
+        let cutoff =
+            (Utc::now() - chrono::Duration::from_std(timeout).unwrap_or_default()).to_rfc3339();
 
         let filter = doc! {
             "type": item_type.type_value(),
@@ -337,18 +359,32 @@ impl OutboxRepository for MongoOutboxRepository {
 
             let pending_index = IndexModel::builder()
                 .keys(doc! { "status": 1, "type": 1, "message_group": 1, "created_at": 1 })
-                .options(IndexOptions::builder().name("idx_pending".to_string()).build())
+                .options(
+                    IndexOptions::builder()
+                        .name("idx_pending".to_string())
+                        .build(),
+                )
                 .build();
             let stuck_index = IndexModel::builder()
                 .keys(doc! { "status": 1, "type": 1, "created_at": 1 })
-                .options(IndexOptions::builder().name("idx_stuck".to_string()).build())
+                .options(
+                    IndexOptions::builder()
+                        .name("idx_stuck".to_string())
+                        .build(),
+                )
                 .build();
             let client_index = IndexModel::builder()
                 .keys(doc! { "client_id": 1, "status": 1, "created_at": 1 })
-                .options(IndexOptions::builder().name("idx_client_pending".to_string()).build())
+                .options(
+                    IndexOptions::builder()
+                        .name("idx_client_pending".to_string())
+                        .build(),
+                )
                 .build();
 
-            collection.create_indexes([pending_index, stuck_index, client_index]).await?;
+            collection
+                .create_indexes([pending_index, stuck_index, client_index])
+                .await?;
         }
 
         info!(

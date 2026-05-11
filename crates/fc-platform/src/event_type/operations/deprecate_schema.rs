@@ -1,15 +1,13 @@
 //! Deprecate Schema Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::event_type::entity::SpecVersionStatus;
-use crate::EventTypeRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::SchemaDeprecated;
+use crate::event_type::entity::SpecVersionStatus;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::EventTypeRepository;
 
 /// Command for deprecating a schema version.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,7 +28,10 @@ pub struct DeprecateSchemaUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> DeprecateSchemaUseCase<U> {
     pub fn new(event_type_repo: Arc<EventTypeRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { event_type_repo, unit_of_work }
+        Self {
+            event_type_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -55,7 +56,11 @@ impl<U: UnitOfWork> UseCase for DeprecateSchemaUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeprecateSchemaCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeprecateSchemaCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -64,7 +69,11 @@ impl<U: UnitOfWork> UseCase for DeprecateSchemaUseCase<U> {
         command: DeprecateSchemaCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<SchemaDeprecated> {
-        let mut event_type = match self.event_type_repo.find_by_id(&command.event_type_id).await {
+        let mut event_type = match self
+            .event_type_repo
+            .find_by_id(&command.event_type_id)
+            .await
+        {
             Ok(Some(et)) => et,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
@@ -74,12 +83,16 @@ impl<U: UnitOfWork> UseCase for DeprecateSchemaUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch event type: {}", e
+                    "Failed to fetch event type: {}",
+                    e
                 )));
             }
         };
 
-        let target_idx = event_type.spec_versions.iter().position(|sv| sv.version == command.version);
+        let target_idx = event_type
+            .spec_versions
+            .iter()
+            .position(|sv| sv.version == command.version);
         let target_idx = match target_idx {
             Some(i) => i,
             None => {
@@ -111,11 +124,7 @@ impl<U: UnitOfWork> UseCase for DeprecateSchemaUseCase<U> {
         event_type.spec_versions[target_idx].updated_at = chrono::Utc::now();
         event_type.updated_at = chrono::Utc::now();
 
-        let event = SchemaDeprecated::new(
-            &ctx,
-            &event_type.id,
-            &command.version,
-        );
+        let event = SchemaDeprecated::new(&ctx, &event_type.id, &command.version);
 
         self.unit_of_work
             .commit(&event_type, &*self.event_type_repo, event, &command)

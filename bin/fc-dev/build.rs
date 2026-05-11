@@ -22,7 +22,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed=FC_SKIP_FRONTEND_BUILD");
 
     let crate_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let frontend_dir = crate_dir.join("../../frontend").canonicalize()
+    let frontend_dir = crate_dir
+        .join("../../frontend")
+        .canonicalize()
         .expect("frontend/ directory not found relative to bin/fc-dev/");
 
     for watch in &[
@@ -59,7 +61,10 @@ fn main() {
 
     // If node_modules doesn't exist, install first.
     if !frontend_dir.join("node_modules").exists() {
-        println!("cargo:warning=Installing frontend dependencies with {} (first build)...", pm);
+        println!(
+            "cargo:warning=Installing frontend dependencies with {} (first build)...",
+            pm
+        );
         let status = Command::new(pm)
             .arg("install")
             .current_dir(&frontend_dir)

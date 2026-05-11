@@ -1,10 +1,10 @@
 //! Identity Provider Domain Events
 
-use serde::{Deserialize, Serialize};
-use crate::usecase::ExecutionContext;
-use crate::usecase::domain_event::EventMetadata;
-use crate::TsidGenerator;
 use crate::impl_domain_event;
+use crate::usecase::domain_event::EventMetadata;
+use crate::usecase::ExecutionContext;
+use crate::TsidGenerator;
+use serde::{Deserialize, Serialize};
 
 /// Event emitted when a new identity provider is created.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,10 +39,16 @@ impl IdentityProviderCreated {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             idp_id: idp_id.to_string(),
             code: code.to_string(),
@@ -71,21 +77,23 @@ impl IdentityProviderUpdated {
     const SPEC_VERSION: &'static str = "1.0";
     const SOURCE: &'static str = "platform:admin";
 
-    pub fn new(
-        ctx: &ExecutionContext,
-        idp_id: &str,
-        name: Option<&str>,
-    ) -> Self {
+    pub fn new(ctx: &ExecutionContext, idp_id: &str, name: Option<&str>) -> Self {
         let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.idp.{}", idp_id);
         let message_group = format!("platform:idp:{}", idp_id);
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             idp_id: idp_id.to_string(),
             name: name.map(String::from),
@@ -118,10 +126,16 @@ impl IdentityProviderDeleted {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             idp_id: idp_id.to_string(),
             code: code.to_string(),

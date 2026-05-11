@@ -5,16 +5,14 @@
 //! - Processing time tracking with percentiles (HdrHistogram for O(1) record/read)
 //! - 5-minute and 30-minute time windows
 
+use chrono::Utc;
+use hdrhistogram::Histogram;
+use parking_lot::RwLock;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use hdrhistogram::Histogram;
-use parking_lot::RwLock;
-use chrono::Utc;
 
-use fc_common::{
-    EnhancedPoolMetrics, ProcessingTimeMetrics, WindowedMetrics,
-};
+use fc_common::{EnhancedPoolMetrics, ProcessingTimeMetrics, WindowedMetrics};
 
 /// A single metric sample (kept for windowed success/failure counting)
 #[derive(Debug, Clone)]
@@ -42,8 +40,8 @@ impl Default for MetricsConfig {
     fn default() -> Self {
         Self {
             max_samples: 10000,
-            short_window: Duration::from_secs(300),   // 5 minutes
-            long_window: Duration::from_secs(1800),   // 30 minutes
+            short_window: Duration::from_secs(300), // 5 minutes
+            long_window: Duration::from_secs(1800), // 30 minutes
         }
     }
 }
@@ -79,8 +77,7 @@ impl PoolMetricsCollector {
 
     pub fn with_config(config: MetricsConfig) -> Self {
         // 1ms to 900_000ms (15 minutes) with 3 significant digits
-        let histogram = Histogram::new_with_bounds(1, 900_000, 3)
-            .expect("valid histogram bounds");
+        let histogram = Histogram::new_with_bounds(1, 900_000, 3).expect("valid histogram bounds");
 
         Self {
             config,
@@ -151,7 +148,11 @@ impl PoolMetricsCollector {
 
         // Remove old samples beyond long window
         let cutoff = Instant::now() - self.config.long_window;
-        while samples.front().map(|s| s.timestamp < cutoff).unwrap_or(false) {
+        while samples
+            .front()
+            .map(|s| s.timestamp < cutoff)
+            .unwrap_or(false)
+        {
             samples.pop_front();
         }
 
@@ -197,8 +198,8 @@ impl PoolMetricsCollector {
             return ProcessingTimeMetrics::default();
         }
 
-        let mut hist = Histogram::<u64>::new_with_bounds(1, 900_000, 3)
-            .expect("valid histogram bounds");
+        let mut hist =
+            Histogram::<u64>::new_with_bounds(1, 900_000, 3).expect("valid histogram bounds");
 
         for s in samples {
             hist.record(s.duration_ms.clamp(1, 900_000)).ok();
@@ -252,16 +253,12 @@ impl PoolMetricsCollector {
             .filter(|t| **t >= long_cutoff)
             .count() as u64;
 
-        let mut last_5_min = Self::calculate_windowed_metrics(
-            &short_samples,
-            self.config.short_window,
-        );
+        let mut last_5_min =
+            Self::calculate_windowed_metrics(&short_samples, self.config.short_window);
         last_5_min.rate_limited_count = rate_limited_5min;
 
-        let mut last_30_min = Self::calculate_windowed_metrics(
-            &long_samples,
-            self.config.long_window,
-        );
+        let mut last_30_min =
+            Self::calculate_windowed_metrics(&long_samples, self.config.long_window);
         last_30_min.rate_limited_count = rate_limited_30min;
 
         EnhancedPoolMetrics {
@@ -425,7 +422,10 @@ mod tests {
         let metrics = collector.get_metrics();
 
         // All samples should be within the 5-minute window
-        assert_eq!(metrics.last_5_min.success_count + metrics.last_5_min.failure_count, 10);
+        assert_eq!(
+            metrics.last_5_min.success_count + metrics.last_5_min.failure_count,
+            10
+        );
         assert!(metrics.last_5_min.throughput_per_sec > 0.0);
     }
 }

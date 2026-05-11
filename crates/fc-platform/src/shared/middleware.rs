@@ -5,7 +5,7 @@
 
 use axum::{
     extract::FromRequestParts,
-    http::{header::AUTHORIZATION, header::COOKIE, request::Parts, StatusCode, HeaderValue},
+    http::{header::AUTHORIZATION, header::COOKIE, request::Parts, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -47,7 +47,8 @@ pub fn extract_trusted_client_ip(headers: &axum::http::HeaderMap) -> Option<Stri
             return Some(chain[idx].to_string());
         }
     }
-    headers.get("x-real-ip")
+    headers
+        .get("x-real-ip")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
@@ -73,9 +74,9 @@ where
         Ok(ClientIp(extract_trusted_client_ip(&parts.headers)))
     }
 }
-use std::sync::Arc;
-use crate::{AuthService, AuthorizationService, AuthContext};
 use crate::shared::api_common::ApiError;
+use crate::{AuthContext, AuthService, AuthorizationService};
+use std::sync::Arc;
 
 /// Default session cookie name
 const SESSION_COOKIE_NAME: &str = "fc_session";
@@ -120,11 +121,13 @@ impl IntoResponse for AuthError {
 
 /// Extract token from session cookie
 fn extract_session_cookie(parts: &Parts) -> Option<String> {
-    parts.headers
+    parts
+        .headers
         .get(COOKIE)
         .and_then(|v| v.to_str().ok())
         .and_then(|cookies| {
-            cookies.split(';')
+            cookies
+                .split(';')
                 .map(|c| c.trim())
                 .find(|c| c.starts_with(SESSION_COOKIE_NAME))
                 .and_then(|c| c.split('=').nth(1))
@@ -140,14 +143,17 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         // Get AppState from extensions (set by middleware layer)
-        let app_state = parts.extensions.get::<AppState>()
+        let app_state = parts
+            .extensions
+            .get::<AppState>()
             .ok_or_else(|| AuthError {
                 status: StatusCode::INTERNAL_SERVER_ERROR,
                 message: "Auth service not configured".to_string(),
             })?;
 
         // Try to extract token from Authorization header first, then from session cookie
-        let token = parts.headers
+        let token = parts
+            .headers
             .get(AUTHORIZATION)
             .and_then(|v: &HeaderValue| v.to_str().ok())
             .and_then(crate::auth::auth_service::extract_bearer_token)
@@ -159,14 +165,20 @@ where
             })?;
 
         // Validate token
-        let claims = app_state.auth_service.validate_token(&token)
-            .map_err(|e: crate::PlatformError| AuthError {
-                status: StatusCode::UNAUTHORIZED,
-                message: e.to_string(),
-            })?;
+        let claims =
+            app_state
+                .auth_service
+                .validate_token(&token)
+                .map_err(|e: crate::PlatformError| AuthError {
+                    status: StatusCode::UNAUTHORIZED,
+                    message: e.to_string(),
+                })?;
 
         // Build auth context with resolved permissions
-        let context = app_state.authz_service.build_context(&claims).await
+        let context = app_state
+            .authz_service
+            .build_context(&claims)
+            .await
             .map_err(|e: crate::PlatformError| AuthError {
                 status: StatusCode::UNAUTHORIZED,
                 message: e.to_string(),
@@ -201,7 +213,8 @@ where
         };
 
         // Try to extract token from Authorization header first, then from session cookie
-        let token = parts.headers
+        let token = parts
+            .headers
             .get(AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
             .and_then(crate::auth::auth_service::extract_bearer_token)
@@ -226,13 +239,13 @@ where
     }
 }
 
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 /// Middleware layer that injects AppState into request extensions
 /// This enables the Authenticated extractor to work
 use tower::Layer;
 use tower::Service;
-use std::task::{Context, Poll};
-use std::future::Future;
-use std::pin::Pin;
 
 #[derive(Clone)]
 pub struct AuthLayer {
@@ -288,12 +301,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::{Request, header};
-    use std::sync::Arc;
     use crate::auth::auth_service::{AuthConfig, AuthService};
-    use crate::shared::authorization_service::AuthorizationService;
     use crate::domain::{Principal, UserScope};
+    use crate::shared::authorization_service::AuthorizationService;
     use crate::RoleRepository;
+    use axum::http::{header, Request};
+    use std::sync::Arc;
 
     // ─── Test Helpers ──────────────────────────────────────────────────────
 
@@ -333,10 +346,7 @@ mod tests {
     }
 
     /// Build request Parts with the given headers and AppState in extensions
-    fn make_parts_with_app_state(
-        auth_header: Option<&str>,
-        cookie_header: Option<&str>,
-    ) -> Parts {
+    fn make_parts_with_app_state(auth_header: Option<&str>, cookie_header: Option<&str>) -> Parts {
         let mut builder = Request::builder();
         if let Some(auth) = auth_header {
             builder = builder.header(header::AUTHORIZATION, auth);
@@ -351,9 +361,7 @@ mod tests {
     }
 
     /// Build request Parts without AppState in extensions
-    fn make_parts_without_app_state(
-        auth_header: Option<&str>,
-    ) -> Parts {
+    fn make_parts_without_app_state(auth_header: Option<&str>) -> Parts {
         let mut builder = Request::builder();
         if let Some(auth) = auth_header {
             builder = builder.header(header::AUTHORIZATION, auth);
@@ -373,8 +381,8 @@ mod tests {
 
     /// Generate a valid access token for a client-scoped user with no roles
     fn generate_client_token(auth_service: &AuthService) -> String {
-        let principal = Principal::new_user("user@client.com", UserScope::Client)
-            .with_client_id("client-abc");
+        let principal =
+            Principal::new_user("user@client.com", UserScope::Client).with_client_id("client-abc");
         auth_service.generate_access_token(&principal).unwrap()
     }
 
@@ -438,7 +446,10 @@ mod tests {
         // Cookie pairs are trimmed, so leading whitespace around the pair is removed.
         // The value after "=" is taken as-is (no trim on the value portion).
         let req = Request::builder()
-            .header(header::COOKIE, "other=x;  fc_session=spaced-token  ; more=y")
+            .header(
+                header::COOKIE,
+                "other=x;  fc_session=spaced-token  ; more=y",
+            )
             .body(())
             .unwrap();
         let (parts, _) = req.into_parts();
@@ -457,10 +468,7 @@ mod tests {
     async fn test_authenticated_valid_bearer_token() {
         let auth_service = test_auth_service();
         let token = generate_token_no_roles(&auth_service);
-        let mut parts = make_parts_with_app_state(
-            Some(&format!("Bearer {}", token)),
-            None,
-        );
+        let mut parts = make_parts_with_app_state(Some(&format!("Bearer {}", token)), None);
 
         let result = Authenticated::from_request_parts(&mut parts, &()).await;
         assert!(result.is_ok());
@@ -485,10 +493,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_authenticated_malformed_auth_header_no_bearer_prefix() {
-        let mut parts = make_parts_with_app_state(
-            Some("Basic dXNlcjpwYXNz"),
-            None,
-        );
+        let mut parts = make_parts_with_app_state(Some("Basic dXNlcjpwYXNz"), None);
 
         let result = Authenticated::from_request_parts(&mut parts, &()).await;
         assert!(result.is_err());
@@ -502,10 +507,7 @@ mod tests {
     async fn test_authenticated_empty_bearer_token() {
         // "Bearer " with empty value still passes extract_bearer_token (returns Some(""))
         // but validation should fail
-        let mut parts = make_parts_with_app_state(
-            Some("Bearer "),
-            None,
-        );
+        let mut parts = make_parts_with_app_state(Some("Bearer "), None);
 
         let result = Authenticated::from_request_parts(&mut parts, &()).await;
         assert!(result.is_err());
@@ -516,10 +518,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_authenticated_garbage_token() {
-        let mut parts = make_parts_with_app_state(
-            Some("Bearer not-a-valid-jwt"),
-            None,
-        );
+        let mut parts = make_parts_with_app_state(Some("Bearer not-a-valid-jwt"), None);
 
         let result = Authenticated::from_request_parts(&mut parts, &()).await;
         assert!(result.is_err());
@@ -540,14 +539,13 @@ mod tests {
         };
         let expired_auth_service = AuthService::new(config);
         let principal = Principal::new_user("test@example.com", UserScope::Anchor);
-        let expired_token = expired_auth_service.generate_access_token(&principal).unwrap();
+        let expired_token = expired_auth_service
+            .generate_access_token(&principal)
+            .unwrap();
 
         // Use the regular app state (which has a different auth service with normal expiry)
         // The token was signed with the same secret, so signature is valid, but it's expired
-        let mut parts = make_parts_with_app_state(
-            Some(&format!("Bearer {}", expired_token)),
-            None,
-        );
+        let mut parts = make_parts_with_app_state(Some(&format!("Bearer {}", expired_token)), None);
 
         let result = Authenticated::from_request_parts(&mut parts, &()).await;
         assert!(result.is_err());
@@ -567,10 +565,7 @@ mod tests {
         let principal = Principal::new_user("test@example.com", UserScope::Anchor);
         let token = other_service.generate_access_token(&principal).unwrap();
 
-        let mut parts = make_parts_with_app_state(
-            Some(&format!("Bearer {}", token)),
-            None,
-        );
+        let mut parts = make_parts_with_app_state(Some(&format!("Bearer {}", token)), None);
 
         let result = Authenticated::from_request_parts(&mut parts, &()).await;
         assert!(result.is_err());
@@ -585,10 +580,7 @@ mod tests {
         let mut token = generate_token_no_roles(&auth_service);
         token.push_str("tampered");
 
-        let mut parts = make_parts_with_app_state(
-            Some(&format!("Bearer {}", token)),
-            None,
-        );
+        let mut parts = make_parts_with_app_state(Some(&format!("Bearer {}", token)), None);
 
         let result = Authenticated::from_request_parts(&mut parts, &()).await;
         assert!(result.is_err());
@@ -604,10 +596,7 @@ mod tests {
         let auth_service = test_auth_service();
         let token = generate_token_no_roles(&auth_service);
 
-        let mut parts = make_parts_with_app_state(
-            None,
-            Some(&format!("fc_session={}", token)),
-        );
+        let mut parts = make_parts_with_app_state(None, Some(&format!("fc_session={}", token)));
 
         let result = Authenticated::from_request_parts(&mut parts, &()).await;
         assert!(result.is_ok());
@@ -634,10 +623,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_authenticated_invalid_cookie_token() {
-        let mut parts = make_parts_with_app_state(
-            None,
-            Some("fc_session=invalid-jwt-token"),
-        );
+        let mut parts = make_parts_with_app_state(None, Some("fc_session=invalid-jwt-token"));
 
         let result = Authenticated::from_request_parts(&mut parts, &()).await;
         assert!(result.is_err());
@@ -650,9 +636,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_authenticated_missing_app_state() {
-        let mut parts = make_parts_without_app_state(
-            Some("Bearer some-token"),
-        );
+        let mut parts = make_parts_without_app_state(Some("Bearer some-token"));
 
         let result = Authenticated::from_request_parts(&mut parts, &()).await;
         assert!(result.is_err());
@@ -669,12 +653,11 @@ mod tests {
         let auth_service = test_auth_service();
         let token = generate_token_no_roles(&auth_service);
 
-        let mut parts = make_parts_with_app_state(
-            Some(&format!("Bearer {}", token)),
-            None,
-        );
+        let mut parts = make_parts_with_app_state(Some(&format!("Bearer {}", token)), None);
 
-        let auth = Authenticated::from_request_parts(&mut parts, &()).await.unwrap();
+        let auth = Authenticated::from_request_parts(&mut parts, &())
+            .await
+            .unwrap();
 
         assert!(auth.0.is_anchor());
         assert!(auth.0.can_access_client("any-client-id"));
@@ -688,12 +671,11 @@ mod tests {
         let auth_service = test_auth_service();
         let token = generate_client_token(&auth_service);
 
-        let mut parts = make_parts_with_app_state(
-            Some(&format!("Bearer {}", token)),
-            None,
-        );
+        let mut parts = make_parts_with_app_state(Some(&format!("Bearer {}", token)), None);
 
-        let auth = Authenticated::from_request_parts(&mut parts, &()).await.unwrap();
+        let auth = Authenticated::from_request_parts(&mut parts, &())
+            .await
+            .unwrap();
 
         assert!(!auth.0.is_anchor());
         assert_eq!(auth.0.scope, "CLIENT");
@@ -707,12 +689,11 @@ mod tests {
         let auth_service = test_auth_service();
         let token = generate_partner_token(&auth_service);
 
-        let mut parts = make_parts_with_app_state(
-            Some(&format!("Bearer {}", token)),
-            None,
-        );
+        let mut parts = make_parts_with_app_state(Some(&format!("Bearer {}", token)), None);
 
-        let auth = Authenticated::from_request_parts(&mut parts, &()).await.unwrap();
+        let auth = Authenticated::from_request_parts(&mut parts, &())
+            .await
+            .unwrap();
 
         assert!(!auth.0.is_anchor());
         assert_eq!(auth.0.scope, "PARTNER");
@@ -729,10 +710,7 @@ mod tests {
         let auth_service = test_auth_service();
         let token = generate_token_no_roles(&auth_service);
 
-        let mut parts = make_parts_with_app_state(
-            Some(&format!("Bearer {}", token)),
-            None,
-        );
+        let mut parts = make_parts_with_app_state(Some(&format!("Bearer {}", token)), None);
 
         let result = OptionalAuth::from_request_parts(&mut parts, &()).await;
         assert!(result.is_ok());
@@ -755,10 +733,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_optional_auth_invalid_token_returns_none() {
-        let mut parts = make_parts_with_app_state(
-            Some("Bearer invalid-token"),
-            None,
-        );
+        let mut parts = make_parts_with_app_state(Some("Bearer invalid-token"), None);
 
         let result = OptionalAuth::from_request_parts(&mut parts, &()).await;
         assert!(result.is_ok());
@@ -767,9 +742,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_optional_auth_missing_app_state_returns_none() {
-        let mut parts = make_parts_without_app_state(
-            Some("Bearer some-token"),
-        );
+        let mut parts = make_parts_without_app_state(Some("Bearer some-token"));
 
         let result = OptionalAuth::from_request_parts(&mut parts, &()).await;
         assert!(result.is_ok());
@@ -781,10 +754,7 @@ mod tests {
         let auth_service = test_auth_service();
         let token = generate_token_no_roles(&auth_service);
 
-        let mut parts = make_parts_with_app_state(
-            None,
-            Some(&format!("fc_session={}", token)),
-        );
+        let mut parts = make_parts_with_app_state(None, Some(&format!("fc_session={}", token)));
 
         let result = OptionalAuth::from_request_parts(&mut parts, &()).await;
         assert!(result.is_ok());
@@ -888,11 +858,11 @@ mod tests {
     #[test]
     fn extract_trusted_client_ip_falls_back_to_x_real_ip() {
         let mut headers = axum::http::HeaderMap::new();
-        headers.insert(
-            "x-real-ip",
-            axum::http::HeaderValue::from_static("9.9.9.9"),
+        headers.insert("x-real-ip", axum::http::HeaderValue::from_static("9.9.9.9"));
+        assert_eq!(
+            extract_trusted_client_ip(&headers),
+            Some("9.9.9.9".to_string())
         );
-        assert_eq!(extract_trusted_client_ip(&headers), Some("9.9.9.9".to_string()));
     }
 
     #[test]

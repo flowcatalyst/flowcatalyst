@@ -1,8 +1,8 @@
 //! Connection management operations.
 
-use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError};
 use super::applications::CreatedResponse;
+use super::{ClientError, FlowCatalystClient};
+use serde::{Deserialize, Serialize};
 
 /// Paginated list of connections — `GET /api/connections`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,9 +95,15 @@ impl FlowCatalystClient {
     ) -> Result<ConnectionsListResponse, ClientError> {
         let mut query = String::new();
         let mut params = Vec::new();
-        if let Some(v) = client_id { params.push(format!("clientId={}", v)); }
-        if let Some(v) = status { params.push(format!("status={}", v)); }
-        if let Some(v) = service_account_id { params.push(format!("serviceAccountId={}", v)); }
+        if let Some(v) = client_id {
+            params.push(format!("clientId={}", v));
+        }
+        if let Some(v) = status {
+            params.push(format!("status={}", v));
+        }
+        if let Some(v) = service_account_id {
+            params.push(format!("serviceAccountId={}", v));
+        }
         if !params.is_empty() {
             query = format!("?{}", params.join("&"));
         }

@@ -12,14 +12,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use super::events::ClientApplicationsUpdated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 use crate::ApplicationClientConfig;
 use crate::ApplicationClientConfigRepository;
 use crate::ApplicationRepository;
 use crate::ClientRepository;
-use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
-};
-use super::events::ClientApplicationsUpdated;
 
 /// Command for replacing the enabled-application set for a client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,11 +120,7 @@ impl<U: UnitOfWork> UseCase for UpdateClientApplicationsUseCase<U> {
         }
 
         // 3. Load current configs to compute the diff.
-        let current_configs = match self
-            .config_repo
-            .find_by_client(&command.client_id)
-            .await
-        {
+        let current_configs = match self.config_repo.find_by_client(&command.client_id).await {
             Ok(list) => list,
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(

@@ -1,10 +1,10 @@
 //! Application Domain Events
 
-use serde::{Deserialize, Serialize};
-use crate::usecase::ExecutionContext;
-use crate::usecase::domain_event::EventMetadata;
-use crate::TsidGenerator;
 use crate::impl_domain_event;
+use crate::usecase::domain_event::EventMetadata;
+use crate::usecase::ExecutionContext;
+use crate::TsidGenerator;
+use serde::{Deserialize, Serialize};
 
 /// Event emitted when a new application is created.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -271,10 +271,16 @@ impl ApplicationDeleted {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             application_id: application_id.to_string(),
             code: code.to_string(),
@@ -302,17 +308,28 @@ impl ApplicationEnabledForClient {
     const SPEC_VERSION: &'static str = "1.0";
     const SOURCE: &'static str = "platform:application";
 
-    pub fn new(ctx: &ExecutionContext, application_id: &str, client_id: &str, config_id: &str) -> Self {
+    pub fn new(
+        ctx: &ExecutionContext,
+        application_id: &str,
+        client_id: &str,
+        config_id: &str,
+    ) -> Self {
         let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.application.{}", application_id);
         let message_group = format!("platform:application:{}", application_id);
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             application_id: application_id.to_string(),
             client_id: client_id.to_string(),
@@ -340,17 +357,28 @@ impl ApplicationDisabledForClient {
     const SPEC_VERSION: &'static str = "1.0";
     const SOURCE: &'static str = "platform:application";
 
-    pub fn new(ctx: &ExecutionContext, application_id: &str, client_id: &str, config_id: &str) -> Self {
+    pub fn new(
+        ctx: &ExecutionContext,
+        application_id: &str,
+        client_id: &str,
+        config_id: &str,
+    ) -> Self {
         let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.application.{}", application_id);
         let message_group = format!("platform:application:{}", application_id);
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             application_id: application_id.to_string(),
             client_id: client_id.to_string(),
@@ -399,10 +427,16 @@ impl ApplicationClientConfigUpdated {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             application_id: application_id.to_string(),
             client_id: client_id.to_string(),
@@ -452,10 +486,16 @@ impl ClientApplicationsUpdated {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             client_id: client_id.to_string(),
             enabled_application_ids,
@@ -473,13 +513,8 @@ mod tests {
     #[test]
     fn test_application_created_event() {
         let ctx = ExecutionContext::create("admin-123");
-        let event = ApplicationCreated::new(
-            &ctx,
-            "app-1",
-            "orders",
-            "Orders Application",
-            "APPLICATION",
-        );
+        let event =
+            ApplicationCreated::new(&ctx, "app-1", "orders", "Orders Application", "APPLICATION");
 
         assert_eq!(event.event_type(), "platform:iam:application:created");
         assert_eq!(event.application_id, "app-1");
@@ -497,7 +532,10 @@ mod tests {
             "app:orders",
         );
 
-        assert_eq!(event.event_type(), "platform:iam:application:service-account-provisioned");
+        assert_eq!(
+            event.event_type(),
+            "platform:iam:application:service-account-provisioned"
+        );
         assert_eq!(event.service_account_id, "sa-1");
     }
 }

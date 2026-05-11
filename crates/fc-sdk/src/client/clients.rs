@@ -1,8 +1,8 @@
 //! Client (tenant) management operations.
 
-use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError};
 use super::applications::{CreatedResponse, SuccessResponse};
+use super::{ClientError, FlowCatalystClient};
+use serde::{Deserialize, Serialize};
 
 /// Request to create a client (tenant).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -260,10 +260,7 @@ impl FlowCatalystClient {
         client_id: &str,
         req: &UpdateClientApplicationsRequest,
     ) -> Result<SuccessResponse, ClientError> {
-        self.put(
-            &format!("/api/clients/{}/applications", client_id),
-            req,
-        )
-        .await
+        self.put(&format!("/api/clients/{}/applications", client_id), req)
+            .await
     }
 }

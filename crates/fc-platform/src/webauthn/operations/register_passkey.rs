@@ -6,18 +6,16 @@
 //! recovered `PasskeyRegistration` plus the browser's
 //! `RegisterPublicKeyCredential` response into this use case.
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use webauthn_rs::prelude::{PasskeyRegistration, RegisterPublicKeyCredential};
 
+use super::events::PasskeyRegistered;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 use crate::webauthn::entity::WebauthnCredential;
 use crate::webauthn::repository::WebauthnCredentialRepository;
 use crate::webauthn::webauthn_service::WebauthnService;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::PasskeyRegistered;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,7 +39,11 @@ impl<U: UnitOfWork> RegisterPasskeyUseCase<U> {
         webauthn_service: Arc<WebauthnService>,
         unit_of_work: Arc<U>,
     ) -> Self {
-        Self { credential_repo, webauthn_service, unit_of_work }
+        Self {
+            credential_repo,
+            webauthn_service,
+            unit_of_work,
+        }
     }
 }
 
@@ -52,14 +54,23 @@ impl<U: UnitOfWork> UseCase for RegisterPasskeyUseCase<U> {
 
     async fn validate(&self, command: &RegisterPasskeyCommand) -> Result<(), UseCaseError> {
         if command.principal_id.trim().is_empty() {
-            return Err(UseCaseError::validation("PRINCIPAL_REQUIRED", "principalId is required"));
+            return Err(UseCaseError::validation(
+                "PRINCIPAL_REQUIRED",
+                "principalId is required",
+            ));
         }
         if let Some(name) = &command.name {
             if name.trim().is_empty() {
-                return Err(UseCaseError::validation("NAME_EMPTY", "name must not be blank"));
+                return Err(UseCaseError::validation(
+                    "NAME_EMPTY",
+                    "name must not be blank",
+                ));
             }
             if name.chars().count() > 120 {
-                return Err(UseCaseError::validation("NAME_TOO_LONG", "name must be ≤120 characters"));
+                return Err(UseCaseError::validation(
+                    "NAME_TOO_LONG",
+                    "name must be ≤120 characters",
+                ));
             }
         }
         if command.registration_state.is_none() {
@@ -71,7 +82,11 @@ impl<U: UnitOfWork> UseCase for RegisterPasskeyUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, command: &RegisterPasskeyCommand, ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        command: &RegisterPasskeyCommand,
+        ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         if ctx.principal_id == command.principal_id {
             Ok(())
         } else {
@@ -87,29 +102,45 @@ impl<U: UnitOfWork> UseCase for RegisterPasskeyUseCase<U> {
         command: RegisterPasskeyCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<PasskeyRegistered> {
-        let RegisterPasskeyCommand { principal_id, name, registration_response, registration_state } = command.clone();
+        let RegisterPasskeyCommand {
+            principal_id,
+            name,
+            registration_response,
+            registration_state,
+        } = command.clone();
         let state = match registration_state {
             Some(s) => s,
-            None => return UseCaseResult::failure(UseCaseError::business_rule(
-                "STATE_MISSING", "registration ceremony state missing",
-            )),
+            None => {
+                return UseCaseResult::failure(UseCaseError::business_rule(
+                    "STATE_MISSING",
+                    "registration ceremony state missing",
+                ))
+            }
         };
 
-        let passkey = match self.webauthn_service.finish_registration(&registration_response, &state) {
+        let passkey = match self
+            .webauthn_service
+            .finish_registration(&registration_response, &state)
+        {
             Ok(p) => p,
-            Err(e) => return UseCaseResult::failure(UseCaseError::business_rule(
-                "REGISTRATION_FAILED", e.to_string(),
-            )),
+            Err(e) => {
+                return UseCaseResult::failure(UseCaseError::business_rule(
+                    "REGISTRATION_FAILED",
+                    e.to_string(),
+                ))
+            }
         };
 
         // Reject if the credential is somehow already registered (rare — webauthn-rs
         // de-dupes via exclude_credentials at challenge time, but defence in depth).
-        if let Ok(Some(_existing)) = self.credential_repo
+        if let Ok(Some(_existing)) = self
+            .credential_repo
             .find_by_credential_id(passkey.cred_id().as_ref())
             .await
         {
             return UseCaseResult::failure(UseCaseError::business_rule(
-                "CREDENTIAL_EXISTS", "this credential is already registered",
+                "CREDENTIAL_EXISTS",
+                "this credential is already registered",
             ));
         }
 

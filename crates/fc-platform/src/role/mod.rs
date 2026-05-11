@@ -2,12 +2,12 @@
 //!
 //! Role and permission management.
 
-pub mod entity;
-pub mod repository;
 pub mod api;
+pub mod entity;
 pub mod operations;
+pub mod repository;
 
 // Re-export main types
-pub use entity::{AuthRole, RoleSource, Permission};
+pub use api::{roles_router, RolesState};
+pub use entity::{AuthRole, Permission, RoleSource};
 pub use repository::RoleRepository;
-pub use api::{RolesState, roles_router};

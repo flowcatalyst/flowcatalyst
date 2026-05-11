@@ -7,13 +7,13 @@
 //! partial `idx_msg_events_unfanned` index.
 
 use axum::{
+    extract::{DefaultBodyLimit, State},
     routing::post,
-    extract::{State, DefaultBodyLimit},
     Json, Router,
 };
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use crate::event::entity::Event;
 use crate::event::repository::EventRepository;
@@ -101,7 +101,10 @@ async fn batch_events(
 
     let results: Vec<BatchResultItem> = inserted_events
         .iter()
-        .map(|e| BatchResultItem { id: e.id.clone(), status: "SUCCESS".to_string() })
+        .map(|e| BatchResultItem {
+            id: e.id.clone(),
+            status: "SUCCESS".to_string(),
+        })
         .collect();
 
     Ok(Json(BatchResponse { results }))

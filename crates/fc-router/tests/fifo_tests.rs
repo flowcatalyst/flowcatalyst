@@ -9,16 +9,16 @@
 //! - Different groups can process in parallel
 //! - Group ordering maintained across batches
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 use async_trait::async_trait;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 use fc_common::{
-    Message, QueuedMessage, MediationType, MediationOutcome, PoolConfig, RouterConfig,
+    MediationOutcome, MediationType, Message, PoolConfig, QueuedMessage, RouterConfig,
 };
 use fc_queue::{QueueConsumer, QueueError};
-use fc_router::{QueueManager, Mediator};
+use fc_router::{Mediator, QueueManager};
 
 /// Mediator that tracks processing order
 struct OrderTrackingMediator {
@@ -99,11 +99,17 @@ impl QueueConsumer for TestQueueConsumer {
     }
 
     async fn nack(&self, receipt_handle: &str, delay_seconds: Option<u32>) -> fc_queue::Result<()> {
-        self.nacked.lock().push((receipt_handle.to_string(), delay_seconds));
+        self.nacked
+            .lock()
+            .push((receipt_handle.to_string(), delay_seconds));
         Ok(())
     }
 
-    async fn extend_visibility(&self, _receipt_handle: &str, _seconds: u32) -> fc_queue::Result<()> {
+    async fn extend_visibility(
+        &self,
+        _receipt_handle: &str,
+        _seconds: u32,
+    ) -> fc_queue::Result<()> {
         Ok(())
     }
 
@@ -130,7 +136,11 @@ fn create_message_with_group(id: &str, pool_code: &str, group_id: Option<&str>) 
     }
 }
 
-fn create_queued_message_with_group(id: &str, pool_code: &str, group_id: Option<&str>) -> QueuedMessage {
+fn create_queued_message_with_group(
+    id: &str,
+    pool_code: &str,
+    group_id: Option<&str>,
+) -> QueuedMessage {
     QueuedMessage {
         message: create_message_with_group(id, pool_code, group_id),
         receipt_handle: format!("receipt-{}", id),
@@ -143,7 +153,9 @@ fn create_queued_message_with_group(id: &str, pool_code: &str, group_id: Option<
 async fn test_fifo_single_group_ordering() {
     // Messages in the same group should be processed in order
     let mediator = Arc::new(OrderTrackingMediator::new(20));
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -167,7 +179,10 @@ async fn test_fifo_single_group_ordering() {
     }
 
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     // Wait for processing
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -178,7 +193,12 @@ async fn test_fifo_single_group_ordering() {
 
     // Verify order is preserved
     for i in 0..10 {
-        assert_eq!(processed[i], format!("msg-{}", i), "Message order mismatch at index {}", i);
+        assert_eq!(
+            processed[i],
+            format!("msg-{}", i),
+            "Message order mismatch at index {}",
+            i
+        );
     }
 }
 
@@ -186,7 +206,9 @@ async fn test_fifo_single_group_ordering() {
 async fn test_fifo_different_groups_parallel() {
     // Different groups should be processed in parallel
     let mediator = Arc::new(OrderTrackingMediator::new(50));
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -212,7 +234,10 @@ async fn test_fifo_different_groups_parallel() {
     let start = std::time::Instant::now();
 
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     // Wait for processing - shorter sleep since messages process in parallel
     tokio::time::sleep(Duration::from_millis(150)).await;
@@ -236,7 +261,9 @@ async fn test_fifo_different_groups_parallel() {
 async fn test_fifo_mixed_groups() {
     // Mix of grouped and ungrouped messages
     let mediator = Arc::new(OrderTrackingMediator::new(10));
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -278,7 +305,10 @@ async fn test_fifo_mixed_groups() {
     }
 
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(400)).await;
 
@@ -286,7 +316,8 @@ async fn test_fifo_mixed_groups() {
     assert_eq!(processed.len(), 7);
 
     // Find indices of group-a messages and verify order
-    let group_a_indices: Vec<usize> = processed.iter()
+    let group_a_indices: Vec<usize> = processed
+        .iter()
         .enumerate()
         .filter(|(_, id)| id.starts_with("group-a-"))
         .map(|(i, _)| i)
@@ -294,14 +325,25 @@ async fn test_fifo_mixed_groups() {
 
     if group_a_indices.len() == 3 {
         // Verify group-a messages are in order relative to each other
-        let group_a_ids: Vec<&String> = group_a_indices.iter()
-            .map(|&i| &processed[i])
-            .collect();
+        let group_a_ids: Vec<&String> = group_a_indices.iter().map(|&i| &processed[i]).collect();
 
         for i in 0..group_a_ids.len() - 1 {
-            let current = group_a_ids[i].strip_prefix("group-a-").unwrap().parse::<u32>().unwrap();
-            let next = group_a_ids[i+1].strip_prefix("group-a-").unwrap().parse::<u32>().unwrap();
-            assert!(current < next, "Group A messages out of order: {} before {}", current, next);
+            let current = group_a_ids[i]
+                .strip_prefix("group-a-")
+                .unwrap()
+                .parse::<u32>()
+                .unwrap();
+            let next = group_a_ids[i + 1]
+                .strip_prefix("group-a-")
+                .unwrap()
+                .parse::<u32>()
+                .unwrap();
+            assert!(
+                current < next,
+                "Group A messages out of order: {} before {}",
+                current,
+                next
+            );
         }
     }
 }
@@ -310,12 +352,22 @@ async fn test_fifo_mixed_groups() {
 async fn test_fifo_multiple_pools_same_group() {
     // Same group ID across different pools should still be independent
     let mediator = Arc::new(OrderTrackingMediator::new(10));
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let config = RouterConfig {
         processing_pools: vec![
-            PoolConfig { code: "POOL_A".to_string(), concurrency: 5, rate_limit_per_minute: None },
-            PoolConfig { code: "POOL_B".to_string(), concurrency: 5, rate_limit_per_minute: None },
+            PoolConfig {
+                code: "POOL_A".to_string(),
+                concurrency: 5,
+                rate_limit_per_minute: None,
+            },
+            PoolConfig {
+                code: "POOL_B".to_string(),
+                concurrency: 5,
+                rate_limit_per_minute: None,
+            },
         ],
         queues: vec![],
     };
@@ -340,7 +392,10 @@ async fn test_fifo_multiple_pools_same_group() {
     }
 
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(300)).await;
 
@@ -348,18 +403,40 @@ async fn test_fifo_multiple_pools_same_group() {
     assert_eq!(processed.len(), 6);
 
     // Verify pool-a messages are in order
-    let pool_a: Vec<&String> = processed.iter().filter(|id| id.starts_with("pool-a-")).collect();
+    let pool_a: Vec<&String> = processed
+        .iter()
+        .filter(|id| id.starts_with("pool-a-"))
+        .collect();
     for i in 0..pool_a.len() - 1 {
-        let current = pool_a[i].strip_prefix("pool-a-").unwrap().parse::<u32>().unwrap();
-        let next = pool_a[i+1].strip_prefix("pool-a-").unwrap().parse::<u32>().unwrap();
+        let current = pool_a[i]
+            .strip_prefix("pool-a-")
+            .unwrap()
+            .parse::<u32>()
+            .unwrap();
+        let next = pool_a[i + 1]
+            .strip_prefix("pool-a-")
+            .unwrap()
+            .parse::<u32>()
+            .unwrap();
         assert!(current < next);
     }
 
     // Verify pool-b messages are in order
-    let pool_b: Vec<&String> = processed.iter().filter(|id| id.starts_with("pool-b-")).collect();
+    let pool_b: Vec<&String> = processed
+        .iter()
+        .filter(|id| id.starts_with("pool-b-"))
+        .collect();
     for i in 0..pool_b.len() - 1 {
-        let current = pool_b[i].strip_prefix("pool-b-").unwrap().parse::<u32>().unwrap();
-        let next = pool_b[i+1].strip_prefix("pool-b-").unwrap().parse::<u32>().unwrap();
+        let current = pool_b[i]
+            .strip_prefix("pool-b-")
+            .unwrap()
+            .parse::<u32>()
+            .unwrap();
+        let next = pool_b[i + 1]
+            .strip_prefix("pool-b-")
+            .unwrap()
+            .parse::<u32>()
+            .unwrap();
         assert!(current < next);
     }
 }
@@ -368,7 +445,9 @@ async fn test_fifo_multiple_pools_same_group() {
 async fn test_fifo_large_group() {
     // Large group should still maintain order
     let mediator = Arc::new(OrderTrackingMediator::new(5));
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -392,7 +471,10 @@ async fn test_fifo_large_group() {
     }
 
     let poll_result = consumer.poll(50).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(800)).await;
 
@@ -412,7 +494,9 @@ async fn test_fifo_unique_groups_parallel() {
     // sequentially (correct FIFO behavior matching Java). To get parallel processing,
     // messages must have different group IDs.
     let mediator = Arc::new(OrderTrackingMediator::new(50));
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -432,14 +516,17 @@ async fn test_fifo_unique_groups_parallel() {
         consumer.add_message(create_queued_message_with_group(
             &format!("msg-{}", i),
             "DEFAULT",
-            Some(group_ids[i].as_str()),  // Each message in its own group
+            Some(group_ids[i].as_str()), // Each message in its own group
         ));
     }
 
     let start = std::time::Instant::now();
 
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
@@ -461,7 +548,9 @@ async fn test_fifo_group_throughput() {
     // Verify that groups don't completely serialize all processing
     // i.e., different groups can interleave
     let mediator = Arc::new(OrderTrackingMediator::new(20));
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -487,7 +576,10 @@ async fn test_fifo_group_throughput() {
     }
 
     let poll_result = consumer.poll(15).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -496,13 +588,19 @@ async fn test_fifo_group_throughput() {
 
     // Verify each group's messages are in order
     for group in 0..5 {
-        let group_msgs: Vec<&String> = processed.iter()
+        let group_msgs: Vec<&String> = processed
+            .iter()
             .filter(|id| id.starts_with(&format!("g{}-", group)))
             .collect();
 
         for i in 0..group_msgs.len() - 1 {
             let current_num = group_msgs[i].chars().last().unwrap().to_digit(10).unwrap();
-            let next_num = group_msgs[i+1].chars().last().unwrap().to_digit(10).unwrap();
+            let next_num = group_msgs[i + 1]
+                .chars()
+                .last()
+                .unwrap()
+                .to_digit(10)
+                .unwrap();
             assert!(current_num < next_num, "Group {} out of order", group);
         }
     }

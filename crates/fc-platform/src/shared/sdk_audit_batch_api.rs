@@ -1,19 +1,15 @@
 //! SDK Batch Audit Logs API — batch audit log ingest
 
-use axum::{
-    routing::post,
-    extract::State,
-    Json, Router,
-};
-use utoipa::ToSchema;
+use axum::{extract::State, routing::post, Json, Router};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use chrono::{DateTime, Utc};
 use tracing::warn;
+use utoipa::ToSchema;
 
+use crate::application::repository::ApplicationRepository;
 use crate::audit::entity::AuditLog;
 use crate::audit::repository::AuditLogRepository;
-use crate::application::repository::ApplicationRepository;
 use crate::client::repository::ClientRepository;
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;

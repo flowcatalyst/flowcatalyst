@@ -1,14 +1,12 @@
 //! Delete Service Account Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::ServiceAccountRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::ServiceAccountDeleted;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::ServiceAccountRepository;
 
 /// Command for deleting a service account.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,10 +23,7 @@ pub struct DeleteServiceAccountUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> DeleteServiceAccountUseCase<U> {
-    pub fn new(
-        service_account_repo: Arc<ServiceAccountRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
+    pub fn new(service_account_repo: Arc<ServiceAccountRepository>, unit_of_work: Arc<U>) -> Self {
         Self {
             service_account_repo,
             unit_of_work,
@@ -45,7 +40,11 @@ impl<U: UnitOfWork> UseCase for DeleteServiceAccountUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeleteServiceAccountCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeleteServiceAccountCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -64,22 +63,24 @@ impl<U: UnitOfWork> UseCase for DeleteServiceAccountUseCase<U> {
                 ));
             }
             Err(e) => {
-                return UseCaseResult::failure(UseCaseError::commit(
-                    format!("Failed to find service account: {}", e),
-                ));
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to find service account: {}",
+                    e
+                )));
             }
         };
 
         // Create domain event
-        let event = ServiceAccountDeleted::new(
-            &ctx,
-            &service_account.id,
-            &service_account.code,
-        );
+        let event = ServiceAccountDeleted::new(&ctx, &service_account.id, &service_account.code);
 
         // Atomic commit with delete
         self.unit_of_work
-            .commit_delete(&service_account, &*self.service_account_repo, event, &command)
+            .commit_delete(
+                &service_account,
+                &*self.service_account_repo,
+                event,
+                &command,
+            )
             .await
     }
 }

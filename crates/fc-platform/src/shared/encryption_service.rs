@@ -20,7 +20,7 @@
 //! 5. Remove `FLOWCATALYST_APP_KEY_PREVIOUS` after all data is migrated
 
 use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng, rand_core::RngCore, generic_array::typenum::U12},
+    aead::{generic_array::typenum::U12, rand_core::RngCore, Aead, KeyInit, OsRng},
     Aes256Gcm, Nonce,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -39,13 +39,13 @@ pub struct EncryptionService {
 }
 
 fn make_cipher(key_base64: &str) -> Result<Aes256Gcm, String> {
-    let key_bytes = BASE64.decode(key_base64)
+    let key_bytes = BASE64
+        .decode(key_base64)
         .map_err(|e| format!("Invalid base64 key: {}", e))?;
     if key_bytes.len() != 32 {
         return Err(format!("Key must be 32 bytes (got {})", key_bytes.len()));
     }
-    Aes256Gcm::new_from_slice(&key_bytes)
-        .map_err(|e| format!("Failed to init AES cipher: {}", e))
+    Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| format!("Failed to init AES cipher: {}", e))
 }
 
 impl EncryptionService {
@@ -58,12 +58,10 @@ impl EncryptionService {
     }
 
     /// Create with current key + previous key(s) for rotation.
-    pub fn with_previous_keys(
-        current_key: &str,
-        previous_keys: &[&str],
-    ) -> Result<Self, String> {
+    pub fn with_previous_keys(current_key: &str, previous_keys: &[&str]) -> Result<Self, String> {
         let current = make_cipher(current_key)?;
-        let previous = previous_keys.iter()
+        let previous = previous_keys
+            .iter()
             .map(|k| make_cipher(k))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Self { current, previous })
@@ -76,7 +74,8 @@ impl EncryptionService {
         let current_key = std::env::var("FLOWCATALYST_APP_KEY").ok()?;
         let previous_key = std::env::var("FLOWCATALYST_APP_KEY_PREVIOUS").ok();
 
-        let previous_keys: Vec<&str> = previous_key.as_deref()
+        let previous_keys: Vec<&str> = previous_key
+            .as_deref()
             .filter(|k| !k.is_empty())
             .into_iter()
             .collect();
@@ -104,7 +103,8 @@ impl EncryptionService {
         OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from(nonce_bytes);
 
-        let ciphertext = self.current
+        let ciphertext = self
+            .current
             .encrypt(&nonce, plaintext.as_bytes())
             .map_err(|e| format!("Encryption failed: {}", e))?;
 
@@ -122,7 +122,8 @@ impl EncryptionService {
         // Handle TypeScript encryption format: "encrypted:BASE64(iv || ciphertext || tag)"
         let raw = encrypted.strip_prefix("encrypted:").unwrap_or(encrypted);
 
-        let data = BASE64.decode(raw)
+        let data = BASE64
+            .decode(raw)
             .map_err(|e| format!("Invalid base64: {}", e))?;
 
         if data.is_empty() {
@@ -132,7 +133,8 @@ impl EncryptionService {
         // Check if versioned format (first byte is version)
         if data[0] == CURRENT_VERSION {
             // Versioned: version(1) || nonce(12) || ciphertext
-            if data.len() < 14 { // 1 + 12 + at least 1 byte ciphertext
+            if data.len() < 14 {
+                // 1 + 12 + at least 1 byte ciphertext
                 return Err("Encrypted data too short".to_string());
             }
             let nonce_bytes: [u8; 12] = data[1..13].try_into().unwrap();
@@ -152,7 +154,11 @@ impl EncryptionService {
     }
 
     /// Try decrypting with current key, then previous keys.
-    fn try_decrypt_with_fallback(&self, nonce: &Nonce<U12>, ciphertext: &[u8]) -> Result<String, String> {
+    fn try_decrypt_with_fallback(
+        &self,
+        nonce: &Nonce<U12>,
+        ciphertext: &[u8],
+    ) -> Result<String, String> {
         // Try current key first
         if let Ok(plaintext) = self.current.decrypt(nonce, ciphertext) {
             return String::from_utf8(plaintext)
@@ -162,8 +168,9 @@ impl EncryptionService {
         // Try previous keys
         for (i, prev) in self.previous.iter().enumerate() {
             if let Ok(plaintext) = prev.decrypt(nonce, ciphertext) {
-                return String::from_utf8(plaintext)
-                    .map_err(|e| format!("Decrypted data not valid UTF-8 (previous key {}): {}", i, e));
+                return String::from_utf8(plaintext).map_err(|e| {
+                    format!("Decrypted data not valid UTF-8 (previous key {}): {}", i, e)
+                });
             }
         }
 

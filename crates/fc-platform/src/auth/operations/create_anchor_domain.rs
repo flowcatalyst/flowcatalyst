@@ -1,15 +1,13 @@
 //! Create Anchor Domain Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::AnchorDomainCreated;
 use crate::auth::config_entity::AnchorDomain;
 use crate::auth::config_repository::AnchorDomainRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::AnchorDomainCreated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,7 +22,10 @@ pub struct CreateAnchorDomainUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> CreateAnchorDomainUseCase<U> {
     pub fn new(anchor_domain_repo: Arc<AnchorDomainRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { anchor_domain_repo, unit_of_work }
+        Self {
+            anchor_domain_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -44,7 +45,11 @@ impl<U: UnitOfWork> UseCase for CreateAnchorDomainUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &CreateAnchorDomainCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &CreateAnchorDomainCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 

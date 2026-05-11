@@ -5,18 +5,16 @@
 //!
 //! These tests use wiremock for HTTP target simulation.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicBool, Ordering};
-use std::time::Duration;
 use async_trait::async_trait;
-use wiremock::{MockServer, Mock, ResponseTemplate};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use fc_common::{
-    Message, QueuedMessage, MediationType, PoolConfig, RouterConfig,
-};
+use fc_common::{MediationType, Message, PoolConfig, QueuedMessage, RouterConfig};
 use fc_queue::{QueueConsumer, QueueError};
-use fc_router::{QueueManager, HttpMediator, HttpMediatorConfig};
+use fc_router::{HttpMediator, HttpMediatorConfig, QueueManager};
 
 /// Mock queue consumer that provides test messages
 struct TestQueueConsumer {
@@ -74,11 +72,17 @@ impl QueueConsumer for TestQueueConsumer {
     }
 
     async fn nack(&self, receipt_handle: &str, delay_seconds: Option<u32>) -> fc_queue::Result<()> {
-        self.nacked.lock().push((receipt_handle.to_string(), delay_seconds));
+        self.nacked
+            .lock()
+            .push((receipt_handle.to_string(), delay_seconds));
         Ok(())
     }
 
-    async fn extend_visibility(&self, _receipt_handle: &str, _seconds: u32) -> fc_queue::Result<()> {
+    async fn extend_visibility(
+        &self,
+        _receipt_handle: &str,
+        _seconds: u32,
+    ) -> fc_queue::Result<()> {
         Ok(())
     }
 
@@ -132,7 +136,9 @@ async fn test_end_to_end_successful_delivery() {
         ..Default::default()
     };
     let mediator = Arc::new(HttpMediator::with_config(config));
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     // Configure pool
     let router_config = RouterConfig {
@@ -147,7 +153,12 @@ async fn test_end_to_end_successful_delivery() {
 
     // Create consumer with one message
     let target = format!("{}/webhook", mock_server.uri());
-    let messages = vec![create_queued_message("msg-1", "DEFAULT", &target, "test-queue")];
+    let messages = vec![create_queued_message(
+        "msg-1",
+        "DEFAULT",
+        &target,
+        "test-queue",
+    )];
     let consumer = Arc::new(TestQueueConsumer::new("test-queue"));
     for msg in messages {
         consumer.add_message(msg);
@@ -155,7 +166,10 @@ async fn test_end_to_end_successful_delivery() {
 
     // Poll and route
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     // Wait for processing
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -182,7 +196,9 @@ async fn test_end_to_end_failed_delivery() {
         ..Default::default()
     };
     let mediator = Arc::new(HttpMediator::with_config(config));
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let router_config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -195,14 +211,22 @@ async fn test_end_to_end_failed_delivery() {
     manager.apply_config(router_config).await.unwrap();
 
     let target = format!("{}/webhook", mock_server.uri());
-    let messages = vec![create_queued_message("msg-fail", "DEFAULT", &target, "test-queue")];
+    let messages = vec![create_queued_message(
+        "msg-fail",
+        "DEFAULT",
+        &target,
+        "test-queue",
+    )];
     let consumer = Arc::new(TestQueueConsumer::new("test-queue"));
     for msg in messages {
         consumer.add_message(msg);
     }
 
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(300)).await;
 
@@ -229,7 +253,9 @@ async fn test_end_to_end_config_error_no_retry() {
         ..Default::default()
     };
     let mediator = Arc::new(HttpMediator::with_config(config));
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let router_config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -242,14 +268,22 @@ async fn test_end_to_end_config_error_no_retry() {
     manager.apply_config(router_config).await.unwrap();
 
     let target = format!("{}/webhook", mock_server.uri());
-    let messages = vec![create_queued_message("msg-400", "DEFAULT", &target, "test-queue")];
+    let messages = vec![create_queued_message(
+        "msg-400",
+        "DEFAULT",
+        &target,
+        "test-queue",
+    )];
     let consumer = Arc::new(TestQueueConsumer::new("test-queue"));
     for msg in messages {
         consumer.add_message(msg);
     }
 
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
@@ -277,12 +311,22 @@ async fn test_end_to_end_multiple_pools() {
         .await;
 
     let mediator = Arc::new(HttpMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let router_config = RouterConfig {
         processing_pools: vec![
-            PoolConfig { code: "POOL_A".to_string(), concurrency: 5, rate_limit_per_minute: None },
-            PoolConfig { code: "POOL_B".to_string(), concurrency: 5, rate_limit_per_minute: None },
+            PoolConfig {
+                code: "POOL_A".to_string(),
+                concurrency: 5,
+                rate_limit_per_minute: None,
+            },
+            PoolConfig {
+                code: "POOL_B".to_string(),
+                concurrency: 5,
+                rate_limit_per_minute: None,
+            },
         ],
         queues: vec![],
     };
@@ -292,12 +336,30 @@ async fn test_end_to_end_multiple_pools() {
     let consumer = Arc::new(TestQueueConsumer::new("test-queue"));
 
     // Add messages to different pools
-    consumer.add_message(create_queued_message("msg-a1", "POOL_A", &target, "test-queue"));
-    consumer.add_message(create_queued_message("msg-b1", "POOL_B", &target, "test-queue"));
-    consumer.add_message(create_queued_message("msg-a2", "POOL_A", &target, "test-queue"));
+    consumer.add_message(create_queued_message(
+        "msg-a1",
+        "POOL_A",
+        &target,
+        "test-queue",
+    ));
+    consumer.add_message(create_queued_message(
+        "msg-b1",
+        "POOL_B",
+        &target,
+        "test-queue",
+    ));
+    consumer.add_message(create_queued_message(
+        "msg-a2",
+        "POOL_A",
+        &target,
+        "test-queue",
+    ));
 
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(300)).await;
 
@@ -315,7 +377,7 @@ async fn test_end_to_end_custom_delay_response() {
         .and(path("/webhook"))
         .respond_with(
             ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({"ack": false, "delaySeconds": 120}))
+                .set_body_json(serde_json::json!({"ack": false, "delaySeconds": 120})),
         )
         .expect(1)
         .mount(&mock_server)
@@ -326,7 +388,9 @@ async fn test_end_to_end_custom_delay_response() {
         ..Default::default()
     };
     let mediator = Arc::new(HttpMediator::with_config(config));
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let router_config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -340,10 +404,18 @@ async fn test_end_to_end_custom_delay_response() {
 
     let target = format!("{}/webhook", mock_server.uri());
     let consumer = Arc::new(TestQueueConsumer::new("test-queue"));
-    consumer.add_message(create_queued_message("msg-delay", "DEFAULT", &target, "test-queue"));
+    consumer.add_message(create_queued_message(
+        "msg-delay",
+        "DEFAULT",
+        &target,
+        "test-queue",
+    ));
 
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
@@ -371,7 +443,9 @@ async fn test_end_to_end_batch_processing() {
         .await;
 
     let mediator = Arc::new(HttpMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let router_config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -392,12 +466,15 @@ async fn test_end_to_end_batch_processing() {
             &format!("msg-{}", i),
             "DEFAULT",
             &target,
-            "test-queue"
+            "test-queue",
         ));
     }
 
     let poll_result = consumer.poll(20).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -418,7 +495,9 @@ async fn test_end_to_end_connection_error() {
         ..Default::default()
     };
     let mediator = Arc::new(HttpMediator::with_config(config));
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let router_config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -431,10 +510,18 @@ async fn test_end_to_end_connection_error() {
     manager.apply_config(router_config).await.unwrap();
 
     let consumer = Arc::new(TestQueueConsumer::new("test-queue"));
-    consumer.add_message(create_queued_message("msg-conn-err", "DEFAULT", target, "test-queue"));
+    consumer.add_message(create_queued_message(
+        "msg-conn-err",
+        "DEFAULT",
+        target,
+        "test-queue",
+    ));
 
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(300)).await;
 
@@ -454,7 +541,9 @@ async fn test_end_to_end_shutdown() {
         .await;
 
     let mediator = Arc::new(HttpMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let router_config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -476,14 +565,19 @@ async fn test_end_to_end_auth_token() {
 
     Mock::given(method("POST"))
         .and(path("/secure-webhook"))
-        .and(wiremock::matchers::header("Authorization", "Bearer test-token-123"))
+        .and(wiremock::matchers::header(
+            "Authorization",
+            "Bearer test-token-123",
+        ))
         .respond_with(ResponseTemplate::new(200))
         .expect(1)
         .mount(&mock_server)
         .await;
 
     let mediator = Arc::new(HttpMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let router_config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -508,7 +602,10 @@ async fn test_end_to_end_auth_token() {
     });
 
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 

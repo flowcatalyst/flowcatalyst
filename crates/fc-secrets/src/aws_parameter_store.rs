@@ -57,11 +57,16 @@ impl AwsParameterStoreProvider {
     }
 
     /// Validate a parameter exists without retrieving its value
-    pub async fn validate_reference(&self, reference: &str) -> Result<ValidationResult, SecretsError> {
+    pub async fn validate_reference(
+        &self,
+        reference: &str,
+    ) -> Result<ValidationResult, SecretsError> {
         const PREFIX: &str = "aws-ps://";
 
         if !reference.starts_with(PREFIX) {
-            return Ok(ValidationResult::failure("Invalid reference format for AWS Parameter Store"));
+            return Ok(ValidationResult::failure(
+                "Invalid reference format for AWS Parameter Store",
+            ));
         }
 
         let parameter_name = &reference[PREFIX.len()..];
@@ -74,7 +79,8 @@ impl AwsParameterStoreProvider {
             .build()
             .map_err(|e| SecretsError::ProviderError(format!("Failed to build filter: {}", e)))?;
 
-        match self.client
+        match self
+            .client
             .describe_parameters()
             .parameter_filters(filter)
             .send()
@@ -82,21 +88,23 @@ impl AwsParameterStoreProvider {
         {
             Ok(response) => {
                 if response.parameters().is_empty() {
-                    Ok(ValidationResult::failure(format!("Parameter not found: {}", parameter_name)))
+                    Ok(ValidationResult::failure(format!(
+                        "Parameter not found: {}",
+                        parameter_name
+                    )))
                 } else {
                     let param = &response.parameters()[0];
-                    let param_type = param.r#type()
-                        .map(|t| t.as_str())
-                        .unwrap_or("unknown");
+                    let param_type = param.r#type().map(|t| t.as_str()).unwrap_or("unknown");
                     Ok(ValidationResult::success(format!(
                         "Parameter exists in AWS Parameter Store (type: {})",
                         param_type
                     )))
                 }
             }
-            Err(e) => {
-                Ok(ValidationResult::failure(format!("Failed to access parameter: {}", e)))
-            }
+            Err(e) => Ok(ValidationResult::failure(format!(
+                "Failed to access parameter: {}",
+                e
+            ))),
         }
     }
 
@@ -112,10 +120,11 @@ impl Provider for AwsParameterStoreProvider {
         // No prefix applied - use key as-is (matches Java behavior)
         debug!(parameter_name = %key, "Retrieving parameter from AWS Parameter Store");
 
-        let response = self.client
+        let response = self
+            .client
             .get_parameter()
             .name(key)
-            .with_decryption(true)  // Automatically decrypt SecureString parameters
+            .with_decryption(true) // Automatically decrypt SecureString parameters
             .send()
             .await
             .map_err(|e| {
@@ -130,26 +139,25 @@ impl Provider for AwsParameterStoreProvider {
                 }
             })?;
 
-        response.parameter()
+        response
+            .parameter()
             .and_then(|p| p.value())
             .map(|v| v.to_string())
-            .ok_or_else(|| SecretsError::ProviderError(
-                "Parameter has no value".to_string()
-            ))
+            .ok_or_else(|| SecretsError::ProviderError("Parameter has no value".to_string()))
     }
 
     async fn set(&self, _key: &str, _value: &str) -> Result<(), SecretsError> {
         // AWS Parameter Store is read-only in this implementation
         // Parameters should be provisioned by infrastructure teams
         Err(SecretsError::ProviderError(
-            "AWS Parameter Store provider is read-only".to_string()
+            "AWS Parameter Store provider is read-only".to_string(),
         ))
     }
 
     async fn delete(&self, _key: &str) -> Result<(), SecretsError> {
         // AWS Parameter Store is read-only in this implementation
         Err(SecretsError::ProviderError(
-            "AWS Parameter Store provider is read-only".to_string()
+            "AWS Parameter Store provider is read-only".to_string(),
         ))
     }
 
@@ -188,7 +196,9 @@ mod tests {
     #[test]
     fn test_can_handle() {
         assert!(AwsParameterStoreProvider::can_handle("aws-ps://my-param"));
-        assert!(AwsParameterStoreProvider::can_handle("aws-ps:///path/to/param"));
+        assert!(AwsParameterStoreProvider::can_handle(
+            "aws-ps:///path/to/param"
+        ));
         assert!(!AwsParameterStoreProvider::can_handle("aws-sm://secret"));
         assert!(!AwsParameterStoreProvider::can_handle("vault://secret"));
         assert!(!AwsParameterStoreProvider::can_handle("my-param"));

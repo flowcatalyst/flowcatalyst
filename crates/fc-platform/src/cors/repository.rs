@@ -1,8 +1,8 @@
 //! CORS Origin Repository — PostgreSQL via SQLx
 
 use async_trait::async_trait;
-use sqlx::PgPool;
 use chrono::{DateTime, Utc};
+use sqlx::PgPool;
 
 use super::entity::CorsAllowedOrigin;
 use crate::shared::error::Result;
@@ -42,7 +42,7 @@ impl CorsOriginRepository {
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<CorsAllowedOrigin>> {
         let row = sqlx::query_as::<_, CorsOriginRow>(
-            "SELECT * FROM tnt_cors_allowed_origins WHERE id = $1"
+            "SELECT * FROM tnt_cors_allowed_origins WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -52,7 +52,7 @@ impl CorsOriginRepository {
 
     pub async fn find_by_origin(&self, origin: &str) -> Result<Option<CorsAllowedOrigin>> {
         let row = sqlx::query_as::<_, CorsOriginRow>(
-            "SELECT * FROM tnt_cors_allowed_origins WHERE origin = $1"
+            "SELECT * FROM tnt_cors_allowed_origins WHERE origin = $1",
         )
         .bind(origin)
         .fetch_optional(&self.pool)
@@ -62,7 +62,7 @@ impl CorsOriginRepository {
 
     pub async fn find_all(&self) -> Result<Vec<CorsAllowedOrigin>> {
         let rows = sqlx::query_as::<_, CorsOriginRow>(
-            "SELECT * FROM tnt_cors_allowed_origins ORDER BY origin"
+            "SELECT * FROM tnt_cors_allowed_origins ORDER BY origin",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -70,23 +70,26 @@ impl CorsOriginRepository {
     }
 
     pub async fn get_allowed_origins(&self) -> Result<Vec<String>> {
-        let rows = sqlx::query_scalar::<_, String>(
-            "SELECT origin FROM tnt_cors_allowed_origins"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query_scalar::<_, String>("SELECT origin FROM tnt_cors_allowed_origins")
+            .fetch_all(&self.pool)
+            .await?;
         Ok(rows)
     }
-
 }
 
 impl HasId for CorsAllowedOrigin {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]
 impl crate::usecase::Persist<CorsAllowedOrigin> for CorsOriginRepository {
-    async fn persist(&self, o: &CorsAllowedOrigin, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
+    async fn persist(
+        &self,
+        o: &CorsAllowedOrigin,
+        tx: &mut crate::usecase::DbTx<'_>,
+    ) -> Result<()> {
         let now = Utc::now();
         sqlx::query(
             "INSERT INTO tnt_cors_allowed_origins
@@ -95,7 +98,7 @@ impl crate::usecase::Persist<CorsAllowedOrigin> for CorsOriginRepository {
              ON CONFLICT (id) DO UPDATE SET
                 origin = EXCLUDED.origin,
                 description = EXCLUDED.description,
-                updated_at = EXCLUDED.updated_at"
+                updated_at = EXCLUDED.updated_at",
         )
         .bind(&o.id)
         .bind(&o.origin)

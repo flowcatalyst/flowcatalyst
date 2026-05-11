@@ -18,25 +18,21 @@
 //! - Test endpoints for simulating various response scenarios
 //! - Message seeding endpoints
 
+use anyhow::Result;
+use fc_common::{PoolConfig, QueueConfig, RouterConfig, WarningSeverity};
+use fc_queue::sqs::SqsQueueConsumer;
+use fc_router::{
+    api::create_router_with_options, create_notification_service_with_scheduler,
+    CircuitBreakerRegistry, ConfigSyncConfig, ConfigSyncService, ConsumerFactory, HealthService,
+    HealthServiceConfig, HttpMediatorConfig, LifecycleConfig, LifecycleManager, NotificationConfig,
+    QueueManager, StandbyProcessor, StandbyRouterConfig, WarningService, WarningServiceConfig,
+};
 use std::sync::Arc;
 use std::time::Duration;
-use fc_router::{
-    QueueManager, HttpMediatorConfig, LifecycleManager, LifecycleConfig,
-    WarningService, WarningServiceConfig,
-    HealthService, HealthServiceConfig,
-    CircuitBreakerRegistry, ConsumerFactory,
-    ConfigSyncService, ConfigSyncConfig,
-    StandbyProcessor, StandbyRouterConfig,
-    NotificationConfig, create_notification_service_with_scheduler,
-    api::create_router_with_options,
-};
-use fc_common::{RouterConfig, PoolConfig, QueueConfig, WarningSeverity};
-use fc_queue::sqs::SqsQueueConsumer;
-use anyhow::Result;
-use tracing::{info, warn, error};
-use tokio::{signal, net::TcpListener};
-use tower_http::cors::{CorsLayer, Any};
+use tokio::{net::TcpListener, signal};
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
+use tracing::{error, info, warn};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -155,8 +151,11 @@ async fn main() -> Result<()> {
     } else {
         // Production mode - fetch config from URL(s)
         // Supports comma-separated URLs for multi-platform environments
-        let config_url = std::env::var("FLOWCATALYST_CONFIG_URL")
-            .map_err(|_| anyhow::anyhow!("FLOWCATALYST_CONFIG_URL is required (or set FLOWCATALYST_DEV_MODE=true)"))?;
+        let config_url = std::env::var("FLOWCATALYST_CONFIG_URL").map_err(|_| {
+            anyhow::anyhow!(
+                "FLOWCATALYST_CONFIG_URL is required (or set FLOWCATALYST_DEV_MODE=true)"
+            )
+        })?;
 
         if config_url.is_empty() {
             return Err(anyhow::anyhow!("FLOWCATALYST_CONFIG_URL cannot be empty"));
@@ -198,11 +197,14 @@ async fn main() -> Result<()> {
             "Creating SQS consumer from config"
         );
 
-        let consumer = Arc::new(SqsQueueConsumer::from_queue_url(
-            sqs_client.clone(),
-            queue_config.uri.clone(),
-            queue_config.visibility_timeout as i32,
-        ).await);
+        let consumer = Arc::new(
+            SqsQueueConsumer::from_queue_url(
+                sqs_client.clone(),
+                queue_config.uri.clone(),
+                queue_config.visibility_timeout as i32,
+            )
+            .await,
+        );
         queue_manager.add_consumer(consumer).await;
 
         // Track first queue URL for publisher
@@ -213,7 +215,9 @@ async fn main() -> Result<()> {
 
     if router_config.queues.is_empty() {
         error!("No queues configured - cannot start router");
-        return Err(anyhow::anyhow!("No queues configured in config sync response"));
+        return Err(anyhow::anyhow!(
+            "No queues configured in config sync response"
+        ));
     }
 
     // 9. Start lifecycle manager with all features
@@ -256,14 +260,22 @@ async fn main() -> Result<()> {
         health_service.clone(),
         circuit_breaker_registry,
         standby.is_some(),
-        standby.as_ref().map(|s| s.instance_id().to_string()).unwrap_or_else(|| "default".to_string()),
+        standby
+            .as_ref()
+            .map(|s| s.instance_id().to_string())
+            .unwrap_or_else(|| "default".to_string()),
         None, // stream_health_service
         None, // traffic_strategy
         Some(metrics_handle),
         auth_state,
     )
     .layer(TraceLayer::new_for_http())
-    .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any));
+    .layer(
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any),
+    );
 
     let addr = format!("0.0.0.0:{}", api_port);
     info!(port = api_port, "Starting HTTP API server");
@@ -538,7 +550,8 @@ impl ConsumerFactory for SqsConsumerFactory {
     async fn create_consumer(
         &self,
         config: &QueueConfig,
-    ) -> std::result::Result<Arc<dyn fc_queue::QueueConsumer + Send + Sync>, fc_router::RouterError> {
+    ) -> std::result::Result<Arc<dyn fc_queue::QueueConsumer + Send + Sync>, fc_router::RouterError>
+    {
         info!(
             queue_name = %config.name,
             queue_uri = %config.uri,
@@ -549,15 +562,16 @@ impl ConsumerFactory for SqsConsumerFactory {
             self.sqs_client.clone(),
             config.uri.clone(),
             config.visibility_timeout as i32,
-        ).await;
+        )
+        .await;
         Ok(Arc::new(consumer))
     }
 }
 
 // Simple SQS publisher implementation
 use async_trait::async_trait;
-use fc_queue::{QueuePublisher, QueueError};
 use fc_common::Message;
+use fc_queue::{QueueError, QueuePublisher};
 
 struct SqsPublisher {
     client: aws_sdk_sqs::Client,
@@ -580,20 +594,25 @@ impl QueuePublisher for SqsPublisher {
         let message_id = message.id.clone();
         let body = serde_json::to_string(&message)?;
 
-        let mut request = self.client.send_message()
+        let mut request = self
+            .client
+            .send_message()
             .queue_url(&self.queue_url)
             .message_body(body);
 
         // FIFO queues require message_group_id and message_deduplication_id
         if self.queue_url.ends_with(".fifo") {
-            let group_id = message.message_group_id.clone()
+            let group_id = message
+                .message_group_id
+                .clone()
                 .unwrap_or_else(|| "default".to_string());
             request = request
                 .message_group_id(group_id)
                 .message_deduplication_id(&message_id);
         }
 
-        request.send()
+        request
+            .send()
             .await
             .map_err(|e| QueueError::Sqs(e.to_string()))?;
 

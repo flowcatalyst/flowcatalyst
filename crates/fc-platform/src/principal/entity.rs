@@ -3,9 +3,9 @@
 //! Unified model for users and service accounts.
 //! Multi-tenant with UserScope determining client access.
 
-use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
 use crate::service_account::entity::RoleAssignment;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// Principal type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,7 +18,6 @@ pub enum PrincipalType {
     /// Machine service account
     Service,
 }
-
 
 impl PrincipalType {
     pub fn as_str(&self) -> &str {
@@ -52,7 +51,6 @@ pub enum UserScope {
     Client,
 }
 
-
 impl UserScope {
     pub fn as_str(&self) -> &str {
         match self {
@@ -78,7 +76,12 @@ impl UserScope {
     }
 
     /// Check if this scope can access a specific client
-    pub fn can_access_client(&self, client_id: &str, home_client_id: Option<&str>, assigned_clients: &[String]) -> bool {
+    pub fn can_access_client(
+        &self,
+        client_id: &str,
+        home_client_id: Option<&str>,
+        assigned_clients: &[String],
+    ) -> bool {
         match self {
             Self::Anchor => true,
             Self::Partner => assigned_clients.contains(&client_id.to_string()),
@@ -147,7 +150,11 @@ impl UserIdentity {
         }
     }
 
-    pub fn with_name(mut self, first_name: impl Into<String>, last_name: impl Into<String>) -> Self {
+    pub fn with_name(
+        mut self,
+        first_name: impl Into<String>,
+        last_name: impl Into<String>,
+    ) -> Self {
         self.first_name = Some(first_name.into());
         self.last_name = Some(last_name.into());
         self
@@ -311,7 +318,11 @@ impl Principal {
         self.updated_at = Utc::now();
     }
 
-    pub fn assign_role_for_client(&mut self, role: impl Into<String>, client_id: impl Into<String>) {
+    pub fn assign_role_for_client(
+        &mut self,
+        role: impl Into<String>,
+        client_id: impl Into<String>,
+    ) {
         self.roles.push(RoleAssignment::for_client(role, client_id));
         self.updated_at = Utc::now();
     }
@@ -319,7 +330,8 @@ impl Principal {
     /// Remove all roles from a specific source (e.g., "IDP_SYNC")
     pub fn remove_roles_by_source(&mut self, source: &str) -> usize {
         let original_count = self.roles.len();
-        self.roles.retain(|r| r.assignment_source.as_deref() != Some(source));
+        self.roles
+            .retain(|r| r.assignment_source.as_deref() != Some(source));
         let removed = original_count - self.roles.len();
         if removed > 0 {
             self.updated_at = Utc::now();
@@ -353,11 +365,8 @@ impl Principal {
     }
 
     pub fn can_access_client(&self, client_id: &str) -> bool {
-        self.scope.can_access_client(
-            client_id,
-            self.client_id.as_deref(),
-            &self.assigned_clients,
-        )
+        self.scope
+            .can_access_client(client_id, self.client_id.as_deref(), &self.assigned_clients)
     }
 
     pub fn deactivate(&mut self) {
@@ -397,7 +406,11 @@ pub struct ClientAccessGrant {
 }
 
 impl ClientAccessGrant {
-    pub fn new(principal_id: impl Into<String>, client_id: impl Into<String>, granted_by: impl Into<String>) -> Self {
+    pub fn new(
+        principal_id: impl Into<String>,
+        client_id: impl Into<String>,
+        granted_by: impl Into<String>,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: crate::TsidGenerator::generate(crate::EntityType::Principal),
@@ -600,8 +613,7 @@ mod tests {
     #[test]
     fn principal_can_access_client_uses_its_scope() {
         // Client-scoped user with home client
-        let p = Principal::new_user("u@c.com", UserScope::Client)
-            .with_client_id("clt_home");
+        let p = Principal::new_user("u@c.com", UserScope::Client).with_client_id("clt_home");
         assert!(p.can_access_client("clt_home"));
         assert!(!p.can_access_client("clt_other"));
 

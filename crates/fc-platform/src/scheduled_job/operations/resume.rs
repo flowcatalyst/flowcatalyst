@@ -58,24 +58,29 @@ impl<U: UnitOfWork> UseCase for ResumeScheduledJobUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to load ScheduledJob: {}", e
+                    "Failed to load ScheduledJob: {}",
+                    e
                 )))
             }
         };
 
         if job.status == ScheduledJobStatus::Active {
             return UseCaseResult::failure(UseCaseError::business_rule(
-                "ALREADY_ACTIVE", "ScheduledJob is already active",
+                "ALREADY_ACTIVE",
+                "ScheduledJob is already active",
             ));
         }
         if job.status == ScheduledJobStatus::Archived {
             return UseCaseResult::failure(UseCaseError::business_rule(
-                "ARCHIVED", "Cannot resume an archived ScheduledJob",
+                "ARCHIVED",
+                "Cannot resume an archived ScheduledJob",
             ));
         }
 
         job.resume();
         let event = ScheduledJobResumed::new(&ctx, &job.id, job.client_id.as_deref(), &job.code);
-        self.unit_of_work.commit(&job, &*self.repo, event, &cmd).await
+        self.unit_of_work
+            .commit(&job, &*self.repo, event, &cmd)
+            .await
     }
 }

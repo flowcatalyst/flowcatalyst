@@ -4,17 +4,17 @@
 //! These endpoints query the raw collections (events, dispatch_jobs)
 //! rather than the optimized read projections.
 
-use std::sync::Arc;
+use crate::shared::error::{PlatformError, Result};
+use crate::{DispatchJob, Event};
+use crate::{DispatchJobRepository, EventRepository};
 use axum::{
     extract::{Path, Query, State},
-    routing::get,
     response::Json,
+    routing::get,
     Router,
 };
 use serde::{Deserialize, Serialize};
-use crate::{Event, DispatchJob};
-use crate::{EventRepository, DispatchJobRepository};
-use crate::shared::error::{PlatformError, Result};
+use std::sync::Arc;
 
 /// Debug list query — `?size=` only. Debug grids look at the most recent
 /// rows; no pagination.
@@ -75,10 +75,16 @@ impl From<&Event> for RawEventResponse {
         let context_data = if event.context_data.is_empty() {
             None
         } else {
-            Some(event.context_data.iter().map(|cd| ContextDataResponse {
-                key: cd.key.clone(),
-                value: cd.value.clone(),
-            }).collect())
+            Some(
+                event
+                    .context_data
+                    .iter()
+                    .map(|cd| ContextDataResponse {
+                        key: cd.key.clone(),
+                        value: cd.value.clone(),
+                    })
+                    .collect(),
+            )
         };
 
         Self {
@@ -98,7 +104,6 @@ impl From<&Event> for RawEventResponse {
         }
     }
 }
-
 
 // ============================================================================
 // DTOs - Raw Dispatch Jobs
@@ -190,7 +195,8 @@ async fn list_raw_events(
     State(state): State<DebugState>,
     Query(params): Query<DebugListQuery>,
 ) -> Result<Json<Vec<RawEventResponse>>> {
-    let events = state.event_repo
+    let events = state
+        .event_repo
         .find_recent_with_cursor(None, params.limit())
         .await?;
     let items = events.iter().map(RawEventResponse::from).collect();
@@ -202,7 +208,10 @@ async fn get_raw_event(
     State(state): State<DebugState>,
     Path(id): Path<String>,
 ) -> Result<Json<RawEventResponse>> {
-    let event = state.event_repo.find_by_id(&id).await?
+    let event = state
+        .event_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Event", &id))?;
 
     Ok(Json(RawEventResponse::from(&event)))
@@ -219,7 +228,8 @@ async fn list_raw_dispatch_jobs(
     State(state): State<DebugState>,
     Query(params): Query<DebugListQuery>,
 ) -> Result<Json<Vec<RawDispatchJobResponse>>> {
-    let jobs = state.dispatch_job_repo
+    let jobs = state
+        .dispatch_job_repo
         .find_recent_with_cursor(None, params.limit())
         .await?;
     let items = jobs.iter().map(RawDispatchJobResponse::from).collect();
@@ -231,7 +241,10 @@ async fn get_raw_dispatch_job(
     State(state): State<DebugState>,
     Path(id): Path<String>,
 ) -> Result<Json<RawDispatchJobResponse>> {
-    let job = state.dispatch_job_repo.find_by_id(&id).await?
+    let job = state
+        .dispatch_job_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("DispatchJob", &id))?;
 
     Ok(Json(RawDispatchJobResponse::from(&job)))

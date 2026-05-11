@@ -1,14 +1,12 @@
 //! Delete Subscription Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::SubscriptionRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::SubscriptionDeleted;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::SubscriptionRepository;
 
 /// Command for deleting a subscription.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,7 +46,11 @@ impl<U: UnitOfWork> UseCase for DeleteSubscriptionUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeleteSubscriptionCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeleteSubscriptionCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -58,12 +60,19 @@ impl<U: UnitOfWork> UseCase for DeleteSubscriptionUseCase<U> {
         ctx: ExecutionContext,
     ) -> UseCaseResult<SubscriptionDeleted> {
         // Fetch existing subscription
-        let subscription = match self.subscription_repo.find_by_id(&command.subscription_id).await {
+        let subscription = match self
+            .subscription_repo
+            .find_by_id(&command.subscription_id)
+            .await
+        {
             Ok(Some(s)) => s,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
                     "SUBSCRIPTION_NOT_FOUND",
-                    format!("Subscription with ID '{}' not found", command.subscription_id),
+                    format!(
+                        "Subscription with ID '{}' not found",
+                        command.subscription_id
+                    ),
                 ));
             }
             Err(e) => {

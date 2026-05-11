@@ -56,7 +56,9 @@ pub struct SmtpEmailService {
 
 /// Read env var with fallback alias (FC_ prefix first, then TS-style name).
 fn env_or_alias(primary: &str, alias: &str) -> Option<String> {
-    std::env::var(primary).ok().or_else(|| std::env::var(alias).ok())
+    std::env::var(primary)
+        .ok()
+        .or_else(|| std::env::var(alias).ok())
 }
 
 impl SmtpEmailService {
@@ -74,7 +76,14 @@ impl SmtpEmailService {
             .map(|v| v == "true" || v == "1")
             .unwrap_or(false);
 
-        Some(Self { host, port, username, password, from, secure })
+        Some(Self {
+            host,
+            port,
+            username,
+            password,
+            from,
+            secure,
+        })
     }
 }
 
@@ -82,15 +91,18 @@ impl SmtpEmailService {
 impl EmailService for SmtpEmailService {
     async fn send(&self, message: &EmailMessage) -> Result<(), String> {
         use lettre::{
-            Message as LettreMessage,
-            SmtpTransport, Transport,
-            transport::smtp::authentication::Credentials,
             message::{header::ContentType, Mailbox},
+            transport::smtp::authentication::Credentials,
+            Message as LettreMessage, SmtpTransport, Transport,
         };
 
-        let from_mailbox: Mailbox = self.from.parse()
+        let from_mailbox: Mailbox = self
+            .from
+            .parse()
             .map_err(|e| format!("Invalid from address: {}", e))?;
-        let to_mailbox: Mailbox = message.to.parse()
+        let to_mailbox: Mailbox = message
+            .to
+            .parse()
             .map_err(|e| format!("Invalid to address: {}", e))?;
 
         let email = LettreMessage::builder()
@@ -117,7 +129,8 @@ impl EmailService for SmtpEmailService {
                 .build()
         };
 
-        mailer.send(&email)
+        mailer
+            .send(&email)
             .map_err(|e| format!("Failed to send email: {}", e))?;
 
         info!(to = %message.to, subject = %message.subject, "Email sent successfully");

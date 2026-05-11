@@ -10,10 +10,10 @@
 //! own list of "messages that look stuck" and wants to confirm whether the
 //! router is still actively processing each one before re-enqueueing.
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-use super::{FlowCatalystClient, ClientError};
+use super::{ClientError, FlowCatalystClient};
 
 /// Response from `GET /monitoring/in-flight-messages/check`.
 ///
@@ -51,10 +51,7 @@ pub struct InPipelineBatchRequest {
 
 impl FlowCatalystClient {
     fn router_url(&self, path: &str) -> String {
-        let base = self
-            .router_base_url
-            .as_deref()
-            .unwrap_or(&self.base_url);
+        let base = self.router_base_url.as_deref().unwrap_or(&self.base_url);
         format!("{}{}", base, path)
     }
 
@@ -77,7 +74,10 @@ impl FlowCatalystClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ClientError::Api { status: status.as_u16(), body });
+            return Err(ClientError::Api {
+                status: status.as_u16(),
+                body,
+            });
         }
         resp.json().await.map_err(ClientError::Request)
     }
@@ -105,7 +105,10 @@ impl FlowCatalystClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ClientError::Api { status: status.as_u16(), body });
+            return Err(ClientError::Api {
+                status: status.as_u16(),
+                body,
+            });
         }
         resp.json().await.map_err(ClientError::Request)
     }

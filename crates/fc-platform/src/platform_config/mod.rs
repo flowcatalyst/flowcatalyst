@@ -2,17 +2,17 @@
 //!
 //! Hierarchical configuration with RBAC access control.
 
-pub mod entity;
-pub mod repository;
-pub mod operations;
-pub mod api;
+pub mod access_api;
 pub mod access_entity;
 pub mod access_repository;
-pub mod access_api;
+pub mod api;
+pub mod entity;
+pub mod operations;
+pub mod repository;
 
-pub use entity::{PlatformConfig, ConfigScope, ConfigValueType};
-pub use repository::PlatformConfigRepository;
+pub use access_api::{config_access_router, ConfigAccessState};
 pub use access_entity::PlatformConfigAccess;
 pub use access_repository::PlatformConfigAccessRepository;
-pub use api::{PlatformConfigState, admin_platform_config_router};
-pub use access_api::{ConfigAccessState, config_access_router};
+pub use api::{admin_platform_config_router, PlatformConfigState};
+pub use entity::{ConfigScope, ConfigValueType, PlatformConfig};
+pub use repository::PlatformConfigRepository;

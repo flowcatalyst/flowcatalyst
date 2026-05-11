@@ -1,13 +1,13 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use sqlx::{Pool, Sqlite, Row};
+use sqlx::{Pool, Row, Sqlite};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, warn, info};
+use tracing::{debug, info, warn};
 
+use crate::{EmbeddedQueue, QueueConsumer, QueueError, QueueMetrics, QueuePublisher, Result};
 use fc_common::{Message, QueuedMessage};
-use crate::{QueueConsumer, QueuePublisher, EmbeddedQueue, QueueMetrics, Result, QueueError};
 
 /// SQLite-based queue that mimics SQS FIFO semantics for local development
 pub struct SqliteQueue {
@@ -169,13 +169,12 @@ impl QueueConsumer for SqliteQueue {
     }
 
     async fn ack(&self, receipt_handle: &str) -> Result<()> {
-        let result = sqlx::query(
-            "DELETE FROM queue_messages WHERE receipt_handle = ? AND queue_name = ?",
-        )
-        .bind(receipt_handle)
-        .bind(&self.queue_name)
-        .execute(&self.pool)
-        .await?;
+        let result =
+            sqlx::query("DELETE FROM queue_messages WHERE receipt_handle = ? AND queue_name = ?")
+                .bind(receipt_handle)
+                .bind(&self.queue_name)
+                .execute(&self.pool)
+                .await?;
 
         if result.rows_affected() == 0 {
             warn!(
@@ -325,13 +324,11 @@ impl QueuePublisher for SqliteQueue {
         let payload = serde_json::to_string(&message)?;
 
         // Check for duplicate (idempotency)
-        let existing = sqlx::query(
-            "SELECT id FROM queue_messages WHERE id = ? AND queue_name = ?",
-        )
-        .bind(&message.id)
-        .bind(&self.queue_name)
-        .fetch_optional(&self.pool)
-        .await?;
+        let existing = sqlx::query("SELECT id FROM queue_messages WHERE id = ? AND queue_name = ?")
+            .bind(&message.id)
+            .bind(&self.queue_name)
+            .fetch_optional(&self.pool)
+            .await?;
 
         if existing.is_some() {
             debug!(
@@ -387,8 +384,8 @@ impl EmbeddedQueue for SqliteQueue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::sqlite::SqlitePoolOptions;
     use fc_common::MediationType;
+    use sqlx::sqlite::SqlitePoolOptions;
 
     async fn create_test_queue() -> SqliteQueue {
         let pool = SqlitePoolOptions::new()
@@ -453,7 +450,10 @@ mod tests {
         let messages = queue.poll(10).await.unwrap();
 
         // NACK with 60 second delay
-        queue.nack(&messages[0].receipt_handle, Some(60)).await.unwrap();
+        queue
+            .nack(&messages[0].receipt_handle, Some(60))
+            .await
+            .unwrap();
 
         // Poll again - should be empty (message is delayed)
         let messages = queue.poll(10).await.unwrap();

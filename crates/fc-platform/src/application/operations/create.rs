@@ -1,16 +1,13 @@
 //! Create Application Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::{Application, ApplicationType};
-use crate::ApplicationRepository;
-use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
-};
 use super::events::ApplicationCreated;
-
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::ApplicationRepository;
+use crate::{Application, ApplicationType};
 
 /// Command for creating a new application.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,10 +44,7 @@ pub struct CreateApplicationUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> CreateApplicationUseCase<U> {
-    pub fn new(
-        application_repo: Arc<ApplicationRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
+    pub fn new(application_repo: Arc<ApplicationRepository>, unit_of_work: Arc<U>) -> Self {
         Self {
             application_repo,
             unit_of_work,
@@ -83,7 +77,11 @@ impl<U: UnitOfWork> UseCase for CreateApplicationUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &CreateApplicationCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &CreateApplicationCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 

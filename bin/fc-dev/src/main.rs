@@ -7,28 +7,24 @@
 //! - Platform APIs (events, subscriptions, auth, etc.)
 //! - Metrics endpoint
 
-use std::sync::Arc;
-use std::time::Duration;
-use clap::Parser;
-use tokio::sync::broadcast;
-use tokio::net::TcpListener;
 use anyhow::Result;
-use tracing::{info, warn, error};
-use axum::{
-    routing::get,
-    response::Json,
-    Router,
-};
-use tower_http::cors::{CorsLayer, Any};
-use tower_http::set_header::SetResponseHeaderLayer;
-use tower_http::trace::TraceLayer;
-use tower_http::services::{ServeDir, ServeFile};
 use axum::http::header::CACHE_CONTROL;
 use axum::http::HeaderValue;
+use axum::{response::Json, routing::get, Router};
+use clap::Parser;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::net::TcpListener;
+use tokio::sync::broadcast;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::{ServeDir, ServeFile};
+use tower_http::set_header::SetResponseHeaderLayer;
+use tower_http::trace::TraceLayer;
+use tracing::{error, info, warn};
 
 use rust_embed::Embed;
 
-use fc_common::{RouterConfig, PoolConfig, QueueConfig};
+use fc_common::{PoolConfig, QueueConfig, RouterConfig};
 
 /// Embedded frontend static files (compiled into the binary from frontend/dist/).
 /// In dev, set FC_STATIC_DIR to override with a live directory.
@@ -36,25 +32,22 @@ use fc_common::{RouterConfig, PoolConfig, QueueConfig};
 #[folder = "../../frontend/dist/"]
 #[prefix = ""]
 struct FrontendAssets;
-use fc_router::{
-    QueueManager, HttpMediatorConfig, LifecycleManager, LifecycleConfig,
-    WarningService, WarningServiceConfig, HealthService, HealthServiceConfig,
-    CircuitBreakerRegistry as RouterCircuitBreakerRegistry,
-    api::create_router as create_api_router,
-};
-use fc_queue::postgres::PostgresQueue;
-use fc_queue::EmbeddedQueue;
 use fc_outbox::enhanced_processor::{EnhancedOutboxProcessor, EnhancedProcessorConfig};
 use fc_outbox::http_dispatcher::HttpDispatcherConfig;
 use fc_outbox::postgres::PostgresOutboxRepository;
+use fc_queue::postgres::PostgresQueue;
+use fc_queue::EmbeddedQueue;
+use fc_router::{
+    api::create_router as create_api_router,
+    CircuitBreakerRegistry as RouterCircuitBreakerRegistry, HealthService, HealthServiceConfig,
+    HttpMediatorConfig, LifecycleConfig, LifecycleManager, QueueManager, WarningService,
+    WarningServiceConfig,
+};
 
 // Platform imports
-use fc_platform::api::middleware::{AppState, AuthLayer};
 use fc_platform::api::event_type_filters_router;
-use fc_platform::repository::{
-    Repositories,
-    RoleRepository,
-};
+use fc_platform::api::middleware::{AppState, AuthLayer};
+use fc_platform::repository::{Repositories, RoleRepository};
 use fc_platform::usecase::PgUnitOfWork;
 
 /// FlowCatalyst Development Monolith — top-level CLI.
@@ -157,9 +150,12 @@ struct RunArgs {
     outbox_poll_interval_ms: u64,
 
     // Platform configuration
-
     /// PostgreSQL database URL
-    #[arg(long, env = "FC_DATABASE_URL", default_value = "postgresql://localhost:5432/flowcatalyst")]
+    #[arg(
+        long,
+        env = "FC_DATABASE_URL",
+        default_value = "postgresql://localhost:5432/flowcatalyst"
+    )]
     database_url: String,
 
     /// Start an embedded PostgreSQL instead of connecting to `--database-url`.
@@ -246,8 +242,14 @@ mod embedded_pg {
         );
 
         let mut postgresql = PostgreSQL::new(settings);
-        postgresql.setup().await.context("embedded Postgres setup failed")?;
-        postgresql.start().await.context("embedded Postgres start failed")?;
+        postgresql
+            .setup()
+            .await
+            .context("embedded Postgres setup failed")?;
+        postgresql
+            .start()
+            .await
+            .context("embedded Postgres start failed")?;
 
         let database_name = "flowcatalyst";
         // create_database is not idempotent across restarts; the second run
@@ -255,7 +257,10 @@ mod embedded_pg {
         if let Err(e) = postgresql.create_database(database_name).await {
             let msg = e.to_string();
             if !msg.contains("already exists") {
-                return Err(anyhow::anyhow!("failed to create flowcatalyst database: {}", e));
+                return Err(anyhow::anyhow!(
+                    "failed to create flowcatalyst database: {}",
+                    e
+                ));
             }
         }
 
@@ -308,13 +313,15 @@ async fn main() -> Result<()> {
     }
 
     // Load .env.development (or .env) if present
-    let _ = dotenvy::from_filename(".env.development")
-        .or_else(|_| dotenvy::dotenv());
+    let _ = dotenvy::from_filename(".env.development").or_else(|_| dotenvy::dotenv());
 
     // Set dev defaults for env vars that aren't set
     // These make fc-dev zero-config (only DB URL needed).
     if std::env::var("FLOWCATALYST_APP_KEY").is_err() {
-        std::env::set_var("FLOWCATALYST_APP_KEY", "MpU3dI07kjZmZGROrElYfDXQgab30e3wr0KTnxQbePg=");
+        std::env::set_var(
+            "FLOWCATALYST_APP_KEY",
+            "MpU3dI07kjZmZGROrElYfDXQgab30e3wr0KTnxQbePg=",
+        );
     }
     if std::env::var("FC_DEV_MODE").is_err() {
         std::env::set_var("FC_DEV_MODE", "true");
@@ -333,14 +340,8 @@ async fn main() -> Result<()> {
             .unwrap_or_else(|| std::path::PathBuf::from("."))
             .join("flowcatalyst-dev")
             .join("jwt-keys");
-        std::env::set_var(
-            "FC_JWT_PRIVATE_KEY_PATH",
-            keys_dir.join("private.key"),
-        );
-        std::env::set_var(
-            "FC_JWT_PUBLIC_KEY_PATH",
-            keys_dir.join("public.key"),
-        );
+        std::env::set_var("FC_JWT_PRIVATE_KEY_PATH", keys_dir.join("private.key"));
+        std::env::set_var("FC_JWT_PUBLIC_KEY_PATH", keys_dir.join("public.key"));
     }
 
     // Initialize logging (JSON if LOG_FORMAT=json, text otherwise)
@@ -356,7 +357,10 @@ async fn main() -> Result<()> {
     };
 
     info!("Starting FlowCatalyst Dev Monolith (Rust)");
-    info!("API port: {}, Metrics port: {}", args.api_port, args.metrics_port);
+    info!(
+        "API port: {}, Metrics port: {}",
+        args.api_port, args.metrics_port
+    );
 
     // Best-effort, non-blocking startup version check. Spawned (not awaited)
     // so it never delays boot; result is logged + exposed via /health.
@@ -380,7 +384,8 @@ async fn main() -> Result<()> {
     // 1. Connect to Postgres early — the queue, control plane, stream
     //    processor, and unit-of-work all share the same pool.
     info!("Connecting to PostgreSQL...");
-    let pg_pool = fc_platform::shared::database::create_pool(&args.database_url).await
+    let pg_pool = fc_platform::shared::database::create_pool(&args.database_url)
+        .await
         .map_err(|e| anyhow::anyhow!("PostgreSQL connection failed: {}", e))?;
 
     fc_platform::shared::database::run_migrations(
@@ -390,7 +395,8 @@ async fn main() -> Result<()> {
     .await
     .map_err(|e| anyhow::anyhow!("PostgreSQL migrations failed: {}", e))?;
 
-    fc_platform::shared::database::seed_builtin_roles(&pg_pool).await
+    fc_platform::shared::database::seed_builtin_roles(&pg_pool)
+        .await
         .map_err(|e| anyhow::anyhow!("Built-in role seeding failed: {}", e))?;
 
     // Referential-integrity scan — warns when any aggregate delete path has
@@ -425,21 +431,17 @@ async fn main() -> Result<()> {
 
     // 5. Apply router configuration
     let router_config = RouterConfig {
-        processing_pools: vec![
-            PoolConfig {
-                code: "DEFAULT".to_string(),
-                concurrency: args.pool_concurrency,
-                rate_limit_per_minute: None,
-            },
-        ],
-        queues: vec![
-            QueueConfig {
-                name: "dev-queue".to_string(),
-                uri: args.database_url.clone(),
-                connections: 1,
-                visibility_timeout: 30,
-            },
-        ],
+        processing_pools: vec![PoolConfig {
+            code: "DEFAULT".to_string(),
+            concurrency: args.pool_concurrency,
+            rate_limit_per_minute: None,
+        }],
+        queues: vec![QueueConfig {
+            name: "dev-queue".to_string(),
+            uri: args.database_url.clone(),
+            connections: 1,
+            visibility_timeout: 30,
+        }],
     };
     queue_manager.apply_config(router_config).await?;
 
@@ -453,23 +455,25 @@ async fn main() -> Result<()> {
 
     // 7. Outbox processor — deferred until after AuthService is ready (needs a service token).
     //    We store the config now and start it after step 8c.
-    let outbox_pool: Option<sqlx::PgPool> = if args.outbox_enabled && args.outbox_db_type == "postgres" {
-        let outbox_db_url = args.outbox_db_url.as_deref()
-            .unwrap_or(&args.database_url);
-        info!(
-            db_type = %args.outbox_db_type,
-            db_url = %outbox_db_url,
-            poll_interval_ms = args.outbox_poll_interval_ms,
-            "Connecting to outbox database"
-        );
-        Some(sqlx::postgres::PgPoolOptions::new()
-            .max_connections(5)
-            .connect(outbox_db_url)
-            .await
-            .map_err(|e| anyhow::anyhow!("Outbox PostgreSQL connection failed: {}", e))?)
-    } else {
-        None
-    };
+    let outbox_pool: Option<sqlx::PgPool> =
+        if args.outbox_enabled && args.outbox_db_type == "postgres" {
+            let outbox_db_url = args.outbox_db_url.as_deref().unwrap_or(&args.database_url);
+            info!(
+                db_type = %args.outbox_db_type,
+                db_url = %outbox_db_url,
+                poll_interval_ms = args.outbox_poll_interval_ms,
+                "Connecting to outbox database"
+            );
+            Some(
+                sqlx::postgres::PgPoolOptions::new()
+                    .max_connections(5)
+                    .connect(outbox_db_url)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Outbox PostgreSQL connection failed: {}", e))?,
+            )
+        } else {
+            None
+        };
 
     // 8. Setup platform services and APIs
     info!("Initializing platform services...");
@@ -511,9 +515,8 @@ async fn main() -> Result<()> {
 
     // Sync code-defined roles to database
     {
-        let role_sync = fc_platform::service::RoleSyncService::new(
-            Arc::new(RoleRepository::new(&pg_pool))
-        );
+        let role_sync =
+            fc_platform::service::RoleSyncService::new(Arc::new(RoleRepository::new(&pg_pool)));
         if let Err(e) = role_sync.sync_code_defined_roles().await {
             tracing::warn!("Role sync failed: {}", e);
         }
@@ -523,7 +526,8 @@ async fn main() -> Result<()> {
     let auth_services = fc_platform::shared::server_setup::init_auth_services(
         &repos,
         fc_platform::shared::server_setup::AuthInitConfig::from_env("http://localhost:8080"),
-    ).expect("Failed to initialize auth services");
+    )
+    .expect("Failed to initialize auth services");
     info!("Auth services initialized");
 
     // 7b. Start outbox processor now that AuthService is ready — generate a
@@ -532,8 +536,11 @@ async fn main() -> Result<()> {
     let outbox_handle: Option<tokio::task::JoinHandle<()>> = if let Some(pool) = outbox_pool {
         use fc_platform::principal::entity::Principal;
 
-        let internal_principal = Principal::new_service("outbox-processor", "Outbox Processor (internal)");
-        let token = auth_services.auth.generate_access_token(&internal_principal)
+        let internal_principal =
+            Principal::new_service("outbox-processor", "Outbox Processor (internal)");
+        let token = auth_services
+            .auth
+            .generate_access_token(&internal_principal)
             .map_err(|e| anyhow::anyhow!("Failed to generate outbox service token: {}", e))?;
         info!("Generated internal service token for outbox processor");
 
@@ -552,7 +559,7 @@ async fn main() -> Result<()> {
 
         let processor = Arc::new(
             EnhancedOutboxProcessor::new(config, repository)
-                .map_err(|e| anyhow::anyhow!("Failed to create outbox processor: {}", e))?
+                .map_err(|e| anyhow::anyhow!("Failed to create outbox processor: {}", e))?,
         );
 
         let proc_clone = processor.clone();
@@ -583,7 +590,11 @@ async fn main() -> Result<()> {
         };
 
         // Pass the SQLite queue publisher directly — no bridge needed
-        let scheduler = Arc::new(DispatchScheduler::new(config, pg_pool.clone(), queue.clone()));
+        let scheduler = Arc::new(DispatchScheduler::new(
+            config,
+            pg_pool.clone(),
+            queue.clone(),
+        ));
 
         let mut shutdown_rx = shutdown_tx.subscribe();
         let sched_clone = scheduler.clone();
@@ -644,8 +655,11 @@ async fn main() -> Result<()> {
         &unit_of_work,
         fc_platform::shared::server_setup::PlatformRoutesConfig {
             session_cookie_secure: false,
-            session_cookie_same_site: fc_platform::shared::server_setup::PlatformRoutesConfig::DEFAULT_SAME_SITE.to_string(),
-            session_token_expiry_secs: fc_platform::shared::server_setup::PlatformRoutesConfig::DEFAULT_SESSION_EXPIRY_SECS,
+            session_cookie_same_site:
+                fc_platform::shared::server_setup::PlatformRoutesConfig::DEFAULT_SAME_SITE
+                    .to_string(),
+            session_token_expiry_secs:
+                fc_platform::shared::server_setup::PlatformRoutesConfig::DEFAULT_SESSION_EXPIRY_SECS,
             static_dir: None, // fc-dev handles SPA serving itself (embedded or FC_STATIC_DIR)
             oidc_login_external_base_url: Some(
                 std::env::var("FC_EXTERNAL_BASE_URL")
@@ -683,7 +697,10 @@ async fn main() -> Result<()> {
     // job list/get endpoints remain available under `/bff/dispatch-jobs/*`.
     let _ = dispatch_jobs_state; // kept for future expansion; not mounted
     let platform_router = platform_app
-        .nest("/api/event-types/filters", event_type_filters_router(filter_options_state))
+        .nest(
+            "/api/event-types/filters",
+            event_type_filters_router(filter_options_state),
+        )
         // Add auth middleware
         .layer(AuthLayer::new(app_state));
 
@@ -703,7 +720,12 @@ async fn main() -> Result<()> {
         .nest("/q/router", router_api)
         .merge(platform_router)
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any));
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        );
 
     // Static frontend serving — uses FC_STATIC_DIR if set (for live reload),
     // otherwise serves from the embedded frontend assets compiled into the binary.
@@ -721,13 +743,16 @@ async fn main() -> Result<()> {
 
             api_app
                 .route("/auth/login", axum::routing::get(embedded_spa_handler))
-                .route("/auth/forgot-password", axum::routing::get(embedded_spa_handler))
-                .route("/auth/reset-password", axum::routing::get(embedded_spa_handler))
-                .nest_service("/assets", assets_service)
-                .fallback_service(
-                    ServeDir::new(&static_dir)
-                        .fallback(ServeFile::new(index_path))
+                .route(
+                    "/auth/forgot-password",
+                    axum::routing::get(embedded_spa_handler),
                 )
+                .route(
+                    "/auth/reset-password",
+                    axum::routing::get(embedded_spa_handler),
+                )
+                .nest_service("/assets", assets_service)
+                .fallback_service(ServeDir::new(&static_dir).fallback(ServeFile::new(index_path)))
         } else {
             warn!(dir = %static_dir, "FC_STATIC_DIR set but index.html not found — using embedded assets");
             api_app.fallback(axum::routing::get(embedded_asset_handler))
@@ -736,8 +761,14 @@ async fn main() -> Result<()> {
         info!("Serving embedded frontend (compiled into binary)");
         api_app
             .route("/auth/login", axum::routing::get(embedded_spa_handler))
-            .route("/auth/forgot-password", axum::routing::get(embedded_spa_handler))
-            .route("/auth/reset-password", axum::routing::get(embedded_spa_handler))
+            .route(
+                "/auth/forgot-password",
+                axum::routing::get(embedded_spa_handler),
+            )
+            .route(
+                "/auth/reset-password",
+                axum::routing::get(embedded_spa_handler),
+            )
             .fallback(axum::routing::get(embedded_asset_handler))
     };
 
@@ -764,7 +795,10 @@ async fn main() -> Result<()> {
 
     // 10. Start metrics server
     let metrics_addr = format!("0.0.0.0:{}", args.metrics_port);
-    info!("Metrics server listening on http://{}/metrics", metrics_addr);
+    info!(
+        "Metrics server listening on http://{}/metrics",
+        metrics_addr
+    );
 
     let metrics_app = Router::new()
         .route("/metrics", get(metrics_handler))
@@ -830,7 +864,8 @@ async fn main() -> Result<()> {
         if let Some(h) = outbox_handle {
             let _ = h.await;
         }
-    }).await;
+    })
+    .await;
 
     // Stop embedded Postgres last — repositories / pools will have been
     // shut down by the timeout above, so closing the server is safe.
@@ -902,7 +937,8 @@ async fn embedded_spa_handler() -> impl axum::response::IntoResponse {
         None => (
             axum::http::StatusCode::NOT_FOUND,
             "Frontend not embedded in this build",
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 

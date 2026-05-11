@@ -16,8 +16,7 @@ use testcontainers_modules::postgres::Postgres;
 
 use fc_platform::shared::database::{create_pool, run_migrations, MigrationProfile};
 use fc_platform::{
-    ClientRepository, EventRepository, DispatchJobRepository,
-    Client, Event, DispatchJob,
+    Client, ClientRepository, DispatchJob, DispatchJobRepository, Event, EventRepository,
 };
 
 // ─── Test Helpers ──────────────────────────────────────────────────────────
@@ -32,12 +31,12 @@ async fn setup_test_db() -> (sqlx::PgPool, testcontainers::ContainerAsync<Postgr
         .expect("Failed to start PostgreSQL container");
 
     let host = container.get_host().await.expect("Failed to get host");
-    let port = container.get_host_port_ipv4(5432).await.expect("Failed to get port");
+    let port = container
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("Failed to get port");
 
-    let database_url = format!(
-        "postgresql://test:test@{}:{}/flowcatalyst_test",
-        host, port
-    );
+    let database_url = format!("postgresql://test:test@{}:{}/flowcatalyst_test", host, port);
 
     let pool = create_pool(&database_url)
         .await
@@ -67,8 +66,14 @@ async fn test_client_sequential_insert_throughput() {
     let elapsed = start.elapsed();
 
     let rate = count as f64 / elapsed.as_secs_f64();
-    println!("Sequential client inserts: {} in {:.2?} ({:.0} ops/sec)", count, elapsed, rate);
-    assert!(elapsed.as_secs() < 30, "Sequential inserts should complete within 30s");
+    println!(
+        "Sequential client inserts: {} in {:.2?} ({:.0} ops/sec)",
+        count, elapsed, rate
+    );
+    assert!(
+        elapsed.as_secs() < 30,
+        "Sequential inserts should complete within 30s"
+    );
 }
 
 #[tokio::test]
@@ -90,8 +95,14 @@ async fn test_event_sequential_insert_throughput() {
     let elapsed = start.elapsed();
 
     let rate = count as f64 / elapsed.as_secs_f64();
-    println!("Sequential event inserts: {} in {:.2?} ({:.0} ops/sec)", count, elapsed, rate);
-    assert!(elapsed.as_secs() < 60, "Sequential event inserts should complete within 60s");
+    println!(
+        "Sequential event inserts: {} in {:.2?} ({:.0} ops/sec)",
+        count, elapsed, rate
+    );
+    assert!(
+        elapsed.as_secs() < 60,
+        "Sequential event inserts should complete within 60s"
+    );
 }
 
 // ─── Batch Insert Throughput ─────────────────────────────────────────────
@@ -116,10 +127,16 @@ async fn test_dispatch_job_batch_insert_throughput() {
         .collect();
 
     let start = Instant::now();
-    repo.insert_many(&jobs).await.expect("Failed to batch insert");
+    repo.insert_many(&jobs)
+        .await
+        .expect("Failed to batch insert");
     let elapsed = start.elapsed();
 
-    println!("Batch insert 100 dispatch jobs: {:.2?} ({:.0} ops/sec)", elapsed, 100.0 / elapsed.as_secs_f64());
+    println!(
+        "Batch insert 100 dispatch jobs: {:.2?} ({:.0} ops/sec)",
+        elapsed,
+        100.0 / elapsed.as_secs_f64()
+    );
 
     // Verify
     let total = repo.count_all().await.expect("Failed to count");
@@ -139,7 +156,9 @@ async fn test_dispatch_job_batch_insert_throughput() {
                 )
             })
             .collect();
-        repo.insert_many(&jobs).await.expect("Failed to batch insert");
+        repo.insert_many(&jobs)
+            .await
+            .expect("Failed to batch insert");
     }
     let elapsed = start.elapsed();
 
@@ -147,8 +166,14 @@ async fn test_dispatch_job_batch_insert_throughput() {
     assert_eq!(total, 1000);
 
     let rate = 900.0 / elapsed.as_secs_f64();
-    println!("9 batches of 100 dispatch jobs (900 total): {:.2?} ({:.0} ops/sec)", elapsed, rate);
-    assert!(elapsed.as_secs() < 30, "Batch inserts should complete within 30s");
+    println!(
+        "9 batches of 100 dispatch jobs (900 total): {:.2?} ({:.0} ops/sec)",
+        elapsed, rate
+    );
+    assert!(
+        elapsed.as_secs() < 30,
+        "Batch inserts should complete within 30s"
+    );
 }
 
 // ─── Concurrent Insert Throughput ────────────────────────────────────────
@@ -186,9 +211,14 @@ async fn test_concurrent_event_inserts() {
     let elapsed = start.elapsed();
 
     let rate = total as f64 / elapsed.as_secs_f64();
-    println!("Concurrent event inserts ({} tasks x {} each = {} total): {:.2?} ({:.0} ops/sec)",
-        concurrency, per_task, total, elapsed, rate);
-    assert!(elapsed.as_secs() < 60, "Concurrent inserts should complete within 60s");
+    println!(
+        "Concurrent event inserts ({} tasks x {} each = {} total): {:.2?} ({:.0} ops/sec)",
+        concurrency, per_task, total, elapsed, rate
+    );
+    assert!(
+        elapsed.as_secs() < 60,
+        "Concurrent inserts should complete within 60s"
+    );
 }
 
 #[tokio::test]
@@ -223,9 +253,14 @@ async fn test_concurrent_client_inserts() {
     let elapsed = start.elapsed();
 
     let rate = total as f64 / elapsed.as_secs_f64();
-    println!("Concurrent client inserts ({} tasks x {} each = {} total): {:.2?} ({:.0} ops/sec)",
-        concurrency, per_task, total, elapsed, rate);
-    assert!(elapsed.as_secs() < 30, "Concurrent client inserts should complete within 30s");
+    println!(
+        "Concurrent client inserts ({} tasks x {} each = {} total): {:.2?} ({:.0} ops/sec)",
+        concurrency, per_task, total, elapsed, rate
+    );
+    assert!(
+        elapsed.as_secs() < 30,
+        "Concurrent client inserts should complete within 30s"
+    );
 }
 
 // ─── Query Performance Under Load ────────────────────────────────────────
@@ -253,7 +288,9 @@ async fn test_dispatch_job_query_performance() {
                 job
             })
             .collect();
-        repo.insert_many(&jobs).await.expect("Failed to batch insert");
+        repo.insert_many(&jobs)
+            .await
+            .expect("Failed to batch insert");
     }
 
     let total = repo.count_all().await.expect("Failed to count");
@@ -261,24 +298,53 @@ async fn test_dispatch_job_query_performance() {
 
     // Benchmark: find_pending_for_dispatch
     let start = Instant::now();
-    let pending = repo.find_pending_for_dispatch(100).await.expect("Failed to query pending");
+    let pending = repo
+        .find_pending_for_dispatch(100)
+        .await
+        .expect("Failed to query pending");
     let elapsed = start.elapsed();
-    println!("find_pending_for_dispatch(100) from 500 jobs: {:.2?} ({} results)", elapsed, pending.len());
-    assert!(elapsed.as_millis() < 500, "Pending query should complete within 500ms");
+    println!(
+        "find_pending_for_dispatch(100) from 500 jobs: {:.2?} ({} results)",
+        elapsed,
+        pending.len()
+    );
+    assert!(
+        elapsed.as_millis() < 500,
+        "Pending query should complete within 500ms"
+    );
 
     // Benchmark: count_by_status
     let start = Instant::now();
-    let pending_count = repo.count_by_status(fc_platform::DispatchStatus::Pending).await.expect("Failed to count");
+    let pending_count = repo
+        .count_by_status(fc_platform::DispatchStatus::Pending)
+        .await
+        .expect("Failed to count");
     let elapsed = start.elapsed();
-    println!("count_by_status(Pending) from 500 jobs: {:.2?} (count={})", elapsed, pending_count);
-    assert!(elapsed.as_millis() < 200, "Count query should complete within 200ms");
+    println!(
+        "count_by_status(Pending) from 500 jobs: {:.2?} (count={})",
+        elapsed, pending_count
+    );
+    assert!(
+        elapsed.as_millis() < 200,
+        "Count query should complete within 200ms"
+    );
 
     // Benchmark: find_by_status with limit
     let start = Instant::now();
-    let queued = repo.find_by_status(fc_platform::DispatchStatus::Queued, 50).await.expect("Failed to query");
+    let queued = repo
+        .find_by_status(fc_platform::DispatchStatus::Queued, 50)
+        .await
+        .expect("Failed to query");
     let elapsed = start.elapsed();
-    println!("find_by_status(Queued, 50) from 500 jobs: {:.2?} ({} results)", elapsed, queued.len());
-    assert!(elapsed.as_millis() < 500, "Status query should complete within 500ms");
+    println!(
+        "find_by_status(Queued, 50) from 500 jobs: {:.2?} ({} results)",
+        elapsed,
+        queued.len()
+    );
+    assert!(
+        elapsed.as_millis() < 500,
+        "Status query should complete within 500ms"
+    );
 }
 
 // ─── API Throughput Under Load ───────────────────────────────────────────
@@ -287,11 +353,11 @@ async fn test_dispatch_job_query_performance() {
 #[ignore = "requires Docker"]
 async fn test_api_batch_events_throughput() {
     use axum::{body::Body, http::Request, Router};
-    use tower::ServiceExt;
+    use fc_platform::api::{sdk_events_batch_router, AppState, AuthLayer, SdkEventsState};
     use fc_platform::auth::auth_service::{AuthConfig, AuthService};
     use fc_platform::domain::{Principal, UserScope};
-    use fc_platform::{RoleRepository, AuthorizationService};
-    use fc_platform::api::{AppState, AuthLayer, SdkEventsState, sdk_events_batch_router};
+    use fc_platform::{AuthorizationService, RoleRepository};
+    use tower::ServiceExt;
 
     let (pool, _container) = setup_test_db().await;
 
@@ -321,34 +387,50 @@ async fn test_api_batch_events_throughput() {
         .layer(AuthLayer::new(app_state));
 
     let principal = Principal::new_user("load@test.local", UserScope::Anchor);
-    let token = auth_service.generate_access_token(&principal).expect("Failed to generate token");
+    let token = auth_service
+        .generate_access_token(&principal)
+        .expect("Failed to generate token");
 
     // 10 batch requests of 100 events each = 1000 events
     let start = Instant::now();
     for batch in 0..10 {
         let items: Vec<serde_json::Value> = (0..100)
-            .map(|i| serde_json::json!({
-                "type": "load:api:event",
-                "source": "load-test",
-                "data": {"batch": batch, "index": i}
-            }))
+            .map(|i| {
+                serde_json::json!({
+                    "type": "load:api:event",
+                    "source": "load-test",
+                    "data": {"batch": batch, "index": i}
+                })
+            })
             .collect();
 
-        let response = app.clone().oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/events/batch")
-                .header("content-type", "application/json")
-                .header("authorization", format!("Bearer {}", token))
-                .body(Body::from(serde_json::to_string(&serde_json::json!({"items": items})).unwrap()))
-                .unwrap()
-        ).await.unwrap();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/events/batch")
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::from(
+                        serde_json::to_string(&serde_json::json!({"items": items})).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
         assert_eq!(response.status().as_u16(), 200, "Batch {} failed", batch);
     }
     let elapsed = start.elapsed();
 
     let rate = 1000.0 / elapsed.as_secs_f64();
-    println!("API batch events (10 batches x 100 = 1000 events): {:.2?} ({:.0} events/sec)", elapsed, rate);
-    assert!(elapsed.as_secs() < 60, "API batch events should complete within 60s");
+    println!(
+        "API batch events (10 batches x 100 = 1000 events): {:.2?} ({:.0} events/sec)",
+        elapsed, rate
+    );
+    assert!(
+        elapsed.as_secs() < 60,
+        "API batch events should complete within 60s"
+    );
 }

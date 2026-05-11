@@ -6,16 +6,14 @@
 //! relaxed policy when the caller opts out) and commits atomically through
 //! `UnitOfWork` so events and audit logs are emitted.
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::PasswordResetCompleted;
 use crate::auth::password_service::PasswordService;
 use crate::principal::repository::PrincipalRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::PasswordResetCompleted;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,7 +38,11 @@ impl<U: UnitOfWork> ResetPasswordUseCase<U> {
         password_service: Arc<PasswordService>,
         unit_of_work: Arc<U>,
     ) -> Self {
-        Self { principal_repo, password_service, unit_of_work }
+        Self {
+            principal_repo,
+            password_service,
+            unit_of_work,
+        }
     }
 }
 
@@ -91,7 +93,8 @@ impl<U: UnitOfWork> UseCase for ResetPasswordUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch principal: {}", e
+                    "Failed to fetch principal: {}",
+                    e
                 )));
             }
         };

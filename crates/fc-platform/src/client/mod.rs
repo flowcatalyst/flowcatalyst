@@ -2,12 +2,12 @@
 //!
 //! Client management - tenants in the platform.
 
-pub mod entity;
-pub mod repository;
 pub mod api;
+pub mod entity;
 pub mod operations;
+pub mod repository;
 
 // Re-export main types
+pub use api::{clients_router, ClientsState};
 pub use entity::{Client, ClientStatus};
 pub use repository::ClientRepository;
-pub use api::{ClientsState, clients_router};

@@ -191,8 +191,7 @@ mod tests {
 
     #[test]
     fn unwrap_err_on_failure() {
-        let result: UseCaseResult<()> =
-            UseCaseResult::failure(UseCaseError::commit("db error"));
+        let result: UseCaseResult<()> = UseCaseResult::failure(UseCaseError::commit("db error"));
         let err = result.unwrap_err();
         assert_eq!(err.code(), "COMMIT_FAILED");
     }
@@ -213,8 +212,7 @@ mod tests {
 
     #[test]
     fn map_preserves_failure() {
-        let result: UseCaseResult<i32> =
-            UseCaseResult::failure(UseCaseError::not_found("NF", "x"));
+        let result: UseCaseResult<i32> = UseCaseResult::failure(UseCaseError::not_found("NF", "x"));
         let mapped = result.map(|v| v * 2);
         assert!(mapped.is_failure());
         assert_eq!(mapped.unwrap_err().code(), "NF");
@@ -267,8 +265,7 @@ mod tests {
 
     #[test]
     fn as_ref_failure() {
-        let result: UseCaseResult<i32> =
-            UseCaseResult::failure(UseCaseError::validation("V", "m"));
+        let result: UseCaseResult<i32> = UseCaseResult::failure(UseCaseError::validation("V", "m"));
         let r = result.as_ref();
         assert!(r.is_failure());
     }
@@ -280,8 +277,7 @@ mod tests {
         assert!(debug_str.contains("Success"));
         assert!(debug_str.contains("42"));
 
-        let f: UseCaseResult<i32> =
-            UseCaseResult::failure(UseCaseError::validation("V", "msg"));
+        let f: UseCaseResult<i32> = UseCaseResult::failure(UseCaseError::validation("V", "msg"));
         let debug_str = format!("{:?}", f);
         assert!(debug_str.contains("Failure"));
     }

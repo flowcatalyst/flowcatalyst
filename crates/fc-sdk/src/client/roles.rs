@@ -1,8 +1,8 @@
 //! Role and permission management operations.
 
-use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError};
 use super::applications::CreatedResponse;
+use super::{ClientError, FlowCatalystClient};
+use serde::{Deserialize, Serialize};
 
 /// Paginated list of roles — `GET /api/roles`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,8 +128,7 @@ impl FlowCatalystClient {
         name: &str,
         req: &UpdateRoleRequest,
     ) -> Result<(), ClientError> {
-        let _: serde_json::Value =
-            self.put(&format!("/api/roles/{}", name), req).await?;
+        let _: serde_json::Value = self.put(&format!("/api/roles/{}", name), req).await?;
         Ok(())
     }
 
@@ -143,11 +142,8 @@ impl FlowCatalystClient {
         &self,
         application_id: &str,
     ) -> Result<RoleListResponse, ClientError> {
-        self.get(&format!(
-            "/api/roles/by-application/{}",
-            application_id
-        ))
-        .await
+        self.get(&format!("/api/roles/by-application/{}", application_id))
+            .await
     }
 
     /// Grant a permission to a role. Returns the updated role.
@@ -179,18 +175,12 @@ impl FlowCatalystClient {
     // ── Permissions ──────────────────────────────────────────────────────────
 
     /// List all permissions.
-    pub async fn list_permissions(
-        &self,
-    ) -> Result<PermissionListResponse, ClientError> {
+    pub async fn list_permissions(&self) -> Result<PermissionListResponse, ClientError> {
         self.get("/api/roles/permissions").await
     }
 
     /// Get a permission by name.
-    pub async fn get_permission(
-        &self,
-        name: &str,
-    ) -> Result<PermissionResponse, ClientError> {
-        self.get(&format!("/api/roles/permissions/{}", name))
-            .await
+    pub async fn get_permission(&self, name: &str) -> Result<PermissionResponse, ClientError> {
+        self.get(&format!("/api/roles/permissions/{}", name)).await
     }
 }

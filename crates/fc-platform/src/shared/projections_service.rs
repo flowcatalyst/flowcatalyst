@@ -6,12 +6,9 @@
 use std::sync::Arc;
 use tracing::{debug, error, warn};
 
-use crate::{Event, EventRead, DispatchJob, DispatchJobRead};
-use crate::{
-    EventRepository, DispatchJobRepository,
-    ClientRepository, SubscriptionRepository,
-};
 use crate::shared::error::Result;
+use crate::{ClientRepository, DispatchJobRepository, EventRepository, SubscriptionRepository};
+use crate::{DispatchJob, DispatchJobRead, Event, EventRead};
 
 /// Event projection writer
 /// Creates EventRead projections with denormalized data
@@ -21,10 +18,7 @@ pub struct EventProjectionWriter {
 }
 
 impl EventProjectionWriter {
-    pub fn new(
-        event_repo: Arc<EventRepository>,
-        client_repo: Arc<ClientRepository>,
-    ) -> Self {
+    pub fn new(event_repo: Arc<EventRepository>, client_repo: Arc<ClientRepository>) -> Self {
         Self {
             event_repo,
             client_repo,
@@ -51,7 +45,8 @@ impl EventProjectionWriter {
         };
 
         // Parse event type code to extract components
-        let (application, subdomain, aggregate, _event_name) = parse_event_type_code(&event.event_type);
+        let (application, subdomain, aggregate, _event_name) =
+            parse_event_type_code(&event.event_type);
 
         // Create read projection
         let projection = EventRead {
@@ -158,7 +153,14 @@ impl DispatchJobProjectionWriter {
 
 /// Parse event type code into components
 /// Format: {application}:{subdomain}:{aggregate}:{event}
-fn parse_event_type_code(code: &str) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+fn parse_event_type_code(
+    code: &str,
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
     let parts: Vec<&str> = code.split(':').collect();
     match parts.len() {
         4 => (
@@ -179,12 +181,7 @@ fn parse_event_type_code(code: &str) -> (Option<String>, Option<String>, Option<
             None,
             None,
         ),
-        1 if !parts[0].is_empty() => (
-            Some(parts[0].to_string()),
-            None,
-            None,
-            None,
-        ),
+        1 if !parts[0].is_empty() => (Some(parts[0].to_string()), None, None, None),
         _ => (None, None, None, None),
     }
 }

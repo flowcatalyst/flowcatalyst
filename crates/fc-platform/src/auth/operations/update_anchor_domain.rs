@@ -1,14 +1,12 @@
 //! Update Anchor Domain Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::auth::config_repository::AnchorDomainRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::AnchorDomainUpdated;
+use crate::auth::config_repository::AnchorDomainRepository;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,7 +22,10 @@ pub struct UpdateAnchorDomainUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> UpdateAnchorDomainUseCase<U> {
     pub fn new(anchor_domain_repo: Arc<AnchorDomainRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { anchor_domain_repo, unit_of_work }
+        Self {
+            anchor_domain_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -36,18 +37,24 @@ impl<U: UnitOfWork> UseCase for UpdateAnchorDomainUseCase<U> {
     async fn validate(&self, command: &UpdateAnchorDomainCommand) -> Result<(), UseCaseError> {
         if command.anchor_domain_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "ID_REQUIRED", "Anchor domain ID is required",
+                "ID_REQUIRED",
+                "Anchor domain ID is required",
             ));
         }
         if command.domain.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "DOMAIN_REQUIRED", "Domain is required",
+                "DOMAIN_REQUIRED",
+                "Domain is required",
             ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &UpdateAnchorDomainCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &UpdateAnchorDomainCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -56,7 +63,11 @@ impl<U: UnitOfWork> UseCase for UpdateAnchorDomainUseCase<U> {
         command: UpdateAnchorDomainCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<AnchorDomainUpdated> {
-        let mut anchor_domain = match self.anchor_domain_repo.find_by_id(&command.anchor_domain_id).await {
+        let mut anchor_domain = match self
+            .anchor_domain_repo
+            .find_by_id(&command.anchor_domain_id)
+            .await
+        {
             Ok(Some(ad)) => ad,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
@@ -66,7 +77,8 @@ impl<U: UnitOfWork> UseCase for UpdateAnchorDomainUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch anchor domain: {}", e,
+                    "Failed to fetch anchor domain: {}",
+                    e,
                 )));
             }
         };

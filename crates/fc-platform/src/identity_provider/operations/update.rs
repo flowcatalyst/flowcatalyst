@@ -1,12 +1,12 @@
 //! Update Identity Provider Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::IdentityProviderRepository;
-use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 use super::events::IdentityProviderUpdated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::IdentityProviderRepository;
 
 /// Command for updating an existing identity provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,7 +37,10 @@ pub struct UpdateIdentityProviderUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> UpdateIdentityProviderUseCase<U> {
     pub fn new(idp_repo: Arc<IdentityProviderRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { idp_repo, unit_of_work }
+        Self {
+            idp_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -50,7 +53,11 @@ impl<U: UnitOfWork> UseCase for UpdateIdentityProviderUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &UpdateIdentityProviderCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &UpdateIdentityProviderCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -70,7 +77,8 @@ impl<U: UnitOfWork> UseCase for UpdateIdentityProviderUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch identity provider: {}", e
+                    "Failed to fetch identity provider: {}",
+                    e
                 )));
             }
         };
@@ -112,16 +120,13 @@ impl<U: UnitOfWork> UseCase for UpdateIdentityProviderUseCase<U> {
         idp.updated_at = chrono::Utc::now();
 
         // Create domain event
-        let event = IdentityProviderUpdated::new(
-            &ctx,
-            &idp.id,
-            updated_name,
-        );
+        let event = IdentityProviderUpdated::new(&ctx, &idp.id, updated_name);
 
         // Update via repo
         if let Err(e) = self.idp_repo.update(&idp).await {
             return UseCaseResult::failure(UseCaseError::commit(format!(
-                "Failed to update identity provider: {}", e
+                "Failed to update identity provider: {}",
+                e
             )));
         }
 

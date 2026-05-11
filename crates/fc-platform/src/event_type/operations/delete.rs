@@ -1,16 +1,14 @@
 //! Delete Event Type Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::event_type::entity::SpecVersionStatus;
-use crate::EventTypeStatus;
-use crate::EventTypeRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::EventTypeDeleted;
+use crate::event_type::entity::SpecVersionStatus;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::EventTypeRepository;
+use crate::EventTypeStatus;
 
 /// Command for deleting an event type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,7 +30,10 @@ pub struct DeleteEventTypeUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> DeleteEventTypeUseCase<U> {
     pub fn new(event_type_repo: Arc<EventTypeRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { event_type_repo, unit_of_work }
+        Self {
+            event_type_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -51,7 +52,11 @@ impl<U: UnitOfWork> UseCase for DeleteEventTypeUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeleteEventTypeCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeleteEventTypeCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -60,7 +65,11 @@ impl<U: UnitOfWork> UseCase for DeleteEventTypeUseCase<U> {
         command: DeleteEventTypeCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<EventTypeDeleted> {
-        let event_type = match self.event_type_repo.find_by_id(&command.event_type_id).await {
+        let event_type = match self
+            .event_type_repo
+            .find_by_id(&command.event_type_id)
+            .await
+        {
             Ok(Some(et)) => et,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
@@ -70,13 +79,16 @@ impl<U: UnitOfWork> UseCase for DeleteEventTypeUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch event type: {}", e
+                    "Failed to fetch event type: {}",
+                    e
                 )));
             }
         };
 
         // Business rule: can only delete if ARCHIVED or all versions are FINALISING
-        let all_finalising = event_type.spec_versions.iter()
+        let all_finalising = event_type
+            .spec_versions
+            .iter()
             .all(|sv| sv.status == SpecVersionStatus::Finalising);
 
         if event_type.status != EventTypeStatus::Archived && !all_finalising {

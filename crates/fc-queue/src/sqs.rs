@@ -1,12 +1,12 @@
 use async_trait::async_trait;
-use aws_sdk_sqs::{Client, types::Message as SqsMessage, types::QueueAttributeName};
+use aws_sdk_sqs::{types::Message as SqsMessage, types::QueueAttributeName, Client};
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use parking_lot::Mutex;
-use tracing::{debug, info, warn, error};
+use tracing::{debug, error, info, warn};
 
+use crate::{QueueConsumer, QueueError, QueueMetrics, Result};
 use fc_common::{Message, QueuedMessage};
-use crate::{QueueConsumer, QueueMetrics, Result, QueueError};
 
 /// AWS SQS queue consumer
 pub struct SqsQueueConsumer {
@@ -69,7 +69,11 @@ impl SqsQueueConsumer {
     }
 
     /// Create from queue URL, extracting name
-    pub async fn from_queue_url(client: Client, queue_url: String, visibility_timeout_seconds: i32) -> Self {
+    pub async fn from_queue_url(
+        client: Client,
+        queue_url: String,
+        visibility_timeout_seconds: i32,
+    ) -> Self {
         let queue_name = queue_url
             .split('/')
             .next_back()
@@ -87,12 +91,14 @@ impl SqsQueueConsumer {
     }
 
     fn parse_sqs_message(&self, sqs_msg: &SqsMessage) -> Result<(Message, String, Option<String>)> {
-        let body = sqs_msg.body()
+        let body = sqs_msg
+            .body()
             .ok_or_else(|| QueueError::Sqs("Message body is empty".to_string()))?;
 
         let message: Message = serde_json::from_str(body)?;
 
-        let receipt_handle = sqs_msg.receipt_handle()
+        let receipt_handle = sqs_msg
+            .receipt_handle()
             .ok_or_else(|| QueueError::Sqs("Missing receipt handle".to_string()))?
             .to_string();
 
@@ -120,7 +126,8 @@ impl QueueConsumer for SqsQueueConsumer {
             .operation_timeout(std::time::Duration::from_secs(25))
             .build();
 
-        let result = self.client
+        let result = self
+            .client
             .receive_message()
             .queue_url(&self.queue_url)
             .max_number_of_messages(max_per_poll)
@@ -129,10 +136,7 @@ impl QueueConsumer for SqsQueueConsumer {
             .message_system_attribute_names(aws_sdk_sqs::types::MessageSystemAttributeName::All)
             .message_attribute_names("All")
             .customize()
-            .config_override(
-                aws_sdk_sqs::config::Builder::default()
-                    .timeout_config(timeout_config)
-            )
+            .config_override(aws_sdk_sqs::config::Builder::default().timeout_config(timeout_config))
             .send()
             .await
             .map_err(|e| QueueError::Sqs(e.to_string()))?;
@@ -161,7 +165,8 @@ impl QueueConsumer for SqsQueueConsumer {
                     if let Some(handle) = sqs_msg.receipt_handle() {
                         // Delete directly; don't call self.ack() to avoid re-inserting
                         // into pending_delete_ids or racing with the tracking map.
-                        let _ = self.client
+                        let _ = self
+                            .client
                             .delete_message()
                             .queue_url(&self.queue_url)
                             .receipt_handle(handle)
@@ -181,7 +186,10 @@ impl QueueConsumer for SqsQueueConsumer {
                         if map.len() > 1000 {
                             map.retain(|_, (_, ts)| ts.elapsed() < Self::PENDING_DELETE_TTL);
                         }
-                        map.insert(receipt_handle.clone(), (msg_id.clone(), std::time::Instant::now()));
+                        map.insert(
+                            receipt_handle.clone(),
+                            (msg_id.clone(), std::time::Instant::now()),
+                        );
                     }
                     messages.push(QueuedMessage {
                         message,
@@ -205,7 +213,8 @@ impl QueueConsumer for SqsQueueConsumer {
         }
 
         if !messages.is_empty() {
-            self.total_polled.fetch_add(messages.len() as u64, Ordering::Relaxed);
+            self.total_polled
+                .fetch_add(messages.len() as u64, Ordering::Relaxed);
             debug!(
                 queue = %self.queue_name,
                 count = messages.len(),
@@ -223,13 +232,19 @@ impl QueueConsumer for SqsQueueConsumer {
         // redelivery; a failed delete obviously needs the same guard.
         // Redeliveries within the TTL are batch-deleted in `poll` without
         // being re-routed to the mediator.
-        let msg_id = self.receipt_to_message_id.lock().remove(receipt_handle)
+        let msg_id = self
+            .receipt_to_message_id
+            .lock()
+            .remove(receipt_handle)
             .map(|(id, _)| id);
         if let Some(ref id) = msg_id {
-            self.pending_delete_ids.lock().insert(id.clone(), std::time::Instant::now());
+            self.pending_delete_ids
+                .lock()
+                .insert(id.clone(), std::time::Instant::now());
         }
 
-        let result = self.client
+        let result = self
+            .client
             .delete_message()
             .queue_url(&self.queue_url)
             .receipt_handle(receipt_handle)
@@ -335,8 +350,8 @@ impl QueueConsumer for SqsQueueConsumer {
 
     fn get_counters(&self) -> Option<QueueMetrics> {
         Some(QueueMetrics {
-            pending_messages: 0,       // Not available without SQS API call
-            in_flight_messages: 0,     // Not available without SQS API call
+            pending_messages: 0,   // Not available without SQS API call
+            in_flight_messages: 0, // Not available without SQS API call
             queue_identifier: self.queue_name.clone(),
             total_polled: self.total_polled.load(Ordering::Relaxed),
             total_acked: self.total_acked.load(Ordering::Relaxed),
@@ -346,7 +361,8 @@ impl QueueConsumer for SqsQueueConsumer {
     }
 
     async fn get_metrics(&self) -> Result<Option<QueueMetrics>> {
-        let result = self.client
+        let result = self
+            .client
             .get_queue_attributes()
             .queue_url(&self.queue_url)
             .attribute_names(QueueAttributeName::ApproximateNumberOfMessages)

@@ -216,7 +216,11 @@ async fn list_jobs(
                 .map(|c| c.name),
             None => Some("Platform".to_string()),
         };
-        let active = state.instance_repo.has_active_instance(&j.id).await.unwrap_or(false);
+        let active = state
+            .instance_repo
+            .has_active_instance(&j.id)
+            .await
+            .unwrap_or(false);
         data.push(BffScheduledJobResponse {
             id: j.id,
             client_id: j.client_id,
@@ -255,7 +259,11 @@ async fn get_job(
     Path(id): Path<String>,
 ) -> Result<Json<BffScheduledJobResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_scheduled_jobs(&auth.0)?;
-    let j = state.repo.find_by_id(&id).await?.or_not_found("ScheduledJob", &id)?;
+    let j = state
+        .repo
+        .find_by_id(&id)
+        .await?
+        .or_not_found("ScheduledJob", &id)?;
     if let Some(cid) = &j.client_id {
         if !auth.0.can_access_client(cid) {
             return Err(PlatformError::forbidden("No access to this scheduled job"));
@@ -267,10 +275,20 @@ async fn get_job(
     }
 
     let client_name = match &j.client_id {
-        Some(cid) => state.client_repo.find_by_id(cid).await.ok().flatten().map(|c| c.name),
+        Some(cid) => state
+            .client_repo
+            .find_by_id(cid)
+            .await
+            .ok()
+            .flatten()
+            .map(|c| c.name),
         None => Some("Platform".to_string()),
     };
-    let active = state.instance_repo.has_active_instance(&j.id).await.unwrap_or(false);
+    let active = state
+        .instance_repo
+        .has_active_instance(&j.id)
+        .await
+        .unwrap_or(false);
 
     Ok(Json(BffScheduledJobResponse {
         id: j.id,
@@ -303,7 +321,11 @@ async fn list_instances(
     Query(q): Query<BffInstancesQuery>,
 ) -> Result<Json<PaginatedResponse<BffScheduledJobInstanceResponse>>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_scheduled_job_instances(&auth.0)?;
-    let job = state.repo.find_by_id(&id).await?.or_not_found("ScheduledJob", &id)?;
+    let job = state
+        .repo
+        .find_by_id(&id)
+        .await?
+        .or_not_found("ScheduledJob", &id)?;
     if let Some(cid) = &job.client_id {
         if !auth.0.can_access_client(cid) {
             return Err(PlatformError::forbidden("No access"));
@@ -324,7 +346,11 @@ async fn list_instances(
         limit: Some(q.pagination.limit()),
         offset: Some(q.pagination.offset() as i64),
     };
-    let count_filters = InstanceListFilters { limit: None, offset: None, ..filters.clone() };
+    let count_filters = InstanceListFilters {
+        limit: None,
+        offset: None,
+        ..filters.clone()
+    };
     let rows = state.instance_repo.list(&filters).await?;
     let total = state.instance_repo.count(&count_filters).await? as u64;
     Ok(Json(PaginatedResponse::new(
@@ -374,7 +400,10 @@ async fn list_instance_logs(
     } else if !auth.0.is_anchor() {
         return Err(PlatformError::forbidden("Anchor only"));
     }
-    let logs = state.instance_repo.list_logs_for_instance(&instance_id, None).await?;
+    let logs = state
+        .instance_repo
+        .list_logs_for_instance(&instance_id, None)
+        .await?;
     Ok(Json(logs.into_iter().map(Into::into).collect()))
 }
 
@@ -390,22 +419,40 @@ async fn filter_options(
     let mut client_options: Vec<FilterOption> = clients
         .into_iter()
         .filter(|c| auth.0.can_access_client(&c.id))
-        .map(|c| FilterOption { value: c.id.clone(), label: c.name })
+        .map(|c| FilterOption {
+            value: c.id.clone(),
+            label: c.name,
+        })
         .collect();
     if auth.0.is_anchor() {
-        client_options.insert(0, FilterOption {
-            value: "platform".into(),
-            label: "Platform-scoped".into(),
-        });
+        client_options.insert(
+            0,
+            FilterOption {
+                value: "platform".into(),
+                label: "Platform-scoped".into(),
+            },
+        );
     }
 
     let statuses = vec![
-        FilterOption { value: "ACTIVE".into(), label: "Active".into() },
-        FilterOption { value: "PAUSED".into(), label: "Paused".into() },
-        FilterOption { value: "ARCHIVED".into(), label: "Archived".into() },
+        FilterOption {
+            value: "ACTIVE".into(),
+            label: "Active".into(),
+        },
+        FilterOption {
+            value: "PAUSED".into(),
+            label: "Paused".into(),
+        },
+        FilterOption {
+            value: "ARCHIVED".into(),
+            label: "Archived".into(),
+        },
     ];
 
-    Ok(Json(BffScheduledJobsFilterOptions { clients: client_options, statuses }))
+    Ok(Json(BffScheduledJobsFilterOptions {
+        clients: client_options,
+        statuses,
+    }))
 }
 
 pub fn bff_scheduled_jobs_router(state: BffScheduledJobsState) -> Router {

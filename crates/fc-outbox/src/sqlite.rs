@@ -4,12 +4,12 @@
 //! `outbox_messages` table using a `type` column, matching Java/TypeScript.
 //! Timestamps stored as ISO 8601 TEXT strings.
 
-use async_trait::async_trait;
-use fc_common::{OutboxItem, OutboxItemType, OutboxStatus};
 use crate::repository::{OutboxRepository, OutboxTableConfig};
 use anyhow::Result;
-use sqlx::{SqlitePool, Row};
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use fc_common::{OutboxItem, OutboxItemType, OutboxStatus};
+use sqlx::{Row, SqlitePool};
 use std::time::Duration;
 use tracing::{debug, info, trace};
 
@@ -45,13 +45,19 @@ impl SqliteOutboxRepository {
     }
 
     /// Parse a row into an OutboxItem
-    fn parse_row(&self, row: &sqlx::sqlite::SqliteRow, item_type: OutboxItemType) -> Result<OutboxItem> {
+    fn parse_row(
+        &self,
+        row: &sqlx::sqlite::SqliteRow,
+        item_type: OutboxItemType,
+    ) -> Result<OutboxItem> {
         let created_at_str: String = row.get("created_at");
-        let created_at = created_at_str.parse::<DateTime<Utc>>()
+        let created_at = created_at_str
+            .parse::<DateTime<Utc>>()
             .map_err(|e| anyhow::anyhow!("Invalid created_at timestamp: {}", e))?;
 
         let updated_at_str: String = row.get("updated_at");
-        let updated_at = updated_at_str.parse::<DateTime<Utc>>()
+        let updated_at = updated_at_str
+            .parse::<DateTime<Utc>>()
             .map_err(|e| anyhow::anyhow!("Invalid updated_at timestamp: {}", e))?;
 
         let status_code: i32 = row.get("status");
@@ -86,7 +92,11 @@ impl SqliteOutboxRepository {
 
 #[async_trait]
 impl OutboxRepository for SqliteOutboxRepository {
-    async fn fetch_pending_by_type(&self, item_type: OutboxItemType, limit: u32) -> Result<Vec<OutboxItem>> {
+    async fn fetch_pending_by_type(
+        &self,
+        item_type: OutboxItemType,
+        limit: u32,
+    ) -> Result<Vec<OutboxItem>> {
         let table = self.table_config.table_for_type(item_type);
         let query = format!(
             "SELECT id, type, message_group, payload, status, retry_count, error_message, \
@@ -191,7 +201,11 @@ impl OutboxRepository for SqliteOutboxRepository {
         Ok(())
     }
 
-    async fn increment_retry_count(&self, item_type: OutboxItemType, ids: Vec<String>) -> Result<()> {
+    async fn increment_retry_count(
+        &self,
+        item_type: OutboxItemType,
+        ids: Vec<String>,
+    ) -> Result<()> {
         if ids.is_empty() {
             return Ok(());
         }
@@ -225,7 +239,8 @@ impl OutboxRepository for SqliteOutboxRepository {
         limit: u32,
     ) -> Result<Vec<OutboxItem>> {
         let table = self.table_config.table_for_type(item_type);
-        let cutoff = (Utc::now() - chrono::Duration::from_std(timeout).unwrap_or_default()).to_rfc3339();
+        let cutoff =
+            (Utc::now() - chrono::Duration::from_std(timeout).unwrap_or_default()).to_rfc3339();
 
         let query = format!(
             "SELECT id, type, message_group, payload, status, retry_count, error_message, \
@@ -255,7 +270,11 @@ impl OutboxRepository for SqliteOutboxRepository {
         Ok(items)
     }
 
-    async fn reset_recoverable_items(&self, item_type: OutboxItemType, ids: Vec<String>) -> Result<()> {
+    async fn reset_recoverable_items(
+        &self,
+        item_type: OutboxItemType,
+        ids: Vec<String>,
+    ) -> Result<()> {
         if ids.is_empty() {
             return Ok(());
         }
@@ -289,7 +308,8 @@ impl OutboxRepository for SqliteOutboxRepository {
         limit: u32,
     ) -> Result<Vec<OutboxItem>> {
         let table = self.table_config.table_for_type(item_type);
-        let cutoff = (Utc::now() - chrono::Duration::from_std(timeout).unwrap_or_default()).to_rfc3339();
+        let cutoff =
+            (Utc::now() - chrono::Duration::from_std(timeout).unwrap_or_default()).to_rfc3339();
 
         let query = format!(
             "SELECT id, type, message_group, payload, status, retry_count, error_message, \
@@ -349,9 +369,7 @@ impl OutboxRepository for SqliteOutboxRepository {
                 safe_name = safe_name,
             );
 
-            sqlx::query(&schema)
-                .execute(&self.pool)
-                .await?;
+            sqlx::query(&schema).execute(&self.pool).await?;
         }
 
         info!(

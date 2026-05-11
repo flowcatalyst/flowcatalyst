@@ -1,17 +1,17 @@
 //! /api/me Routes — User self-service
 
 use axum::{
+    extract::{Path, State},
     routing::get,
-    extract::{State, Path},
     Json, Router,
 };
-use utoipa::ToSchema;
 use serde::Serialize;
 use std::sync::Arc;
+use utoipa::ToSchema;
 
-use crate::client::repository::ClientRepository;
-use crate::application::repository::ApplicationRepository;
 use crate::application::client_config_repository::ApplicationClientConfigRepository;
+use crate::application::repository::ApplicationRepository;
+use crate::client::repository::ClientRepository;
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
 
@@ -78,7 +78,8 @@ async fn list_my_clients(
 ) -> Result<Json<MyClientsListResponse>, PlatformError> {
     let all_clients = state.client_repo.find_all().await?;
 
-    let accessible: Vec<_> = all_clients.into_iter()
+    let accessible: Vec<_> = all_clients
+        .into_iter()
         .filter(|c| auth.0.is_anchor() || auth.0.can_access_client(&c.id))
         .map(|c| MyClientResponse {
             id: c.id,
@@ -91,7 +92,10 @@ async fn list_my_clients(
         .collect();
     let total = accessible.len();
 
-    Ok(Json(MyClientsListResponse { clients: accessible, total }))
+    Ok(Json(MyClientsListResponse {
+        clients: accessible,
+        total,
+    }))
 }
 
 /// Get a specific client by ID for the authenticated user
@@ -115,7 +119,10 @@ async fn get_my_client(
     auth: Authenticated,
     Path(client_id): Path<String>,
 ) -> Result<Json<MyClientResponse>, PlatformError> {
-    let client = state.client_repo.find_by_id(&client_id).await?
+    let client = state
+        .client_repo
+        .find_by_id(&client_id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Client", &client_id))?;
 
     if !auth.0.is_anchor() && !auth.0.can_access_client(&client.id) {
@@ -154,7 +161,10 @@ async fn list_my_client_applications(
     Path(client_id): Path<String>,
 ) -> Result<Json<MyApplicationsListResponse>, PlatformError> {
     // Check access
-    let _client = state.client_repo.find_by_id(&client_id).await?
+    let _client = state
+        .client_repo
+        .find_by_id(&client_id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Client", &client_id))?;
 
     if !auth.0.is_anchor() && !auth.0.can_access_client(&client_id) {
@@ -162,15 +172,20 @@ async fn list_my_client_applications(
     }
 
     // Get enabled app configs for this client
-    let configs = state.app_client_config_repo.find_by_client(&client_id).await?;
-    let enabled_app_ids: Vec<&str> = configs.iter()
+    let configs = state
+        .app_client_config_repo
+        .find_by_client(&client_id)
+        .await?;
+    let enabled_app_ids: Vec<&str> = configs
+        .iter()
         .filter(|c| c.enabled)
         .map(|c| c.application_id.as_str())
         .collect();
 
     // Fetch applications
     let all_apps = state.application_repo.find_all().await?;
-    let apps: Vec<MyApplicationResponse> = all_apps.into_iter()
+    let apps: Vec<MyApplicationResponse> = all_apps
+        .into_iter()
         .filter(|a| enabled_app_ids.contains(&a.id.as_str()))
         .map(|a| MyApplicationResponse {
             id: a.id,
@@ -196,6 +211,9 @@ pub fn me_router(state: MeState) -> Router {
     Router::new()
         .route("/clients", get(list_my_clients))
         .route("/clients/{client_id}", get(get_my_client))
-        .route("/clients/{client_id}/applications", get(list_my_client_applications))
+        .route(
+            "/clients/{client_id}/applications",
+            get(list_my_client_applications),
+        )
         .with_state(state)
 }

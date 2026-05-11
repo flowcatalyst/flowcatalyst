@@ -78,7 +78,12 @@ use crate::usecase::result::UseCaseResult;
 pub trait HasId {
     fn id(&self) -> &str;
     /// Legacy collection name. Unused in PostgreSQL implementation.
-    fn collection_name() -> &'static str where Self: Sized { "" }
+    fn collection_name() -> &'static str
+    where
+        Self: Sized,
+    {
+        ""
+    }
 }
 
 /// Trait for domain entities that can be upserted/deleted within a PostgreSQL transaction.
@@ -150,12 +155,7 @@ pub trait PgAggregate: Send + Sync {
 #[async_trait]
 pub trait UnitOfWork: Send + Sync {
     /// Commit an entity upsert with its domain event (and optional audit log).
-    async fn commit<E, T, C>(
-        &self,
-        aggregate: &T,
-        event: E,
-        command: &C,
-    ) -> UseCaseResult<E>
+    async fn commit<E, T, C>(&self, aggregate: &T, event: E, command: &C) -> UseCaseResult<E>
     where
         E: DomainEvent + Serialize + Send + 'static,
         T: Serialize + HasId + PgPersist + Send + Sync,
@@ -174,11 +174,7 @@ pub trait UnitOfWork: Send + Sync {
         C: Serialize + Send + Sync;
 
     /// Emit a domain event without an entity change (e.g., UserLoggedIn).
-    async fn emit_event<E, C>(
-        &self,
-        event: E,
-        command: &C,
-    ) -> UseCaseResult<E>
+    async fn emit_event<E, C>(&self, event: E, command: &C) -> UseCaseResult<E>
     where
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync;
@@ -292,8 +288,8 @@ impl OutboxUnitOfWork {
         client_id: &Option<String>,
     ) -> Result<(), UseCaseError> {
         let id = TsidGenerator::generate_untyped();
-        let data_json: serde_json::Value = serde_json::from_str(&event.to_data_json())
-            .unwrap_or(serde_json::json!({}));
+        let data_json: serde_json::Value =
+            serde_json::from_str(&event.to_data_json()).unwrap_or(serde_json::json!({}));
 
         let payload = serde_json::json!({
             "event_type": event.event_type(),
@@ -411,12 +407,7 @@ impl OutboxUnitOfWork {
 
 #[async_trait]
 impl UnitOfWork for OutboxUnitOfWork {
-    async fn commit<E, T, C>(
-        &self,
-        aggregate: &T,
-        event: E,
-        command: &C,
-    ) -> UseCaseResult<E>
+    async fn commit<E, T, C>(&self, aggregate: &T, event: E, command: &C) -> UseCaseResult<E>
     where
         E: DomainEvent + Serialize + Send + 'static,
         T: Serialize + HasId + PgPersist + Send + Sync,
@@ -471,12 +462,7 @@ impl UnitOfWork for OutboxUnitOfWork {
         UseCaseResult::success(event)
     }
 
-    async fn commit_delete<E, T, C>(
-        &self,
-        aggregate: &T,
-        event: E,
-        command: &C,
-    ) -> UseCaseResult<E>
+    async fn commit_delete<E, T, C>(&self, aggregate: &T, event: E, command: &C) -> UseCaseResult<E>
     where
         E: DomainEvent + Serialize + Send + 'static,
         T: Serialize + HasId + PgPersist + Send + Sync,
@@ -531,11 +517,7 @@ impl UnitOfWork for OutboxUnitOfWork {
         UseCaseResult::success(event)
     }
 
-    async fn emit_event<E, C>(
-        &self,
-        event: E,
-        command: &C,
-    ) -> UseCaseResult<E>
+    async fn emit_event<E, C>(&self, event: E, command: &C) -> UseCaseResult<E>
     where
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync,
@@ -699,12 +681,7 @@ impl Default for InMemoryUnitOfWork {
 
 #[async_trait]
 impl UnitOfWork for InMemoryUnitOfWork {
-    async fn commit<E, T, C>(
-        &self,
-        _aggregate: &T,
-        event: E,
-        _command: &C,
-    ) -> UseCaseResult<E>
+    async fn commit<E, T, C>(&self, _aggregate: &T, event: E, _command: &C) -> UseCaseResult<E>
     where
         E: DomainEvent + Serialize + Send + 'static,
         T: Serialize + HasId + PgPersist + Send + Sync,
@@ -735,11 +712,7 @@ impl UnitOfWork for InMemoryUnitOfWork {
         UseCaseResult::success(event)
     }
 
-    async fn emit_event<E, C>(
-        &self,
-        event: E,
-        _command: &C,
-    ) -> UseCaseResult<E>
+    async fn emit_event<E, C>(&self, event: E, _command: &C) -> UseCaseResult<E>
     where
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync,
@@ -837,18 +810,12 @@ mod tests {
 
     #[test]
     fn extract_aggregate_type_empty_second_segment() {
-        assert_eq!(
-            OutboxUnitOfWork::extract_aggregate_type("a..c"),
-            ""
-        );
+        assert_eq!(OutboxUnitOfWork::extract_aggregate_type("a..c"), "");
     }
 
     #[test]
     fn extract_aggregate_type_empty_string() {
-        assert_eq!(
-            OutboxUnitOfWork::extract_aggregate_type(""),
-            "Unknown"
-        );
+        assert_eq!(OutboxUnitOfWork::extract_aggregate_type(""), "Unknown");
     }
 
     // ─── extract_entity_id ──────────────────────────────────────────────
@@ -863,34 +830,22 @@ mod tests {
 
     #[test]
     fn extract_entity_id_no_third_segment() {
-        assert_eq!(
-            OutboxUnitOfWork::extract_entity_id("orders.order"),
-            ""
-        );
+        assert_eq!(OutboxUnitOfWork::extract_entity_id("orders.order"), "");
     }
 
     #[test]
     fn extract_entity_id_single_segment() {
-        assert_eq!(
-            OutboxUnitOfWork::extract_entity_id("single"),
-            ""
-        );
+        assert_eq!(OutboxUnitOfWork::extract_entity_id("single"), "");
     }
 
     #[test]
     fn extract_entity_id_empty() {
-        assert_eq!(
-            OutboxUnitOfWork::extract_entity_id(""),
-            ""
-        );
+        assert_eq!(OutboxUnitOfWork::extract_entity_id(""), "");
     }
 
     #[test]
     fn extract_entity_id_many_segments() {
-        assert_eq!(
-            OutboxUnitOfWork::extract_entity_id("a.b.c.d.e"),
-            "c"
-        );
+        assert_eq!(OutboxUnitOfWork::extract_entity_id("a.b.c.d.e"), "c");
     }
 
     // ─── InMemoryUnitOfWork ─────────────────────────────────────────────
@@ -962,7 +917,9 @@ mod tests {
         let uow = InMemoryUnitOfWork::new();
         let event = make_fake_event("evt_commit_1");
         let entity = FakeEntity { id: "e_1".into() };
-        let cmd = FakeCommand { name: "test".into() };
+        let cmd = FakeCommand {
+            name: "test".into(),
+        };
 
         let result = uow.commit(&entity, event, &cmd).await;
         assert!(result.is_success());
@@ -986,7 +943,9 @@ mod tests {
     async fn in_memory_uow_emit_event_records_event() {
         let uow = InMemoryUnitOfWork::new();
         let event = make_fake_event("evt_emit_1");
-        let cmd = FakeCommand { name: "emit".into() };
+        let cmd = FakeCommand {
+            name: "emit".into(),
+        };
 
         let result = uow.emit_event(event, &cmd).await;
         assert!(result.is_success());

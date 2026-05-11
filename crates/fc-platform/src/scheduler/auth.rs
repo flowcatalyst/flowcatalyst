@@ -40,7 +40,9 @@ impl DispatchAuthService {
     /// Generate an HMAC-SHA256 auth token for a dispatch job ID
     /// Returns the hex-encoded token
     pub fn generate_auth_token(&self, dispatch_job_id: &str) -> Result<String, AuthError> {
-        let key = self.app_key.as_ref()
+        let key = self
+            .app_key
+            .as_ref()
             .ok_or(AuthError::AppKeyNotConfigured)?;
 
         if key.is_empty() {
@@ -68,13 +70,16 @@ impl DispatchAuthService {
 
     /// Check if the app key is configured
     pub fn is_configured(&self) -> bool {
-        self.app_key.as_ref().map(|k| !k.is_empty()).unwrap_or(false)
+        self.app_key
+            .as_ref()
+            .map(|k| !k.is_empty())
+            .unwrap_or(false)
     }
 
     /// Compute HMAC-SHA256 and return hex-encoded result (lowercase)
     fn hmac_sha256_hex(&self, data: &str, secret: &str) -> String {
-        let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-            .expect("HMAC can take key of any size");
+        let mut mac =
+            HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take key of any size");
         mac.update(data.as_bytes());
         let result = mac.finalize();
         hex::encode(result.into_bytes())

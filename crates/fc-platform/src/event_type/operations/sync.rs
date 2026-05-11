@@ -2,16 +2,14 @@
 //!
 //! Bulk creates/updates/deletes event types from an application SDK.
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::event_type::entity::{EventType, EventTypeSource, SpecVersion};
-use crate::EventTypeRepository;
-use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
-};
 use super::events::EventTypesSynced;
+use crate::event_type::entity::{EventType, EventTypeSource, SpecVersion};
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::EventTypeRepository;
 
 /// A single event type definition in the sync payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,10 +55,11 @@ pub struct SyncEventTypesUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> SyncEventTypesUseCase<U> {
-    pub fn new(event_type_repo: Arc<EventTypeRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
-        Self { event_type_repo, unit_of_work }
+    pub fn new(event_type_repo: Arc<EventTypeRepository>, unit_of_work: Arc<U>) -> Self {
+        Self {
+            event_type_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -72,13 +71,18 @@ impl<U: UnitOfWork> UseCase for SyncEventTypesUseCase<U> {
     async fn validate(&self, command: &SyncEventTypesCommand) -> Result<(), UseCaseError> {
         if command.application_code.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "APPLICATION_CODE_REQUIRED", "Application code is required",
+                "APPLICATION_CODE_REQUIRED",
+                "Application code is required",
             ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &SyncEventTypesCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &SyncEventTypesCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -88,11 +92,16 @@ impl<U: UnitOfWork> UseCase for SyncEventTypesUseCase<U> {
         ctx: ExecutionContext,
     ) -> UseCaseResult<EventTypesSynced> {
         // Fetch existing event types for this application
-        let existing = match self.event_type_repo.find_by_application(&command.application_code).await {
+        let existing = match self
+            .event_type_repo
+            .find_by_application(&command.application_code)
+            .await
+        {
             Ok(list) => list,
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch existing event types: {}", e
+                    "Failed to fetch existing event types: {}",
+                    e
                 )));
             }
         };
@@ -119,7 +128,8 @@ impl<U: UnitOfWork> UseCase for SyncEventTypesUseCase<U> {
                         updated.updated_at = chrono::Utc::now();
                         if let Err(e) = self.event_type_repo.update(&updated).await {
                             return UseCaseResult::failure(UseCaseError::commit(format!(
-                                "Failed to update event type '{}': {}", input.code, e
+                                "Failed to update event type '{}': {}",
+                                input.code, e
                             )));
                         }
                         updated_count += 1;
@@ -132,7 +142,8 @@ impl<U: UnitOfWork> UseCase for SyncEventTypesUseCase<U> {
                         Ok(et) => et,
                         Err(e) => {
                             return UseCaseResult::failure(UseCaseError::validation(
-                                "INVALID_EVENT_TYPE_CODE", e,
+                                "INVALID_EVENT_TYPE_CODE",
+                                e,
                             ));
                         }
                     };
@@ -140,7 +151,8 @@ impl<U: UnitOfWork> UseCase for SyncEventTypesUseCase<U> {
                     et.description = input.description.clone();
                     if let Err(e) = self.event_type_repo.insert(&et).await {
                         return UseCaseResult::failure(UseCaseError::commit(format!(
-                            "Failed to create event type '{}': {}", input.code, e
+                            "Failed to create event type '{}': {}",
+                            input.code, e
                         )));
                     }
                     created_count += 1;
@@ -156,7 +168,8 @@ impl<U: UnitOfWork> UseCase for SyncEventTypesUseCase<U> {
                     Ok(None) => continue, // race: vanished between write and read; skip schema
                     Err(e) => {
                         return UseCaseResult::failure(UseCaseError::commit(format!(
-                            "Failed to reload event type '{}': {}", input.code, e
+                            "Failed to reload event type '{}': {}",
+                            input.code, e
                         )));
                     }
                 };
@@ -167,9 +180,12 @@ impl<U: UnitOfWork> UseCase for SyncEventTypesUseCase<U> {
                             let mut updated_sv = existing_sv.clone();
                             updated_sv.schema_content = Some(schema.clone());
                             updated_sv.updated_at = chrono::Utc::now();
-                            if let Err(e) = self.event_type_repo.update_spec_version(&updated_sv).await {
+                            if let Err(e) =
+                                self.event_type_repo.update_spec_version(&updated_sv).await
+                            {
                                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                                    "Failed to update schema for '{}': {}", input.code, e
+                                    "Failed to update schema for '{}': {}",
+                                    input.code, e
                                 )));
                             }
                             schemas_updated += 1;
@@ -181,7 +197,8 @@ impl<U: UnitOfWork> UseCase for SyncEventTypesUseCase<U> {
                         let sv = SpecVersion::new(&current.id, "1.0", Some(schema.clone()));
                         if let Err(e) = self.event_type_repo.insert_spec_version(&sv).await {
                             return UseCaseResult::failure(UseCaseError::commit(format!(
-                                "Failed to insert schema for '{}': {}", input.code, e
+                                "Failed to insert schema for '{}': {}",
+                                input.code, e
                             )));
                         }
                         schemas_created += 1;
@@ -200,7 +217,8 @@ impl<U: UnitOfWork> UseCase for SyncEventTypesUseCase<U> {
                 {
                     if let Err(e) = self.event_type_repo.delete(&et.id).await {
                         return UseCaseResult::failure(UseCaseError::commit(format!(
-                            "Failed to delete event type '{}': {}", et.code, e
+                            "Failed to delete event type '{}': {}",
+                            et.code, e
                         )));
                     }
                     deleted_count += 1;
@@ -232,14 +250,12 @@ mod tests {
     fn test_command_serialization() {
         let cmd = SyncEventTypesCommand {
             application_code: "orders".to_string(),
-            event_types: vec![
-                SyncEventTypeInput {
-                    code: "orders:fulfillment:shipment:shipped".to_string(),
-                    name: "Shipment Shipped".to_string(),
-                    description: None,
-                    schema: None,
-                },
-            ],
+            event_types: vec![SyncEventTypeInput {
+                code: "orders:fulfillment:shipment:shipped".to_string(),
+                name: "Shipment Shipped".to_string(),
+                description: None,
+                schema: None,
+            }],
             remove_unlisted: false,
         };
         let json = serde_json::to_string(&cmd).unwrap();

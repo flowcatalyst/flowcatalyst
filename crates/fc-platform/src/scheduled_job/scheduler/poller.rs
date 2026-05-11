@@ -21,7 +21,9 @@ use cron::Schedule;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 
-use crate::scheduled_job::entity::{InstanceStatus, ScheduledJob, ScheduledJobInstance, TriggerKind};
+use crate::scheduled_job::entity::{
+    InstanceStatus, ScheduledJob, ScheduledJobInstance, TriggerKind,
+};
 use crate::scheduled_job::scheduler::config::ScheduledJobSchedulerConfig;
 use crate::scheduled_job::{ScheduledJobInstanceRepository, ScheduledJobRepository};
 
@@ -39,11 +41,19 @@ impl ScheduledJobPoller {
         instance_repo: Arc<ScheduledJobInstanceRepository>,
         shutdown: broadcast::Receiver<()>,
     ) -> Self {
-        Self { config, repo, instance_repo, shutdown }
+        Self {
+            config,
+            repo,
+            instance_repo,
+            shutdown,
+        }
     }
 
     pub async fn run(mut self) {
-        info!(interval_seconds = self.config.poll_interval.as_secs(), "Scheduled-job poller started");
+        info!(
+            interval_seconds = self.config.poll_interval.as_secs(),
+            "Scheduled-job poller started"
+        );
         let mut ticker = tokio::time::interval(self.config.poll_interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -136,8 +146,8 @@ pub fn latest_slot_in_window(
     if after >= up_to {
         return Ok(None);
     }
-    let tz: Tz = Tz::from_str(tz_name)
-        .map_err(|e| format!("Invalid timezone '{}': {}", tz_name, e))?;
+    let tz: Tz =
+        Tz::from_str(tz_name).map_err(|e| format!("Invalid timezone '{}': {}", tz_name, e))?;
 
     let after_tz = tz.from_utc_datetime(&after.naive_utc());
     let up_to_tz = tz.from_utc_datetime(&up_to.naive_utc());
@@ -145,8 +155,8 @@ pub fn latest_slot_in_window(
     let mut best: Option<DateTime<Tz>> = None;
 
     for expr in crons {
-        let schedule = Schedule::from_str(expr)
-            .map_err(|e| format!("Invalid cron '{}': {}", expr, e))?;
+        let schedule =
+            Schedule::from_str(expr).map_err(|e| format!("Invalid cron '{}': {}", expr, e))?;
         // Walk forward from `after` and pick the latest slot <= up_to.
         for slot in schedule.after(&after_tz) {
             if slot > up_to_tz {
@@ -175,7 +185,10 @@ mod tests {
         let after = Utc.with_ymd_and_hms(2024, 1, 1, 12, 0, 0).unwrap();
         let up_to = Utc.with_ymd_and_hms(2024, 1, 3, 12, 0, 0).unwrap();
         let slot = latest_slot_in_window(&crons, "UTC", after, up_to).unwrap();
-        assert_eq!(slot, Some(Utc.with_ymd_and_hms(2024, 1, 3, 0, 0, 0).unwrap()));
+        assert_eq!(
+            slot,
+            Some(Utc.with_ymd_and_hms(2024, 1, 3, 0, 0, 0).unwrap())
+        );
     }
 
     #[test]
@@ -183,20 +196,23 @@ mod tests {
         let crons = vec!["0 0 0 * * *".to_string()]; // daily midnight
         let after = Utc.with_ymd_and_hms(2024, 1, 1, 1, 0, 0).unwrap();
         let up_to = Utc.with_ymd_and_hms(2024, 1, 1, 23, 0, 0).unwrap();
-        assert_eq!(latest_slot_in_window(&crons, "UTC", after, up_to).unwrap(), None);
+        assert_eq!(
+            latest_slot_in_window(&crons, "UTC", after, up_to).unwrap(),
+            None
+        );
     }
 
     #[test]
     fn latest_slot_unions_multiple_crons() {
         // 5am AND 5pm. Window 4am..6pm → expect 5pm.
-        let crons = vec![
-            "0 0 5 * * *".to_string(),
-            "0 0 17 * * *".to_string(),
-        ];
+        let crons = vec!["0 0 5 * * *".to_string(), "0 0 17 * * *".to_string()];
         let after = Utc.with_ymd_and_hms(2024, 6, 1, 4, 0, 0).unwrap();
         let up_to = Utc.with_ymd_and_hms(2024, 6, 1, 18, 0, 0).unwrap();
         let slot = latest_slot_in_window(&crons, "UTC", after, up_to).unwrap();
-        assert_eq!(slot, Some(Utc.with_ymd_and_hms(2024, 6, 1, 17, 0, 0).unwrap()));
+        assert_eq!(
+            slot,
+            Some(Utc.with_ymd_and_hms(2024, 6, 1, 17, 0, 0).unwrap())
+        );
     }
 
     #[test]
@@ -233,6 +249,9 @@ mod tests {
     fn empty_window_returns_none() {
         let crons = vec!["0 * * * * *".to_string()];
         let now = Utc::now();
-        assert_eq!(latest_slot_in_window(&crons, "UTC", now, now).unwrap(), None);
+        assert_eq!(
+            latest_slot_in_window(&crons, "UTC", now, now).unwrap(),
+            None
+        );
     }
 }

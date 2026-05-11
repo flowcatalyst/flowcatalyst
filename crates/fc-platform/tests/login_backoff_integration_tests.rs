@@ -8,9 +8,7 @@ use chrono::{Duration, Utc};
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
-use fc_platform::auth::login_backoff::{
-    check, BackoffDecision, BackoffPolicy, BackoffReason,
-};
+use fc_platform::auth::login_backoff::{check, BackoffDecision, BackoffPolicy, BackoffReason};
 use fc_platform::shared::database::{create_pool, run_migrations, MigrationProfile};
 use fc_platform::{AttemptType, LoginAttempt, LoginAttemptRepository, LoginOutcome};
 
@@ -19,12 +17,16 @@ async fn setup_test_db() -> (sqlx::PgPool, testcontainers::ContainerAsync<Postgr
         .with_db_name("flowcatalyst_test")
         .with_user("test")
         .with_password("test")
-        .start().await.expect("Failed to start PostgreSQL container");
+        .start()
+        .await
+        .expect("Failed to start PostgreSQL container");
     let host = container.get_host().await.unwrap();
     let port = container.get_host_port_ipv4(5432).await.unwrap();
     let url = format!("postgresql://test:test@{}:{}/flowcatalyst_test", host, port);
     let pool = create_pool(&url).await.expect("Failed to connect");
-    run_migrations(&pool, MigrationProfile::Production).await.expect("Failed to run migrations");
+    run_migrations(&pool, MigrationProfile::Production)
+        .await
+        .expect("Failed to run migrations");
     (pool, container)
 }
 
@@ -65,7 +67,8 @@ async fn allow_when_no_history() {
     let (pool, _c) = setup_test_db().await;
     let repo = LoginAttemptRepository::new(&pool);
     let decision = check(&repo, &permissive_policy(), "fresh@example.com", "1.2.3.4")
-        .await.expect("check");
+        .await
+        .expect("check");
     assert!(matches!(decision, BackoffDecision::Allow));
 }
 
@@ -102,11 +105,17 @@ async fn fourth_failure_triggers_pair_backoff() {
 
     let decision = check(&repo, &policy, email, ip).await.expect("check");
     match decision {
-        BackoffDecision::Reject { retry_after_secs, reason } => {
+        BackoffDecision::Reject {
+            retry_after_secs,
+            reason,
+        } => {
             assert_eq!(reason, BackoffReason::PairBackoff);
             // Required delay = 2s; elapsed ~0; expect ~2s remaining.
-            assert!((1..=2).contains(&retry_after_secs),
-                "expected ~2s, got {}", retry_after_secs);
+            assert!(
+                (1..=2).contains(&retry_after_secs),
+                "expected ~2s, got {}",
+                retry_after_secs
+            );
         }
         other => panic!("expected Reject, got {:?}", other),
     }
@@ -126,9 +135,14 @@ async fn legitimate_user_on_different_ip_is_not_blocked_by_attacker() {
     }
 
     // Legitimate user from a different IP should still be allowed.
-    let decision = check(&repo, &policy, email, "192.168.1.50").await.expect("check");
-    assert!(matches!(decision, BackoffDecision::Allow),
-        "different IP should not be in backoff: {:?}", decision);
+    let decision = check(&repo, &policy, email, "192.168.1.50")
+        .await
+        .expect("check");
+    assert!(
+        matches!(decision, BackoffDecision::Allow),
+        "different IP should not be in backoff: {:?}",
+        decision
+    );
 }
 
 #[tokio::test]
@@ -148,9 +162,14 @@ async fn distributed_attack_trips_global_ceiling() {
     }
 
     // Even from a fresh IP, the global ceiling rejects.
-    let decision = check(&repo, &policy, email, "203.0.113.99").await.expect("check");
+    let decision = check(&repo, &policy, email, "203.0.113.99")
+        .await
+        .expect("check");
     match decision {
-        BackoffDecision::Reject { reason, retry_after_secs } => {
+        BackoffDecision::Reject {
+            reason,
+            retry_after_secs,
+        } => {
             assert_eq!(reason, BackoffReason::GlobalCeiling);
             assert_eq!(retry_after_secs, policy.global_lock_secs as u32);
         }
@@ -176,8 +195,11 @@ async fn successful_login_resets_pair_backoff_window() {
     // The success cuts the failure-counting window — the next attempt
     // starts fresh.
     let decision = check(&repo, &policy, email, ip).await.expect("check");
-    assert!(matches!(decision, BackoffDecision::Allow),
-        "success should clear backoff state: {:?}", decision);
+    assert!(
+        matches!(decision, BackoffDecision::Allow),
+        "success should clear backoff state: {:?}",
+        decision
+    );
 }
 
 #[tokio::test]
@@ -196,8 +218,17 @@ async fn empty_ip_skips_pair_check_but_still_applies_global_ceiling() {
 
     // Per-pair check is skipped (empty IP), but global ceiling still trips.
     let decision = check(&repo, &policy, email, "").await.expect("check");
-    assert!(matches!(decision, BackoffDecision::Reject { reason: BackoffReason::GlobalCeiling, .. }),
-        "expected GlobalCeiling, got {:?}", decision);
+    assert!(
+        matches!(
+            decision,
+            BackoffDecision::Reject {
+                reason: BackoffReason::GlobalCeiling,
+                ..
+            }
+        ),
+        "expected GlobalCeiling, got {:?}",
+        decision
+    );
 }
 
 #[tokio::test]
@@ -232,7 +263,10 @@ async fn stale_failures_outside_window_dont_count() {
             //
             // If we got here, that's a regression. Document it instead of
             // hard-asserting — but if we DO get here, fail with detail.
-            panic!("expected Allow (all failures stale), got Reject: reason={:?}", reason);
+            panic!(
+                "expected Allow (all failures stale), got Reject: reason={:?}",
+                reason
+            );
         }
         BackoffDecision::Allow => {} // expected
     }

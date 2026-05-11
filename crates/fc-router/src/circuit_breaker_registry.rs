@@ -4,12 +4,12 @@
 //! Used by ProcessPool to gate requests before mediation.
 //! Compatible with Java's Resilience4j circuit breaker stats format.
 
-use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use utoipa::ToSchema;
 
 /// Circuit breaker state (matches Java Resilience4j states)
@@ -25,7 +25,6 @@ pub enum CircuitBreakerState {
     /// Circuit is testing (allowing limited requests)
     HalfOpen,
 }
-
 
 /// Statistics for a single circuit breaker (matches Java format)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -228,11 +227,11 @@ pub struct CircuitBreakerConfig {
 impl Default for CircuitBreakerConfig {
     fn default() -> Self {
         Self {
-            failure_rate_threshold: 0.5,  // Java: failureRatio=0.5
-            min_calls: 10,                // Java: requestVolumeThreshold=10
-            success_threshold: 3,         // Java: successThreshold=3
+            failure_rate_threshold: 0.5,           // Java: failureRatio=0.5
+            min_calls: 10,                         // Java: requestVolumeThreshold=10
+            success_threshold: 3,                  // Java: successThreshold=3
             reset_timeout: Duration::from_secs(5), // Java: delay=5000
-            buffer_size: 100,             // Sliding window size
+            buffer_size: 100,                      // Sliding window size
         }
     }
 }
@@ -414,7 +413,10 @@ mod tests {
         registry.record_failure(endpoint);
         assert!(!registry.allow_request(endpoint)); // Now open
 
-        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::Open));
+        assert_eq!(
+            registry.get_state(endpoint),
+            Some(CircuitBreakerState::Open)
+        );
     }
 
     #[test]
@@ -435,7 +437,10 @@ mod tests {
         registry.record_success(endpoint);
         registry.record_failure(endpoint);
 
-        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::Closed));
+        assert_eq!(
+            registry.get_state(endpoint),
+            Some(CircuitBreakerState::Closed)
+        );
     }
 
     #[test]
@@ -454,19 +459,28 @@ mod tests {
         for _ in 0..5 {
             registry.record_failure(endpoint);
         }
-        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::Open));
+        assert_eq!(
+            registry.get_state(endpoint),
+            Some(CircuitBreakerState::Open)
+        );
 
         // Wait for reset timeout
         std::thread::sleep(Duration::from_millis(60));
 
         // Should transition to half-open on next allow_request
         assert!(registry.allow_request(endpoint));
-        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::HalfOpen));
+        assert_eq!(
+            registry.get_state(endpoint),
+            Some(CircuitBreakerState::HalfOpen)
+        );
 
         // Two successes should close it (success_threshold = 2)
         registry.record_success(endpoint);
         registry.record_success(endpoint);
-        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::Closed));
+        assert_eq!(
+            registry.get_state(endpoint),
+            Some(CircuitBreakerState::Closed)
+        );
     }
 
     #[test]
@@ -485,18 +499,27 @@ mod tests {
         for _ in 0..5 {
             registry.record_failure(endpoint);
         }
-        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::Open));
+        assert_eq!(
+            registry.get_state(endpoint),
+            Some(CircuitBreakerState::Open)
+        );
 
         // Wait for reset timeout
         std::thread::sleep(Duration::from_millis(60));
 
         // Transition to half-open
         assert!(registry.allow_request(endpoint));
-        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::HalfOpen));
+        assert_eq!(
+            registry.get_state(endpoint),
+            Some(CircuitBreakerState::HalfOpen)
+        );
 
         // A failure in half-open should reopen
         registry.record_failure(endpoint);
-        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::Open));
+        assert_eq!(
+            registry.get_state(endpoint),
+            Some(CircuitBreakerState::Open)
+        );
     }
 
     #[test]
@@ -507,10 +530,16 @@ mod tests {
         for _ in 0..15 {
             registry.record_failure(endpoint);
         }
-        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::Open));
+        assert_eq!(
+            registry.get_state(endpoint),
+            Some(CircuitBreakerState::Open)
+        );
 
         assert!(registry.reset(endpoint));
-        assert_eq!(registry.get_state(endpoint), Some(CircuitBreakerState::Closed));
+        assert_eq!(
+            registry.get_state(endpoint),
+            Some(CircuitBreakerState::Closed)
+        );
     }
 
     #[test]

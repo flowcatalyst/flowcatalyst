@@ -129,8 +129,7 @@ impl WebhookValidator {
     ///
     /// The signed message is `{timestamp}{payload}` (concatenated, no separator).
     pub fn compute_signature(&self, timestamp: &str, payload: &[u8]) -> String {
-        let mut mac =
-            HmacSha256::new_from_slice(&self.secret).expect("HMAC accepts any key size");
+        let mut mac = HmacSha256::new_from_slice(&self.secret).expect("HMAC accepts any key size");
         mac.update(timestamp.as_bytes());
         mac.update(payload);
         hex::encode(mac.finalize().into_bytes())

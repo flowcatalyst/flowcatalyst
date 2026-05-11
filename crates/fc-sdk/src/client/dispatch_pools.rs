@@ -1,7 +1,7 @@
 //! Dispatch pool management operations.
 
+use super::{ClientError, FlowCatalystClient};
 use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError};
 
 /// Request to create a dispatch pool.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -81,15 +81,11 @@ impl FlowCatalystClient {
         } else {
             format!("?{}", params.join("&"))
         };
-        self.get(&format!("/api/dispatch-pools{}", query))
-            .await
+        self.get(&format!("/api/dispatch-pools{}", query)).await
     }
 
     /// Get a dispatch pool by ID.
-    pub async fn get_dispatch_pool(
-        &self,
-        id: &str,
-    ) -> Result<DispatchPoolResponse, ClientError> {
+    pub async fn get_dispatch_pool(&self, id: &str) -> Result<DispatchPoolResponse, ClientError> {
         self.get(&format!("/api/dispatch-pools/{}", id)).await
     }
 
@@ -107,8 +103,7 @@ impl FlowCatalystClient {
         id: &str,
         req: &UpdateDispatchPoolRequest,
     ) -> Result<DispatchPoolResponse, ClientError> {
-        self.put(&format!("/api/dispatch-pools/{}", id), req)
-            .await
+        self.put(&format!("/api/dispatch-pools/{}", id), req).await
     }
 
     /// Delete a dispatch pool.

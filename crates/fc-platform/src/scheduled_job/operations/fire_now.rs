@@ -44,7 +44,11 @@ impl<U: UnitOfWork> FireScheduledJobUseCase<U> {
         instance_repo: Arc<ScheduledJobInstanceRepository>,
         unit_of_work: Arc<U>,
     ) -> Self {
-        Self { repo, instance_repo, unit_of_work }
+        Self {
+            repo,
+            instance_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -79,14 +83,16 @@ impl<U: UnitOfWork> UseCase for FireScheduledJobUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to load ScheduledJob: {}", e
+                    "Failed to load ScheduledJob: {}",
+                    e
                 )))
             }
         };
 
         if job.status == ScheduledJobStatus::Archived {
             return UseCaseResult::failure(UseCaseError::business_rule(
-                "ARCHIVED", "Cannot fire an archived ScheduledJob",
+                "ARCHIVED",
+                "Cannot fire an archived ScheduledJob",
             ));
         }
         // PAUSED jobs are still firable manually — that's the whole point of
@@ -114,7 +120,8 @@ impl<U: UnitOfWork> UseCase for FireScheduledJobUseCase<U> {
 
         if let Err(e) = self.instance_repo.insert(&instance).await {
             return UseCaseResult::failure(UseCaseError::commit(format!(
-                "Failed to insert instance row: {}", e
+                "Failed to insert instance row: {}",
+                e
             )));
         }
 

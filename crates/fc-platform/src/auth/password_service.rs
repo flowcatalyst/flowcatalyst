@@ -3,11 +3,8 @@
 //! Secure password hashing using Argon2id.
 
 use argon2::{
-    password_hash::{
-        rand_core::OsRng,
-        PasswordHash, PasswordHasher, PasswordVerifier, SaltString,
-    },
-    Argon2, Algorithm, Params, Version,
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    Algorithm, Argon2, Params, Version,
 };
 use tracing::{debug, warn};
 
@@ -52,11 +49,17 @@ impl PasswordPolicy {
         let mut errors = Vec::new();
 
         if password.len() < self.min_length {
-            errors.push(format!("Password must be at least {} characters", self.min_length));
+            errors.push(format!(
+                "Password must be at least {} characters",
+                self.min_length
+            ));
         }
 
         if password.len() > self.max_length {
-            errors.push(format!("Password must be at most {} characters", self.max_length));
+            errors.push(format!(
+                "Password must be at most {} characters",
+                self.max_length
+            ));
         }
 
         if self.require_uppercase && !password.chars().any(|c| c.is_ascii_uppercase()) {
@@ -177,7 +180,11 @@ impl PasswordService {
 
     /// Hash a password, optionally bypassing the configured complexity policy
     /// for SDK callers that enforce their own rules.
-    pub fn hash_password_with_complexity(&self, password: &str, enforce_complexity: bool) -> Result<String> {
+    pub fn hash_password_with_complexity(
+        &self,
+        password: &str,
+        enforce_complexity: bool,
+    ) -> Result<String> {
         if enforce_complexity {
             self.hash_with_policy(password, &self.policy)
         } else {
@@ -241,7 +248,10 @@ impl PasswordService {
             message: format!("Invalid password hash format: {}", e),
         })?;
 
-        match self.argon2.verify_password(password.as_bytes(), &parsed_hash) {
+        match self
+            .argon2
+            .verify_password(password.as_bytes(), &parsed_hash)
+        {
             Ok(()) => {
                 debug!("Password verification successful");
                 Ok(true)
@@ -276,25 +286,33 @@ impl PasswordService {
 
     /// Validate password against policy without hashing
     pub fn validate_password(&self, password: &str) -> Result<()> {
-        self.policy.validate(password).map_err(|errors| {
-            PlatformError::Validation {
+        self.policy
+            .validate(password)
+            .map_err(|errors| PlatformError::Validation {
                 message: errors.join("; "),
-            }
-        })
+            })
     }
 
     /// Validate password, optionally bypassing complexity for SDK callers.
-    pub fn validate_password_with_complexity(&self, password: &str, enforce_complexity: bool) -> Result<()> {
+    pub fn validate_password_with_complexity(
+        &self,
+        password: &str,
+        enforce_complexity: bool,
+    ) -> Result<()> {
         let policy = if enforce_complexity {
             &self.policy
         } else {
-            return PasswordPolicy::relaxed().validate(password).map_err(|errors| {
-                PlatformError::Validation { message: errors.join("; ") }
-            });
+            return PasswordPolicy::relaxed()
+                .validate(password)
+                .map_err(|errors| PlatformError::Validation {
+                    message: errors.join("; "),
+                });
         };
-        policy.validate(password).map_err(|errors| {
-            PlatformError::Validation { message: errors.join("; ") }
-        })
+        policy
+            .validate(password)
+            .map_err(|errors| PlatformError::Validation {
+                message: errors.join("; "),
+            })
     }
 
     /// Get the current password policy
@@ -325,7 +343,10 @@ impl PasswordResetToken {
         let mut token_bytes = [0u8; 32];
         use argon2::password_hash::rand_core::RngCore;
         OsRng.fill_bytes(&mut token_bytes);
-        let token = base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, token_bytes);
+        let token = base64::Engine::encode(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+            token_bytes,
+        );
 
         Self {
             token,
@@ -379,10 +400,7 @@ mod tests {
 
     #[test]
     fn test_hash_and_verify() {
-        let service = PasswordService::new(
-            Argon2Config::testing(),
-            PasswordPolicy::lenient(),
-        );
+        let service = PasswordService::new(Argon2Config::testing(), PasswordPolicy::lenient());
 
         let password = "testpassword123";
         let hash = service.hash_password(password).unwrap();
@@ -413,10 +431,7 @@ mod tests {
 
     #[test]
     fn test_hash_uniqueness() {
-        let service = PasswordService::new(
-            Argon2Config::testing(),
-            PasswordPolicy::lenient(),
-        );
+        let service = PasswordService::new(Argon2Config::testing(), PasswordPolicy::lenient());
 
         let password = "testpassword123";
         let hash1 = service.hash_password(password).unwrap();
@@ -462,45 +477,39 @@ mod tests {
 
     #[test]
     fn test_empty_password_fails_default_policy() {
-        let service = PasswordService::new(
-            Argon2Config::testing(),
-            PasswordPolicy::default(),
-        );
+        let service = PasswordService::new(Argon2Config::testing(), PasswordPolicy::default());
         let result = service.hash_password("");
         assert!(result.is_err());
         let err_msg = format!("{}", result.unwrap_err());
-        assert!(err_msg.contains("at least"), "Expected length error, got: {err_msg}");
+        assert!(
+            err_msg.contains("at least"),
+            "Expected length error, got: {err_msg}"
+        );
     }
 
     #[test]
     fn test_empty_password_fails_lenient_policy() {
-        let service = PasswordService::new(
-            Argon2Config::testing(),
-            PasswordPolicy::lenient(),
-        );
+        let service = PasswordService::new(Argon2Config::testing(), PasswordPolicy::lenient());
         let result = service.hash_password("");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_password_too_long_fails() {
-        let service = PasswordService::new(
-            Argon2Config::testing(),
-            PasswordPolicy::default(),
-        );
+        let service = PasswordService::new(Argon2Config::testing(), PasswordPolicy::default());
         let long_password = "A".repeat(200) + "a1!";
         let result = service.hash_password(&long_password);
         assert!(result.is_err());
         let err_msg = format!("{}", result.unwrap_err());
-        assert!(err_msg.contains("at most"), "Expected max length error, got: {err_msg}");
+        assert!(
+            err_msg.contains("at most"),
+            "Expected max length error, got: {err_msg}"
+        );
     }
 
     #[test]
     fn test_verify_wrong_password_returns_false() {
-        let service = PasswordService::new(
-            Argon2Config::testing(),
-            PasswordPolicy::lenient(),
-        );
+        let service = PasswordService::new(Argon2Config::testing(), PasswordPolicy::lenient());
         let hash = service.hash_password("correctpassword").unwrap();
         let result = service.verify_password("wrongpassword", &hash).unwrap();
         assert!(!result);
@@ -508,10 +517,7 @@ mod tests {
 
     #[test]
     fn test_verify_empty_password_returns_false() {
-        let service = PasswordService::new(
-            Argon2Config::testing(),
-            PasswordPolicy::lenient(),
-        );
+        let service = PasswordService::new(Argon2Config::testing(), PasswordPolicy::lenient());
         let hash = service.hash_password("realpassword").unwrap();
         let result = service.verify_password("", &hash).unwrap();
         assert!(!result);
@@ -519,20 +525,14 @@ mod tests {
 
     #[test]
     fn test_verify_against_invalid_hash_format_returns_error() {
-        let service = PasswordService::new(
-            Argon2Config::testing(),
-            PasswordPolicy::lenient(),
-        );
+        let service = PasswordService::new(Argon2Config::testing(), PasswordPolicy::lenient());
         let result = service.verify_password("anything", "not-a-valid-hash");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_validate_password_standalone() {
-        let service = PasswordService::new(
-            Argon2Config::testing(),
-            PasswordPolicy::default(),
-        );
+        let service = PasswordService::new(Argon2Config::testing(), PasswordPolicy::default());
         // Valid
         assert!(service.validate_password("SecureP@ss123!").is_ok());
         // Invalid (too short)
@@ -541,20 +541,14 @@ mod tests {
 
     #[test]
     fn test_needs_rehash_valid_argon2id_hash() {
-        let service = PasswordService::new(
-            Argon2Config::testing(),
-            PasswordPolicy::lenient(),
-        );
+        let service = PasswordService::new(Argon2Config::testing(), PasswordPolicy::lenient());
         let hash = service.hash_password("testpassword").unwrap();
         assert!(!service.needs_rehash(&hash));
     }
 
     #[test]
     fn test_needs_rehash_garbage_input() {
-        let service = PasswordService::new(
-            Argon2Config::testing(),
-            PasswordPolicy::lenient(),
-        );
+        let service = PasswordService::new(Argon2Config::testing(), PasswordPolicy::lenient());
         assert!(service.needs_rehash("not-a-hash"));
     }
 
@@ -565,6 +559,11 @@ mod tests {
         assert!(result.is_err());
         let errors = result.unwrap_err();
         // Should report at least length + uppercase + lowercase + digit + special
-        assert!(errors.len() >= 5, "Expected >=5 errors, got {}: {:?}", errors.len(), errors);
+        assert!(
+            errors.len() >= 5,
+            "Expected >=5 errors, got {}: {:?}",
+            errors.len(),
+            errors
+        );
     }
 }

@@ -33,7 +33,12 @@ use super::result::UseCaseResult;
 pub trait HasId {
     fn id(&self) -> &str;
     /// Legacy collection name. Unused in PostgreSQL implementation.
-    fn collection_name() -> &'static str where Self: Sized { "" }
+    fn collection_name() -> &'static str
+    where
+        Self: Sized,
+    {
+        ""
+    }
 }
 
 // ─── Repository-owned persistence ────────────────────────────────────────────
@@ -109,11 +114,7 @@ pub trait UnitOfWork: Send + Sync {
     /// Emit a domain event and audit log without an entity change.
     ///
     /// Used for events that don't modify an entity directly (e.g., `UserLoggedIn`).
-    async fn emit_event<E, C>(
-        &self,
-        event: E,
-        command: &C,
-    ) -> UseCaseResult<E>
+    async fn emit_event<E, C>(&self, event: E, command: &C) -> UseCaseResult<E>
     where
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync;
@@ -183,8 +184,8 @@ impl PgUnitOfWork {
         txn: &mut Transaction<'_, Postgres>,
         event: &E,
     ) -> Result<(), UseCaseError> {
-        let data_json: serde_json::Value = serde_json::from_str(&event.to_data_json())
-            .unwrap_or(serde_json::json!({}));
+        let data_json: serde_json::Value =
+            serde_json::from_str(&event.to_data_json()).unwrap_or(serde_json::json!({}));
 
         let context_data = serde_json::json!([
             {"key": "principalId", "value": event.principal_id()},
@@ -221,7 +222,10 @@ impl PgUnitOfWork {
 
         if let Err(e) = result {
             error!("Failed to insert domain event: {}", e);
-            return Err(UseCaseError::commit(format!("Failed to insert domain event: {}", e)));
+            return Err(UseCaseError::commit(format!(
+                "Failed to insert domain event: {}",
+                e
+            )));
         }
 
         Ok(())
@@ -261,7 +265,10 @@ impl PgUnitOfWork {
 
         if let Err(e) = result {
             error!("Failed to insert audit log: {}", e);
-            return Err(UseCaseError::commit(format!("Failed to insert audit log: {}", e)));
+            return Err(UseCaseError::commit(format!(
+                "Failed to insert audit log: {}",
+                e
+            )));
         }
 
         Ok(())
@@ -297,7 +304,10 @@ impl UnitOfWork for PgUnitOfWork {
             Ok(t) => t,
             Err(e) => {
                 error!("Failed to start transaction: {}", e);
-                return UseCaseResult::failure(UseCaseError::commit(format!("Failed to start transaction: {}", e)));
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to start transaction: {}",
+                    e
+                )));
             }
         };
 
@@ -309,7 +319,10 @@ impl UnitOfWork for PgUnitOfWork {
         if let Err(e) = persist_result {
             let _ = txn.rollback().await;
             error!("Failed to persist aggregate: {}", e);
-            return UseCaseResult::failure(UseCaseError::commit(format!("Failed to persist aggregate: {}", e)));
+            return UseCaseResult::failure(UseCaseError::commit(format!(
+                "Failed to persist aggregate: {}",
+                e
+            )));
         }
 
         if let Err(e) = Self::persist_event_and_audit(&mut txn, &event, command).await {
@@ -319,7 +332,10 @@ impl UnitOfWork for PgUnitOfWork {
 
         if let Err(e) = txn.commit().await {
             error!("Failed to commit transaction: {}", e);
-            return UseCaseResult::failure(UseCaseError::commit(format!("Failed to commit transaction: {}", e)));
+            return UseCaseResult::failure(UseCaseError::commit(format!(
+                "Failed to commit transaction: {}",
+                e
+            )));
         }
 
         debug!(
@@ -348,7 +364,10 @@ impl UnitOfWork for PgUnitOfWork {
             Ok(t) => t,
             Err(e) => {
                 error!("Failed to start transaction: {}", e);
-                return UseCaseResult::failure(UseCaseError::commit(format!("Failed to start transaction: {}", e)));
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to start transaction: {}",
+                    e
+                )));
             }
         };
 
@@ -359,7 +378,10 @@ impl UnitOfWork for PgUnitOfWork {
         if let Err(e) = delete_result {
             let _ = txn.rollback().await;
             error!("Failed to delete aggregate: {}", e);
-            return UseCaseResult::failure(UseCaseError::commit(format!("Failed to delete aggregate: {}", e)));
+            return UseCaseResult::failure(UseCaseError::commit(format!(
+                "Failed to delete aggregate: {}",
+                e
+            )));
         }
 
         if let Err(e) = Self::persist_event_and_audit(&mut txn, &event, command).await {
@@ -369,7 +391,10 @@ impl UnitOfWork for PgUnitOfWork {
 
         if let Err(e) = txn.commit().await {
             error!("Failed to commit transaction: {}", e);
-            return UseCaseResult::failure(UseCaseError::commit(format!("Failed to commit transaction: {}", e)));
+            return UseCaseResult::failure(UseCaseError::commit(format!(
+                "Failed to commit transaction: {}",
+                e
+            )));
         }
 
         debug!(
@@ -398,7 +423,10 @@ impl UnitOfWork for PgUnitOfWork {
             Ok(t) => t,
             Err(e) => {
                 error!("Failed to start transaction: {}", e);
-                return UseCaseResult::failure(UseCaseError::commit(format!("Failed to start transaction: {}", e)));
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to start transaction: {}",
+                    e
+                )));
             }
         };
 
@@ -410,7 +438,10 @@ impl UnitOfWork for PgUnitOfWork {
             if let Err(e) = persist_result {
                 let _ = txn.rollback().await;
                 error!("Failed to persist aggregate in batch: {}", e);
-                return UseCaseResult::failure(UseCaseError::commit(format!("Failed to persist aggregate: {}", e)));
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to persist aggregate: {}",
+                    e
+                )));
             }
         }
 
@@ -421,7 +452,10 @@ impl UnitOfWork for PgUnitOfWork {
 
         if let Err(e) = txn.commit().await {
             error!("Failed to commit transaction: {}", e);
-            return UseCaseResult::failure(UseCaseError::commit(format!("Failed to commit transaction: {}", e)));
+            return UseCaseResult::failure(UseCaseError::commit(format!(
+                "Failed to commit transaction: {}",
+                e
+            )));
         }
 
         debug!(
@@ -434,11 +468,7 @@ impl UnitOfWork for PgUnitOfWork {
         UseCaseResult::success(event)
     }
 
-    async fn emit_event<E, C>(
-        &self,
-        event: E,
-        command: &C,
-    ) -> UseCaseResult<E>
+    async fn emit_event<E, C>(&self, event: E, command: &C) -> UseCaseResult<E>
     where
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync,
@@ -447,7 +477,10 @@ impl UnitOfWork for PgUnitOfWork {
             Ok(t) => t,
             Err(e) => {
                 error!("Failed to start transaction: {}", e);
-                return UseCaseResult::failure(UseCaseError::commit(format!("Failed to start transaction: {}", e)));
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to start transaction: {}",
+                    e
+                )));
             }
         };
 
@@ -458,7 +491,10 @@ impl UnitOfWork for PgUnitOfWork {
 
         if let Err(e) = txn.commit().await {
             error!("Failed to commit transaction: {}", e);
-            return UseCaseResult::failure(UseCaseError::commit(format!("Failed to commit transaction: {}", e)));
+            return UseCaseResult::failure(UseCaseError::commit(format!(
+                "Failed to commit transaction: {}",
+                e
+            )));
         }
 
         debug!(
@@ -493,7 +529,9 @@ pub struct TxScopedUnitOfWork {
 
 impl TxScopedUnitOfWork {
     fn new(tx: Transaction<'static, Postgres>) -> Self {
-        Self { tx: Mutex::new(Some(tx)) }
+        Self {
+            tx: Mutex::new(Some(tx)),
+        }
     }
 
     async fn take_tx(&self) -> Option<Transaction<'static, Postgres>> {
@@ -519,9 +557,11 @@ impl UnitOfWork for TxScopedUnitOfWork {
         let mut guard = self.tx.lock().await;
         let txn = match guard.as_mut() {
             Some(t) => t,
-            None => return UseCaseResult::failure(UseCaseError::commit(
-                "TxScopedUnitOfWork: transaction already finalized",
-            )),
+            None => {
+                return UseCaseResult::failure(UseCaseError::commit(
+                    "TxScopedUnitOfWork: transaction already finalized",
+                ))
+            }
         };
 
         let persist_result = {
@@ -530,9 +570,10 @@ impl UnitOfWork for TxScopedUnitOfWork {
         };
         if let Err(e) = persist_result {
             error!("Failed to persist aggregate in scoped tx: {}", e);
-            return UseCaseResult::failure(UseCaseError::commit(
-                format!("Failed to persist aggregate: {}", e),
-            ));
+            return UseCaseResult::failure(UseCaseError::commit(format!(
+                "Failed to persist aggregate: {}",
+                e
+            )));
         }
 
         if let Err(e) = PgUnitOfWork::persist_event_and_audit(txn, &event, command).await {
@@ -558,9 +599,11 @@ impl UnitOfWork for TxScopedUnitOfWork {
         let mut guard = self.tx.lock().await;
         let txn = match guard.as_mut() {
             Some(t) => t,
-            None => return UseCaseResult::failure(UseCaseError::commit(
-                "TxScopedUnitOfWork: transaction already finalized",
-            )),
+            None => {
+                return UseCaseResult::failure(UseCaseError::commit(
+                    "TxScopedUnitOfWork: transaction already finalized",
+                ))
+            }
         };
 
         let delete_result = {
@@ -569,9 +612,10 @@ impl UnitOfWork for TxScopedUnitOfWork {
         };
         if let Err(e) = delete_result {
             error!("Failed to delete aggregate in scoped tx: {}", e);
-            return UseCaseResult::failure(UseCaseError::commit(
-                format!("Failed to delete aggregate: {}", e),
-            ));
+            return UseCaseResult::failure(UseCaseError::commit(format!(
+                "Failed to delete aggregate: {}",
+                e
+            )));
         }
 
         if let Err(e) = PgUnitOfWork::persist_event_and_audit(txn, &event, command).await {
@@ -581,11 +625,7 @@ impl UnitOfWork for TxScopedUnitOfWork {
         UseCaseResult::success(event)
     }
 
-    async fn emit_event<E, C>(
-        &self,
-        event: E,
-        command: &C,
-    ) -> UseCaseResult<E>
+    async fn emit_event<E, C>(&self, event: E, command: &C) -> UseCaseResult<E>
     where
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync,
@@ -593,9 +633,11 @@ impl UnitOfWork for TxScopedUnitOfWork {
         let mut guard = self.tx.lock().await;
         let txn = match guard.as_mut() {
             Some(t) => t,
-            None => return UseCaseResult::failure(UseCaseError::commit(
-                "TxScopedUnitOfWork: transaction already finalized",
-            )),
+            None => {
+                return UseCaseResult::failure(UseCaseError::commit(
+                    "TxScopedUnitOfWork: transaction already finalized",
+                ))
+            }
         };
 
         if let Err(e) = PgUnitOfWork::persist_event_and_audit(txn, &event, command).await {
@@ -621,9 +663,11 @@ impl UnitOfWork for TxScopedUnitOfWork {
         let mut guard = self.tx.lock().await;
         let txn = match guard.as_mut() {
             Some(t) => t,
-            None => return UseCaseResult::failure(UseCaseError::commit(
-                "TxScopedUnitOfWork: transaction already finalized",
-            )),
+            None => {
+                return UseCaseResult::failure(UseCaseError::commit(
+                    "TxScopedUnitOfWork: transaction already finalized",
+                ))
+            }
         };
 
         for aggregate in aggregates {
@@ -633,9 +677,10 @@ impl UnitOfWork for TxScopedUnitOfWork {
             };
             if let Err(e) = persist_result {
                 error!("Failed to persist aggregate in scoped batch: {}", e);
-                return UseCaseResult::failure(UseCaseError::commit(
-                    format!("Failed to persist aggregate: {}", e),
-                ));
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to persist aggregate: {}",
+                    e
+                )));
             }
         }
 
@@ -678,9 +723,10 @@ impl PgUnitOfWork {
             Ok(t) => t,
             Err(e) => {
                 error!("Failed to start orchestration transaction: {}", e);
-                return UseCaseResult::failure(UseCaseError::commit(
-                    format!("Failed to start transaction: {}", e),
-                ));
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to start transaction: {}",
+                    e
+                )));
             }
         };
 
@@ -697,9 +743,10 @@ impl PgUnitOfWork {
                 UseCaseResult::Success(_) => {
                     if let Err(e) = tx.commit().await {
                         error!("Failed to commit orchestration tx: {}", e);
-                        return UseCaseResult::failure(UseCaseError::commit(
-                            format!("Failed to commit transaction: {}", e),
-                        ));
+                        return UseCaseResult::failure(UseCaseError::commit(format!(
+                            "Failed to commit transaction: {}",
+                            e
+                        )));
                     }
                     debug!("Orchestration tx committed");
                 }
@@ -731,7 +778,9 @@ impl Default for InMemoryUnitOfWork {
 #[cfg(test)]
 impl InMemoryUnitOfWork {
     pub fn new() -> Self {
-        Self { committed_events: std::sync::Mutex::new(Vec::new()) }
+        Self {
+            committed_events: std::sync::Mutex::new(Vec::new()),
+        }
     }
 }
 
@@ -751,7 +800,10 @@ impl UnitOfWork for InMemoryUnitOfWork {
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync,
     {
-        self.committed_events.lock().unwrap().push(event.event_id().to_string());
+        self.committed_events
+            .lock()
+            .unwrap()
+            .push(event.event_id().to_string());
         UseCaseResult::success(event)
     }
 
@@ -768,7 +820,10 @@ impl UnitOfWork for InMemoryUnitOfWork {
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync,
     {
-        self.committed_events.lock().unwrap().push(event.event_id().to_string());
+        self.committed_events
+            .lock()
+            .unwrap()
+            .push(event.event_id().to_string());
         UseCaseResult::success(event)
     }
 
@@ -777,7 +832,10 @@ impl UnitOfWork for InMemoryUnitOfWork {
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync,
     {
-        self.committed_events.lock().unwrap().push(event.event_id().to_string());
+        self.committed_events
+            .lock()
+            .unwrap()
+            .push(event.event_id().to_string());
         UseCaseResult::success(event)
     }
 
@@ -794,7 +852,10 @@ impl UnitOfWork for InMemoryUnitOfWork {
         E: DomainEvent + Serialize + Send + 'static,
         C: Serialize + Send + Sync,
     {
-        self.committed_events.lock().unwrap().push(event.event_id().to_string());
+        self.committed_events
+            .lock()
+            .unwrap()
+            .push(event.event_id().to_string());
         UseCaseResult::success(event)
     }
 }
@@ -805,8 +866,14 @@ mod tests {
 
     #[test]
     fn test_extract_aggregate_type() {
-        assert_eq!(PgUnitOfWork::extract_aggregate_type("platform.eventtype.123"), "Eventtype");
-        assert_eq!(PgUnitOfWork::extract_aggregate_type("platform.user.abc"), "User");
+        assert_eq!(
+            PgUnitOfWork::extract_aggregate_type("platform.eventtype.123"),
+            "Eventtype"
+        );
+        assert_eq!(
+            PgUnitOfWork::extract_aggregate_type("platform.user.abc"),
+            "User"
+        );
         assert_eq!(PgUnitOfWork::extract_aggregate_type(""), "Unknown");
     }
 

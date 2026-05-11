@@ -1,10 +1,10 @@
 //! Dispatch Pool Domain Events
 
-use serde::{Deserialize, Serialize};
-use crate::usecase::ExecutionContext;
-use crate::usecase::domain_event::EventMetadata;
-use crate::TsidGenerator;
 use crate::impl_domain_event;
+use crate::usecase::domain_event::EventMetadata;
+use crate::usecase::ExecutionContext;
+use crate::TsidGenerator;
+use serde::{Deserialize, Serialize};
 
 /// Event emitted when a new dispatch pool is created.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -233,10 +233,16 @@ impl DispatchPoolsSynced {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             application_code: application_code.to_string(),
             created,
@@ -255,13 +261,8 @@ mod tests {
     #[test]
     fn test_dispatch_pool_created_event() {
         let ctx = ExecutionContext::create("admin-123");
-        let event = DispatchPoolCreated::new(
-            &ctx,
-            "dp-1",
-            "main-pool",
-            "Main Pool",
-            Some("client-1"),
-        );
+        let event =
+            DispatchPoolCreated::new(&ctx, "dp-1", "main-pool", "Main Pool", Some("client-1"));
 
         assert_eq!(event.event_type(), "platform:admin:dispatch-pool:created");
         assert_eq!(event.dispatch_pool_id, "dp-1");

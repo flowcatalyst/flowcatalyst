@@ -59,12 +59,15 @@ impl<U: UnitOfWork> UseCase for DeleteScheduledJobUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to load ScheduledJob: {}", e
+                    "Failed to load ScheduledJob: {}",
+                    e
                 )))
             }
         };
 
         let event = ScheduledJobDeleted::new(&ctx, &job.id, job.client_id.as_deref(), &job.code);
-        self.unit_of_work.commit_delete(&job, &*self.repo, event, &cmd).await
+        self.unit_of_work
+            .commit_delete(&job, &*self.repo, event, &cmd)
+            .await
     }
 }

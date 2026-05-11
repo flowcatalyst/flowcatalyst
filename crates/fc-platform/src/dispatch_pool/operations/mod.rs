@@ -3,45 +3,26 @@
 //! Use cases for dispatch pool management following the Command pattern
 //! with guaranteed event emission and audit logging through UnitOfWork.
 
-pub mod events;
-pub mod create;
-pub mod update;
 pub mod archive;
+pub mod create;
 pub mod delete;
+pub mod events;
 pub mod sync;
+pub mod update;
 
 // Re-export events
 pub use events::{
-    DispatchPoolCreated,
-    DispatchPoolUpdated,
-    DispatchPoolArchived,
-    DispatchPoolDeleted,
+    DispatchPoolArchived, DispatchPoolCreated, DispatchPoolDeleted, DispatchPoolUpdated,
     DispatchPoolsSynced,
 };
 
 // Re-export commands and use cases
-pub use create::{
-    CreateDispatchPoolCommand,
-    CreateDispatchPoolUseCase,
-};
+pub use create::{CreateDispatchPoolCommand, CreateDispatchPoolUseCase};
 
-pub use update::{
-    UpdateDispatchPoolCommand,
-    UpdateDispatchPoolUseCase,
-};
+pub use update::{UpdateDispatchPoolCommand, UpdateDispatchPoolUseCase};
 
-pub use archive::{
-    ArchiveDispatchPoolCommand,
-    ArchiveDispatchPoolUseCase,
-};
+pub use archive::{ArchiveDispatchPoolCommand, ArchiveDispatchPoolUseCase};
 
-pub use delete::{
-    DeleteDispatchPoolCommand,
-    DeleteDispatchPoolUseCase,
-};
+pub use delete::{DeleteDispatchPoolCommand, DeleteDispatchPoolUseCase};
 
-pub use sync::{
-    SyncDispatchPoolsCommand,
-    SyncDispatchPoolsUseCase,
-    SyncDispatchPoolInput,
-};
+pub use sync::{SyncDispatchPoolInput, SyncDispatchPoolsCommand, SyncDispatchPoolsUseCase};

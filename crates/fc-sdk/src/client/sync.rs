@@ -3,9 +3,9 @@
 //! Sync endpoints reconcile application-scoped resources with a declarative manifest.
 //! They create, update, and optionally delete resources to match the provided list.
 
-use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError};
 use super::event_types::CreateEventTypeRequest;
+use super::{ClientError, FlowCatalystClient};
+use serde::{Deserialize, Serialize};
 
 /// Result of a sync operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,7 +115,11 @@ impl FlowCatalystClient {
         req: &SyncRolesRequest,
         remove_unlisted: bool,
     ) -> Result<SyncResult, ClientError> {
-        let query = if remove_unlisted { "?removeUnlisted=true" } else { "" };
+        let query = if remove_unlisted {
+            "?removeUnlisted=true"
+        } else {
+            ""
+        };
         self.post(
             &format!("/api/applications/{}/roles/sync{}", app_code, query),
             req,
@@ -130,7 +134,11 @@ impl FlowCatalystClient {
         req: &SyncEventTypesRequest,
         remove_unlisted: bool,
     ) -> Result<SyncResult, ClientError> {
-        let query = if remove_unlisted { "?removeUnlisted=true" } else { "" };
+        let query = if remove_unlisted {
+            "?removeUnlisted=true"
+        } else {
+            ""
+        };
         self.post(
             &format!("/api/applications/{}/event-types/sync{}", app_code, query),
             req,
@@ -145,7 +153,11 @@ impl FlowCatalystClient {
         req: &SyncSubscriptionsRequest,
         remove_unlisted: bool,
     ) -> Result<SyncResult, ClientError> {
-        let query = if remove_unlisted { "?removeUnlisted=true" } else { "" };
+        let query = if remove_unlisted {
+            "?removeUnlisted=true"
+        } else {
+            ""
+        };
         self.post(
             &format!("/api/applications/{}/subscriptions/sync{}", app_code, query),
             req,
@@ -160,9 +172,16 @@ impl FlowCatalystClient {
         req: &SyncDispatchPoolsRequest,
         remove_unlisted: bool,
     ) -> Result<SyncResult, ClientError> {
-        let query = if remove_unlisted { "?removeUnlisted=true" } else { "" };
+        let query = if remove_unlisted {
+            "?removeUnlisted=true"
+        } else {
+            ""
+        };
         self.post(
-            &format!("/api/applications/{}/dispatch-pools/sync{}", app_code, query),
+            &format!(
+                "/api/applications/{}/dispatch-pools/sync{}",
+                app_code, query
+            ),
             req,
         )
         .await

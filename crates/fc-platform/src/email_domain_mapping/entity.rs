@@ -1,7 +1,7 @@
 //! EmailDomainMapping Entity
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -46,7 +46,11 @@ pub struct EmailDomainMapping {
 }
 
 impl EmailDomainMapping {
-    pub fn new(email_domain: impl Into<String>, identity_provider_id: impl Into<String>, scope_type: ScopeType) -> Self {
+    pub fn new(
+        email_domain: impl Into<String>,
+        identity_provider_id: impl Into<String>,
+        scope_type: ScopeType,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: crate::TsidGenerator::generate(crate::EntityType::EmailDomainMapping),
@@ -74,7 +78,11 @@ mod tests {
         let edm = EmailDomainMapping::new("example.com", "idp-123", ScopeType::Anchor);
 
         assert!(!edm.id.is_empty());
-        assert!(edm.id.starts_with("edm_"), "ID should have edm_ prefix, got: {}", edm.id);
+        assert!(
+            edm.id.starts_with("edm_"),
+            "ID should have edm_ prefix, got: {}",
+            edm.id
+        );
         assert_eq!(edm.email_domain, "example.com");
         assert_eq!(edm.identity_provider_id, "idp-123");
         assert_eq!(edm.scope_type, ScopeType::Anchor);
@@ -148,4 +156,3 @@ mod tests {
         assert!(json.contains("syncRolesFromIdp"));
     }
 }
-

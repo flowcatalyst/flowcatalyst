@@ -3,11 +3,11 @@
 //! Stores OAuth pending authorization states in `oauth_oidc_payloads` (type = "PendingAuth")
 //! to survive server restarts. Replaces the in-memory HashMap that was used previously.
 
-use sqlx::PgPool;
-use chrono::{DateTime, Utc, Duration};
+use crate::shared::error::Result;
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use crate::shared::error::Result;
+use sqlx::PgPool;
 
 const PAYLOAD_TYPE: &str = "PendingAuth";
 /// Pending auth states expire after 10 minutes
@@ -105,18 +105,33 @@ impl PendingAuthRepository {
     }
 
     fn from_payload(p: &serde_json::Value) -> PendingAuth {
-        let created_at = p.get("createdAt")
+        let created_at = p
+            .get("createdAt")
             .and_then(|v| v.as_str())
             .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(Utc::now);
 
         PendingAuth {
-            client_id: p.get("clientId").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            redirect_uri: p.get("redirectUri").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            client_id: p
+                .get("clientId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            redirect_uri: p
+                .get("redirectUri")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             scope: p.get("scope").and_then(|v| v.as_str()).map(String::from),
-            code_challenge: p.get("codeChallenge").and_then(|v| v.as_str()).map(String::from),
-            code_challenge_method: p.get("codeChallengeMethod").and_then(|v| v.as_str()).map(String::from),
+            code_challenge: p
+                .get("codeChallenge")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            code_challenge_method: p
+                .get("codeChallengeMethod")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             nonce: p.get("nonce").and_then(|v| v.as_str()).map(String::from),
             created_at,
         }
@@ -124,12 +139,11 @@ impl PendingAuthRepository {
 
     /// Delete all expired pending auth states (cleanup).
     pub async fn delete_expired(&self) -> Result<u64> {
-        let result = sqlx::query(
-            "DELETE FROM oauth_oidc_payloads WHERE type = $1 AND expires_at < NOW()",
-        )
-        .bind(PAYLOAD_TYPE)
-        .execute(&self.pool)
-        .await?;
+        let result =
+            sqlx::query("DELETE FROM oauth_oidc_payloads WHERE type = $1 AND expires_at < NOW()")
+                .bind(PAYLOAD_TYPE)
+                .execute(&self.pool)
+                .await?;
 
         Ok(result.rows_affected())
     }

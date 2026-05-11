@@ -1,14 +1,12 @@
 //! Update Connection Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::ConnectionRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::ConnectionUpdated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::ConnectionRepository;
 
 /// Command for updating a connection.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,7 +32,10 @@ pub struct UpdateConnectionUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> UpdateConnectionUseCase<U> {
     pub fn new(connection_repo: Arc<ConnectionRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { connection_repo, unit_of_work }
+        Self {
+            connection_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -46,13 +47,18 @@ impl<U: UnitOfWork> UseCase for UpdateConnectionUseCase<U> {
     async fn validate(&self, command: &UpdateConnectionCommand) -> Result<(), UseCaseError> {
         if command.connection_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "CONNECTION_ID_REQUIRED", "Connection ID is required",
+                "CONNECTION_ID_REQUIRED",
+                "Connection ID is required",
             ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &UpdateConnectionCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &UpdateConnectionCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -61,7 +67,11 @@ impl<U: UnitOfWork> UseCase for UpdateConnectionUseCase<U> {
         command: UpdateConnectionCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<ConnectionUpdated> {
-        let mut connection = match self.connection_repo.find_by_id(&command.connection_id).await {
+        let mut connection = match self
+            .connection_repo
+            .find_by_id(&command.connection_id)
+            .await
+        {
             Ok(Some(c)) => c,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
@@ -71,7 +81,8 @@ impl<U: UnitOfWork> UseCase for UpdateConnectionUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch connection: {}", e
+                    "Failed to fetch connection: {}",
+                    e
                 )));
             }
         };
@@ -95,7 +106,8 @@ impl<U: UnitOfWork> UseCase for UpdateConnectionUseCase<U> {
                 "PAUSED" => connection.pause(),
                 _ => {
                     return UseCaseResult::failure(UseCaseError::validation(
-                        "INVALID_STATUS", "Status must be ACTIVE or PAUSED",
+                        "INVALID_STATUS",
+                        "Status must be ACTIVE or PAUSED",
                     ));
                 }
             }

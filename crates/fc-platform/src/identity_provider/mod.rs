@@ -2,11 +2,11 @@
 //!
 //! OAuth/OIDC identity provider management.
 
-pub mod entity;
-pub mod repository;
 pub mod api;
+pub mod entity;
 pub mod operations;
+pub mod repository;
 
+pub use api::{identity_providers_router, IdentityProvidersState};
 pub use entity::{IdentityProvider, IdentityProviderType};
 pub use repository::IdentityProviderRepository;
-pub use api::{IdentityProvidersState, identity_providers_router};

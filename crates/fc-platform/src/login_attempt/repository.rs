@@ -1,9 +1,9 @@
 //! LoginAttempt Repository — PostgreSQL via SQLx
 
-use sqlx::{PgPool, Postgres, QueryBuilder};
 use chrono::{DateTime, Utc};
+use sqlx::{PgPool, Postgres, QueryBuilder};
 
-use super::entity::{LoginAttempt, AttemptType, LoginOutcome};
+use super::entity::{AttemptType, LoginAttempt, LoginOutcome};
 use crate::shared::error::Result;
 
 #[derive(sqlx::FromRow)]
@@ -49,7 +49,7 @@ impl LoginAttemptRepository {
             r#"INSERT INTO iam_login_attempts
                 (id, attempt_type, outcome, failure_reason, identifier,
                  principal_id, ip_address, user_agent, attempted_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"#
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"#,
         )
         .bind(&attempt.id)
         .bind(attempt.attempt_type.as_str())
@@ -149,7 +149,11 @@ impl LoginAttemptRepository {
             Some("attempt_type") => "attempt_type",
             _ => "attempted_at",
         };
-        let direction = if matches!(sort_order, Some("asc")) { "ASC" } else { "DESC" };
+        let direction = if matches!(sort_order, Some("asc")) {
+            "ASC"
+        } else {
+            "DESC"
+        };
 
         let mut data_qb: QueryBuilder<Postgres> =
             QueryBuilder::new("SELECT * FROM iam_login_attempts");
@@ -200,8 +204,7 @@ impl LoginAttemptRepository {
             .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.with_timezone(&Utc));
 
-        let mut qb: QueryBuilder<Postgres> =
-            QueryBuilder::new("SELECT * FROM iam_login_attempts");
+        let mut qb: QueryBuilder<Postgres> = QueryBuilder::new("SELECT * FROM iam_login_attempts");
         let mut has_where = false;
         let push_where = |qb: &mut QueryBuilder<Postgres>, has_where: &mut bool| {
             qb.push(if *has_where { " AND " } else { " WHERE " });
@@ -240,7 +243,8 @@ impl LoginAttemptRepository {
                 .push_bind(c.id.clone())
                 .push(")");
         }
-        qb.push(" ORDER BY attempted_at DESC, id DESC LIMIT ").push_bind(fetch_limit);
+        qb.push(" ORDER BY attempted_at DESC, id DESC LIMIT ")
+            .push_bind(fetch_limit);
         let rows: Vec<LoginAttemptRow> = qb.build_query_as().fetch_all(&self.pool).await?;
         Ok(rows.into_iter().map(LoginAttempt::from).collect())
     }

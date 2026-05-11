@@ -1,10 +1,10 @@
 //! Auth Domain Events — AnchorDomain and ClientAuthConfig
 
-use serde::{Deserialize, Serialize};
-use crate::usecase::ExecutionContext;
-use crate::usecase::domain_event::EventMetadata;
-use crate::TsidGenerator;
 use crate::impl_domain_event;
+use crate::usecase::domain_event::EventMetadata;
+use crate::usecase::ExecutionContext;
+use crate::TsidGenerator;
+use serde::{Deserialize, Serialize};
 
 // ── AnchorDomain Events ──────────────────────────────────────────────────────
 
@@ -32,10 +32,16 @@ impl AnchorDomainCreated {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             anchor_domain_id: id.to_string(),
             domain: domain.to_string(),
@@ -67,10 +73,16 @@ impl AnchorDomainDeleted {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             anchor_domain_id: id.to_string(),
             domain: domain.to_string(),
@@ -105,10 +117,16 @@ impl AuthConfigCreated {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             auth_config_id: id.to_string(),
             email_domain: email_domain.to_string(),
@@ -141,10 +159,16 @@ impl AuthConfigUpdated {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             auth_config_id: id.to_string(),
             email_domain: email_domain.to_string(),
@@ -176,10 +200,16 @@ impl AuthConfigDeleted {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             auth_config_id: id.to_string(),
             email_domain: email_domain.to_string(),
@@ -213,10 +243,16 @@ impl AnchorDomainUpdated {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             anchor_domain_id: id.to_string(),
             domain: domain.to_string(),
@@ -251,10 +287,16 @@ impl IdpRoleMappingCreated {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             idp_role_mapping_id: id.to_string(),
             idp_role: idp_role.to_string(),
@@ -286,10 +328,16 @@ impl IdpRoleMappingDeleted {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             idp_role_mapping_id: id.to_string(),
         }
@@ -324,10 +372,16 @@ macro_rules! oauth_client_event {
 
                 Self {
                     metadata: EventMetadata::new(
-                        event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                        subject, message_group,
-                        ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                        ctx.causation_id.clone(), ctx.principal_id.clone(),
+                        event_id,
+                        Self::EVENT_TYPE,
+                        Self::SPEC_VERSION,
+                        Self::SOURCE,
+                        subject,
+                        message_group,
+                        ctx.execution_id.clone(),
+                        ctx.correlation_id.clone(),
+                        ctx.causation_id.clone(),
+                        ctx.principal_id.clone(),
                     ),
                     oauth_client_id: id.to_string(),
                     client_id: client_id.to_string(),
@@ -341,5 +395,11 @@ oauth_client_event!(OAuthClientCreated, "platform:iam:oauth-client:created");
 oauth_client_event!(OAuthClientUpdated, "platform:iam:oauth-client:updated");
 oauth_client_event!(OAuthClientDeleted, "platform:iam:oauth-client:deleted");
 oauth_client_event!(OAuthClientActivated, "platform:iam:oauth-client:activated");
-oauth_client_event!(OAuthClientDeactivated, "platform:iam:oauth-client:deactivated");
-oauth_client_event!(OAuthClientSecretRotated, "platform:iam:oauth-client:secret-rotated");
+oauth_client_event!(
+    OAuthClientDeactivated,
+    "platform:iam:oauth-client:deactivated"
+);
+oauth_client_event!(
+    OAuthClientSecretRotated,
+    "platform:iam:oauth-client:secret-rotated"
+);

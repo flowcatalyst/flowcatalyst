@@ -1,15 +1,13 @@
 //! Pause Subscription Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::SubscriptionStatus;
-use crate::SubscriptionRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::SubscriptionPaused;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::SubscriptionRepository;
+use crate::SubscriptionStatus;
 
 /// Command for pausing a subscription.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,7 +47,11 @@ impl<U: UnitOfWork> UseCase for PauseSubscriptionUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &PauseSubscriptionCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &PauseSubscriptionCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -59,12 +61,19 @@ impl<U: UnitOfWork> UseCase for PauseSubscriptionUseCase<U> {
         ctx: ExecutionContext,
     ) -> UseCaseResult<SubscriptionPaused> {
         // Fetch existing subscription
-        let mut subscription = match self.subscription_repo.find_by_id(&command.subscription_id).await {
+        let mut subscription = match self
+            .subscription_repo
+            .find_by_id(&command.subscription_id)
+            .await
+        {
             Ok(Some(s)) => s,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
                     "SUBSCRIPTION_NOT_FOUND",
-                    format!("Subscription with ID '{}' not found", command.subscription_id),
+                    format!(
+                        "Subscription with ID '{}' not found",
+                        command.subscription_id
+                    ),
                 ));
             }
             Err(e) => {

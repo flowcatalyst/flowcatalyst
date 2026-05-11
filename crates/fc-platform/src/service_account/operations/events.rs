@@ -1,10 +1,10 @@
 //! Service Account Domain Events
 
-use serde::{Deserialize, Serialize};
-use crate::usecase::ExecutionContext;
-use crate::usecase::domain_event::EventMetadata;
-use crate::TsidGenerator;
 use crate::impl_domain_event;
+use crate::usecase::domain_event::EventMetadata;
+use crate::usecase::ExecutionContext;
+use crate::TsidGenerator;
+use serde::{Deserialize, Serialize};
 
 /// Event emitted when a new service account is created.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -335,7 +335,10 @@ mod tests {
             vec!["VIEWER".to_string()],
         );
 
-        assert_eq!(event.event_type(), "platform:iam:serviceaccount:roles-assigned");
+        assert_eq!(
+            event.event_type(),
+            "platform:iam:serviceaccount:roles-assigned"
+        );
         assert_eq!(event.roles_added, vec!["ADMIN".to_string()]);
         assert_eq!(event.roles_removed, vec!["VIEWER".to_string()]);
     }

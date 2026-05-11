@@ -270,12 +270,10 @@ async fn drop_old_partitions(
 }
 
 async fn partition_exists(pool: &PgPool, name: &str) -> anyhow::Result<bool> {
-    let row: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM pg_class WHERE relname = $1",
-    )
-    .bind(name)
-    .fetch_one(pool)
-    .await?;
+    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM pg_class WHERE relname = $1")
+        .bind(name)
+        .fetch_one(pool)
+        .await?;
     Ok(row.0 > 0)
 }
 
@@ -296,7 +294,6 @@ async fn is_partitioned(pool: &PgPool, table: &str) -> anyhow::Result<bool> {
     .await?;
     Ok(row.0)
 }
-
 
 /// First instant of the month at `offset` months from `now`.
 /// Negative offsets go back, positive forward.

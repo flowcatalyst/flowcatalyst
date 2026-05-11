@@ -1,13 +1,13 @@
 //! Update Email Domain Mapping Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::EmailDomainMappingRepository;
+use super::events::EmailDomainMappingUpdated;
 use crate::email_domain_mapping::entity::ScopeType;
 use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
-use super::events::EmailDomainMappingUpdated;
+use crate::EmailDomainMappingRepository;
 
 /// Command for updating an email domain mapping.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,7 +39,10 @@ pub struct UpdateEmailDomainMappingUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> UpdateEmailDomainMappingUseCase<U> {
     pub fn new(edm_repo: Arc<EmailDomainMappingRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { edm_repo, unit_of_work }
+        Self {
+            edm_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -48,16 +51,24 @@ impl<U: UnitOfWork> UseCase for UpdateEmailDomainMappingUseCase<U> {
     type Command = UpdateEmailDomainMappingCommand;
     type Event = EmailDomainMappingUpdated;
 
-    async fn validate(&self, command: &UpdateEmailDomainMappingCommand) -> Result<(), UseCaseError> {
+    async fn validate(
+        &self,
+        command: &UpdateEmailDomainMappingCommand,
+    ) -> Result<(), UseCaseError> {
         if command.mapping_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "MAPPING_ID_REQUIRED", "Mapping ID is required",
+                "MAPPING_ID_REQUIRED",
+                "Mapping ID is required",
             ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &UpdateEmailDomainMappingCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &UpdateEmailDomainMappingCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -71,12 +82,16 @@ impl<U: UnitOfWork> UseCase for UpdateEmailDomainMappingUseCase<U> {
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
                     "NOT_FOUND",
-                    format!("Email domain mapping with ID '{}' not found", command.mapping_id),
+                    format!(
+                        "Email domain mapping with ID '{}' not found",
+                        command.mapping_id
+                    ),
                 ));
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch email domain mapping: {}", e
+                    "Failed to fetch email domain mapping: {}",
+                    e
                 )));
             }
         };
@@ -118,15 +133,12 @@ impl<U: UnitOfWork> UseCase for UpdateEmailDomainMappingUseCase<U> {
         // `unit_of_work.commit(...)` for a single atomic transaction.
         if let Err(e) = self.edm_repo.update(&mapping).await {
             return UseCaseResult::failure(UseCaseError::commit(format!(
-                "Failed to update email domain mapping: {}", e
+                "Failed to update email domain mapping: {}",
+                e
             )));
         }
 
-        let event = EmailDomainMappingUpdated::new(
-            &ctx,
-            &mapping.id,
-            &mapping.email_domain,
-        );
+        let event = EmailDomainMappingUpdated::new(&ctx, &mapping.id, &mapping.email_domain);
 
         self.unit_of_work.emit_event(event, &command).await
     }
@@ -202,7 +214,10 @@ mod tests {
             identity_provider_id: None,
             required_oidc_tenant_id: None,
         };
-        assert!(cmd.mapping_id.trim().is_empty(), "Whitespace-only mapping_id should be treated as empty");
+        assert!(
+            cmd.mapping_id.trim().is_empty(),
+            "Whitespace-only mapping_id should be treated as empty"
+        );
     }
 
     #[test]

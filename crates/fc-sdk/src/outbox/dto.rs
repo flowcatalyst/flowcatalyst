@@ -463,10 +463,7 @@ impl CreateAuditLogDto {
 
     /// Build the audit log payload JSON for the outbox.
     pub fn to_payload(&self) -> serde_json::Value {
-        let performed = self
-            .performed_at
-            .unwrap_or_else(Utc::now)
-            .to_rfc3339();
+        let performed = self.performed_at.unwrap_or_else(Utc::now).to_rfc3339();
 
         let mut payload = serde_json::json!({
             "entityType": self.entity_type,
@@ -557,8 +554,14 @@ mod tests {
     #[test]
     fn event_dto_context_data_extends() {
         let entries = vec![
-            ContextDataEntry { key: "a".into(), value: "1".into() },
-            ContextDataEntry { key: "b".into(), value: "2".into() },
+            ContextDataEntry {
+                key: "a".into(),
+                value: "1".into(),
+            },
+            ContextDataEntry {
+                key: "b".into(),
+                value: "2".into(),
+            },
         ];
         let dto = CreateEventDto::new("test", serde_json::json!({}))
             .add_context("existing", "val")
@@ -572,8 +575,7 @@ mod tests {
         let mut headers = HashMap::new();
         headers.insert("X-Custom".to_string(), "value1".to_string());
 
-        let dto = CreateEventDto::new("test", serde_json::json!({}))
-            .headers(headers);
+        let dto = CreateEventDto::new("test", serde_json::json!({})).headers(headers);
 
         assert_eq!(dto.headers.get("X-Custom").unwrap(), "value1");
     }
@@ -664,9 +666,8 @@ mod tests {
     #[test]
     fn dispatch_job_dto_from_json_auto_stringifies() {
         let payload_obj = serde_json::json!({"orderId": "ord_123", "amount": 99.99});
-        let dto = CreateDispatchJobDto::from_json(
-            "svc", "evt", "https://x.com", &payload_obj, "pool_1",
-        );
+        let dto =
+            CreateDispatchJobDto::from_json("svc", "evt", "https://x.com", &payload_obj, "pool_1");
 
         let parsed: serde_json::Value = serde_json::from_str(&dto.payload).unwrap();
         assert_eq!(parsed["orderId"], "ord_123");
@@ -731,7 +732,11 @@ mod tests {
     #[test]
     fn dispatch_job_dto_to_payload_required_fields() {
         let dto = CreateDispatchJobDto::new(
-            "svc", "order.created", "https://hook.example.com", r#"{"a":1}"#, "pool_x",
+            "svc",
+            "order.created",
+            "https://hook.example.com",
+            r#"{"a":1}"#,
+            "pool_x",
         );
         let payload = dto.to_payload();
 

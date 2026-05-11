@@ -8,12 +8,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
-use tracing::{info, warn, debug};
+use tracing::{debug, info, warn};
 
+use crate::manager::QueueManager;
+use crate::warning::WarningService;
 use fc_common::{WarningCategory, WarningSeverity};
 use fc_queue::QueueMetrics;
-use crate::warning::WarningService;
-use crate::manager::QueueManager;
 
 /// Configuration for queue health monitoring
 #[derive(Debug, Clone)]
@@ -48,7 +48,6 @@ struct QueueSizeHistory {
     last_size: Option<u64>,
     consecutive_growth_periods: u32,
 }
-
 
 /// Queue Health Monitor
 pub struct QueueHealthMonitor {
@@ -91,8 +90,10 @@ impl QueueHealthMonitor {
             self.warning_service.add_warning(
                 WarningCategory::QueueHealth,
                 WarningSeverity::Warn,
-                format!("Queue {} depth is {} (threshold: {})",
-                    queue_name, current_size, self.config.backlog_threshold),
+                format!(
+                    "Queue {} depth is {} (threshold: {})",
+                    queue_name, current_size, self.config.backlog_threshold
+                ),
                 "QueueHealthMonitor".to_string(),
             );
         }
@@ -240,10 +241,10 @@ mod tests {
         );
 
         // Simulate 3 periods of growth
-        monitor.check_queue_growth("test-queue", 100);  // First reading, no warning
-        monitor.check_queue_growth("test-queue", 200);  // Growth 100, period 1
-        monitor.check_queue_growth("test-queue", 300);  // Growth 100, period 2
-        monitor.check_queue_growth("test-queue", 400);  // Growth 100, period 3 - should warn
+        monitor.check_queue_growth("test-queue", 100); // First reading, no warning
+        monitor.check_queue_growth("test-queue", 200); // Growth 100, period 1
+        monitor.check_queue_growth("test-queue", 300); // Growth 100, period 2
+        monitor.check_queue_growth("test-queue", 400); // Growth 100, period 3 - should warn
 
         assert_eq!(warning_service.warning_count(), 1);
     }

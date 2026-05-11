@@ -11,10 +11,10 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::UserScope;
 use crate::auth::oidc_service::IdTokenClaims;
+use crate::UserScope;
 
-use super::{IdpAdapter, IdpRoleMappingConfig, IdpUserInfo, apply_role_mappings};
+use super::{apply_role_mappings, IdpAdapter, IdpRoleMappingConfig, IdpUserInfo};
 
 /// Azure cloud environment
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -31,7 +31,6 @@ pub enum AzureCloud {
     /// Azure Germany Cloud (legacy)
     Germany,
 }
-
 
 impl AzureCloud {
     /// Get the base URL for this Azure cloud
@@ -146,14 +145,20 @@ impl EntraIdAdapter {
     fn determine_scope(&self, groups: &[String]) -> Option<UserScope> {
         // Check anchor groups first (highest privilege)
         for anchor_group in &self.config.anchor_groups {
-            if groups.iter().any(|g| g == anchor_group || g.contains(anchor_group)) {
+            if groups
+                .iter()
+                .any(|g| g == anchor_group || g.contains(anchor_group))
+            {
                 return Some(UserScope::Anchor);
             }
         }
 
         // Check partner groups
         for partner_group in &self.config.partner_groups {
-            if groups.iter().any(|g| g == partner_group || g.contains(partner_group)) {
+            if groups
+                .iter()
+                .any(|g| g == partner_group || g.contains(partner_group))
+            {
                 return Some(UserScope::Partner);
             }
         }
@@ -177,7 +182,11 @@ impl IdpAdapter for EntraIdAdapter {
         )
     }
 
-    fn extract_user_info(&self, claims: &IdTokenClaims, role_config: &IdpRoleMappingConfig) -> IdpUserInfo {
+    fn extract_user_info(
+        &self,
+        claims: &IdTokenClaims,
+        role_config: &IdpRoleMappingConfig,
+    ) -> IdpUserInfo {
         let groups = self.extract_groups(claims);
         let roles = self.extract_roles(claims);
 

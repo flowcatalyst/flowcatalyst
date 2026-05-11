@@ -1,15 +1,13 @@
 //! Delete Connection Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::ConnectionDeleted;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 use crate::ConnectionRepository;
 use crate::SubscriptionRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::ConnectionDeleted;
 
 /// Command for deleting a connection.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,7 +28,11 @@ impl<U: UnitOfWork> DeleteConnectionUseCase<U> {
         subscription_repo: Arc<SubscriptionRepository>,
         unit_of_work: Arc<U>,
     ) -> Self {
-        Self { connection_repo, subscription_repo, unit_of_work }
+        Self {
+            connection_repo,
+            subscription_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -42,13 +44,18 @@ impl<U: UnitOfWork> UseCase for DeleteConnectionUseCase<U> {
     async fn validate(&self, command: &DeleteConnectionCommand) -> Result<(), UseCaseError> {
         if command.connection_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "CONNECTION_ID_REQUIRED", "Connection ID is required",
+                "CONNECTION_ID_REQUIRED",
+                "Connection ID is required",
             ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeleteConnectionCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeleteConnectionCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -57,7 +64,11 @@ impl<U: UnitOfWork> UseCase for DeleteConnectionUseCase<U> {
         command: DeleteConnectionCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<ConnectionDeleted> {
-        let connection = match self.connection_repo.find_by_id(&command.connection_id).await {
+        let connection = match self
+            .connection_repo
+            .find_by_id(&command.connection_id)
+            .await
+        {
             Ok(Some(c)) => c,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
@@ -67,13 +78,18 @@ impl<U: UnitOfWork> UseCase for DeleteConnectionUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch connection: {}", e
+                    "Failed to fetch connection: {}",
+                    e
                 )));
             }
         };
 
         // Business rule: cannot delete if subscriptions reference this connection
-        match self.subscription_repo.exists_by_connection_id(&connection.id).await {
+        match self
+            .subscription_repo
+            .exists_by_connection_id(&connection.id)
+            .await
+        {
             Ok(true) => {
                 return UseCaseResult::failure(UseCaseError::business_rule(
                     "HAS_SUBSCRIPTIONS",
@@ -83,7 +99,8 @@ impl<U: UnitOfWork> UseCase for DeleteConnectionUseCase<U> {
             Ok(false) => {}
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to check subscriptions: {}", e
+                    "Failed to check subscriptions: {}",
+                    e
                 )));
             }
         }

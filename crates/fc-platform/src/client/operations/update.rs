@@ -1,14 +1,12 @@
 //! Update Client Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::client::repository::ClientRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::ClientUpdated;
+use crate::client::repository::ClientRepository;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 /// Command for updating an existing client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,7 +77,11 @@ impl<U: UnitOfWork> UseCase for UpdateClientUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &UpdateClientCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &UpdateClientCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         // Authorization handled in handler
         Ok(())
     }
@@ -128,12 +130,7 @@ impl<U: UnitOfWork> UseCase for UpdateClientUseCase<U> {
         client.updated_at = chrono::Utc::now();
 
         // Create domain event
-        let event = ClientUpdated::new(
-            &ctx,
-            &client.id,
-            updated_name,
-            None,
-        );
+        let event = ClientUpdated::new(&ctx, &client.id, updated_name, None);
 
         // Atomic commit
         self.unit_of_work

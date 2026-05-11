@@ -1,7 +1,7 @@
 //! EventType Entity — matches TypeScript EventType domain
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -12,13 +12,18 @@ pub enum EventTypeStatus {
     Archived,
 }
 
-
 impl EventTypeStatus {
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Current => "CURRENT", Self::Archived => "ARCHIVED" }
+        match self {
+            Self::Current => "CURRENT",
+            Self::Archived => "ARCHIVED",
+        }
     }
     pub fn from_str(s: &str) -> Self {
-        match s { "ARCHIVED" => Self::Archived, _ => Self::Current }
+        match s {
+            "ARCHIVED" => Self::Archived,
+            _ => Self::Current,
+        }
     }
 }
 
@@ -32,13 +37,20 @@ pub enum EventTypeSource {
     Ui,
 }
 
-
 impl EventTypeSource {
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Code => "CODE", Self::Api => "API", Self::Ui => "UI" }
+        match self {
+            Self::Code => "CODE",
+            Self::Api => "API",
+            Self::Ui => "UI",
+        }
     }
     pub fn from_str(s: &str) -> Self {
-        match s { "CODE" => Self::Code, "API" => Self::Api, _ => Self::Ui }
+        match s {
+            "CODE" => Self::Code,
+            "API" => Self::Api,
+            _ => Self::Ui,
+        }
     }
 }
 
@@ -51,7 +63,6 @@ pub enum SpecVersionStatus {
     Current,
     Deprecated,
 }
-
 
 impl SpecVersionStatus {
     pub fn as_str(&self) -> &'static str {
@@ -70,8 +81,7 @@ impl SpecVersionStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SchemaType {
     #[serde(rename = "JSON_SCHEMA")]
     #[default]
@@ -81,7 +91,6 @@ pub enum SchemaType {
     #[serde(rename = "PROTO")]
     Proto,
 }
-
 
 impl SchemaType {
     pub fn as_str(&self) -> &'static str {
@@ -116,7 +125,11 @@ pub struct SpecVersion {
 }
 
 impl SpecVersion {
-    pub fn new(event_type_id: impl Into<String>, version: impl Into<String>, schema_content: Option<serde_json::Value>) -> Self {
+    pub fn new(
+        event_type_id: impl Into<String>,
+        version: impl Into<String>,
+        schema_content: Option<serde_json::Value>,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: crate::TsidGenerator::generate(crate::EntityType::Schema),
@@ -131,8 +144,12 @@ impl SpecVersion {
         }
     }
 
-    pub fn is_current(&self) -> bool { self.status == SpecVersionStatus::Current }
-    pub fn is_deprecated(&self) -> bool { self.status == SpecVersionStatus::Deprecated }
+    pub fn is_current(&self) -> bool {
+        self.status == SpecVersionStatus::Current
+    }
+    pub fn is_deprecated(&self) -> bool {
+        self.status == SpecVersionStatus::Deprecated
+    }
 }
 
 /// EventType domain entity — matches TypeScript EventType interface
@@ -169,7 +186,10 @@ impl EventType {
         let code = code.into();
         let parts: Vec<&str> = code.split(':').collect();
         if parts.len() != 4 {
-            return Err("Event type code must follow format: application:subdomain:aggregate:event".to_string());
+            return Err(
+                "Event type code must follow format: application:subdomain:aggregate:event"
+                    .to_string(),
+            );
         }
         for part in &parts {
             if part.trim().is_empty() {
@@ -201,8 +221,14 @@ impl EventType {
         })
     }
 
-    pub fn with_description(mut self, desc: impl Into<String>) -> Self { self.description = Some(desc.into()); self }
-    pub fn with_client_id(mut self, id: impl Into<String>) -> Self { self.client_id = Some(id.into()); self }
+    pub fn with_description(mut self, desc: impl Into<String>) -> Self {
+        self.description = Some(desc.into());
+        self
+    }
+    pub fn with_client_id(mut self, id: impl Into<String>) -> Self {
+        self.client_id = Some(id.into());
+        self
+    }
 
     pub fn archive(&mut self) {
         self.status = EventTypeStatus::Archived;
@@ -301,10 +327,19 @@ mod tests {
 
     #[test]
     fn event_type_status_roundtrip_with_fallback() {
-        assert_eq!(EventTypeStatus::from_str("CURRENT"), EventTypeStatus::Current);
-        assert_eq!(EventTypeStatus::from_str("ARCHIVED"), EventTypeStatus::Archived);
+        assert_eq!(
+            EventTypeStatus::from_str("CURRENT"),
+            EventTypeStatus::Current
+        );
+        assert_eq!(
+            EventTypeStatus::from_str("ARCHIVED"),
+            EventTypeStatus::Archived
+        );
         // Unknown falls back to Current
-        assert_eq!(EventTypeStatus::from_str("UNKNOWN"), EventTypeStatus::Current);
+        assert_eq!(
+            EventTypeStatus::from_str("UNKNOWN"),
+            EventTypeStatus::Current
+        );
         for s in [EventTypeStatus::Current, EventTypeStatus::Archived] {
             assert_eq!(EventTypeStatus::from_str(s.as_str()), s);
         }
@@ -321,11 +356,23 @@ mod tests {
 
     #[test]
     fn spec_version_status_roundtrip_with_fallback() {
-        assert_eq!(SpecVersionStatus::from_str("CURRENT"), SpecVersionStatus::Current);
-        assert_eq!(SpecVersionStatus::from_str("DEPRECATED"), SpecVersionStatus::Deprecated);
-        assert_eq!(SpecVersionStatus::from_str("FINALISING"), SpecVersionStatus::Finalising);
+        assert_eq!(
+            SpecVersionStatus::from_str("CURRENT"),
+            SpecVersionStatus::Current
+        );
+        assert_eq!(
+            SpecVersionStatus::from_str("DEPRECATED"),
+            SpecVersionStatus::Deprecated
+        );
+        assert_eq!(
+            SpecVersionStatus::from_str("FINALISING"),
+            SpecVersionStatus::Finalising
+        );
         // Unknown falls back to Finalising
-        assert_eq!(SpecVersionStatus::from_str("UNKNOWN"), SpecVersionStatus::Finalising);
+        assert_eq!(
+            SpecVersionStatus::from_str("UNKNOWN"),
+            SpecVersionStatus::Finalising
+        );
     }
 
     #[test]

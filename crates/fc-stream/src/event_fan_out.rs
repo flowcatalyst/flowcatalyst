@@ -109,11 +109,7 @@ impl EventFanOutService {
                     Ok(report) => {
                         if report.events > 0 {
                             health.add_processed(report.events as u64);
-                            debug!(
-                                events = report.events,
-                                jobs = report.jobs,
-                                "Fan-out cycle"
-                            );
+                            debug!(events = report.events, jobs = report.jobs, "Fan-out cycle");
                         }
                         adaptive_sleep(report.events, config.batch_size)
                     }
@@ -159,7 +155,10 @@ async fn poll_once(
         // Nothing to fan out to. Still claim and stamp events so they
         // don't accumulate forever in the partial index.
         let claimed = claim_events_no_subs(pool, config.batch_size).await?;
-        return Ok(CycleReport { events: claimed, jobs: 0 });
+        return Ok(CycleReport {
+            events: claimed,
+            jobs: 0,
+        });
     }
 
     let mut tx: Transaction<'_, Postgres> = pool.begin().await?;
@@ -287,7 +286,9 @@ struct CachedSubscription {
 
 impl CachedSubscription {
     fn matches_event_type(&self, code: &str) -> bool {
-        self.event_type_patterns.iter().any(|p| pattern_matches(p, code))
+        self.event_type_patterns
+            .iter()
+            .any(|p| pattern_matches(p, code))
     }
 
     fn matches_client(&self, event_client: Option<&str>) -> bool {
@@ -348,18 +349,20 @@ async fn load_active_subscriptions(pool: &PgPool) -> anyhow::Result<Vec<CachedSu
 
     let mut by_id: HashMap<String, CachedSubscription> = HashMap::new();
     for r in rows {
-        let entry = by_id.entry(r.id.clone()).or_insert_with(|| CachedSubscription {
-            id: r.id.clone(),
-            client_id: r.client_id.clone(),
-            target: r.target.clone(),
-            mode: DispatchMode::from_str(&r.mode),
-            data_only: r.data_only,
-            dispatch_pool_id: r.dispatch_pool_id.clone(),
-            service_account_id: r.service_account_id.clone(),
-            max_retries: r.max_retries,
-            timeout_seconds: r.timeout_seconds,
-            event_type_patterns: Vec::new(),
-        });
+        let entry = by_id
+            .entry(r.id.clone())
+            .or_insert_with(|| CachedSubscription {
+                id: r.id.clone(),
+                client_id: r.client_id.clone(),
+                target: r.target.clone(),
+                mode: DispatchMode::from_str(&r.mode),
+                data_only: r.data_only,
+                dispatch_pool_id: r.dispatch_pool_id.clone(),
+                service_account_id: r.service_account_id.clone(),
+                max_retries: r.max_retries,
+                timeout_seconds: r.timeout_seconds,
+                event_type_patterns: Vec::new(),
+            });
         if let Some(p) = r.event_type_code {
             entry.event_type_patterns.push(p);
         }
@@ -625,8 +628,14 @@ mod tests {
     #[test]
     fn dispatch_mode_strs_match_db_enum() {
         assert_eq!(dispatch_mode_str(DispatchMode::Immediate), "IMMEDIATE");
-        assert_eq!(dispatch_mode_str(DispatchMode::NextOnError), "NEXT_ON_ERROR");
-        assert_eq!(dispatch_mode_str(DispatchMode::BlockOnError), "BLOCK_ON_ERROR");
+        assert_eq!(
+            dispatch_mode_str(DispatchMode::NextOnError),
+            "NEXT_ON_ERROR"
+        );
+        assert_eq!(
+            dispatch_mode_str(DispatchMode::BlockOnError),
+            "BLOCK_ON_ERROR"
+        );
     }
 
     #[test]

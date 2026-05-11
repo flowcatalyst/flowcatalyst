@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 
 use fc_platform::domain::{Principal, UserScope};
-use fc_platform::{TsidGenerator, EntityType};
+use fc_platform::{EntityType, TsidGenerator};
 
 // Unit tests for domain models
 mod domain_tests {
@@ -17,7 +17,10 @@ mod domain_tests {
         assert_eq!(principal.scope, UserScope::Anchor);
         assert!(principal.is_user());
         assert!(principal.active);
-        assert_eq!(principal.user_identity.as_ref().unwrap().email, "test@example.com");
+        assert_eq!(
+            principal.user_identity.as_ref().unwrap().email,
+            "test@example.com"
+        );
     }
 
     #[test]
@@ -41,7 +44,11 @@ mod domain_tests {
         principal.assign_role_for_client("client-admin".to_string(), "client123".to_string());
 
         // Should have a role with the client_id set
-        let role = principal.roles.iter().find(|r| r.role == "client-admin").unwrap();
+        let role = principal
+            .roles
+            .iter()
+            .find(|r| r.role == "client-admin")
+            .unwrap();
         assert_eq!(role.client_id, Some("client123".to_string()));
     }
 
@@ -130,7 +137,11 @@ mod authorization_tests {
 
     #[test]
     fn test_direct_permission() {
-        let ctx = create_auth_context(vec!["platform:admin:event:read"], "CLIENT", vec!["client123"]);
+        let ctx = create_auth_context(
+            vec!["platform:admin:event:read"],
+            "CLIENT",
+            vec!["client123"],
+        );
         assert!(ctx.has_permission("platform:admin:event:read"));
         assert!(!ctx.has_permission("platform:admin:event:create"));
     }
@@ -169,18 +180,28 @@ mod authorization_tests {
     #[test]
     fn test_has_all_permissions() {
         let ctx = create_auth_context(
-            vec!["platform:admin:event:read", "platform:admin:event:create", "platform:admin:subscription:read"],
+            vec![
+                "platform:admin:event:read",
+                "platform:admin:event:create",
+                "platform:admin:subscription:read",
+            ],
             "CLIENT",
             vec!["client1"],
         );
-        assert!(ctx.has_all_permissions(&["platform:admin:event:read", "platform:admin:event:create"]));
-        assert!(!ctx.has_all_permissions(&["platform:admin:event:read", "platform:iam:user:create"]));
+        assert!(
+            ctx.has_all_permissions(&["platform:admin:event:read", "platform:admin:event:create"])
+        );
+        assert!(
+            !ctx.has_all_permissions(&["platform:admin:event:read", "platform:iam:user:create"])
+        );
     }
 
     #[test]
     fn test_has_any_permission() {
         let ctx = create_auth_context(vec!["platform:admin:event:read"], "CLIENT", vec!["client1"]);
-        assert!(ctx.has_any_permission(&["platform:admin:event:read", "platform:admin:event:create"]));
+        assert!(
+            ctx.has_any_permission(&["platform:admin:event:read", "platform:admin:event:create"])
+        );
         assert!(!ctx.has_any_permission(&["platform:iam:user:read", "platform:iam:user:create"]));
     }
 
@@ -226,7 +247,12 @@ mod tsid_tests {
         let id2 = TsidGenerator::generate_untyped();
 
         // Newer IDs should sort after older ones lexicographically
-        assert!(id2 > id1, "id2 ({}) should be greater than id1 ({})", id2, id1);
+        assert!(
+            id2 > id1,
+            "id2 ({}) should be greater than id1 ({})",
+            id2,
+            id1
+        );
     }
 
     #[test]
@@ -243,7 +269,10 @@ mod tsid_tests {
         let mut sorted_ids = ids.clone();
         sorted_ids.sort();
 
-        assert_eq!(ids, sorted_ids, "TSIDs should be lexicographically sortable by creation time");
+        assert_eq!(
+            ids, sorted_ids,
+            "TSIDs should be lexicographically sortable by creation time"
+        );
     }
 }
 
@@ -292,13 +321,27 @@ mod error_tests {
         let errors = vec![
             PlatformError::InvalidCredentials,
             PlatformError::TokenExpired,
-            PlatformError::InvalidToken { message: "Malformed JWT".to_string() },
-            PlatformError::Configuration { message: "Missing key".to_string() },
-            PlatformError::Internal { message: "Unexpected error".to_string() },
-            PlatformError::EventTypeNotFound { code: "order.created".to_string() },
-            PlatformError::SubscriptionNotFound { code: "my-webhook".to_string() },
-            PlatformError::ClientNotFound { id: "client123".to_string() },
-            PlatformError::PrincipalNotFound { id: "user123".to_string() },
+            PlatformError::InvalidToken {
+                message: "Malformed JWT".to_string(),
+            },
+            PlatformError::Configuration {
+                message: "Missing key".to_string(),
+            },
+            PlatformError::Internal {
+                message: "Unexpected error".to_string(),
+            },
+            PlatformError::EventTypeNotFound {
+                code: "order.created".to_string(),
+            },
+            PlatformError::SubscriptionNotFound {
+                code: "my-webhook".to_string(),
+            },
+            PlatformError::ClientNotFound {
+                id: "client123".to_string(),
+            },
+            PlatformError::PrincipalNotFound {
+                id: "user123".to_string(),
+            },
         ];
 
         for err in errors {

@@ -2,16 +2,16 @@
 //!
 //! Platform applications and integrations.
 
-pub mod entity;
-pub mod client_config;
-pub mod repository;
-pub mod client_config_repository;
 pub mod api;
+pub mod client_config;
+pub mod client_config_repository;
+pub mod entity;
 pub mod operations;
+pub mod repository;
 
 // Re-export main types
-pub use entity::{Application, ApplicationType};
+pub use api::{applications_router, ApplicationsState};
 pub use client_config::ApplicationClientConfig;
-pub use repository::ApplicationRepository;
 pub use client_config_repository::ApplicationClientConfigRepository;
-pub use api::{ApplicationsState, applications_router};
+pub use entity::{Application, ApplicationType};
+pub use repository::ApplicationRepository;

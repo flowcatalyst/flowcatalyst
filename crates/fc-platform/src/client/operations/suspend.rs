@@ -1,15 +1,13 @@
 //! Suspend Client Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::ClientSuspended;
 use crate::client::entity::ClientStatus;
 use crate::client::repository::ClientRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::ClientSuspended;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 /// Command for suspending a client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,7 +65,11 @@ impl<U: UnitOfWork> UseCase for SuspendClientUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &SuspendClientCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &SuspendClientCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         // Authorization handled in handler
         Ok(())
     }

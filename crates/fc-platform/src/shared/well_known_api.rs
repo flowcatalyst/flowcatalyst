@@ -4,14 +4,10 @@
 //! - /.well-known/openid-configuration
 //! - /.well-known/jwks.json
 
-use axum::{
-    routing::get,
-    extract::State,
-    Json, Router,
-};
-use utoipa::ToSchema;
+use axum::{extract::State, routing::get, Json, Router};
 use serde::Serialize;
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use crate::AuthService;
 
@@ -195,10 +191,7 @@ pub async fn get_openid_configuration(
             "applications".to_string(),
             "clients".to_string(),
         ],
-        code_challenge_methods_supported: vec![
-            "S256".to_string(),
-            "plain".to_string(),
-        ],
+        code_challenge_methods_supported: vec!["S256".to_string(), "plain".to_string()],
         request_parameter_supported: false,
         request_uri_parameter_supported: false,
     })
@@ -216,11 +209,11 @@ pub async fn get_openid_configuration(
         (status = 200, description = "JWKS", body = JwksResponse)
     )
 )]
-pub async fn get_jwks(
-    State(state): State<WellKnownState>,
-) -> Json<JwksResponse> {
+pub async fn get_jwks(State(state): State<WellKnownState>) -> Json<JwksResponse> {
     // Build JWKS from all active keys (current + previous for rotation)
-    let keys: Vec<JwkKey> = state.auth_service.all_jwks_keys()
+    let keys: Vec<JwkKey> = state
+        .auth_service
+        .all_jwks_keys()
         .into_iter()
         .map(|(kid, components)| JwkKey {
             kty: "RSA".to_string(),

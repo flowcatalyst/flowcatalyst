@@ -2,20 +2,18 @@
 //!
 //! Bulk creates/updates/deletes anchor-level subscriptions from an application SDK.
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::{Subscription, EventTypeBinding};
+use super::create::EventTypeBindingInput;
+use super::events::SubscriptionsSynced;
 use crate::subscription::entity::SubscriptionSource;
-use crate::SubscriptionRepository;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 use crate::ConnectionRepository;
 use crate::DispatchPoolRepository;
-use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
-};
-use super::events::SubscriptionsSynced;
-use super::create::EventTypeBindingInput;
+use crate::SubscriptionRepository;
+use crate::{EventTypeBinding, Subscription};
 
 /// A single subscription definition in the sync payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,7 +63,12 @@ impl<U: UnitOfWork> SyncSubscriptionsUseCase<U> {
         dispatch_pool_repo: Arc<DispatchPoolRepository>,
         unit_of_work: Arc<U>,
     ) -> Self {
-        Self { subscription_repo, connection_repo, dispatch_pool_repo, unit_of_work }
+        Self {
+            subscription_repo,
+            connection_repo,
+            dispatch_pool_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -77,29 +80,34 @@ impl<U: UnitOfWork> UseCase for SyncSubscriptionsUseCase<U> {
     async fn validate(&self, command: &SyncSubscriptionsCommand) -> Result<(), UseCaseError> {
         if command.application_code.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "APPLICATION_CODE_REQUIRED", "Application code is required",
+                "APPLICATION_CODE_REQUIRED",
+                "Application code is required",
             ));
         }
 
         for input in &command.subscriptions {
             if input.code.trim().is_empty() {
                 return Err(UseCaseError::validation(
-                    "CODE_REQUIRED", "Subscription code is required",
+                    "CODE_REQUIRED",
+                    "Subscription code is required",
                 ));
             }
             if input.name.trim().is_empty() {
                 return Err(UseCaseError::validation(
-                    "NAME_REQUIRED", "Subscription name is required",
+                    "NAME_REQUIRED",
+                    "Subscription name is required",
                 ));
             }
             if input.target.trim().is_empty() {
                 return Err(UseCaseError::validation(
-                    "TARGET_REQUIRED", "Target endpoint URL is required",
+                    "TARGET_REQUIRED",
+                    "Target endpoint URL is required",
                 ));
             }
             if input.event_types.is_empty() {
                 return Err(UseCaseError::validation(
-                    "EVENT_TYPES_REQUIRED", "At least one event type is required",
+                    "EVENT_TYPES_REQUIRED",
+                    "At least one event type is required",
                 ));
             }
         }
@@ -107,7 +115,11 @@ impl<U: UnitOfWork> UseCase for SyncSubscriptionsUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &SyncSubscriptionsCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &SyncSubscriptionsCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -129,7 +141,8 @@ impl<U: UnitOfWork> UseCase for SyncSubscriptionsUseCase<U> {
                     }
                     Err(e) => {
                         return UseCaseResult::failure(UseCaseError::commit(format!(
-                            "Failed to validate connection: {}", e
+                            "Failed to validate connection: {}",
+                            e
                         )));
                     }
                 }
@@ -137,11 +150,16 @@ impl<U: UnitOfWork> UseCase for SyncSubscriptionsUseCase<U> {
         }
 
         // Fetch existing anchor-level subscriptions for this application
-        let existing = match self.subscription_repo.find_by_application_code(&command.application_code).await {
+        let existing = match self
+            .subscription_repo
+            .find_by_application_code(&command.application_code)
+            .await
+        {
             Ok(list) => list,
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch existing subscriptions: {}", e
+                    "Failed to fetch existing subscriptions: {}",
+                    e
                 )));
             }
         };
@@ -154,7 +172,9 @@ impl<U: UnitOfWork> UseCase for SyncSubscriptionsUseCase<U> {
         for input in &command.subscriptions {
             synced_codes.push(input.code.clone());
 
-            let bindings: Vec<EventTypeBinding> = input.event_types.iter()
+            let bindings: Vec<EventTypeBinding> = input
+                .event_types
+                .iter()
                 .map(|et| {
                     let mut b = EventTypeBinding::new(&et.event_type_code);
                     if let Some(ref f) = et.filter {
@@ -168,7 +188,9 @@ impl<U: UnitOfWork> UseCase for SyncSubscriptionsUseCase<U> {
             match existing_sub {
                 Some(sub) => {
                     // Only update API-sourced subscriptions
-                    if sub.source == SubscriptionSource::Api || sub.source == SubscriptionSource::Code {
+                    if sub.source == SubscriptionSource::Api
+                        || sub.source == SubscriptionSource::Code
+                    {
                         let mut updated = sub.clone();
                         updated.name = input.name.clone();
                         updated.description = input.description.clone();
@@ -184,7 +206,9 @@ impl<U: UnitOfWork> UseCase for SyncSubscriptionsUseCase<U> {
                         }
                         // Resolve dispatch pool by code if provided
                         if let Some(ref pool_code) = input.dispatch_pool_code {
-                            if let Ok(Some(pool)) = self.dispatch_pool_repo.find_by_code(pool_code, None).await {
+                            if let Ok(Some(pool)) =
+                                self.dispatch_pool_repo.find_by_code(pool_code, None).await
+                            {
                                 updated.dispatch_pool_id = Some(pool.id);
                                 updated.dispatch_pool_code = Some(pool.code);
                             }
@@ -192,7 +216,8 @@ impl<U: UnitOfWork> UseCase for SyncSubscriptionsUseCase<U> {
                         updated.updated_at = chrono::Utc::now();
                         if let Err(e) = self.subscription_repo.update(&updated).await {
                             return UseCaseResult::failure(UseCaseError::commit(format!(
-                                "Failed to update subscription '{}': {}", input.code, e
+                                "Failed to update subscription '{}': {}",
+                                input.code, e
                             )));
                         }
                         updated_count += 1;
@@ -214,14 +239,17 @@ impl<U: UnitOfWork> UseCase for SyncSubscriptionsUseCase<U> {
                         sub.timeout_seconds = timeout as i32;
                     }
                     if let Some(ref pool_code) = input.dispatch_pool_code {
-                        if let Ok(Some(pool)) = self.dispatch_pool_repo.find_by_code(pool_code, None).await {
+                        if let Ok(Some(pool)) =
+                            self.dispatch_pool_repo.find_by_code(pool_code, None).await
+                        {
                             sub.dispatch_pool_id = Some(pool.id);
                             sub.dispatch_pool_code = Some(pool.code);
                         }
                     }
                     if let Err(e) = self.subscription_repo.insert(&sub).await {
                         return UseCaseResult::failure(UseCaseError::commit(format!(
-                            "Failed to create subscription '{}': {}", input.code, e
+                            "Failed to create subscription '{}': {}",
+                            input.code, e
                         )));
                     }
                     created_count += 1;
@@ -237,7 +265,8 @@ impl<U: UnitOfWork> UseCase for SyncSubscriptionsUseCase<U> {
                 {
                     if let Err(e) = self.subscription_repo.delete(&sub.id).await {
                         return UseCaseResult::failure(UseCaseError::commit(format!(
-                            "Failed to delete subscription '{}': {}", sub.code, e
+                            "Failed to delete subscription '{}': {}",
+                            sub.code, e
                         )));
                     }
                     deleted_count += 1;

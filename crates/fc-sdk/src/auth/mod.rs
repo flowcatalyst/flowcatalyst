@@ -66,10 +66,10 @@ pub mod jwks;
 pub mod oauth;
 
 pub use claims::{AccessTokenClaims, AuthContext};
-pub use jwks::{TokenValidator, TokenValidatorConfig, HmacTokenValidator, JwksCache};
+pub use jwks::{HmacTokenValidator, JwksCache, TokenValidator, TokenValidatorConfig};
 pub use oauth::{
-    OAuthClient, OAuthConfig, PkceChallenge, AuthorizeParams,
-    TokenResponse, IntrospectionResponse, UserInfoResponse,
+    AuthorizeParams, IntrospectionResponse, OAuthClient, OAuthConfig, PkceChallenge, TokenResponse,
+    UserInfoResponse,
 };
 
 /// Authentication errors.

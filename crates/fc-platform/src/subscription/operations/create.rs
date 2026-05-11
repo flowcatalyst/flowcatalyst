@@ -1,17 +1,15 @@
 //! Create Subscription Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::{Subscription, EventTypeBinding};
-use crate::subscription::entity::DispatchMode;
-use crate::SubscriptionRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::SubscriptionCreated;
+use crate::subscription::entity::DispatchMode;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::SubscriptionRepository;
+use crate::{EventTypeBinding, Subscription};
 
 /// Subscription code pattern: lowercase alphanumeric with hyphens
 fn code_pattern() -> &'static Regex {
@@ -84,7 +82,6 @@ pub struct CreateSubscriptionCommand {
     pub data_only: bool,
 }
 
-
 /// Use case for creating a new subscription.
 pub struct CreateSubscriptionUseCase<U: UnitOfWork> {
     subscription_repo: Arc<SubscriptionRepository>,
@@ -147,7 +144,11 @@ impl<U: UnitOfWork> UseCase for CreateSubscriptionUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &CreateSubscriptionCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &CreateSubscriptionCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -161,7 +162,8 @@ impl<U: UnitOfWork> UseCase for CreateSubscriptionUseCase<U> {
         let endpoint = command.endpoint.trim();
 
         // Business rule: code must be unique within client scope
-        let existing = self.subscription_repo
+        let existing = self
+            .subscription_repo
             .find_by_code_and_client(&code, command.client_id.as_deref())
             .await;
 
@@ -173,7 +175,8 @@ impl<U: UnitOfWork> UseCase for CreateSubscriptionUseCase<U> {
         }
 
         // Build event type bindings
-        let bindings: Vec<EventTypeBinding> = command.event_types
+        let bindings: Vec<EventTypeBinding> = command
+            .event_types
             .iter()
             .map(|input| {
                 let mut binding = EventTypeBinding::new(&input.event_type_code);
@@ -207,7 +210,8 @@ impl<U: UnitOfWork> UseCase for CreateSubscriptionUseCase<U> {
         }
 
         // Create domain event
-        let event_type_codes: Vec<String> = subscription.event_types
+        let event_type_codes: Vec<String> = subscription
+            .event_types
             .iter()
             .map(|b| b.event_type_code.clone())
             .collect();
@@ -243,12 +247,10 @@ mod tests {
             client_id: Some("client-123".to_string()),
             endpoint: "https://example.com/webhook".to_string(),
             connection_id: Some("conn-123".to_string()),
-            event_types: vec![
-                EventTypeBindingInput {
-                    event_type_code: "orders:*:*:*".to_string(),
-                    filter: None,
-                },
-            ],
+            event_types: vec![EventTypeBindingInput {
+                event_type_code: "orders:*:*:*".to_string(),
+                filter: None,
+            }],
             dispatch_pool_id: None,
             service_account_id: None,
             mode: None,

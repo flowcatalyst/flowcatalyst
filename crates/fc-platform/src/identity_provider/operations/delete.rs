@@ -1,12 +1,12 @@
 //! Delete Identity Provider Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::IdentityProviderRepository;
-use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 use super::events::IdentityProviderDeleted;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::IdentityProviderRepository;
 
 /// Command for deleting an identity provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,7 +23,10 @@ pub struct DeleteIdentityProviderUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> DeleteIdentityProviderUseCase<U> {
     pub fn new(idp_repo: Arc<IdentityProviderRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { idp_repo, unit_of_work }
+        Self {
+            idp_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -36,7 +39,11 @@ impl<U: UnitOfWork> UseCase for DeleteIdentityProviderUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeleteIdentityProviderCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeleteIdentityProviderCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -56,22 +63,20 @@ impl<U: UnitOfWork> UseCase for DeleteIdentityProviderUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch identity provider: {}", e
+                    "Failed to fetch identity provider: {}",
+                    e
                 )));
             }
         };
 
         // Create domain event before delete
-        let event = IdentityProviderDeleted::new(
-            &ctx,
-            &idp.id,
-            &idp.code,
-        );
+        let event = IdentityProviderDeleted::new(&ctx, &idp.id, &idp.code);
 
         // Delete via repo
         if let Err(e) = self.idp_repo.delete(&idp.id).await {
             return UseCaseResult::failure(UseCaseError::commit(format!(
-                "Failed to delete identity provider: {}", e
+                "Failed to delete identity provider: {}",
+                e
             )));
         }
 

@@ -3,12 +3,12 @@
 //! Stores authorization codes in `oauth_oidc_payloads` (type = "AuthorizationCode")
 //! for compatibility with the TypeScript oidc-provider implementation.
 
-use sqlx::PgPool;
+use crate::shared::error::Result;
+use crate::AuthorizationCode;
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
+use sqlx::PgPool;
 use tracing::debug;
-use crate::AuthorizationCode;
-use crate::shared::error::Result;
 
 const PAYLOAD_TYPE: &str = "AuthorizationCode";
 
@@ -31,9 +31,13 @@ struct PayloadRow {
 impl From<PayloadRow> for AuthorizationCode {
     fn from(m: PayloadRow) -> Self {
         let p = &m.payload;
-        let code = m.id.strip_prefix("AuthorizationCode:").unwrap_or(&m.id).to_string();
+        let code =
+            m.id.strip_prefix("AuthorizationCode:")
+                .unwrap_or(&m.id)
+                .to_string();
         let created_at = m.created_at;
-        let expires_at = m.expires_at
+        let expires_at = m
+            .expires_at
             .unwrap_or_else(|| created_at + chrono::Duration::minutes(10));
 
         // consumed_at being set means the code was used
@@ -41,15 +45,36 @@ impl From<PayloadRow> for AuthorizationCode {
 
         AuthorizationCode {
             code,
-            client_id: p.get("clientId").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            principal_id: p.get("accountId").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            redirect_uri: p.get("redirectUri").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            client_id: p
+                .get("clientId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            principal_id: p
+                .get("accountId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            redirect_uri: p
+                .get("redirectUri")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             scope: p.get("scope").and_then(|v| v.as_str()).map(String::from),
-            code_challenge: p.get("codeChallenge").and_then(|v| v.as_str()).map(String::from),
-            code_challenge_method: p.get("codeChallengeMethod").and_then(|v| v.as_str()).map(String::from),
+            code_challenge: p
+                .get("codeChallenge")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            code_challenge_method: p
+                .get("codeChallengeMethod")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             nonce: p.get("nonce").and_then(|v| v.as_str()).map(String::from),
             state: p.get("state").and_then(|v| v.as_str()).map(String::from),
-            context_client_id: p.get("contextClientId").and_then(|v| v.as_str()).map(String::from),
+            context_client_id: p
+                .get("contextClientId")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             created_at,
             expires_at,
             used,
@@ -110,12 +135,11 @@ impl AuthorizationCodeRepository {
 
     /// Find an authorization code by its code value.
     pub async fn find_by_code(&self, code: &str) -> Result<Option<AuthorizationCode>> {
-        let row = sqlx::query_as::<_, PayloadRow>(
-            "SELECT * FROM oauth_oidc_payloads WHERE id = $1",
-        )
-        .bind(Self::make_id(code))
-        .fetch_optional(&self.pool)
-        .await?;
+        let row =
+            sqlx::query_as::<_, PayloadRow>("SELECT * FROM oauth_oidc_payloads WHERE id = $1")
+                .bind(Self::make_id(code))
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(row.map(AuthorizationCode::from))
     }
 
@@ -154,7 +178,10 @@ impl AuthorizationCodeRepository {
         .await?;
 
         if row.is_some() {
-            debug!(code_prefix = &code[..code.len().min(8)], "Authorization code atomically consumed");
+            debug!(
+                code_prefix = &code[..code.len().min(8)],
+                "Authorization code atomically consumed"
+            );
         }
 
         Ok(row.map(AuthorizationCode::from))
@@ -222,12 +249,11 @@ impl AuthorizationCodeRepository {
 
     /// Count all authorization codes.
     pub async fn count(&self) -> Result<u64> {
-        let (count,) = sqlx::query_as::<_, (i64,)>(
-            "SELECT COUNT(*) FROM oauth_oidc_payloads WHERE type = $1",
-        )
-        .bind(PAYLOAD_TYPE)
-        .fetch_one(&self.pool)
-        .await?;
+        let (count,) =
+            sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM oauth_oidc_payloads WHERE type = $1")
+                .bind(PAYLOAD_TYPE)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(count as u64)
     }
 

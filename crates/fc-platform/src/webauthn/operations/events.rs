@@ -1,10 +1,10 @@
 //! WebAuthn Domain Events — passkey registration, revocation, authentication.
 
-use serde::{Deserialize, Serialize};
-use crate::usecase::ExecutionContext;
-use crate::usecase::domain_event::EventMetadata;
-use crate::TsidGenerator;
 use crate::impl_domain_event;
+use crate::usecase::domain_event::EventMetadata;
+use crate::usecase::ExecutionContext;
+use crate::TsidGenerator;
+use serde::{Deserialize, Serialize};
 
 const EVENT_SOURCE: &str = "platform:iam";
 
@@ -18,10 +18,16 @@ fn metadata_for(
     let subject = format!("platform.webauthncredential.{}", credential_id);
     let message_group = format!("platform:webauthncredential:{}", credential_id);
     EventMetadata::new(
-        event_id, event_type, spec_version, EVENT_SOURCE,
-        subject, message_group,
-        ctx.execution_id.clone(), ctx.correlation_id.clone(),
-        ctx.causation_id.clone(), ctx.principal_id.clone(),
+        event_id,
+        event_type,
+        spec_version,
+        EVENT_SOURCE,
+        subject,
+        message_group,
+        ctx.execution_id.clone(),
+        ctx.correlation_id.clone(),
+        ctx.causation_id.clone(),
+        ctx.principal_id.clone(),
     )
 }
 
@@ -41,7 +47,12 @@ impl PasskeyRegistered {
     const EVENT_TYPE: &'static str = "platform:iam:passkey:registered";
     const SPEC_VERSION: &'static str = "1.0";
 
-    pub fn new(ctx: &ExecutionContext, credential_id: &str, principal_id: &str, name: Option<String>) -> Self {
+    pub fn new(
+        ctx: &ExecutionContext,
+        credential_id: &str,
+        principal_id: &str,
+        name: Option<String>,
+    ) -> Self {
         Self {
             metadata: metadata_for(ctx, Self::EVENT_TYPE, Self::SPEC_VERSION, credential_id),
             credential_id: credential_id.to_string(),
@@ -130,7 +141,10 @@ mod tests {
     #[test]
     fn login_event_metadata_is_well_formed() {
         let event = UserLoggedInWithPasskey::new(&ctx(), "pkc_AAA", "prn_BBB");
-        assert_eq!(event.event_type(), "platform:iam:user:logged-in-with-passkey");
+        assert_eq!(
+            event.event_type(),
+            "platform:iam:user:logged-in-with-passkey"
+        );
     }
 
     #[test]

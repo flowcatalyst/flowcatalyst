@@ -1,13 +1,13 @@
 //! Email Domain Mappings Admin API
 
 use axum::{
-    extract::{State, Path},
+    extract::{Path, State},
     Json,
 };
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use super::entity::EmailDomainMapping;
 use super::repository::EmailDomainMappingRepository;
@@ -97,9 +97,21 @@ pub struct EmailDomainMappingsListResponse {
 pub struct EmailDomainMappingsState {
     pub edm_repo: Arc<EmailDomainMappingRepository>,
     pub idp_repo: Arc<IdentityProviderRepository>,
-    pub create_use_case: Arc<crate::email_domain_mapping::operations::CreateEmailDomainMappingUseCase<crate::usecase::PgUnitOfWork>>,
-    pub update_use_case: Arc<crate::email_domain_mapping::operations::UpdateEmailDomainMappingUseCase<crate::usecase::PgUnitOfWork>>,
-    pub delete_use_case: Arc<crate::email_domain_mapping::operations::DeleteEmailDomainMappingUseCase<crate::usecase::PgUnitOfWork>>,
+    pub create_use_case: Arc<
+        crate::email_domain_mapping::operations::CreateEmailDomainMappingUseCase<
+            crate::usecase::PgUnitOfWork,
+        >,
+    >,
+    pub update_use_case: Arc<
+        crate::email_domain_mapping::operations::UpdateEmailDomainMappingUseCase<
+            crate::usecase::PgUnitOfWork,
+        >,
+    >,
+    pub delete_use_case: Arc<
+        crate::email_domain_mapping::operations::DeleteEmailDomainMappingUseCase<
+            crate::usecase::PgUnitOfWork,
+        >,
+    >,
 }
 
 /// Create a new email domain mapping
@@ -119,7 +131,13 @@ pub async fn create_email_domain_mapping(
     State(state): State<EmailDomainMappingsState>,
     auth: Authenticated,
     Json(req): Json<CreateEmailDomainMappingRequest>,
-) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
+) -> Result<
+    (
+        axum::http::StatusCode,
+        Json<crate::shared::api_common::CreatedResponse>,
+    ),
+    PlatformError,
+> {
     use crate::email_domain_mapping::operations::CreateEmailDomainMappingCommand;
     use crate::usecase::{ExecutionContext, UseCase};
 
@@ -140,7 +158,9 @@ pub async fn create_email_domain_mapping(
     let event = state.create_use_case.run(cmd, ctx).await.into_result()?;
     Ok((
         axum::http::StatusCode::CREATED,
-        Json(crate::shared::api_common::CreatedResponse::new(event.mapping_id)),
+        Json(crate::shared::api_common::CreatedResponse::new(
+            event.mapping_id,
+        )),
     ))
 }
 
@@ -163,7 +183,10 @@ pub async fn list_email_domain_mappings(
     let total = mappings.len();
 
     // Batch-lookup identity provider names
-    let idp_ids: Vec<String> = mappings.iter().map(|m| m.identity_provider_id.clone()).collect();
+    let idp_ids: Vec<String> = mappings
+        .iter()
+        .map(|m| m.identity_provider_id.clone())
+        .collect();
     let mut idp_name_map = std::collections::HashMap::new();
     for idp_id in &idp_ids {
         if !idp_name_map.contains_key(idp_id) {
@@ -173,10 +196,13 @@ pub async fn list_email_domain_mappings(
         }
     }
 
-    let responses = mappings.into_iter().map(|m| {
-        let name = idp_name_map.get(&m.identity_provider_id).cloned();
-        EmailDomainMappingResponse::from_entity(m, name)
-    }).collect();
+    let responses = mappings
+        .into_iter()
+        .map(|m| {
+            let name = idp_name_map.get(&m.identity_provider_id).cloned();
+            EmailDomainMappingResponse::from_entity(m, name)
+        })
+        .collect();
 
     Ok(Json(EmailDomainMappingsListResponse {
         mappings: responses,
@@ -204,9 +230,15 @@ pub async fn get_email_domain_mapping(
     _auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<EmailDomainMappingResponse>, PlatformError> {
-    let edm = state.edm_repo.find_by_id(&id).await?
+    let edm = state
+        .edm_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("EmailDomainMapping", &id))?;
-    let idp_name = state.idp_repo.find_by_id(&edm.identity_provider_id).await?
+    let idp_name = state
+        .idp_repo
+        .find_by_id(&edm.identity_provider_id)
+        .await?
         .map(|idp| idp.name);
     Ok(Json(EmailDomainMappingResponse::from_entity(edm, idp_name)))
 }
@@ -231,9 +263,15 @@ pub async fn lookup_email_domain_mapping(
     _auth: Authenticated,
     Path(domain): Path<String>,
 ) -> Result<Json<EmailDomainMappingResponse>, PlatformError> {
-    let edm = state.edm_repo.find_by_email_domain(&domain).await?
+    let edm = state
+        .edm_repo
+        .find_by_email_domain(&domain)
+        .await?
         .ok_or_else(|| PlatformError::not_found("EmailDomainMapping", &domain))?;
-    let idp_name = state.idp_repo.find_by_id(&edm.identity_provider_id).await?
+    let idp_name = state
+        .idp_repo
+        .find_by_id(&edm.identity_provider_id)
+        .await?
         .map(|idp| idp.name);
     Ok(Json(EmailDomainMappingResponse::from_entity(edm, idp_name)))
 }
@@ -314,8 +352,15 @@ pub async fn delete_email_domain_mapping(
 
 pub fn email_domain_mappings_router(state: EmailDomainMappingsState) -> OpenApiRouter {
     OpenApiRouter::new()
-        .routes(routes!(create_email_domain_mapping, list_email_domain_mappings))
+        .routes(routes!(
+            create_email_domain_mapping,
+            list_email_domain_mappings
+        ))
         .routes(routes!(lookup_email_domain_mapping))
-        .routes(routes!(get_email_domain_mapping, update_email_domain_mapping, delete_email_domain_mapping))
+        .routes(routes!(
+            get_email_domain_mapping,
+            update_email_domain_mapping,
+            delete_email_domain_mapping
+        ))
         .with_state(state)
 }

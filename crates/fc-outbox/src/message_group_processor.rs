@@ -3,12 +3,12 @@
 //! Handles FIFO ordering within a message group.
 //! OutboxItems with the same message_group are processed sequentially in batches.
 
+use async_trait::async_trait;
+use fc_common::OutboxItem;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use tokio::sync::{Mutex, oneshot};
-use fc_common::OutboxItem;
+use tokio::sync::{oneshot, Mutex};
 use tracing::{error, info, trace, warn};
-use async_trait::async_trait;
 
 /// Message dispatch result
 #[derive(Debug, Clone)]
@@ -34,12 +34,15 @@ pub struct BatchDispatchResult {
 impl BatchDispatchResult {
     /// Check if all items succeeded
     pub fn all_succeeded(&self) -> bool {
-        self.results.iter().all(|r| matches!(r.result, DispatchResult::Success))
+        self.results
+            .iter()
+            .all(|r| matches!(r.result, DispatchResult::Success))
     }
 
     /// Get failed items
     pub fn failed_items(&self) -> Vec<&BatchItemResult> {
-        self.results.iter()
+        self.results
+            .iter()
             .filter(|r| !matches!(r.result, DispatchResult::Success))
             .collect()
     }
@@ -164,7 +167,8 @@ impl MessageGroupProcessor {
         if queue.len() >= self.config.max_queue_depth {
             warn!(
                 "Queue depth exceeded for group {}, current: {}",
-                self.group_id, queue.len()
+                self.group_id,
+                queue.len()
             );
             return Err("Queue depth exceeded".to_string());
         }
@@ -269,7 +273,8 @@ impl MessageGroupProcessor {
 
         trace!(
             "Processing batch of {} items in group {}",
-            batch.len(), self.group_id
+            batch.len(),
+            self.group_id
         );
 
         // Extract items for dispatch
@@ -289,7 +294,8 @@ impl MessageGroupProcessor {
                 DispatchResult::Success => {
                     trace!(
                         "Item {} dispatched successfully in group {}",
-                        tracked.item.id, self.group_id
+                        tracked.item.id,
+                        self.group_id
                     );
                 }
                 DispatchResult::Failure { error, retryable } => {
@@ -300,7 +306,8 @@ impl MessageGroupProcessor {
                         failed_to_requeue.push(tracked);
                         trace!(
                             "Item {} will be re-queued for retry in group {}",
-                            item_result.item_id, self.group_id
+                            item_result.item_id,
+                            self.group_id
                         );
                     } else if self.config.block_on_error {
                         if !should_block {
@@ -395,8 +402,8 @@ impl MessageGroupProcessor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fc_common::OutboxStatus;
     use chrono::Utc;
+    use fc_common::OutboxStatus;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct MockBatchDispatcher {
@@ -416,21 +423,24 @@ mod tests {
     #[async_trait]
     impl BatchMessageDispatcher for MockBatchDispatcher {
         async fn dispatch_batch(&self, items: &[OutboxItem]) -> BatchDispatchResult {
-            let results = items.iter().map(|item| {
-                let current = self.success_count.fetch_add(1, Ordering::SeqCst);
-                let result = if current < self.fail_until.load(Ordering::SeqCst) {
-                    DispatchResult::Failure {
-                        error: "Mock failure".to_string(),
-                        retryable: true,
+            let results = items
+                .iter()
+                .map(|item| {
+                    let current = self.success_count.fetch_add(1, Ordering::SeqCst);
+                    let result = if current < self.fail_until.load(Ordering::SeqCst) {
+                        DispatchResult::Failure {
+                            error: "Mock failure".to_string(),
+                            retryable: true,
+                        }
+                    } else {
+                        DispatchResult::Success
+                    };
+                    BatchItemResult {
+                        item_id: item.id.clone(),
+                        result,
                     }
-                } else {
-                    DispatchResult::Success
-                };
-                BatchItemResult {
-                    item_id: item.id.clone(),
-                    result,
-                }
-            }).collect();
+                })
+                .collect();
             BatchDispatchResult { results }
         }
     }
@@ -459,11 +469,8 @@ mod tests {
             batch_size: 1,
             ..Default::default()
         };
-        let (processor, _shutdown) = MessageGroupProcessor::new(
-            "test-group".to_string(),
-            config,
-            dispatcher,
-        );
+        let (processor, _shutdown) =
+            MessageGroupProcessor::new("test-group".to_string(), config, dispatcher);
 
         processor.enqueue(create_test_item("msg-1")).await.unwrap();
         processor.enqueue(create_test_item("msg-2")).await.unwrap();
@@ -486,14 +493,14 @@ mod tests {
             batch_size: 10,
             ..Default::default()
         };
-        let (processor, _shutdown) = MessageGroupProcessor::new(
-            "test-group".to_string(),
-            config,
-            dispatcher,
-        );
+        let (processor, _shutdown) =
+            MessageGroupProcessor::new("test-group".to_string(), config, dispatcher);
 
         for i in 0..5 {
-            processor.enqueue(create_test_item(&format!("msg-{}", i))).await.unwrap();
+            processor
+                .enqueue(create_test_item(&format!("msg-{}", i)))
+                .await
+                .unwrap();
         }
         assert_eq!(processor.queue_depth().await, 5);
 
@@ -514,11 +521,8 @@ mod tests {
             batch_size: 1,
             ..Default::default()
         };
-        let (processor, _shutdown) = MessageGroupProcessor::new(
-            "test-group".to_string(),
-            config,
-            dispatcher,
-        );
+        let (processor, _shutdown) =
+            MessageGroupProcessor::new("test-group".to_string(), config, dispatcher);
 
         processor.enqueue(create_test_item("msg-1")).await.unwrap();
 
@@ -540,11 +544,8 @@ mod tests {
             batch_size: 1,
             ..Default::default()
         };
-        let (processor, _shutdown) = MessageGroupProcessor::new(
-            "test-group".to_string(),
-            config,
-            dispatcher,
-        );
+        let (processor, _shutdown) =
+            MessageGroupProcessor::new("test-group".to_string(), config, dispatcher);
 
         processor.enqueue(create_test_item("msg-1")).await.unwrap();
 

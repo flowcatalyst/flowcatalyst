@@ -24,24 +24,24 @@ use axum::{
 use http_body_util::BodyExt;
 use serde::Serialize;
 use serde_json::Value;
-use testcontainers::ContainerAsync;
 use testcontainers::runners::AsyncRunner;
+use testcontainers::ContainerAsync;
 use testcontainers_modules::postgres::Postgres;
 use tower::ServiceExt;
 
 use fc_platform::auth::auth_service::{AuthConfig, AuthService};
+use fc_platform::auth::oidc_service::OidcService;
+use fc_platform::auth::oidc_sync_service::OidcSyncService;
+use fc_platform::auth::password_service::PasswordService;
 use fc_platform::domain::{Principal, UserScope};
+use fc_platform::repository::Repositories;
+use fc_platform::shared::authorization_service::AuthorizationService;
 use fc_platform::shared::database::{create_pool, run_migrations, MigrationProfile};
 use fc_platform::shared::middleware::{AppState, AuthLayer};
 use fc_platform::shared::server_setup::{
     build_platform_routes, AuthServices, PlatformRoutesConfig,
 };
-use fc_platform::shared::authorization_service::AuthorizationService;
-use fc_platform::auth::password_service::PasswordService;
-use fc_platform::auth::oidc_service::OidcService;
-use fc_platform::auth::oidc_sync_service::OidcSyncService;
 use fc_platform::usecase::PgUnitOfWork;
-use fc_platform::repository::Repositories;
 
 /// A fully-wired test application sharing a live Postgres container.
 ///
@@ -71,7 +71,9 @@ impl TestApp {
         let database_url = format!("postgresql://test:test@{}:{}/flowcatalyst_test", host, port);
 
         let pool = create_pool(&database_url).await.expect("pool");
-        run_migrations(&pool, MigrationProfile::Production).await.expect("migrations");
+        run_migrations(&pool, MigrationProfile::Production)
+            .await
+            .expect("migrations");
 
         let repos = Repositories::new(&pool);
         let unit_of_work = Arc::new(PgUnitOfWork::new(pool.clone()));
@@ -152,13 +154,21 @@ impl TestApp {
     /// Use this when testing endpoints that check `can_read_*` / `can_write_*`
     /// (permission-based) rather than `require_anchor` (scope-based).
     pub async fn anchor_admin_token(&self) -> String {
-        use fc_platform::role::entity::{AuthRole, permissions};
+        use fc_platform::role::entity::{permissions, AuthRole};
         use fc_platform::service_account::entity::RoleAssignment;
 
         let role_code = "platform:test-admin";
 
         // Idempotent seed so repeated calls in the same test don't duplicate.
-        if self.repos.role_repo.find_by_name(role_code).await.ok().flatten().is_none() {
+        if self
+            .repos
+            .role_repo
+            .find_by_name(role_code)
+            .await
+            .ok()
+            .flatten()
+            .is_none()
+        {
             let role = AuthRole::new("platform", "test-admin", "Test Admin")
                 .with_permission(permissions::ADMIN_ALL);
             self.repos
@@ -194,8 +204,8 @@ impl TestApp {
 
     /// Token for a service account principal (used by SDKs).
     pub fn service_account_token(&self, client_id: &str) -> String {
-        let principal = Principal::new_service("svc-test", "Test Service")
-            .with_client_id(client_id);
+        let principal =
+            Principal::new_service("svc-test", "Test Service").with_client_id(client_id);
         self.auth_service
             .generate_access_token(&principal)
             .expect("svc token")
@@ -216,7 +226,8 @@ impl TestApp {
     }
 
     pub async fn delete(&self, path: &str, token: &str) -> Response<Body> {
-        self.send(Method::DELETE, path, Some(token), None::<()>).await
+        self.send(Method::DELETE, path, Some(token), None::<()>)
+            .await
     }
 
     /// Unauthenticated GET (useful for auth-failure tests).
@@ -290,7 +301,12 @@ impl TestApp {
 /// use `read_bytes` first if you need to inspect raw output.
 pub async fn read_json(resp: Response<Body>) -> (StatusCode, Value) {
     let status = resp.status();
-    let bytes = resp.into_body().collect().await.expect("collect").to_bytes();
+    let bytes = resp
+        .into_body()
+        .collect()
+        .await
+        .expect("collect")
+        .to_bytes();
     if bytes.is_empty() {
         return (status, Value::Null);
     }

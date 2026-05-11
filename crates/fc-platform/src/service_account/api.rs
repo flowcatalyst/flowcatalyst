@@ -4,29 +4,27 @@
 //! Base path: /api/service-accounts
 
 use axum::{
-    routing::{get, post, put},
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
+    routing::{get, post, put},
     Json, Router,
 };
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
 
-use crate::ServiceAccount;
-use crate::ServiceAccountRepository;
+use crate::service_account::operations::{
+    AssignRolesCommand, AssignRolesUseCase, CreateServiceAccountCommand,
+    CreateServiceAccountUseCase, DeleteServiceAccountCommand, DeleteServiceAccountUseCase,
+    RegenerateAuthTokenCommand, RegenerateAuthTokenUseCase, RegenerateSigningSecretCommand,
+    RegenerateSigningSecretUseCase, UpdateServiceAccountCommand, UpdateServiceAccountUseCase,
+};
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
-use crate::usecase::{ExecutionContext, UseCase, UnitOfWork, UseCaseResult};
-use crate::service_account::operations::{
-    CreateServiceAccountCommand, CreateServiceAccountUseCase,
-    UpdateServiceAccountCommand, UpdateServiceAccountUseCase,
-    DeleteServiceAccountCommand, DeleteServiceAccountUseCase,
-    AssignRolesCommand, AssignRolesUseCase,
-    RegenerateAuthTokenCommand, RegenerateAuthTokenUseCase,
-    RegenerateSigningSecretCommand, RegenerateSigningSecretUseCase,
-};
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseResult};
+use crate::ServiceAccount;
+use crate::ServiceAccountRepository;
 
 // ============================================================================
 // Request/Response DTOs
@@ -266,7 +264,8 @@ pub async fn list_service_accounts<U: UnitOfWork>(
     }
 
     let total = accounts.len();
-    let service_accounts: Vec<ServiceAccountResponse> = accounts.into_iter()
+    let service_accounts: Vec<ServiceAccountResponse> = accounts
+        .into_iter()
         .map(ServiceAccountResponse::from)
         .collect();
 
@@ -296,7 +295,10 @@ pub async fn get_service_account<U: UnitOfWork>(
     _auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<ServiceAccountResponse>, PlatformError> {
-    let account = state.repo.find_by_id(&id).await?
+    let account = state
+        .repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::ServiceAccountNotFound { id: id.clone() })?;
 
     Ok(Json(ServiceAccountResponse::from(account)))
@@ -322,7 +324,10 @@ pub async fn get_service_account_by_code<U: UnitOfWork>(
     _auth: Authenticated,
     Path(code): Path<String>,
 ) -> Result<Json<ServiceAccountResponse>, PlatformError> {
-    let account = state.repo.find_by_code(&code).await?
+    let account = state
+        .repo
+        .find_by_code(&code)
+        .await?
         .ok_or_else(|| PlatformError::ServiceAccountNotFound { id: code.clone() })?;
 
     Ok(Json(ServiceAccountResponse::from(account)))
@@ -360,7 +365,10 @@ pub async fn create_service_account<U: UnitOfWork>(
 
     match state.create_use_case.run(command, ctx).await {
         UseCaseResult::Success(result) => {
-            let account = state.repo.find_by_id(&result.event.service_account_id).await?
+            let account = state
+                .repo
+                .find_by_id(&result.event.service_account_id)
+                .await?
                 .ok_or_else(|| PlatformError::internal("Created service account not found"))?;
 
             // Auto-provision a CONFIDENTIAL OAuth client for this service account.
@@ -371,12 +379,19 @@ pub async fn create_service_account<U: UnitOfWork>(
             let oauth_client_id = crate::TsidGenerator::generate(crate::EntityType::OAuthClient);
             let mut secret_bytes = [0u8; 32];
             rand::RngCore::fill_bytes(&mut rand::rng(), &mut secret_bytes);
-            let plaintext_secret = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(secret_bytes);
+            let plaintext_secret =
+                base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(secret_bytes);
 
-            let enc = crate::shared::encryption_service::EncryptionService::from_env()
-                .ok_or_else(|| PlatformError::internal("FLOWCATALYST_APP_KEY not configured — cannot encrypt client secret"))?;
-            let encrypted = enc.encrypt(&plaintext_secret)
-                .map_err(|e| PlatformError::internal(format!("Failed to encrypt client secret: {}", e)))?;
+            let enc = crate::shared::encryption_service::EncryptionService::from_env().ok_or_else(
+                || {
+                    PlatformError::internal(
+                        "FLOWCATALYST_APP_KEY not configured — cannot encrypt client secret",
+                    )
+                },
+            )?;
+            let encrypted = enc.encrypt(&plaintext_secret).map_err(|e| {
+                PlatformError::internal(format!("Failed to encrypt client secret: {}", e))
+            })?;
 
             let oauth_cmd = crate::auth::operations::CreateOAuthClientCommand {
                 oauth_client_id: oauth_client_id.clone(),
@@ -389,7 +404,11 @@ pub async fn create_service_account<U: UnitOfWork>(
                     "client_credentials".to_string(),
                     "authorization_code".to_string(),
                 ],
-                default_scopes: vec!["openid".to_string(), "profile".to_string(), "email".to_string()],
+                default_scopes: vec![
+                    "openid".to_string(),
+                    "profile".to_string(),
+                    "email".to_string(),
+                ],
                 pkce_required: false,
                 application_ids: vec![],
                 allowed_origins: vec![],
@@ -397,7 +416,11 @@ pub async fn create_service_account<U: UnitOfWork>(
                 created_by: Some(auth.0.principal_id.clone()),
             };
             let oauth_ctx = ExecutionContext::create(auth.0.principal_id.clone());
-            state.create_oauth_client_use_case.run(oauth_cmd, oauth_ctx).await.into_result()?;
+            state
+                .create_oauth_client_use_case
+                .run(oauth_cmd, oauth_ctx)
+                .await
+                .into_result()?;
 
             Ok(Json(CreateServiceAccountResponse {
                 service_account: ServiceAccountResponse::from(account),
@@ -505,16 +528,16 @@ pub async fn update_auth_token<U: UnitOfWork>(
     Path(id): Path<String>,
 ) -> Result<Json<RegenerateTokenResponse>, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
-    let command = RegenerateAuthTokenCommand { service_account_id: id };
+    let command = RegenerateAuthTokenCommand {
+        service_account_id: id,
+    };
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
     match state.regenerate_token_use_case.run(command, ctx).await {
-        UseCaseResult::Success(result) => {
-            Ok(Json(RegenerateTokenResponse {
-                auth_token: result.auth_token,
-            }))
-        }
+        UseCaseResult::Success(result) => Ok(Json(RegenerateTokenResponse {
+            auth_token: result.auth_token,
+        })),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
 }
@@ -540,16 +563,16 @@ pub async fn regenerate_auth_token<U: UnitOfWork>(
     Path(id): Path<String>,
 ) -> Result<Json<RegenerateTokenResponse>, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
-    let command = RegenerateAuthTokenCommand { service_account_id: id };
+    let command = RegenerateAuthTokenCommand {
+        service_account_id: id,
+    };
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
     match state.regenerate_token_use_case.run(command, ctx).await {
-        UseCaseResult::Success(result) => {
-            Ok(Json(RegenerateTokenResponse {
-                auth_token: result.auth_token,
-            }))
-        }
+        UseCaseResult::Success(result) => Ok(Json(RegenerateTokenResponse {
+            auth_token: result.auth_token,
+        })),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
 }
@@ -575,16 +598,16 @@ pub async fn regenerate_signing_secret<U: UnitOfWork>(
     Path(id): Path<String>,
 ) -> Result<Json<RegenerateSecretResponse>, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
-    let command = RegenerateSigningSecretCommand { service_account_id: id };
+    let command = RegenerateSigningSecretCommand {
+        service_account_id: id,
+    };
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
     match state.regenerate_secret_use_case.run(command, ctx).await {
-        UseCaseResult::Success(result) => {
-            Ok(Json(RegenerateSecretResponse {
-                signing_secret: result.signing_secret,
-            }))
-        }
+        UseCaseResult::Success(result) => Ok(Json(RegenerateSecretResponse {
+            signing_secret: result.signing_secret,
+        })),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
 }
@@ -609,10 +632,15 @@ pub async fn get_roles<U: UnitOfWork>(
     _auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<RolesResponse>, PlatformError> {
-    let account = state.repo.find_by_id(&id).await?
+    let account = state
+        .repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::ServiceAccountNotFound { id: id.clone() })?;
 
-    let roles: Vec<RoleAssignmentResponse> = account.roles.iter()
+    let roles: Vec<RoleAssignmentResponse> = account
+        .roles
+        .iter()
         .map(|r| RoleAssignmentResponse {
             role_name: r.role.clone(),
             assignment_source: r.assignment_source.clone(),
@@ -656,10 +684,15 @@ pub async fn assign_roles<U: UnitOfWork>(
     match state.assign_roles_use_case.run(command, ctx).await {
         UseCaseResult::Success(event) => {
             // Fetch updated account to get role details
-            let account = state.repo.find_by_id(&id).await?
+            let account = state
+                .repo
+                .find_by_id(&id)
+                .await?
                 .ok_or_else(|| PlatformError::ServiceAccountNotFound { id })?;
 
-            let roles: Vec<RoleAssignmentResponse> = account.roles.iter()
+            let roles: Vec<RoleAssignmentResponse> = account
+                .roles
+                .iter()
                 .map(|r| RoleAssignmentResponse {
                     role_name: r.role.clone(),
                     assignment_source: r.assignment_source.clone(),
@@ -684,12 +717,26 @@ pub async fn assign_roles<U: UnitOfWork>(
 /// Create the service accounts router
 pub fn service_accounts_router<U: UnitOfWork + Clone>(state: ServiceAccountsState<U>) -> Router {
     Router::new()
-        .route("/", get(list_service_accounts::<U>).post(create_service_account::<U>))
-        .route("/{id}", get(get_service_account::<U>).put(update_service_account::<U>).delete(delete_service_account::<U>))
+        .route(
+            "/",
+            get(list_service_accounts::<U>).post(create_service_account::<U>),
+        )
+        .route(
+            "/{id}",
+            get(get_service_account::<U>)
+                .put(update_service_account::<U>)
+                .delete(delete_service_account::<U>),
+        )
         .route("/code/{code}", get(get_service_account_by_code::<U>))
         .route("/{id}/auth-token", put(update_auth_token::<U>))
-        .route("/{id}/regenerate-auth-token", post(regenerate_auth_token::<U>))
-        .route("/{id}/regenerate-signing-secret", post(regenerate_signing_secret::<U>))
+        .route(
+            "/{id}/regenerate-auth-token",
+            post(regenerate_auth_token::<U>),
+        )
+        .route(
+            "/{id}/regenerate-signing-secret",
+            post(regenerate_signing_secret::<U>),
+        )
         .route("/{id}/roles", get(get_roles::<U>).put(assign_roles::<U>))
         .with_state(state)
 }

@@ -3,21 +3,21 @@
 //! REST endpoints for managing dispatch jobs.
 
 use axum::{
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
     Json,
 };
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::{ToSchema, IntoParams};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
+use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::{
-    DispatchJob, DispatchJobRead, DispatchStatus, DispatchKind, DispatchMode,
-    DispatchAttempt, RetryStrategy, DispatchMetadata,
-};
-use crate::DispatchJobRepository;
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
+use crate::DispatchJobRepository;
+use crate::{
+    DispatchAttempt, DispatchJob, DispatchJobRead, DispatchKind, DispatchMetadata, DispatchMode,
+    DispatchStatus, RetryStrategy,
+};
 
 /// Dispatch job response DTO (matches Java DispatchJobReadResponse)
 #[derive(Debug, Serialize, ToSchema)]
@@ -403,7 +403,10 @@ pub async fn get_dispatch_job(
 ) -> Result<Json<DispatchJobResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_dispatch_jobs(&auth.0)?;
 
-    let job = state.dispatch_job_repo.find_by_id(&id).await?
+    let job = state
+        .dispatch_job_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("DispatchJob", &id))?;
 
     // Check client access
@@ -446,11 +449,16 @@ pub async fn list_dispatch_jobs(
     if !client_ids.is_empty() {
         for cid in &client_ids {
             if !auth.0.can_access_client(cid) {
-                return Err(PlatformError::forbidden(format!("No access to client: {}", cid)));
+                return Err(PlatformError::forbidden(format!(
+                    "No access to client: {}",
+                    cid
+                )));
             }
         }
     } else if !auth.0.is_anchor() {
-        client_ids = auth.0.accessible_clients
+        client_ids = auth
+            .0
+            .accessible_clients
             .iter()
             .filter(|c| c.as_str() != "*")
             .cloned()
@@ -462,26 +470,38 @@ pub async fn list_dispatch_jobs(
 
     for status_str in &statuses {
         match status_str.to_uppercase().as_str() {
-            "PENDING" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED" | "EXPIRED" => {},
-            _ => return Err(PlatformError::validation(format!("Invalid status: {}", status_str))),
+            "PENDING" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED"
+            | "EXPIRED" => {}
+            _ => {
+                return Err(PlatformError::validation(format!(
+                    "Invalid status: {}",
+                    status_str
+                )))
+            }
         }
     }
 
     let size = query.size.unwrap_or(50).clamp(1, 1000) as i64;
 
-    let jobs = state.dispatch_job_repo.find_read_with_cursor(
-        &client_ids,
-        &statuses,
-        &applications,
-        &subdomains,
-        &aggregates,
-        &codes,
-        query.source.as_deref(),
-        None,
-        size,
-    ).await?;
+    let jobs = state
+        .dispatch_job_repo
+        .find_read_with_cursor(
+            &client_ids,
+            &statuses,
+            &applications,
+            &subdomains,
+            &aggregates,
+            &codes,
+            query.source.as_deref(),
+            None,
+            size,
+        )
+        .await?;
 
-    let items = jobs.into_iter().map(DispatchJobReadResponse::from).collect();
+    let items = jobs
+        .into_iter()
+        .map(DispatchJobReadResponse::from)
+        .collect();
     Ok(Json(items))
 }
 
@@ -509,12 +529,11 @@ pub async fn get_jobs_for_event(
     let jobs = state.dispatch_job_repo.find_by_event_id(&event_id).await?;
 
     // Filter by client access
-    let filtered: Vec<DispatchJobResponse> = jobs.into_iter()
-        .filter(|j| {
-            match &j.client_id {
-                Some(cid) => auth.0.can_access_client(cid),
-                None => auth.0.is_anchor(),
-            }
+    let filtered: Vec<DispatchJobResponse> = jobs
+        .into_iter()
+        .filter(|j| match &j.client_id {
+            Some(cid) => auth.0.can_access_client(cid),
+            None => auth.0.is_anchor(),
         })
         .map(|j| j.into())
         .collect();
@@ -546,13 +565,22 @@ pub async fn create_dispatch_job(
     State(state): State<DispatchJobsState>,
     auth: Authenticated,
     Json(req): Json<CreateDispatchJobRequest>,
-) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
+) -> Result<
+    (
+        axum::http::StatusCode,
+        Json<crate::shared::api_common::CreatedResponse>,
+    ),
+    PlatformError,
+> {
     crate::shared::authorization_service::checks::can_create_dispatch_jobs(&auth.0)?;
 
     // Validate client access if specified
     if let Some(ref cid) = req.client_id {
         if !auth.0.can_access_client(cid) {
-            return Err(PlatformError::forbidden(format!("No access to client: {}", cid)));
+            return Err(PlatformError::forbidden(format!(
+                "No access to client: {}",
+                cid
+            )));
         }
     }
 
@@ -646,7 +674,10 @@ pub async fn create_dispatch_job(
     let id = job.id.clone();
     state.dispatch_job_repo.insert(&job).await?;
 
-    Ok((axum::http::StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(id))))
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(crate::shared::api_common::CreatedResponse::new(id)),
+    ))
 }
 
 /// Create multiple dispatch jobs in batch
@@ -673,10 +704,14 @@ pub async fn batch_create_dispatch_jobs(
 
     // Validate batch size
     if req.jobs.is_empty() {
-        return Err(PlatformError::validation("Request body must contain at least one dispatch job"));
+        return Err(PlatformError::validation(
+            "Request body must contain at least one dispatch job",
+        ));
     }
     if req.jobs.len() > 100 {
-        return Err(PlatformError::validation("Batch size cannot exceed 100 dispatch jobs"));
+        return Err(PlatformError::validation(
+            "Batch size cannot exceed 100 dispatch jobs",
+        ));
     }
 
     let mut created_jobs: Vec<DispatchJob> = Vec::new();
@@ -685,7 +720,10 @@ pub async fn batch_create_dispatch_jobs(
         // Validate client access if specified
         if let Some(ref cid) = job_req.client_id {
             if !auth.0.can_access_client(cid) {
-                return Err(PlatformError::forbidden(format!("No access to client: {}", cid)));
+                return Err(PlatformError::forbidden(format!(
+                    "No access to client: {}",
+                    cid
+                )));
             }
         }
 
@@ -754,7 +792,8 @@ pub async fn batch_create_dispatch_jobs(
     state.dispatch_job_repo.insert_many(&created_jobs).await?;
 
     let count = created_jobs.len();
-    let job_responses: Vec<DispatchJobResponse> = created_jobs.into_iter().map(Into::into).collect();
+    let job_responses: Vec<DispatchJobResponse> =
+        created_jobs.into_iter().map(Into::into).collect();
 
     Ok(Json(BatchCreateDispatchJobsResponse {
         jobs: job_responses,
@@ -786,7 +825,10 @@ pub async fn get_dispatch_job_attempts(
 ) -> Result<Json<Vec<DispatchAttemptResponse>>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_dispatch_jobs(&auth.0)?;
 
-    let job = state.dispatch_job_repo.find_by_id(&id).await?
+    let job = state
+        .dispatch_job_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("DispatchJob", &id))?;
 
     // Check client access
@@ -813,7 +855,10 @@ pub struct FilterOption {
 
 impl FilterOption {
     fn from_value(v: String) -> Self {
-        Self { label: v.clone(), value: v }
+        Self {
+            label: v.clone(),
+            value: v,
+        }
     }
 }
 
@@ -861,9 +906,18 @@ pub async fn get_filter_options(
 
     Ok(Json(DispatchJobFilterOptionsResponse {
         clients: clients.into_iter().map(FilterOption::from_value).collect(),
-        applications: applications.into_iter().map(FilterOption::from_value).collect(),
-        subdomains: subdomains.into_iter().map(FilterOption::from_value).collect(),
-        aggregates: aggregates.into_iter().map(FilterOption::from_value).collect(),
+        applications: applications
+            .into_iter()
+            .map(FilterOption::from_value)
+            .collect(),
+        subdomains: subdomains
+            .into_iter()
+            .map(FilterOption::from_value)
+            .collect(),
+        aggregates: aggregates
+            .into_iter()
+            .map(FilterOption::from_value)
+            .collect(),
         codes: codes.into_iter().map(FilterOption::from_value).collect(),
         statuses: statuses.into_iter().map(FilterOption::from_value).collect(),
     }))
@@ -897,7 +951,10 @@ pub async fn get_dispatch_job_raw(
 ) -> Result<Json<DispatchJob>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_dispatch_jobs_raw(&auth.0)?;
 
-    let job = state.dispatch_job_repo.find_by_id(&id).await?
+    let job = state
+        .dispatch_job_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("DispatchJob", &id))?;
 
     // Check client access
@@ -950,7 +1007,8 @@ pub async fn list_dispatch_jobs_raw(
     crate::shared::authorization_service::checks::can_read_dispatch_jobs(&auth.0)?;
 
     let size = params.size.unwrap_or(50).clamp(1, 1000) as i64;
-    let jobs = state.dispatch_job_repo
+    let jobs = state
+        .dispatch_job_repo
         .find_recent_with_cursor(None, size)
         .await?;
     let items = jobs.into_iter().map(DispatchJobResponse::from).collect();

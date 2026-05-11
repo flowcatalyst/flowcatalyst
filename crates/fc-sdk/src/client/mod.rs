@@ -285,4 +285,3 @@ pub enum ClientError {
     #[error("API error (HTTP {status}): {body}")]
     Api { status: u16, body: String },
 }
-

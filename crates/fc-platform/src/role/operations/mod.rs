@@ -2,14 +2,14 @@
 //!
 //! Use cases for role management.
 
-pub mod events;
 pub mod create;
-pub mod update;
 pub mod delete;
+pub mod events;
 pub mod sync;
+pub mod update;
 
-pub use events::*;
 pub use create::{CreateRoleCommand, CreateRoleUseCase};
-pub use update::{UpdateRoleCommand, UpdateRoleUseCase};
 pub use delete::{DeleteRoleCommand, DeleteRoleUseCase};
-pub use sync::{SyncRolesCommand, SyncRolesUseCase, SyncRoleInput};
+pub use events::*;
+pub use sync::{SyncRoleInput, SyncRolesCommand, SyncRolesUseCase};
+pub use update::{UpdateRoleCommand, UpdateRoleUseCase};

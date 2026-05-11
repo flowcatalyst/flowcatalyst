@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
 use rmcp::{
-    ErrorData as McpError, RoleServer, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
     schemars,
     service::RequestContext,
-    tool, tool_handler, tool_router,
+    tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler,
 };
 use serde_json::json;
 
@@ -115,9 +114,9 @@ impl FcMcpServer {
             .unwrap_or_default();
 
         let chosen = match args.version.as_deref() {
-            Some(v) => versions.iter().find(|sv| {
-                sv.get("version").and_then(|s| s.as_str()) == Some(v)
-            }),
+            Some(v) => versions
+                .iter()
+                .find(|sv| sv.get("version").and_then(|s| s.as_str()) == Some(v)),
             None => versions
                 .iter()
                 .find(|sv| sv.get("status").and_then(|s| s.as_str()) == Some("CURRENT")),
@@ -131,13 +130,17 @@ impl FcMcpServer {
             return Ok(CallToolResult::error(vec![Content::text(msg)]));
         };
 
-        let schema = spec.get("schema").cloned().unwrap_or(serde_json::Value::Null);
-        let text = serde_json::to_string_pretty(&schema)
-            .unwrap_or_else(|_| schema.to_string());
+        let schema = spec
+            .get("schema")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let text = serde_json::to_string_pretty(&schema).unwrap_or_else(|_| schema.to_string());
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
-    #[tool(description = "List webhook subscriptions configured in FlowCatalyst (scoped to the authenticated client unless an admin clientId is provided).")]
+    #[tool(
+        description = "List webhook subscriptions configured in FlowCatalyst (scoped to the authenticated client unless an admin clientId is provided)."
+    )]
     async fn list_subscriptions(
         &self,
         Parameters(args): Parameters<ListSubscriptionsArgs>,
@@ -169,7 +172,10 @@ impl ServerHandler for FcMcpServer {
                 .enable_resources()
                 .build(),
         )
-        .with_server_info(Implementation::new("flowcatalyst", env!("CARGO_PKG_VERSION")))
+        .with_server_info(Implementation::new(
+            "flowcatalyst",
+            env!("CARGO_PKG_VERSION"),
+        ))
         .with_instructions(
             "FlowCatalyst MCP server. Provides read-only access to event types, JSON \
              schemas, and webhook subscriptions. Use list_event_types/get_event_type \
@@ -204,7 +210,9 @@ impl ServerHandler for FcMcpServer {
         let uri = request.uri.clone();
         let result = match uri.as_str() {
             "flowcatalyst://event-types" => {
-                self.api.list_event_types(&ListEventTypesFilters::default()).await
+                self.api
+                    .list_event_types(&ListEventTypesFilters::default())
+                    .await
             }
             "flowcatalyst://subscriptions" => self.api.list_subscriptions(None).await,
             other => {
@@ -224,12 +232,11 @@ impl ServerHandler for FcMcpServer {
         match result {
             Ok(v) => {
                 let text = serde_json::to_string_pretty(&v).unwrap_or_else(|_| v.to_string());
-                Ok(ReadResourceResult::new(vec![ResourceContents::text(text, uri)]))
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    text, uri,
+                )]))
             }
-            Err(e) => Err(McpError::internal_error(
-                e.to_string(),
-                None,
-            )),
+            Err(e) => Err(McpError::internal_error(e.to_string(), None)),
         }
     }
 }

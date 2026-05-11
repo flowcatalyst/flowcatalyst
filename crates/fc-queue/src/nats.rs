@@ -58,9 +58,9 @@ impl Default for NatsConfig {
             consumer_name: "fc-router".to_string(),
             subject: "flowcatalyst.>".to_string(),
             max_messages_per_poll: 10,
-            poll_timeout_ms: 20_000,   // Java default: 20 seconds
-            ack_wait_secs: 120,        // Java default: 120 seconds
-            max_deliver: 10,           // Java default: 10 redeliveries
+            poll_timeout_ms: 20_000, // Java default: 20 seconds
+            ack_wait_secs: 120,      // Java default: 120 seconds
+            max_deliver: 10,         // Java default: 10 redeliveries
             max_ack_pending: 1000,
             storage: "file".to_string(),
             replicas: 1,
@@ -143,7 +143,12 @@ impl NatsQueueConsumer {
                 ..Default::default()
             })
             .await
-            .map_err(|e| QueueError::Nats(format!("Failed to get/create stream '{}': {}", config.stream_name, e)))?;
+            .map_err(|e| {
+                QueueError::Nats(format!(
+                    "Failed to get/create stream '{}': {}",
+                    config.stream_name, e
+                ))
+            })?;
 
         info!(
             stream = %config.stream_name,
@@ -166,7 +171,12 @@ impl NatsQueueConsumer {
                 },
             )
             .await
-            .map_err(|e| QueueError::Nats(format!("Failed to get/create consumer '{}': {}", config.consumer_name, e)))?;
+            .map_err(|e| {
+                QueueError::Nats(format!(
+                    "Failed to get/create consumer '{}': {}",
+                    config.consumer_name, e
+                ))
+            })?;
 
         info!(
             consumer = %config.consumer_name,
@@ -194,12 +204,14 @@ impl NatsQueueConsumer {
 
     /// Extract receipt handle from a JetStream message.
     /// Format matches Java: `streamName:streamSequence`
-    fn receipt_handle_from_message(msg: &async_nats::jetstream::Message, stream_name: &str) -> Option<String> {
+    fn receipt_handle_from_message(
+        msg: &async_nats::jetstream::Message,
+        stream_name: &str,
+    ) -> Option<String> {
         msg.info()
             .ok()
             .map(|info| format!("{}:{}", stream_name, info.stream_sequence))
     }
-
 }
 
 #[async_trait]
@@ -232,7 +244,10 @@ impl QueueConsumer for NatsQueueConsumer {
             match msg_result {
                 Ok(js_msg) => {
                     // Extract receipt handle: streamName:streamSequence
-                    let receipt_handle = match Self::receipt_handle_from_message(&js_msg, &self.config.stream_name) {
+                    let receipt_handle = match Self::receipt_handle_from_message(
+                        &js_msg,
+                        &self.config.stream_name,
+                    ) {
                         Some(handle) => handle,
                         None => {
                             warn!(
@@ -248,10 +263,9 @@ impl QueueConsumer for NatsQueueConsumer {
                     // Parse the message body
                     match serde_json::from_slice::<Message>(&js_msg.payload) {
                         Ok(message) => {
-                            let broker_message_id = js_msg
-                                .info()
-                                .ok()
-                                .map(|info| format!("{}:{}", info.stream_sequence, info.consumer_sequence));
+                            let broker_message_id = js_msg.info().ok().map(|info| {
+                                format!("{}:{}", info.stream_sequence, info.consumer_sequence)
+                            });
 
                             // Store the JetStream message for later ack/nack
                             self.pending_messages.insert(receipt_handle.clone(), js_msg);
@@ -286,7 +300,8 @@ impl QueueConsumer for NatsQueueConsumer {
         }
 
         if !messages.is_empty() {
-            self.total_polled.fetch_add(messages.len() as u64, Ordering::Relaxed);
+            self.total_polled
+                .fetch_add(messages.len() as u64, Ordering::Relaxed);
             debug!(
                 consumer = %self.config.consumer_name,
                 count = messages.len(),
@@ -301,7 +316,12 @@ impl QueueConsumer for NatsQueueConsumer {
         let (_, js_msg) = self
             .pending_messages
             .remove(receipt_handle)
-            .ok_or_else(|| QueueError::NotFound(format!("No pending message for receipt handle: {}", receipt_handle)))?;
+            .ok_or_else(|| {
+                QueueError::NotFound(format!(
+                    "No pending message for receipt handle: {}",
+                    receipt_handle
+                ))
+            })?;
 
         js_msg
             .ack()
@@ -322,7 +342,12 @@ impl QueueConsumer for NatsQueueConsumer {
         let (_, js_msg) = self
             .pending_messages
             .remove(receipt_handle)
-            .ok_or_else(|| QueueError::NotFound(format!("No pending message for receipt handle: {}", receipt_handle)))?;
+            .ok_or_else(|| {
+                QueueError::NotFound(format!(
+                    "No pending message for receipt handle: {}",
+                    receipt_handle
+                ))
+            })?;
 
         let ack_kind = match delay_seconds {
             Some(secs) if secs > 0 => AckKind::Nak(Some(Duration::from_secs(secs as u64))),
@@ -349,7 +374,12 @@ impl QueueConsumer for NatsQueueConsumer {
         let (_, js_msg) = self
             .pending_messages
             .remove(receipt_handle)
-            .ok_or_else(|| QueueError::NotFound(format!("No pending message for receipt handle: {}", receipt_handle)))?;
+            .ok_or_else(|| {
+                QueueError::NotFound(format!(
+                    "No pending message for receipt handle: {}",
+                    receipt_handle
+                ))
+            })?;
 
         let ack_kind = match delay_seconds {
             Some(secs) if secs > 0 => AckKind::Nak(Some(Duration::from_secs(secs as u64))),
@@ -373,10 +403,12 @@ impl QueueConsumer for NatsQueueConsumer {
     }
 
     async fn extend_visibility(&self, receipt_handle: &str, _seconds: u32) -> Result<()> {
-        let js_msg = self
-            .pending_messages
-            .get(receipt_handle)
-            .ok_or_else(|| QueueError::NotFound(format!("No pending message for receipt handle: {}", receipt_handle)))?;
+        let js_msg = self.pending_messages.get(receipt_handle).ok_or_else(|| {
+            QueueError::NotFound(format!(
+                "No pending message for receipt handle: {}",
+                receipt_handle
+            ))
+        })?;
 
         // AckKind::Progress resets the ack_wait timer, giving the consumer more time
         // to process the message without it being redelivered.
@@ -384,7 +416,9 @@ impl QueueConsumer for NatsQueueConsumer {
             .value()
             .ack_with(AckKind::Progress)
             .await
-            .map_err(|e| QueueError::Nats(format!("Failed to extend visibility (in-progress): {}", e)))?;
+            .map_err(|e| {
+                QueueError::Nats(format!("Failed to extend visibility (in-progress): {}", e))
+            })?;
 
         debug!(
             receipt_handle = %receipt_handle,
@@ -472,9 +506,9 @@ mod tests {
         assert_eq!(config.consumer_name, "fc-router");
         assert_eq!(config.subject, "flowcatalyst.>");
         assert_eq!(config.max_messages_per_poll, 10);
-        assert_eq!(config.poll_timeout_ms, 20_000);  // Java: 20 seconds
-        assert_eq!(config.ack_wait_secs, 120);       // Java: 120 seconds
-        assert_eq!(config.max_deliver, 10);           // Java: 10 redeliveries
+        assert_eq!(config.poll_timeout_ms, 20_000); // Java: 20 seconds
+        assert_eq!(config.ack_wait_secs, 120); // Java: 120 seconds
+        assert_eq!(config.max_deliver, 10); // Java: 10 redeliveries
         assert_eq!(config.max_ack_pending, 1000);
         assert_eq!(config.storage, "file");
         assert_eq!(config.replicas, 1);

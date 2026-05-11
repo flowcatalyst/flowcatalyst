@@ -8,16 +8,15 @@
 //! - `/api/dispatch/jobs/batch` for DISPATCH_JOB items
 //! - `/api/audit-logs/batch` for AUDIT_LOG items
 
-use std::sync::Arc;
-use std::time::Duration;
 use async_trait::async_trait;
 use fc_common::{OutboxItem, OutboxItemType, OutboxStatus};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::Duration;
 use tracing::{debug, error, warn};
 
 use crate::message_group_processor::{
-    DispatchResult, MessageDispatcher, BatchMessageDispatcher,
-    BatchDispatchResult, BatchItemResult,
+    BatchDispatchResult, BatchItemResult, BatchMessageDispatcher, DispatchResult, MessageDispatcher,
 };
 
 /// HTTP dispatcher configuration
@@ -153,7 +152,12 @@ impl HttpDispatcher {
             items: items.iter().map(|item| item.payload.clone()).collect(),
         };
 
-        debug!("Sending batch of {} {} items to {}", items.len(), item_type, url);
+        debug!(
+            "Sending batch of {} {} items to {}",
+            items.len(),
+            item_type,
+            url
+        );
 
         let mut request = self.client.post(&url).json(&batch_request);
 
@@ -166,20 +170,25 @@ impl HttpDispatcher {
                 let status = response.status();
                 if status.is_success() {
                     match response.json::<BatchResponse>().await {
-                        Ok(batch_response) => {
-                            batch_response.results.into_iter().map(|r| OutboxDispatchResult {
+                        Ok(batch_response) => batch_response
+                            .results
+                            .into_iter()
+                            .map(|r| OutboxDispatchResult {
                                 id: r.id,
                                 status: r.status.to_outbox_status(),
                                 error_message: r.error,
-                            }).collect()
-                        }
+                            })
+                            .collect(),
                         Err(e) => {
                             error!("Failed to parse batch response: {}", e);
-                            items.iter().map(|item| OutboxDispatchResult {
-                                id: item.id.clone(),
-                                status: OutboxStatus::INTERNAL_ERROR,
-                                error_message: Some(format!("Parse error: {}", e)),
-                            }).collect()
+                            items
+                                .iter()
+                                .map(|item| OutboxDispatchResult {
+                                    id: item.id.clone(),
+                                    status: OutboxStatus::INTERNAL_ERROR,
+                                    error_message: Some(format!("Parse error: {}", e)),
+                                })
+                                .collect()
                         }
                     }
                 } else {
@@ -193,23 +202,32 @@ impl HttpDispatcher {
                     };
 
                     let error_body = response.text().await.unwrap_or_default();
-                    warn!("Batch request failed with status {}: {}", status, error_body);
+                    warn!(
+                        "Batch request failed with status {}: {}",
+                        status, error_body
+                    );
 
-                    items.iter().map(|item| OutboxDispatchResult {
-                        id: item.id.clone(),
-                        status: outbox_status,
-                        error_message: Some(format!("HTTP {}: {}", status, error_body)),
-                    }).collect()
+                    items
+                        .iter()
+                        .map(|item| OutboxDispatchResult {
+                            id: item.id.clone(),
+                            status: outbox_status,
+                            error_message: Some(format!("HTTP {}: {}", status, error_body)),
+                        })
+                        .collect()
                 }
             }
             Err(e) => {
                 error!("HTTP request failed: {}", e);
                 let error_msg = e.to_string();
-                items.iter().map(|item| OutboxDispatchResult {
-                    id: item.id.clone(),
-                    status: OutboxStatus::GATEWAY_ERROR,
-                    error_message: Some(error_msg.clone()),
-                }).collect()
+                items
+                    .iter()
+                    .map(|item| OutboxDispatchResult {
+                        id: item.id.clone(),
+                        status: OutboxStatus::GATEWAY_ERROR,
+                        error_message: Some(error_msg.clone()),
+                    })
+                    .collect()
             }
         }
     }
@@ -226,7 +244,10 @@ impl MessageDispatcher for HttpDispatcher {
                     DispatchResult::Success
                 } else {
                     DispatchResult::Failure {
-                        error: result.error_message.clone().unwrap_or_else(|| "Unknown error".to_string()),
+                        error: result
+                            .error_message
+                            .clone()
+                            .unwrap_or_else(|| "Unknown error".to_string()),
                         retryable: result.status.is_retryable(),
                     }
                 }
@@ -244,20 +265,26 @@ impl BatchMessageDispatcher for HttpDispatcher {
     async fn dispatch_batch(&self, items: &[OutboxItem]) -> BatchDispatchResult {
         let api_results = self.send_outbox_batch(items).await;
 
-        let results = api_results.into_iter().map(|r| {
-            let result = if matches!(r.status, OutboxStatus::SUCCESS) {
-                DispatchResult::Success
-            } else {
-                DispatchResult::Failure {
-                    error: r.error_message.clone().unwrap_or_else(|| "Unknown error".to_string()),
-                    retryable: r.status.is_retryable(),
+        let results = api_results
+            .into_iter()
+            .map(|r| {
+                let result = if matches!(r.status, OutboxStatus::SUCCESS) {
+                    DispatchResult::Success
+                } else {
+                    DispatchResult::Failure {
+                        error: r
+                            .error_message
+                            .clone()
+                            .unwrap_or_else(|| "Unknown error".to_string()),
+                        retryable: r.status.is_retryable(),
+                    }
+                };
+                BatchItemResult {
+                    item_id: r.id,
+                    result,
                 }
-            };
-            BatchItemResult {
-                item_id: r.id,
-                result,
-            }
-        }).collect();
+            })
+            .collect();
 
         BatchDispatchResult { results }
     }

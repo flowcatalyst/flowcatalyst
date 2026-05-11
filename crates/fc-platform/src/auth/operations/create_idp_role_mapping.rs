@@ -1,15 +1,13 @@
 //! Create IdpRoleMapping Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::IdpRoleMappingCreated;
 use crate::auth::config_entity::IdpRoleMapping;
 use crate::auth::config_repository::IdpRoleMappingRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::IdpRoleMappingCreated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,11 +23,11 @@ pub struct CreateIdpRoleMappingUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> CreateIdpRoleMappingUseCase<U> {
-    pub fn new(
-        idp_role_mapping_repo: Arc<IdpRoleMappingRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
-        Self { idp_role_mapping_repo, unit_of_work }
+    pub fn new(idp_role_mapping_repo: Arc<IdpRoleMappingRepository>, unit_of_work: Arc<U>) -> Self {
+        Self {
+            idp_role_mapping_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -41,18 +39,24 @@ impl<U: UnitOfWork> UseCase for CreateIdpRoleMappingUseCase<U> {
     async fn validate(&self, command: &CreateIdpRoleMappingCommand) -> Result<(), UseCaseError> {
         if command.idp_role_name.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "IDP_ROLE_REQUIRED", "IdP role name is required",
+                "IDP_ROLE_REQUIRED",
+                "IdP role name is required",
             ));
         }
         if command.platform_role_name.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "PLATFORM_ROLE_REQUIRED", "Platform role name is required",
+                "PLATFORM_ROLE_REQUIRED",
+                "Platform role name is required",
             ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &CreateIdpRoleMappingCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &CreateIdpRoleMappingCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -61,12 +65,17 @@ impl<U: UnitOfWork> UseCase for CreateIdpRoleMappingUseCase<U> {
         command: CreateIdpRoleMappingCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<IdpRoleMappingCreated> {
-        if let Ok(Some(_)) = self.idp_role_mapping_repo
-            .find_by_idp_role(&command.idp_type, &command.idp_role_name).await
+        if let Ok(Some(_)) = self
+            .idp_role_mapping_repo
+            .find_by_idp_role(&command.idp_type, &command.idp_role_name)
+            .await
         {
             return UseCaseResult::failure(UseCaseError::business_rule(
                 "MAPPING_EXISTS",
-                format!("Mapping for '{}:{}' already exists", command.idp_type, command.idp_role_name),
+                format!(
+                    "Mapping for '{}:{}' already exists",
+                    command.idp_type, command.idp_role_name
+                ),
             ));
         }
 
@@ -76,7 +85,8 @@ impl<U: UnitOfWork> UseCase for CreateIdpRoleMappingUseCase<U> {
             &command.platform_role_name,
         );
         let idp_role = format!("{}:{}", mapping.idp_type, mapping.idp_role_name);
-        let event = IdpRoleMappingCreated::new(&ctx, &mapping.id, &idp_role, &mapping.platform_role_name);
+        let event =
+            IdpRoleMappingCreated::new(&ctx, &mapping.id, &idp_role, &mapping.platform_role_name);
 
         self.unit_of_work
             .commit(&mapping, &*self.idp_role_mapping_repo, event, &command)

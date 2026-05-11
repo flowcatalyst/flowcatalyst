@@ -50,7 +50,10 @@ impl RateLimitConfig {
     pub fn auth_default_from_env() -> Self {
         let per_min = parse_nz("FC_AUTH_IP_RATE_PER_MIN", 60);
         let burst = parse_nz("FC_AUTH_IP_BURST", 30);
-        Self { per_minute: per_min, burst }
+        Self {
+            per_minute: per_min,
+            burst,
+        }
     }
 
     /// Reads `FC_OAUTH_TOKEN_IP_RATE_PER_MIN` (default 120) and
@@ -58,7 +61,10 @@ impl RateLimitConfig {
     pub fn oauth_token_default_from_env() -> Self {
         let per_min = parse_nz("FC_OAUTH_TOKEN_IP_RATE_PER_MIN", 120);
         let burst = parse_nz("FC_OAUTH_TOKEN_IP_BURST", 60);
-        Self { per_minute: per_min, burst }
+        Self {
+            per_minute: per_min,
+            burst,
+        }
     }
 
     /// Per-`client_id` quota at `/oauth/token`. Reads
@@ -67,12 +73,18 @@ impl RateLimitConfig {
     pub fn oauth_token_per_client_from_env() -> Self {
         let per_min = parse_nz("FC_OAUTH_TOKEN_CLIENT_RATE_PER_MIN", 60);
         let burst = parse_nz("FC_OAUTH_TOKEN_CLIENT_BURST", 30);
-        Self { per_minute: per_min, burst }
+        Self {
+            per_minute: per_min,
+            burst,
+        }
     }
 }
 
 fn parse_nz(name: &str, default: u32) -> NonZeroU32 {
-    let v: u32 = env::var(name).ok().and_then(|s| s.parse().ok()).unwrap_or(default);
+    let v: u32 = env::var(name)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(default);
     NonZeroU32::new(v.max(1)).expect("max(1) is always non-zero")
 }
 
@@ -134,7 +146,8 @@ pub async fn rate_limit_per_ip(
                 StatusCode::TOO_MANY_REQUESTS,
                 [(axum::http::header::RETRY_AFTER, secs.to_string())],
                 Json(body),
-            ).into_response()
+            )
+                .into_response()
         }
     }
 }

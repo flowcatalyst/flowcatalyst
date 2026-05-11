@@ -1,7 +1,7 @@
 //! PlatformConfig Entity
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -12,10 +12,16 @@ pub enum ConfigScope {
 
 impl ConfigScope {
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Global => "GLOBAL", Self::Client => "CLIENT" }
+        match self {
+            Self::Global => "GLOBAL",
+            Self::Client => "CLIENT",
+        }
     }
     pub fn from_str(s: &str) -> Self {
-        match s { "CLIENT" => Self::Client, _ => Self::Global }
+        match s {
+            "CLIENT" => Self::Client,
+            _ => Self::Global,
+        }
     }
 }
 
@@ -28,10 +34,16 @@ pub enum ConfigValueType {
 
 impl ConfigValueType {
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Plain => "PLAIN", Self::Secret => "SECRET" }
+        match self {
+            Self::Plain => "PLAIN",
+            Self::Secret => "SECRET",
+        }
     }
     pub fn from_str(s: &str) -> Self {
-        match s { "SECRET" => Self::Secret, _ => Self::Plain }
+        match s {
+            "SECRET" => Self::Secret,
+            _ => Self::Plain,
+        }
     }
 }
 
@@ -75,7 +87,11 @@ impl PlatformConfig {
     }
 
     pub fn masked_value(&self) -> &str {
-        if self.value_type == ConfigValueType::Secret { "***" } else { &self.value }
+        if self.value_type == ConfigValueType::Secret {
+            "***"
+        } else {
+            &self.value
+        }
     }
 }
 
@@ -88,8 +104,17 @@ mod tests {
         let config = PlatformConfig::new("my-app", "email", "smtp_host", "smtp.example.com");
 
         assert!(!config.id.is_empty());
-        assert!(config.id.starts_with("pcf_"), "ID should have pcf_ prefix, got: {}", config.id);
-        assert_eq!(config.id.len(), 17, "Typed ID should be 17 chars, got: {}", config.id.len());
+        assert!(
+            config.id.starts_with("pcf_"),
+            "ID should have pcf_ prefix, got: {}",
+            config.id
+        );
+        assert_eq!(
+            config.id.len(),
+            17,
+            "Typed ID should be 17 chars, got: {}",
+            config.id.len()
+        );
         assert_eq!(config.application_code, "my-app");
         assert_eq!(config.section, "email");
         assert_eq!(config.property, "smtp_host");
@@ -126,7 +151,12 @@ mod tests {
     #[test]
     fn test_config_scope_roundtrip() {
         for s in [ConfigScope::Global, ConfigScope::Client] {
-            assert_eq!(ConfigScope::from_str(s.as_str()), s, "Roundtrip failed for {:?}", s);
+            assert_eq!(
+                ConfigScope::from_str(s.as_str()),
+                s,
+                "Roundtrip failed for {:?}",
+                s
+            );
         }
     }
 
@@ -148,7 +178,12 @@ mod tests {
     #[test]
     fn test_config_value_type_roundtrip() {
         for t in [ConfigValueType::Plain, ConfigValueType::Secret] {
-            assert_eq!(ConfigValueType::from_str(t.as_str()), t, "Roundtrip failed for {:?}", t);
+            assert_eq!(
+                ConfigValueType::from_str(t.as_str()),
+                t,
+                "Roundtrip failed for {:?}",
+                t
+            );
         }
     }
 
@@ -167,4 +202,3 @@ mod tests {
         assert_eq!(config.masked_value(), "***");
     }
 }
-

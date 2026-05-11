@@ -11,14 +11,16 @@
 
 use async_trait::async_trait;
 use chrono::Utc;
-use fc_common::{Message, MediationType, MediationResult, MediationOutcome, WarningCategory, WarningSeverity};
+use fc_common::{
+    MediationOutcome, MediationResult, MediationType, Message, WarningCategory, WarningSeverity,
+};
 use hmac::{Hmac, Mac};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 
 use crate::warning::WarningService;
 
@@ -194,7 +196,11 @@ impl HttpMediator {
             "HttpMediator initialized"
         );
 
-        Self { client, config, warning_service: Arc::new(WarningService::noop()) }
+        Self {
+            client,
+            config,
+            warning_service: Arc::new(WarningService::noop()),
+        }
     }
 
     /// Set the warning service for generating configuration warnings
@@ -218,7 +224,10 @@ impl HttpMediator {
         self.warning_service.add_warning(
             WarningCategory::Configuration,
             severity,
-            format!("HTTP {} {} for message {}: Target: {}", status_code, description, message_id, target),
+            format!(
+                "HTTP {} {} for message {}: Target: {}",
+                status_code, description, message_id, target
+            ),
             "HttpMediator".to_string(),
         );
     }
@@ -245,10 +254,10 @@ impl HttpMediator {
         );
 
         // Serialize payload for signing
-        let payload_json = serde_json::to_string(&payload)
-            .expect("Failed to serialize payload");
+        let payload_json = serde_json::to_string(&payload).expect("Failed to serialize payload");
 
-        let mut request = self.client
+        let mut request = self
+            .client
             .post(&message.mediation_target)
             .header("Content-Type", "application/json")
             .header("Accept", "application/json");
@@ -274,7 +283,6 @@ impl HttpMediator {
                 let status_code = status.as_u16();
 
                 if status.is_success() {
-
                     // Parse response body for ack and delaySeconds
                     if let Ok(body) = response.text().await {
                         if let Ok(resp) = serde_json::from_str::<MediationResponse>(&body) {
@@ -310,19 +318,31 @@ impl HttpMediator {
                         status_code = status_code,
                         "Bad request - configuration error"
                     );
-                    self.warn_config(&message.id, &message.mediation_target, status_code, "Bad Request");
+                    self.warn_config(
+                        &message.id,
+                        &message.mediation_target,
+                        status_code,
+                        "Bad Request",
+                    );
                     MediationOutcome::error_config(status_code, "HTTP 400: Bad request".to_string())
                 } else if status_code == 401 || status_code == 403 {
                     // Auth errors - configuration error
 
-                    let desc = if status_code == 401 { "Unauthorized" } else { "Forbidden" };
+                    let desc = if status_code == 401 {
+                        "Unauthorized"
+                    } else {
+                        "Forbidden"
+                    };
                     warn!(
                         message_id = %message.id,
                         status_code = status_code,
                         "Authentication/authorization error"
                     );
                     self.warn_config(&message.id, &message.mediation_target, status_code, desc);
-                    MediationOutcome::error_config(status_code, format!("HTTP {}: Auth error", status_code))
+                    MediationOutcome::error_config(
+                        status_code,
+                        format!("HTTP {}: Auth error", status_code),
+                    )
                 } else if status_code == 404 {
                     // Not found - configuration error
 
@@ -331,7 +351,12 @@ impl HttpMediator {
                         status_code = status_code,
                         "Endpoint not found"
                     );
-                    self.warn_config(&message.id, &message.mediation_target, status_code, "Not Found");
+                    self.warn_config(
+                        &message.id,
+                        &message.mediation_target,
+                        status_code,
+                        "Not Found",
+                    );
                     MediationOutcome::error_config(status_code, "HTTP 404: Not found".to_string())
                 } else if status_code == 429 {
                     // Too Many Requests — destination is healthy but throttling us.
@@ -340,7 +365,8 @@ impl HttpMediator {
                     // failure or consuming the dispatch retry budget.
 
                     // Parse Retry-After header if present, default to 30 seconds
-                    let retry_after = response.headers()
+                    let retry_after = response
+                        .headers()
                         .get("Retry-After")
                         .and_then(|v| v.to_str().ok())
                         .and_then(|s| s.parse::<u32>().ok())
@@ -361,8 +387,16 @@ impl HttpMediator {
                         status_code = status_code,
                         "Not implemented"
                     );
-                    self.warn_config(&message.id, &message.mediation_target, status_code, "Not Implemented");
-                    MediationOutcome::error_config(status_code, "HTTP 501: Not implemented".to_string())
+                    self.warn_config(
+                        &message.id,
+                        &message.mediation_target,
+                        status_code,
+                        "Not Implemented",
+                    );
+                    MediationOutcome::error_config(
+                        status_code,
+                        "HTTP 501: Not implemented".to_string(),
+                    )
                 } else if status.is_client_error() {
                     // Other 4xx - treat as config error (but NOT 429 which is handled above)
 
@@ -371,7 +405,10 @@ impl HttpMediator {
                         status_code = status_code,
                         "Client error"
                     );
-                    MediationOutcome::error_config(status_code, format!("HTTP {}: Client error", status_code))
+                    MediationOutcome::error_config(
+                        status_code,
+                        format!("HTTP {}: Client error", status_code),
+                    )
                 } else if status.is_server_error() {
                     // 5xx - Transient error, retry
 
@@ -400,8 +437,6 @@ impl HttpMediator {
                 }
             }
             Err(e) => {
-
-
                 if e.is_timeout() {
                     warn!(
                         message_id = %message.id,
@@ -447,9 +482,10 @@ impl Mediator for HttpMediator {
             // Don't retry on success, config errors, or rate-limit responses.
             // For 429 we want the queue to apply the Retry-After delay rather
             // than blocking this worker on in-process backoff.
-            if outcome.result == MediationResult::Success ||
-               outcome.result == MediationResult::ErrorConfig ||
-               outcome.result == MediationResult::RateLimited {
+            if outcome.result == MediationResult::Success
+                || outcome.result == MediationResult::ErrorConfig
+                || outcome.result == MediationResult::RateLimited
+            {
                 return outcome;
             }
 
@@ -459,7 +495,9 @@ impl Mediator for HttpMediator {
             }
 
             // Use configured delay or exponential backoff
-            let delay = self.config.retry_delays
+            let delay = self
+                .config
+                .retry_delays
                 .get(attempts as usize - 1)
                 .copied()
                 .unwrap_or(Duration::from_secs(3));

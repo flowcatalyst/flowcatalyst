@@ -1,11 +1,11 @@
 //! Principal Domain Events
 
-use serde::{Deserialize, Serialize};
-use crate::usecase::ExecutionContext;
-use crate::usecase::domain_event::EventMetadata;
-use crate::TsidGenerator;
 use crate::impl_domain_event;
 use crate::principal::entity::UserScope;
+use crate::usecase::domain_event::EventMetadata;
+use crate::usecase::ExecutionContext;
+use crate::TsidGenerator;
+use serde::{Deserialize, Serialize};
 
 /// Event emitted when a new user is created.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,10 +149,14 @@ impl UserCreatedBuilder {
     ///
     /// Panics if required fields are missing.
     pub fn build(self) -> UserCreated {
-        let ctx = self.ctx.expect("ExecutionContext is required (use .from(ctx))");
+        let ctx = self
+            .ctx
+            .expect("ExecutionContext is required (use .from(ctx))");
         let principal_id = self.principal_id.expect("principal_id is required");
         let email = self.email.expect("email is required");
-        let name = self.name.unwrap_or_else(|| email.split('@').next().unwrap_or("").to_string());
+        let name = self
+            .name
+            .unwrap_or_else(|| email.split('@').next().unwrap_or("").to_string());
         let scope = self.scope.expect("scope is required");
 
         let subject = format!("platform.user.{}", principal_id);
@@ -439,10 +443,16 @@ impl ClientAccessGranted {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             principal_id: principal_id.to_string(),
             client_id: client_id.to_string(),
@@ -475,10 +485,16 @@ impl ClientAccessRevoked {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             principal_id: principal_id.to_string(),
             client_id: client_id.to_string(),
@@ -602,10 +618,16 @@ impl PrincipalsSynced {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             application_code: application_code.to_string(),
             created,
@@ -649,10 +671,16 @@ impl ApplicationAccessAssigned {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             user_id: user_id.to_string(),
             application_ids,
@@ -680,10 +708,7 @@ impl PasswordResetRequested {
     const SPEC_VERSION: &'static str = "1.0";
     const SOURCE: &'static str = "platform:iam";
 
-    pub fn new(
-        principal_id: &str,
-        email: &str,
-    ) -> Self {
+    pub fn new(principal_id: &str, email: &str) -> Self {
         let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.user.{}", principal_id);
         let message_group = format!("platform:user:{}", principal_id);
@@ -691,10 +716,16 @@ impl PasswordResetRequested {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id, ctx.correlation_id,
-                ctx.causation_id, "system".to_string(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id,
+                ctx.correlation_id,
+                ctx.causation_id,
+                "system".to_string(),
             ),
             principal_id: principal_id.to_string(),
             email: email.to_string(),
@@ -720,10 +751,7 @@ impl PasswordResetCompleted {
     const SPEC_VERSION: &'static str = "1.0";
     const SOURCE: &'static str = "platform:iam";
 
-    pub fn new(
-        principal_id: &str,
-        email: &str,
-    ) -> Self {
+    pub fn new(principal_id: &str, email: &str) -> Self {
         let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.user.{}", principal_id);
         let message_group = format!("platform:user:{}", principal_id);
@@ -732,10 +760,16 @@ impl PasswordResetCompleted {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id, ctx.correlation_id,
-                ctx.causation_id, "system".to_string(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id,
+                ctx.correlation_id,
+                ctx.causation_id,
+                "system".to_string(),
             ),
             principal_id: principal_id.to_string(),
             email: email.to_string(),
@@ -746,19 +780,19 @@ impl PasswordResetCompleted {
     /// (e.g. an admin invoking the reset endpoint). Preserves the caller's
     /// execution/correlation IDs so audit logs and downstream projections can
     /// trace the action back to them.
-    pub fn from_ctx(
-        ctx: &ExecutionContext,
-        principal_id: &str,
-        email: &str,
-    ) -> Self {
+    pub fn from_ctx(ctx: &ExecutionContext, principal_id: &str, email: &str) -> Self {
         let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.user.{}", principal_id);
         let message_group = format!("platform:user:{}", principal_id);
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
                 ctx.execution_id.clone(),
                 ctx.correlation_id.clone(),
                 ctx.causation_id.clone(),
@@ -836,7 +870,10 @@ mod tests {
     #[test]
     fn test_email_domain_extraction() {
         assert_eq!(extract_email_domain("user@example.com"), "example.com");
-        assert_eq!(extract_email_domain("user@SUB.Example.COM"), "sub.example.com");
+        assert_eq!(
+            extract_email_domain("user@SUB.Example.COM"),
+            "sub.example.com"
+        );
         assert_eq!(extract_email_domain("invalid-email"), "");
         assert_eq!(extract_email_domain(""), "");
     }

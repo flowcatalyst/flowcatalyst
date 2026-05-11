@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use fc_common::PoolConfig;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// Request to publish a message

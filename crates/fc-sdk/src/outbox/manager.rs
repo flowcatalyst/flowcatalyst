@@ -163,13 +163,8 @@ impl OutboxManager {
             Some(audit.headers.clone())
         };
 
-        let message = self.build_message(
-            id.clone(),
-            MessageType::AuditLog,
-            &payload,
-            None,
-            headers,
-        );
+        let message =
+            self.build_message(id.clone(), MessageType::AuditLog, &payload, None, headers);
 
         self.driver.insert(message).await?;
         Ok(id)
@@ -403,8 +398,7 @@ mod tests {
     #[tokio::test]
     async fn create_audit_log_inserts_correct_type() {
         let (mgr, captured) = make_manager("clt_al");
-        let dto = CreateAuditLogDto::new("Client", "clt_1", "CREATE")
-            .principal_id("prn_admin");
+        let dto = CreateAuditLogDto::new("Client", "clt_1", "CREATE").principal_id("prn_admin");
 
         let id = mgr.create_audit_log(dto).await.unwrap();
         assert!(!id.is_empty());
@@ -465,7 +459,10 @@ mod tests {
             .create_event(CreateEventDto::new("t", serde_json::json!({})))
             .await;
         assert!(err.is_err());
-        assert!(err.unwrap_err().to_string().contains("client_id is required"));
+        assert!(err
+            .unwrap_err()
+            .to_string()
+            .contains("client_id is required"));
 
         let (mgr2, _) = make_manager("");
         let err2 = mgr2

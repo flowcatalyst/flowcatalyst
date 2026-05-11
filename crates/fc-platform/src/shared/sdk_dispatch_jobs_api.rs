@@ -3,22 +3,20 @@
 //! Exposes dispatch job batch creation at `/api/dispatch-jobs/batch`.
 
 use axum::{
+    extract::{DefaultBodyLimit, State},
     routing::post,
-    extract::{State, DefaultBodyLimit},
     Json, Router,
 };
 use std::sync::Arc;
 
 use crate::dispatch_job::api::{
-    BatchCreateDispatchJobsRequest, BatchCreateDispatchJobsResponse,
-    DispatchJobResponse,
-};
-use crate::{
-    DispatchJob, DispatchJobRepository, DispatchKind, DispatchMode,
-    DispatchMetadata, RetryStrategy,
+    BatchCreateDispatchJobsRequest, BatchCreateDispatchJobsResponse, DispatchJobResponse,
 };
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
+use crate::{
+    DispatchJob, DispatchJobRepository, DispatchKind, DispatchMetadata, DispatchMode, RetryStrategy,
+};
 
 #[derive(Clone)]
 pub struct SdkDispatchJobsState {
@@ -32,10 +30,14 @@ async fn sdk_batch_create_dispatch_jobs(
 ) -> Result<Json<BatchCreateDispatchJobsResponse>, PlatformError> {
     // Validate batch size
     if req.jobs.is_empty() {
-        return Err(PlatformError::validation("Request body must contain at least one dispatch job"));
+        return Err(PlatformError::validation(
+            "Request body must contain at least one dispatch job",
+        ));
     }
     if req.jobs.len() > 500 {
-        return Err(PlatformError::validation("Batch size cannot exceed 500 dispatch jobs"));
+        return Err(PlatformError::validation(
+            "Batch size cannot exceed 500 dispatch jobs",
+        ));
     }
 
     let mut created_jobs: Vec<DispatchJob> = Vec::new();
@@ -44,7 +46,10 @@ async fn sdk_batch_create_dispatch_jobs(
         // Validate client access if specified
         if let Some(ref cid) = job_req.client_id {
             if !auth.0.can_access_client(cid) {
-                return Err(PlatformError::forbidden(format!("No access to client: {}", cid)));
+                return Err(PlatformError::forbidden(format!(
+                    "No access to client: {}",
+                    cid
+                )));
             }
         }
 
@@ -129,7 +134,8 @@ async fn sdk_batch_create_dispatch_jobs(
     state.dispatch_job_repo.insert_many(&created_jobs).await?;
 
     let count = created_jobs.len();
-    let job_responses: Vec<DispatchJobResponse> = created_jobs.into_iter().map(Into::into).collect();
+    let job_responses: Vec<DispatchJobResponse> =
+        created_jobs.into_iter().map(Into::into).collect();
 
     Ok(Json(BatchCreateDispatchJobsResponse {
         jobs: job_responses,

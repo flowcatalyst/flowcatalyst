@@ -10,37 +10,36 @@
 //! 4. GET /auth/oidc/callback?code=...&state=... - Handles callback, creates session
 
 use axum::{
+    extract::{Query, State},
+    http::{header, StatusCode, Uri},
+    response::{IntoResponse, Json, Response},
     routing::{get, post},
-    extract::{State, Query},
-    response::{Json, IntoResponse, Response},
-    http::{StatusCode, header, Uri},
     Router,
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use axum_extra::extract::Host;
-use utoipa::{ToSchema, IntoParams};
-use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use std::sync::Arc;
-use tracing::{info, warn, error, debug};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::Rng;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::sync::Arc;
+use tracing::{debug, error, info, warn};
+use utoipa::{IntoParams, ToSchema};
 
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 
-use crate::UserScope;
-use crate::identity_provider::entity::{IdentityProvider, IdentityProviderType};
-use crate::email_domain_mapping::entity::ScopeType;
 use crate::auth::jwks_cache::JwksCache;
+use crate::email_domain_mapping::entity::ScopeType;
+use crate::identity_provider::entity::{IdentityProvider, IdentityProviderType};
 use crate::principal::operations::events::UserLoggedIn;
+use crate::shared::encryption_service::EncryptionService;
 use crate::usecase::ExecutionContext;
+use crate::UserScope;
 use crate::{
-    OidcLoginStateRepository, AnchorDomainRepository,
-    IdentityProviderRepository, EmailDomainMappingRepository,
-    PgUnitOfWork, UnitOfWork,
+    AnchorDomainRepository, EmailDomainMappingRepository, IdentityProviderRepository,
+    OidcLoginStateRepository, PgUnitOfWork, UnitOfWork,
 };
 use crate::{AuthService, OidcSyncService};
-use crate::shared::encryption_service::EncryptionService;
 
 /// OIDC Login API State
 #[derive(Clone)]
@@ -203,7 +202,8 @@ pub async fn check_domain(
                 Json(ErrorResponse {
                     error: "Invalid email format".to_string(),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -218,7 +218,8 @@ pub async fn check_domain(
                 auth_method: "internal".to_string(),
                 login_url: None,
                 idp_issuer: None,
-            }).into_response();
+            })
+            .into_response();
         }
         Ok(false) => {}
         Err(e) => {
@@ -228,12 +229,17 @@ pub async fn check_domain(
                 Json(ErrorResponse {
                     error: "Failed to check domain".to_string(),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     }
 
     // Look up email domain mapping
-    let mapping = match state.email_domain_mapping_repo.find_by_email_domain(domain).await {
+    let mapping = match state
+        .email_domain_mapping_repo
+        .find_by_email_domain(domain)
+        .await
+    {
         Ok(Some(m)) => m,
         Ok(None) => {
             // Default to internal auth if no mapping
@@ -242,7 +248,8 @@ pub async fn check_domain(
                 auth_method: "internal".to_string(),
                 login_url: None,
                 idp_issuer: None,
-            }).into_response();
+            })
+            .into_response();
         }
         Err(e) => {
             error!(error = %e, "Failed to lookup email domain mapping");
@@ -251,12 +258,17 @@ pub async fn check_domain(
                 Json(ErrorResponse {
                     error: "Failed to check domain".to_string(),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
     // Load the identity provider
-    let idp = match state.identity_provider_repo.find_by_id(&mapping.identity_provider_id).await {
+    let idp = match state
+        .identity_provider_repo
+        .find_by_id(&mapping.identity_provider_id)
+        .await
+    {
         Ok(Some(idp)) => idp,
         Ok(None) => {
             debug!(domain = %domain, "Identity provider not found, defaulting to internal");
@@ -264,7 +276,8 @@ pub async fn check_domain(
                 auth_method: "internal".to_string(),
                 login_url: None,
                 idp_issuer: None,
-            }).into_response();
+            })
+            .into_response();
         }
         Err(e) => {
             error!(error = %e, "Failed to lookup identity provider");
@@ -273,7 +286,8 @@ pub async fn check_domain(
                 Json(ErrorResponse {
                     error: "Failed to check domain".to_string(),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -284,13 +298,15 @@ pub async fn check_domain(
             auth_method: "external".to_string(),
             login_url: Some(login_url),
             idp_issuer: idp.oidc_issuer_url,
-        }).into_response()
+        })
+        .into_response()
     } else {
         Json(DomainCheckResponse {
             auth_method: "internal".to_string(),
             login_url: None,
             idp_issuer: None,
-        }).into_response()
+        })
+        .into_response()
     }
 }
 
@@ -321,19 +337,28 @@ pub async fn oidc_login(
             Json(ErrorResponse {
                 error: "domain parameter is required".to_string(),
             }),
-        ).into_response();
+        )
+            .into_response();
     }
 
     // Look up email domain mapping
-    let mapping = match state.email_domain_mapping_repo.find_by_email_domain(&domain).await {
+    let mapping = match state
+        .email_domain_mapping_repo
+        .find_by_email_domain(&domain)
+        .await
+    {
         Ok(Some(m)) => m,
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
-                    error: format!("No authentication configuration found for domain: {}", domain),
+                    error: format!(
+                        "No authentication configuration found for domain: {}",
+                        domain
+                    ),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
         Err(e) => {
             error!(error = %e, "Failed to lookup email domain mapping");
@@ -342,12 +367,17 @@ pub async fn oidc_login(
                 Json(ErrorResponse {
                     error: "Internal error".to_string(),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
     // Load the identity provider
-    let idp = match state.identity_provider_repo.find_by_id(&mapping.identity_provider_id).await {
+    let idp = match state
+        .identity_provider_repo
+        .find_by_id(&mapping.identity_provider_id)
+        .await
+    {
         Ok(Some(idp)) => idp,
         Ok(None) => {
             return (
@@ -355,7 +385,8 @@ pub async fn oidc_login(
                 Json(ErrorResponse {
                     error: format!("Identity provider not found for domain: {}", domain),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
         Err(e) => {
             error!(error = %e, "Failed to lookup identity provider");
@@ -364,7 +395,8 @@ pub async fn oidc_login(
                 Json(ErrorResponse {
                     error: "Internal error".to_string(),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -374,7 +406,8 @@ pub async fn oidc_login(
             Json(ErrorResponse {
                 error: format!("Domain {} uses internal authentication, not OIDC", domain),
             }),
-        ).into_response();
+        )
+            .into_response();
     }
 
     if idp.oidc_issuer_url.is_none() || idp.oidc_client_id.is_none() {
@@ -383,7 +416,8 @@ pub async fn oidc_login(
             Json(ErrorResponse {
                 error: format!("OIDC configuration incomplete for domain: {}", domain),
             }),
-        ).into_response();
+        )
+            .into_response();
     }
 
     // Validate email domain is allowed by this IDP
@@ -393,7 +427,8 @@ pub async fn oidc_login(
             Json(ErrorResponse {
                 error: format!("Domain {} is not allowed by the identity provider", domain),
             }),
-        ).into_response();
+        )
+            .into_response();
     }
 
     // Generate state, nonce, and PKCE
@@ -429,18 +464,14 @@ pub async fn oidc_login(
             Json(ErrorResponse {
                 error: "Failed to initiate login".to_string(),
             }),
-        ).into_response();
+        )
+            .into_response();
     }
 
     // Build authorization URL
     let callback_url = get_callback_url(&state, &host, &uri);
-    let auth_url = build_authorization_url_from_idp(
-        &idp,
-        &oidc_state,
-        &nonce,
-        &code_challenge,
-        &callback_url,
-    );
+    let auth_url =
+        build_authorization_url_from_idp(&idp, &oidc_state, &nonce, &code_challenge, &callback_url);
 
     info!(
         domain = %domain,
@@ -449,10 +480,7 @@ pub async fn oidc_login(
     );
 
     // Redirect to IDP
-    (
-        StatusCode::SEE_OTHER,
-        [(header::LOCATION, auth_url)],
-    ).into_response()
+    (StatusCode::SEE_OTHER, [(header::LOCATION, auth_url)]).into_response()
 }
 
 /// Handle OIDC callback from external IDP
@@ -498,7 +526,11 @@ pub async fn oidc_callback(
     };
 
     // Atomically consume state (find + delete in single query to prevent race conditions)
-    let login_state = match state.oidc_login_state_repo.find_and_consume_state(oidc_state).await {
+    let login_state = match state
+        .oidc_login_state_repo
+        .find_and_consume_state(oidc_state)
+        .await
+    {
         Ok(Some(s)) => s,
         Ok(None) => {
             warn!(state = %oidc_state, "Invalid, expired, or already consumed OIDC state");
@@ -511,7 +543,11 @@ pub async fn oidc_callback(
     };
 
     // Load identity provider and email domain mapping from stored IDs
-    let idp = match state.identity_provider_repo.find_by_id(&login_state.identity_provider_id).await {
+    let idp = match state
+        .identity_provider_repo
+        .find_by_id(&login_state.identity_provider_id)
+        .await
+    {
         Ok(Some(idp)) => idp,
         Ok(None) => {
             return error_redirect("Identity provider no longer exists");
@@ -522,7 +558,11 @@ pub async fn oidc_callback(
         }
     };
 
-    let mapping = match state.email_domain_mapping_repo.find_by_id(&login_state.email_domain_mapping_id).await {
+    let mapping = match state
+        .email_domain_mapping_repo
+        .find_by_id(&login_state.email_domain_mapping_id)
+        .await
+    {
         Ok(Some(m)) => m,
         Ok(None) => {
             return error_redirect("Email domain mapping no longer exists");
@@ -535,7 +575,15 @@ pub async fn oidc_callback(
 
     // Exchange code for tokens
     let callback_url = get_callback_url(&state, &host, &uri);
-    let tokens = match exchange_code_for_tokens_from_idp(&idp, code, &login_state.code_verifier, &callback_url, state.encryption_service.as_deref()).await {
+    let tokens = match exchange_code_for_tokens_from_idp(
+        &idp,
+        code,
+        &login_state.code_verifier,
+        &callback_url,
+        state.encryption_service.as_deref(),
+    )
+    .await
+    {
         Ok(t) => t,
         Err(e) => {
             error!(error = %e, "Token exchange failed");
@@ -544,7 +592,14 @@ pub async fn oidc_callback(
     };
 
     // Parse and validate ID token (with JWKS signature verification)
-    let claims = match validate_id_token_with_jwks(&tokens.id_token, &idp, &login_state.nonce, &state.jwks_cache).await {
+    let claims = match validate_id_token_with_jwks(
+        &tokens.id_token,
+        &idp,
+        &login_state.nonce,
+        &state.jwks_cache,
+    )
+    .await
+    {
         Ok(c) => c,
         Err(e) => {
             error!(error = %e, "ID token validation failed");
@@ -594,16 +649,20 @@ pub async fn oidc_callback(
     } else {
         Some(mapping.allowed_role_ids.as_slice())
     };
-    let principal = match state.oidc_sync_service.sync_oidc_login_with_allowed_roles(
-        &claims.email,
-        claims.name.as_deref().unwrap_or(&claims.email),
-        &claims.subject,
-        idp.oidc_issuer_url.as_deref().unwrap_or("unknown"),
-        mapping.primary_client_id.as_deref(),
-        user_scope,
-        &claims.roles.unwrap_or_default(),
-        allowed_roles,
-    ).await {
+    let principal = match state
+        .oidc_sync_service
+        .sync_oidc_login_with_allowed_roles(
+            &claims.email,
+            claims.name.as_deref().unwrap_or(&claims.email),
+            &claims.subject,
+            idp.oidc_issuer_url.as_deref().unwrap_or("unknown"),
+            mapping.primary_client_id.as_deref(),
+            user_scope,
+            &claims.roles.unwrap_or_default(),
+            allowed_roles,
+        )
+        .await
+    {
         Ok(p) => p,
         Err(e) => {
             error!(error = %e, "User sync failed");
@@ -642,7 +701,7 @@ pub async fn oidc_callback(
 
     // Emit UserLoggedIn domain event (best-effort — don't fail the login if this fails)
     {
-        use crate::principal::operations::events::{FlowcatalystClaims, FederatedClaims};
+        use crate::principal::operations::events::{FederatedClaims, FlowcatalystClaims};
 
         let ctx = ExecutionContext::create(&principal.id);
 
@@ -696,13 +755,21 @@ pub async fn oidc_callback(
         );
 
         #[derive(serde::Serialize)]
-        struct OidcLoginCommand { email: String, identity_provider_id: String }
+        struct OidcLoginCommand {
+            email: String,
+            identity_provider_id: String,
+        }
         let command = OidcLoginCommand {
             email: claims.email.clone(),
             identity_provider_id: idp.id.clone(),
         };
 
-        if let Err(e) = state.unit_of_work.emit_event(login_event, &command).await.into_result() {
+        if let Err(e) = state
+            .unit_of_work
+            .emit_event(login_event, &command)
+            .await
+            .into_result()
+        {
             warn!(error = %e, "Failed to emit UserLoggedIn event (login still succeeded)");
         }
     }
@@ -716,11 +783,9 @@ pub async fn oidc_callback(
     // Redirect with cookie
     (
         jar,
-        (
-            StatusCode::SEE_OTHER,
-            [(header::LOCATION, redirect_url)],
-        ),
-    ).into_response()
+        (StatusCode::SEE_OTHER, [(header::LOCATION, redirect_url)]),
+    )
+        .into_response()
 }
 
 // ==================== Helper Functions ====================
@@ -756,13 +821,20 @@ fn generate_code_challenge(verifier: &str) -> String {
 fn get_external_base_url(state: &OidcLoginApiState, host: &str, _uri: &Uri) -> String {
     state.external_base_url.clone().unwrap_or_else(|| {
         // Fall back to request host
-        let scheme = if state.session_cookie_secure { "https" } else { "http" };
+        let scheme = if state.session_cookie_secure {
+            "https"
+        } else {
+            "http"
+        };
         format!("{}://{}", scheme, host)
     })
 }
 
 fn get_callback_url(state: &OidcLoginApiState, host: &str, uri: &Uri) -> String {
-    format!("{}/auth/oidc/callback", get_external_base_url(state, host, uri))
+    format!(
+        "{}/auth/oidc/callback",
+        get_external_base_url(state, host, uri)
+    )
 }
 
 fn build_authorization_url_from_idp(
@@ -869,7 +941,9 @@ async fn exchange_code_for_tokens_from_idp(
         return Err(format!("Token endpoint returned {}: {}", status, body));
     }
 
-    let json: serde_json::Value = response.json().await
+    let json: serde_json::Value = response
+        .json()
+        .await
         .map_err(|e| format!("Failed to parse token response: {}", e))?;
 
     let id_token = json["id_token"]
@@ -908,25 +982,32 @@ async fn validate_id_token_with_jwks(
     expected_nonce: &str,
     jwks_cache: &JwksCache,
 ) -> Result<IdTokenClaims, String> {
-    let issuer_url = idp.oidc_issuer_url.as_deref().ok_or("Missing issuer URL on IDP")?;
-    let expected_client_id = idp.oidc_client_id.as_deref().ok_or("Missing client ID on IDP")?;
+    let issuer_url = idp
+        .oidc_issuer_url
+        .as_deref()
+        .ok_or("Missing issuer URL on IDP")?;
+    let expected_client_id = idp
+        .oidc_client_id
+        .as_deref()
+        .ok_or("Missing client ID on IDP")?;
 
     // Decode JWT header to get `kid` (key ID)
-    let header = decode_header(id_token)
-        .map_err(|e| format!("Invalid ID token header: {}", e))?;
+    let header = decode_header(id_token).map_err(|e| format!("Invalid ID token header: {}", e))?;
 
     // Fetch JWKS for this issuer
     let jwks = jwks_cache.get_jwks(issuer_url).await?;
 
     // Find the matching key by kid
-    let jwk = jwks.keys.iter()
+    let jwk = jwks
+        .keys
+        .iter()
         .find(|k| {
-            header.kid.as_ref().is_none_or(|kid| k.kid.as_ref() == Some(kid))
+            header
+                .kid
+                .as_ref()
+                .is_none_or(|kid| k.kid.as_ref() == Some(kid))
         })
-        .ok_or_else(|| format!(
-            "No matching key found in JWKS for kid: {:?}",
-            header.kid
-        ))?;
+        .ok_or_else(|| format!("No matching key found in JWKS for kid: {:?}", header.kid))?;
 
     // Build DecodingKey from JWK (RSA only for now — covers Entra ID, Keycloak, Google, etc.)
     let decoding_key = match jwk.kty.as_str() {
@@ -970,14 +1051,19 @@ async fn validate_id_token_with_jwks(
     let payload = token_data.claims;
 
     // Extract claims
-    let issuer = payload["iss"].as_str().ok_or("Missing issuer claim")?.to_string();
-    let subject = payload["sub"].as_str().ok_or("Missing subject claim")?.to_string();
+    let issuer = payload["iss"]
+        .as_str()
+        .ok_or("Missing issuer claim")?
+        .to_string();
+    let subject = payload["sub"]
+        .as_str()
+        .ok_or("Missing subject claim")?
+        .to_string();
 
     // For multi-tenant: manually validate issuer against pattern
-    if idp.oidc_multi_tenant
-        && !is_valid_issuer_for_idp(idp, &issuer) {
-            return Err(format!("Invalid issuer for multi-tenant IDP: {}", issuer));
-        }
+    if idp.oidc_multi_tenant && !is_valid_issuer_for_idp(idp, &issuer) {
+        return Err(format!("Invalid issuer for multi-tenant IDP: {}", issuer));
+    }
 
     // Validate nonce
     let nonce = payload["nonce"].as_str();
@@ -1069,7 +1155,11 @@ fn determine_redirect_url(
 
     // If this was part of an OAuth flow, redirect back to authorize endpoint
     if let Some(ref client_id) = login_state.oauth_client_id {
-        let mut url = format!("{}/oauth/authorize?response_type=code&client_id={}", base_url, urlencoding::encode(client_id));
+        let mut url = format!(
+            "{}/oauth/authorize?response_type=code&client_id={}",
+            base_url,
+            urlencoding::encode(client_id)
+        );
 
         if let Some(ref uri) = login_state.oauth_redirect_uri {
             url.push_str(&format!("&redirect_uri={}", urlencoding::encode(uri)));
@@ -1081,10 +1171,16 @@ fn determine_redirect_url(
             url.push_str(&format!("&state={}", urlencoding::encode(state)));
         }
         if let Some(ref challenge) = login_state.oauth_code_challenge {
-            url.push_str(&format!("&code_challenge={}", urlencoding::encode(challenge)));
+            url.push_str(&format!(
+                "&code_challenge={}",
+                urlencoding::encode(challenge)
+            ));
         }
         if let Some(ref method) = login_state.oauth_code_challenge_method {
-            url.push_str(&format!("&code_challenge_method={}", urlencoding::encode(method)));
+            url.push_str(&format!(
+                "&code_challenge_method={}",
+                urlencoding::encode(method)
+            ));
         }
         if let Some(ref nonce) = login_state.oauth_nonce {
             url.push_str(&format!("&nonce={}", urlencoding::encode(nonce)));
@@ -1108,10 +1204,7 @@ fn determine_redirect_url(
 
 fn error_redirect(message: &str) -> Response {
     let error_url = format!("/?error={}", urlencoding::encode(message));
-    (
-        StatusCode::SEE_OTHER,
-        [(header::LOCATION, error_url)],
-    ).into_response()
+    (StatusCode::SEE_OTHER, [(header::LOCATION, error_url)]).into_response()
 }
 
 // ==================== OIDC Interaction Endpoints ====================
@@ -1181,11 +1274,13 @@ pub async fn get_interaction(
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": "Internal error"})),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
-    let login_state = login_states.into_iter()
+    let login_state = login_states
+        .into_iter()
         .find(|s| s.interaction_uid.as_deref() == Some(&uid) && s.is_valid());
 
     let login_state = match login_state {
@@ -1194,7 +1289,8 @@ pub async fn get_interaction(
             return (
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"error": "Interaction not found or expired"})),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -1203,7 +1299,10 @@ pub async fn get_interaction(
     // to use `/auth/login` or `/auth/webauthn/*` instead of redirecting to an
     // external IdP.
     let requires_oidc = matches!(
-        state.email_domain_mapping_repo.find_by_email_domain(&login_state.email_domain).await,
+        state
+            .email_domain_mapping_repo
+            .find_by_email_domain(&login_state.email_domain)
+            .await,
         Ok(Some(_)),
     );
 
@@ -1217,7 +1316,8 @@ pub async fn get_interaction(
             email_domain: login_state.email_domain.clone(),
             requires_oidc,
         }),
-    ).into_response()
+    )
+        .into_response()
 }
 
 /// Submit login for an interaction
@@ -1244,11 +1344,13 @@ pub async fn post_interaction_login(
                     redirect_url: None,
                     error: Some("Internal error".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
-    let login_state = login_states.into_iter()
+    let login_state = login_states
+        .into_iter()
         .find(|s| s.interaction_uid.as_deref() == Some(&uid) && s.is_valid());
 
     let login_state = match login_state {
@@ -1261,7 +1363,8 @@ pub async fn post_interaction_login(
                     redirect_url: None,
                     error: Some("Interaction not found or expired".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -1277,7 +1380,8 @@ pub async fn post_interaction_login(
                 redirect_url: None,
                 error: Some("Email domain does not match".to_string()),
             }),
-        ).into_response();
+        )
+            .into_response();
     }
 
     // Branch on whether the email's domain is federated. Internal-auth
@@ -1285,7 +1389,10 @@ pub async fn post_interaction_login(
     // `/auth/login` or `/auth/webauthn/*` and bounce back to /oauth/authorize
     // once a session cookie is set.
     if matches!(
-        state.email_domain_mapping_repo.find_by_email_domain(&email_domain).await,
+        state
+            .email_domain_mapping_repo
+            .find_by_email_domain(&email_domain)
+            .await,
         Ok(None),
     ) {
         return (
@@ -1301,7 +1408,11 @@ pub async fn post_interaction_login(
     }
 
     // Load the IDP for this interaction — it requires OIDC federation
-    let idp = match state.identity_provider_repo.find_by_id(&login_state.identity_provider_id).await {
+    let idp = match state
+        .identity_provider_repo
+        .find_by_id(&login_state.identity_provider_id)
+        .await
+    {
         Ok(Some(idp)) if idp.r#type == IdentityProviderType::Oidc => idp,
         _ => {
             return (
@@ -1311,7 +1422,8 @@ pub async fn post_interaction_login(
                     redirect_url: None,
                     error: Some("Identity provider not found or not OIDC type".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -1334,7 +1446,8 @@ pub async fn post_interaction_login(
             redirect_url: Some(auth_url),
             error: None,
         }),
-    ).into_response()
+    )
+        .into_response()
 }
 
 // ==================== OIDC Session End ====================
@@ -1409,7 +1522,10 @@ pub async fn session_end(
             ).into_response();
         }
         // Reject URIs with suspicious patterns (embedded credentials, javascript:, data:, etc.)
-        if redirect_uri.contains('@') || redirect_uri.contains("javascript:") || redirect_uri.contains("data:") {
+        if redirect_uri.contains('@')
+            || redirect_uri.contains("javascript:")
+            || redirect_uri.contains("data:")
+        {
             warn!(redirect_uri = %redirect_uri, "Rejected post_logout_redirect_uri: suspicious pattern");
             return (
                 jar,
@@ -1425,13 +1541,7 @@ pub async fn session_end(
             url.push_str(&format!("{}state={}", separator, urlencoding::encode(s)));
         }
 
-        return (
-            jar,
-            (
-                StatusCode::SEE_OTHER,
-                [(header::LOCATION, url)],
-            ),
-        ).into_response();
+        return (jar, (StatusCode::SEE_OTHER, [(header::LOCATION, url)])).into_response();
     }
 
     // No redirect — return a simple response
@@ -1441,7 +1551,8 @@ pub async fn session_end(
             StatusCode::OK,
             Json(serde_json::json!({"message": "Session ended"})),
         ),
-    ).into_response()
+    )
+        .into_response()
 }
 
 /// Create the OIDC login router
@@ -1451,7 +1562,10 @@ pub fn oidc_login_router(state: OidcLoginApiState) -> Router {
         .route("/oidc/login", get(oidc_login))
         .route("/oidc/callback", get(oidc_callback))
         .route("/oidc/interaction/{uid}", get(get_interaction))
-        .route("/oidc/interaction/{uid}/login", post(post_interaction_login))
+        .route(
+            "/oidc/interaction/{uid}/login",
+            post(post_interaction_login),
+        )
         .route("/oidc/session/end", get(session_end))
         .with_state(state)
 }

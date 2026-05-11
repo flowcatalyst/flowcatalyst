@@ -21,17 +21,17 @@
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
-use tracing::{info, warn, debug};
+use tracing::{debug, info, warn};
 
-use fc_common::{WarningCategory, WarningSeverity};
-use crate::manager::QueueManager;
-use crate::health::HealthService;
-use crate::warning::WarningService;
-use crate::circuit_breaker_registry::CircuitBreakerRegistry;
-use crate::config_sync::{ConfigSyncService, spawn_config_sync_task};
-use crate::standby::{StandbyProcessor, spawn_leadership_monitor};
 #[cfg(feature = "oidc-flow")]
-use crate::api::oidc_flow::{SessionStore, PendingOidcStateStore};
+use crate::api::oidc_flow::{PendingOidcStateStore, SessionStore};
+use crate::circuit_breaker_registry::CircuitBreakerRegistry;
+use crate::config_sync::{spawn_config_sync_task, ConfigSyncService};
+use crate::health::HealthService;
+use crate::manager::QueueManager;
+use crate::standby::{spawn_leadership_monitor, StandbyProcessor};
+use crate::warning::WarningService;
+use fc_common::{WarningCategory, WarningSeverity};
 
 /// Configuration for the lifecycle manager
 #[derive(Debug, Clone)]
@@ -61,13 +61,13 @@ impl Default for LifecycleConfig {
         Self {
             memory_health_interval: Duration::from_secs(60),
             consumer_health_interval: Duration::from_secs(30),
-            warning_cleanup_interval: Duration::from_secs(300),  // 5 minutes
+            warning_cleanup_interval: Duration::from_secs(300), // 5 minutes
             health_report_interval: Duration::from_secs(60),
             consumer_restart_delay: Duration::from_secs(5),
-            reaper_interval: Duration::from_secs(300),              // 5 minutes
-            in_pipeline_max_age: Duration::from_secs(900),          // 15 minutes
-            pending_delete_max_age: Duration::from_secs(60),        // 1 minute — short so deliberate resends are reprocessed
-            circuit_breaker_max_idle: Duration::from_secs(3600),    // 1 hour
+            reaper_interval: Duration::from_secs(300), // 5 minutes
+            in_pipeline_max_age: Duration::from_secs(900), // 15 minutes
+            pending_delete_max_age: Duration::from_secs(60), // 1 minute — short so deliberate resends are reprocessed
+            circuit_breaker_max_idle: Duration::from_secs(3600), // 1 hour
         }
     }
 }
@@ -93,10 +93,7 @@ pub struct LifecycleManager {
 
 impl LifecycleManager {
     /// Create a new lifecycle manager without starting tasks
-    pub fn new(
-        warning_service: Arc<WarningService>,
-        health_service: Arc<HealthService>,
-    ) -> Self {
+    pub fn new(warning_service: Arc<WarningService>, health_service: Arc<HealthService>) -> Self {
         let (shutdown_tx, _) = broadcast::channel(1);
         Self {
             shutdown_tx,
@@ -164,7 +161,8 @@ impl LifecycleManager {
 
             tokio::spawn(async move {
                 let mut ticker = tokio::time::interval(interval);
-                let mut restart_attempts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+                let mut restart_attempts: std::collections::HashMap<String, u32> =
+                    std::collections::HashMap::new();
 
                 loop {
                     tokio::select! {
@@ -435,7 +433,11 @@ impl LifecycleManager {
 
     /// Set the circuit breaker registry for periodic idle eviction.
     /// Starts a background task that evicts idle breakers on the warning cleanup interval.
-    pub fn set_circuit_breaker_registry(&mut self, registry: Arc<CircuitBreakerRegistry>, max_idle: Duration) {
+    pub fn set_circuit_breaker_registry(
+        &mut self,
+        registry: Arc<CircuitBreakerRegistry>,
+        max_idle: Duration,
+    ) {
         self.circuit_breaker_registry = Some(registry.clone());
 
         let mut shutdown_rx = self.shutdown_tx.subscribe();

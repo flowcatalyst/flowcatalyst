@@ -3,15 +3,15 @@
 //! Routes outbox items to appropriate MessageGroupProcessor based on message_group.
 //! Items without a group are dispatched directly (no ordering guarantee).
 
+use fc_common::OutboxItem;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{RwLock, oneshot};
-use fc_common::OutboxItem;
+use tokio::sync::{oneshot, RwLock};
 use tracing::{debug, info, warn};
 
 use crate::message_group_processor::{
-    MessageGroupProcessor, MessageGroupProcessorConfig, BatchMessageDispatcher,
-    ProcessorState, TrackedMessage, DispatchResult,
+    BatchMessageDispatcher, DispatchResult, MessageGroupProcessor, MessageGroupProcessorConfig,
+    ProcessorState, TrackedMessage,
 };
 
 /// Group distributor configuration
@@ -60,7 +60,10 @@ pub struct GroupDistributor {
 }
 
 impl GroupDistributor {
-    pub fn new(config: GroupDistributorConfig, dispatcher: Arc<dyn BatchMessageDispatcher>) -> Self {
+    pub fn new(
+        config: GroupDistributorConfig,
+        dispatcher: Arc<dyn BatchMessageDispatcher>,
+    ) -> Self {
         Self {
             config,
             dispatcher,
@@ -98,7 +101,10 @@ impl GroupDistributor {
     }
 
     /// Get or create a processor for a message group
-    async fn get_or_create_processor(&self, group_id: &str) -> Result<Arc<MessageGroupProcessor>, String> {
+    async fn get_or_create_processor(
+        &self,
+        group_id: &str,
+    ) -> Result<Arc<MessageGroupProcessor>, String> {
         // First try read lock
         {
             let groups = self.groups.read().await;
@@ -117,7 +123,10 @@ impl GroupDistributor {
 
         // Check if we're at capacity
         if groups.len() >= self.config.max_groups {
-            warn!("Max groups reached ({}), cleaning up idle groups", self.config.max_groups);
+            warn!(
+                "Max groups reached ({}), cleaning up idle groups",
+                self.config.max_groups
+            );
             self.cleanup_idle_groups_internal(&mut groups).await;
 
             if groups.len() >= self.config.max_groups {
@@ -140,11 +149,14 @@ impl GroupDistributor {
             processor_clone.run().await;
         });
 
-        groups.insert(group_id.to_string(), GroupEntry {
-            processor: Arc::clone(&processor),
-            shutdown_tx: Some(shutdown_tx),
-            last_activity: std::time::Instant::now(),
-        });
+        groups.insert(
+            group_id.to_string(),
+            GroupEntry {
+                processor: Arc::clone(&processor),
+                shutdown_tx: Some(shutdown_tx),
+                last_activity: std::time::Instant::now(),
+            },
+        );
 
         let mut stats = self.stats.write().await;
         stats.active_groups = groups.len();
@@ -212,7 +224,10 @@ impl GroupDistributor {
         let blocked_count = {
             let mut count = 0;
             for entry in groups.values() {
-                if matches!(entry.processor.state().await, ProcessorState::Blocked { .. }) {
+                if matches!(
+                    entry.processor.state().await,
+                    ProcessorState::Blocked { .. }
+                ) {
                     count += 1;
                 }
             }
@@ -233,7 +248,10 @@ impl GroupDistributor {
 
         for (group_id, entry) in groups.iter() {
             if let ProcessorState::Blocked { message_id, error } = entry.processor.state().await {
-                blocked.push((group_id.clone(), format!("msg={}, error={}", message_id, error)));
+                blocked.push((
+                    group_id.clone(),
+                    format!("msg={}, error={}", message_id, error),
+                ));
             }
         }
 
@@ -252,7 +270,10 @@ impl GroupDistributor {
     }
 
     /// Skip the blocking item in a group
-    pub async fn skip_blocking_message(&self, group_id: &str) -> Result<Option<TrackedMessage>, String> {
+    pub async fn skip_blocking_message(
+        &self,
+        group_id: &str,
+    ) -> Result<Option<TrackedMessage>, String> {
         let groups = self.groups.read().await;
         if let Some(entry) = groups.get(group_id) {
             Ok(entry.processor.skip_blocking_message().await)
@@ -315,11 +336,11 @@ impl GroupDistributor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fc_common::OutboxStatus;
-    use chrono::Utc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use crate::message_group_processor::{BatchDispatchResult, BatchItemResult};
     use async_trait::async_trait;
+    use chrono::Utc;
+    use fc_common::OutboxStatus;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct MockBatchDispatcher {
         dispatch_count: AtomicUsize,
@@ -342,10 +363,13 @@ mod tests {
         async fn dispatch_batch(&self, items: &[OutboxItem]) -> BatchDispatchResult {
             self.dispatch_count.fetch_add(items.len(), Ordering::SeqCst);
             BatchDispatchResult {
-                results: items.iter().map(|item| BatchItemResult {
-                    item_id: item.id.clone(),
-                    result: DispatchResult::Success,
-                }).collect(),
+                results: items
+                    .iter()
+                    .map(|item| BatchItemResult {
+                        item_id: item.id.clone(),
+                        result: DispatchResult::Success,
+                    })
+                    .collect(),
             }
         }
     }
@@ -370,14 +394,21 @@ mod tests {
     #[tokio::test]
     async fn test_distribute_with_group() {
         let dispatcher = Arc::new(MockBatchDispatcher::new());
-        let distributor = GroupDistributor::new(
-            GroupDistributorConfig::default(),
-            dispatcher.clone(),
-        );
+        let distributor =
+            GroupDistributor::new(GroupDistributorConfig::default(), dispatcher.clone());
 
-        distributor.distribute(create_test_item("msg-1", Some("group-a"))).await.unwrap();
-        distributor.distribute(create_test_item("msg-2", Some("group-a"))).await.unwrap();
-        distributor.distribute(create_test_item("msg-3", Some("group-b"))).await.unwrap();
+        distributor
+            .distribute(create_test_item("msg-1", Some("group-a")))
+            .await
+            .unwrap();
+        distributor
+            .distribute(create_test_item("msg-2", Some("group-a")))
+            .await
+            .unwrap();
+        distributor
+            .distribute(create_test_item("msg-3", Some("group-b")))
+            .await
+            .unwrap();
 
         let stats = distributor.stats().await;
         assert_eq!(stats.active_groups, 2);
@@ -391,13 +422,17 @@ mod tests {
     #[tokio::test]
     async fn test_distribute_without_group() {
         let dispatcher = Arc::new(MockBatchDispatcher::new());
-        let distributor = GroupDistributor::new(
-            GroupDistributorConfig::default(),
-            dispatcher.clone(),
-        );
+        let distributor =
+            GroupDistributor::new(GroupDistributorConfig::default(), dispatcher.clone());
 
-        distributor.distribute(create_test_item("msg-1", None)).await.unwrap();
-        distributor.distribute(create_test_item("msg-2", None)).await.unwrap();
+        distributor
+            .distribute(create_test_item("msg-1", None))
+            .await
+            .unwrap();
+        distributor
+            .distribute(create_test_item("msg-2", None))
+            .await
+            .unwrap();
 
         let stats = distributor.stats().await;
         assert_eq!(stats.active_groups, 0);
@@ -410,14 +445,21 @@ mod tests {
     #[tokio::test]
     async fn test_active_groups() {
         let dispatcher = Arc::new(MockBatchDispatcher::new());
-        let distributor = GroupDistributor::new(
-            GroupDistributorConfig::default(),
-            dispatcher.clone(),
-        );
+        let distributor =
+            GroupDistributor::new(GroupDistributorConfig::default(), dispatcher.clone());
 
-        distributor.distribute(create_test_item("msg-1", Some("group-1"))).await.unwrap();
-        distributor.distribute(create_test_item("msg-2", Some("group-2"))).await.unwrap();
-        distributor.distribute(create_test_item("msg-3", Some("group-3"))).await.unwrap();
+        distributor
+            .distribute(create_test_item("msg-1", Some("group-1")))
+            .await
+            .unwrap();
+        distributor
+            .distribute(create_test_item("msg-2", Some("group-2")))
+            .await
+            .unwrap();
+        distributor
+            .distribute(create_test_item("msg-3", Some("group-3")))
+            .await
+            .unwrap();
 
         let groups = distributor.active_groups().await;
         assert_eq!(groups.len(), 3);

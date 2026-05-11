@@ -1,14 +1,12 @@
 //! Delete User Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::principal::repository::PrincipalRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::UserDeleted;
+use crate::principal::repository::PrincipalRepository;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 /// Command for deleting a user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,7 +47,11 @@ impl<U: UnitOfWork> UseCase for DeleteUserUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeleteUserCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeleteUserCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 

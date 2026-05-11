@@ -8,27 +8,27 @@
 
 use axum::{
     extract::{Query, State},
-    Json,
     http::StatusCode,
     response::IntoResponse,
+    Json,
 };
-use utoipa_axum::{router::OpenApiRouter, routes};
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
-use utoipa::{ToSchema, IntoParams};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::warn;
+use utoipa::{IntoParams, ToSchema};
+use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::{PrincipalRepository, RefreshTokenRepository};
-use crate::{EmailDomainMappingRepository, IdentityProviderRepository, LoginAttemptRepository};
-use crate::{LoginAttempt, AttemptType, LoginOutcome};
+use crate::auth::login_backoff::{self, BackoffDecision, BackoffPolicy};
 use crate::identity_provider::entity::IdentityProviderType;
-use crate::RefreshToken;
-use crate::AuthService;
-use crate::PasswordService;
-use crate::auth::login_backoff::{self, BackoffPolicy, BackoffDecision};
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::{Authenticated, ClientIp};
+use crate::AuthService;
+use crate::PasswordService;
+use crate::RefreshToken;
+use crate::{AttemptType, LoginAttempt, LoginOutcome};
+use crate::{EmailDomainMappingRepository, IdentityProviderRepository, LoginAttemptRepository};
+use crate::{PrincipalRepository, RefreshTokenRepository};
 
 /// Login request
 #[derive(Debug, Deserialize, ToSchema)]
@@ -225,9 +225,18 @@ pub async fn login(
 
     // Run the layered backoff check BEFORE lookup so the response timing /
     // shape doesn't leak whether the email exists.
-    match login_backoff::check(&state.login_attempt_repo, &state.backoff_policy, &req.email, &ip).await? {
+    match login_backoff::check(
+        &state.login_attempt_repo,
+        &state.backoff_policy,
+        &req.email,
+        &ip,
+    )
+    .await?
+    {
         BackoffDecision::Allow => {}
-        BackoffDecision::Reject { retry_after_secs, .. } => {
+        BackoffDecision::Reject {
+            retry_after_secs, ..
+        } => {
             return Err(login_backoff::rejection_error(retry_after_secs));
         }
     }
@@ -237,7 +246,15 @@ pub async fn login(
         Some(p) => p,
         None => {
             // Record failed attempt (fire-and-forget)
-            record_login_attempt(&state, &req.email, None, &ip, LoginOutcome::Failure, Some("INVALID_CREDENTIALS")).await;
+            record_login_attempt(
+                &state,
+                &req.email,
+                None,
+                &ip,
+                LoginOutcome::Failure,
+                Some("INVALID_CREDENTIALS"),
+            )
+            .await;
             return Err(PlatformError::Unauthorized {
                 message: "Invalid credentials".to_string(),
             });
@@ -245,18 +262,28 @@ pub async fn login(
     };
 
     // Verify password using Argon2id
-    let password_valid = principal.user_identity
+    let password_valid = principal
+        .user_identity
         .as_ref()
         .and_then(|id| id.password_hash.as_ref())
         .map(|hash| {
-            state.password_service
+            state
+                .password_service
                 .verify_password(&req.password, hash)
                 .unwrap_or(false)
         })
         .unwrap_or(false);
 
     if !password_valid {
-        record_login_attempt(&state, &req.email, Some(&principal.id), &ip, LoginOutcome::Failure, Some("INVALID_CREDENTIALS")).await;
+        record_login_attempt(
+            &state,
+            &req.email,
+            Some(&principal.id),
+            &ip,
+            LoginOutcome::Failure,
+            Some("INVALID_CREDENTIALS"),
+        )
+        .await;
         return Err(PlatformError::Unauthorized {
             message: "Invalid credentials".to_string(),
         });
@@ -264,7 +291,15 @@ pub async fn login(
 
     // Check if user is active
     if !principal.active {
-        record_login_attempt(&state, &req.email, Some(&principal.id), &ip, LoginOutcome::Failure, Some("ACCOUNT_INACTIVE")).await;
+        record_login_attempt(
+            &state,
+            &req.email,
+            Some(&principal.id),
+            &ip,
+            LoginOutcome::Failure,
+            Some("ACCOUNT_INACTIVE"),
+        )
+        .await;
         return Err(PlatformError::Unauthorized {
             message: "Account is not active".to_string(),
         });
@@ -291,7 +326,15 @@ pub async fn login(
     let jar = jar.add(cookie);
 
     // Record successful login attempt (fire-and-forget)
-    record_login_attempt(&state, &req.email, Some(&principal.id), &ip, LoginOutcome::Success, None).await;
+    record_login_attempt(
+        &state,
+        &req.email,
+        Some(&principal.id),
+        &ip,
+        LoginOutcome::Success,
+        None,
+    )
+    .await;
 
     // Build response with user info (matches Java LoginResponse)
     let response = LoginResponse {
@@ -383,17 +426,20 @@ pub async fn check_domain(
     Query(req): Query<DomainCheckRequest>,
 ) -> Result<Json<DomainCheckResponse>, PlatformError> {
     // Extract domain from email
-    let domain = req
-        .email
-        .split('@')
-        .nth(1)
-        .unwrap_or("")
-        .to_lowercase();
+    let domain = req.email.split('@').nth(1).unwrap_or("").to_lowercase();
 
     // Look up email domain mapping in the database
-    if let Some(mapping) = state.email_domain_mapping_repo.find_by_email_domain(&domain).await? {
+    if let Some(mapping) = state
+        .email_domain_mapping_repo
+        .find_by_email_domain(&domain)
+        .await?
+    {
         // Load the associated identity provider
-        if let Some(idp) = state.identity_provider_repo.find_by_id(&mapping.identity_provider_id).await? {
+        if let Some(idp) = state
+            .identity_provider_repo
+            .find_by_id(&mapping.identity_provider_id)
+            .await?
+        {
             let auth_method = match idp.r#type {
                 IdentityProviderType::Oidc => AuthMethod::Oidc,
                 IdentityProviderType::Internal => AuthMethod::Internal,
@@ -403,9 +449,9 @@ pub async fn check_domain(
                 domain,
                 auth_method,
                 provider_id: Some(idp.id),
-                authorization_url: idp.oidc_issuer_url.map(|url| {
-                    format!("{}/authorize", url.trim_end_matches('/'))
-                }),
+                authorization_url: idp
+                    .oidc_issuer_url
+                    .map(|url| format!("{}/authorize", url.trim_end_matches('/'))),
             }));
         }
     }
@@ -497,7 +543,8 @@ pub async fn refresh_token(
     // Hash the provided token and look it up
     let token_hash = RefreshToken::hash_token(&req.refresh_token);
 
-    let stored_token = state.refresh_token_repo
+    let stored_token = state
+        .refresh_token_repo
         .find_valid_by_hash(&token_hash)
         .await?
         .ok_or_else(|| PlatformError::InvalidToken {
@@ -508,7 +555,8 @@ pub async fn refresh_token(
     state.refresh_token_repo.revoke_by_hash(&token_hash).await?;
 
     // Find the principal
-    let principal = state.principal_repo
+    let principal = state
+        .principal_repo
         .find_by_id(&stored_token.principal_id)
         .await?
         .ok_or_else(|| PlatformError::InvalidToken {
@@ -527,8 +575,8 @@ pub async fn refresh_token(
 
     // Generate new refresh token (rotation)
     let (raw_token, token_entity) = RefreshToken::generate_token_pair(&principal.id);
-    let token_entity = token_entity
-        .with_accessible_clients(stored_token.accessible_clients.clone());
+    let token_entity =
+        token_entity.with_accessible_clients(stored_token.accessible_clients.clone());
 
     state.refresh_token_repo.insert(&token_entity).await?;
 

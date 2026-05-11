@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tracing::{debug, warn, error, info};
+use tracing::{debug, error, info, warn};
 
 /// Authentication mode
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,7 +86,11 @@ impl AuthConfig {
     }
 
     /// Create config for OIDC
-    pub fn oidc(issuer: impl Into<String>, client_id: impl Into<String>, audience: impl Into<String>) -> Self {
+    pub fn oidc(
+        issuer: impl Into<String>,
+        client_id: impl Into<String>,
+        audience: impl Into<String>,
+    ) -> Self {
         Self {
             mode: AuthMode::Oidc,
             oidc_issuer: Some(issuer.into()),
@@ -140,10 +144,10 @@ struct Jwks {
 struct Jwk {
     kty: String,
     kid: Option<String>,
-    n: Option<String>,  // RSA modulus
-    e: Option<String>,  // RSA exponent
-    x: Option<String>,  // EC x coordinate
-    y: Option<String>,  // EC y coordinate
+    n: Option<String>, // RSA modulus
+    e: Option<String>, // RSA exponent
+    x: Option<String>, // EC x coordinate
+    y: Option<String>, // EC y coordinate
 }
 
 /// Cached JWKS with expiration
@@ -178,18 +182,25 @@ impl OidcValidator {
 
     /// Fetch OIDC discovery document
     async fn fetch_discovery(&self) -> Result<OidcDiscovery, String> {
-        let discovery_url = format!("{}/.well-known/openid-configuration", self.issuer.trim_end_matches('/'));
+        let discovery_url = format!(
+            "{}/.well-known/openid-configuration",
+            self.issuer.trim_end_matches('/')
+        );
 
         debug!(url = %discovery_url, "Fetching OIDC discovery document");
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .get(&discovery_url)
             .send()
             .await
             .map_err(|e| format!("Failed to fetch OIDC discovery: {}", e))?;
 
         if !response.status().is_success() {
-            return Err(format!("OIDC discovery returned status: {}", response.status()));
+            return Err(format!(
+                "OIDC discovery returned status: {}",
+                response.status()
+            ));
         }
 
         response
@@ -204,7 +215,8 @@ impl OidcValidator {
 
         debug!(jwks_uri = %discovery.jwks_uri, "Fetching JWKS");
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .get(&discovery.jwks_uri)
             .send()
             .await
@@ -278,14 +290,15 @@ impl OidcValidator {
     /// Validate a JWT token
     pub async fn validate_token(&self, token: &str) -> Result<TokenClaims, String> {
         // Decode the header to get the key ID
-        let header = decode_header(token)
-            .map_err(|e| format!("Failed to decode token header: {}", e))?;
+        let header =
+            decode_header(token).map_err(|e| format!("Failed to decode token header: {}", e))?;
 
         // Get JWKS
         let jwks = self.get_jwks().await?;
 
         // Find the key
-        let jwk = self.find_key(&jwks, header.kid.as_deref())
+        let jwk = self
+            .find_key(&jwks, header.kid.as_deref())
             .ok_or_else(|| format!("No matching key found for kid: {:?}", header.kid))?;
 
         // Create decoding key
@@ -396,7 +409,10 @@ impl AuthState {
 
         let oidc_validator = if config.mode == AuthMode::Oidc || config.mode == AuthMode::OidcFlow {
             if let (Some(issuer), Some(audience)) = (&config.oidc_issuer, &config.oidc_audience) {
-                Some(Arc::new(OidcValidator::new(issuer.clone(), audience.clone())))
+                Some(Arc::new(OidcValidator::new(
+                    issuer.clone(),
+                    audience.clone(),
+                )))
             } else {
                 warn!("OIDC mode enabled but missing issuer or audience configuration");
                 None
@@ -407,7 +423,9 @@ impl AuthState {
 
         #[cfg(feature = "oidc-flow")]
         let oidc_flow_state = if config.mode == AuthMode::OidcFlow {
-            use crate::api::oidc_flow::{OidcFlowConfig, OidcFlowState, SessionStore, PendingOidcStateStore};
+            use crate::api::oidc_flow::{
+                OidcFlowConfig, OidcFlowState, PendingOidcStateStore, SessionStore,
+            };
 
             if let (Some(issuer), Some(client_id), Some(redirect_uri)) = (
                 &config.oidc_issuer,
@@ -433,9 +451,9 @@ impl AuthState {
                     session_ttl_seconds,
                 };
 
-                let session_store = Arc::new(SessionStore::new(
-                    std::time::Duration::from_secs(session_ttl_seconds),
-                ));
+                let session_store = Arc::new(SessionStore::new(std::time::Duration::from_secs(
+                    session_ttl_seconds,
+                )));
 
                 let pending_states = Arc::new(PendingOidcStateStore::new());
 
@@ -619,7 +637,9 @@ async fn oidc_flow_auth(state: &AuthState, request: Request, next: Next) -> Resp
     #[cfg(feature = "oidc-flow")]
     {
         if let Some(ref flow_state) = state.oidc_flow_state {
-            if let Some(session_id) = crate::api::oidc_flow::extract_session_cookie(request.headers()) {
+            if let Some(session_id) =
+                crate::api::oidc_flow::extract_session_cookie(request.headers())
+            {
                 if let Some(claims) = flow_state.session_store.get(&session_id) {
                     debug!(
                         sub = %claims.sub,
@@ -654,15 +674,16 @@ async fn oidc_flow_auth(state: &AuthState, request: Request, next: Next) -> Resp
                         Err(e) => {
                             // Try JWKS refresh on signature/key errors
                             if (e.contains("signature") || e.contains("key"))
-                                && validator.refresh_jwks().await.is_ok() {
-                                    if let Ok(claims) = validator.validate_token(token).await {
-                                        debug!(
-                                            sub = %claims.sub,
-                                            "OIDC flow: authenticated via Bearer token after JWKS refresh"
-                                        );
-                                        return next.run(request).await;
-                                    }
+                                && validator.refresh_jwks().await.is_ok()
+                            {
+                                if let Ok(claims) = validator.validate_token(token).await {
+                                    debug!(
+                                        sub = %claims.sub,
+                                        "OIDC flow: authenticated via Bearer token after JWKS refresh"
+                                    );
+                                    return next.run(request).await;
                                 }
+                            }
                             debug!(error = %e, "OIDC flow: Bearer token validation failed");
                         }
                     }
@@ -681,13 +702,12 @@ async fn oidc_flow_auth(state: &AuthState, request: Request, next: Next) -> Resp
 
     if is_browser {
         // Redirect to login with the original URL
-        let path = request.uri().path_and_query()
+        let path = request
+            .uri()
+            .path_and_query()
             .map(|pq| pq.as_str())
             .unwrap_or("/");
-        let login_url = format!(
-            "/auth/login?redirect_to={}",
-            urlencoding::encode(path)
-        );
+        let login_url = format!("/auth/login?redirect_to={}", urlencoding::encode(path));
         debug!(
             path = %path,
             "OIDC flow: browser request without session, redirecting to login"
@@ -702,8 +722,9 @@ async fn oidc_flow_auth(state: &AuthState, request: Request, next: Next) -> Resp
         axum::Json(serde_json::json!({
             "error": "unauthorized",
             "message": "Authentication required. Use Bearer token or authenticate via /auth/login."
-        }))
-    ).into_response();
+        })),
+    )
+        .into_response();
 
     response.headers_mut().insert(
         header::WWW_AUTHENTICATE,
@@ -723,8 +744,9 @@ fn unauthorized_response(message: &str) -> Response {
         axum::Json(serde_json::json!({
             "error": "unauthorized",
             "message": message
-        }))
-    ).into_response();
+        })),
+    )
+        .into_response();
 
     response.headers_mut().insert(
         header::WWW_AUTHENTICATE,
@@ -787,10 +809,13 @@ mod tests {
         let config = AuthConfig::oidc(
             "https://login.microsoftonline.com/tenant/v2.0",
             "client-id",
-            "api://client-id"
+            "api://client-id",
         );
         assert_eq!(config.mode, AuthMode::Oidc);
-        assert_eq!(config.oidc_issuer, Some("https://login.microsoftonline.com/tenant/v2.0".to_string()));
+        assert_eq!(
+            config.oidc_issuer,
+            Some("https://login.microsoftonline.com/tenant/v2.0".to_string())
+        );
         assert_eq!(config.oidc_client_id, Some("client-id".to_string()));
         assert_eq!(config.oidc_audience, Some("api://client-id".to_string()));
     }

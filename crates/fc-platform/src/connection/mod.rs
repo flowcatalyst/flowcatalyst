@@ -2,11 +2,11 @@
 //!
 //! Named endpoint connections for dispatch.
 
-pub mod entity;
-pub mod repository;
 pub mod api;
+pub mod entity;
 pub mod operations;
+pub mod repository;
 
+pub use api::{connections_router, ConnectionsState};
 pub use entity::{Connection, ConnectionStatus};
 pub use repository::ConnectionRepository;
-pub use api::{ConnectionsState, connections_router};

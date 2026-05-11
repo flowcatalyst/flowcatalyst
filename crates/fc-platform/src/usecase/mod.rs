@@ -8,18 +8,18 @@
 //! - `TracingContext` - distributed tracing context propagation
 //! - `UnitOfWork` - atomic commit of entity + event + audit log
 
-pub mod use_case;
-pub mod result;
-pub mod error;
 pub mod domain_event;
+pub mod error;
 pub mod execution_context;
+pub mod result;
 pub mod tracing_context;
 pub mod unit_of_work;
+pub mod use_case;
 
-pub use use_case::UseCase;
-pub use result::UseCaseResult;
-pub use error::UseCaseError;
 pub use domain_event::{DomainEvent, EventMetadata, EventMetadataBuilder};
+pub use error::UseCaseError;
 pub use execution_context::ExecutionContext;
+pub use result::UseCaseResult;
 pub use tracing_context::TracingContext;
-pub use unit_of_work::{UnitOfWork, PgUnitOfWork, HasId, Persist, DbTx};
+pub use unit_of_work::{DbTx, HasId, Persist, PgUnitOfWork, UnitOfWork};
+pub use use_case::UseCase;

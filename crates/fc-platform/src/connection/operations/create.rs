@@ -1,17 +1,15 @@
 //! Create Connection Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::ConnectionCreated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 use crate::Connection;
 use crate::ConnectionRepository;
 use crate::ServiceAccountRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::ConnectionCreated;
 
 fn code_pattern() -> &'static Regex {
     static PATTERN: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
@@ -45,7 +43,11 @@ impl<U: UnitOfWork> CreateConnectionUseCase<U> {
         service_account_repo: Arc<ServiceAccountRepository>,
         unit_of_work: Arc<U>,
     ) -> Self {
-        Self { connection_repo, service_account_repo, unit_of_work }
+        Self {
+            connection_repo,
+            service_account_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -58,7 +60,8 @@ impl<U: UnitOfWork> UseCase for CreateConnectionUseCase<U> {
         let code = command.code.trim().to_lowercase();
         if code.is_empty() {
             return Err(UseCaseError::validation(
-                "CODE_REQUIRED", "Connection code is required",
+                "CODE_REQUIRED",
+                "Connection code is required",
             ));
         }
         if !code_pattern().is_match(&code) {
@@ -70,20 +73,26 @@ impl<U: UnitOfWork> UseCase for CreateConnectionUseCase<U> {
         let name = command.name.trim();
         if name.is_empty() {
             return Err(UseCaseError::validation(
-                "NAME_REQUIRED", "Connection name is required",
+                "NAME_REQUIRED",
+                "Connection name is required",
             ));
         }
 
         if command.service_account_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "SERVICE_ACCOUNT_ID_REQUIRED", "Service account ID is required",
+                "SERVICE_ACCOUNT_ID_REQUIRED",
+                "Service account ID is required",
             ));
         }
 
         Ok(())
     }
 
-    async fn authorize(&self, _command: &CreateConnectionCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &CreateConnectionCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -96,7 +105,11 @@ impl<U: UnitOfWork> UseCase for CreateConnectionUseCase<U> {
         let name = command.name.trim();
 
         // Validate service account exists
-        match self.service_account_repo.find_by_id(&command.service_account_id).await {
+        match self
+            .service_account_repo
+            .find_by_id(&command.service_account_id)
+            .await
+        {
             Ok(Some(_)) => {}
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
@@ -106,19 +119,24 @@ impl<U: UnitOfWork> UseCase for CreateConnectionUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to validate service account: {}", e
+                    "Failed to validate service account: {}",
+                    e
                 )));
             }
         }
 
         // Uniqueness check (code + client_id scope)
-        let existing = self.connection_repo
+        let existing = self
+            .connection_repo
             .find_by_code_and_client(&code, command.client_id.as_deref())
             .await;
         if let Ok(Some(_)) = existing {
             return UseCaseResult::failure(UseCaseError::business_rule(
                 "CONNECTION_CODE_EXISTS",
-                format!("A connection with code '{}' already exists in this scope", code),
+                format!(
+                    "A connection with code '{}' already exists in this scope",
+                    code
+                ),
             ));
         }
 

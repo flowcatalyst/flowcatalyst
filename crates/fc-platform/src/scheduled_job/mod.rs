@@ -6,16 +6,16 @@
 //! these are platform-infrastructure plumbing rows (like dispatch-job
 //! lifecycle), so they bypass UoW. Same for instance log entries.
 
+pub mod api;
 pub mod entity;
-pub mod repository;
 pub mod instance_repository;
 pub mod operations;
-pub mod api;
+pub mod repository;
 pub mod scheduler;
 
 pub use entity::{
     CompletionStatus, InstanceStatus, LogLevel, ScheduledJob, ScheduledJobInstance,
     ScheduledJobInstanceLog, ScheduledJobStatus, TriggerKind,
 };
-pub use repository::ScheduledJobRepository;
 pub use instance_repository::{InstanceListFilters, ScheduledJobInstanceRepository};
+pub use repository::ScheduledJobRepository;

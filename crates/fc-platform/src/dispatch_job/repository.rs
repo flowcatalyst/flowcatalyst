@@ -1,10 +1,13 @@
 //! DispatchJob Repository — PostgreSQL via SQLx
 
-use sqlx::{PgPool, Postgres, QueryBuilder};
-use chrono::{DateTime, Utc};
-use crate::{DispatchJob, DispatchJobRead, DispatchStatus};
-use crate::dispatch_job::entity::{DispatchKind, DispatchProtocol, DispatchMetadata, DispatchMode, RetryStrategy, default_content_type};
+use crate::dispatch_job::entity::{
+    default_content_type, DispatchKind, DispatchMetadata, DispatchMode, DispatchProtocol,
+    RetryStrategy,
+};
 use crate::shared::error::Result;
+use crate::{DispatchJob, DispatchJobRead, DispatchStatus};
+use chrono::{DateTime, Utc};
+use sqlx::{PgPool, Postgres, QueryBuilder};
 
 // ─── Row structs ─────────────────────────────────────────────────────────────
 
@@ -50,7 +53,8 @@ struct DispatchJobRow {
 
 impl From<DispatchJobRow> for DispatchJob {
     fn from(r: DispatchJobRow) -> Self {
-        let metadata: Vec<DispatchMetadata> = serde_json::from_value(r.metadata).unwrap_or_default();
+        let metadata: Vec<DispatchMetadata> =
+            serde_json::from_value(r.metadata).unwrap_or_default();
         Self {
             id: r.id,
             external_id: r.external_id,
@@ -202,7 +206,7 @@ impl DispatchJobRepository {
                  completed_at, duration_millis, last_error, idempotency_key, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
                     $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-                    $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)"#
+                    $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)"#,
         )
         .bind(&job.id)
         .bind(&job.external_id)
@@ -247,19 +251,18 @@ impl DispatchJobRepository {
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<DispatchJob>> {
-        let row = sqlx::query_as::<_, DispatchJobRow>(
-            "SELECT * FROM msg_dispatch_jobs WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row =
+            sqlx::query_as::<_, DispatchJobRow>("SELECT * FROM msg_dispatch_jobs WHERE id = $1")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?;
 
         Ok(row.map(DispatchJob::from))
     }
 
     pub async fn find_by_event_id(&self, event_id: &str) -> Result<Vec<DispatchJob>> {
         let rows = sqlx::query_as::<_, DispatchJobRow>(
-            "SELECT * FROM msg_dispatch_jobs WHERE event_id = $1"
+            "SELECT * FROM msg_dispatch_jobs WHERE event_id = $1",
         )
         .bind(event_id)
         .fetch_all(&self.pool)
@@ -268,10 +271,14 @@ impl DispatchJobRepository {
         Ok(rows.into_iter().map(DispatchJob::from).collect())
     }
 
-    pub async fn find_by_subscription_id(&self, subscription_id: &str, limit: i64) -> Result<Vec<DispatchJob>> {
+    pub async fn find_by_subscription_id(
+        &self,
+        subscription_id: &str,
+        limit: i64,
+    ) -> Result<Vec<DispatchJob>> {
         if limit > 0 {
             let rows = sqlx::query_as::<_, DispatchJobRow>(
-                "SELECT * FROM msg_dispatch_jobs WHERE subscription_id = $1 LIMIT $2"
+                "SELECT * FROM msg_dispatch_jobs WHERE subscription_id = $1 LIMIT $2",
             )
             .bind(subscription_id)
             .bind(limit)
@@ -280,7 +287,7 @@ impl DispatchJobRepository {
             Ok(rows.into_iter().map(DispatchJob::from).collect())
         } else {
             let rows = sqlx::query_as::<_, DispatchJobRow>(
-                "SELECT * FROM msg_dispatch_jobs WHERE subscription_id = $1"
+                "SELECT * FROM msg_dispatch_jobs WHERE subscription_id = $1",
             )
             .bind(subscription_id)
             .fetch_all(&self.pool)
@@ -289,10 +296,14 @@ impl DispatchJobRepository {
         }
     }
 
-    pub async fn find_by_status(&self, status: DispatchStatus, limit: i64) -> Result<Vec<DispatchJob>> {
+    pub async fn find_by_status(
+        &self,
+        status: DispatchStatus,
+        limit: i64,
+    ) -> Result<Vec<DispatchJob>> {
         if limit > 0 {
             let rows = sqlx::query_as::<_, DispatchJobRow>(
-                "SELECT * FROM msg_dispatch_jobs WHERE status = $1 LIMIT $2"
+                "SELECT * FROM msg_dispatch_jobs WHERE status = $1 LIMIT $2",
             )
             .bind(status.as_str())
             .bind(limit)
@@ -301,7 +312,7 @@ impl DispatchJobRepository {
             Ok(rows.into_iter().map(DispatchJob::from).collect())
         } else {
             let rows = sqlx::query_as::<_, DispatchJobRow>(
-                "SELECT * FROM msg_dispatch_jobs WHERE status = $1"
+                "SELECT * FROM msg_dispatch_jobs WHERE status = $1",
             )
             .bind(status.as_str())
             .fetch_all(&self.pool)
@@ -316,7 +327,7 @@ impl DispatchJobRepository {
             let rows = sqlx::query_as::<_, DispatchJobRow>(
                 "SELECT * FROM msg_dispatch_jobs \
                  WHERE status = 'PENDING' AND (scheduled_for IS NULL OR scheduled_for <= $1) \
-                 LIMIT $2"
+                 LIMIT $2",
             )
             .bind(now)
             .bind(limit)
@@ -326,7 +337,7 @@ impl DispatchJobRepository {
         } else {
             let rows = sqlx::query_as::<_, DispatchJobRow>(
                 "SELECT * FROM msg_dispatch_jobs \
-                 WHERE status = 'PENDING' AND (scheduled_for IS NULL OR scheduled_for <= $1)"
+                 WHERE status = 'PENDING' AND (scheduled_for IS NULL OR scheduled_for <= $1)",
             )
             .bind(now)
             .fetch_all(&self.pool)
@@ -335,12 +346,16 @@ impl DispatchJobRepository {
         }
     }
 
-    pub async fn find_stale_in_progress(&self, stale_threshold: DateTime<Utc>, limit: i64) -> Result<Vec<DispatchJob>> {
+    pub async fn find_stale_in_progress(
+        &self,
+        stale_threshold: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<DispatchJob>> {
         if limit > 0 {
             let rows = sqlx::query_as::<_, DispatchJobRow>(
                 "SELECT * FROM msg_dispatch_jobs \
                  WHERE status = 'PROCESSING' AND updated_at < $1 \
-                 LIMIT $2"
+                 LIMIT $2",
             )
             .bind(stale_threshold)
             .bind(limit)
@@ -350,7 +365,7 @@ impl DispatchJobRepository {
         } else {
             let rows = sqlx::query_as::<_, DispatchJobRow>(
                 "SELECT * FROM msg_dispatch_jobs \
-                 WHERE status = 'PROCESSING' AND updated_at < $1"
+                 WHERE status = 'PROCESSING' AND updated_at < $1",
             )
             .bind(stale_threshold)
             .fetch_all(&self.pool)
@@ -362,7 +377,7 @@ impl DispatchJobRepository {
     pub async fn find_by_client(&self, client_id: &str, limit: i64) -> Result<Vec<DispatchJob>> {
         if limit > 0 {
             let rows = sqlx::query_as::<_, DispatchJobRow>(
-                "SELECT * FROM msg_dispatch_jobs WHERE client_id = $1 LIMIT $2"
+                "SELECT * FROM msg_dispatch_jobs WHERE client_id = $1 LIMIT $2",
             )
             .bind(client_id)
             .bind(limit)
@@ -371,7 +386,7 @@ impl DispatchJobRepository {
             Ok(rows.into_iter().map(DispatchJob::from).collect())
         } else {
             let rows = sqlx::query_as::<_, DispatchJobRow>(
-                "SELECT * FROM msg_dispatch_jobs WHERE client_id = $1"
+                "SELECT * FROM msg_dispatch_jobs WHERE client_id = $1",
             )
             .bind(client_id)
             .fetch_all(&self.pool)
@@ -382,7 +397,7 @@ impl DispatchJobRepository {
 
     pub async fn find_by_correlation_id(&self, correlation_id: &str) -> Result<Vec<DispatchJob>> {
         let rows = sqlx::query_as::<_, DispatchJobRow>(
-            "SELECT * FROM msg_dispatch_jobs WHERE correlation_id = $1"
+            "SELECT * FROM msg_dispatch_jobs WHERE correlation_id = $1",
         )
         .bind(correlation_id)
         .fetch_all(&self.pool)
@@ -401,8 +416,7 @@ impl DispatchJobRepository {
         status: Option<&str>,
         limit: i64,
     ) -> Result<Vec<DispatchJob>> {
-        let mut qb: QueryBuilder<Postgres> =
-            QueryBuilder::new("SELECT * FROM msg_dispatch_jobs");
+        let mut qb: QueryBuilder<Postgres> = QueryBuilder::new("SELECT * FROM msg_dispatch_jobs");
         let mut has_where = false;
 
         fn push_where(qb: &mut QueryBuilder<Postgres>, has_where: &mut bool) {
@@ -455,7 +469,7 @@ impl DispatchJobRepository {
                 attempt_count = $29, last_attempt_at = $30, completed_at = $31,
                 duration_millis = $32, last_error = $33, idempotency_key = $34,
                 updated_at = $35
-            WHERE id = $1 AND created_at = $36"#
+            WHERE id = $1 AND created_at = $36"#,
         )
         .bind(&job.id)
         .bind(&job.external_id)
@@ -616,7 +630,7 @@ impl DispatchJobRepository {
                 $25::int4[], $26::varchar[], $27::timestamptz[], $28::timestamptz[],
                 $29::int4[], $30::timestamptz[], $31::timestamptz[], $32::int8[],
                 $33::varchar[], $34::varchar[], $35::timestamptz[], $36::timestamptz[]
-            )"#
+            )"#,
         )
         .bind(&ids)
         .bind(&external_ids as &[Option<String>])
@@ -672,7 +686,7 @@ impl DispatchJobRepository {
     ) -> Result<bool> {
         let result = sqlx::query(
             "UPDATE msg_dispatch_jobs SET status = $1, updated_at = NOW() \
-             WHERE id = $2 AND created_at = $3"
+             WHERE id = $2 AND created_at = $3",
         )
         .bind(status.as_str())
         .bind(id)
@@ -687,7 +701,7 @@ impl DispatchJobRepository {
 
     pub async fn find_read_by_id(&self, id: &str) -> Result<Option<DispatchJobRead>> {
         let row = sqlx::query_as::<_, DispatchJobReadRow>(
-            "SELECT * FROM msg_dispatch_jobs_read WHERE id = $1"
+            "SELECT * FROM msg_dispatch_jobs_read WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -736,7 +750,9 @@ impl DispatchJobRepository {
         }
         if !applications.is_empty() {
             push_where(&mut qb, &mut has_where);
-            qb.push("application = ANY(").push_bind(applications).push(")");
+            qb.push("application = ANY(")
+                .push_bind(applications)
+                .push(")");
         }
         if !subdomains.is_empty() {
             push_where(&mut qb, &mut has_where);
@@ -752,10 +768,13 @@ impl DispatchJobRepository {
         }
         if let Some(pattern) = search_pattern {
             push_where(&mut qb, &mut has_where);
-            qb.push("(code ILIKE ").push_bind(pattern.clone())
-              .push(" OR subject ILIKE ").push_bind(pattern.clone())
-              .push(" OR source ILIKE ").push_bind(pattern.clone())
-              .push(")");
+            qb.push("(code ILIKE ")
+                .push_bind(pattern.clone())
+                .push(" OR subject ILIKE ")
+                .push_bind(pattern.clone())
+                .push(" OR source ILIKE ")
+                .push_bind(pattern.clone())
+                .push(")");
         }
         if let Some(c) = cursor {
             push_where(&mut qb, &mut has_where);
@@ -766,7 +785,8 @@ impl DispatchJobRepository {
                 .push(")");
         }
 
-        qb.push(" ORDER BY created_at DESC, id DESC LIMIT ").push_bind(fetch_limit);
+        qb.push(" ORDER BY created_at DESC, id DESC LIMIT ")
+            .push_bind(fetch_limit);
         let rows: Vec<DispatchJobReadRow> = qb.build_query_as().fetch_all(&self.pool).await?;
         Ok(rows.into_iter().map(DispatchJobRead::from).collect())
     }
@@ -783,7 +803,7 @@ impl DispatchJobRepository {
                  is_completed, is_terminal, projected_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
                     $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-                    $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)"#
+                    $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)"#,
         )
         .bind(&p.id)
         .bind(&p.external_id)
@@ -851,7 +871,7 @@ impl DispatchJobRepository {
                 duration_millis = EXCLUDED.duration_millis,
                 is_completed = EXCLUDED.is_completed,
                 is_terminal = EXCLUDED.is_terminal,
-                projected_at = EXCLUDED.projected_at"#
+                projected_at = EXCLUDED.projected_at"#,
         )
         .bind(&p.id)
         .bind(&p.external_id)
@@ -899,22 +919,19 @@ impl DispatchJobRepository {
     // ── Counts ───────────────────────────────────────────────────────────
 
     pub async fn count_by_status(&self, status: DispatchStatus) -> Result<u64> {
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM msg_dispatch_jobs WHERE status = $1"
-        )
-        .bind(status.as_str())
-        .fetch_one(&self.pool)
-        .await?;
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM msg_dispatch_jobs WHERE status = $1")
+                .bind(status.as_str())
+                .fetch_one(&self.pool)
+                .await?;
 
         Ok(count as u64)
     }
 
     pub async fn count_all(&self) -> Result<u64> {
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM msg_dispatch_jobs"
-        )
-        .fetch_one(&self.pool)
-        .await?;
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM msg_dispatch_jobs")
+            .fetch_one(&self.pool)
+            .await?;
 
         Ok(count as u64)
     }
@@ -924,7 +941,7 @@ impl DispatchJobRepository {
     pub async fn find_distinct_subscription_ids(&self) -> Result<Vec<String>> {
         let rows = sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT subscription_id FROM msg_dispatch_jobs \
-             WHERE subscription_id IS NOT NULL ORDER BY subscription_id"
+             WHERE subscription_id IS NOT NULL ORDER BY subscription_id",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -935,7 +952,7 @@ impl DispatchJobRepository {
     pub async fn find_distinct_event_type_codes(&self) -> Result<Vec<String>> {
         let rows = sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT code FROM msg_dispatch_jobs \
-             WHERE code IS NOT NULL AND code != '' ORDER BY code"
+             WHERE code IS NOT NULL AND code != '' ORDER BY code",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -948,7 +965,7 @@ impl DispatchJobRepository {
     pub async fn find_distinct_applications(&self) -> Result<Vec<String>> {
         let rows = sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT application FROM msg_dispatch_jobs_read \
-             WHERE application IS NOT NULL AND application != '' ORDER BY application"
+             WHERE application IS NOT NULL AND application != '' ORDER BY application",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -959,7 +976,7 @@ impl DispatchJobRepository {
     pub async fn find_distinct_subdomains(&self) -> Result<Vec<String>> {
         let rows = sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT subdomain FROM msg_dispatch_jobs_read \
-             WHERE subdomain IS NOT NULL AND subdomain != '' ORDER BY subdomain"
+             WHERE subdomain IS NOT NULL AND subdomain != '' ORDER BY subdomain",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -970,7 +987,7 @@ impl DispatchJobRepository {
     pub async fn find_distinct_aggregates(&self) -> Result<Vec<String>> {
         let rows = sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT aggregate FROM msg_dispatch_jobs_read \
-             WHERE aggregate IS NOT NULL AND aggregate != '' ORDER BY aggregate"
+             WHERE aggregate IS NOT NULL AND aggregate != '' ORDER BY aggregate",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -981,7 +998,7 @@ impl DispatchJobRepository {
     pub async fn find_distinct_codes(&self) -> Result<Vec<String>> {
         let rows = sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT code FROM msg_dispatch_jobs_read \
-             WHERE code IS NOT NULL AND code != '' ORDER BY code"
+             WHERE code IS NOT NULL AND code != '' ORDER BY code",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -992,7 +1009,7 @@ impl DispatchJobRepository {
     pub async fn find_distinct_statuses(&self) -> Result<Vec<String>> {
         let rows = sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT status FROM msg_dispatch_jobs_read \
-             WHERE status IS NOT NULL AND status != '' ORDER BY status"
+             WHERE status IS NOT NULL AND status != '' ORDER BY status",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -1003,7 +1020,7 @@ impl DispatchJobRepository {
     pub async fn find_distinct_client_ids(&self) -> Result<Vec<String>> {
         let rows = sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT client_id FROM msg_dispatch_jobs_read \
-             WHERE client_id IS NOT NULL AND client_id != '' ORDER BY client_id"
+             WHERE client_id IS NOT NULL AND client_id != '' ORDER BY client_id",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -1064,7 +1081,7 @@ impl DispatchJobRepository {
                 (id, dispatch_job_id, attempt_number, status, response_code,
                  response_body, error_message, error_type, error_stack_trace,
                  duration_millis, attempted_at, completed_at, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"#
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"#,
         )
         .bind(&id)
         .bind(dispatch_job_id)
@@ -1099,13 +1116,17 @@ impl DispatchJobRepository {
         last_error: Option<&str>,
     ) -> Result<bool> {
         let now = Utc::now();
-        let completed_at = if status.is_terminal() { Some(now) } else { None };
+        let completed_at = if status.is_terminal() {
+            Some(now)
+        } else {
+            None
+        };
 
         let result = sqlx::query(
             r#"UPDATE msg_dispatch_jobs SET
                 status = $1, attempt_count = $2, last_attempt_at = $3,
                 duration_millis = $4, last_error = $5, completed_at = $6, updated_at = $7
-            WHERE id = $8 AND created_at = $9"#
+            WHERE id = $8 AND created_at = $9"#,
         )
         .bind(status.as_str())
         .bind(attempt_count as i32)

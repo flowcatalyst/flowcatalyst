@@ -1,14 +1,14 @@
 //! Add CORS Origin Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::CorsOriginRepository;
+use super::events::CorsOriginAdded;
 use crate::cors::entity::CorsAllowedOrigin;
 use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
-use super::events::CorsOriginAdded;
+use crate::CorsOriginRepository;
 
 fn origin_pattern() -> &'static Regex {
     static PATTERN: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
@@ -33,7 +33,10 @@ pub struct AddCorsOriginUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> AddCorsOriginUseCase<U> {
     pub fn new(cors_repo: Arc<CorsOriginRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { cors_repo, unit_of_work }
+        Self {
+            cors_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -46,7 +49,8 @@ impl<U: UnitOfWork> UseCase for AddCorsOriginUseCase<U> {
         let origin = command.origin.trim();
         if origin.is_empty() {
             return Err(UseCaseError::validation(
-                "ORIGIN_REQUIRED", "Origin is required",
+                "ORIGIN_REQUIRED",
+                "Origin is required",
             ));
         }
 
@@ -60,7 +64,11 @@ impl<U: UnitOfWork> UseCase for AddCorsOriginUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &AddCorsOriginCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &AddCorsOriginCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -82,7 +90,8 @@ impl<U: UnitOfWork> UseCase for AddCorsOriginUseCase<U> {
             Ok(None) => {}
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to check for existing origin: {}", e
+                    "Failed to check for existing origin: {}",
+                    e
                 )));
             }
         }

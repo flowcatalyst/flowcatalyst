@@ -3,12 +3,12 @@
 //! Implements the OutboxRepository trait for PostgreSQL with a single shared
 //! `outbox_messages` table using a `type` column, matching Java/TypeScript.
 
-use async_trait::async_trait;
-use fc_common::{OutboxItem, OutboxItemType, OutboxStatus};
 use crate::repository::{OutboxRepository, OutboxTableConfig};
 use anyhow::Result;
-use sqlx::{PgPool, Row};
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use fc_common::{OutboxItem, OutboxItemType, OutboxStatus};
+use sqlx::{PgPool, Row};
 use std::time::Duration;
 use tracing::{debug, info, trace};
 
@@ -38,7 +38,11 @@ impl PostgresOutboxRepository {
     }
 
     /// Parse a row into an OutboxItem
-    fn parse_row(&self, row: &sqlx::postgres::PgRow, item_type: OutboxItemType) -> Result<OutboxItem> {
+    fn parse_row(
+        &self,
+        row: &sqlx::postgres::PgRow,
+        item_type: OutboxItemType,
+    ) -> Result<OutboxItem> {
         let created_at: DateTime<Utc> = row.get("created_at");
         let updated_at: DateTime<Utc> = row.get("updated_at");
 
@@ -59,14 +63,21 @@ impl PostgresOutboxRepository {
             updated_at,
             client_id: row.try_get("client_id").ok().flatten(),
             payload_size: row.try_get::<Option<i32>, _>("payload_size").ok().flatten(),
-            headers: row.try_get::<Option<serde_json::Value>, _>("headers").ok().flatten(),
+            headers: row
+                .try_get::<Option<serde_json::Value>, _>("headers")
+                .ok()
+                .flatten(),
         })
     }
 }
 
 #[async_trait]
 impl OutboxRepository for PostgresOutboxRepository {
-    async fn fetch_pending_by_type(&self, item_type: OutboxItemType, limit: u32) -> Result<Vec<OutboxItem>> {
+    async fn fetch_pending_by_type(
+        &self,
+        item_type: OutboxItemType,
+        limit: u32,
+    ) -> Result<Vec<OutboxItem>> {
         let table = self.table_config.table_for_type(item_type);
         let query = format!(
             "SELECT id, type, message_group, payload, status, retry_count, error_message, \
@@ -143,10 +154,7 @@ impl OutboxRepository for PostgresOutboxRepository {
         // outbox row instead of updating it; otherwise the customer's outbox
         // table grows unbounded.
         if matches!(status, OutboxStatus::SUCCESS) {
-            let query = format!(
-                "DELETE FROM {} WHERE id = ANY($1) AND type = $2",
-                table
-            );
+            let query = format!("DELETE FROM {} WHERE id = ANY($1) AND type = $2", table);
             sqlx::query(&query)
                 .bind(&ids)
                 .bind(item_type.type_value())
@@ -180,7 +188,11 @@ impl OutboxRepository for PostgresOutboxRepository {
         Ok(())
     }
 
-    async fn increment_retry_count(&self, item_type: OutboxItemType, ids: Vec<String>) -> Result<()> {
+    async fn increment_retry_count(
+        &self,
+        item_type: OutboxItemType,
+        ids: Vec<String>,
+    ) -> Result<()> {
         if ids.is_empty() {
             return Ok(());
         }
@@ -247,7 +259,11 @@ impl OutboxRepository for PostgresOutboxRepository {
         Ok(items)
     }
 
-    async fn reset_recoverable_items(&self, item_type: OutboxItemType, ids: Vec<String>) -> Result<()> {
+    async fn reset_recoverable_items(
+        &self,
+        item_type: OutboxItemType,
+        ids: Vec<String>,
+    ) -> Result<()> {
         if ids.is_empty() {
             return Ok(());
         }
@@ -342,9 +358,7 @@ impl OutboxRepository for PostgresOutboxRepository {
                 safe_name = safe_name,
             );
 
-            sqlx::query(&schema)
-                .execute(&self.pool)
-                .await?;
+            sqlx::query(&schema).execute(&self.pool).await?;
         }
 
         info!(
@@ -375,9 +389,18 @@ mod tests {
     #[test]
     fn test_table_for_type() {
         let config = OutboxTableConfig::default();
-        assert_eq!(config.table_for_type(OutboxItemType::EVENT), "outbox_messages");
-        assert_eq!(config.table_for_type(OutboxItemType::DISPATCH_JOB), "outbox_messages");
-        assert_eq!(config.table_for_type(OutboxItemType::AUDIT_LOG), "outbox_messages");
+        assert_eq!(
+            config.table_for_type(OutboxItemType::EVENT),
+            "outbox_messages"
+        );
+        assert_eq!(
+            config.table_for_type(OutboxItemType::DISPATCH_JOB),
+            "outbox_messages"
+        );
+        assert_eq!(
+            config.table_for_type(OutboxItemType::AUDIT_LOG),
+            "outbox_messages"
+        );
     }
 
     #[test]

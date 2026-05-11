@@ -1,14 +1,12 @@
 //! Disable Application for Client Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::ApplicationClientConfigRepository;
-use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
-};
 use super::events::ApplicationDisabledForClient;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::ApplicationClientConfigRepository;
 
 /// Command for disabling an application for a specific client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,11 +22,11 @@ pub struct DisableApplicationForClientUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> DisableApplicationForClientUseCase<U> {
-    pub fn new(
-        config_repo: Arc<ApplicationClientConfigRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
-        Self { config_repo, unit_of_work }
+    pub fn new(config_repo: Arc<ApplicationClientConfigRepository>, unit_of_work: Arc<U>) -> Self {
+        Self {
+            config_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -37,22 +35,31 @@ impl<U: UnitOfWork> UseCase for DisableApplicationForClientUseCase<U> {
     type Command = DisableApplicationForClientCommand;
     type Event = ApplicationDisabledForClient;
 
-    async fn validate(&self, command: &DisableApplicationForClientCommand) -> Result<(), UseCaseError> {
+    async fn validate(
+        &self,
+        command: &DisableApplicationForClientCommand,
+    ) -> Result<(), UseCaseError> {
         if command.application_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "APPLICATION_ID_REQUIRED", "Application ID is required",
+                "APPLICATION_ID_REQUIRED",
+                "Application ID is required",
             ));
         }
         if command.client_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "CLIENT_ID_REQUIRED", "Client ID is required",
+                "CLIENT_ID_REQUIRED",
+                "Client ID is required",
             ));
         }
 
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DisableApplicationForClientCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DisableApplicationForClientCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -62,7 +69,8 @@ impl<U: UnitOfWork> UseCase for DisableApplicationForClientUseCase<U> {
         ctx: ExecutionContext,
     ) -> UseCaseResult<ApplicationDisabledForClient> {
         // Find existing config
-        let mut config = match self.config_repo
+        let mut config = match self
+            .config_repo
             .find_by_application_and_client(&command.application_id, &command.client_id)
             .await
         {
@@ -75,7 +83,8 @@ impl<U: UnitOfWork> UseCase for DisableApplicationForClientUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch config: {}", e
+                    "Failed to fetch config: {}",
+                    e
                 )));
             }
         };

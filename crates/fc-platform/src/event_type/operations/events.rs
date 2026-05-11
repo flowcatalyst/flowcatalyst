@@ -1,10 +1,10 @@
 //! Event Type Domain Events
 
-use serde::{Deserialize, Serialize};
-use crate::usecase::ExecutionContext;
-use crate::usecase::domain_event::EventMetadata;
-use crate::TsidGenerator;
 use crate::impl_domain_event;
+use crate::usecase::domain_event::EventMetadata;
+use crate::usecase::ExecutionContext;
+use crate::TsidGenerator;
+use serde::{Deserialize, Serialize};
 
 /// Event emitted when a new event type is created.
 ///
@@ -181,7 +181,9 @@ impl EventTypeCreatedBuilder {
     }
 
     pub fn build(self) -> EventTypeCreated {
-        let event_id = self.event_id.unwrap_or_else(TsidGenerator::generate_untyped);
+        let event_id = self
+            .event_id
+            .unwrap_or_else(TsidGenerator::generate_untyped);
         let event_type_id = self.event_type_id.expect("event_type_id is required");
         let subject = format!("platform.eventtype.{}", event_type_id);
         let message_group = format!("platform:eventtype:{}", event_type_id);
@@ -331,17 +333,29 @@ impl SchemaAdded {
     const SPEC_VERSION: &'static str = "1.0";
     const SOURCE: &'static str = "platform:admin";
 
-    pub fn new(ctx: &ExecutionContext, event_type_id: &str, version: &str, mime_type: &str, schema_type: &str) -> Self {
+    pub fn new(
+        ctx: &ExecutionContext,
+        event_type_id: &str,
+        version: &str,
+        mime_type: &str,
+        schema_type: &str,
+    ) -> Self {
         let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.eventtype.{}", event_type_id);
         let message_group = format!("platform:eventtype:{}", event_type_id);
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             event_type_id: event_type_id.to_string(),
             version: version.to_string(),
@@ -371,17 +385,28 @@ impl SchemaFinalised {
     const SPEC_VERSION: &'static str = "1.0";
     const SOURCE: &'static str = "platform:admin";
 
-    pub fn new(ctx: &ExecutionContext, event_type_id: &str, version: &str, deprecated_version: Option<&str>) -> Self {
+    pub fn new(
+        ctx: &ExecutionContext,
+        event_type_id: &str,
+        version: &str,
+        deprecated_version: Option<&str>,
+    ) -> Self {
         let event_id = TsidGenerator::generate_untyped();
         let subject = format!("platform.eventtype.{}", event_type_id);
         let message_group = format!("platform:eventtype:{}", event_type_id);
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             event_type_id: event_type_id.to_string(),
             version: version.to_string(),
@@ -415,10 +440,16 @@ impl SchemaDeprecated {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             event_type_id: event_type_id.to_string(),
             version: version.to_string(),
@@ -451,10 +482,16 @@ impl EventTypeDeleted {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             event_type_id: event_type_id.to_string(),
             code: code.to_string(),
@@ -506,10 +543,16 @@ impl EventTypesSynced {
 
         Self {
             metadata: EventMetadata::new(
-                event_id, Self::EVENT_TYPE, Self::SPEC_VERSION, Self::SOURCE,
-                subject, message_group,
-                ctx.execution_id.clone(), ctx.correlation_id.clone(),
-                ctx.causation_id.clone(), ctx.principal_id.clone(),
+                event_id,
+                Self::EVENT_TYPE,
+                Self::SPEC_VERSION,
+                Self::SOURCE,
+                subject,
+                message_group,
+                ctx.execution_id.clone(),
+                ctx.correlation_id.clone(),
+                ctx.causation_id.clone(),
+                ctx.principal_id.clone(),
             ),
             application_code: application_code.to_string(),
             created,
@@ -574,12 +617,8 @@ mod tests {
     #[test]
     fn test_event_type_updated() {
         let ctx = ExecutionContext::create("user-123");
-        let event = EventTypeUpdated::new(
-            &ctx,
-            "et-123",
-            Some("New Name"),
-            Some("New Description"),
-        );
+        let event =
+            EventTypeUpdated::new(&ctx, "et-123", Some("New Name"), Some("New Description"));
 
         assert_eq!(event.event_type(), "platform:admin:eventtype:updated");
         assert_eq!(event.event_type_id, "et-123");

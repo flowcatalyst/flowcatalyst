@@ -1,15 +1,13 @@
 //! Add Client Note Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::client::entity::ClientNote;
-use crate::ClientRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::ClientNoteAdded;
+use crate::client::entity::ClientNote;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::ClientRepository;
 
 /// Command for adding a note to a client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,7 +25,10 @@ pub struct AddClientNoteUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> AddClientNoteUseCase<U> {
     pub fn new(client_repo: Arc<ClientRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { client_repo, unit_of_work }
+        Self {
+            client_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -39,26 +40,33 @@ impl<U: UnitOfWork> UseCase for AddClientNoteUseCase<U> {
     async fn validate(&self, command: &AddClientNoteCommand) -> Result<(), UseCaseError> {
         if command.client_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "CLIENT_ID_REQUIRED", "Client ID is required",
+                "CLIENT_ID_REQUIRED",
+                "Client ID is required",
             ));
         }
 
         if command.category.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "CATEGORY_REQUIRED", "Note category is required",
+                "CATEGORY_REQUIRED",
+                "Note category is required",
             ));
         }
 
         if command.text.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "TEXT_REQUIRED", "Note text is required",
+                "TEXT_REQUIRED",
+                "Note text is required",
             ));
         }
 
         Ok(())
     }
 
-    async fn authorize(&self, _command: &AddClientNoteCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &AddClientNoteCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         // Authorization handled in handler
         Ok(())
     }
@@ -81,22 +89,16 @@ impl<U: UnitOfWork> UseCase for AddClientNoteUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch client: {}", e
+                    "Failed to fetch client: {}",
+                    e
                 )));
             }
         };
 
-        let note = ClientNote::new(category, text)
-            .with_author(&ctx.principal_id);
+        let note = ClientNote::new(category, text).with_author(&ctx.principal_id);
         client.add_note(note);
 
-        let event = ClientNoteAdded::new(
-            &ctx,
-            &client.id,
-            category,
-            text,
-            &ctx.principal_id,
-        );
+        let event = ClientNoteAdded::new(&ctx, &client.id, category, text, &ctx.principal_id);
 
         self.unit_of_work
             .commit(&client, &*self.client_repo, event, &command)

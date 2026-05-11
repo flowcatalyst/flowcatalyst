@@ -64,8 +64,7 @@ use tracing_subscriber::{
 pub fn init_logging(_service_name: &str) {
     let log_format = std::env::var("LOG_FORMAT").unwrap_or_default();
 
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     if log_format.eq_ignore_ascii_case("json") {
         init_json_logging(env_filter);
@@ -88,7 +87,7 @@ fn init_json_logging(env_filter: EnvFilter) {
                 .with_thread_ids(false)
                 .with_target(true)
                 .flatten_event(true)
-                .with_span_events(FmtSpan::CLOSE)
+                .with_span_events(FmtSpan::CLOSE),
         )
         .init();
 }
@@ -103,7 +102,7 @@ fn init_text_logging(env_filter: EnvFilter) {
                 .with_thread_ids(false)
                 .with_file(false)
                 .with_line_number(false)
-                .with_ansi(true)
+                .with_ansi(true),
         )
         .init();
 }
@@ -120,8 +119,7 @@ mod tests {
     #[test]
     fn test_env_filter_parsing() {
         // Just verify the filter can be created
-        let filter = EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new("info"));
+        let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
         drop(filter);
     }
 }

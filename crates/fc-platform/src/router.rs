@@ -4,57 +4,108 @@
 //! fc-platform-server, fc-dev). Each binary still constructs the state
 //! objects and adds its own middleware/static-file layers on top.
 
-use axum::{routing::get, response::{Json, IntoResponse}, Router};
-use utoipa::openapi::{ObjectBuilder, schema::Type};
+use axum::{
+    response::{IntoResponse, Json},
+    routing::get,
+    Router,
+};
+use utoipa::openapi::{schema::Type, ObjectBuilder};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::api::{
-    // OpenApiRouter routes
-    events_router, events_api_router, EventsState,
-    event_types_router, EventTypesState,
-    dispatch_jobs_router, dispatch_jobs_api_router, DispatchJobsState,
-    scheduled_jobs_router, ScheduledJobsState,
-    filter_options_router, FilterOptionsState,
-    clients_router, ClientsState,
-    principals_router, PrincipalsState,
-    roles_router, RolesState,
-    subscriptions_router, SubscriptionsState,
-    oauth_clients_router, OAuthClientsState,
-    audit_logs_router, AuditLogsState,
-    monitoring_router, MonitoringState,
-    auth_router, AuthState,
+    admin_platform_config_router,
+    anchor_domains_router,
+    application_roles_sdk_router,
+    applications_router,
+    audit_logs_router,
+    auth_router,
+    bff_dashboard_router,
+    bff_event_types_router,
     // Plain Router routes
-    bff_roles_router, BffRolesState,
-    bff_event_types_router, BffEventTypesState,
-    bff_scheduled_jobs_router, BffScheduledJobsState,
-    bff_dashboard_router, BffDashboardState,
-    debug_events_router, debug_dispatch_jobs_router, DebugState,
-    anchor_domains_router, client_auth_configs_router, idp_role_mappings_router, AuthConfigState,
-    applications_router, ApplicationsState,
-    dispatch_pools_router, DispatchPoolsState,
-    service_accounts_router, ServiceAccountsState,
-    connections_router, ConnectionsState,
-    cors_router, CorsState,
-    identity_providers_router, IdentityProvidersState,
-    email_domain_mappings_router, EmailDomainMappingsState,
-    admin_platform_config_router, PlatformConfigState,
-    config_access_router, ConfigAccessState,
-    login_attempts_router, LoginAttemptsState,
-    me_router, MeState,
-    sdk_events_batch_router, SdkEventsState,
-    sdk_dispatch_jobs_batch_router, SdkDispatchJobsState,
-    oidc_login_router, OidcLoginApiState,
-    oauth_router, OAuthState,
-    well_known_router, WellKnownState,
-    client_selection_router, ClientSelectionState,
-    application_roles_sdk_router, ApplicationRolesSdkState,
-    sdk_sync_router, SdkSyncState,
-    sdk_audit_batch_router, SdkAuditBatchState,
+    bff_roles_router,
+    bff_scheduled_jobs_router,
+    client_auth_configs_router,
+    client_selection_router,
+    clients_router,
+    config_access_router,
+    connections_router,
+    cors_router,
+    debug_dispatch_jobs_router,
+    debug_events_router,
+    dispatch_jobs_api_router,
+    dispatch_jobs_router,
+    dispatch_pools_router,
+    dispatch_process_router,
+    email_domain_mappings_router,
+    event_types_router,
+    events_api_router,
+    // OpenApiRouter routes
+    events_router,
+    filter_options_router,
+    identity_providers_router,
+    idp_role_mappings_router,
+    login_attempts_router,
+    me_router,
+    monitoring_router,
+    oauth_clients_router,
+    oauth_router,
+    oidc_login_router,
+    password_reset_router,
     platform_config_router,
-    public_router, PublicApiState,
-    password_reset_router, PasswordResetApiState,
-    dispatch_process_router, DispatchProcessState,
+    principals_router,
+    public_router,
+    roles_router,
+    scheduled_jobs_router,
+    sdk_audit_batch_router,
+    sdk_dispatch_jobs_batch_router,
+    sdk_events_batch_router,
+    sdk_sync_router,
+    service_accounts_router,
+    subscriptions_router,
+    well_known_router,
+    ApplicationRolesSdkState,
+    ApplicationsState,
+    AuditLogsState,
+    AuthConfigState,
+    AuthState,
+    BffDashboardState,
+    BffEventTypesState,
+    BffRolesState,
+    BffScheduledJobsState,
+    ClientSelectionState,
+    ClientsState,
+    ConfigAccessState,
+    ConnectionsState,
+    CorsState,
+    DebugState,
+    DispatchJobsState,
+    DispatchPoolsState,
+    DispatchProcessState,
+    EmailDomainMappingsState,
+    EventTypesState,
+    EventsState,
+    FilterOptionsState,
+    IdentityProvidersState,
+    LoginAttemptsState,
+    MeState,
+    MonitoringState,
+    OAuthClientsState,
+    OAuthState,
+    OidcLoginApiState,
+    PasswordResetApiState,
+    PlatformConfigState,
+    PrincipalsState,
+    PublicApiState,
+    RolesState,
+    ScheduledJobsState,
+    SdkAuditBatchState,
+    SdkDispatchJobsState,
+    SdkEventsState,
+    SdkSyncState,
+    ServiceAccountsState,
+    SubscriptionsState,
+    WellKnownState,
 };
 use crate::shared::rate_limit_middleware::{
     rate_limit_per_ip, IpRateLimiterState, RateLimitConfig,
@@ -214,13 +265,10 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
         // limits compose with — they don't replace — the per-account
         // backoff in `auth::login_backoff`.
         let auth_ip_limit = IpRateLimiterState::new(&RateLimitConfig::auth_default_from_env());
-        let oauth_ip_limit = IpRateLimiterState::new(&RateLimitConfig::oauth_token_default_from_env());
-        let auth_layer = axum::middleware::from_fn_with_state(
-            auth_ip_limit, rate_limit_per_ip,
-        );
-        let oauth_layer = axum::middleware::from_fn_with_state(
-            oauth_ip_limit, rate_limit_per_ip,
-        );
+        let oauth_ip_limit =
+            IpRateLimiterState::new(&RateLimitConfig::oauth_token_default_from_env());
+        let auth_layer = axum::middleware::from_fn_with_state(auth_ip_limit, rate_limit_per_ip);
+        let oauth_layer = axum::middleware::from_fn_with_state(oauth_ip_limit, rate_limit_per_ip);
 
         // 1. OpenApiRouter routes (auto-collected in Swagger spec)
         let (router, mut openapi) = OpenApiRouter::new()
@@ -236,23 +284,44 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
             .nest(PATH_API_EVENTS, events_api_router(self.events.clone()))
             .nest(PATH_BFF_EVENTS, events_router(self.events))
             .nest(PATH_API_EVENT_TYPES, event_types_router(self.event_types))
-            .nest(PATH_API_SCHEDULED_JOBS, scheduled_jobs_router(self.scheduled_jobs))
+            .nest(
+                PATH_API_SCHEDULED_JOBS,
+                scheduled_jobs_router(self.scheduled_jobs),
+            )
             // Cursor-paginated read handlers serve both API + BFF tiers.
             // The API tier excludes `batch_create_dispatch_jobs` so it
             // doesn't collide with `sdk_dispatch_jobs_batch_router::POST
             // /batch` mounted at the same prefix below.
-            .nest(PATH_API_DISPATCH_JOBS, dispatch_jobs_api_router(self.dispatch_jobs.clone()))
-            .nest(PATH_BFF_DISPATCH_JOBS, dispatch_jobs_router(self.dispatch_jobs))
-            .nest(PATH_BFF_FILTER_OPTIONS, filter_options_router(self.filter_options))
+            .nest(
+                PATH_API_DISPATCH_JOBS,
+                dispatch_jobs_api_router(self.dispatch_jobs.clone()),
+            )
+            .nest(
+                PATH_BFF_DISPATCH_JOBS,
+                dispatch_jobs_router(self.dispatch_jobs),
+            )
+            .nest(
+                PATH_BFF_FILTER_OPTIONS,
+                filter_options_router(self.filter_options),
+            )
             .nest(PATH_API_CLIENTS, clients_router(self.clients))
             .nest(PATH_API_PRINCIPALS, principals_router(self.principals))
             .nest(PATH_API_ROLES, roles_router(self.roles))
-            .nest(PATH_API_SUBSCRIPTIONS, subscriptions_router(self.subscriptions))
-            .nest(PATH_API_OAUTH_CLIENTS, oauth_clients_router(self.oauth_clients))
+            .nest(
+                PATH_API_SUBSCRIPTIONS,
+                subscriptions_router(self.subscriptions),
+            )
+            .nest(
+                PATH_API_OAUTH_CLIENTS,
+                oauth_clients_router(self.oauth_clients),
+            )
             .nest(PATH_API_AUDIT_LOGS, audit_logs_router(self.audit_logs))
             .nest(PATH_MONITORING, monitoring_router(self.monitoring))
             .nest(PATH_AUTH, auth_router(self.auth).layer(auth_layer.clone()))
-            .nest(PATH_AUTH, crate::webauthn::webauthn_router(self.webauthn).layer(auth_layer.clone()))
+            .nest(
+                PATH_AUTH,
+                crate::webauthn::webauthn_router(self.webauthn).layer(auth_layer.clone()),
+            )
             .split_for_parts();
 
         // 2. Hand-curated schemas for types referenced via #[serde(flatten)] or
@@ -277,9 +346,7 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
                         "size",
                         ObjectBuilder::new()
                             .schema_type(Type::Integer)
-                            .description(Some(
-                                "Page size. Aliases: limit, pageSize, page_size.",
-                            )),
+                            .description(Some("Page size. Aliases: limit, pageSize, page_size.")),
                     )
                     .into(),
             );
@@ -293,7 +360,9 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
                         "error",
                         ObjectBuilder::new()
                             .schema_type(Type::String)
-                            .description(Some("Machine-readable error code (e.g. ROLE_HAS_ASSIGNMENTS)")),
+                            .description(Some(
+                                "Machine-readable error code (e.g. ROLE_HAS_ASSIGNMENTS)",
+                            )),
                     )
                     .property(
                         "message",
@@ -318,40 +387,109 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
             .merge(router)
             // BFF
             .nest(PATH_BFF_ROLES, bff_roles_router(self.bff_roles).into())
-            .nest(PATH_BFF_EVENT_TYPES, bff_event_types_router(self.bff_event_types).into())
-            .nest(PATH_BFF_SCHEDULED_JOBS, bff_scheduled_jobs_router(self.bff_scheduled_jobs))
+            .nest(
+                PATH_BFF_EVENT_TYPES,
+                bff_event_types_router(self.bff_event_types).into(),
+            )
+            .nest(
+                PATH_BFF_SCHEDULED_JOBS,
+                bff_scheduled_jobs_router(self.bff_scheduled_jobs),
+            )
             .nest(PATH_BFF_DASHBOARD, bff_dashboard_router(self.bff_dashboard))
-            .nest(PATH_BFF_DEBUG_EVENTS, debug_events_router(self.debug.clone()))
-            .nest(PATH_BFF_DEBUG_DISPATCH_JOBS, debug_dispatch_jobs_router(self.debug))
+            .nest(
+                PATH_BFF_DEBUG_EVENTS,
+                debug_events_router(self.debug.clone()),
+            )
+            .nest(
+                PATH_BFF_DEBUG_DISPATCH_JOBS,
+                debug_dispatch_jobs_router(self.debug),
+            )
             // API — auth config
-            .nest(PATH_API_ANCHOR_DOMAINS, anchor_domains_router(self.auth_config.clone()))
-            .nest(PATH_API_AUTH_CONFIGS, client_auth_configs_router(self.auth_config.clone()))
-            .nest(PATH_API_IDP_ROLE_MAPPINGS, idp_role_mappings_router(self.auth_config))
+            .nest(
+                PATH_API_ANCHOR_DOMAINS,
+                anchor_domains_router(self.auth_config.clone()),
+            )
+            .nest(
+                PATH_API_AUTH_CONFIGS,
+                client_auth_configs_router(self.auth_config.clone()),
+            )
+            .nest(
+                PATH_API_IDP_ROLE_MAPPINGS,
+                idp_role_mappings_router(self.auth_config),
+            )
             // API — domain aggregates
-            .nest(PATH_API_APPLICATIONS, applications_router(self.applications))
-            .nest(PATH_API_DISPATCH_POOLS, dispatch_pools_router(self.dispatch_pools))
-            .nest(PATH_API_SERVICE_ACCOUNTS, service_accounts_router(self.service_accounts))
-            .nest(PATH_API_CONNECTIONS, connections_router(self.connections).into())
+            .nest(
+                PATH_API_APPLICATIONS,
+                applications_router(self.applications),
+            )
+            .nest(
+                PATH_API_DISPATCH_POOLS,
+                dispatch_pools_router(self.dispatch_pools),
+            )
+            .nest(
+                PATH_API_SERVICE_ACCOUNTS,
+                service_accounts_router(self.service_accounts),
+            )
+            .nest(
+                PATH_API_CONNECTIONS,
+                connections_router(self.connections).into(),
+            )
             .nest(PATH_API_CORS, cors_router(self.cors))
-            .nest(PATH_API_IDENTITY_PROVIDERS, identity_providers_router(self.identity_providers))
-            .nest(PATH_API_EMAIL_DOMAIN_MAPPINGS, email_domain_mappings_router(self.email_domain_mappings).into())
-            .nest(PATH_API_CONFIG, admin_platform_config_router(self.platform_config).into())
-            .nest(PATH_API_CONFIG_ACCESS, config_access_router(self.config_access).into())
-            .nest(PATH_API_LOGIN_ATTEMPTS, login_attempts_router(self.login_attempts))
+            .nest(
+                PATH_API_IDENTITY_PROVIDERS,
+                identity_providers_router(self.identity_providers),
+            )
+            .nest(
+                PATH_API_EMAIL_DOMAIN_MAPPINGS,
+                email_domain_mappings_router(self.email_domain_mappings).into(),
+            )
+            .nest(
+                PATH_API_CONFIG,
+                admin_platform_config_router(self.platform_config).into(),
+            )
+            .nest(
+                PATH_API_CONFIG_ACCESS,
+                config_access_router(self.config_access).into(),
+            )
+            .nest(
+                PATH_API_LOGIN_ATTEMPTS,
+                login_attempts_router(self.login_attempts),
+            )
             // Auth
             .nest(PATH_API_ME, me_router(self.me))
-            .nest(PATH_AUTH, oidc_login_router(self.oidc_login).layer(auth_layer.clone()))
-            .nest(PATH_OAUTH, oauth_router(self.oauth).layer(oauth_layer.clone()))
+            .nest(
+                PATH_AUTH,
+                oidc_login_router(self.oidc_login).layer(auth_layer.clone()),
+            )
+            .nest(
+                PATH_OAUTH,
+                oauth_router(self.oauth).layer(oauth_layer.clone()),
+            )
             .nest(PATH_WELL_KNOWN, well_known_router(self.well_known))
-            .nest(PATH_AUTH_CLIENT, client_selection_router(self.client_selection).layer(auth_layer.clone()))
-            .nest(PATH_AUTH_PASSWORD_RESET, password_reset_router(self.password_reset).layer(auth_layer.clone()))
+            .nest(
+                PATH_AUTH_CLIENT,
+                client_selection_router(self.client_selection).layer(auth_layer.clone()),
+            )
+            .nest(
+                PATH_AUTH_PASSWORD_RESET,
+                password_reset_router(self.password_reset).layer(auth_layer.clone()),
+            )
             // Batch ingest endpoints (merged into resource routers)
             .nest(PATH_API_EVENTS, sdk_events_batch_router(self.sdk_events))
-            .nest(PATH_API_DISPATCH_JOBS, sdk_dispatch_jobs_batch_router(self.sdk_dispatch_jobs))
+            .nest(
+                PATH_API_DISPATCH_JOBS,
+                sdk_dispatch_jobs_batch_router(self.sdk_dispatch_jobs),
+            )
             // Shared API
-            .nest(PATH_API_APPLICATIONS, application_roles_sdk_router(self.application_roles_sdk))
+            .nest(
+                PATH_API_APPLICATIONS,
+                application_roles_sdk_router(self.application_roles_sdk),
+            )
             .nest(PATH_API_APPLICATIONS, sdk_sync_router(self.sdk_sync))
-            .nest(PATH_API_AUDIT_LOGS, sdk_audit_batch_router(self.sdk_audit_batch))
+            .nest(
+                PATH_API_AUDIT_LOGS,
+                sdk_audit_batch_router(self.sdk_audit_batch),
+            )
             .nest(PATH_API_CONFIG, platform_config_router())
             // Public
             .nest(PATH_API_PUBLIC, public_router(self.public));
@@ -373,10 +511,10 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
         let app = if let Some(ref static_dir) = self.static_dir {
             let index_path = std::path::PathBuf::from(static_dir).join("index.html");
             if index_path.exists() {
-                use tower_http::services::{ServeDir, ServeFile};
-                use tower_http::set_header::SetResponseHeaderLayer;
                 use axum::http::header::CACHE_CONTROL;
                 use axum::http::HeaderValue;
+                use tower_http::services::{ServeDir, ServeFile};
+                use tower_http::set_header::SetResponseHeaderLayer;
 
                 tracing::info!(dir = %static_dir, "Serving static frontend files with SPA fallback");
 
@@ -401,14 +539,12 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
                     }
                 });
 
-                app
-                    .route("/auth/login", spa_handler.clone())
+                app.route("/auth/login", spa_handler.clone())
                     .route("/auth/forgot-password", spa_handler.clone())
                     .route("/auth/reset-password", spa_handler)
                     .nest_service("/assets", assets_service)
                     .fallback_service(
-                        ServeDir::new(static_dir)
-                            .fallback(ServeFile::new(index_path))
+                        ServeDir::new(static_dir).fallback(ServeFile::new(index_path)),
                     )
             } else {
                 tracing::warn!(dir = %static_dir, "Static dir set but index.html not found");

@@ -28,8 +28,16 @@ async fn client_scoped_token_cannot_write_anchor_only_resources() {
 
     // (method, path, body) — each expected to 403.
     let attempts: &[(&str, &str, serde_json::Value)] = &[
-        ("POST", "/api/clients", json!({ "identifier": "x", "name": "X" })),
-        ("POST", "/api/anchor-domains", json!({ "domain": "x.example.com" })),
+        (
+            "POST",
+            "/api/clients",
+            json!({ "identifier": "x", "name": "X" }),
+        ),
+        (
+            "POST",
+            "/api/anchor-domains",
+            json!({ "domain": "x.example.com" }),
+        ),
         (
             "POST",
             "/api/oauth-clients",

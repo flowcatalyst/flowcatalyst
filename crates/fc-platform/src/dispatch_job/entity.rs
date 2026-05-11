@@ -3,10 +3,10 @@
 //! Represents async delivery of an event/task to a target endpoint.
 //! Tracks full lifecycle with attempt history.
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 pub use fc_common::DispatchMode;
 pub use fc_common::DispatchStatus;
+use serde::{Deserialize, Serialize};
 
 /// Dispatch job kind
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,13 +20,18 @@ pub enum DispatchKind {
     Task,
 }
 
-
 impl DispatchKind {
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Event => "EVENT", Self::Task => "TASK" }
+        match self {
+            Self::Event => "EVENT",
+            Self::Task => "TASK",
+        }
     }
     pub fn from_str(s: &str) -> Self {
-        match s { "TASK" => Self::Task, _ => Self::Event }
+        match s {
+            "TASK" => Self::Task,
+            _ => Self::Event,
+        }
     }
 }
 
@@ -39,10 +44,13 @@ pub enum DispatchProtocol {
     HttpWebhook,
 }
 
-
 impl DispatchProtocol {
-    pub fn as_str(&self) -> &'static str { "HTTP_WEBHOOK" }
-    pub fn from_str(_s: &str) -> Self { Self::HttpWebhook }
+    pub fn as_str(&self) -> &'static str {
+        "HTTP_WEBHOOK"
+    }
+    pub fn from_str(_s: &str) -> Self {
+        Self::HttpWebhook
+    }
 }
 
 /// Retry strategy for failed jobs
@@ -58,7 +66,6 @@ pub enum RetryStrategy {
     #[default]
     ExponentialBackoff,
 }
-
 
 impl RetryStrategy {
     pub fn as_str(&self) -> &'static str {
@@ -179,7 +186,12 @@ impl DispatchAttempt {
         self
     }
 
-    pub fn complete_failure(mut self, error_message: String, error_type: ErrorType, response_code: Option<u16>) -> Self {
+    pub fn complete_failure(
+        mut self,
+        error_message: String,
+        error_type: ErrorType,
+        response_code: Option<u16>,
+    ) -> Self {
         let now = Utc::now();
         self.completed_at = Some(now);
         self.duration_millis = Some((now - self.attempted_at).num_milliseconds());
@@ -211,7 +223,6 @@ pub struct DispatchJob {
     pub external_id: Option<String>,
 
     // === Classification ===
-
     /// Event or Task
     #[serde(default)]
     pub kind: DispatchKind,
@@ -228,7 +239,6 @@ pub struct DispatchJob {
     pub subject: Option<String>,
 
     // === Target ===
-
     /// Target URL for webhook delivery
     pub target_url: String,
 
@@ -237,7 +247,6 @@ pub struct DispatchJob {
     pub protocol: DispatchProtocol,
 
     // === Payload ===
-
     /// Payload to deliver (JSON string)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payload: Option<String>,
@@ -251,7 +260,6 @@ pub struct DispatchJob {
     pub data_only: bool,
 
     // === Context ===
-
     /// Triggering event ID (for EVENT kind)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event_id: Option<String>,
@@ -273,7 +281,6 @@ pub struct DispatchJob {
     pub service_account_id: Option<String>,
 
     // === Dispatch behavior ===
-
     /// Rate limiting pool
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dispatch_pool_id: Option<String>,
@@ -291,7 +298,6 @@ pub struct DispatchJob {
     pub sequence: i32,
 
     // === Execution settings ===
-
     /// Timeout in seconds for HTTP call
     #[serde(default = "default_timeout")]
     pub timeout_seconds: u32,
@@ -309,7 +315,6 @@ pub struct DispatchJob {
     pub retry_strategy: RetryStrategy,
 
     // === Status tracking ===
-
     /// Current status
     #[serde(default)]
     pub status: DispatchStatus,
@@ -327,7 +332,6 @@ pub struct DispatchJob {
     pub attempts: Vec<DispatchAttempt>,
 
     // === Metadata ===
-
     /// Custom metadata
     #[serde(default)]
     pub metadata: Vec<DispatchMetadata>,
@@ -337,7 +341,6 @@ pub struct DispatchJob {
     pub idempotency_key: Option<String>,
 
     // === Timestamps ===
-
     /// When the job was created
     pub created_at: DateTime<Utc>,
 
@@ -516,8 +519,8 @@ impl DispatchJob {
     /// Record a successful attempt and complete the job
     pub fn complete_success(&mut self, response_code: u16, response_body: Option<String>) {
         self.attempt_count += 1;
-        let attempt = DispatchAttempt::new(self.attempt_count)
-            .complete_success(response_code, response_body);
+        let attempt =
+            DispatchAttempt::new(self.attempt_count).complete_success(response_code, response_body);
         self.attempts.push(attempt);
 
         self.status = DispatchStatus::Completed;
@@ -529,10 +532,18 @@ impl DispatchJob {
     }
 
     /// Record a failed attempt
-    pub fn record_failure(&mut self, error_message: String, error_type: ErrorType, response_code: Option<u16>) {
+    pub fn record_failure(
+        &mut self,
+        error_message: String,
+        error_type: ErrorType,
+        response_code: Option<u16>,
+    ) {
         self.attempt_count += 1;
-        let attempt = DispatchAttempt::new(self.attempt_count)
-            .complete_failure(error_message.clone(), error_type, response_code);
+        let attempt = DispatchAttempt::new(self.attempt_count).complete_failure(
+            error_message.clone(),
+            error_type,
+            response_code,
+        );
         self.attempts.push(attempt);
 
         self.last_error = Some(error_message);
@@ -593,8 +604,16 @@ mod tests {
         );
 
         assert!(!job.id.is_empty());
-        assert_eq!(job.id.len(), 13, "Untyped ID should be 13 chars, got: {}", job.id.len());
-        assert!(!job.id.contains('_'), "Untyped ID should not contain underscore prefix");
+        assert_eq!(
+            job.id.len(),
+            13,
+            "Untyped ID should be 13 chars, got: {}",
+            job.id.len()
+        );
+        assert!(
+            !job.id.contains('_'),
+            "Untyped ID should not contain underscore prefix"
+        );
         assert_eq!(job.kind, DispatchKind::Event);
         assert_eq!(job.code, "orders:fulfillment:shipment:shipped");
         assert_eq!(job.source, Some("my-app".to_string()));
@@ -681,11 +700,23 @@ mod tests {
     fn test_dispatch_status_from_str() {
         assert_eq!(DispatchStatus::from_str("PENDING"), DispatchStatus::Pending);
         assert_eq!(DispatchStatus::from_str("QUEUED"), DispatchStatus::Queued);
-        assert_eq!(DispatchStatus::from_str("PROCESSING"), DispatchStatus::Processing);
-        assert_eq!(DispatchStatus::from_str("IN_PROGRESS"), DispatchStatus::Processing);
-        assert_eq!(DispatchStatus::from_str("COMPLETED"), DispatchStatus::Completed);
+        assert_eq!(
+            DispatchStatus::from_str("PROCESSING"),
+            DispatchStatus::Processing
+        );
+        assert_eq!(
+            DispatchStatus::from_str("IN_PROGRESS"),
+            DispatchStatus::Processing
+        );
+        assert_eq!(
+            DispatchStatus::from_str("COMPLETED"),
+            DispatchStatus::Completed
+        );
         assert_eq!(DispatchStatus::from_str("FAILED"), DispatchStatus::Failed);
-        assert_eq!(DispatchStatus::from_str("CANCELLED"), DispatchStatus::Cancelled);
+        assert_eq!(
+            DispatchStatus::from_str("CANCELLED"),
+            DispatchStatus::Cancelled
+        );
         assert_eq!(DispatchStatus::from_str("EXPIRED"), DispatchStatus::Expired);
         assert_eq!(DispatchStatus::from_str("unknown"), DispatchStatus::Pending);
     }
@@ -706,7 +737,12 @@ mod tests {
             DispatchStatus::Cancelled,
             DispatchStatus::Expired,
         ] {
-            assert_eq!(DispatchStatus::from_str(s.as_str()), s, "Roundtrip failed for {:?}", s);
+            assert_eq!(
+                DispatchStatus::from_str(s.as_str()),
+                s,
+                "Roundtrip failed for {:?}",
+                s
+            );
         }
     }
 
@@ -737,8 +773,14 @@ mod tests {
 
     #[test]
     fn test_dispatch_protocol_from_str() {
-        assert_eq!(DispatchProtocol::from_str("HTTP_WEBHOOK"), DispatchProtocol::HttpWebhook);
-        assert_eq!(DispatchProtocol::from_str("anything"), DispatchProtocol::HttpWebhook);
+        assert_eq!(
+            DispatchProtocol::from_str("HTTP_WEBHOOK"),
+            DispatchProtocol::HttpWebhook
+        );
+        assert_eq!(
+            DispatchProtocol::from_str("anything"),
+            DispatchProtocol::HttpWebhook
+        );
     }
 
     #[test]
@@ -757,13 +799,31 @@ mod tests {
 
     #[test]
     fn test_retry_strategy_from_str() {
-        assert_eq!(RetryStrategy::from_str("immediate"), RetryStrategy::Immediate);
-        assert_eq!(RetryStrategy::from_str("IMMEDIATE"), RetryStrategy::Immediate);
+        assert_eq!(
+            RetryStrategy::from_str("immediate"),
+            RetryStrategy::Immediate
+        );
+        assert_eq!(
+            RetryStrategy::from_str("IMMEDIATE"),
+            RetryStrategy::Immediate
+        );
         assert_eq!(RetryStrategy::from_str("fixed"), RetryStrategy::FixedDelay);
-        assert_eq!(RetryStrategy::from_str("FIXED_DELAY"), RetryStrategy::FixedDelay);
-        assert_eq!(RetryStrategy::from_str("exponential"), RetryStrategy::ExponentialBackoff);
-        assert_eq!(RetryStrategy::from_str("EXPONENTIAL_BACKOFF"), RetryStrategy::ExponentialBackoff);
-        assert_eq!(RetryStrategy::from_str("unknown"), RetryStrategy::ExponentialBackoff);
+        assert_eq!(
+            RetryStrategy::from_str("FIXED_DELAY"),
+            RetryStrategy::FixedDelay
+        );
+        assert_eq!(
+            RetryStrategy::from_str("exponential"),
+            RetryStrategy::ExponentialBackoff
+        );
+        assert_eq!(
+            RetryStrategy::from_str("EXPONENTIAL_BACKOFF"),
+            RetryStrategy::ExponentialBackoff
+        );
+        assert_eq!(
+            RetryStrategy::from_str("unknown"),
+            RetryStrategy::ExponentialBackoff
+        );
     }
 
     #[test]
@@ -777,7 +837,12 @@ mod tests {
     fn test_dispatch_mode_roundtrip() {
         for mode in [DispatchMode::Immediate, DispatchMode::BlockOnError] {
             let s = mode.as_str();
-            assert_eq!(DispatchMode::from_str(s), mode, "Roundtrip failed for {:?}", mode);
+            assert_eq!(
+                DispatchMode::from_str(s),
+                mode,
+                "Roundtrip failed for {:?}",
+                mode
+            );
         }
     }
 
@@ -820,7 +885,11 @@ mod tests {
         // max_retries = 3, so first failure should schedule retry
         job.record_failure("Connection timeout".to_string(), ErrorType::Timeout, None);
 
-        assert_eq!(job.status, DispatchStatus::Pending, "Should be back to Pending for retry");
+        assert_eq!(
+            job.status,
+            DispatchStatus::Pending,
+            "Should be back to Pending for retry"
+        );
         assert_eq!(job.attempt_count, 1);
         assert_eq!(job.last_error, Some("Connection timeout".to_string()));
         assert!(job.scheduled_for.is_some(), "Should have scheduled retry");
@@ -878,7 +947,8 @@ mod tests {
 
     #[test]
     fn test_parse_code_parts() {
-        let job = DispatchJob::for_event("e1", "orders:fulfillment:shipment:shipped", "s", "u", "p");
+        let job =
+            DispatchJob::for_event("e1", "orders:fulfillment:shipment:shipped", "s", "u", "p");
         let (app, sub, agg) = job.parse_code_parts();
         assert_eq!(app, Some("orders".to_string()));
         assert_eq!(sub, Some("fulfillment".to_string()));
@@ -908,8 +978,7 @@ mod tests {
 
     #[test]
     fn test_dispatch_attempt_complete_success() {
-        let attempt = DispatchAttempt::new(1)
-            .complete_success(200, Some("OK".to_string()));
+        let attempt = DispatchAttempt::new(1).complete_success(200, Some("OK".to_string()));
         assert!(attempt.success);
         assert!(attempt.completed_at.is_some());
         assert_eq!(attempt.response_code, Some(200));
@@ -919,8 +988,11 @@ mod tests {
 
     #[test]
     fn test_dispatch_attempt_complete_failure() {
-        let attempt = DispatchAttempt::new(2)
-            .complete_failure("timeout".to_string(), ErrorType::Timeout, Some(504));
+        let attempt = DispatchAttempt::new(2).complete_failure(
+            "timeout".to_string(),
+            ErrorType::Timeout,
+            Some(504),
+        );
         assert!(!attempt.success);
         assert!(attempt.completed_at.is_some());
         assert_eq!(attempt.error_message, Some("timeout".to_string()));
@@ -932,8 +1004,14 @@ mod tests {
 
     #[test]
     fn test_dispatch_job_read_from_job() {
-        let job = DispatchJob::for_event("e1", "orders:billing:invoice:created", "app", "https://x.com", "{}")
-            .with_client_id("c1");
+        let job = DispatchJob::for_event(
+            "e1",
+            "orders:billing:invoice:created",
+            "app",
+            "https://x.com",
+            "{}",
+        )
+        .with_client_id("c1");
         let read = DispatchJobRead::from(&job);
 
         assert_eq!(read.id, job.id);
@@ -988,7 +1066,11 @@ mod tests {
         let scheduled = job.scheduled_for.expect("retry scheduled");
         // Immediate → delay 0. Allow 5s slack for test clock.
         let diff = (scheduled - before).num_seconds();
-        assert!((0..5).contains(&diff), "immediate delay should be ~0, got {}s", diff);
+        assert!(
+            (0..5).contains(&diff),
+            "immediate delay should be ~0, got {}s",
+            diff
+        );
     }
 
     #[test]
@@ -999,7 +1081,11 @@ mod tests {
         let scheduled = job.scheduled_for.expect("retry scheduled");
         let diff = (scheduled - before).num_seconds();
         // FixedDelay = 5s. Allow 1s slack either side.
-        assert!((4..=7).contains(&diff), "fixed delay should be ~5s, got {}s", diff);
+        assert!(
+            (4..=7).contains(&diff),
+            "fixed delay should be ~5s, got {}s",
+            diff
+        );
     }
 
     #[test]
@@ -1013,17 +1099,29 @@ mod tests {
         let t0 = Utc::now();
         job.record_failure("boom".into(), ErrorType::HttpError, None);
         let d1 = (job.scheduled_for.unwrap() - t0).num_seconds();
-        assert!((4..=7).contains(&d1), "attempt 1 delay should be ~5s, got {}s", d1);
+        assert!(
+            (4..=7).contains(&d1),
+            "attempt 1 delay should be ~5s, got {}s",
+            d1
+        );
 
         let t1 = Utc::now();
         job.record_failure("boom".into(), ErrorType::HttpError, None);
         let d2 = (job.scheduled_for.unwrap() - t1).num_seconds();
-        assert!((23..=28).contains(&d2), "attempt 2 delay should be ~25s, got {}s", d2);
+        assert!(
+            (23..=28).contains(&d2),
+            "attempt 2 delay should be ~25s, got {}s",
+            d2
+        );
 
         let t2 = Utc::now();
         job.record_failure("boom".into(), ErrorType::HttpError, None);
         let d3 = (job.scheduled_for.unwrap() - t2).num_seconds();
-        assert!((120..=130).contains(&d3), "attempt 3 delay should be ~125s, got {}s", d3);
+        assert!(
+            (120..=130).contains(&d3),
+            "attempt 3 delay should be ~125s, got {}s",
+            d3
+        );
     }
 
     #[test]
@@ -1038,7 +1136,11 @@ mod tests {
         job.record_failure("boom".into(), ErrorType::HttpError, None);
         let d = (job.scheduled_for.unwrap() - t).num_seconds();
         // After 7 failures, attempt_count=7 but .min(5) keeps delay at 5^5 = 3125s.
-        assert!((3100..=3150).contains(&d), "capped delay should be ~3125s, got {}s", d);
+        assert!(
+            (3100..=3150).contains(&d),
+            "capped delay should be ~3125s, got {}s",
+            d
+        );
     }
 
     // ── Attempt-list integrity through a failure→success sequence ─────────
@@ -1086,7 +1188,10 @@ mod tests {
         assert!(!job.can_retry(), "exhausted attempts must block retry");
 
         job.attempt_count = 1;
-        assert!(job.can_retry(), "with budget remaining, retry should be allowed");
+        assert!(
+            job.can_retry(),
+            "with budget remaining, retry should be allowed"
+        );
     }
 
     // ── Exhaustion transitions status to Failed, not Pending ──────────────
@@ -1099,12 +1204,15 @@ mod tests {
         assert!(job.completed_at.is_none());
 
         job.record_failure("second".into(), ErrorType::HttpError, Some(500));
-        assert_eq!(job.status, DispatchStatus::Failed, "final failure is terminal");
+        assert_eq!(
+            job.status,
+            DispatchStatus::Failed,
+            "final failure is terminal"
+        );
         assert!(job.completed_at.is_some());
         assert_eq!(job.last_error, Some("second".into()));
     }
 }
-
 
 /// Dispatch job read projection - optimized for queries (matches Java DispatchJobRead)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1202,4 +1310,3 @@ impl From<&DispatchJob> for DispatchJobRead {
         }
     }
 }
-

@@ -1,15 +1,13 @@
 //! Archive Dispatch Pool Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::DispatchPoolStatus;
-use crate::DispatchPoolRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::DispatchPoolArchived;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::DispatchPoolRepository;
+use crate::DispatchPoolStatus;
 
 /// Command for archiving a dispatch pool.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,10 +24,7 @@ pub struct ArchiveDispatchPoolUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> ArchiveDispatchPoolUseCase<U> {
-    pub fn new(
-        dispatch_pool_repo: Arc<DispatchPoolRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
+    pub fn new(dispatch_pool_repo: Arc<DispatchPoolRepository>, unit_of_work: Arc<U>) -> Self {
         Self {
             dispatch_pool_repo,
             unit_of_work,
@@ -46,7 +41,11 @@ impl<U: UnitOfWork> UseCase for ArchiveDispatchPoolUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &ArchiveDispatchPoolCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &ArchiveDispatchPoolCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -65,9 +64,10 @@ impl<U: UnitOfWork> UseCase for ArchiveDispatchPoolUseCase<U> {
                 ));
             }
             Err(e) => {
-                return UseCaseResult::failure(UseCaseError::commit(
-                    format!("Failed to find dispatch pool: {}", e),
-                ));
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to find dispatch pool: {}",
+                    e
+                )));
             }
         };
 
@@ -83,11 +83,7 @@ impl<U: UnitOfWork> UseCase for ArchiveDispatchPoolUseCase<U> {
         pool.archive();
 
         // Create domain event
-        let event = DispatchPoolArchived::new(
-            &ctx,
-            &pool.id,
-            &pool.code,
-        );
+        let event = DispatchPoolArchived::new(&ctx, &pool.id, &pool.code);
 
         // Atomic commit
         self.unit_of_work

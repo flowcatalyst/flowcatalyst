@@ -229,9 +229,9 @@ impl EventMetadataBuilder {
     /// source, subject, message_group, execution_id, correlation_id, principal_id.
     pub fn build(self) -> EventMetadata {
         EventMetadata {
-            event_id: self.event_id.unwrap_or_else(|| {
-                crate::tsid::TsidGenerator::generate_untyped()
-            }),
+            event_id: self
+                .event_id
+                .unwrap_or_else(|| crate::tsid::TsidGenerator::generate_untyped()),
             event_type: self.event_type.expect("event_type is required"),
             spec_version: self.spec_version.expect("spec_version is required"),
             source: self.source.expect("source is required"),
@@ -254,9 +254,9 @@ impl EventMetadataBuilder {
     /// Try to build the EventMetadata, returning an error if fields are missing.
     pub fn try_build(self) -> Result<EventMetadata, &'static str> {
         Ok(EventMetadata {
-            event_id: self.event_id.unwrap_or_else(|| {
-                crate::tsid::TsidGenerator::generate_untyped()
-            }),
+            event_id: self
+                .event_id
+                .unwrap_or_else(|| crate::tsid::TsidGenerator::generate_untyped()),
             event_type: self.event_type.ok_or("event_type is required")?,
             spec_version: self.spec_version.ok_or("spec_version is required")?,
             source: self.source.ok_or("source is required")?,
@@ -432,8 +432,16 @@ mod tests {
     #[test]
     fn event_metadata_causation_id_skipped_when_none() {
         let meta = EventMetadata::new(
-            "e".into(), "t", "1", "s", "sub".into(), "grp".into(),
-            "exec".into(), "corr".into(), None, "prn".into(),
+            "e".into(),
+            "t",
+            "1",
+            "s",
+            "sub".into(),
+            "grp".into(),
+            "exec".into(),
+            "corr".into(),
+            None,
+            "prn".into(),
         );
         let json = serde_json::to_string(&meta).unwrap();
         assert!(!json.contains("causation_id"));
@@ -665,8 +673,16 @@ mod tests {
     #[test]
     fn impl_domain_event_to_data_json() {
         let meta = EventMetadata::new(
-            "e".into(), "t", "1", "s", "sub".into(), "grp".into(),
-            "exec".into(), "corr".into(), None, "prn".into(),
+            "e".into(),
+            "t",
+            "1",
+            "s",
+            "sub".into(),
+            "grp".into(),
+            "exec".into(),
+            "corr".into(),
+            None,
+            "prn".into(),
         );
         let event = TestEvent {
             metadata: meta,
@@ -685,8 +701,16 @@ mod tests {
     #[test]
     fn impl_domain_event_no_causation() {
         let meta = EventMetadata::new(
-            "e".into(), "t", "1", "s", "sub".into(), "grp".into(),
-            "exec".into(), "corr".into(), None, "prn".into(),
+            "e".into(),
+            "t",
+            "1",
+            "s",
+            "sub".into(),
+            "grp".into(),
+            "exec".into(),
+            "corr".into(),
+            None,
+            "prn".into(),
         );
         let event = TestEvent {
             metadata: meta,

@@ -8,18 +8,18 @@
 //! - Supports message group FIFO ordering
 //! - Supports hot standby via fc-standby crate
 
+use fc_common::OutboxStatus;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::RwLock;
-use fc_common::OutboxStatus;
 use tracing::{debug, error, info, trace, warn};
 
-use crate::repository::OutboxRepository;
 use crate::buffer::{GlobalBuffer, GlobalBufferConfig};
-use crate::group_distributor::{GroupDistributor, GroupDistributorConfig, DistributorStats};
-use crate::message_group_processor::MessageGroupProcessorConfig;
+use crate::group_distributor::{DistributorStats, GroupDistributor, GroupDistributorConfig};
 use crate::http_dispatcher::{HttpDispatcher, HttpDispatcherConfig};
+use crate::message_group_processor::MessageGroupProcessorConfig;
+use crate::repository::OutboxRepository;
 use crate::LeaderElectionConfig;
 
 #[cfg(feature = "standby")]
@@ -262,12 +262,15 @@ impl EnhancedOutboxProcessor {
                         let item_type = item.item_type;
                         match distributor.distribute(item).await {
                             Ok(()) => {
-                                if let Err(e) = repository.mark_with_status(
-                                    item_type,
-                                    vec![item_id.clone()],
-                                    OutboxStatus::SUCCESS,
-                                    None,
-                                ).await {
+                                if let Err(e) = repository
+                                    .mark_with_status(
+                                        item_type,
+                                        vec![item_id.clone()],
+                                        OutboxStatus::SUCCESS,
+                                        None,
+                                    )
+                                    .await
+                                {
                                     error!("Failed to update status for {}: {}", item_id, e);
                                 }
                                 in_flight.fetch_sub(1, Ordering::SeqCst);
@@ -277,12 +280,15 @@ impl EnhancedOutboxProcessor {
                             }
                             Err(e) => {
                                 warn!("Failed to distribute item {}: {}", item_id, e);
-                                if let Err(e2) = repository.mark_with_status(
-                                    item_type,
-                                    vec![item_id.clone()],
-                                    OutboxStatus::INTERNAL_ERROR,
-                                    Some(e),
-                                ).await {
+                                if let Err(e2) = repository
+                                    .mark_with_status(
+                                        item_type,
+                                        vec![item_id.clone()],
+                                        OutboxStatus::INTERNAL_ERROR,
+                                        Some(e),
+                                    )
+                                    .await
+                                {
                                     error!("Failed to update status for {}: {}", item_id, e2);
                                 }
                                 in_flight.fetch_sub(1, Ordering::SeqCst);
@@ -361,7 +367,9 @@ impl EnhancedOutboxProcessor {
                             let was_leader = is_primary.swap(is_leader, Ordering::SeqCst);
 
                             if is_leader && !was_leader {
-                                info!("Outbox processor became leader - starting active processing");
+                                info!(
+                                    "Outbox processor became leader - starting active processing"
+                                );
                             } else if !is_leader && was_leader {
                                 warn!("Outbox processor lost leadership - entering standby mode");
                             }
@@ -375,10 +383,8 @@ impl EnhancedOutboxProcessor {
         };
 
         // Set initial primary status
-        self.is_primary.store(
-            leader_election.is_leader(),
-            Ordering::SeqCst
-        );
+        self.is_primary
+            .store(leader_election.is_leader(), Ordering::SeqCst);
 
         // Recovery task
         let recovery_handle = {
@@ -438,12 +444,15 @@ impl EnhancedOutboxProcessor {
                         let item_type = item.item_type;
                         match distributor.distribute(item).await {
                             Ok(()) => {
-                                if let Err(e) = repository.mark_with_status(
-                                    item_type,
-                                    vec![item_id.clone()],
-                                    OutboxStatus::SUCCESS,
-                                    None,
-                                ).await {
+                                if let Err(e) = repository
+                                    .mark_with_status(
+                                        item_type,
+                                        vec![item_id.clone()],
+                                        OutboxStatus::SUCCESS,
+                                        None,
+                                    )
+                                    .await
+                                {
                                     error!("Failed to update status for {}: {}", item_id, e);
                                 }
                                 in_flight.fetch_sub(1, Ordering::SeqCst);
@@ -453,12 +462,15 @@ impl EnhancedOutboxProcessor {
                             }
                             Err(e) => {
                                 warn!("Failed to distribute item {}: {}", item_id, e);
-                                if let Err(e2) = repository.mark_with_status(
-                                    item_type,
-                                    vec![item_id.clone()],
-                                    OutboxStatus::INTERNAL_ERROR,
-                                    Some(e),
-                                ).await {
+                                if let Err(e2) = repository
+                                    .mark_with_status(
+                                        item_type,
+                                        vec![item_id.clone()],
+                                        OutboxStatus::INTERNAL_ERROR,
+                                        Some(e),
+                                    )
+                                    .await
+                                {
                                     error!("Failed to update status for {}: {}", item_id, e2);
                                 }
                                 in_flight.fetch_sub(1, Ordering::SeqCst);
@@ -506,13 +518,17 @@ impl EnhancedOutboxProcessor {
         if available_slots < self.config.poll_batch_size as u64 {
             trace!(
                 "Skipping poll - insufficient capacity (in_flight: {}, max: {})",
-                current_in_flight, self.config.max_in_flight
+                current_in_flight,
+                self.config.max_in_flight
             );
             return Ok(());
         }
 
         // Fetch pending items
-        let items = self.repository.fetch_pending(self.config.poll_batch_size).await?;
+        let items = self
+            .repository
+            .fetch_pending(self.config.poll_batch_size)
+            .await?;
         if items.is_empty() {
             return Ok(());
         }
@@ -524,7 +540,8 @@ impl EnhancedOutboxProcessor {
         self.repository.mark_processing(ids).await?;
 
         // Increment in-flight
-        self.in_flight.fetch_add(items.len() as u64, Ordering::SeqCst);
+        self.in_flight
+            .fetch_add(items.len() as u64, Ordering::SeqCst);
 
         // Update metrics
         {

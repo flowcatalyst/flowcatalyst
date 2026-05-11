@@ -11,7 +11,7 @@
 use std::sync::Arc;
 use tracing::debug;
 
-use crate::{SecretsError, SecretsConfig, Provider};
+use crate::{Provider, SecretsConfig, SecretsError};
 
 #[cfg(feature = "aws")]
 use crate::AwsSecretsManagerProvider;
@@ -87,8 +87,12 @@ impl SecretService {
         if config.aws_sm_enabled.unwrap_or(false) {
             let provider = AwsSecretsManagerProvider::new(
                 config.aws_region.clone(),
-                config.aws_prefix.clone().unwrap_or_else(|| "/flowcatalyst/".to_string()),
-            ).await?;
+                config
+                    .aws_prefix
+                    .clone()
+                    .unwrap_or_else(|| "/flowcatalyst/".to_string()),
+            )
+            .await?;
             service.aws_sm_provider = Some(Arc::new(provider));
         }
 
@@ -97,8 +101,12 @@ impl SecretService {
         if config.aws_ps_enabled.unwrap_or(false) {
             let provider = AwsParameterStoreProvider::new(
                 config.aws_region.clone(),
-                config.aws_prefix.clone().unwrap_or_else(|| "/flowcatalyst/".to_string()),
-            ).await?;
+                config
+                    .aws_prefix
+                    .clone()
+                    .unwrap_or_else(|| "/flowcatalyst/".to_string()),
+            )
+            .await?;
             service.aws_ps_provider = Some(Arc::new(provider));
         }
 
@@ -108,7 +116,10 @@ impl SecretService {
             if let Some(addr) = &config.vault_addr {
                 let provider = VaultProvider::new(
                     addr,
-                    config.vault_path.clone().unwrap_or_else(|| "secret".to_string()),
+                    config
+                        .vault_path
+                        .clone()
+                        .unwrap_or_else(|| "secret".to_string()),
                     config.vault_token.clone(),
                 )?;
                 service.vault_provider = Some(Arc::new(provider));
@@ -137,7 +148,9 @@ impl SecretService {
     /// The plaintext secret value
     pub async fn resolve(&self, reference: &str) -> Result<String, SecretsError> {
         if reference.is_empty() {
-            return Err(SecretsError::InvalidKey("Secret reference cannot be empty".to_string()));
+            return Err(SecretsError::InvalidKey(
+                "Secret reference cannot be empty".to_string(),
+            ));
         }
 
         // AWS Secrets Manager: aws-sm://secret-name
@@ -147,7 +160,7 @@ impl SecretService {
                 return provider.resolve_reference(reference).await;
             } else {
                 return Err(SecretsError::ProviderError(
-                    "AWS Secrets Manager provider is not enabled".to_string()
+                    "AWS Secrets Manager provider is not enabled".to_string(),
                 ));
             }
         }
@@ -159,7 +172,7 @@ impl SecretService {
                 return provider.resolve_reference(reference).await;
             } else {
                 return Err(SecretsError::ProviderError(
-                    "AWS Parameter Store provider is not enabled".to_string()
+                    "AWS Parameter Store provider is not enabled".to_string(),
                 ));
             }
         }
@@ -171,7 +184,7 @@ impl SecretService {
                 return provider.resolve_reference(reference).await;
             } else {
                 return Err(SecretsError::ProviderError(
-                    "Vault provider is not enabled".to_string()
+                    "Vault provider is not enabled".to_string(),
                 ));
             }
         }
@@ -182,7 +195,7 @@ impl SecretService {
                 return provider.get(key).await;
             } else {
                 return Err(SecretsError::ProviderError(
-                    "Encrypted provider is not configured (missing encryption key)".to_string()
+                    "Encrypted provider is not configured (missing encryption key)".to_string(),
                 ));
             }
         }
@@ -194,7 +207,10 @@ impl SecretService {
     }
 
     /// Resolve a secret reference, returning None if the reference is empty.
-    pub async fn resolve_optional(&self, reference: Option<&str>) -> Result<Option<String>, SecretsError> {
+    pub async fn resolve_optional(
+        &self,
+        reference: Option<&str>,
+    ) -> Result<Option<String>, SecretsError> {
         match reference {
             Some(r) if !r.is_empty() => Ok(Some(self.resolve(r).await?)),
             _ => Ok(None),
@@ -213,10 +229,12 @@ impl SecretService {
         if reference.starts_with("aws-sm://") {
             if let Some(provider) = &self.aws_sm_provider {
                 match provider.validate_reference(reference).await {
-                    Ok(result) => return ValidationResult {
-                        valid: result.valid,
-                        message: result.message,
-                    },
+                    Ok(result) => {
+                        return ValidationResult {
+                            valid: result.valid,
+                            message: result.message,
+                        }
+                    }
                     Err(e) => return ValidationResult::failure(format!("Validation error: {}", e)),
                 }
             } else {
@@ -229,10 +247,12 @@ impl SecretService {
         if reference.starts_with("aws-ps://") {
             if let Some(provider) = &self.aws_ps_provider {
                 match provider.validate_reference(reference).await {
-                    Ok(result) => return ValidationResult {
-                        valid: result.valid,
-                        message: result.message,
-                    },
+                    Ok(result) => {
+                        return ValidationResult {
+                            valid: result.valid,
+                            message: result.message,
+                        }
+                    }
                     Err(e) => return ValidationResult::failure(format!("Validation error: {}", e)),
                 }
             } else {
@@ -245,10 +265,12 @@ impl SecretService {
         if reference.starts_with("vault://") {
             if let Some(provider) = &self.vault_provider {
                 match provider.validate_reference(reference).await {
-                    Ok(result) => return ValidationResult {
-                        valid: result.valid,
-                        message: result.message,
-                    },
+                    Ok(result) => {
+                        return ValidationResult {
+                            valid: result.valid,
+                            message: result.message,
+                        }
+                    }
                     Err(e) => return ValidationResult::failure(format!("Validation error: {}", e)),
                 }
             } else {
@@ -336,7 +358,7 @@ impl SecretService {
                 return Ok(format!("encrypted:{}", plaintext));
             } else {
                 return Err(SecretsError::ProviderError(
-                    "Cannot encrypt: encryption key not configured".to_string()
+                    "Cannot encrypt: encryption key not configured".to_string(),
                 ));
             }
         }
@@ -372,8 +394,14 @@ mod tests {
 
     #[test]
     fn test_mask_reference() {
-        assert_eq!(SecretService::mask_reference("aws-sm://my-secret"), "aws-sm://***");
-        assert_eq!(SecretService::mask_reference("vault://path/to/secret#key"), "vault://***");
+        assert_eq!(
+            SecretService::mask_reference("aws-sm://my-secret"),
+            "aws-sm://***"
+        );
+        assert_eq!(
+            SecretService::mask_reference("vault://path/to/secret#key"),
+            "vault://***"
+        );
         assert_eq!(SecretService::mask_reference("short"), "***");
     }
 
@@ -393,7 +421,10 @@ mod tests {
         assert_eq!(service.get_provider_type("aws-sm://secret"), Some("aws-sm"));
         assert_eq!(service.get_provider_type("aws-ps://param"), Some("aws-ps"));
         assert_eq!(service.get_provider_type("vault://path"), Some("vault"));
-        assert_eq!(service.get_provider_type("encrypted:abc"), Some("encrypted"));
+        assert_eq!(
+            service.get_provider_type("encrypted:abc"),
+            Some("encrypted")
+        );
         assert_eq!(service.get_provider_type("unknown://ref"), None);
     }
 }

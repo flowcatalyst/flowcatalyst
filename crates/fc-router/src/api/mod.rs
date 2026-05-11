@@ -10,41 +10,44 @@
 //! - Standby/traffic status
 //! - Test/seed endpoints (development)
 
+use crate::{
+    CircuitBreakerRegistry, CircuitBreakerState, HealthService, InFlightMessageInfo, QueueManager,
+    QueueMetrics, WarningService,
+};
 use axum::{
-    routing::{get, post, put, delete},
     extract::{Path, Query, State},
-    response::{Html, IntoResponse, Response},
     http::{header, StatusCode},
+    response::{Html, IntoResponse, Response},
+    routing::{delete, get, post, put},
     Json, Router,
 };
-use utoipa::{OpenApi, ToSchema};
-use utoipa_swagger_ui::SwaggerUi;
+use chrono::{Duration as ChronoDuration, Utc};
+use fc_common::{
+    HealthReport, HealthStatus, MediationType, Message, PoolConfig, PoolStats, Warning,
+    WarningCategory, WarningSeverity,
+};
+use fc_queue::{QueueMetrics as FcQueueMetrics, QueuePublisher};
+use fc_stream::StreamHealthService;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::collections::{HashMap, VecDeque};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
-use fc_queue::{QueuePublisher, QueueMetrics as FcQueueMetrics};
-use fc_common::{
-    Message, MediationType, HealthStatus, HealthReport, PoolStats, PoolConfig,
-    Warning, WarningSeverity, WarningCategory,
-};
-use crate::{
-    QueueManager, WarningService, HealthService, QueueMetrics, InFlightMessageInfo,
-    CircuitBreakerRegistry, CircuitBreakerState,
-};
-use fc_stream::StreamHealthService;
+use tracing::{debug, error, info, warn};
+use utoipa::{OpenApi, ToSchema};
+use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
-use chrono::{Duration as ChronoDuration, Utc};
-use tracing::{debug, info, warn, error};
 
-pub mod model;
 pub mod auth;
+pub mod model;
 #[cfg(feature = "oidc-flow")]
 pub mod oidc_flow;
 
-use model::{PublishMessageRequest, PublishMessageResponse, PoolStatusResponse};
-pub use auth::{AuthConfig, AuthMode, AuthState, OidcValidator, TokenClaims, auth_middleware, create_auth_state, is_public_path};
+pub use auth::{
+    auth_middleware, create_auth_state, is_public_path, AuthConfig, AuthMode, AuthState,
+    OidcValidator, TokenClaims,
+};
+use model::{PoolStatusResponse, PublishMessageRequest, PublishMessageResponse};
 
 /// Application state shared across handlers
 #[derive(Clone)]
@@ -117,7 +120,10 @@ impl CachedBrokerStats {
         let mut attrs = self.sqs_attributes.write().await;
         attrs.clear();
         for m in &fresh {
-            attrs.insert(m.queue_identifier.clone(), (m.pending_messages, m.in_flight_messages));
+            attrs.insert(
+                m.queue_identifier.clone(),
+                (m.pending_messages, m.in_flight_messages),
+            );
         }
         drop(attrs);
         *self.last_updated.write().await = Some(std::time::Instant::now());
@@ -201,7 +207,10 @@ impl CachedBrokerStats {
 
     /// Get time since last refresh
     pub async fn age_seconds(&self) -> Option<u64> {
-        self.last_updated.read().await.map(|t| t.elapsed().as_secs())
+        self.last_updated
+            .read()
+            .await
+            .map(|t| t.elapsed().as_secs())
     }
 }
 
@@ -539,21 +548,57 @@ pub fn create_router_with_options(
         .route("/monitoring/pools", get(pool_stats_handler))
         .route("/monitoring/pools/{pool_code}", put(update_pool_config))
         .route("/monitoring/queues", get(queue_metrics_handler))
-        .route("/monitoring/broker-stats/refresh", post(broker_stats_refresh_handler))
+        .route(
+            "/monitoring/broker-stats/refresh",
+            post(broker_stats_refresh_handler),
+        )
         // Dashboard-compatible endpoints
-        .route("/monitoring/queue-stats", get(dashboard_queue_stats_handler))
+        .route(
+            "/monitoring/queue-stats",
+            get(dashboard_queue_stats_handler),
+        )
         .route("/monitoring/pool-stats", get(dashboard_pool_stats_handler))
         .route("/monitoring/warnings", get(dashboard_warnings_handler))
-        .route("/monitoring/warnings/{id}/acknowledge", post(monitoring_acknowledge_warning))
-        .route("/monitoring/warnings/unacknowledged", get(get_unacknowledged_warnings))
-        .route("/monitoring/warnings/severity/{severity}", get(get_warnings_by_severity))
-        .route("/monitoring/circuit-breakers", get(dashboard_circuit_breakers_handler))
-        .route("/monitoring/circuit-breakers/{name}/state", get(get_circuit_breaker_state))
-        .route("/monitoring/circuit-breakers/{name}/reset", post(reset_circuit_breaker))
-        .route("/monitoring/circuit-breakers/reset-all", post(reset_all_circuit_breakers))
-        .route("/monitoring/in-flight-messages", get(dashboard_in_flight_messages_handler))
-        .route("/monitoring/in-flight-messages/check", get(in_flight_message_check_handler))
-        .route("/monitoring/in-flight-messages/check-batch", post(in_flight_message_check_batch_handler))
+        .route(
+            "/monitoring/warnings/{id}/acknowledge",
+            post(monitoring_acknowledge_warning),
+        )
+        .route(
+            "/monitoring/warnings/unacknowledged",
+            get(get_unacknowledged_warnings),
+        )
+        .route(
+            "/monitoring/warnings/severity/{severity}",
+            get(get_warnings_by_severity),
+        )
+        .route(
+            "/monitoring/circuit-breakers",
+            get(dashboard_circuit_breakers_handler),
+        )
+        .route(
+            "/monitoring/circuit-breakers/{name}/state",
+            get(get_circuit_breaker_state),
+        )
+        .route(
+            "/monitoring/circuit-breakers/{name}/reset",
+            post(reset_circuit_breaker),
+        )
+        .route(
+            "/monitoring/circuit-breakers/reset-all",
+            post(reset_all_circuit_breakers),
+        )
+        .route(
+            "/monitoring/in-flight-messages",
+            get(dashboard_in_flight_messages_handler),
+        )
+        .route(
+            "/monitoring/in-flight-messages/check",
+            get(in_flight_message_check_handler),
+        )
+        .route(
+            "/monitoring/in-flight-messages/check-batch",
+            post(in_flight_message_check_batch_handler),
+        )
         .route("/monitoring/dashboard", get(dashboard_html_handler))
         .route("/monitoring/consumer-health", get(consumer_health_handler))
         .route("/monitoring/standby-status", get(get_standby_status))
@@ -562,8 +607,14 @@ pub fn create_router_with_options(
         .route("/dashboard.html", get(dashboard_html_handler))
         // Stream processor health endpoints
         .route("/monitoring/stream-health", get(stream_health_handler))
-        .route("/monitoring/stream-health/live", get(stream_liveness_handler))
-        .route("/monitoring/stream-health/ready", get(stream_readiness_handler))
+        .route(
+            "/monitoring/stream-health/live",
+            get(stream_liveness_handler),
+        )
+        .route(
+            "/monitoring/stream-health/ready",
+            get(stream_readiness_handler),
+        )
         // Configuration management
         .route("/config/reload", post(reload_config))
         .route("/api/config", get(get_local_config))
@@ -601,12 +652,10 @@ pub fn create_router_with_options(
     let mut router = if let Some(ref auth) = auth_state {
         if auth.config.mode != AuthMode::None {
             info!(mode = ?auth.config.mode, "Authentication enabled for router API");
-            public_routes.merge(
-                protected_routes.layer(axum::middleware::from_fn_with_state(
-                    auth.clone(),
-                    auth_middleware,
-                ))
-            )
+            public_routes.merge(protected_routes.layer(axum::middleware::from_fn_with_state(
+                auth.clone(),
+                auth_middleware,
+            )))
         } else {
             public_routes.merge(protected_routes)
         }
@@ -691,7 +740,9 @@ async fn simple_health_handler() -> Json<SimpleHealthResponse> {
     )
 )]
 async fn liveness_probe() -> Json<ProbeResponse> {
-    Json(ProbeResponse { status: "LIVE".to_string() })
+    Json(ProbeResponse {
+        status: "LIVE".to_string(),
+    })
 }
 
 /// Kubernetes readiness probe - returns 200 if ready to accept traffic
@@ -713,19 +764,33 @@ async fn readiness_probe(State(state): State<AppState>) -> Response {
         crate::router_metrics::record_broker_connection_success();
     } else {
         crate::router_metrics::record_broker_connection_failure();
-        return (StatusCode::SERVICE_UNAVAILABLE, Json(ProbeResponse { status: "NOT_READY".to_string() })).into_response();
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ProbeResponse {
+                status: "NOT_READY".to_string(),
+            }),
+        )
+            .into_response();
     }
 
     let pool_stats = state.queue_manager.get_pool_stats();
     let report = state.health_service.get_health_report(&pool_stats);
 
     match report.status {
-        HealthStatus::Healthy | HealthStatus::Warning => {
-            (StatusCode::OK, Json(ProbeResponse { status: "READY".to_string() })).into_response()
-        }
-        HealthStatus::Degraded => {
-            (StatusCode::SERVICE_UNAVAILABLE, Json(ProbeResponse { status: "NOT_READY".to_string() })).into_response()
-        }
+        HealthStatus::Healthy | HealthStatus::Warning => (
+            StatusCode::OK,
+            Json(ProbeResponse {
+                status: "READY".to_string(),
+            }),
+        )
+            .into_response(),
+        HealthStatus::Degraded => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ProbeResponse {
+                status: "NOT_READY".to_string(),
+            }),
+        )
+            .into_response(),
     }
 }
 
@@ -750,7 +815,8 @@ async fn metrics_handler(State(state): State<AppState>) -> Response {
         StatusCode::OK,
         [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
         output,
-    ).into_response()
+    )
+        .into_response()
 }
 
 // ============================================================================
@@ -812,7 +878,12 @@ async fn pool_stats_handler(State(state): State<AppState>) -> Json<Vec<PoolStats
 )]
 async fn queue_metrics_handler(State(state): State<AppState>) -> Json<Vec<QueueMetricsResponse>> {
     let metrics = state.queue_manager.get_queue_metrics().await;
-    Json(metrics.into_iter().map(QueueMetricsResponse::from).collect())
+    Json(
+        metrics
+            .into_iter()
+            .map(QueueMetricsResponse::from)
+            .collect(),
+    )
 }
 
 // ============================================================================
@@ -838,7 +909,8 @@ async fn reload_config(
     use fc_common::RouterConfig;
 
     let router_config = RouterConfig {
-        processing_pools: req.processing_pools
+        processing_pools: req
+            .processing_pools
             .into_iter()
             .map(|p| PoolConfig {
                 code: p.code,
@@ -866,36 +938,48 @@ async fn reload_config(
                 "Configuration reloaded via API"
             );
 
-            (StatusCode::OK, Json(ConfigReloadResponse {
-                success: true,
-                pools_updated: 0,
-                pools_created,
-                pools_removed,
-                total_active_pools: pool_stats.len(),
-                total_draining_pools: 0,
-            })).into_response()
+            (
+                StatusCode::OK,
+                Json(ConfigReloadResponse {
+                    success: true,
+                    pools_updated: 0,
+                    pools_created,
+                    pools_removed,
+                    total_active_pools: pool_stats.len(),
+                    total_draining_pools: 0,
+                }),
+            )
+                .into_response()
         }
         Ok(false) => {
             warn!("Configuration reload was skipped (shutdown in progress)");
-            (StatusCode::SERVICE_UNAVAILABLE, Json(ConfigReloadResponse {
-                success: false,
-                pools_updated: 0,
-                pools_created: 0,
-                pools_removed: 0,
-                total_active_pools: 0,
-                total_draining_pools: 0,
-            })).into_response()
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ConfigReloadResponse {
+                    success: false,
+                    pools_updated: 0,
+                    pools_created: 0,
+                    pools_removed: 0,
+                    total_active_pools: 0,
+                    total_draining_pools: 0,
+                }),
+            )
+                .into_response()
         }
         Err(e) => {
             error!(error = %e, "Failed to reload configuration");
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(ConfigReloadResponse {
-                success: false,
-                pools_updated: 0,
-                pools_created: 0,
-                pools_removed: 0,
-                total_active_pools: 0,
-                total_draining_pools: 0,
-            })).into_response()
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ConfigReloadResponse {
+                    success: false,
+                    pools_updated: 0,
+                    pools_created: 0,
+                    pools_removed: 0,
+                    total_active_pools: 0,
+                    total_draining_pools: 0,
+                }),
+            )
+                .into_response()
         }
     }
 }
@@ -919,7 +1003,8 @@ async fn update_pool_config(
     Path(pool_code): Path<String>,
     Json(req): Json<PoolConfigUpdateRequest>,
 ) -> Response {
-    let existing_stats: Option<PoolStats> = state.queue_manager
+    let existing_stats: Option<PoolStats> = state
+        .queue_manager
         .get_pool_stats()
         .into_iter()
         .find(|s| s.pool_code == pool_code);
@@ -941,24 +1026,36 @@ async fn update_pool_config(
         },
     };
 
-    match state.queue_manager.update_pool_config(&pool_code, new_config.clone()).await {
+    match state
+        .queue_manager
+        .update_pool_config(&pool_code, new_config.clone())
+        .await
+    {
         Ok(_) => {
             info!(pool_code = %pool_code, "Pool configuration updated via API");
-            (StatusCode::OK, Json(serde_json::json!({
-                "success": true,
-                "pool_code": pool_code,
-                "new_config": {
-                    "concurrency": new_config.concurrency,
-                    "rate_limit_per_minute": new_config.rate_limit_per_minute,
-                }
-            }))).into_response()
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "success": true,
+                    "pool_code": pool_code,
+                    "new_config": {
+                        "concurrency": new_config.concurrency,
+                        "rate_limit_per_minute": new_config.rate_limit_per_minute,
+                    }
+                })),
+            )
+                .into_response()
         }
         Err(e) => {
             error!(pool_code = %pool_code, error = %e, "Failed to update pool configuration");
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
-                "success": false,
-                "error": e.to_string(),
-            }))).into_response()
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "success": false,
+                    "error": e.to_string(),
+                })),
+            )
+                .into_response()
         }
     }
 }
@@ -1043,15 +1140,20 @@ async fn list_warnings(
         (status = 404, description = "Warning not found")
     )
 )]
-async fn acknowledge_warning(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Response {
+async fn acknowledge_warning(State(state): State<AppState>, Path(id): Path<String>) -> Response {
     if state.warning_service.acknowledge_warning(&id) {
         debug!(id = %id, "Warning acknowledged");
-        (StatusCode::OK, Json(serde_json::json!({ "acknowledged": true }))).into_response()
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({ "acknowledged": true })),
+        )
+            .into_response()
     } else {
-        (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "Warning not found" }))).into_response()
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Warning not found" })),
+        )
+            .into_response()
     }
 }
 
@@ -1120,7 +1222,10 @@ struct DashboardHealthDetails {
 static START_TIME: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
 fn get_uptime_millis() -> u64 {
-    START_TIME.get_or_init(std::time::Instant::now).elapsed().as_millis() as u64
+    START_TIME
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_millis() as u64
 }
 
 /// Health endpoint for dashboard
@@ -1149,7 +1254,9 @@ async fn dashboard_health_handler(State(state): State<AppState>) -> Json<Dashboa
     };
 
     // Count open circuit breakers from the registry
-    let circuit_breakers_open = state.circuit_breaker_registry.get_all_stats()
+    let circuit_breakers_open = state
+        .circuit_breaker_registry
+        .get_all_stats()
         .values()
         .filter(|s| s.state == CircuitBreakerState::Open)
         .count() as u32;
@@ -1462,16 +1569,19 @@ async fn dashboard_circuit_breakers_handler(
     let result: HashMap<String, DashboardCircuitBreakerStats> = stats
         .into_iter()
         .map(|(name, s)| {
-            (name, DashboardCircuitBreakerStats {
-                name: s.name,
-                state: format!("{:?}", s.state).to_uppercase(),
-                successful_calls: s.successful_calls,
-                failed_calls: s.failed_calls,
-                rejected_calls: s.rejected_calls,
-                failure_rate: s.failure_rate,
-                buffered_calls: s.buffered_calls,
-                buffer_size: s.buffer_size,
-            })
+            (
+                name,
+                DashboardCircuitBreakerStats {
+                    name: s.name,
+                    state: format!("{:?}", s.state).to_uppercase(),
+                    successful_calls: s.successful_calls,
+                    failed_calls: s.failed_calls,
+                    rejected_calls: s.rejected_calls,
+                    failure_rate: s.failure_rate,
+                    buffered_calls: s.buffered_calls,
+                    buffer_size: s.buffer_size,
+                },
+            )
         })
         .collect();
     Json(result)
@@ -1506,7 +1616,11 @@ async fn dashboard_in_flight_messages_handler(
     Query(query): Query<InFlightMessagesQuery>,
 ) -> Json<Vec<InFlightMessageInfo>> {
     let limit = query.limit.unwrap_or(100);
-    let messages = state.queue_manager.get_in_flight_messages(limit, query.message_id.as_deref(), query.pool_code.as_deref());
+    let messages = state.queue_manager.get_in_flight_messages(
+        limit,
+        query.message_id.as_deref(),
+        query.pool_code.as_deref(),
+    );
     Json(messages)
 }
 
@@ -1559,7 +1673,9 @@ async fn in_flight_message_check_handler(
     State(state): State<AppState>,
     Query(query): Query<InFlightCheckQuery>,
 ) -> Json<InFlightCheckResponse> {
-    let detail = state.queue_manager.lookup_in_flight_by_app_id(&query.message_id);
+    let detail = state
+        .queue_manager
+        .lookup_in_flight_by_app_id(&query.message_id);
     Json(InFlightCheckResponse {
         message_id: query.message_id,
         in_pipeline: detail.is_some(),
@@ -1708,22 +1824,28 @@ async fn publish_message(
         auth_token: None,
         signing_secret: None,
         mediation_type: MediationType::HTTP,
-        mediation_target: req.mediation_target.unwrap_or_else(|| "http://localhost:8080/echo".to_string()),
+        mediation_target: req
+            .mediation_target
+            .unwrap_or_else(|| "http://localhost:8080/echo".to_string()),
         message_group_id: req.message_group_id,
         high_priority: false,
         dispatch_mode: fc_common::DispatchMode::default(),
     };
 
     match state.publisher.publish(message).await {
-        Ok(_) => {
-            (StatusCode::OK, Json(PublishMessageResponse {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(PublishMessageResponse {
                 message_id,
                 status: "ACCEPTED".to_string(),
-            })).into_response()
-        }
-        Err(_) => {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "Failed to publish message" }))).into_response()
-        }
+            }),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": "Failed to publish message" })),
+        )
+            .into_response(),
     }
 }
 
@@ -1740,22 +1862,28 @@ async fn simple_publish_message(
         auth_token: None,
         signing_secret: None,
         mediation_type: MediationType::HTTP,
-        mediation_target: req.mediation_target.unwrap_or_else(|| "http://localhost:8080/echo".to_string()),
+        mediation_target: req
+            .mediation_target
+            .unwrap_or_else(|| "http://localhost:8080/echo".to_string()),
         message_group_id: req.message_group_id,
         high_priority: false,
         dispatch_mode: fc_common::DispatchMode::default(),
     };
 
     match state.publisher.publish(message).await {
-        Ok(_) => {
-            (StatusCode::OK, Json(PublishMessageResponse {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(PublishMessageResponse {
                 message_id,
                 status: "ACCEPTED".to_string(),
-            })).into_response()
-        }
-        Err(_) => {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "Failed to publish message" }))).into_response()
-        }
+            }),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": "Failed to publish message" })),
+        )
+            .into_response(),
     }
 }
 
@@ -1827,9 +1955,17 @@ async fn monitoring_acknowledge_warning(
 ) -> Response {
     if state.warning_service.acknowledge_warning(&id) {
         debug!(id = %id, "Warning acknowledged via monitoring endpoint");
-        (StatusCode::OK, Json(serde_json::json!({ "status": "success" }))).into_response()
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({ "status": "success" })),
+        )
+            .into_response()
     } else {
-        (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "Warning not found" }))).into_response()
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Warning not found" })),
+        )
+            .into_response()
     }
 }
 
@@ -1918,14 +2054,20 @@ async fn get_circuit_breaker_state(
                 CircuitBreakerState::Open => "OPEN",
                 CircuitBreakerState::HalfOpen => "HALF_OPEN",
             };
-            (StatusCode::OK, Json(CircuitBreakerStateResponse {
-                name: decoded_name.to_string(),
-                state: state_str.to_string(),
-            })).into_response()
+            (
+                StatusCode::OK,
+                Json(CircuitBreakerStateResponse {
+                    name: decoded_name.to_string(),
+                    state: state_str.to_string(),
+                }),
+            )
+                .into_response()
         }
-        None => {
-            (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "Circuit breaker not found" }))).into_response()
-        }
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Circuit breaker not found" })),
+        )
+            .into_response(),
     }
 }
 
@@ -1950,9 +2092,17 @@ async fn reset_circuit_breaker(
 
     if state.circuit_breaker_registry.reset(&decoded_name) {
         info!(name = %decoded_name, "Circuit breaker reset");
-        (StatusCode::OK, Json(serde_json::json!({ "status": "success" }))).into_response()
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({ "status": "success" })),
+        )
+            .into_response()
     } else {
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "Failed to reset circuit breaker" }))).into_response()
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": "Failed to reset circuit breaker" })),
+        )
+            .into_response()
     }
 }
 
@@ -2040,26 +2190,22 @@ struct TrafficStatusResponse {
 )]
 async fn get_traffic_status(State(state): State<AppState>) -> Json<TrafficStatusResponse> {
     match &state.traffic_strategy {
-        Some(strategy) => {
-            Json(TrafficStatusResponse {
-                enabled: true,
-                strategy_type: strategy.strategy_type().to_string(),
-                registered: strategy.is_registered(),
-                target_info: None,
-                last_operation: Some(Utc::now().to_rfc3339()),
-                last_error: "none".to_string(),
-            })
-        }
-        None => {
-            Json(TrafficStatusResponse {
-                enabled: false,
-                strategy_type: "NONE".to_string(),
-                registered: true,
-                target_info: None,
-                last_operation: Some(Utc::now().to_rfc3339()),
-                last_error: "none".to_string(),
-            })
-        }
+        Some(strategy) => Json(TrafficStatusResponse {
+            enabled: true,
+            strategy_type: strategy.strategy_type().to_string(),
+            registered: strategy.is_registered(),
+            target_info: None,
+            last_operation: Some(Utc::now().to_rfc3339()),
+            last_error: "none".to_string(),
+        }),
+        None => Json(TrafficStatusResponse {
+            enabled: false,
+            strategy_type: "NONE".to_string(),
+            registered: true,
+            target_info: None,
+            last_operation: Some(Utc::now().to_rfc3339()),
+            last_error: "none".to_string(),
+        }),
     }
 }
 
@@ -2117,7 +2263,9 @@ async fn stream_health_handler(State(state): State<AppState>) -> Json<StreamHeal
                         in_flight_count: status_snapshot.in_flight_count,
                         pending_count: status_snapshot.pending_count,
                         error_count: status_snapshot.error_count,
-                        last_checkpoint_at: status_snapshot.last_checkpoint_at.map(|dt| dt.to_rfc3339()),
+                        last_checkpoint_at: status_snapshot
+                            .last_checkpoint_at
+                            .map(|dt| dt.to_rfc3339()),
                     }
                 })
                 .collect();
@@ -2157,17 +2305,27 @@ async fn stream_liveness_handler(State(state): State<AppState>) -> Response {
         Some(service) => {
             let health = service.get_aggregated_health();
             if health.is_live() {
-                (StatusCode::OK, Json(serde_json::json!({ "status": "LIVE" }))).into_response()
+                (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "status": "LIVE" })),
+                )
+                    .into_response()
             } else {
-                (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
-                    "status": "NOT_LIVE",
-                    "errors": health.errors
-                }))).into_response()
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(serde_json::json!({
+                        "status": "NOT_LIVE",
+                        "errors": health.errors
+                    })),
+                )
+                    .into_response()
             }
         }
-        None => {
-            (StatusCode::OK, Json(serde_json::json!({ "status": "LIVE" }))).into_response()
-        }
+        None => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "status": "LIVE" })),
+        )
+            .into_response(),
     }
 }
 
@@ -2177,17 +2335,27 @@ async fn stream_readiness_handler(State(state): State<AppState>) -> Response {
         Some(service) => {
             let health = service.get_aggregated_health();
             if health.is_ready() {
-                (StatusCode::OK, Json(serde_json::json!({ "status": "READY" }))).into_response()
+                (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "status": "READY" })),
+                )
+                    .into_response()
             } else {
-                (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
-                    "status": "NOT_READY",
-                    "errors": health.errors
-                }))).into_response()
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(serde_json::json!({
+                        "status": "NOT_READY",
+                        "errors": health.errors
+                    })),
+                )
+                    .into_response()
             }
         }
-        None => {
-            (StatusCode::OK, Json(serde_json::json!({ "status": "READY" }))).into_response()
-        }
+        None => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "status": "READY" })),
+        )
+            .into_response(),
     }
 }
 
@@ -2235,11 +2403,13 @@ async fn get_local_config(State(state): State<AppState>) -> Json<serde_json::Val
     } else {
         pool_stats
             .iter()
-            .map(|p| serde_json::json!({
-                "code": p.pool_code,
-                "concurrency": p.concurrency,
-                "rateLimitPerMinute": p.rate_limit_per_minute,
-            }))
+            .map(|p| {
+                serde_json::json!({
+                    "code": p.pool_code,
+                    "concurrency": p.concurrency,
+                    "rateLimitPerMinute": p.rate_limit_per_minute,
+                })
+            })
             .collect()
     };
 
@@ -2423,13 +2593,25 @@ async fn test_faulty() -> Response {
 
     if roll < 0.6 {
         // 60% success
-        (StatusCode::OK, Json(serde_json::json!({ "status": "success", "ack": true }))).into_response()
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({ "status": "success", "ack": true })),
+        )
+            .into_response()
     } else if roll < 0.8 {
         // 20% 400 error
-        (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "error": "Client error" }))).into_response()
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "status": "error", "error": "Client error" })),
+        )
+            .into_response()
     } else {
         // 20% 500 error
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "status": "error", "error": "Server error" }))).into_response()
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "status": "error", "error": "Server error" })),
+        )
+            .into_response()
     }
 }
 
@@ -2444,7 +2626,11 @@ async fn test_faulty() -> Response {
 )]
 async fn test_fail() -> Response {
     TEST_REQUEST_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "status": "error", "error": "Always fails" }))).into_response()
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(serde_json::json!({ "status": "error", "error": "Always fails" })),
+    )
+        .into_response()
 }
 
 /// Test success endpoint (always 200 with ack=true)
@@ -2486,7 +2672,11 @@ async fn test_pending() -> Json<serde_json::Value> {
 )]
 async fn test_client_error() -> Response {
     TEST_REQUEST_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "error": "Record not found" }))).into_response()
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "status": "error", "error": "Record not found" })),
+    )
+        .into_response()
 }
 
 /// Test server error endpoint (always 500)
@@ -2500,7 +2690,11 @@ async fn test_client_error() -> Response {
 )]
 async fn test_server_error() -> Response {
     TEST_REQUEST_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "status": "error", "error": "Internal server error" }))).into_response()
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(serde_json::json!({ "status": "error", "error": "Internal server error" })),
+    )
+        .into_response()
 }
 
 /// Get test stats

@@ -3,15 +3,15 @@
 //! Periodically fetches configuration from a central service and applies changes
 //! to the router without restart. Mirrors the Java QueueManager.scheduledSync() behavior.
 
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
-use tracing::{info, warn, error, debug};
-use serde::{Deserialize, Serialize};
+use tracing::{debug, error, info, warn};
 
-use fc_common::{RouterConfig, PoolConfig, QueueConfig};
 use crate::manager::QueueManager;
 use crate::warning::WarningService;
+use fc_common::{PoolConfig, QueueConfig, RouterConfig};
 
 /// Configuration for the config sync service
 #[derive(Debug, Clone)]
@@ -46,7 +46,7 @@ impl Default for ConfigSyncConfig {
             enabled: false,
             config_urls: Vec::new(),
             sync_interval: Duration::from_secs(300), // 5 minutes (matches Java)
-            max_retry_attempts: 12,                   // 12 attempts (matches Java)
+            max_retry_attempts: 12,                  // 12 attempts (matches Java)
             retry_delay: Duration::from_secs(5),     // 5 seconds between retries
             request_timeout: Duration::from_secs(30),
             fail_on_initial_sync_error: true,
@@ -119,7 +119,8 @@ pub struct QueueConfigResponse {
 impl From<MessageRouterConfigResponse> for RouterConfig {
     fn from(response: MessageRouterConfigResponse) -> Self {
         RouterConfig {
-            processing_pools: response.processing_pools
+            processing_pools: response
+                .processing_pools
                 .into_iter()
                 .map(|p| PoolConfig {
                     code: p.code,
@@ -127,7 +128,8 @@ impl From<MessageRouterConfigResponse> for RouterConfig {
                     rate_limit_per_minute: p.rate_limit_per_minute,
                 })
                 .collect(),
-            queues: response.queues
+            queues: response
+                .queues
                 .into_iter()
                 .map(|q| QueueConfig {
                     name: q.queue_name.unwrap_or_else(|| q.queue_uri.clone()),
@@ -194,7 +196,10 @@ impl ConfigSyncService {
         }
 
         // Fetch all sources in parallel.
-        let tasks: Vec<_> = self.config.config_urls.iter()
+        let tasks: Vec<_> = self
+            .config
+            .config_urls
+            .iter()
             .map(|url| {
                 let url = url.clone();
                 let svc = self;
@@ -219,11 +224,16 @@ impl ConfigSyncService {
         }
 
         if successes.is_empty() {
-            let summary = failures.iter()
+            let summary = failures
+                .iter()
                 .map(|(u, e)| format!("{}: {}", u, e))
                 .collect::<Vec<_>>()
                 .join("; ");
-            return Err(format!("All {} config source(s) failed — {}", failures.len(), summary));
+            return Err(format!(
+                "All {} config source(s) failed — {}",
+                failures.len(),
+                summary
+            ));
         }
 
         let merged = merge_configs(&successes);
@@ -292,7 +302,8 @@ impl ConfigSyncService {
 
     /// Single fetch attempt from a specific URL
     async fn fetch_config_once(&self, url: &str) -> Result<RouterConfig, String> {
-        let response = self.http_client
+        let response = self
+            .http_client
             .get(url)
             .send()
             .await
@@ -313,15 +324,20 @@ impl ConfigSyncService {
 
         debug!(url = %url, body_length = body.len(), "Config response received");
 
-        let config_response: MessageRouterConfigResponse = serde_json::from_str(&body)
-            .map_err(|e| {
+        let config_response: MessageRouterConfigResponse =
+            serde_json::from_str(&body).map_err(|e| {
                 warn!(
                     error = %e,
                     url = %url,
                     body = %body.chars().take(500).collect::<String>(),
                     "Failed to parse config response"
                 );
-                format!("Failed to parse config response ({}): {} — body: {}", url, e, &body[..body.len().min(200)])
+                format!(
+                    "Failed to parse config response ({}): {} — body: {}",
+                    url,
+                    e,
+                    &body[..body.len().min(200)]
+                )
             })?;
 
         Ok(config_response.into())
@@ -329,8 +345,8 @@ impl ConfigSyncService {
 
     /// Compute a hash of the configuration for change detection
     fn compute_config_hash(config: &RouterConfig) -> u64 {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
 
@@ -685,7 +701,11 @@ mod tests {
         ];
 
         let merged = merge_configs(&sources);
-        let p1 = merged.processing_pools.iter().find(|p| p.code == "P1").unwrap();
+        let p1 = merged
+            .processing_pools
+            .iter()
+            .find(|p| p.code == "P1")
+            .unwrap();
         // First-wins: src-a's concurrency (10) survives, src-b's (99) is dropped.
         assert_eq!(p1.concurrency, 10);
         assert_eq!(merged.processing_pools.len(), 3);

@@ -15,9 +15,12 @@
 
 use std::time::Duration;
 
-use fc_common::{Message, MediationType};
-use fc_queue::{QueueConsumer, activemq::{ActiveMqConfig, ActiveMqConsumer, ActiveMqPublisher}};
 use chrono::Utc;
+use fc_common::{MediationType, Message};
+use fc_queue::{
+    activemq::{ActiveMqConfig, ActiveMqConsumer, ActiveMqPublisher},
+    QueueConsumer,
+};
 use reqwest;
 
 const AMQP_URI: &str = "amqp://admin:admin@localhost:5672";
@@ -72,7 +75,11 @@ async fn test_consumer_creation() {
     let config = create_test_config();
     let consumer = ActiveMqConsumer::new(config).await;
 
-    assert!(consumer.is_ok(), "Failed to create consumer: {:?}", consumer.err());
+    assert!(
+        consumer.is_ok(),
+        "Failed to create consumer: {:?}",
+        consumer.err()
+    );
 
     let consumer = consumer.unwrap();
     assert!(consumer.is_healthy());
@@ -88,7 +95,11 @@ async fn test_consumer_with_uri() {
 
     let consumer = ActiveMqConsumer::with_uri(AMQP_URI, "test-queue-uri").await;
 
-    assert!(consumer.is_ok(), "Failed to create consumer: {:?}", consumer.err());
+    assert!(
+        consumer.is_ok(),
+        "Failed to create consumer: {:?}",
+        consumer.err()
+    );
 
     let consumer = consumer.unwrap();
     assert!(consumer.is_healthy());
@@ -107,7 +118,9 @@ async fn test_poll_empty_queue() {
         ..create_test_config()
     };
 
-    let consumer = ActiveMqConsumer::new(config).await.expect("Failed to create consumer");
+    let consumer = ActiveMqConsumer::new(config)
+        .await
+        .expect("Failed to create consumer");
 
     let messages = consumer.poll(10).await.expect("Poll failed");
     assert!(messages.is_empty());
@@ -129,7 +142,9 @@ async fn test_publish_and_consume() {
         queue_name: queue_name.clone(),
         ..create_test_config()
     };
-    let publisher = ActiveMqPublisher::new(pub_config).await.expect("Failed to create publisher");
+    let publisher = ActiveMqPublisher::new(pub_config)
+        .await
+        .expect("Failed to create publisher");
 
     // Publish a message
     let test_msg = create_test_message("amqp-msg-1");
@@ -141,7 +156,9 @@ async fn test_publish_and_consume() {
         queue_name: queue_name.clone(),
         ..create_test_config()
     };
-    let consumer = ActiveMqConsumer::new(con_config).await.expect("Failed to create consumer");
+    let consumer = ActiveMqConsumer::new(con_config)
+        .await
+        .expect("Failed to create consumer");
 
     // Poll for the message
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -167,7 +184,9 @@ async fn test_message_acknowledgment() {
         queue_name: queue_name.clone(),
         ..create_test_config()
     };
-    let publisher = ActiveMqPublisher::new(pub_config).await.expect("Failed to create publisher");
+    let publisher = ActiveMqPublisher::new(pub_config)
+        .await
+        .expect("Failed to create publisher");
     let test_msg = create_test_message("amqp-msg-ack");
     publisher.publish(&test_msg).await.expect("Publish failed");
 
@@ -176,14 +195,19 @@ async fn test_message_acknowledgment() {
         queue_name: queue_name.clone(),
         ..create_test_config()
     };
-    let consumer = ActiveMqConsumer::new(con_config).await.expect("Failed to create consumer");
+    let consumer = ActiveMqConsumer::new(con_config)
+        .await
+        .expect("Failed to create consumer");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
     let messages = consumer.poll(10).await.expect("Poll failed");
     assert_eq!(messages.len(), 1);
 
     // Acknowledge the message
-    consumer.ack(&messages[0].receipt_handle).await.expect("Ack failed");
+    consumer
+        .ack(&messages[0].receipt_handle)
+        .await
+        .expect("Ack failed");
 
     // Create a new consumer to check message is gone
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -207,7 +231,9 @@ async fn test_message_nack_requeue() {
         queue_name: queue_name.clone(),
         ..create_test_config()
     };
-    let publisher = ActiveMqPublisher::new(pub_config).await.expect("Failed to create publisher");
+    let publisher = ActiveMqPublisher::new(pub_config)
+        .await
+        .expect("Failed to create publisher");
     let test_msg = create_test_message("amqp-msg-nack");
     publisher.publish(&test_msg).await.expect("Publish failed");
 
@@ -217,14 +243,19 @@ async fn test_message_nack_requeue() {
         prefetch_count: 1,
         ..create_test_config()
     };
-    let consumer = ActiveMqConsumer::new(con_config).await.expect("Failed to create consumer");
+    let consumer = ActiveMqConsumer::new(con_config)
+        .await
+        .expect("Failed to create consumer");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
     let messages = consumer.poll(10).await.expect("Poll failed");
     assert_eq!(messages.len(), 1);
 
     // NACK the message (will requeue)
-    consumer.nack(&messages[0].receipt_handle, None).await.expect("Nack failed");
+    consumer
+        .nack(&messages[0].receipt_handle, None)
+        .await
+        .expect("Nack failed");
 
     // Message should be requeued and available again
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -243,7 +274,9 @@ async fn test_consumer_stop() {
     }
 
     let config = create_test_config();
-    let consumer = ActiveMqConsumer::new(config).await.expect("Failed to create consumer");
+    let consumer = ActiveMqConsumer::new(config)
+        .await
+        .expect("Failed to create consumer");
 
     assert!(consumer.is_healthy());
 
@@ -264,7 +297,9 @@ async fn test_consumer_identifier() {
     }
 
     let config = create_test_config();
-    let consumer = ActiveMqConsumer::new(config).await.expect("Failed to create consumer");
+    let consumer = ActiveMqConsumer::new(config)
+        .await
+        .expect("Failed to create consumer");
 
     assert_eq!(consumer.identifier(), TEST_QUEUE_NAME);
 
@@ -284,7 +319,9 @@ async fn test_extend_visibility_noop() {
         queue_name: queue_name.clone(),
         ..create_test_config()
     };
-    let publisher = ActiveMqPublisher::new(pub_config).await.expect("Failed to create publisher");
+    let publisher = ActiveMqPublisher::new(pub_config)
+        .await
+        .expect("Failed to create publisher");
     let test_msg = create_test_message("amqp-msg-extend");
     publisher.publish(&test_msg).await.expect("Publish failed");
 
@@ -292,14 +329,18 @@ async fn test_extend_visibility_noop() {
         queue_name: queue_name.clone(),
         ..create_test_config()
     };
-    let consumer = ActiveMqConsumer::new(con_config).await.expect("Failed to create consumer");
+    let consumer = ActiveMqConsumer::new(con_config)
+        .await
+        .expect("Failed to create consumer");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
     let messages = consumer.poll(10).await.expect("Poll failed");
     assert_eq!(messages.len(), 1);
 
     // Extend visibility should succeed (no-op for AMQP)
-    let result = consumer.extend_visibility(&messages[0].receipt_handle, 60).await;
+    let result = consumer
+        .extend_visibility(&messages[0].receipt_handle, 60)
+        .await;
     assert!(result.is_ok());
 
     consumer.stop().await;
@@ -319,7 +360,9 @@ async fn test_multiple_messages() {
         queue_name: queue_name.clone(),
         ..create_test_config()
     };
-    let publisher = ActiveMqPublisher::new(pub_config).await.expect("Failed to create publisher");
+    let publisher = ActiveMqPublisher::new(pub_config)
+        .await
+        .expect("Failed to create publisher");
 
     for i in 0..5 {
         let test_msg = create_test_message(&format!("amqp-multi-{}", i));
@@ -332,7 +375,9 @@ async fn test_multiple_messages() {
         prefetch_count: 10,
         ..create_test_config()
     };
-    let consumer = ActiveMqConsumer::new(con_config).await.expect("Failed to create consumer");
+    let consumer = ActiveMqConsumer::new(con_config)
+        .await
+        .expect("Failed to create consumer");
 
     tokio::time::sleep(Duration::from_millis(200)).await;
     let messages = consumer.poll(10).await.expect("Poll failed");
@@ -353,7 +398,11 @@ async fn test_publisher_with_uri() {
     let queue_name = format!("pub-uri-test-{}", uuid::Uuid::new_v4());
     let publisher = ActiveMqPublisher::with_uri(AMQP_URI, &queue_name).await;
 
-    assert!(publisher.is_ok(), "Failed to create publisher: {:?}", publisher.err());
+    assert!(
+        publisher.is_ok(),
+        "Failed to create publisher: {:?}",
+        publisher.err()
+    );
 
     let publisher = publisher.unwrap();
     let test_msg = create_test_message("pub-uri-msg");

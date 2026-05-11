@@ -6,13 +6,13 @@
 //! This matches the TypeScript implementation.
 
 use async_trait::async_trait;
-use sqlx::PgPool;
 use chrono::{DateTime, Utc};
+use sqlx::PgPool;
 
-use crate::ServiceAccount;
-use crate::service_account::entity::{RoleAssignment, WebhookCredentials, WebhookAuthType};
+use crate::service_account::entity::{RoleAssignment, WebhookAuthType, WebhookCredentials};
 use crate::shared::error::Result;
 use crate::usecase::unit_of_work::HasId;
+use crate::ServiceAccount;
 
 /// Row mapping for iam_principals table (SERVICE type rows)
 #[derive(sqlx::FromRow, Clone)]
@@ -76,7 +76,10 @@ impl ServiceAccountRepository {
     pub async fn insert(&self, account: &ServiceAccount) -> Result<()> {
         let now = Utc::now();
         let wh = &account.webhook_credentials;
-        let sa_id = account.service_account_table_id.as_ref().unwrap_or(&account.id);
+        let sa_id = account
+            .service_account_table_id
+            .as_ref()
+            .unwrap_or(&account.id);
 
         sqlx::query(
             "INSERT INTO iam_service_accounts
@@ -84,7 +87,7 @@ impl ServiceAccountRepository {
                  wh_auth_type, wh_auth_token_ref, wh_signing_secret_ref, wh_signing_algorithm,
                  wh_credentials_created_at, wh_credentials_regenerated_at,
                  last_used_at, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL, $12, $13, $14)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL, $12, $13, $14)",
         )
         .bind(sa_id)
         .bind(&account.code)
@@ -110,7 +113,7 @@ impl ServiceAccountRepository {
         let principal = sqlx::query_as::<_, PrincipalRow>(
             "SELECT id, type, scope, client_id, application_id, name, active, \
              service_account_id, created_at, updated_at \
-             FROM iam_principals WHERE id = $1"
+             FROM iam_principals WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -129,7 +132,7 @@ impl ServiceAccountRepository {
             "SELECT id, code, name, description, application_id, active, \
              wh_auth_type, wh_auth_token_ref, wh_signing_secret_ref, wh_signing_algorithm, \
              last_used_at, created_at, updated_at \
-             FROM iam_service_accounts WHERE code = $1"
+             FROM iam_service_accounts WHERE code = $1",
         )
         .bind(code)
         .fetch_optional(&self.pool)
@@ -140,7 +143,7 @@ impl ServiceAccountRepository {
                 let principal = sqlx::query_as::<_, PrincipalRow>(
                     "SELECT id, type, scope, client_id, application_id, name, active, \
                      service_account_id, created_at, updated_at \
-                     FROM iam_principals WHERE service_account_id = $1"
+                     FROM iam_principals WHERE service_account_id = $1",
                 )
                 .bind(&sa_row.id)
                 .fetch_optional(&self.pool)
@@ -159,7 +162,7 @@ impl ServiceAccountRepository {
         let principals = sqlx::query_as::<_, PrincipalRow>(
             "SELECT id, type, scope, client_id, application_id, name, active, \
              service_account_id, created_at, updated_at \
-             FROM iam_principals WHERE type = 'SERVICE' AND active = true"
+             FROM iam_principals WHERE type = 'SERVICE' AND active = true",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -171,7 +174,7 @@ impl ServiceAccountRepository {
         let principals = sqlx::query_as::<_, PrincipalRow>(
             "SELECT id, type, scope, client_id, application_id, name, active, \
              service_account_id, created_at, updated_at \
-             FROM iam_principals WHERE type = 'SERVICE' AND application_id = $1"
+             FROM iam_principals WHERE type = 'SERVICE' AND application_id = $1",
         )
         .bind(application_id)
         .fetch_all(&self.pool)
@@ -184,7 +187,7 @@ impl ServiceAccountRepository {
         let principals = sqlx::query_as::<_, PrincipalRow>(
             "SELECT id, type, scope, client_id, application_id, name, active, \
              service_account_id, created_at, updated_at \
-             FROM iam_principals WHERE type = 'SERVICE' AND client_id = $1 AND active = true"
+             FROM iam_principals WHERE type = 'SERVICE' AND client_id = $1 AND active = true",
         )
         .bind(client_id)
         .fetch_all(&self.pool)
@@ -199,7 +202,7 @@ impl ServiceAccountRepository {
              p.service_account_id, p.created_at, p.updated_at \
              FROM iam_principals p
              INNER JOIN iam_principal_roles pr ON pr.principal_id = p.id
-             WHERE p.type = 'SERVICE' AND p.active = true AND pr.role_name = $1"
+             WHERE p.type = 'SERVICE' AND p.active = true AND pr.role_name = $1",
         )
         .bind(role)
         .fetch_all(&self.pool)
@@ -217,7 +220,7 @@ impl ServiceAccountRepository {
                     code = $2, name = $3, description = $4, application_id = $5, active = $6,
                     wh_auth_type = $7, wh_auth_token_ref = $8, wh_signing_secret_ref = $9,
                     wh_signing_algorithm = $10, last_used_at = $11, updated_at = $12
-                 WHERE id = $1"
+                 WHERE id = $1",
             )
             .bind(sa_table_id)
             .bind(&account.code)
@@ -256,7 +259,7 @@ impl ServiceAccountRepository {
                 "SELECT id, code, name, description, application_id, active, \
                  wh_auth_type, wh_auth_token_ref, wh_signing_secret_ref, wh_signing_algorithm, \
                  last_used_at, created_at, updated_at \
-                 FROM iam_service_accounts WHERE id = $1"
+                 FROM iam_service_accounts WHERE id = $1",
             )
             .bind(sa_id)
             .fetch_optional(&self.pool)
@@ -265,7 +268,11 @@ impl ServiceAccountRepository {
             None
         };
         let roles = self.load_roles(&principal.id).await?;
-        Ok(Self::build_service_account_sync(principal, sa_row.as_ref(), roles))
+        Ok(Self::build_service_account_sync(
+            principal,
+            sa_row.as_ref(),
+            roles,
+        ))
     }
 
     /// Hydrate when we already have both rows.
@@ -275,7 +282,11 @@ impl ServiceAccountRepository {
         sa_row: ServiceAccountRow,
     ) -> Result<ServiceAccount> {
         let roles = self.load_roles(&principal.id).await?;
-        Ok(Self::build_service_account_sync(principal, Some(&sa_row), roles))
+        Ok(Self::build_service_account_sync(
+            principal,
+            Some(&sa_row),
+            roles,
+        ))
     }
 
     /// Hydrate multiple principals into ServiceAccounts (batch).
@@ -287,7 +298,8 @@ impl ServiceAccountRepository {
         let principal_ids: Vec<String> = principals.iter().map(|p| p.id.clone()).collect();
 
         // Batch-load service account details
-        let sa_ids: Vec<String> = principals.iter()
+        let sa_ids: Vec<String> = principals
+            .iter()
             .filter_map(|p| p.service_account_id.clone())
             .collect();
 
@@ -296,7 +308,7 @@ impl ServiceAccountRepository {
                 "SELECT id, code, name, description, application_id, active, \
                  wh_auth_type, wh_auth_token_ref, wh_signing_secret_ref, wh_signing_algorithm, \
                  last_used_at, created_at, updated_at \
-                 FROM iam_service_accounts WHERE id = ANY($1)"
+                 FROM iam_service_accounts WHERE id = ANY($1)",
             )
             .bind(&sa_ids)
             .fetch_all(&self.pool)
@@ -311,7 +323,7 @@ impl ServiceAccountRepository {
         // Batch-load roles
         let all_roles = sqlx::query_as::<_, PrincipalRoleRow>(
             "SELECT principal_id, role_name, assignment_source, assigned_at \
-             FROM iam_principal_roles WHERE principal_id = ANY($1)"
+             FROM iam_principal_roles WHERE principal_id = ANY($1)",
         )
         .bind(&principal_ids)
         .fetch_all(&self.pool)
@@ -320,24 +332,32 @@ impl ServiceAccountRepository {
         let mut role_map: std::collections::HashMap<String, Vec<RoleAssignment>> =
             std::collections::HashMap::new();
         for r in all_roles {
-            role_map.entry(r.principal_id.clone()).or_default().push(RoleAssignment {
-                role: r.role_name,
-                client_id: None,
-                assignment_source: r.assignment_source,
-                assigned_at: r.assigned_at,
-                assigned_by: None,
-            });
+            role_map
+                .entry(r.principal_id.clone())
+                .or_default()
+                .push(RoleAssignment {
+                    role: r.role_name,
+                    client_id: None,
+                    assignment_source: r.assignment_source,
+                    assigned_at: r.assigned_at,
+                    assigned_by: None,
+                });
         }
 
         // Build ServiceAccount entities
-        let results = principals.into_iter().map(|p| {
-            let id = p.id.clone();
-            let sa_row = p.service_account_id.as_ref()
-                .and_then(|sa_id| sa_rows.get(sa_id));
-            let roles = role_map.remove(&id).unwrap_or_default();
+        let results = principals
+            .into_iter()
+            .map(|p| {
+                let id = p.id.clone();
+                let sa_row = p
+                    .service_account_id
+                    .as_ref()
+                    .and_then(|sa_id| sa_rows.get(sa_id));
+                let roles = role_map.remove(&id).unwrap_or_default();
 
-            Self::build_service_account_sync(p, sa_row, roles)
-        }).collect();
+                Self::build_service_account_sync(p, sa_row, roles)
+            })
+            .collect();
 
         Ok(results)
     }
@@ -348,18 +368,25 @@ impl ServiceAccountRepository {
         sa_row: Option<&ServiceAccountRow>,
         roles: Vec<RoleAssignment>,
     ) -> ServiceAccount {
-        let webhook_credentials = sa_row.map(|sa| WebhookCredentials {
-            auth_type: sa.wh_auth_type.as_deref().map(WebhookAuthType::from_str).unwrap_or_default(),
-            token: sa.wh_auth_token_ref.clone(),
-            username: None,
-            password: None,
-            header_name: None,
-            signing_secret: sa.wh_signing_secret_ref.clone(),
-            signing_algorithm: sa.wh_signing_algorithm.clone(),
-            signature_header: None,
-        }).unwrap_or_default();
+        let webhook_credentials = sa_row
+            .map(|sa| WebhookCredentials {
+                auth_type: sa
+                    .wh_auth_type
+                    .as_deref()
+                    .map(WebhookAuthType::from_str)
+                    .unwrap_or_default(),
+                token: sa.wh_auth_token_ref.clone(),
+                username: None,
+                password: None,
+                header_name: None,
+                signing_secret: sa.wh_signing_secret_ref.clone(),
+                signing_algorithm: sa.wh_signing_algorithm.clone(),
+                signature_header: None,
+            })
+            .unwrap_or_default();
 
-        let code = sa_row.map(|sa| sa.code.clone())
+        let code = sa_row
+            .map(|sa| sa.code.clone())
             .unwrap_or_else(|| principal.name.clone());
 
         ServiceAccount {
@@ -385,26 +412,31 @@ impl ServiceAccountRepository {
     async fn load_roles(&self, principal_id: &str) -> Result<Vec<RoleAssignment>> {
         let rows = sqlx::query_as::<_, PrincipalRoleRow>(
             "SELECT principal_id, role_name, assignment_source, assigned_at \
-             FROM iam_principal_roles WHERE principal_id = $1"
+             FROM iam_principal_roles WHERE principal_id = $1",
         )
         .bind(principal_id)
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.into_iter().map(|m| RoleAssignment {
-            role: m.role_name,
-            client_id: None,
-            assignment_source: m.assignment_source,
-            assigned_at: m.assigned_at,
-            assigned_by: None,
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(|m| RoleAssignment {
+                role: m.role_name,
+                client_id: None,
+                assignment_source: m.assignment_source,
+                assigned_at: m.assigned_at,
+                assigned_by: None,
+            })
+            .collect())
     }
 }
 
 // ── Persist<ServiceAccount> ──────────────────────────────────────────────────
 
 impl HasId for ServiceAccount {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]
@@ -412,7 +444,10 @@ impl crate::usecase::Persist<ServiceAccount> for ServiceAccountRepository {
     async fn persist(&self, sa: &ServiceAccount, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
         let scope = sa.scope.clone().unwrap_or_else(|| "ANCHOR".to_string());
-        let sa_table_id = sa.service_account_table_id.clone().unwrap_or_else(|| sa.id.clone());
+        let sa_table_id = sa
+            .service_account_table_id
+            .clone()
+            .unwrap_or_else(|| sa.id.clone());
         let wh = &sa.webhook_credentials;
 
         // 1. Upsert iam_principals (SERVICE type principal)
@@ -473,7 +508,8 @@ impl crate::usecase::Persist<ServiceAccount> for ServiceAccountRepository {
         // 3. Sync roles to iam_principal_roles using the principal ID
         sqlx::query("DELETE FROM iam_principal_roles WHERE principal_id = $1")
             .bind(&sa.id)
-            .execute(&mut **tx.inner).await?;
+            .execute(&mut **tx.inner)
+            .await?;
         for r in &sa.roles {
             sqlx::query(
                 "INSERT INTO iam_principal_roles (principal_id, role_name, assignment_source, assigned_at)
@@ -493,11 +529,13 @@ impl crate::usecase::Persist<ServiceAccount> for ServiceAccountRepository {
         if let Some(ref sa_id) = sa.service_account_table_id {
             sqlx::query("DELETE FROM iam_service_accounts WHERE id = $1")
                 .bind(sa_id)
-                .execute(&mut **tx.inner).await?;
+                .execute(&mut **tx.inner)
+                .await?;
         }
         sqlx::query("DELETE FROM iam_principals WHERE id = $1")
             .bind(&sa.id)
-            .execute(&mut **tx.inner).await?;
+            .execute(&mut **tx.inner)
+            .await?;
         Ok(())
     }
 }

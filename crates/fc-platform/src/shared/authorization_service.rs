@@ -2,14 +2,14 @@
 //!
 //! Permission-based access control with role resolution.
 
+use crate::permissions;
+use crate::shared::error::{PlatformError, Result};
+use crate::AccessTokenClaims;
+use crate::RoleRepository;
+use dashmap::DashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
-use dashmap::DashMap;
-use crate::permissions;
-use crate::RoleRepository;
-use crate::shared::error::{PlatformError, Result};
-use crate::AccessTokenClaims;
 
 /// Authorization context for a request
 #[derive(Debug, Clone)]
@@ -64,8 +64,8 @@ impl AuthContext {
 
     /// Check if this context can access a specific client
     pub fn can_access_client(&self, client_id: &str) -> bool {
-        self.accessible_clients.contains(&"*".to_string()) ||
-            self.accessible_clients.contains(&client_id.to_string())
+        self.accessible_clients.contains(&"*".to_string())
+            || self.accessible_clients.contains(&client_id.to_string())
     }
 
     /// Check if this context has a specific permission (4-level pattern matching)
@@ -129,7 +129,10 @@ impl AuthorizationService {
     /// Resolves all permissions from roles (cached)
     pub async fn build_context(&self, claims: &AccessTokenClaims) -> Result<AuthContext> {
         let permissions = self.resolve_permissions(&claims.roles).await?;
-        Ok(AuthContext::from_claims_with_permissions(claims, permissions))
+        Ok(AuthContext::from_claims_with_permissions(
+            claims,
+            permissions,
+        ))
     }
 
     /// Resolve all permissions for a set of role codes, with in-memory caching
@@ -159,10 +162,13 @@ impl AuthorizationService {
         }
 
         // Store in cache
-        self.permission_cache.insert(cache_key, CachedPermissions {
-            permissions: permissions.clone(),
-            cached_at: Instant::now(),
-        });
+        self.permission_cache.insert(
+            cache_key,
+            CachedPermissions {
+                permissions: permissions.clone(),
+                cached_at: Instant::now(),
+            },
+        );
 
         Ok(permissions)
     }
@@ -343,7 +349,9 @@ pub mod checks {
         if context.has_permission(permissions::admin::DISPATCH_JOB_VIEW_RAW) {
             Ok(())
         } else {
-            Err(PlatformError::forbidden("Cannot read raw dispatch job data"))
+            Err(PlatformError::forbidden(
+                "Cannot read raw dispatch job data",
+            ))
         }
     }
 
@@ -508,7 +516,9 @@ pub mod checks {
         ]) {
             Ok(())
         } else {
-            Err(PlatformError::forbidden("Cannot read scheduled job instances"))
+            Err(PlatformError::forbidden(
+                "Cannot read scheduled job instances",
+            ))
         }
     }
 
@@ -671,23 +681,17 @@ mod tests {
             "CLIENT",
             vec![],
         );
-        assert!(ctx.has_all_permissions(&[
-            "platform:admin:event:read",
-            "platform:admin:client:read",
-        ]));
+        assert!(
+            ctx.has_all_permissions(&["platform:admin:event:read", "platform:admin:client:read",])
+        );
     }
 
     #[test]
     fn test_has_all_permissions_one_missing() {
-        let ctx = create_test_context(
-            vec!["platform:admin:event:read"],
-            "CLIENT",
-            vec![],
+        let ctx = create_test_context(vec!["platform:admin:event:read"], "CLIENT", vec![]);
+        assert!(
+            !ctx.has_all_permissions(&["platform:admin:event:read", "platform:admin:client:read",])
         );
-        assert!(!ctx.has_all_permissions(&[
-            "platform:admin:event:read",
-            "platform:admin:client:read",
-        ]));
     }
 
     #[test]
@@ -699,23 +703,16 @@ mod tests {
 
     #[test]
     fn test_has_any_permission_one_present() {
-        let ctx = create_test_context(
-            vec!["platform:admin:event:read"],
-            "CLIENT",
-            vec![],
+        let ctx = create_test_context(vec!["platform:admin:event:read"], "CLIENT", vec![]);
+        assert!(
+            ctx.has_any_permission(&["platform:admin:event:read", "platform:admin:client:read",])
         );
-        assert!(ctx.has_any_permission(&[
-            "platform:admin:event:read",
-            "platform:admin:client:read",
-        ]));
     }
 
     #[test]
     fn test_has_any_permission_none_present() {
         let ctx = create_test_context(vec![], "CLIENT", vec![]);
-        assert!(!ctx.has_any_permission(&[
-            "platform:admin:event:read",
-        ]));
+        assert!(!ctx.has_any_permission(&["platform:admin:event:read",]));
     }
 
     #[test]
@@ -844,11 +841,7 @@ mod tests {
 
     #[test]
     fn test_can_read_events_with_permission() {
-        let ctx = create_test_context(
-            vec![permissions::admin::EVENT_READ],
-            "CLIENT",
-            vec!["c1"],
-        );
+        let ctx = create_test_context(vec![permissions::admin::EVENT_READ], "CLIENT", vec!["c1"]);
         assert!(checks::can_read_events(&ctx).is_ok());
     }
 

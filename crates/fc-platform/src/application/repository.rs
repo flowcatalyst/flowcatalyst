@@ -1,8 +1,8 @@
 //! Application Repository — PostgreSQL via SQLx
 
 use async_trait::async_trait;
-use sqlx::PgPool;
 use chrono::{DateTime, Utc};
+use sqlx::PgPool;
 
 use super::entity::{Application, ApplicationType};
 use crate::shared::error::Result;
@@ -84,28 +84,26 @@ impl ApplicationRepository {
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<Application>> {
-        let row = sqlx::query_as::<_, ApplicationRow>(
-            "SELECT * FROM app_applications WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row =
+            sqlx::query_as::<_, ApplicationRow>("SELECT * FROM app_applications WHERE id = $1")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(row.map(Application::from))
     }
 
     pub async fn find_by_code(&self, code: &str) -> Result<Option<Application>> {
-        let row = sqlx::query_as::<_, ApplicationRow>(
-            "SELECT * FROM app_applications WHERE code = $1"
-        )
-        .bind(code)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row =
+            sqlx::query_as::<_, ApplicationRow>("SELECT * FROM app_applications WHERE code = $1")
+                .bind(code)
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(row.map(Application::from))
     }
 
     pub async fn find_active(&self) -> Result<Vec<Application>> {
         let rows = sqlx::query_as::<_, ApplicationRow>(
-            "SELECT * FROM app_applications WHERE active = TRUE"
+            "SELECT * FROM app_applications WHERE active = TRUE",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -113,38 +111,31 @@ impl ApplicationRepository {
     }
 
     pub async fn find_all(&self) -> Result<Vec<Application>> {
-        let rows = sqlx::query_as::<_, ApplicationRow>(
-            "SELECT * FROM app_applications"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query_as::<_, ApplicationRow>("SELECT * FROM app_applications")
+            .fetch_all(&self.pool)
+            .await?;
         Ok(rows.into_iter().map(Application::from).collect())
     }
 
     pub async fn find_paged(&self, limit: i64, offset: i64) -> Result<(Vec<Application>, i64)> {
-        let total: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM app_applications"
-        )
-        .fetch_one(&self.pool)
-        .await?;
+        let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM app_applications")
+            .fetch_one(&self.pool)
+            .await?;
 
         let rows = sqlx::query_as::<_, ApplicationRow>(
-            "SELECT * FROM app_applications ORDER BY code ASC LIMIT $1 OFFSET $2"
+            "SELECT * FROM app_applications ORDER BY code ASC LIMIT $1 OFFSET $2",
         )
         .bind(limit)
         .bind(offset)
         .fetch_all(&self.pool)
         .await?;
 
-        Ok((
-            rows.into_iter().map(Application::from).collect(),
-            total.0,
-        ))
+        Ok((rows.into_iter().map(Application::from).collect(), total.0))
     }
 
     pub async fn find_by_type(&self, app_type: ApplicationType) -> Result<Vec<Application>> {
         let rows = sqlx::query_as::<_, ApplicationRow>(
-            "SELECT * FROM app_applications WHERE type = $1 AND active = TRUE"
+            "SELECT * FROM app_applications WHERE type = $1 AND active = TRUE",
         )
         .bind(app_type.as_str())
         .fetch_all(&self.pool)
@@ -152,9 +143,12 @@ impl ApplicationRepository {
         Ok(rows.into_iter().map(Application::from).collect())
     }
 
-    pub async fn find_by_service_account(&self, service_account_id: &str) -> Result<Option<Application>> {
+    pub async fn find_by_service_account(
+        &self,
+        service_account_id: &str,
+    ) -> Result<Option<Application>> {
         let row = sqlx::query_as::<_, ApplicationRow>(
-            "SELECT * FROM app_applications WHERE service_account_id = $1"
+            "SELECT * FROM app_applications WHERE service_account_id = $1",
         )
         .bind(service_account_id)
         .fetch_optional(&self.pool)
@@ -163,22 +157,20 @@ impl ApplicationRepository {
     }
 
     pub async fn exists(&self, id: &str) -> Result<bool> {
-        let row: (bool,) = sqlx::query_as(
-            "SELECT EXISTS(SELECT 1 FROM app_applications WHERE id = $1)"
-        )
-        .bind(id)
-        .fetch_one(&self.pool)
-        .await?;
+        let row: (bool,) =
+            sqlx::query_as("SELECT EXISTS(SELECT 1 FROM app_applications WHERE id = $1)")
+                .bind(id)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(row.0)
     }
 
     pub async fn exists_by_code(&self, code: &str) -> Result<bool> {
-        let row: (bool,) = sqlx::query_as(
-            "SELECT EXISTS(SELECT 1 FROM app_applications WHERE code = $1)"
-        )
-        .bind(code)
-        .fetch_one(&self.pool)
-        .await?;
+        let row: (bool,) =
+            sqlx::query_as("SELECT EXISTS(SELECT 1 FROM app_applications WHERE code = $1)")
+                .bind(code)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(row.0)
     }
 
@@ -197,7 +189,7 @@ impl ApplicationRepository {
                 service_account_id = $11,
                 active = $12,
                 updated_at = $13
-             WHERE id = $1"
+             WHERE id = $1",
         )
         .bind(&app.id)
         .bind(app.application_type.as_str())
@@ -233,11 +225,13 @@ impl ApplicationRepository {
 
         sqlx::query("DELETE FROM iam_principal_application_access WHERE application_id = $1")
             .bind(id)
-            .execute(&mut *tx).await?;
+            .execute(&mut *tx)
+            .await?;
 
         let result = sqlx::query("DELETE FROM app_applications WHERE id = $1")
             .bind(id)
-            .execute(&mut *tx).await?;
+            .execute(&mut *tx)
+            .await?;
 
         tx.commit().await?;
         Ok(result.rows_affected() > 0)
@@ -258,46 +252,42 @@ impl ApplicationRepository {
 
     /// Count per-client config entries pointing at this application.
     pub async fn count_client_configs(&self, application_id: &str) -> Result<i64> {
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM app_client_configs WHERE application_id = $1",
-        )
-        .bind(application_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM app_client_configs WHERE application_id = $1")
+                .bind(application_id)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(count)
     }
 
     /// Count service accounts attached to this application.
     pub async fn count_service_accounts(&self, application_id: &str) -> Result<i64> {
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM iam_service_accounts WHERE application_id = $1",
-        )
-        .bind(application_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM iam_service_accounts WHERE application_id = $1")
+                .bind(application_id)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(count)
     }
 
     /// Count roles scoped to this application.
     pub async fn count_roles(&self, application_id: &str) -> Result<i64> {
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM iam_roles WHERE application_id = $1",
-        )
-        .bind(application_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM iam_roles WHERE application_id = $1")
+                .bind(application_id)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(count)
     }
 
     /// Count principals whose application ref points at this application
     /// (service-account principals, typically).
     pub async fn count_principal_refs(&self, application_id: &str) -> Result<i64> {
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM iam_principals WHERE application_id = $1",
-        )
-        .bind(application_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM iam_principals WHERE application_id = $1")
+                .bind(application_id)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(count)
     }
 }
@@ -305,7 +295,9 @@ impl ApplicationRepository {
 // ── Persist<Application> ─────────────────────────────────────────────────────
 
 impl HasId for Application {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]

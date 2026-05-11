@@ -59,19 +59,23 @@ impl<U: UnitOfWork> UseCase for ArchiveScheduledJobUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to load ScheduledJob: {}", e
+                    "Failed to load ScheduledJob: {}",
+                    e
                 )))
             }
         };
 
         if job.status == ScheduledJobStatus::Archived {
             return UseCaseResult::failure(UseCaseError::business_rule(
-                "ALREADY_ARCHIVED", "ScheduledJob is already archived",
+                "ALREADY_ARCHIVED",
+                "ScheduledJob is already archived",
             ));
         }
 
         job.archive();
         let event = ScheduledJobArchived::new(&ctx, &job.id, job.client_id.as_deref(), &job.code);
-        self.unit_of_work.commit(&job, &*self.repo, event, &cmd).await
+        self.unit_of_work
+            .commit(&job, &*self.repo, event, &cmd)
+            .await
     }
 }

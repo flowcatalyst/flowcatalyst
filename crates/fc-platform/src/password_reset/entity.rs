@@ -11,7 +11,11 @@ pub struct PasswordResetToken {
 }
 
 impl PasswordResetToken {
-    pub fn new(principal_id: impl Into<String>, token_hash: impl Into<String>, expires_at: DateTime<Utc>) -> Self {
+    pub fn new(
+        principal_id: impl Into<String>,
+        token_hash: impl Into<String>,
+        expires_at: DateTime<Utc>,
+    ) -> Self {
         Self {
             id: crate::TsidGenerator::generate(crate::EntityType::PasswordResetToken),
             principal_id: principal_id.into(),
@@ -31,7 +35,6 @@ impl PasswordResetToken {
         !self.is_expired()
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -57,7 +60,11 @@ mod tests {
         assert_eq!(token.token_hash, "somehash");
         assert_eq!(token.expires_at, expires);
         // ID should have the password-reset-token prefix
-        assert!(token.id.starts_with("prt_"), "expected prt_ prefix, got: {}", token.id);
+        assert!(
+            token.id.starts_with("prt_"),
+            "expected prt_ prefix, got: {}",
+            token.id
+        );
     }
 
     #[test]

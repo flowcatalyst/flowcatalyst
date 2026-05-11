@@ -4,11 +4,11 @@
 //! that have been stuck in PROCESSING state for too long and resets them
 //! to PENDING so they can be reprocessed.
 
+use crate::repository::OutboxRepository;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{interval, MissedTickBehavior};
-use tracing::{info, error, debug};
-use crate::repository::OutboxRepository;
+use tracing::{debug, error, info};
 
 /// Configuration for the crash recovery task.
 #[derive(Debug, Clone)]
@@ -52,8 +52,7 @@ impl RecoveryTask {
 
         info!(
             "Starting outbox recovery task (interval: {:?}, timeout: {:?})",
-            self.config.check_interval,
-            self.config.stuck_timeout
+            self.config.check_interval, self.config.stuck_timeout
         );
 
         let mut ticker = interval(self.config.check_interval);
@@ -68,7 +67,11 @@ impl RecoveryTask {
     /// Perform a single recovery check.
     pub async fn recover_once(&self) {
         debug!("Checking for stuck outbox items");
-        match self.repository.recover_stuck_items(self.config.stuck_timeout).await {
+        match self
+            .repository
+            .recover_stuck_items(self.config.stuck_timeout)
+            .await
+        {
             Ok(count) => {
                 if count > 0 {
                     info!("Recovered {} stuck outbox items", count);

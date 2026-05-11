@@ -1,15 +1,13 @@
 //! Delete Role Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::RoleDeleted;
 use crate::role::entity::RoleSource;
 use crate::role::repository::RoleRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::RoleDeleted;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 /// Command for deleting a role.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,7 +47,11 @@ impl<U: UnitOfWork> UseCase for DeleteRoleUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeleteRoleCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeleteRoleCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -91,7 +93,8 @@ impl<U: UnitOfWork> UseCase for DeleteRoleUseCase<U> {
             Ok(n) => n,
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to count assignments: {}", e,
+                    "Failed to count assignments: {}",
+                    e,
                 )));
             }
         };

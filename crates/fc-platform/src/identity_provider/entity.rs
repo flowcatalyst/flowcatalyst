@@ -1,7 +1,7 @@
 //! IdentityProvider Entity
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -12,10 +12,16 @@ pub enum IdentityProviderType {
 
 impl IdentityProviderType {
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Internal => "INTERNAL", Self::Oidc => "OIDC" }
+        match self {
+            Self::Internal => "INTERNAL",
+            Self::Oidc => "OIDC",
+        }
     }
     pub fn from_str(s: &str) -> Self {
-        match s { "OIDC" => Self::Oidc, _ => Self::Internal }
+        match s {
+            "OIDC" => Self::Oidc,
+            _ => Self::Internal,
+        }
     }
 }
 
@@ -37,7 +43,11 @@ pub struct IdentityProvider {
 }
 
 impl IdentityProvider {
-    pub fn new(code: impl Into<String>, name: impl Into<String>, idp_type: IdentityProviderType) -> Self {
+    pub fn new(
+        code: impl Into<String>,
+        name: impl Into<String>,
+        idp_type: IdentityProviderType,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: crate::TsidGenerator::generate(crate::EntityType::IdentityProvider),
@@ -66,10 +76,18 @@ mod tests {
 
     #[test]
     fn test_new_internal_identity_provider() {
-        let idp = IdentityProvider::new("internal", "Internal Provider", IdentityProviderType::Internal);
+        let idp = IdentityProvider::new(
+            "internal",
+            "Internal Provider",
+            IdentityProviderType::Internal,
+        );
 
         assert!(!idp.id.is_empty());
-        assert!(idp.id.starts_with("idp_"), "ID should have idp_ prefix, got: {}", idp.id);
+        assert!(
+            idp.id.starts_with("idp_"),
+            "ID should have idp_ prefix, got: {}",
+            idp.id
+        );
         assert_eq!(idp.code, "internal");
         assert_eq!(idp.name, "Internal Provider");
         assert_eq!(idp.r#type, IdentityProviderType::Internal);
@@ -108,11 +126,23 @@ mod tests {
 
     #[test]
     fn test_identity_provider_type_from_str() {
-        assert_eq!(IdentityProviderType::from_str("OIDC"), IdentityProviderType::Oidc);
-        assert_eq!(IdentityProviderType::from_str("INTERNAL"), IdentityProviderType::Internal);
+        assert_eq!(
+            IdentityProviderType::from_str("OIDC"),
+            IdentityProviderType::Oidc
+        );
+        assert_eq!(
+            IdentityProviderType::from_str("INTERNAL"),
+            IdentityProviderType::Internal
+        );
         // Default/fallback is Internal
-        assert_eq!(IdentityProviderType::from_str("unknown"), IdentityProviderType::Internal);
-        assert_eq!(IdentityProviderType::from_str(""), IdentityProviderType::Internal);
+        assert_eq!(
+            IdentityProviderType::from_str("unknown"),
+            IdentityProviderType::Internal
+        );
+        assert_eq!(
+            IdentityProviderType::from_str(""),
+            IdentityProviderType::Internal
+        );
     }
 
     #[test]
@@ -142,4 +172,3 @@ mod tests {
         assert!(json.contains("oidcMultiTenant"));
     }
 }
-

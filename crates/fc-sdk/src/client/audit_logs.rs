@@ -1,7 +1,7 @@
 //! Audit log query operations.
 
+use super::{ClientError, FlowCatalystClient};
 use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError};
 
 /// Paginated list of audit logs — `GET /api/audit-logs`.
 #[derive(Debug, Clone, Serialize, Deserialize)]

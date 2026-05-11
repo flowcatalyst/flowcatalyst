@@ -1,8 +1,8 @@
 //! Client Repository — PostgreSQL via SQLx
 
 use async_trait::async_trait;
-use sqlx::PgPool;
 use chrono::{DateTime, Utc};
+use sqlx::PgPool;
 
 use super::entity::{Client, ClientNote, ClientStatus};
 use crate::shared::error::Result;
@@ -24,7 +24,8 @@ struct ClientRow {
 
 impl From<ClientRow> for Client {
     fn from(r: ClientRow) -> Self {
-        let notes: Vec<ClientNote> = r.notes
+        let notes: Vec<ClientNote> = r
+            .notes
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default();
 
@@ -73,40 +74,33 @@ impl ClientRepository {
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<Client>> {
-        let row = sqlx::query_as::<_, ClientRow>(
-            "SELECT * FROM tnt_clients WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query_as::<_, ClientRow>("SELECT * FROM tnt_clients WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(row.map(Client::from))
     }
 
     pub async fn find_by_identifier(&self, identifier: &str) -> Result<Option<Client>> {
-        let row = sqlx::query_as::<_, ClientRow>(
-            "SELECT * FROM tnt_clients WHERE identifier = $1"
-        )
-        .bind(identifier)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query_as::<_, ClientRow>("SELECT * FROM tnt_clients WHERE identifier = $1")
+            .bind(identifier)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(row.map(Client::from))
     }
 
     pub async fn find_active(&self) -> Result<Vec<Client>> {
-        let rows = sqlx::query_as::<_, ClientRow>(
-            "SELECT * FROM tnt_clients WHERE status = 'ACTIVE'"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows =
+            sqlx::query_as::<_, ClientRow>("SELECT * FROM tnt_clients WHERE status = 'ACTIVE'")
+                .fetch_all(&self.pool)
+                .await?;
         Ok(rows.into_iter().map(Client::from).collect())
     }
 
     pub async fn find_all(&self) -> Result<Vec<Client>> {
-        let rows = sqlx::query_as::<_, ClientRow>(
-            "SELECT * FROM tnt_clients"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query_as::<_, ClientRow>("SELECT * FROM tnt_clients")
+            .fetch_all(&self.pool)
+            .await?;
         Ok(rows.into_iter().map(Client::from).collect())
     }
 
@@ -114,7 +108,7 @@ impl ClientRepository {
     pub async fn search(&self, term: &str) -> Result<Vec<Client>> {
         let pattern = format!("%{}%", term);
         let rows = sqlx::query_as::<_, ClientRow>(
-            "SELECT * FROM tnt_clients WHERE name ILIKE $1 OR identifier ILIKE $1"
+            "SELECT * FROM tnt_clients WHERE name ILIKE $1 OR identifier ILIKE $1",
         )
         .bind(&pattern)
         .fetch_all(&self.pool)
@@ -123,12 +117,10 @@ impl ClientRepository {
     }
 
     pub async fn find_by_status(&self, status: ClientStatus) -> Result<Vec<Client>> {
-        let rows = sqlx::query_as::<_, ClientRow>(
-            "SELECT * FROM tnt_clients WHERE status = $1"
-        )
-        .bind(status.as_str())
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query_as::<_, ClientRow>("SELECT * FROM tnt_clients WHERE status = $1")
+            .bind(status.as_str())
+            .fetch_all(&self.pool)
+            .await?;
         Ok(rows.into_iter().map(Client::from).collect())
     }
 
@@ -136,32 +128,27 @@ impl ClientRepository {
         if ids.is_empty() {
             return Ok(vec![]);
         }
-        let rows = sqlx::query_as::<_, ClientRow>(
-            "SELECT * FROM tnt_clients WHERE id = ANY($1)"
-        )
-        .bind(ids)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query_as::<_, ClientRow>("SELECT * FROM tnt_clients WHERE id = ANY($1)")
+            .bind(ids)
+            .fetch_all(&self.pool)
+            .await?;
         Ok(rows.into_iter().map(Client::from).collect())
     }
 
     pub async fn exists(&self, id: &str) -> Result<bool> {
-        let row: (bool,) = sqlx::query_as(
-            "SELECT EXISTS(SELECT 1 FROM tnt_clients WHERE id = $1)"
-        )
-        .bind(id)
-        .fetch_one(&self.pool)
-        .await?;
+        let row: (bool,) = sqlx::query_as("SELECT EXISTS(SELECT 1 FROM tnt_clients WHERE id = $1)")
+            .bind(id)
+            .fetch_one(&self.pool)
+            .await?;
         Ok(row.0)
     }
 
     pub async fn exists_by_identifier(&self, identifier: &str) -> Result<bool> {
-        let row: (bool,) = sqlx::query_as(
-            "SELECT EXISTS(SELECT 1 FROM tnt_clients WHERE identifier = $1)"
-        )
-        .bind(identifier)
-        .fetch_one(&self.pool)
-        .await?;
+        let row: (bool,) =
+            sqlx::query_as("SELECT EXISTS(SELECT 1 FROM tnt_clients WHERE identifier = $1)")
+                .bind(identifier)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(row.0)
     }
 
@@ -176,7 +163,7 @@ impl ClientRepository {
                 status_changed_at = $6,
                 notes = $7,
                 updated_at = $8
-             WHERE id = $1"
+             WHERE id = $1",
         )
         .bind(&client.id)
         .bind(&client.name)
@@ -202,11 +189,13 @@ impl ClientRepository {
 
         sqlx::query("DELETE FROM iam_client_access_grants WHERE client_id = $1")
             .bind(id)
-            .execute(&mut *tx).await?;
+            .execute(&mut *tx)
+            .await?;
 
         let result = sqlx::query("DELETE FROM tnt_clients WHERE id = $1")
             .bind(id)
-            .execute(&mut *tx).await?;
+            .execute(&mut *tx)
+            .await?;
 
         tx.commit().await?;
         Ok(result.rows_affected() > 0)
@@ -214,12 +203,11 @@ impl ClientRepository {
 
     /// Count access grants targeting this client.
     pub async fn count_access_grants(&self, client_id: &str) -> Result<i64> {
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM iam_client_access_grants WHERE client_id = $1",
-        )
-        .bind(client_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM iam_client_access_grants WHERE client_id = $1")
+                .bind(client_id)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(count)
     }
 
@@ -227,23 +215,21 @@ impl ClientRepository {
     /// while any exist — home-client is meaningful domain state; silently
     /// orphaning it would change a user's scope without explicit action.
     pub async fn count_home_principals(&self, client_id: &str) -> Result<i64> {
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM iam_principals WHERE client_id = $1",
-        )
-        .bind(client_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM iam_principals WHERE client_id = $1")
+                .bind(client_id)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(count)
     }
 
     /// Count per-application config entries scoped to this client.
     pub async fn count_client_configs(&self, client_id: &str) -> Result<i64> {
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM app_client_configs WHERE client_id = $1",
-        )
-        .bind(client_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM app_client_configs WHERE client_id = $1")
+                .bind(client_id)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(count)
     }
 }
@@ -251,7 +237,9 @@ impl ClientRepository {
 // ── Persist<Client> ──────────────────────────────────────────────────────────
 
 impl HasId for Client {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]

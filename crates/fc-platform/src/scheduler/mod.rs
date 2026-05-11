@@ -141,7 +141,8 @@ impl MessageGroupQueue {
     pub fn add_jobs(&mut self, jobs: Vec<SchedulerJobRow>) {
         let mut sorted = jobs;
         sorted.sort_by(|a, b| {
-            a.sequence.cmp(&b.sequence)
+            a.sequence
+                .cmp(&b.sequence)
                 .then(a.created_at.cmp(&b.created_at))
         });
         self.pending_jobs.extend(sorted);
@@ -205,8 +206,7 @@ impl MessageGroupDispatcher {
 
         let next_job = {
             let mut queues = self.inner.lock().unwrap();
-            let queue = queues.entry(message_group.to_string())
-                .or_default();
+            let queue = queues.entry(message_group.to_string()).or_default();
             queue.add_jobs(jobs);
             queue.try_take_next()
         };
@@ -252,7 +252,9 @@ impl MessageGroupDispatcher {
     async fn dispatch_single_job(&self, job: &SchedulerJobRow) -> bool {
         let message = fc_common::Message {
             id: job.id.clone(),
-            pool_code: job.dispatch_pool_id.clone()
+            pool_code: job
+                .dispatch_pool_id
+                .clone()
                 .unwrap_or_else(|| self.config.default_pool_code.clone()),
             auth_token: None,
             signing_secret: None,
@@ -281,7 +283,10 @@ impl MessageGroupDispatcher {
         };
 
         if should_mark_queued {
-            if let Err(e) = self.batch_update_status_queued(&[(&job.id, job.created_at)]).await {
+            if let Err(e) = self
+                .batch_update_status_queued(&[(&job.id, job.created_at)])
+                .await
+            {
                 error!(job_id = %job.id, error = %e, "Failed to update job to QUEUED");
                 return false;
             }
@@ -320,9 +325,7 @@ impl MessageGroupDispatcher {
 
     pub fn cleanup_empty_queues(&self) {
         let mut queues = self.inner.lock().unwrap();
-        queues.retain(|_, queue| {
-            queue.has_pending_jobs() || queue.has_job_in_flight()
-        });
+        queues.retain(|_, queue| queue.has_pending_jobs() || queue.has_job_in_flight());
     }
 }
 
@@ -426,7 +429,9 @@ impl DispatchScheduler {
 
         tokio::spawn(async move {
             loop {
-                if !*running_clone.read().await { break; }
+                if !*running_clone.read().await {
+                    break;
+                }
 
                 let job_count = match poller.poll().await {
                     Ok(count) => count,
@@ -454,7 +459,9 @@ impl DispatchScheduler {
             let mut interval = interval(Duration::from_secs(60));
             loop {
                 interval.tick().await;
-                if !*running_clone2.read().await { break; }
+                if !*running_clone2.read().await {
+                    break;
+                }
                 if let Err(e) = stale_poller.recover_stale_jobs().await {
                     error!(error = %e, "Error in stale job recovery");
                 }
@@ -480,8 +487,14 @@ mod tests {
     #[test]
     fn test_dispatch_mode_from_str() {
         assert_eq!(DispatchMode::from_str("IMMEDIATE"), DispatchMode::Immediate);
-        assert_eq!(DispatchMode::from_str("NEXT_ON_ERROR"), DispatchMode::NextOnError);
-        assert_eq!(DispatchMode::from_str("BLOCK_ON_ERROR"), DispatchMode::BlockOnError);
+        assert_eq!(
+            DispatchMode::from_str("NEXT_ON_ERROR"),
+            DispatchMode::NextOnError
+        );
+        assert_eq!(
+            DispatchMode::from_str("BLOCK_ON_ERROR"),
+            DispatchMode::BlockOnError
+        );
         assert_eq!(DispatchMode::from_str("unknown"), DispatchMode::Immediate);
     }
 
@@ -513,18 +526,34 @@ mod tests {
 
         let now = Utc::now();
         let job1 = SchedulerJobRow {
-            id: "job1".to_string(), message_group: Some("g1".to_string()),
-            dispatch_pool_id: None, status: "PENDING".to_string(),
-            mode: "IMMEDIATE".to_string(), target_url: "http://a".to_string(),
-            payload: None, sequence: 2, created_at: now, updated_at: now,
-            queued_at: None, last_error: None, subscription_id: None,
+            id: "job1".to_string(),
+            message_group: Some("g1".to_string()),
+            dispatch_pool_id: None,
+            status: "PENDING".to_string(),
+            mode: "IMMEDIATE".to_string(),
+            target_url: "http://a".to_string(),
+            payload: None,
+            sequence: 2,
+            created_at: now,
+            updated_at: now,
+            queued_at: None,
+            last_error: None,
+            subscription_id: None,
         };
         let job2 = SchedulerJobRow {
-            id: "job2".to_string(), message_group: Some("g1".to_string()),
-            dispatch_pool_id: None, status: "PENDING".to_string(),
-            mode: "IMMEDIATE".to_string(), target_url: "http://b".to_string(),
-            payload: None, sequence: 1, created_at: now, updated_at: now,
-            queued_at: None, last_error: None, subscription_id: None,
+            id: "job2".to_string(),
+            message_group: Some("g1".to_string()),
+            dispatch_pool_id: None,
+            status: "PENDING".to_string(),
+            mode: "IMMEDIATE".to_string(),
+            target_url: "http://b".to_string(),
+            payload: None,
+            sequence: 1,
+            created_at: now,
+            updated_at: now,
+            queued_at: None,
+            last_error: None,
+            subscription_id: None,
         };
 
         queue.add_jobs(vec![job1, job2]);
@@ -550,7 +579,10 @@ mod tests {
         assert_eq!(config.batch_size, 200);
         assert_eq!(config.max_concurrent_groups, 10);
         assert_eq!(config.default_pool_code, "DISPATCH-POOL");
-        assert_eq!(config.processing_endpoint, "http://localhost:8080/api/dispatch/process");
+        assert_eq!(
+            config.processing_endpoint,
+            "http://localhost:8080/api/dispatch/process"
+        );
         assert!(config.connection_filter_enabled);
     }
 }

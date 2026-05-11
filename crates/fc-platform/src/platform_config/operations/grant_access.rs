@@ -5,16 +5,14 @@
 //! role_code), with `was_created` flag on the emitted event so consumers
 //! can distinguish.
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::PlatformConfigAccessGranted;
 use crate::platform_config::access_entity::PlatformConfigAccess;
 use crate::platform_config::access_repository::PlatformConfigAccessRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::PlatformConfigAccessGranted;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,7 +32,10 @@ pub struct GrantPlatformConfigAccessUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> GrantPlatformConfigAccessUseCase<U> {
     pub fn new(access_repo: Arc<PlatformConfigAccessRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { access_repo, unit_of_work }
+        Self {
+            access_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -43,17 +44,30 @@ impl<U: UnitOfWork> UseCase for GrantPlatformConfigAccessUseCase<U> {
     type Command = GrantPlatformConfigAccessCommand;
     type Event = PlatformConfigAccessGranted;
 
-    async fn validate(&self, command: &GrantPlatformConfigAccessCommand) -> Result<(), UseCaseError> {
+    async fn validate(
+        &self,
+        command: &GrantPlatformConfigAccessCommand,
+    ) -> Result<(), UseCaseError> {
         if command.application_code.trim().is_empty() {
-            return Err(UseCaseError::validation("APP_CODE_REQUIRED", "Application code is required"));
+            return Err(UseCaseError::validation(
+                "APP_CODE_REQUIRED",
+                "Application code is required",
+            ));
         }
         if command.role_code.trim().is_empty() {
-            return Err(UseCaseError::validation("ROLE_CODE_REQUIRED", "Role code is required"));
+            return Err(UseCaseError::validation(
+                "ROLE_CODE_REQUIRED",
+                "Role code is required",
+            ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &GrantPlatformConfigAccessCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &GrantPlatformConfigAccessCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -62,14 +76,17 @@ impl<U: UnitOfWork> UseCase for GrantPlatformConfigAccessUseCase<U> {
         command: GrantPlatformConfigAccessCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<PlatformConfigAccessGranted> {
-        let existing = match self.access_repo
+        let existing = match self
+            .access_repo
             .find_by_application_and_role(&command.application_code, &command.role_code)
             .await
         {
             Ok(v) => v,
-            Err(e) => return UseCaseResult::failure(UseCaseError::commit(format!(
-                "fetch access: {}", e,
-            ))),
+            Err(e) => {
+                return UseCaseResult::failure(UseCaseError::commit(
+                    format!("fetch access: {}", e,),
+                ))
+            }
         };
 
         let (mut access, was_created) = match existing {
@@ -80,8 +97,12 @@ impl<U: UnitOfWork> UseCase for GrantPlatformConfigAccessUseCase<U> {
             ),
         };
 
-        if let Some(cr) = command.can_read  { access.can_read  = cr; }
-        if let Some(cw) = command.can_write { access.can_write = cw; }
+        if let Some(cr) = command.can_read {
+            access.can_read = cr;
+        }
+        if let Some(cw) = command.can_write {
+            access.can_write = cw;
+        }
 
         let event = PlatformConfigAccessGranted::new(
             &ctx,

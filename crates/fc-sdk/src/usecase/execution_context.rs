@@ -3,10 +3,10 @@
 //! Context for a use case execution. Carries tracing IDs and principal
 //! information through the execution of a use case.
 
-use chrono::{DateTime, Utc};
 use super::domain_event::DomainEvent;
 use super::tracing_context::TracingContext;
 use crate::tsid::TsidGenerator;
+use chrono::{DateTime, Utc};
 
 /// Context for a use case execution.
 ///
@@ -96,10 +96,7 @@ impl ExecutionContext {
     ///
     /// The parent event's ID becomes the causation_id, and the
     /// correlation_id is preserved.
-    pub fn from_parent_event<E: DomainEvent>(
-        parent: &E,
-        principal_id: impl Into<String>,
-    ) -> Self {
+    pub fn from_parent_event<E: DomainEvent>(parent: &E, principal_id: impl Into<String>) -> Self {
         Self {
             execution_id: format!("exec-{}", TsidGenerator::generate_untyped()),
             correlation_id: parent.correlation_id().to_string(),
@@ -270,7 +267,9 @@ mod tests {
             None,
             "prn_orig".into(),
         );
-        let parent_event = FakeEvent { metadata: parent_meta };
+        let parent_event = FakeEvent {
+            metadata: parent_meta,
+        };
 
         let ctx = ExecutionContext::from_parent_event(&parent_event, "prn_handler");
 

@@ -1,10 +1,10 @@
 //! Platform Error Types
 
-use thiserror::Error;
 use axum::{
     http::StatusCode,
-    response::{IntoResponse, Response, Json},
+    response::{IntoResponse, Json, Response},
 };
+use thiserror::Error;
 use utoipa::ToSchema;
 
 use crate::usecase::UseCaseError;
@@ -15,7 +15,11 @@ pub enum PlatformError {
     NotFound { entity_type: String, id: String },
 
     #[error("Duplicate entity: {entity_type} with {field}={value}")]
-    Duplicate { entity_type: String, field: String, value: String },
+    Duplicate {
+        entity_type: String,
+        field: String,
+        value: String,
+    },
 
     #[error("{message}")]
     BusinessRule { code: String, message: String },
@@ -78,7 +82,10 @@ pub enum PlatformError {
     Internal { message: String },
 
     #[error("{message}")]
-    TooManyRequests { retry_after_secs: u32, message: String },
+    TooManyRequests {
+        retry_after_secs: u32,
+        message: String,
+    },
 }
 
 impl PlatformError {
@@ -89,7 +96,11 @@ impl PlatformError {
         }
     }
 
-    pub fn duplicate(entity_type: impl Into<String>, field: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn duplicate(
+        entity_type: impl Into<String>,
+        field: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
         Self::Duplicate {
             entity_type: entity_type.into(),
             field: field.into(),
@@ -98,23 +109,33 @@ impl PlatformError {
     }
 
     pub fn validation(message: impl Into<String>) -> Self {
-        Self::Validation { message: message.into() }
+        Self::Validation {
+            message: message.into(),
+        }
     }
 
     pub fn unauthorized(message: impl Into<String>) -> Self {
-        Self::Unauthorized { message: message.into() }
+        Self::Unauthorized {
+            message: message.into(),
+        }
     }
 
     pub fn forbidden(message: impl Into<String>) -> Self {
-        Self::Forbidden { message: message.into() }
+        Self::Forbidden {
+            message: message.into(),
+        }
     }
 
     pub fn internal(message: impl Into<String>) -> Self {
-        Self::Internal { message: message.into() }
+        Self::Internal {
+            message: message.into(),
+        }
     }
 
     pub fn bad_request(message: impl Into<String>) -> Self {
-        Self::Validation { message: message.into() }
+        Self::Validation {
+            message: message.into(),
+        }
     }
 
     pub fn conflict(message: impl Into<String>) -> Self {
@@ -170,21 +191,51 @@ impl IntoResponse for PlatformError {
             PlatformError::Duplicate { .. } => (StatusCode::CONFLICT, "DUPLICATE".to_string()),
             PlatformError::BusinessRule { code, .. } => (StatusCode::CONFLICT, code.clone()),
             PlatformError::Concurrency { code, .. } => (StatusCode::CONFLICT, code.clone()),
-            PlatformError::Validation { .. } => (StatusCode::BAD_REQUEST, "VALIDATION_ERROR".to_string()),
-            PlatformError::Unauthorized { .. } => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED".to_string()),
+            PlatformError::Validation { .. } => {
+                (StatusCode::BAD_REQUEST, "VALIDATION_ERROR".to_string())
+            }
+            PlatformError::Unauthorized { .. } => {
+                (StatusCode::UNAUTHORIZED, "UNAUTHORIZED".to_string())
+            }
             PlatformError::Forbidden { .. } => (StatusCode::FORBIDDEN, "FORBIDDEN".to_string()),
-            PlatformError::InvalidCredentials => (StatusCode::UNAUTHORIZED, "INVALID_CREDENTIALS".to_string()),
+            PlatformError::InvalidCredentials => {
+                (StatusCode::UNAUTHORIZED, "INVALID_CREDENTIALS".to_string())
+            }
             PlatformError::TokenExpired => (StatusCode::UNAUTHORIZED, "TOKEN_EXPIRED".to_string()),
-            PlatformError::InvalidToken { .. } => (StatusCode::UNAUTHORIZED, "INVALID_TOKEN".to_string()),
-            PlatformError::SchemaValidation { .. } => (StatusCode::BAD_REQUEST, "SCHEMA_ERROR".to_string()),
-            PlatformError::EventTypeNotFound { .. } => (StatusCode::NOT_FOUND, "EVENT_TYPE_NOT_FOUND".to_string()),
-            PlatformError::SubscriptionNotFound { .. } => (StatusCode::NOT_FOUND, "SUBSCRIPTION_NOT_FOUND".to_string()),
-            PlatformError::ClientNotFound { .. } => (StatusCode::NOT_FOUND, "CLIENT_NOT_FOUND".to_string()),
-            PlatformError::PrincipalNotFound { .. } => (StatusCode::NOT_FOUND, "PRINCIPAL_NOT_FOUND".to_string()),
-            PlatformError::ServiceAccountNotFound { .. } => (StatusCode::NOT_FOUND, "SERVICE_ACCOUNT_NOT_FOUND".to_string()),
-            PlatformError::Sqlx(_) => (StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR".to_string()),
-            PlatformError::TooManyRequests { .. } => (StatusCode::TOO_MANY_REQUESTS, "TOO_MANY_REQUESTS".to_string()),
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR".to_string()),
+            PlatformError::InvalidToken { .. } => {
+                (StatusCode::UNAUTHORIZED, "INVALID_TOKEN".to_string())
+            }
+            PlatformError::SchemaValidation { .. } => {
+                (StatusCode::BAD_REQUEST, "SCHEMA_ERROR".to_string())
+            }
+            PlatformError::EventTypeNotFound { .. } => {
+                (StatusCode::NOT_FOUND, "EVENT_TYPE_NOT_FOUND".to_string())
+            }
+            PlatformError::SubscriptionNotFound { .. } => {
+                (StatusCode::NOT_FOUND, "SUBSCRIPTION_NOT_FOUND".to_string())
+            }
+            PlatformError::ClientNotFound { .. } => {
+                (StatusCode::NOT_FOUND, "CLIENT_NOT_FOUND".to_string())
+            }
+            PlatformError::PrincipalNotFound { .. } => {
+                (StatusCode::NOT_FOUND, "PRINCIPAL_NOT_FOUND".to_string())
+            }
+            PlatformError::ServiceAccountNotFound { .. } => (
+                StatusCode::NOT_FOUND,
+                "SERVICE_ACCOUNT_NOT_FOUND".to_string(),
+            ),
+            PlatformError::Sqlx(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "DATABASE_ERROR".to_string(),
+            ),
+            PlatformError::TooManyRequests { .. } => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "TOO_MANY_REQUESTS".to_string(),
+            ),
+            _ => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR".to_string(),
+            ),
         };
 
         if status == StatusCode::INTERNAL_SERVER_ERROR {
@@ -192,16 +243,23 @@ impl IntoResponse for PlatformError {
         }
 
         // 429 carries Retry-After per RFC 6585 / 7231.
-        if let PlatformError::TooManyRequests { retry_after_secs, .. } = &self {
+        if let PlatformError::TooManyRequests {
+            retry_after_secs, ..
+        } = &self
+        {
             let body = ErrorResponse {
                 error: error_code,
                 message: self.to_string(),
             };
             return (
                 status,
-                [(axum::http::header::RETRY_AFTER, retry_after_secs.to_string())],
+                [(
+                    axum::http::header::RETRY_AFTER,
+                    retry_after_secs.to_string(),
+                )],
                 Json(body),
-            ).into_response();
+            )
+                .into_response();
         }
 
         let body = ErrorResponse {
@@ -216,28 +274,22 @@ impl IntoResponse for PlatformError {
 impl From<UseCaseError> for PlatformError {
     fn from(err: UseCaseError) -> Self {
         match err {
-            UseCaseError::ValidationError { code, message, .. } => {
-                PlatformError::Validation {
-                    message: format!("{}: {}", code, message),
-                }
-            }
+            UseCaseError::ValidationError { code, message, .. } => PlatformError::Validation {
+                message: format!("{}: {}", code, message),
+            },
             UseCaseError::BusinessRuleViolation { code, message, .. } => {
                 PlatformError::BusinessRule { code, message }
             }
-            UseCaseError::NotFoundError { code, message, .. } => {
-                PlatformError::NotFound {
-                    entity_type: code,
-                    id: message,
-                }
-            }
+            UseCaseError::NotFoundError { code, message, .. } => PlatformError::NotFound {
+                entity_type: code,
+                id: message,
+            },
             UseCaseError::ConcurrencyError { code, message, .. } => {
                 PlatformError::Concurrency { code, message }
             }
-            UseCaseError::CommitError { code, message, .. } => {
-                PlatformError::Internal {
-                    message: format!("{}: {}", code, message),
-                }
-            }
+            UseCaseError::CommitError { code, message, .. } => PlatformError::Internal {
+                message: format!("{}: {}", code, message),
+            },
         }
     }
 }

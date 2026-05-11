@@ -3,11 +3,11 @@
 //! Repository for managing OIDC login state during the authorization code flow.
 //! States are short-lived (10 minutes) and single-use for security.
 
-use sqlx::PgPool;
-use chrono::{DateTime, Utc};
-use tracing::debug;
-use crate::OidcLoginState;
 use crate::shared::error::Result;
+use crate::OidcLoginState;
+use chrono::{DateTime, Utc};
+use sqlx::PgPool;
+use tracing::debug;
 
 /// Row struct matching the `oauth_oidc_login_states` table
 #[derive(Debug, sqlx::FromRow)]
@@ -132,7 +132,10 @@ impl OidcLoginStateRepository {
     /// to prevent race conditions where two concurrent callbacks could both
     /// consume the same state. Returns None if the state doesn't exist,
     /// has expired, or was already consumed by another request.
-    pub async fn find_and_consume_state(&self, state_param: &str) -> Result<Option<OidcLoginState>> {
+    pub async fn find_and_consume_state(
+        &self,
+        state_param: &str,
+    ) -> Result<Option<OidcLoginState>> {
         let row = sqlx::query_as::<_, OidcLoginStateRow>(
             r#"DELETE FROM oauth_oidc_login_states
                WHERE state = $1 AND expires_at > NOW()
@@ -176,22 +179,18 @@ impl OidcLoginStateRepository {
 
     /// Find all states (for debugging/admin purposes)
     pub async fn find_all(&self) -> Result<Vec<OidcLoginState>> {
-        let rows = sqlx::query_as::<_, OidcLoginStateRow>(
-            "SELECT * FROM oauth_oidc_login_states",
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query_as::<_, OidcLoginStateRow>("SELECT * FROM oauth_oidc_login_states")
+            .fetch_all(&self.pool)
+            .await?;
 
         Ok(rows.into_iter().map(OidcLoginState::from).collect())
     }
 
     /// Count all states (for monitoring)
     pub async fn count(&self) -> Result<u64> {
-        let (count,) = sqlx::query_as::<_, (i64,)>(
-            "SELECT COUNT(*) FROM oauth_oidc_login_states",
-        )
-        .fetch_one(&self.pool)
-        .await?;
+        let (count,) = sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM oauth_oidc_login_states")
+            .fetch_one(&self.pool)
+            .await?;
 
         Ok(count as u64)
     }

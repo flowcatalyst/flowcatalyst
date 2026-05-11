@@ -1,16 +1,14 @@
 //! Update Service Account Use Case
 
-use std::sync::Arc;
-use std::collections::HashSet;
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::sync::Arc;
 
-use crate::ServiceAccountRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::ServiceAccountUpdated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::ServiceAccountRepository;
 
 /// Command for updating a service account.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,10 +37,7 @@ pub struct UpdateServiceAccountUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> UpdateServiceAccountUseCase<U> {
-    pub fn new(
-        service_account_repo: Arc<ServiceAccountRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
+    pub fn new(service_account_repo: Arc<ServiceAccountRepository>, unit_of_work: Arc<U>) -> Self {
         Self {
             service_account_repo,
             unit_of_work,
@@ -59,7 +54,11 @@ impl<U: UnitOfWork> UseCase for UpdateServiceAccountUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &UpdateServiceAccountCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &UpdateServiceAccountCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -78,9 +77,10 @@ impl<U: UnitOfWork> UseCase for UpdateServiceAccountUseCase<U> {
                 ));
             }
             Err(e) => {
-                return UseCaseResult::failure(UseCaseError::commit(
-                    format!("Failed to find service account: {}", e),
-                ));
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to find service account: {}",
+                    e
+                )));
             }
         };
 
@@ -142,7 +142,12 @@ impl<U: UnitOfWork> UseCase for UpdateServiceAccountUseCase<U> {
 
         // Atomic commit
         self.unit_of_work
-            .commit(&service_account, &*self.service_account_repo, event, &command)
+            .commit(
+                &service_account,
+                &*self.service_account_repo,
+                event,
+                &command,
+            )
             .await
     }
 }

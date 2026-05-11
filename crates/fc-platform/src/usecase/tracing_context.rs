@@ -3,8 +3,8 @@
 //! Context for distributed tracing. Holds correlation and causation IDs
 //! for the current request or background job.
 
-use std::cell::RefCell;
 use crate::shared::tsid::TsidGenerator;
+use std::cell::RefCell;
 
 thread_local! {
     /// Thread-local storage for tracing context.
@@ -175,11 +175,7 @@ impl TracingContext {
     ///
     /// The parent event's correlation_id is preserved, and its event_id
     /// becomes the causation_id.
-    pub fn run_from_event<F, R>(
-        parent_correlation_id: &str,
-        parent_event_id: &str,
-        f: F,
-    ) -> R
+    pub fn run_from_event<F, R>(parent_correlation_id: &str, parent_event_id: &str, f: F) -> R
     where
         F: FnOnce() -> R,
     {
@@ -231,12 +227,16 @@ mod tests {
 
     #[test]
     fn test_run_with_context() {
-        let result = TracingContext::run_with_context("test-corr-123", Some("test-cause-456".to_string()), || {
-            let ctx = TracingContext::current().expect("should have context");
-            assert_eq!(ctx.correlation_id(), "test-corr-123");
-            assert_eq!(ctx.causation_id(), Some("test-cause-456"));
-            42
-        });
+        let result = TracingContext::run_with_context(
+            "test-corr-123",
+            Some("test-cause-456".to_string()),
+            || {
+                let ctx = TracingContext::current().expect("should have context");
+                assert_eq!(ctx.correlation_id(), "test-corr-123");
+                assert_eq!(ctx.causation_id(), Some("test-cause-456"));
+                42
+            },
+        );
         assert_eq!(result, 42);
 
         // Context should be cleared after run

@@ -2,8 +2,8 @@
 //!
 //! Represents a tenant/organization in the multi-tenant system.
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// Client status — matches TypeScript ClientStatus enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,7 +18,6 @@ pub enum ClientStatus {
     /// Client is suspended (temporarily disabled)
     Suspended,
 }
-
 
 impl ClientStatus {
     pub fn as_str(&self) -> &'static str {
@@ -171,8 +170,17 @@ mod tests {
         let client = Client::new("Acme Corp", "acme-corp");
 
         assert!(!client.id.is_empty());
-        assert!(client.id.starts_with("clt_"), "ID should have clt_ prefix, got: {}", client.id);
-        assert_eq!(client.id.len(), 17, "Typed ID should be 17 chars, got: {}", client.id.len());
+        assert!(
+            client.id.starts_with("clt_"),
+            "ID should have clt_ prefix, got: {}",
+            client.id
+        );
+        assert_eq!(
+            client.id.len(),
+            17,
+            "Typed ID should be 17 chars, got: {}",
+            client.id.len()
+        );
         assert_eq!(client.name, "Acme Corp");
         assert_eq!(client.identifier, "acme-corp");
         assert_eq!(client.status, ClientStatus::Active);
@@ -213,9 +221,18 @@ mod tests {
 
     #[test]
     fn test_client_status_roundtrip() {
-        for status in [ClientStatus::Active, ClientStatus::Inactive, ClientStatus::Suspended] {
+        for status in [
+            ClientStatus::Active,
+            ClientStatus::Inactive,
+            ClientStatus::Suspended,
+        ] {
             let s = status.as_str();
-            assert_eq!(ClientStatus::from_str(s), status, "Roundtrip failed for {:?}", status);
+            assert_eq!(
+                ClientStatus::from_str(s),
+                status,
+                "Roundtrip failed for {:?}",
+                status
+            );
         }
     }
 
@@ -301,8 +318,7 @@ mod tests {
 
     #[test]
     fn test_client_note_with_author() {
-        let note = ClientNote::new("billing", "Payment received")
-            .with_author("admin@example.com");
+        let note = ClientNote::new("billing", "Payment received").with_author("admin@example.com");
         assert_eq!(note.added_by, Some("admin@example.com".to_string()));
     }
 
@@ -318,4 +334,3 @@ mod tests {
         assert!(client.updated_at >= before);
     }
 }
-

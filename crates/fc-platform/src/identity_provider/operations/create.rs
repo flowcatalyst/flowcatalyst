@@ -1,13 +1,13 @@
 //! Create Identity Provider Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::IdentityProviderRepository;
+use super::events::IdentityProviderCreated;
 use crate::identity_provider::entity::IdentityProviderType;
 use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
-use super::events::IdentityProviderCreated;
+use crate::IdentityProviderRepository;
 
 /// Command for creating a new identity provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,7 +38,10 @@ pub struct CreateIdentityProviderUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> CreateIdentityProviderUseCase<U> {
     pub fn new(idp_repo: Arc<IdentityProviderRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { idp_repo, unit_of_work }
+        Self {
+            idp_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -65,7 +68,11 @@ impl<U: UnitOfWork> UseCase for CreateIdentityProviderUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &CreateIdentityProviderCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &CreateIdentityProviderCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -79,13 +86,17 @@ impl<U: UnitOfWork> UseCase for CreateIdentityProviderUseCase<U> {
             Ok(Some(_)) => {
                 return UseCaseResult::failure(UseCaseError::business_rule(
                     "IDENTITY_PROVIDER_CODE_EXISTS",
-                    format!("Identity provider with code '{}' already exists", command.code),
+                    format!(
+                        "Identity provider with code '{}' already exists",
+                        command.code
+                    ),
                 ));
             }
             Ok(None) => {}
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to check identity provider code: {}", e
+                    "Failed to check identity provider code: {}",
+                    e
                 )));
             }
         }
@@ -107,18 +118,14 @@ impl<U: UnitOfWork> UseCase for CreateIdentityProviderUseCase<U> {
         idp.allowed_email_domains = command.allowed_email_domains.clone();
 
         // Create domain event
-        let event = IdentityProviderCreated::new(
-            &ctx,
-            &idp.id,
-            &idp.code,
-            &idp.name,
-            idp_type.as_str(),
-        );
+        let event =
+            IdentityProviderCreated::new(&ctx, &idp.id, &idp.code, &idp.name, idp_type.as_str());
 
         // Insert via repo
         if let Err(e) = self.idp_repo.insert(&idp).await {
             return UseCaseResult::failure(UseCaseError::commit(format!(
-                "Failed to insert identity provider: {}", e
+                "Failed to insert identity provider: {}",
+                e
             )));
         }
 

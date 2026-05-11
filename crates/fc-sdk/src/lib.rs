@@ -96,10 +96,8 @@ pub mod auth;
 pub mod webhook;
 
 // Re-export key types at crate root
-pub use tsid::{TsidGenerator, EntityType};
+pub use tsid::{EntityType, TsidGenerator};
 pub use usecase::{
-    UseCase,
-    UseCaseResult, UseCaseError,
-    DomainEvent, EventMetadata, EventMetadataBuilder,
-    ExecutionContext, TracingContext,
+    DomainEvent, EventMetadata, EventMetadataBuilder, ExecutionContext, TracingContext, UseCase,
+    UseCaseError, UseCaseResult,
 };

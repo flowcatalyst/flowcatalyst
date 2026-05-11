@@ -47,7 +47,9 @@ fn src_root() -> PathBuf {
 }
 
 fn walk_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let p = entry.path();
         if p.is_dir() {
@@ -72,7 +74,9 @@ fn cascade_sql_is_confined_to_the_owning_repository() {
             .to_string_lossy()
             .replace('\\', "/");
 
-        let Ok(content) = fs::read_to_string(file) else { continue };
+        let Ok(content) = fs::read_to_string(file) else {
+            continue;
+        };
 
         for (pattern, allowed_suffix) in CONFINED_PATTERNS {
             if content.contains(pattern) && !rel.ends_with(allowed_suffix) {

@@ -4,20 +4,20 @@
 //! Available only in embedded auth mode.
 
 use axum::{
-    routing::{get, post},
     extract::State,
+    routing::{get, post},
     Json, Router,
 };
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::collections::HashSet;
+use std::sync::Arc;
+use utoipa::ToSchema;
 
-use crate::{Principal, UserScope, ClientStatus};
-use crate::{PrincipalRepository, ClientRepository, RoleRepository, ClientAccessGrantRepository};
-use crate::AuthService;
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
+use crate::AuthService;
+use crate::{ClientAccessGrantRepository, ClientRepository, PrincipalRepository, RoleRepository};
+use crate::{ClientStatus, Principal, UserScope};
 
 /// Client info response
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -87,7 +87,11 @@ pub struct ClientSelectionState {
 
 impl ClientSelectionState {
     /// Add active grants to client IDs list
-    async fn add_active_grants(&self, client_ids: &mut Vec<String>, principal_id: &str) -> Result<(), PlatformError> {
+    async fn add_active_grants(
+        &self,
+        client_ids: &mut Vec<String>,
+        principal_id: &str,
+    ) -> Result<(), PlatformError> {
         let grants = self.grant_repo.find_by_principal(principal_id).await?;
         for grant in grants {
             if !client_ids.contains(&grant.client_id) {
@@ -98,7 +102,10 @@ impl ClientSelectionState {
     }
 
     /// Get accessible client IDs for a principal
-    async fn get_accessible_client_ids(&self, principal: &Principal) -> Result<Vec<String>, PlatformError> {
+    async fn get_accessible_client_ids(
+        &self,
+        principal: &Principal,
+    ) -> Result<Vec<String>, PlatformError> {
         match principal.scope {
             UserScope::Anchor => {
                 // Anchor users have access to all active clients
@@ -113,7 +120,8 @@ impl ClientSelectionState {
                 }
 
                 // Add non-expired explicit grants
-                self.add_active_grants(&mut client_ids, &principal.id).await?;
+                self.add_active_grants(&mut client_ids, &principal.id)
+                    .await?;
 
                 Ok(client_ids)
             }
@@ -122,7 +130,8 @@ impl ClientSelectionState {
                 let mut client_ids = principal.assigned_clients.clone();
 
                 // Add non-expired explicit grants
-                self.add_active_grants(&mut client_ids, &principal.id).await?;
+                self.add_active_grants(&mut client_ids, &principal.id)
+                    .await?;
 
                 Ok(client_ids)
             }
@@ -130,7 +139,11 @@ impl ClientSelectionState {
     }
 
     /// Check if principal can access a specific client
-    async fn can_access_client(&self, principal: &Principal, client_id: &str) -> Result<bool, PlatformError> {
+    async fn can_access_client(
+        &self,
+        principal: &Principal,
+        client_id: &str,
+    ) -> Result<bool, PlatformError> {
         if principal.scope == UserScope::Anchor {
             return Ok(true);
         }
@@ -140,7 +153,10 @@ impl ClientSelectionState {
     }
 
     /// Resolve permissions for a set of roles
-    async fn resolve_permissions(&self, role_codes: &[String]) -> Result<HashSet<String>, PlatformError> {
+    async fn resolve_permissions(
+        &self,
+        role_codes: &[String],
+    ) -> Result<HashSet<String>, PlatformError> {
         if role_codes.is_empty() {
             return Ok(HashSet::new());
         }
@@ -171,7 +187,10 @@ pub async fn list_accessible_clients(
     State(state): State<ClientSelectionState>,
     auth: Authenticated,
 ) -> Result<Json<AccessibleClientsResponse>, PlatformError> {
-    let principal = state.principal_repo.find_by_id(&auth.0.principal_id).await?
+    let principal = state
+        .principal_repo
+        .find_by_id(&auth.0.principal_id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Principal", &auth.0.principal_id))?;
 
     let global_access = principal.scope == UserScope::Anchor;
@@ -223,7 +242,10 @@ pub async fn switch_client(
     auth: Authenticated,
     Json(req): Json<SwitchClientRequest>,
 ) -> Result<Json<SwitchClientResponse>, PlatformError> {
-    let principal = state.principal_repo.find_by_id(&auth.0.principal_id).await?
+    let principal = state
+        .principal_repo
+        .find_by_id(&auth.0.principal_id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Principal", &auth.0.principal_id))?;
 
     // Check if user can access the requested client
@@ -235,7 +257,10 @@ pub async fn switch_client(
     }
 
     // Load the client
-    let client = state.client_repo.find_by_id(&req.client_id).await?
+    let client = state
+        .client_repo
+        .find_by_id(&req.client_id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Client", &req.client_id))?;
 
     // Check client is active
@@ -281,7 +306,10 @@ pub async fn get_current_client(
     auth: Authenticated,
 ) -> Result<Json<CurrentClientResponse>, PlatformError> {
     // Check if user has a home client
-    let principal = state.principal_repo.find_by_id(&auth.0.principal_id).await?
+    let principal = state
+        .principal_repo
+        .find_by_id(&auth.0.principal_id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Principal", &auth.0.principal_id))?;
 
     let client = if let Some(ref client_id) = principal.client_id {

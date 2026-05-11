@@ -1,15 +1,13 @@
 //! Archive Event Type Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::EventTypeStatus;
-use crate::EventTypeRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::EventTypeArchived;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::EventTypeRepository;
+use crate::EventTypeStatus;
 
 /// Command for archiving an event type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,7 +47,11 @@ impl<U: UnitOfWork> UseCase for ArchiveEventTypeUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &ArchiveEventTypeCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &ArchiveEventTypeCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -59,7 +61,11 @@ impl<U: UnitOfWork> UseCase for ArchiveEventTypeUseCase<U> {
         ctx: ExecutionContext,
     ) -> UseCaseResult<EventTypeArchived> {
         // Fetch existing event type
-        let mut event_type = match self.event_type_repo.find_by_id(&command.event_type_id).await {
+        let mut event_type = match self
+            .event_type_repo
+            .find_by_id(&command.event_type_id)
+            .await
+        {
             Ok(Some(et)) => et,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(

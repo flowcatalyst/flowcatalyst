@@ -4,17 +4,15 @@
 //! updates existing SDK-sourced ones, and optionally removes unlisted
 //! SDK-sourced roles. CODE and DATABASE-sourced roles are never modified.
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::role::entity::{AuthRole, RoleSource};
-use crate::RoleRepository;
-use crate::ApplicationRepository;
-use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
-};
 use super::events::RolesSynced;
+use crate::role::entity::{AuthRole, RoleSource};
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::ApplicationRepository;
+use crate::RoleRepository;
 
 /// A single role definition in the sync payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,7 +51,11 @@ impl<U: UnitOfWork> SyncRolesUseCase<U> {
         application_repo: Arc<ApplicationRepository>,
         unit_of_work: Arc<U>,
     ) -> Self {
-        Self { role_repo, application_repo, unit_of_work }
+        Self {
+            role_repo,
+            application_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -65,20 +67,26 @@ impl<U: UnitOfWork> UseCase for SyncRolesUseCase<U> {
     async fn validate(&self, command: &SyncRolesCommand) -> Result<(), UseCaseError> {
         if command.application_code.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "APPLICATION_CODE_REQUIRED", "Application code is required",
+                "APPLICATION_CODE_REQUIRED",
+                "Application code is required",
             ));
         }
 
         if command.roles.is_empty() {
             return Err(UseCaseError::validation(
-                "ROLES_REQUIRED", "At least one role must be provided",
+                "ROLES_REQUIRED",
+                "At least one role must be provided",
             ));
         }
 
         Ok(())
     }
 
-    async fn authorize(&self, _command: &SyncRolesCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &SyncRolesCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -88,7 +96,11 @@ impl<U: UnitOfWork> UseCase for SyncRolesUseCase<U> {
         ctx: ExecutionContext,
     ) -> UseCaseResult<RolesSynced> {
         // Verify the application exists
-        let application = match self.application_repo.find_by_code(&command.application_code).await {
+        let application = match self
+            .application_repo
+            .find_by_code(&command.application_code)
+            .await
+        {
             Ok(Some(app)) => app,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
@@ -98,17 +110,23 @@ impl<U: UnitOfWork> UseCase for SyncRolesUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch application: {}", e
+                    "Failed to fetch application: {}",
+                    e
                 )));
             }
         };
 
         // Fetch existing roles for this application
-        let existing = match self.role_repo.find_by_application(&command.application_code).await {
+        let existing = match self
+            .role_repo
+            .find_by_application(&command.application_code)
+            .await
+        {
             Ok(list) => list,
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch existing roles: {}", e
+                    "Failed to fetch existing roles: {}",
+                    e
                 )));
             }
         };
@@ -128,7 +146,9 @@ impl<U: UnitOfWork> UseCase for SyncRolesUseCase<U> {
                     // Only update SDK-sourced roles
                     if role.source == RoleSource::Sdk {
                         let mut updated = role.clone();
-                        updated.display_name = input.display_name.clone()
+                        updated.display_name = input
+                            .display_name
+                            .clone()
                             .unwrap_or_else(|| input.name.clone());
                         updated.description = input.description.clone();
                         updated.permissions = input.permissions.iter().cloned().collect();
@@ -136,7 +156,8 @@ impl<U: UnitOfWork> UseCase for SyncRolesUseCase<U> {
                         updated.updated_at = chrono::Utc::now();
                         if let Err(e) = self.role_repo.update(&updated).await {
                             return UseCaseResult::failure(UseCaseError::commit(format!(
-                                "Failed to update role '{}': {}", full_name, e
+                                "Failed to update role '{}': {}",
+                                full_name, e
                             )));
                         }
                         updated_count += 1;
@@ -156,7 +177,8 @@ impl<U: UnitOfWork> UseCase for SyncRolesUseCase<U> {
                     role.client_managed = input.client_managed;
                     if let Err(e) = self.role_repo.insert(&role).await {
                         return UseCaseResult::failure(UseCaseError::commit(format!(
-                            "Failed to create role '{}': {}", full_name, e
+                            "Failed to create role '{}': {}",
+                            full_name, e
                         )));
                     }
                     created_count += 1;
@@ -176,7 +198,8 @@ impl<U: UnitOfWork> UseCase for SyncRolesUseCase<U> {
                         Ok(n) => n,
                         Err(e) => {
                             return UseCaseResult::failure(UseCaseError::commit(format!(
-                                "Failed to count assignments for role '{}': {}", role.name, e,
+                                "Failed to count assignments for role '{}': {}",
+                                role.name, e,
                             )));
                         }
                     };
@@ -192,7 +215,8 @@ impl<U: UnitOfWork> UseCase for SyncRolesUseCase<U> {
                     }
                     if let Err(e) = self.role_repo.delete(&role.id).await {
                         return UseCaseResult::failure(UseCaseError::commit(format!(
-                            "Failed to delete role '{}': {}", role.name, e
+                            "Failed to delete role '{}': {}",
+                            role.name, e
                         )));
                     }
                     deleted_count += 1;
@@ -221,15 +245,13 @@ mod tests {
     fn test_command_serialization() {
         let cmd = SyncRolesCommand {
             application_code: "orders".to_string(),
-            roles: vec![
-                SyncRoleInput {
-                    name: "admin".to_string(),
-                    display_name: Some("Orders Admin".to_string()),
-                    description: None,
-                    permissions: vec!["orders:read".to_string()],
-                    client_managed: false,
-                },
-            ],
+            roles: vec![SyncRoleInput {
+                name: "admin".to_string(),
+                display_name: Some("Orders Admin".to_string()),
+                description: None,
+                permissions: vec!["orders:read".to_string()],
+                client_managed: false,
+            }],
             remove_unlisted: false,
         };
         let json = serde_json::to_string(&cmd).unwrap();

@@ -19,7 +19,11 @@ impl JobDispatcher {
         pool: PgPool,
         queue_publisher: Arc<dyn fc_queue::QueuePublisher>,
     ) -> Self {
-        Self { config, pool, queue_publisher }
+        Self {
+            config,
+            pool,
+            queue_publisher,
+        }
     }
 
     /// Dispatch a job to the message queue
@@ -41,7 +45,10 @@ impl JobDispatcher {
         // Build fc_common::Message directly — no MessagePointer intermediary
         let message = fc_common::Message {
             id: job_id.to_string(),
-            pool_code: job.dispatch_pool_id.clone().unwrap_or_else(|| self.config.default_pool_code.clone()),
+            pool_code: job
+                .dispatch_pool_id
+                .clone()
+                .unwrap_or_else(|| self.config.default_pool_code.clone()),
             auth_token: None,
             signing_secret: None,
             mediation_type: fc_common::MediationType::HTTP,
@@ -120,7 +127,9 @@ mod tests {
 
         let message = fc_common::Message {
             id: job.id.clone(),
-            pool_code: job.dispatch_pool_id.clone()
+            pool_code: job
+                .dispatch_pool_id
+                .clone()
                 .unwrap_or_else(|| config.default_pool_code.clone()),
             auth_token: None,
             signing_secret: None,
@@ -143,7 +152,9 @@ mod tests {
 
         let message = fc_common::Message {
             id: job.id.clone(),
-            pool_code: job.dispatch_pool_id.clone()
+            pool_code: job
+                .dispatch_pool_id
+                .clone()
                 .unwrap_or_else(|| config.default_pool_code.clone()),
             auth_token: None,
             signing_secret: None,
@@ -169,7 +180,9 @@ mod tests {
 
         let message = fc_common::Message {
             id: job.id.clone(),
-            pool_code: job.dispatch_pool_id.clone()
+            pool_code: job
+                .dispatch_pool_id
+                .clone()
                 .unwrap_or_else(|| config.default_pool_code.clone()),
             auth_token: None,
             signing_secret: None,
@@ -203,7 +216,10 @@ mod tests {
         assert_eq!(v["id"], "job_x");
         assert_eq!(v["poolCode"], "POOL-A");
         assert_eq!(v["messageGroupId"], "grp_1");
-        assert_eq!(v["mediationTarget"], "http://localhost:8080/api/dispatch/process");
+        assert_eq!(
+            v["mediationTarget"],
+            "http://localhost:8080/api/dispatch/process"
+        );
         assert_eq!(v["dispatchMode"], "NEXT_ON_ERROR");
     }
 

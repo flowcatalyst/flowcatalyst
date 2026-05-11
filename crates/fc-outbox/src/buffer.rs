@@ -6,11 +6,11 @@
 //! in its IN_PROGRESS state in the database and will be recovered by the crash recovery
 //! task after the configured timeout.
 
-use std::collections::VecDeque;
-use std::sync::Arc;
-use std::fmt;
-use tokio::sync::{Mutex, mpsc};
 use fc_common::OutboxItem;
+use std::collections::VecDeque;
+use std::fmt;
+use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex};
 use tracing::warn;
 
 /// Error returned when the buffer is full.
@@ -90,9 +90,7 @@ impl GlobalBuffer {
                 self.config.max_size,
                 item.id
             );
-            return Err(BufferFullError {
-                item_id: item.id,
-            });
+            return Err(BufferFullError { item_id: item.id });
         }
         buffer.push_back(item);
         Ok(())
@@ -135,8 +133,8 @@ impl GlobalBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fc_common::OutboxStatus;
     use chrono::Utc;
+    use fc_common::OutboxStatus;
 
     fn create_test_item(id: &str) -> OutboxItem {
         OutboxItem {
@@ -165,7 +163,10 @@ mod tests {
 
         // Push items
         for i in 0..25 {
-            buffer.push(create_test_item(&format!("msg-{}", i))).await.unwrap();
+            buffer
+                .push(create_test_item(&format!("msg-{}", i)))
+                .await
+                .unwrap();
         }
 
         assert_eq!(buffer.len().await, 25);
@@ -196,7 +197,10 @@ mod tests {
 
         // Fill buffer
         for i in 0..5 {
-            buffer.push(create_test_item(&format!("msg-{}", i))).await.unwrap();
+            buffer
+                .push(create_test_item(&format!("msg-{}", i)))
+                .await
+                .unwrap();
         }
 
         // Should fail on overflow

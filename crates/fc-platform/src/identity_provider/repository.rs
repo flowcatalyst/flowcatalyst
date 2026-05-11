@@ -1,8 +1,8 @@
 //! IdentityProvider Repository — PostgreSQL via SQLx
 
-use std::collections::HashMap;
-use sqlx::PgPool;
 use chrono::{DateTime, Utc};
+use sqlx::PgPool;
+use std::collections::HashMap;
 
 use super::entity::{IdentityProvider, IdentityProviderType};
 use crate::shared::error::Result;
@@ -71,7 +71,10 @@ impl IdentityProviderRepository {
         let ids: Vec<&str> = idps.iter().map(|i| i.id.as_str()).collect();
 
         #[derive(sqlx::FromRow)]
-        struct DomainRow { identity_provider_id: String, email_domain: String }
+        struct DomainRow {
+            identity_provider_id: String,
+            email_domain: String,
+        }
 
         let all_domains = sqlx::query_as::<_, DomainRow>(
             "SELECT identity_provider_id, email_domain FROM oauth_identity_provider_allowed_domains WHERE identity_provider_id = ANY($1)"
@@ -82,7 +85,10 @@ impl IdentityProviderRepository {
 
         let mut domain_map: HashMap<String, Vec<String>> = HashMap::new();
         for d in all_domains {
-            domain_map.entry(d.identity_provider_id).or_default().push(d.email_domain);
+            domain_map
+                .entry(d.identity_provider_id)
+                .or_default()
+                .push(d.email_domain);
         }
 
         for idp in &mut idps {
@@ -96,7 +102,7 @@ impl IdentityProviderRepository {
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<IdentityProvider>> {
         let row = sqlx::query_as::<_, IdentityProviderRow>(
-            "SELECT * FROM oauth_identity_providers WHERE id = $1"
+            "SELECT * FROM oauth_identity_providers WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -109,7 +115,7 @@ impl IdentityProviderRepository {
 
     pub async fn find_by_code(&self, code: &str) -> Result<Option<IdentityProvider>> {
         let row = sqlx::query_as::<_, IdentityProviderRow>(
-            "SELECT * FROM oauth_identity_providers WHERE code = $1"
+            "SELECT * FROM oauth_identity_providers WHERE code = $1",
         )
         .bind(code)
         .fetch_optional(&self.pool)
@@ -122,7 +128,7 @@ impl IdentityProviderRepository {
 
     pub async fn find_all(&self) -> Result<Vec<IdentityProvider>> {
         let rows = sqlx::query_as::<_, IdentityProviderRow>(
-            "SELECT * FROM oauth_identity_providers ORDER BY code"
+            "SELECT * FROM oauth_identity_providers ORDER BY code",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -136,7 +142,7 @@ impl IdentityProviderRepository {
                 (id, code, name, type, oidc_issuer_url, oidc_client_id,
                  oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
                  created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())"#
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())"#,
         )
         .bind(&idp.id)
         .bind(&idp.code)
@@ -149,7 +155,8 @@ impl IdentityProviderRepository {
         .bind(&idp.oidc_issuer_pattern)
         .execute(&self.pool)
         .await?;
-        self.save_allowed_domains(&idp.id, &idp.allowed_email_domains).await?;
+        self.save_allowed_domains(&idp.id, &idp.allowed_email_domains)
+            .await?;
         Ok(())
     }
 
@@ -160,7 +167,7 @@ impl IdentityProviderRepository {
                 oidc_client_id = $6, oidc_client_secret_ref = $7,
                 oidc_multi_tenant = $8, oidc_issuer_pattern = $9,
                 updated_at = NOW()
-            WHERE id = $1"#
+            WHERE id = $1"#,
         )
         .bind(&idp.id)
         .bind(&idp.code)
@@ -175,7 +182,8 @@ impl IdentityProviderRepository {
         .await?;
         // Replace allowed domains
         self.delete_allowed_domains(&idp.id).await?;
-        self.save_allowed_domains(&idp.id, &idp.allowed_email_domains).await?;
+        self.save_allowed_domains(&idp.id, &idp.allowed_email_domains)
+            .await?;
         Ok(())
     }
 
@@ -202,10 +210,12 @@ impl IdentityProviderRepository {
     }
 
     async fn delete_allowed_domains(&self, idp_id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM oauth_identity_provider_allowed_domains WHERE identity_provider_id = $1")
-            .bind(idp_id)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "DELETE FROM oauth_identity_provider_allowed_domains WHERE identity_provider_id = $1",
+        )
+        .bind(idp_id)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 }

@@ -9,10 +9,10 @@
 //! - Auth token handling
 
 use std::time::Duration;
-use wiremock::{MockServer, Mock, ResponseTemplate};
-use wiremock::matchers::{method, path, header, body_json};
+use wiremock::matchers::{body_json, header, method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use fc_common::{Message, MediationType, MediationResult};
+use fc_common::{MediationResult, MediationType, Message};
 use fc_router::{HttpMediator, HttpMediatorConfig, Mediator};
 
 fn create_test_message(target: &str) -> Message {
@@ -113,7 +113,7 @@ async fn test_ack_false_with_custom_delay() {
         .and(path("/webhook"))
         .respond_with(
             ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({"ack": false, "delaySeconds": 60}))
+                .set_body_json(serde_json::json!({"ack": false, "delaySeconds": 60})),
         )
         .expect(1)
         .mount(&mock_server)
@@ -249,7 +249,10 @@ async fn test_500_server_error_with_retry() {
 
     // After retries, should still fail because mock expects specific order
     // This tests that retries are happening
-    assert!(outcome.result == MediationResult::Success || outcome.result == MediationResult::ErrorProcess);
+    assert!(
+        outcome.result == MediationResult::Success
+            || outcome.result == MediationResult::ErrorProcess
+    );
 }
 
 #[tokio::test]
@@ -324,8 +327,7 @@ async fn test_timeout_handling() {
     Mock::given(method("POST"))
         .and(path("/webhook"))
         .respond_with(
-            ResponseTemplate::new(200)
-                .set_delay(Duration::from_secs(10)) // Long delay
+            ResponseTemplate::new(200).set_delay(Duration::from_secs(10)), // Long delay
         )
         .mount(&mock_server)
         .await;

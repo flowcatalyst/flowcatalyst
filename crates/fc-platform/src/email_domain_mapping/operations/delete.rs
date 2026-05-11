@@ -1,12 +1,12 @@
 //! Delete Email Domain Mapping Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::EmailDomainMappingRepository;
-use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 use super::events::EmailDomainMappingDeleted;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::EmailDomainMappingRepository;
 
 /// Command for deleting an email domain mapping.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,7 +22,10 @@ pub struct DeleteEmailDomainMappingUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> DeleteEmailDomainMappingUseCase<U> {
     pub fn new(edm_repo: Arc<EmailDomainMappingRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { edm_repo, unit_of_work }
+        Self {
+            edm_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -31,16 +34,24 @@ impl<U: UnitOfWork> UseCase for DeleteEmailDomainMappingUseCase<U> {
     type Command = DeleteEmailDomainMappingCommand;
     type Event = EmailDomainMappingDeleted;
 
-    async fn validate(&self, command: &DeleteEmailDomainMappingCommand) -> Result<(), UseCaseError> {
+    async fn validate(
+        &self,
+        command: &DeleteEmailDomainMappingCommand,
+    ) -> Result<(), UseCaseError> {
         if command.mapping_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "MAPPING_ID_REQUIRED", "Mapping ID is required",
+                "MAPPING_ID_REQUIRED",
+                "Mapping ID is required",
             ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeleteEmailDomainMappingCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeleteEmailDomainMappingCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -54,27 +65,28 @@ impl<U: UnitOfWork> UseCase for DeleteEmailDomainMappingUseCase<U> {
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
                     "NOT_FOUND",
-                    format!("Email domain mapping with ID '{}' not found", command.mapping_id),
+                    format!(
+                        "Email domain mapping with ID '{}' not found",
+                        command.mapping_id
+                    ),
                 ));
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch email domain mapping: {}", e
+                    "Failed to fetch email domain mapping: {}",
+                    e
                 )));
             }
         };
 
         if let Err(e) = self.edm_repo.delete(&mapping.id).await {
             return UseCaseResult::failure(UseCaseError::commit(format!(
-                "Failed to delete email domain mapping: {}", e
+                "Failed to delete email domain mapping: {}",
+                e
             )));
         }
 
-        let event = EmailDomainMappingDeleted::new(
-            &ctx,
-            &mapping.id,
-            &mapping.email_domain,
-        );
+        let event = EmailDomainMappingDeleted::new(&ctx, &mapping.id, &mapping.email_domain);
 
         self.unit_of_work.emit_event(event, &command).await
     }
@@ -111,7 +123,10 @@ mod tests {
         let cmd = DeleteEmailDomainMappingCommand {
             mapping_id: "   ".to_string(),
         };
-        assert!(cmd.mapping_id.trim().is_empty(), "Whitespace-only mapping_id should be treated as empty");
+        assert!(
+            cmd.mapping_id.trim().is_empty(),
+            "Whitespace-only mapping_id should be treated as empty"
+        );
     }
 
     #[test]

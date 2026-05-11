@@ -98,8 +98,8 @@ fn test_token_claims_for_service_principal() {
 #[test]
 fn test_token_claims_for_client_scope_user() {
     let auth_service = test_auth_service();
-    let principal = Principal::new_user("user@client.com", UserScope::Client)
-        .with_client_id("client-abc");
+    let principal =
+        Principal::new_user("user@client.com", UserScope::Client).with_client_id("client-abc");
     let token = auth_service.generate_access_token(&principal).unwrap();
 
     let claims = auth_service.validate_token(&token).unwrap();
@@ -148,8 +148,8 @@ fn test_client_access_check() {
 #[test]
 fn test_client_scope_limited_access() {
     let auth_service = test_auth_service();
-    let principal = Principal::new_user("user@client.com", UserScope::Client)
-        .with_client_id("my-client");
+    let principal =
+        Principal::new_user("user@client.com", UserScope::Client).with_client_id("my-client");
     let token = auth_service.generate_access_token(&principal).unwrap();
     let claims = auth_service.validate_token(&token).unwrap();
 
@@ -264,7 +264,8 @@ fn test_oidc_login_state_oauth_flow() {
         "edm-456",
         "nonce-789",
         "verifier-abc",
-    ).with_oauth_params(
+    )
+    .with_oauth_params(
         Some("client-id".to_string()),
         Some("https://app.example.com/callback".to_string()),
         Some("openid profile".to_string()),
@@ -276,7 +277,10 @@ fn test_oidc_login_state_oauth_flow() {
 
     assert!(state.is_oauth_flow());
     assert_eq!(state.oauth_client_id, Some("client-id".to_string()));
-    assert_eq!(state.oauth_redirect_uri, Some("https://app.example.com/callback".to_string()));
+    assert_eq!(
+        state.oauth_redirect_uri,
+        Some("https://app.example.com/callback".to_string())
+    );
 }
 
 #[test]
@@ -306,7 +310,8 @@ fn test_oidc_login_state_with_return_url() {
         "edm-456",
         "nonce-789",
         "verifier-abc",
-    ).with_return_url("/dashboard");
+    )
+    .with_return_url("/dashboard");
 
     assert_eq!(state.return_url, Some("/dashboard".to_string()));
 }
@@ -390,15 +395,20 @@ fn test_user_scope_partner_access() {
 
 #[test]
 fn test_user_logged_in_event() {
+    use fc_platform::principal::operations::events::{
+        FederatedClaims, FlowcatalystClaims, UserLoggedIn,
+    };
     use fc_platform::usecase::domain_event::DomainEvent;
-    use fc_platform::principal::operations::events::{UserLoggedIn, FlowcatalystClaims, FederatedClaims};
     use fc_platform::usecase::ExecutionContext;
 
     let ctx = ExecutionContext::create("principal-123");
     let fc_claims = FlowcatalystClaims {
         email: "user@example.com".to_string(),
         principal_type: "USER".to_string(),
-        roles: vec!["platform:admin".to_string(), "ondemand:super-user".to_string()],
+        roles: vec![
+            "platform:admin".to_string(),
+            "ondemand:super-user".to_string(),
+        ],
         clients: vec!["*".to_string()],
         applications: vec!["ondemand".to_string(), "platform".to_string()],
     };
@@ -421,7 +431,10 @@ fn test_user_logged_in_event() {
     assert!(event.subject().contains("principal-123"));
     assert_eq!(event.user_id, "principal-123");
     assert_eq!(event.email, "user@example.com");
-    assert_eq!(event.identity_provider_code, Some("inhance-entra".to_string()));
+    assert_eq!(
+        event.identity_provider_code,
+        Some("inhance-entra".to_string())
+    );
     assert_eq!(event.login_method, "OIDC");
     assert_eq!(event.flowcatalyst_claims.roles.len(), 2);
     assert!(event.federated_claims.is_some());
@@ -429,8 +442,7 @@ fn test_user_logged_in_event() {
 
 #[test]
 fn test_user_logged_in_event_internal() {
-    
-    use fc_platform::principal::operations::events::{UserLoggedIn, FlowcatalystClaims};
+    use fc_platform::principal::operations::events::{FlowcatalystClaims, UserLoggedIn};
     use fc_platform::usecase::ExecutionContext;
 
     let ctx = ExecutionContext::create("principal-123");
@@ -470,8 +482,14 @@ fn test_auth_context_permission_matching() {
         email: Some("admin@example.com".to_string()),
         name: "Admin".to_string(),
         accessible_clients: vec!["*".to_string()],
-        permissions: ["platform:admin:event:read", "platform:admin:event:create", "platform:admin:client:*"]
-            .iter().map(|s| s.to_string()).collect(),
+        permissions: [
+            "platform:admin:event:read",
+            "platform:admin:event:create",
+            "platform:admin:client:*",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect(),
         roles: vec!["admin".to_string()],
     };
 
@@ -502,12 +520,20 @@ fn test_auth_context_multiple_permissions_check() {
         email: Some("user@client.com".to_string()),
         name: "User".to_string(),
         accessible_clients: vec!["client-1".to_string()],
-        permissions: ["platform:admin:event:read", "platform:admin:subscription:read"]
-            .iter().map(|s| s.to_string()).collect(),
+        permissions: [
+            "platform:admin:event:read",
+            "platform:admin:subscription:read",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect(),
         roles: vec!["viewer".to_string()],
     };
 
-    assert!(ctx.has_all_permissions(&["platform:admin:event:read", "platform:admin:subscription:read"]));
+    assert!(ctx.has_all_permissions(&[
+        "platform:admin:event:read",
+        "platform:admin:subscription:read"
+    ]));
     assert!(!ctx.has_all_permissions(&["platform:admin:event:read", "platform:admin:event:create"]));
 
     assert!(ctx.has_any_permission(&["platform:admin:event:read", "platform:admin:event:create"]));
@@ -518,8 +544,6 @@ fn test_auth_context_multiple_permissions_check() {
 
 #[test]
 fn test_password_hashing_and_verification() {
-    
-
     let service = fc_platform::PasswordService::new(Default::default(), Default::default());
     let password = "MySecurePassword123!";
 
@@ -536,8 +560,6 @@ fn test_password_hashing_and_verification() {
 
 #[test]
 fn test_password_hash_uniqueness() {
-    
-
     let service = fc_platform::PasswordService::new(Default::default(), Default::default());
     let password = "SamePassword123!";
 

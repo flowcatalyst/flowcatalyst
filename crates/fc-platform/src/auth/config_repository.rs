@@ -1,10 +1,12 @@
 //! Authentication Configuration Repositories — PostgreSQL via SQLx
 
 use async_trait::async_trait;
-use sqlx::PgPool;
 use chrono::{DateTime, Utc};
+use sqlx::PgPool;
 
-use crate::auth::config_entity::{AnchorDomain, AuthConfigType, AuthProvider, ClientAuthConfig, IdpRoleMapping};
+use crate::auth::config_entity::{
+    AnchorDomain, AuthConfigType, AuthProvider, ClientAuthConfig, IdpRoleMapping,
+};
 use crate::principal::entity::ClientAccessGrant;
 use crate::shared::error::Result;
 use crate::usecase::unit_of_work::HasId;
@@ -135,7 +137,7 @@ impl AnchorDomainRepository {
         let now = Utc::now();
         sqlx::query(
             "INSERT INTO tnt_anchor_domains (id, domain, created_at, updated_at)
-             VALUES ($1, $2, $3, $4)"
+             VALUES ($1, $2, $3, $4)",
         )
         .bind(&domain.id)
         .bind(&domain.domain)
@@ -147,18 +149,17 @@ impl AnchorDomainRepository {
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<AnchorDomain>> {
-        let row = sqlx::query_as::<_, AnchorDomainRow>(
-            "SELECT * FROM tnt_anchor_domains WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row =
+            sqlx::query_as::<_, AnchorDomainRow>("SELECT * FROM tnt_anchor_domains WHERE id = $1")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(row.map(AnchorDomain::from))
     }
 
     pub async fn find_by_domain(&self, domain: &str) -> Result<Option<AnchorDomain>> {
         let row = sqlx::query_as::<_, AnchorDomainRow>(
-            "SELECT * FROM tnt_anchor_domains WHERE domain = $1"
+            "SELECT * FROM tnt_anchor_domains WHERE domain = $1",
         )
         .bind(domain.to_lowercase())
         .fetch_optional(&self.pool)
@@ -168,7 +169,7 @@ impl AnchorDomainRepository {
 
     pub async fn find_all(&self) -> Result<Vec<AnchorDomain>> {
         let rows = sqlx::query_as::<_, AnchorDomainRow>(
-            "SELECT * FROM tnt_anchor_domains ORDER BY domain ASC"
+            "SELECT * FROM tnt_anchor_domains ORDER BY domain ASC",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -176,25 +177,22 @@ impl AnchorDomainRepository {
     }
 
     pub async fn is_anchor_domain(&self, domain: &str) -> Result<bool> {
-        let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM tnt_anchor_domains WHERE domain = $1"
-        )
-        .bind(domain.to_lowercase())
-        .fetch_one(&self.pool)
-        .await?;
+        let row: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM tnt_anchor_domains WHERE domain = $1")
+                .bind(domain.to_lowercase())
+                .fetch_one(&self.pool)
+                .await?;
         Ok(row.0 > 0)
     }
 
     pub async fn update(&self, domain: &AnchorDomain) -> Result<()> {
         let now = Utc::now();
-        sqlx::query(
-            "UPDATE tnt_anchor_domains SET domain = $2, updated_at = $3 WHERE id = $1"
-        )
-        .bind(&domain.id)
-        .bind(&domain.domain)
-        .bind(now)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE tnt_anchor_domains SET domain = $2, updated_at = $3 WHERE id = $1")
+            .bind(&domain.id)
+            .bind(&domain.domain)
+            .bind(now)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -220,7 +218,8 @@ impl ClientAuthConfigRepository {
 
     pub async fn insert(&self, config: &ClientAuthConfig) -> Result<()> {
         let now = Utc::now();
-        let additional_ids_json = serde_json::to_value(&config.additional_client_ids).unwrap_or_default();
+        let additional_ids_json =
+            serde_json::to_value(&config.additional_client_ids).unwrap_or_default();
         let granted_ids_json = serde_json::to_value(&config.granted_client_ids).unwrap_or_default();
 
         sqlx::query(
@@ -229,7 +228,7 @@ impl ClientAuthConfigRepository {
                  granted_client_ids, auth_provider, oidc_issuer_url, oidc_client_id,
                  oidc_multi_tenant, oidc_issuer_pattern, oidc_client_secret_ref,
                  created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
         )
         .bind(&config.id)
         .bind(&config.email_domain)
@@ -252,7 +251,7 @@ impl ClientAuthConfigRepository {
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<ClientAuthConfig>> {
         let row = sqlx::query_as::<_, ClientAuthConfigRow>(
-            "SELECT * FROM tnt_client_auth_configs WHERE id = $1"
+            "SELECT * FROM tnt_client_auth_configs WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -262,7 +261,7 @@ impl ClientAuthConfigRepository {
 
     pub async fn find_by_email_domain(&self, domain: &str) -> Result<Option<ClientAuthConfig>> {
         let row = sqlx::query_as::<_, ClientAuthConfigRow>(
-            "SELECT * FROM tnt_client_auth_configs WHERE email_domain = $1"
+            "SELECT * FROM tnt_client_auth_configs WHERE email_domain = $1",
         )
         .bind(domain.to_lowercase())
         .fetch_optional(&self.pool)
@@ -272,7 +271,7 @@ impl ClientAuthConfigRepository {
 
     pub async fn find_by_client_id(&self, client_id: &str) -> Result<Vec<ClientAuthConfig>> {
         let rows = sqlx::query_as::<_, ClientAuthConfigRow>(
-            "SELECT * FROM tnt_client_auth_configs WHERE primary_client_id = $1"
+            "SELECT * FROM tnt_client_auth_configs WHERE primary_client_id = $1",
         )
         .bind(client_id)
         .fetch_all(&self.pool)
@@ -282,7 +281,7 @@ impl ClientAuthConfigRepository {
 
     pub async fn find_all(&self) -> Result<Vec<ClientAuthConfig>> {
         let rows = sqlx::query_as::<_, ClientAuthConfigRow>(
-            "SELECT * FROM tnt_client_auth_configs ORDER BY email_domain ASC"
+            "SELECT * FROM tnt_client_auth_configs ORDER BY email_domain ASC",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -291,7 +290,8 @@ impl ClientAuthConfigRepository {
 
     pub async fn update(&self, config: &ClientAuthConfig) -> Result<()> {
         let now = Utc::now();
-        let additional_ids_json = serde_json::to_value(&config.additional_client_ids).unwrap_or_default();
+        let additional_ids_json =
+            serde_json::to_value(&config.additional_client_ids).unwrap_or_default();
         let granted_ids_json = serde_json::to_value(&config.granted_client_ids).unwrap_or_default();
 
         sqlx::query(
@@ -301,7 +301,7 @@ impl ClientAuthConfigRepository {
                 auth_provider = $7, oidc_issuer_url = $8, oidc_client_id = $9,
                 oidc_multi_tenant = $10, oidc_issuer_pattern = $11,
                 oidc_client_secret_ref = $12, updated_at = $13
-             WHERE id = $1"
+             WHERE id = $1",
         )
         .bind(&config.id)
         .bind(&config.email_domain)
@@ -345,7 +345,7 @@ impl ClientAccessGrantRepository {
         sqlx::query(
             "INSERT INTO iam_client_access_grants
                 (id, principal_id, client_id, granted_by, granted_at, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
         .bind(&grant.id)
         .bind(&grant.principal_id)
@@ -361,7 +361,7 @@ impl ClientAccessGrantRepository {
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<ClientAccessGrant>> {
         let row = sqlx::query_as::<_, ClientAccessGrantRow>(
-            "SELECT * FROM iam_client_access_grants WHERE id = $1"
+            "SELECT * FROM iam_client_access_grants WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -371,7 +371,7 @@ impl ClientAccessGrantRepository {
 
     pub async fn find_by_principal(&self, principal_id: &str) -> Result<Vec<ClientAccessGrant>> {
         let rows = sqlx::query_as::<_, ClientAccessGrantRow>(
-            "SELECT * FROM iam_client_access_grants WHERE principal_id = $1"
+            "SELECT * FROM iam_client_access_grants WHERE principal_id = $1",
         )
         .bind(principal_id)
         .fetch_all(&self.pool)
@@ -381,7 +381,7 @@ impl ClientAccessGrantRepository {
 
     pub async fn find_by_client(&self, client_id: &str) -> Result<Vec<ClientAccessGrant>> {
         let rows = sqlx::query_as::<_, ClientAccessGrantRow>(
-            "SELECT * FROM iam_client_access_grants WHERE client_id = $1"
+            "SELECT * FROM iam_client_access_grants WHERE client_id = $1",
         )
         .bind(client_id)
         .fetch_all(&self.pool)
@@ -389,9 +389,13 @@ impl ClientAccessGrantRepository {
         Ok(rows.into_iter().map(ClientAccessGrant::from).collect())
     }
 
-    pub async fn find_by_principal_and_client(&self, principal_id: &str, client_id: &str) -> Result<Option<ClientAccessGrant>> {
+    pub async fn find_by_principal_and_client(
+        &self,
+        principal_id: &str,
+        client_id: &str,
+    ) -> Result<Option<ClientAccessGrant>> {
         let row = sqlx::query_as::<_, ClientAccessGrantRow>(
-            "SELECT * FROM iam_client_access_grants WHERE principal_id = $1 AND client_id = $2"
+            "SELECT * FROM iam_client_access_grants WHERE principal_id = $1 AND client_id = $2",
         )
         .bind(principal_id)
         .bind(client_id)
@@ -408,9 +412,13 @@ impl ClientAccessGrantRepository {
         Ok(result.rows_affected() > 0)
     }
 
-    pub async fn delete_by_principal_and_client(&self, principal_id: &str, client_id: &str) -> Result<bool> {
+    pub async fn delete_by_principal_and_client(
+        &self,
+        principal_id: &str,
+        client_id: &str,
+    ) -> Result<bool> {
         let result = sqlx::query(
-            "DELETE FROM iam_client_access_grants WHERE principal_id = $1 AND client_id = $2"
+            "DELETE FROM iam_client_access_grants WHERE principal_id = $1 AND client_id = $2",
         )
         .bind(principal_id)
         .bind(client_id)
@@ -423,12 +431,18 @@ impl ClientAccessGrantRepository {
 // ── Persist<ClientAccessGrant> ───────────────────────────────────────────────
 
 impl HasId for ClientAccessGrant {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]
 impl crate::usecase::Persist<ClientAccessGrant> for ClientAccessGrantRepository {
-    async fn persist(&self, g: &ClientAccessGrant, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
+    async fn persist(
+        &self,
+        g: &ClientAccessGrant,
+        tx: &mut crate::usecase::DbTx<'_>,
+    ) -> Result<()> {
         sqlx::query(
             "INSERT INTO iam_client_access_grants (id, principal_id, client_id, granted_by, granted_at, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -460,7 +474,9 @@ impl crate::usecase::Persist<ClientAccessGrant> for ClientAccessGrantRepository 
 // ── Persist<AnchorDomain> ────────────────────────────────────────────────────
 
 impl HasId for AnchorDomain {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]
@@ -472,7 +488,7 @@ impl crate::usecase::Persist<AnchorDomain> for AnchorDomainRepository {
              VALUES ($1, $2, $3, $4)
              ON CONFLICT (id) DO UPDATE SET
                 domain = EXCLUDED.domain,
-                updated_at = EXCLUDED.updated_at"
+                updated_at = EXCLUDED.updated_at",
         )
         .bind(&d.id)
         .bind(&d.domain)
@@ -495,15 +511,19 @@ impl crate::usecase::Persist<AnchorDomain> for AnchorDomainRepository {
 // ── Persist<ClientAuthConfig> ────────────────────────────────────────────────
 
 impl HasId for ClientAuthConfig {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]
 impl crate::usecase::Persist<ClientAuthConfig> for ClientAuthConfigRepository {
     async fn persist(&self, c: &ClientAuthConfig, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
-        let additional_client_ids_json = serde_json::to_value(&c.additional_client_ids).unwrap_or_default();
-        let granted_client_ids_json = serde_json::to_value(&c.granted_client_ids).unwrap_or_default();
+        let additional_client_ids_json =
+            serde_json::to_value(&c.additional_client_ids).unwrap_or_default();
+        let granted_client_ids_json =
+            serde_json::to_value(&c.granted_client_ids).unwrap_or_default();
         sqlx::query(
             "INSERT INTO tnt_client_auth_configs (id, email_domain, config_type, primary_client_id, additional_client_ids, granted_client_ids, auth_provider, oidc_issuer_url, oidc_client_id, oidc_multi_tenant, oidc_issuer_pattern, oidc_client_secret_ref, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
@@ -565,7 +585,7 @@ impl IdpRoleMappingRepository {
         sqlx::query(
             "INSERT INTO oauth_idp_role_mappings
                 (id, idp_role_name, internal_role_name, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5)"
+             VALUES ($1, $2, $3, $4, $5)",
         )
         .bind(&mapping.id)
         .bind(&mapping.idp_role_name)
@@ -579,7 +599,7 @@ impl IdpRoleMappingRepository {
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<IdpRoleMapping>> {
         let row = sqlx::query_as::<_, IdpRoleMappingRow>(
-            "SELECT * FROM oauth_idp_role_mappings WHERE id = $1"
+            "SELECT * FROM oauth_idp_role_mappings WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -587,9 +607,13 @@ impl IdpRoleMappingRepository {
         Ok(row.map(IdpRoleMapping::from))
     }
 
-    pub async fn find_by_idp_role(&self, _idp_type: &str, idp_role_name: &str) -> Result<Option<IdpRoleMapping>> {
+    pub async fn find_by_idp_role(
+        &self,
+        _idp_type: &str,
+        idp_role_name: &str,
+    ) -> Result<Option<IdpRoleMapping>> {
         let row = sqlx::query_as::<_, IdpRoleMappingRow>(
-            "SELECT * FROM oauth_idp_role_mappings WHERE idp_role_name = $1"
+            "SELECT * FROM oauth_idp_role_mappings WHERE idp_role_name = $1",
         )
         .bind(idp_role_name)
         .fetch_optional(&self.pool)
@@ -604,16 +628,19 @@ impl IdpRoleMappingRepository {
 
     pub async fn find_all(&self) -> Result<Vec<IdpRoleMapping>> {
         let rows = sqlx::query_as::<_, IdpRoleMappingRow>(
-            "SELECT * FROM oauth_idp_role_mappings ORDER BY idp_role_name ASC"
+            "SELECT * FROM oauth_idp_role_mappings ORDER BY idp_role_name ASC",
         )
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(IdpRoleMapping::from).collect())
     }
 
-    pub async fn find_idp_role_mapping(&self, idp_role_name: &str) -> Result<Option<IdpRoleMapping>> {
+    pub async fn find_idp_role_mapping(
+        &self,
+        idp_role_name: &str,
+    ) -> Result<Option<IdpRoleMapping>> {
         let row = sqlx::query_as::<_, IdpRoleMappingRow>(
-            "SELECT * FROM oauth_idp_role_mappings WHERE idp_role_name = $1"
+            "SELECT * FROM oauth_idp_role_mappings WHERE idp_role_name = $1",
         )
         .bind(idp_role_name)
         .fetch_optional(&self.pool)
@@ -631,7 +658,9 @@ impl IdpRoleMappingRepository {
 }
 
 impl crate::usecase::HasId for IdpRoleMapping {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]
@@ -658,7 +687,8 @@ impl crate::usecase::Persist<IdpRoleMapping> for IdpRoleMappingRepository {
     async fn delete(&self, m: &IdpRoleMapping, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM oauth_idp_role_mappings WHERE id = $1")
             .bind(&m.id)
-            .execute(&mut **tx.inner).await?;
+            .execute(&mut **tx.inner)
+            .await?;
         Ok(())
     }
 }

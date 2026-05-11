@@ -4,8 +4,8 @@
 //! Assigned clients are loaded from iam_client_access_grants.
 
 use async_trait::async_trait;
-use sqlx::{PgPool, Postgres, QueryBuilder};
 use chrono::{DateTime, Utc};
+use sqlx::{PgPool, Postgres, QueryBuilder};
 
 use super::entity::{ExternalIdentity, Principal, PrincipalType, UserIdentity, UserScope};
 use crate::service_account::entity::RoleAssignment;
@@ -39,7 +39,11 @@ struct PrincipalRow {
 impl From<PrincipalRow> for Principal {
     fn from(r: PrincipalRow) -> Self {
         let principal_type = PrincipalType::from_str(&r.principal_type);
-        let scope = r.scope.as_deref().map(UserScope::from_str).unwrap_or(UserScope::Client);
+        let scope = r
+            .scope
+            .as_deref()
+            .map(UserScope::from_str)
+            .unwrap_or(UserScope::Client);
 
         let user_identity = if principal_type == PrincipalType::User {
             r.email.as_ref().map(|email| UserIdentity {
@@ -123,21 +127,41 @@ impl PrincipalRepository {
 
     pub async fn insert(&self, principal: &Principal) -> Result<()> {
         let now = Utc::now();
-        let email_domain = principal.user_identity.as_ref()
+        let email_domain = principal
+            .user_identity
+            .as_ref()
             .map(|i| i.email.split('@').nth(1).unwrap_or("").to_string());
         let email = principal.user_identity.as_ref().map(|i| i.email.clone());
-        let idp_type = principal.user_identity.as_ref().and_then(|i| i.provider.clone())
-            .or_else(|| if principal.is_user() { Some("INTERNAL".to_string()) } else { None });
-        let external_idp_id = principal.external_identity.as_ref().map(|e| e.external_id.clone());
-        let password_hash = principal.user_identity.as_ref().and_then(|i| i.password_hash.clone());
-        let last_login_at = principal.user_identity.as_ref().and_then(|i| i.last_login_at);
+        let idp_type = principal
+            .user_identity
+            .as_ref()
+            .and_then(|i| i.provider.clone())
+            .or_else(|| {
+                if principal.is_user() {
+                    Some("INTERNAL".to_string())
+                } else {
+                    None
+                }
+            });
+        let external_idp_id = principal
+            .external_identity
+            .as_ref()
+            .map(|e| e.external_id.clone());
+        let password_hash = principal
+            .user_identity
+            .as_ref()
+            .and_then(|i| i.password_hash.clone());
+        let last_login_at = principal
+            .user_identity
+            .as_ref()
+            .and_then(|i| i.last_login_at);
 
         sqlx::query(
             "INSERT INTO iam_principals
                 (id, type, scope, client_id, application_id, name, active, email, email_domain,
                  idp_type, external_idp_id, password_hash, last_login_at, service_account_id,
                  created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
         )
         .bind(&principal.id)
         .bind(principal.principal_type.as_str())
@@ -165,12 +189,10 @@ impl PrincipalRepository {
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<Principal>> {
-        let row = sqlx::query_as::<_, PrincipalRow>(
-            "SELECT * FROM iam_principals WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query_as::<_, PrincipalRow>("SELECT * FROM iam_principals WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         match row {
             Some(r) => Ok(Some(self.hydrate_principal(r).await?)),
@@ -180,7 +202,7 @@ impl PrincipalRepository {
 
     pub async fn find_by_email(&self, email: &str) -> Result<Option<Principal>> {
         let row = sqlx::query_as::<_, PrincipalRow>(
-            "SELECT * FROM iam_principals WHERE type = 'USER' AND email = $1"
+            "SELECT * FROM iam_principals WHERE type = 'USER' AND email = $1",
         )
         .bind(email)
         .fetch_optional(&self.pool)
@@ -192,9 +214,12 @@ impl PrincipalRepository {
         }
     }
 
-    pub async fn find_by_service_account(&self, service_account_id: &str) -> Result<Option<Principal>> {
+    pub async fn find_by_service_account(
+        &self,
+        service_account_id: &str,
+    ) -> Result<Option<Principal>> {
         let row = sqlx::query_as::<_, PrincipalRow>(
-            "SELECT * FROM iam_principals WHERE type = 'SERVICE' AND service_account_id = $1"
+            "SELECT * FROM iam_principals WHERE type = 'SERVICE' AND service_account_id = $1",
         )
         .bind(service_account_id)
         .fetch_optional(&self.pool)
@@ -207,26 +232,23 @@ impl PrincipalRepository {
     }
 
     pub async fn find_all(&self) -> Result<Vec<Principal>> {
-        let rows = sqlx::query_as::<_, PrincipalRow>(
-            "SELECT * FROM iam_principals"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query_as::<_, PrincipalRow>("SELECT * FROM iam_principals")
+            .fetch_all(&self.pool)
+            .await?;
         self.hydrate_principals(rows).await
     }
 
     pub async fn find_active(&self) -> Result<Vec<Principal>> {
-        let rows = sqlx::query_as::<_, PrincipalRow>(
-            "SELECT * FROM iam_principals WHERE active = true"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows =
+            sqlx::query_as::<_, PrincipalRow>("SELECT * FROM iam_principals WHERE active = true")
+                .fetch_all(&self.pool)
+                .await?;
         self.hydrate_principals(rows).await
     }
 
     pub async fn find_users(&self) -> Result<Vec<Principal>> {
         let rows = sqlx::query_as::<_, PrincipalRow>(
-            "SELECT * FROM iam_principals WHERE type = 'USER' AND active = true"
+            "SELECT * FROM iam_principals WHERE type = 'USER' AND active = true",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -235,7 +257,7 @@ impl PrincipalRepository {
 
     pub async fn find_services(&self) -> Result<Vec<Principal>> {
         let rows = sqlx::query_as::<_, PrincipalRow>(
-            "SELECT * FROM iam_principals WHERE type = 'SERVICE' AND active = true"
+            "SELECT * FROM iam_principals WHERE type = 'SERVICE' AND active = true",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -247,7 +269,7 @@ impl PrincipalRepository {
         let rows = sqlx::query_as::<_, PrincipalRow>(
             "SELECT DISTINCT p.* FROM iam_principals p
              LEFT JOIN iam_client_access_grants g ON g.principal_id = p.id
-             WHERE p.active = true AND (p.client_id = $1 OR g.client_id = $1)"
+             WHERE p.active = true AND (p.client_id = $1 OR g.client_id = $1)",
         )
         .bind(client_id)
         .fetch_all(&self.pool)
@@ -257,7 +279,7 @@ impl PrincipalRepository {
 
     pub async fn find_by_scope(&self, scope: UserScope) -> Result<Vec<Principal>> {
         let rows = sqlx::query_as::<_, PrincipalRow>(
-            "SELECT * FROM iam_principals WHERE scope = $1 AND active = true"
+            "SELECT * FROM iam_principals WHERE scope = $1 AND active = true",
         )
         .bind(scope.as_str())
         .fetch_all(&self.pool)
@@ -336,7 +358,7 @@ impl PrincipalRepository {
 
     pub async fn find_anchors(&self) -> Result<Vec<Principal>> {
         let rows = sqlx::query_as::<_, PrincipalRow>(
-            "SELECT * FROM iam_principals WHERE scope = 'ANCHOR' AND active = true"
+            "SELECT * FROM iam_principals WHERE scope = 'ANCHOR' AND active = true",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -345,7 +367,7 @@ impl PrincipalRepository {
 
     pub async fn find_by_application(&self, application_id: &str) -> Result<Vec<Principal>> {
         let rows = sqlx::query_as::<_, PrincipalRow>(
-            "SELECT * FROM iam_principals WHERE application_id = $1"
+            "SELECT * FROM iam_principals WHERE application_id = $1",
         )
         .bind(application_id)
         .fetch_all(&self.pool)
@@ -357,7 +379,7 @@ impl PrincipalRepository {
         let rows = sqlx::query_as::<_, PrincipalRow>(
             "SELECT p.* FROM iam_principals p
              INNER JOIN iam_principal_roles r ON r.principal_id = p.id
-             WHERE r.role_name = $1 AND p.active = true"
+             WHERE r.role_name = $1 AND p.active = true",
         )
         .bind(role)
         .fetch_all(&self.pool)
@@ -367,14 +389,34 @@ impl PrincipalRepository {
 
     pub async fn update(&self, principal: &Principal) -> Result<()> {
         let now = Utc::now();
-        let email_domain = principal.user_identity.as_ref()
+        let email_domain = principal
+            .user_identity
+            .as_ref()
             .map(|i| i.email.split('@').nth(1).unwrap_or("").to_string());
         let email = principal.user_identity.as_ref().map(|i| i.email.clone());
-        let idp_type = principal.user_identity.as_ref().and_then(|i| i.provider.clone())
-            .or_else(|| if principal.is_user() { Some("INTERNAL".to_string()) } else { None });
-        let external_idp_id = principal.external_identity.as_ref().map(|e| e.external_id.clone());
-        let password_hash = principal.user_identity.as_ref().and_then(|i| i.password_hash.clone());
-        let last_login_at = principal.user_identity.as_ref().and_then(|i| i.last_login_at);
+        let idp_type = principal
+            .user_identity
+            .as_ref()
+            .and_then(|i| i.provider.clone())
+            .or_else(|| {
+                if principal.is_user() {
+                    Some("INTERNAL".to_string())
+                } else {
+                    None
+                }
+            });
+        let external_idp_id = principal
+            .external_identity
+            .as_ref()
+            .map(|e| e.external_id.clone());
+        let password_hash = principal
+            .user_identity
+            .as_ref()
+            .and_then(|i| i.password_hash.clone());
+        let last_login_at = principal
+            .user_identity
+            .as_ref()
+            .and_then(|i| i.last_login_at);
 
         sqlx::query(
             "UPDATE iam_principals SET
@@ -382,7 +424,7 @@ impl PrincipalRepository {
                 active = $7, email = $8, email_domain = $9, idp_type = $10,
                 external_idp_id = $11, password_hash = $12, last_login_at = $13,
                 service_account_id = $14, updated_at = $15
-             WHERE id = $1"
+             WHERE id = $1",
         )
         .bind(&principal.id)
         .bind(principal.principal_type.as_str())
@@ -417,7 +459,8 @@ impl PrincipalRepository {
 
         if !principal.accessible_application_ids.is_empty() {
             let count = principal.accessible_application_ids.len();
-            let principal_ids: Vec<String> = std::iter::repeat_n(principal.id.clone(), count).collect();
+            let principal_ids: Vec<String> =
+                std::iter::repeat_n(principal.id.clone(), count).collect();
             let app_ids: Vec<String> = principal.accessible_application_ids.clone();
             let granted_ats: Vec<DateTime<Utc>> = std::iter::repeat_n(now, count).collect();
 
@@ -443,16 +486,20 @@ impl PrincipalRepository {
 
         sqlx::query("DELETE FROM iam_principal_roles WHERE principal_id = $1")
             .bind(id)
-            .execute(&mut *tx).await?;
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("DELETE FROM iam_client_access_grants WHERE principal_id = $1")
             .bind(id)
-            .execute(&mut *tx).await?;
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("DELETE FROM iam_principal_application_access WHERE principal_id = $1")
             .bind(id)
-            .execute(&mut *tx).await?;
+            .execute(&mut *tx)
+            .await?;
         let result = sqlx::query("DELETE FROM iam_principals WHERE id = $1")
             .bind(id)
-            .execute(&mut *tx).await?;
+            .execute(&mut *tx)
+            .await?;
 
         tx.commit().await?;
         Ok(result.rows_affected() > 0)
@@ -466,7 +513,7 @@ impl PrincipalRepository {
             "INSERT INTO iam_client_access_grants
                 (id, principal_id, client_id, granted_by, granted_at, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7)
-             ON CONFLICT (principal_id, client_id) DO NOTHING"
+             ON CONFLICT (principal_id, client_id) DO NOTHING",
         )
         .bind(crate::TsidGenerator::generate(crate::EntityType::Principal))
         .bind(principal_id)
@@ -484,7 +531,7 @@ impl PrincipalRepository {
     pub async fn search(&self, term: &str) -> Result<Vec<Principal>> {
         let pattern = format!("%{}%", term);
         let rows = sqlx::query_as::<_, PrincipalRow>(
-            "SELECT * FROM iam_principals WHERE name LIKE $1 OR email LIKE $1"
+            "SELECT * FROM iam_principals WHERE name LIKE $1 OR email LIKE $1",
         )
         .bind(&pattern)
         .fetch_all(&self.pool)
@@ -493,23 +540,25 @@ impl PrincipalRepository {
     }
 
     /// Batch-lookup principal names by IDs. Returns a map of id -> name.
-    pub async fn find_names_by_ids(&self, ids: &[String]) -> Result<std::collections::HashMap<String, String>> {
+    pub async fn find_names_by_ids(
+        &self,
+        ids: &[String],
+    ) -> Result<std::collections::HashMap<String, String>> {
         if ids.is_empty() {
             return Ok(std::collections::HashMap::new());
         }
-        let rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT id, name FROM iam_principals WHERE id = ANY($1)"
-        )
-        .bind(ids)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows: Vec<(String, String)> =
+            sqlx::query_as("SELECT id, name FROM iam_principals WHERE id = ANY($1)")
+                .bind(ids)
+                .fetch_all(&self.pool)
+                .await?;
         Ok(rows.into_iter().collect())
     }
 
     /// Count principals with email ending in the given domain
     pub async fn count_by_email_domain(&self, domain: &str) -> Result<i64> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM iam_principals WHERE type = 'USER' AND email_domain = $1"
+            "SELECT COUNT(*) FROM iam_principals WHERE type = 'USER' AND email_domain = $1",
         )
         .bind(domain.to_lowercase())
         .fetch_one(&self.pool)
@@ -526,7 +575,8 @@ impl PrincipalRepository {
         let count = roles.len();
         let pids: Vec<String> = std::iter::repeat_n(principal_id.to_string(), count).collect();
         let role_names: Vec<String> = roles.iter().map(|r| r.role.clone()).collect();
-        let sources: Vec<Option<String>> = roles.iter().map(|r| r.assignment_source.clone()).collect();
+        let sources: Vec<Option<String>> =
+            roles.iter().map(|r| r.assignment_source.clone()).collect();
         let assigned_ats: Vec<DateTime<Utc>> = roles.iter().map(|r| r.assigned_at).collect();
 
         sqlx::query(
@@ -552,22 +602,25 @@ impl PrincipalRepository {
         // Load roles
         let role_rows = sqlx::query_as::<_, PrincipalRoleRow>(
             "SELECT principal_id, role_name, assignment_source, assigned_at
-             FROM iam_principal_roles WHERE principal_id = $1"
+             FROM iam_principal_roles WHERE principal_id = $1",
         )
         .bind(&id)
         .fetch_all(&self.pool)
         .await?;
-        principal.roles = role_rows.into_iter().map(|r| RoleAssignment {
-            role: r.role_name,
-            client_id: None,
-            assignment_source: r.assignment_source,
-            assigned_at: r.assigned_at,
-            assigned_by: None,
-        }).collect();
+        principal.roles = role_rows
+            .into_iter()
+            .map(|r| RoleAssignment {
+                role: r.role_name,
+                client_id: None,
+                assignment_source: r.assignment_source,
+                assigned_at: r.assigned_at,
+                assigned_by: None,
+            })
+            .collect();
 
         // Load client access grants
         let grant_rows = sqlx::query_as::<_, ClientAccessGrantRow>(
-            "SELECT principal_id, client_id FROM iam_client_access_grants WHERE principal_id = $1"
+            "SELECT principal_id, client_id FROM iam_client_access_grants WHERE principal_id = $1",
         )
         .bind(&id)
         .fetch_all(&self.pool)
@@ -587,7 +640,7 @@ impl PrincipalRepository {
         if !all_client_ids.is_empty() {
             let ids_vec: Vec<String> = all_client_ids.into_iter().collect();
             let client_rows = sqlx::query_as::<_, ClientIdentifierRow>(
-                "SELECT id, identifier FROM tnt_clients WHERE id = ANY($1)"
+                "SELECT id, identifier FROM tnt_clients WHERE id = ANY($1)",
             )
             .bind(&ids_vec)
             .fetch_all(&self.pool)
@@ -606,7 +659,8 @@ impl PrincipalRepository {
         .bind(&id)
         .fetch_all(&self.pool)
         .await?;
-        principal.accessible_application_ids = app_rows.into_iter().map(|a| a.application_id).collect();
+        principal.accessible_application_ids =
+            app_rows.into_iter().map(|a| a.application_id).collect();
 
         Ok(principal)
     }
@@ -622,7 +676,7 @@ impl PrincipalRepository {
         // Batch-load roles
         let all_roles = sqlx::query_as::<_, PrincipalRoleRow>(
             "SELECT principal_id, role_name, assignment_source, assigned_at
-             FROM iam_principal_roles WHERE principal_id = ANY($1)"
+             FROM iam_principal_roles WHERE principal_id = ANY($1)",
         )
         .bind(&principal_ids)
         .fetch_all(&self.pool)
@@ -631,13 +685,16 @@ impl PrincipalRepository {
         let mut role_map: std::collections::HashMap<String, Vec<RoleAssignment>> =
             std::collections::HashMap::new();
         for r in all_roles {
-            role_map.entry(r.principal_id.clone()).or_default().push(RoleAssignment {
-                role: r.role_name,
-                client_id: None,
-                assignment_source: r.assignment_source,
-                assigned_at: r.assigned_at,
-                assigned_by: None,
-            });
+            role_map
+                .entry(r.principal_id.clone())
+                .or_default()
+                .push(RoleAssignment {
+                    role: r.role_name,
+                    client_id: None,
+                    assignment_source: r.assignment_source,
+                    assigned_at: r.assigned_at,
+                    assigned_by: None,
+                });
         }
 
         // Batch-load client access grants
@@ -662,7 +719,10 @@ impl PrincipalRepository {
             }
         }
         for g in all_grants {
-            grant_map.entry(g.principal_id).or_default().push(g.client_id);
+            grant_map
+                .entry(g.principal_id)
+                .or_default()
+                .push(g.client_id);
         }
 
         // Batch-load client identifiers
@@ -671,7 +731,7 @@ impl PrincipalRepository {
         if !all_client_ids.is_empty() {
             let ids_vec: Vec<String> = all_client_ids.into_iter().collect();
             let client_rows = sqlx::query_as::<_, ClientIdentifierRow>(
-                "SELECT id, identifier FROM tnt_clients WHERE id = ANY($1)"
+                "SELECT id, identifier FROM tnt_clients WHERE id = ANY($1)",
             )
             .bind(&ids_vec)
             .fetch_all(&self.pool)
@@ -692,7 +752,10 @@ impl PrincipalRepository {
         let mut app_access_map: std::collections::HashMap<String, Vec<String>> =
             std::collections::HashMap::new();
         for a in all_app_access {
-            app_access_map.entry(a.principal_id).or_default().push(a.application_id);
+            app_access_map
+                .entry(a.principal_id)
+                .or_default()
+                .push(a.application_id);
         }
 
         // Build domain entities
@@ -738,20 +801,36 @@ impl PrincipalRepository {
 // gets stored — all SQL lives here.
 
 impl HasId for Principal {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]
 impl crate::usecase::Persist<Principal> for PrincipalRepository {
     async fn persist(&self, p: &Principal, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         let now = Utc::now();
-        let email_domain = p.user_identity.as_ref()
+        let email_domain = p
+            .user_identity
+            .as_ref()
             .map(|i| i.email.split('@').nth(1).unwrap_or("").to_string());
         let email = p.user_identity.as_ref().map(|i| i.email.clone());
-        let idp_type = p.user_identity.as_ref().and_then(|i| i.provider.clone())
-            .or_else(|| if p.is_user() { Some("INTERNAL".to_string()) } else { None });
+        let idp_type = p
+            .user_identity
+            .as_ref()
+            .and_then(|i| i.provider.clone())
+            .or_else(|| {
+                if p.is_user() {
+                    Some("INTERNAL".to_string())
+                } else {
+                    None
+                }
+            });
         let external_idp_id = p.external_identity.as_ref().map(|e| e.external_id.clone());
-        let password_hash = p.user_identity.as_ref().and_then(|i| i.password_hash.clone());
+        let password_hash = p
+            .user_identity
+            .as_ref()
+            .and_then(|i| i.password_hash.clone());
         let last_login_at = p.user_identity.as_ref().and_then(|i| i.last_login_at);
 
         // 1. Upsert main row
@@ -795,7 +874,8 @@ impl crate::usecase::Persist<Principal> for PrincipalRepository {
         // 2. Sync roles: delete then re-insert
         sqlx::query("DELETE FROM iam_principal_roles WHERE principal_id = $1")
             .bind(&p.id)
-            .execute(&mut **tx.inner).await?;
+            .execute(&mut **tx.inner)
+            .await?;
         for r in &p.roles {
             sqlx::query(
                 "INSERT INTO iam_principal_roles (principal_id, role_name, assignment_source, assigned_at)
@@ -811,7 +891,8 @@ impl crate::usecase::Persist<Principal> for PrincipalRepository {
         // 3. Sync client access grants: delete then re-insert
         sqlx::query("DELETE FROM iam_client_access_grants WHERE principal_id = $1")
             .bind(&p.id)
-            .execute(&mut **tx.inner).await?;
+            .execute(&mut **tx.inner)
+            .await?;
         for client_id in &p.assigned_clients {
             sqlx::query(
                 "INSERT INTO iam_client_access_grants (id, principal_id, client_id, granted_by, granted_at, created_at, updated_at)
@@ -830,7 +911,8 @@ impl crate::usecase::Persist<Principal> for PrincipalRepository {
         // 4. Sync application access: delete then re-insert
         sqlx::query("DELETE FROM iam_principal_application_access WHERE principal_id = $1")
             .bind(&p.id)
-            .execute(&mut **tx.inner).await?;
+            .execute(&mut **tx.inner)
+            .await?;
         for app_id in &p.accessible_application_ids {
             sqlx::query(
                 "INSERT INTO iam_principal_application_access (principal_id, application_id, granted_at)
@@ -848,16 +930,20 @@ impl crate::usecase::Persist<Principal> for PrincipalRepository {
     async fn delete(&self, p: &Principal, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM iam_principal_roles WHERE principal_id = $1")
             .bind(&p.id)
-            .execute(&mut **tx.inner).await?;
+            .execute(&mut **tx.inner)
+            .await?;
         sqlx::query("DELETE FROM iam_client_access_grants WHERE principal_id = $1")
             .bind(&p.id)
-            .execute(&mut **tx.inner).await?;
+            .execute(&mut **tx.inner)
+            .await?;
         sqlx::query("DELETE FROM iam_principal_application_access WHERE principal_id = $1")
             .bind(&p.id)
-            .execute(&mut **tx.inner).await?;
+            .execute(&mut **tx.inner)
+            .await?;
         sqlx::query("DELETE FROM iam_principals WHERE id = $1")
             .bind(&p.id)
-            .execute(&mut **tx.inner).await?;
+            .execute(&mut **tx.inner)
+            .await?;
         Ok(())
     }
 }

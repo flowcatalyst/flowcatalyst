@@ -1,14 +1,12 @@
 //! Delete Dispatch Pool Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::DispatchPoolRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::DispatchPoolDeleted;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::DispatchPoolRepository;
 
 /// Command for deleting a dispatch pool.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,10 +23,7 @@ pub struct DeleteDispatchPoolUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> DeleteDispatchPoolUseCase<U> {
-    pub fn new(
-        dispatch_pool_repo: Arc<DispatchPoolRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
+    pub fn new(dispatch_pool_repo: Arc<DispatchPoolRepository>, unit_of_work: Arc<U>) -> Self {
         Self {
             dispatch_pool_repo,
             unit_of_work,
@@ -45,7 +40,11 @@ impl<U: UnitOfWork> UseCase for DeleteDispatchPoolUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeleteDispatchPoolCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeleteDispatchPoolCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -64,18 +63,15 @@ impl<U: UnitOfWork> UseCase for DeleteDispatchPoolUseCase<U> {
                 ));
             }
             Err(e) => {
-                return UseCaseResult::failure(UseCaseError::commit(
-                    format!("Failed to find dispatch pool: {}", e),
-                ));
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to find dispatch pool: {}",
+                    e
+                )));
             }
         };
 
         // Create domain event
-        let event = DispatchPoolDeleted::new(
-            &ctx,
-            &pool.id,
-            &pool.code,
-        );
+        let event = DispatchPoolDeleted::new(&ctx, &pool.id, &pool.code);
 
         // Atomic commit with delete
         self.unit_of_work

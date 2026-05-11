@@ -16,19 +16,16 @@ pub fn extract_domain(email: &str) -> Result<String> {
         .nth(1)
         .filter(|d| !d.is_empty())
         .map(|d| d.to_lowercase())
-        .ok_or_else(|| PlatformError::bad_request(
-            "email is not in a valid 'local@domain' format".to_string(),
-        ))
+        .ok_or_else(|| {
+            PlatformError::bad_request("email is not in a valid 'local@domain' format".to_string())
+        })
 }
 
 /// Returns `Ok(())` if the domain is internal (no mapping). Returns
 /// `BadRequest` if the domain maps to a federated IdP — callers should
 /// surface a generic enumeration-safe response, not the underlying reason
 /// (see `enumeration_defence.rs`).
-pub async fn ensure_internal_auth(
-    email: &str,
-    repo: &EmailDomainMappingRepository,
-) -> Result<()> {
+pub async fn ensure_internal_auth(email: &str, repo: &EmailDomainMappingRepository) -> Result<()> {
     let domain = extract_domain(email)?;
     if repo.find_by_email_domain(&domain).await?.is_some() {
         return Err(PlatformError::bad_request(
@@ -63,4 +60,3 @@ mod tests {
         assert_eq!(extract_domain("alice@example.com").unwrap(), "example.com");
     }
 }
-

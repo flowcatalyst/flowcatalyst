@@ -3,20 +3,20 @@
 //! REST endpoints for viewing audit logs.
 
 use axum::{
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
     Json,
 };
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::{ToSchema, IntoParams};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use chrono::{DateTime, Utc};
+use utoipa::{IntoParams, ToSchema};
+use utoipa_axum::{router::OpenApiRouter, routes};
 
+use crate::shared::error::PlatformError;
+use crate::shared::middleware::Authenticated;
 use crate::AuditLog;
 use crate::AuditLogRepository;
 use crate::PrincipalRepository;
-use crate::shared::error::PlatformError;
-use crate::shared::middleware::Authenticated;
 
 /// Audit log response DTO (matches Java AuditLogDto)
 #[derive(Debug, Serialize, ToSchema)]
@@ -51,7 +51,11 @@ pub struct AuditLogDetailResponse {
 
 impl From<AuditLog> for AuditLogResponse {
     fn from(log: AuditLog) -> Self {
-        let entity_id_opt = if log.entity_id.is_empty() { None } else { Some(log.entity_id) };
+        let entity_id_opt = if log.entity_id.is_empty() {
+            None
+        } else {
+            Some(log.entity_id)
+        };
         Self {
             id: log.id,
             operation: log.operation,
@@ -68,8 +72,14 @@ impl From<AuditLog> for AuditLogResponse {
 
 impl From<AuditLog> for AuditLogDetailResponse {
     fn from(log: AuditLog) -> Self {
-        let entity_id_opt = if log.entity_id.is_empty() { None } else { Some(log.entity_id) };
-        let op_json = log.operation_json.map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let entity_id_opt = if log.entity_id.is_empty() {
+            None
+        } else {
+            Some(log.entity_id)
+        };
+        let op_json = log
+            .operation_json
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
         Self {
             id: log.id,
             operation: log.operation,
@@ -160,7 +170,9 @@ pub struct AuditLogsQuery {
     pub principal_id: Option<String>,
 }
 
-fn default_page_size() -> i32 { 50 }
+fn default_page_size() -> i32 {
+    50
+}
 
 /// Audit logs service state
 #[derive(Clone)]
@@ -169,13 +181,10 @@ pub struct AuditLogsState {
     pub principal_repo: Arc<PrincipalRepository>,
 }
 
-
 /// Enrich audit logs with principal names from a batch lookup.
-async fn enrich_principal_names(
-    logs: &mut [AuditLog],
-    principal_repo: &PrincipalRepository,
-) {
-    let principal_ids: Vec<String> = logs.iter()
+async fn enrich_principal_names(logs: &mut [AuditLog], principal_repo: &PrincipalRepository) {
+    let principal_ids: Vec<String> = logs
+        .iter()
         .filter_map(|l| l.principal_id.clone())
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
@@ -195,12 +204,12 @@ async fn enrich_principal_names(
 }
 
 /// Enrich a single audit log with principal name.
-async fn enrich_single_principal_name(
-    log: &mut AuditLog,
-    principal_repo: &PrincipalRepository,
-) {
+async fn enrich_single_principal_name(log: &mut AuditLog, principal_repo: &PrincipalRepository) {
     if let Some(pid) = &log.principal_id {
-        if let Ok(name_map) = principal_repo.find_names_by_ids(std::slice::from_ref(pid)).await {
+        if let Ok(name_map) = principal_repo
+            .find_names_by_ids(std::slice::from_ref(pid))
+            .await
+        {
             log.principal_name = name_map.get(pid).cloned();
         }
     }
@@ -208,7 +217,9 @@ async fn enrich_single_principal_name(
 
 #[allow(dead_code)]
 fn parse_datetime(s: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.with_timezone(&Utc))
+    DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
 }
 
 /// Get distinct entity types
@@ -277,7 +288,10 @@ pub async fn get_audit_log(
 ) -> Result<Json<AuditLogDetailResponse>, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
-    let mut log = state.audit_log_repo.find_by_id(&id).await?
+    let mut log = state
+        .audit_log_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("AuditLog", &id))?;
 
     enrich_single_principal_name(&mut log, &state.principal_repo).await;
@@ -312,17 +326,22 @@ pub async fn list_audit_logs(
         None => None,
     };
 
-    let mut logs = state.audit_log_repo.search_with_cursor(
-        query.entity_type.as_deref(),
-        query.entity_id.as_deref(),
-        query.operation.as_deref(),
-        query.principal_id.as_deref(),
-        cursor.as_ref(),
-        (size as i64) + 1,
-    ).await?;
+    let mut logs = state
+        .audit_log_repo
+        .search_with_cursor(
+            query.entity_type.as_deref(),
+            query.entity_id.as_deref(),
+            query.operation.as_deref(),
+            query.principal_id.as_deref(),
+            cursor.as_ref(),
+            (size as i64) + 1,
+        )
+        .await?;
 
     let has_more = logs.len() > size;
-    if has_more { logs.truncate(size); }
+    if has_more {
+        logs.truncate(size);
+    }
     let next_cursor = if has_more {
         logs.last().map(|l| encode_cursor(l.performed_at, &l.id))
     } else {
@@ -362,14 +381,15 @@ pub async fn get_entity_audit_logs(
 ) -> Result<Json<EntityAuditLogsResponse>, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
-    let mut logs = state.audit_log_repo.find_by_entity(&entity_type, &entity_id, 1000).await?;
+    let mut logs = state
+        .audit_log_repo
+        .find_by_entity(&entity_type, &entity_id, 1000)
+        .await?;
     let total = logs.len() as i64;
 
     enrich_principal_names(&mut logs, &state.principal_repo).await;
 
-    let audit_logs: Vec<AuditLogResponse> = logs.into_iter()
-        .map(|l| l.into())
-        .collect();
+    let audit_logs: Vec<AuditLogResponse> = logs.into_iter().map(|l| l.into()).collect();
 
     Ok(Json(EntityAuditLogsResponse {
         audit_logs,
@@ -400,16 +420,19 @@ pub async fn get_principal_audit_logs(
 ) -> Result<Json<Vec<AuditLogResponse>>, PlatformError> {
     // Allow principals to view their own audit logs
     if !auth.0.is_anchor() && auth.0.principal_id != principal_id {
-        return Err(PlatformError::forbidden("Cannot view other principal's audit logs"));
+        return Err(PlatformError::forbidden(
+            "Cannot view other principal's audit logs",
+        ));
     }
 
-    let mut logs = state.audit_log_repo.find_by_principal(&principal_id, 1000).await?;
+    let mut logs = state
+        .audit_log_repo
+        .find_by_principal(&principal_id, 1000)
+        .await?;
 
     enrich_principal_names(&mut logs, &state.principal_repo).await;
 
-    let response: Vec<AuditLogResponse> = logs.into_iter()
-        .map(|l| l.into())
-        .collect();
+    let response: Vec<AuditLogResponse> = logs.into_iter().map(|l| l.into()).collect();
 
     Ok(Json(response))
 }
@@ -435,9 +458,7 @@ pub async fn get_recent_audit_logs(
 
     enrich_principal_names(&mut logs, &state.principal_repo).await;
 
-    let response: Vec<AuditLogResponse> = logs.into_iter()
-        .map(|l| l.into())
-        .collect();
+    let response: Vec<AuditLogResponse> = logs.into_iter().map(|l| l.into()).collect();
 
     Ok(Json(response))
 }

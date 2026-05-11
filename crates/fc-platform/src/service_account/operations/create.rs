@@ -1,16 +1,14 @@
 //! Create Service Account Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use rand::Rng;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::{ServiceAccount, WebhookCredentials};
-use crate::ServiceAccountRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::ServiceAccountCreated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::ServiceAccountRepository;
+use crate::{ServiceAccount, WebhookCredentials};
 
 /// Generate a bearer token with fc_ prefix
 fn generate_auth_token() -> String {
@@ -67,18 +65,42 @@ pub struct CreateServiceAccountResult {
 }
 
 impl crate::usecase::DomainEvent for CreateServiceAccountResult {
-    fn event_id(&self) -> &str { self.event.event_id() }
-    fn event_type(&self) -> &str { self.event.event_type() }
-    fn spec_version(&self) -> &str { self.event.spec_version() }
-    fn source(&self) -> &str { self.event.source() }
-    fn subject(&self) -> &str { self.event.subject() }
-    fn time(&self) -> chrono::DateTime<chrono::Utc> { self.event.time() }
-    fn execution_id(&self) -> &str { self.event.execution_id() }
-    fn correlation_id(&self) -> &str { self.event.correlation_id() }
-    fn causation_id(&self) -> Option<&str> { self.event.causation_id() }
-    fn principal_id(&self) -> &str { self.event.principal_id() }
-    fn message_group(&self) -> &str { self.event.message_group() }
-    fn to_data_json(&self) -> String { self.event.to_data_json() }
+    fn event_id(&self) -> &str {
+        self.event.event_id()
+    }
+    fn event_type(&self) -> &str {
+        self.event.event_type()
+    }
+    fn spec_version(&self) -> &str {
+        self.event.spec_version()
+    }
+    fn source(&self) -> &str {
+        self.event.source()
+    }
+    fn subject(&self) -> &str {
+        self.event.subject()
+    }
+    fn time(&self) -> chrono::DateTime<chrono::Utc> {
+        self.event.time()
+    }
+    fn execution_id(&self) -> &str {
+        self.event.execution_id()
+    }
+    fn correlation_id(&self) -> &str {
+        self.event.correlation_id()
+    }
+    fn causation_id(&self) -> Option<&str> {
+        self.event.causation_id()
+    }
+    fn principal_id(&self) -> &str {
+        self.event.principal_id()
+    }
+    fn message_group(&self) -> &str {
+        self.event.message_group()
+    }
+    fn to_data_json(&self) -> String {
+        self.event.to_data_json()
+    }
 }
 
 /// Use case for creating a new service account.
@@ -88,10 +110,7 @@ pub struct CreateServiceAccountUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> CreateServiceAccountUseCase<U> {
-    pub fn new(
-        service_account_repo: Arc<ServiceAccountRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
+    pub fn new(service_account_repo: Arc<ServiceAccountRepository>, unit_of_work: Arc<U>) -> Self {
         Self {
             service_account_repo,
             unit_of_work,
@@ -133,7 +152,11 @@ impl<U: UnitOfWork> UseCase for CreateServiceAccountUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &CreateServiceAccountCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &CreateServiceAccountCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -188,7 +211,12 @@ impl<U: UnitOfWork> UseCase for CreateServiceAccountUseCase<U> {
         // wrapper result (which carries the one-time secrets) without
         // bypassing the seal.
         self.unit_of_work
-            .commit(&service_account, &*self.service_account_repo, event, &command)
+            .commit(
+                &service_account,
+                &*self.service_account_repo,
+                event,
+                &command,
+            )
             .await
             .map(|_| result)
     }

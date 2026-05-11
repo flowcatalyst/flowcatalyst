@@ -7,16 +7,16 @@
 //! - /health/startup - Startup probe
 
 use axum::{
-    routing::get,
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
+    routing::get,
     Json, Router,
 };
-use utoipa::ToSchema;
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::sync::Arc;
-use chrono::{DateTime, Utc};
+use utoipa::ToSchema;
 
 /// Health status
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]

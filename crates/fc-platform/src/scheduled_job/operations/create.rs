@@ -37,8 +37,12 @@ pub struct CreateScheduledJobCommand {
     pub target_url: Option<String>,
 }
 
-fn default_timezone() -> String { "UTC".into() }
-fn default_delivery_attempts() -> i32 { 3 }
+fn default_timezone() -> String {
+    "UTC".into()
+}
+fn default_delivery_attempts() -> i32 {
+    3
+}
 
 pub struct CreateScheduledJobUseCase<U: UnitOfWork> {
     repo: Arc<ScheduledJobRepository>,
@@ -58,10 +62,16 @@ impl<U: UnitOfWork> UseCase for CreateScheduledJobUseCase<U> {
 
     async fn validate(&self, cmd: &Self::Command) -> Result<(), UseCaseError> {
         if cmd.code.trim().is_empty() {
-            return Err(UseCaseError::validation("CODE_REQUIRED", "Code is required"));
+            return Err(UseCaseError::validation(
+                "CODE_REQUIRED",
+                "Code is required",
+            ));
         }
         if cmd.name.trim().is_empty() {
-            return Err(UseCaseError::validation("NAME_REQUIRED", "Name is required"));
+            return Err(UseCaseError::validation(
+                "NAME_REQUIRED",
+                "Name is required",
+            ));
         }
         if cmd.crons.is_empty() {
             return Err(UseCaseError::validation(
@@ -146,7 +156,9 @@ impl<U: UnitOfWork> UseCase for CreateScheduledJobUseCase<U> {
             job.tracks_completion,
         );
 
-        self.unit_of_work.commit(&job, &*self.repo, event, &cmd).await
+        self.unit_of_work
+            .commit(&job, &*self.repo, event, &cmd)
+            .await
     }
 }
 

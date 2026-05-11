@@ -1,10 +1,6 @@
 //! /api/public Routes — Unauthenticated public endpoints
 
-use axum::{
-    extract::State,
-    routing::get,
-    Json, Router,
-};
+use axum::{extract::State, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -72,11 +68,13 @@ async fn get_platform_info() -> Json<PlatformInfoResponse> {
         (status = 200, description = "Login theme configuration", body = LoginThemeResponse)
     )
 )]
-async fn get_login_theme(
-    State(state): State<PublicApiState>,
-) -> Json<LoginThemeResponse> {
+async fn get_login_theme(State(state): State<PublicApiState>) -> Json<LoginThemeResponse> {
     // Read from app_platform_configs: app_code="platform", section="login", property="theme", scope="GLOBAL"
-    let theme = match state.config_repo.find_by_key("platform", "login", "theme", "GLOBAL", None).await {
+    let theme = match state
+        .config_repo
+        .find_by_key("platform", "login", "theme", "GLOBAL", None)
+        .await
+    {
         Ok(Some(config)) => {
             tracing::debug!(value_len = config.value.len(), "Found login theme config");
             match serde_json::from_str::<LoginThemeResponse>(&config.value) {

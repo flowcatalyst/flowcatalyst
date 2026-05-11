@@ -1,18 +1,16 @@
 //! Update Subscription Use Case
 
-use std::sync::Arc;
-use std::collections::HashSet;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::sync::Arc;
 
-use crate::EventTypeBinding;
-use crate::subscription::entity::DispatchMode;
-use crate::SubscriptionRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::SubscriptionUpdated;
 use super::create::EventTypeBindingInput;
+use super::events::SubscriptionUpdated;
+use crate::subscription::entity::DispatchMode;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::EventTypeBinding;
+use crate::SubscriptionRepository;
 
 /// Command for updating an existing subscription.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,7 +113,11 @@ impl<U: UnitOfWork> UseCase for UpdateSubscriptionUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &UpdateSubscriptionCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &UpdateSubscriptionCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -125,12 +127,19 @@ impl<U: UnitOfWork> UseCase for UpdateSubscriptionUseCase<U> {
         ctx: ExecutionContext,
     ) -> UseCaseResult<SubscriptionUpdated> {
         // Fetch existing subscription
-        let mut subscription = match self.subscription_repo.find_by_id(&command.subscription_id).await {
+        let mut subscription = match self
+            .subscription_repo
+            .find_by_id(&command.subscription_id)
+            .await
+        {
             Ok(Some(s)) => s,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
                     "SUBSCRIPTION_NOT_FOUND",
-                    format!("Subscription with ID '{}' not found", command.subscription_id),
+                    format!(
+                        "Subscription with ID '{}' not found",
+                        command.subscription_id
+                    ),
                 ));
             }
             Err(e) => {
@@ -171,7 +180,8 @@ impl<U: UnitOfWork> UseCase for UpdateSubscriptionUseCase<U> {
         }
 
         if let Some(ref new_event_types) = command.event_types {
-            let old_codes: HashSet<String> = subscription.event_types
+            let old_codes: HashSet<String> = subscription
+                .event_types
                 .iter()
                 .map(|b| b.event_type_code.clone())
                 .collect();

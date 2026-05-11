@@ -3,18 +3,18 @@
 //! REST endpoints for event management.
 
 use axum::{
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
     Json,
 };
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::{ToSchema, IntoParams};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
+use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::{Event, EventRead, ContextData};
-use crate::EventRepository;
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
+use crate::EventRepository;
+use crate::{ContextData, Event, EventRead};
 
 /// Context data for event filtering/searching
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
@@ -293,7 +293,10 @@ pub async fn create_event(
     // Validate client access if specified
     if let Some(ref cid) = client_id {
         if !auth.0.can_access_client(cid) {
-            return Err(PlatformError::forbidden(format!("No access to client: {}", cid)));
+            return Err(PlatformError::forbidden(format!(
+                "No access to client: {}",
+                cid
+            )));
         }
     }
 
@@ -359,7 +362,10 @@ pub async fn get_event(
 ) -> Result<Json<EventResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_events(&auth.0)?;
 
-    let event = state.event_repo.find_by_id(&id).await?
+    let event = state
+        .event_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Event", &id))?;
 
     // Check client access
@@ -401,11 +407,16 @@ pub async fn list_events(
     if !client_ids.is_empty() {
         for cid in &client_ids {
             if !auth.0.can_access_client(cid) {
-                return Err(PlatformError::forbidden(format!("No access to client: {}", cid)));
+                return Err(PlatformError::forbidden(format!(
+                    "No access to client: {}",
+                    cid
+                )));
             }
         }
     } else if !auth.0.is_anchor() {
-        client_ids = auth.0.accessible_clients
+        client_ids = auth
+            .0
+            .accessible_clients
             .iter()
             .filter(|c| c.as_str() != "*")
             .cloned()
@@ -417,21 +428,23 @@ pub async fn list_events(
 
     let size = query.size.unwrap_or(50).clamp(1, 1000) as i64;
 
-    let rows = state.event_repo.find_read_with_cursor(
-        &client_ids,
-        &applications,
-        &subdomains,
-        &aggregates,
-        &event_types,
-        query.correlation_id.as_deref(),
-        query.source.as_deref(),
-        None,
-        size,
-    ).await?;
+    let rows = state
+        .event_repo
+        .find_read_with_cursor(
+            &client_ids,
+            &applications,
+            &subdomains,
+            &aggregates,
+            &event_types,
+            query.correlation_id.as_deref(),
+            query.source.as_deref(),
+            None,
+            size,
+        )
+        .await?;
 
     Ok(Json(rows))
 }
-
 
 /// Batch create events request
 #[derive(Debug, Deserialize, ToSchema)]
@@ -480,10 +493,14 @@ pub async fn batch_create_events(
 
     // Validate batch size
     if req.events.is_empty() {
-        return Err(PlatformError::validation("Request body must contain at least one event"));
+        return Err(PlatformError::validation(
+            "Request body must contain at least one event",
+        ));
     }
     if req.events.len() > 100 {
-        return Err(PlatformError::validation("Batch size cannot exceed 100 events"));
+        return Err(PlatformError::validation(
+            "Batch size cannot exceed 100 events",
+        ));
     }
 
     let mut all_events: Vec<Event> = Vec::new();
@@ -512,7 +529,10 @@ pub async fn batch_create_events(
         // Validate client access if specified
         if let Some(ref cid) = client_id {
             if !auth.0.can_access_client(cid) {
-                return Err(PlatformError::forbidden(format!("No access to client: {}", cid)));
+                return Err(PlatformError::forbidden(format!(
+                    "No access to client: {}",
+                    cid
+                )));
             }
         }
 
@@ -538,7 +558,8 @@ pub async fn batch_create_events(
             event = event.with_client_id(cid);
         }
         if !event_req.context_data.is_empty() {
-            event = event.with_context_data(event_req.context_data.into_iter().map(Into::into).collect());
+            event = event
+                .with_context_data(event_req.context_data.into_iter().map(Into::into).collect());
         }
 
         new_events.push(event.clone());
@@ -641,9 +662,7 @@ pub async fn list_events_raw(
     crate::shared::authorization_service::checks::can_read_events(&auth.0)?;
 
     let size = params.size.unwrap_or(50).clamp(1, 1000) as i64;
-    let events = state.event_repo
-        .find_recent_with_cursor(None, size)
-        .await?;
+    let events = state.event_repo.find_recent_with_cursor(None, size).await?;
     let items = events.into_iter().map(EventSummaryResponse::from).collect();
     Ok(Json(items))
 }

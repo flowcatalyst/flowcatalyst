@@ -219,8 +219,12 @@ impl ScheduledJobRepository {
         if let Some(cid) = client_id {
             push_where(&mut qb, &mut has_where);
             match cid {
-                Some(c) => { qb.push("client_id = ").push_bind(c.to_string()); }
-                None => { qb.push("client_id IS NULL"); }
+                Some(c) => {
+                    qb.push("client_id = ").push_bind(c.to_string());
+                }
+                None => {
+                    qb.push("client_id IS NULL");
+                }
             }
         }
         if let Some(s) = status {
@@ -278,16 +282,14 @@ impl ScheduledJobRepository {
 // ── Persist<ScheduledJob> ────────────────────────────────────────────────────
 
 impl HasId for ScheduledJob {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]
 impl crate::usecase::Persist<ScheduledJob> for ScheduledJobRepository {
-    async fn persist(
-        &self,
-        sj: &ScheduledJob,
-        tx: &mut crate::usecase::DbTx<'_>,
-    ) -> Result<()> {
+    async fn persist(&self, sj: &ScheduledJob, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         // last_fired_at is intentionally excluded from the UPDATE clause —
         // it is owned by the poller and updated via mark_fired().
         sqlx::query(
@@ -340,11 +342,7 @@ impl crate::usecase::Persist<ScheduledJob> for ScheduledJobRepository {
         Ok(())
     }
 
-    async fn delete(
-        &self,
-        sj: &ScheduledJob,
-        tx: &mut crate::usecase::DbTx<'_>,
-    ) -> Result<()> {
+    async fn delete(&self, sj: &ScheduledJob, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         // Instances + logs remain — they're history. Retention sweeps drop
         // partitions on age, not on parent-row existence.
         sqlx::query("DELETE FROM msg_scheduled_jobs WHERE id = $1")

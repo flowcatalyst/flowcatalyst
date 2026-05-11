@@ -520,7 +520,6 @@ pub struct RemoteAuthConfig {
     pub issuer: String,
 }
 
-
 impl AppConfig {
     /// Load configuration from a TOML file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {

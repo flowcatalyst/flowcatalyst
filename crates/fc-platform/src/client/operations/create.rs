@@ -1,16 +1,14 @@
 //! Create Client Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::ClientCreated;
 use crate::client::entity::Client;
 use crate::client::repository::ClientRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::ClientCreated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 /// Identifier format: lowercase alphanumeric with hyphens, 2-50 chars
 fn identifier_pattern() -> &'static Regex {
@@ -28,7 +26,6 @@ pub struct CreateClientCommand {
     /// Unique identifier/slug (lowercase alphanumeric with hyphens, 2-50 chars)
     pub identifier: String,
 }
-
 
 /// Use case for creating a new client.
 pub struct CreateClientUseCase<U: UnitOfWork> {
@@ -88,7 +85,11 @@ impl<U: UnitOfWork> UseCase for CreateClientUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &CreateClientCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &CreateClientCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         // Authorization handled in handler via require_anchor
         Ok(())
     }
@@ -110,13 +111,7 @@ impl<U: UnitOfWork> UseCase for CreateClientUseCase<U> {
 
         let client = Client::new(command.name.trim(), &identifier);
 
-        let event = ClientCreated::new(
-            &ctx,
-            &client.id,
-            &client.name,
-            &client.identifier,
-            None,
-        );
+        let event = ClientCreated::new(&ctx, &client.id, &client.name, &client.identifier, None);
 
         self.unit_of_work
             .commit(&client, &*self.client_repo, event, &command)

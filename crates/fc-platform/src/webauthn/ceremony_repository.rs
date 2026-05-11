@@ -19,7 +19,9 @@ const REGISTRATION_TYPE: &str = "WebauthnRegistration";
 const AUTHENTICATION_TYPE: &str = "WebauthnAuthentication";
 const DEFAULT_TTL_SECS: i64 = 600;
 
-fn make_id(kind: &str, state_id: &str) -> String { format!("{}:{}", kind, state_id) }
+fn make_id(kind: &str, state_id: &str) -> String {
+    format!("{}:{}", kind, state_id)
+}
 
 pub struct WebauthnCeremonyRepository {
     pool: PgPool,
@@ -37,7 +39,9 @@ pub struct ConsumedAuthentication {
 }
 
 impl WebauthnCeremonyRepository {
-    pub fn new(pool: &PgPool) -> Self { Self { pool: pool.clone() } }
+    pub fn new(pool: &PgPool) -> Self {
+        Self { pool: pool.clone() }
+    }
 
     pub async fn store_registration(
         &self,
@@ -67,7 +71,10 @@ impl WebauthnCeremonyRepository {
         Ok(())
     }
 
-    pub async fn consume_registration(&self, state_id: &str) -> Result<Option<ConsumedRegistration>> {
+    pub async fn consume_registration(
+        &self,
+        state_id: &str,
+    ) -> Result<Option<ConsumedRegistration>> {
         let row: Option<(serde_json::Value,)> = sqlx::query_as(
             "DELETE FROM oauth_oidc_payloads
              WHERE id = $1 AND (expires_at IS NULL OR expires_at > NOW())
@@ -77,17 +84,31 @@ impl WebauthnCeremonyRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        let Some((payload,)) = row else { return Ok(None) };
-        let principal_id = payload.get("principalId").and_then(|v| v.as_str())
+        let Some((payload,)) = row else {
+            return Ok(None);
+        };
+        let principal_id = payload
+            .get("principalId")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| PlatformError::internal("ceremony payload missing principalId"))?
             .to_string();
-        let display_name = payload.get("displayName").and_then(|v| v.as_str()).map(String::from);
+        let display_name = payload
+            .get("displayName")
+            .and_then(|v| v.as_str())
+            .map(String::from);
         let state: PasskeyRegistration = serde_json::from_value(
-            payload.get("state").cloned()
+            payload
+                .get("state")
+                .cloned()
                 .ok_or_else(|| PlatformError::internal("ceremony payload missing state"))?,
-        ).map_err(|e| PlatformError::internal(format!("deserialise PasskeyRegistration: {}", e)))?;
+        )
+        .map_err(|e| PlatformError::internal(format!("deserialise PasskeyRegistration: {}", e)))?;
 
-        Ok(Some(ConsumedRegistration { principal_id, state, display_name }))
+        Ok(Some(ConsumedRegistration {
+            principal_id,
+            state,
+            display_name,
+        }))
     }
 
     pub async fn store_authentication(
@@ -116,7 +137,10 @@ impl WebauthnCeremonyRepository {
         Ok(())
     }
 
-    pub async fn consume_authentication(&self, state_id: &str) -> Result<Option<ConsumedAuthentication>> {
+    pub async fn consume_authentication(
+        &self,
+        state_id: &str,
+    ) -> Result<Option<ConsumedAuthentication>> {
         let row: Option<(serde_json::Value,)> = sqlx::query_as(
             "DELETE FROM oauth_oidc_payloads
              WHERE id = $1 AND (expires_at IS NULL OR expires_at > NOW())
@@ -126,14 +150,27 @@ impl WebauthnCeremonyRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        let Some((payload,)) = row else { return Ok(None) };
-        let principal_id = payload.get("principalId").and_then(|v| v.as_str()).map(String::from);
+        let Some((payload,)) = row else {
+            return Ok(None);
+        };
+        let principal_id = payload
+            .get("principalId")
+            .and_then(|v| v.as_str())
+            .map(String::from);
         let state: PasskeyAuthentication = serde_json::from_value(
-            payload.get("state").cloned()
+            payload
+                .get("state")
+                .cloned()
                 .ok_or_else(|| PlatformError::internal("ceremony payload missing state"))?,
-        ).map_err(|e| PlatformError::internal(format!("deserialise PasskeyAuthentication: {}", e)))?;
+        )
+        .map_err(|e| {
+            PlatformError::internal(format!("deserialise PasskeyAuthentication: {}", e))
+        })?;
 
-        Ok(Some(ConsumedAuthentication { principal_id, state }))
+        Ok(Some(ConsumedAuthentication {
+            principal_id,
+            state,
+        }))
     }
 
     pub async fn purge_expired(&self) -> Result<u64> {
@@ -148,5 +185,7 @@ impl WebauthnCeremonyRepository {
         Ok(res.rows_affected())
     }
 
-    pub fn registration_ttl_seconds(&self) -> DateTime<Utc> { Utc::now() + Duration::seconds(DEFAULT_TTL_SECS) }
+    pub fn registration_ttl_seconds(&self) -> DateTime<Utc> {
+        Utc::now() + Duration::seconds(DEFAULT_TTL_SECS)
+    }
 }

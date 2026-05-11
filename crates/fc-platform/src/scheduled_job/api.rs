@@ -85,8 +85,12 @@ pub struct CreateScheduledJobRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_url: Option<String>,
 }
-fn default_tz() -> String { "UTC".into() }
-fn default_attempts() -> i32 { 3 }
+fn default_tz() -> String {
+    "UTC".into()
+}
+fn default_attempts() -> i32 {
+    3
+}
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -132,7 +136,13 @@ pub struct InstanceLogRequest {
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
 #[serde(rename_all = "UPPERCASE")]
-pub enum LogLevelDto { Debug, #[default] Info, Warn, Error }
+pub enum LogLevelDto {
+    Debug,
+    #[default]
+    Info,
+    Warn,
+    Error,
+}
 
 impl From<LogLevelDto> for LogLevel {
     fn from(v: LogLevelDto) -> Self {
@@ -155,7 +165,10 @@ pub struct InstanceCompleteRequest {
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "UPPERCASE")]
-pub enum CompletionStatusDto { Success, Failure }
+pub enum CompletionStatusDto {
+    Success,
+    Failure,
+}
 
 impl From<CompletionStatusDto> for CompletionStatus {
     fn from(v: CompletionStatusDto) -> Self {
@@ -328,16 +341,16 @@ impl From<ScheduledJobInstanceLog> for InstanceLogResponse {
 
 /// Returns Ok if the caller can act on a scheduled-job whose `client_id` is
 /// `Some(c)` (member of c) or `None` (caller is anchor or has ADMIN_ALL).
-fn check_scope_access(
-    auth: &Authenticated,
-    client_id: Option<&str>,
-) -> Result<(), PlatformError> {
+fn check_scope_access(auth: &Authenticated, client_id: Option<&str>) -> Result<(), PlatformError> {
     match client_id {
         Some(cid) => {
             if auth.0.can_access_client(cid) {
                 Ok(())
             } else {
-                Err(PlatformError::forbidden(format!("No access to client: {}", cid)))
+                Err(PlatformError::forbidden(format!(
+                    "No access to client: {}",
+                    cid
+                )))
             }
         }
         None => {
@@ -385,7 +398,10 @@ pub async fn create_scheduled_job(
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     let event = state.create_use_case.run(cmd, ctx).await.into_result()?;
-    Ok((StatusCode::CREATED, Json(CreatedResponse::new(event.scheduled_job_id))))
+    Ok((
+        StatusCode::CREATED,
+        Json(CreatedResponse::new(event.scheduled_job_id)),
+    ))
 }
 
 #[utoipa::path(
@@ -437,7 +453,11 @@ pub async fn list_scheduled_jobs(
     // sequentially; replace with a single GROUP BY query if pages get wide.
     let mut data = Vec::with_capacity(visible.len());
     for j in visible {
-        let active = state.instance_repo.has_active_instance(&j.id).await.unwrap_or(false);
+        let active = state
+            .instance_repo
+            .has_active_instance(&j.id)
+            .await
+            .unwrap_or(false);
         data.push(ScheduledJobResponse::from(j, active));
     }
 
@@ -463,9 +483,17 @@ pub async fn get_scheduled_job(
 ) -> Result<Json<ScheduledJobResponse>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_scheduled_jobs(&auth.0)?;
 
-    let job = state.repo.find_by_id(&id).await?.or_not_found("ScheduledJob", &id)?;
+    let job = state
+        .repo
+        .find_by_id(&id)
+        .await?
+        .or_not_found("ScheduledJob", &id)?;
     check_scope_access(&auth, job.client_id.as_deref())?;
-    let active = state.instance_repo.has_active_instance(&job.id).await.unwrap_or(false);
+    let active = state
+        .instance_repo
+        .has_active_instance(&job.id)
+        .await
+        .unwrap_or(false);
     Ok(Json(ScheduledJobResponse::from(job, active)))
 }
 
@@ -494,7 +522,11 @@ pub async fn get_scheduled_job_by_code(
         .await?
         .or_not_found("ScheduledJob", &code)?;
     check_scope_access(&auth, job.client_id.as_deref())?;
-    let active = state.instance_repo.has_active_instance(&job.id).await.unwrap_or(false);
+    let active = state
+        .instance_repo
+        .has_active_instance(&job.id)
+        .await
+        .unwrap_or(false);
     Ok(Json(ScheduledJobResponse::from(job, active)))
 }
 
@@ -514,7 +546,11 @@ pub async fn update_scheduled_job(
 ) -> Result<StatusCode, PlatformError> {
     crate::shared::authorization_service::checks::can_update_scheduled_jobs(&auth.0)?;
 
-    let existing = state.repo.find_by_id(&id).await?.or_not_found("ScheduledJob", &id)?;
+    let existing = state
+        .repo
+        .find_by_id(&id)
+        .await?
+        .or_not_found("ScheduledJob", &id)?;
     check_scope_access(&auth, existing.client_id.as_deref())?;
 
     let cmd = UpdateScheduledJobCommand {
@@ -548,10 +584,16 @@ pub async fn pause_scheduled_job(
     Path(id): Path<String>,
 ) -> Result<StatusCode, PlatformError> {
     crate::shared::authorization_service::checks::can_pause_scheduled_jobs(&auth.0)?;
-    let existing = state.repo.find_by_id(&id).await?.or_not_found("ScheduledJob", &id)?;
+    let existing = state
+        .repo
+        .find_by_id(&id)
+        .await?
+        .or_not_found("ScheduledJob", &id)?;
     check_scope_access(&auth, existing.client_id.as_deref())?;
 
-    let cmd = PauseScheduledJobCommand { scheduled_job_id: id };
+    let cmd = PauseScheduledJobCommand {
+        scheduled_job_id: id,
+    };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     state.pause_use_case.run(cmd, ctx).await.into_result()?;
     Ok(StatusCode::NO_CONTENT)
@@ -570,10 +612,16 @@ pub async fn resume_scheduled_job(
     Path(id): Path<String>,
 ) -> Result<StatusCode, PlatformError> {
     crate::shared::authorization_service::checks::can_pause_scheduled_jobs(&auth.0)?;
-    let existing = state.repo.find_by_id(&id).await?.or_not_found("ScheduledJob", &id)?;
+    let existing = state
+        .repo
+        .find_by_id(&id)
+        .await?
+        .or_not_found("ScheduledJob", &id)?;
     check_scope_access(&auth, existing.client_id.as_deref())?;
 
-    let cmd = ResumeScheduledJobCommand { scheduled_job_id: id };
+    let cmd = ResumeScheduledJobCommand {
+        scheduled_job_id: id,
+    };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     state.resume_use_case.run(cmd, ctx).await.into_result()?;
     Ok(StatusCode::NO_CONTENT)
@@ -592,10 +640,16 @@ pub async fn archive_scheduled_job(
     Path(id): Path<String>,
 ) -> Result<StatusCode, PlatformError> {
     crate::shared::authorization_service::checks::can_update_scheduled_jobs(&auth.0)?;
-    let existing = state.repo.find_by_id(&id).await?.or_not_found("ScheduledJob", &id)?;
+    let existing = state
+        .repo
+        .find_by_id(&id)
+        .await?
+        .or_not_found("ScheduledJob", &id)?;
     check_scope_access(&auth, existing.client_id.as_deref())?;
 
-    let cmd = ArchiveScheduledJobCommand { scheduled_job_id: id };
+    let cmd = ArchiveScheduledJobCommand {
+        scheduled_job_id: id,
+    };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     state.archive_use_case.run(cmd, ctx).await.into_result()?;
     Ok(StatusCode::NO_CONTENT)
@@ -614,10 +668,16 @@ pub async fn delete_scheduled_job(
     Path(id): Path<String>,
 ) -> Result<StatusCode, PlatformError> {
     crate::shared::authorization_service::checks::can_delete_scheduled_jobs(&auth.0)?;
-    let existing = state.repo.find_by_id(&id).await?.or_not_found("ScheduledJob", &id)?;
+    let existing = state
+        .repo
+        .find_by_id(&id)
+        .await?
+        .or_not_found("ScheduledJob", &id)?;
     check_scope_access(&auth, existing.client_id.as_deref())?;
 
-    let cmd = DeleteScheduledJobCommand { scheduled_job_id: id };
+    let cmd = DeleteScheduledJobCommand {
+        scheduled_job_id: id,
+    };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     state.delete_use_case.run(cmd, ctx).await.into_result()?;
     Ok(StatusCode::NO_CONTENT)
@@ -638,7 +698,11 @@ pub async fn fire_scheduled_job(
     Json(req): Json<FireRequest>,
 ) -> Result<(StatusCode, Json<CreatedResponse>), PlatformError> {
     crate::shared::authorization_service::checks::can_fire_scheduled_jobs(&auth.0)?;
-    let existing = state.repo.find_by_id(&id).await?.or_not_found("ScheduledJob", &id)?;
+    let existing = state
+        .repo
+        .find_by_id(&id)
+        .await?
+        .or_not_found("ScheduledJob", &id)?;
     check_scope_access(&auth, existing.client_id.as_deref())?;
 
     let cmd = FireScheduledJobCommand {
@@ -647,7 +711,10 @@ pub async fn fire_scheduled_job(
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     let event = state.fire_use_case.run(cmd, ctx).await.into_result()?;
-    Ok((StatusCode::ACCEPTED, Json(CreatedResponse::new(event.instance_id))))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(CreatedResponse::new(event.instance_id)),
+    ))
 }
 
 // ── Instance reads (admin) ──────────────────────────────────────────────────
@@ -666,7 +733,11 @@ pub async fn list_instances_for_job(
     Query(q): Query<ListInstancesQuery>,
 ) -> Result<Json<PaginatedResponse<ScheduledJobInstanceResponse>>, PlatformError> {
     crate::shared::authorization_service::checks::can_read_scheduled_job_instances(&auth.0)?;
-    let job = state.repo.find_by_id(&id).await?.or_not_found("ScheduledJob", &id)?;
+    let job = state
+        .repo
+        .find_by_id(&id)
+        .await?
+        .or_not_found("ScheduledJob", &id)?;
     check_scope_access(&auth, job.client_id.as_deref())?;
 
     let status = q.status.as_deref().map(InstanceStatus::from_str);
@@ -681,7 +752,11 @@ pub async fn list_instances_for_job(
         limit: Some(q.pagination.limit()),
         offset: Some(q.pagination.offset() as i64),
     };
-    let count_filters = InstanceListFilters { limit: None, offset: None, ..filters.clone() };
+    let count_filters = InstanceListFilters {
+        limit: None,
+        offset: None,
+        ..filters.clone()
+    };
     let rows = state.instance_repo.list(&filters).await?;
     let total = state.instance_repo.count(&count_filters).await? as u64;
     let data: Vec<_> = rows.into_iter().map(Into::into).collect();
@@ -734,7 +809,10 @@ pub async fn list_instance_logs(
         .await?
         .or_not_found("ScheduledJobInstance", &instance_id)?;
     check_scope_access(&auth, inst.client_id.as_deref())?;
-    let logs = state.instance_repo.list_logs_for_instance(&instance_id, None).await?;
+    let logs = state
+        .instance_repo
+        .list_logs_for_instance(&instance_id, None)
+        .await?;
     Ok(Json(logs.into_iter().map(Into::into).collect()))
 }
 
@@ -800,7 +878,12 @@ pub async fn post_instance_complete(
 
     state
         .instance_repo
-        .record_completion(&inst.id, inst.created_at, req.status.into(), req.result.as_ref())
+        .record_completion(
+            &inst.id,
+            inst.created_at,
+            req.status.into(),
+            req.result.as_ref(),
+        )
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -810,7 +893,11 @@ pub async fn post_instance_complete(
 pub fn scheduled_jobs_router(state: ScheduledJobsState) -> OpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(create_scheduled_job, list_scheduled_jobs))
-        .routes(routes!(get_scheduled_job, update_scheduled_job, delete_scheduled_job))
+        .routes(routes!(
+            get_scheduled_job,
+            update_scheduled_job,
+            delete_scheduled_job
+        ))
         .routes(routes!(get_scheduled_job_by_code))
         .routes(routes!(pause_scheduled_job))
         .routes(routes!(resume_scheduled_job))

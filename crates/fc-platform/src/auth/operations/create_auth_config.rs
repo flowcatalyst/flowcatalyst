@@ -1,15 +1,13 @@
 //! Create ClientAuthConfig Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::auth::config_entity::{ClientAuthConfig, AuthConfigType, AuthProvider};
-use crate::auth::config_repository::ClientAuthConfigRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::AuthConfigCreated;
+use crate::auth::config_entity::{AuthConfigType, AuthProvider, ClientAuthConfig};
+use crate::auth::config_repository::ClientAuthConfigRepository;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,7 +37,10 @@ pub struct CreateAuthConfigUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> CreateAuthConfigUseCase<U> {
     pub fn new(auth_config_repo: Arc<ClientAuthConfigRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { auth_config_repo, unit_of_work }
+        Self {
+            auth_config_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -59,7 +60,11 @@ impl<U: UnitOfWork> UseCase for CreateAuthConfigUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &CreateAuthConfigCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &CreateAuthConfigCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -71,10 +76,17 @@ impl<U: UnitOfWork> UseCase for CreateAuthConfigUseCase<U> {
         let email_domain = command.email_domain.trim().to_lowercase();
 
         // Business rule: email domain must be unique
-        if let Ok(Some(_)) = self.auth_config_repo.find_by_email_domain(&email_domain).await {
+        if let Ok(Some(_)) = self
+            .auth_config_repo
+            .find_by_email_domain(&email_domain)
+            .await
+        {
             return UseCaseResult::failure(UseCaseError::business_rule(
                 "EMAIL_DOMAIN_EXISTS",
-                format!("An auth config for domain '{}' already exists", email_domain),
+                format!(
+                    "An auth config for domain '{}' already exists",
+                    email_domain
+                ),
             ));
         }
 

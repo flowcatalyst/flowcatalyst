@@ -1,13 +1,13 @@
 //! Identity Providers Admin API
 
 use axum::{
+    extract::{Path, State},
     routing::{get, post},
-    extract::{State, Path},
     Json, Router,
 };
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use super::entity::IdentityProvider;
 use super::repository::IdentityProviderRepository;
@@ -87,9 +87,21 @@ pub struct IdentityProvidersListResponse {
 #[derive(Clone)]
 pub struct IdentityProvidersState {
     pub idp_repo: Arc<IdentityProviderRepository>,
-    pub create_use_case: Arc<crate::identity_provider::operations::CreateIdentityProviderUseCase<crate::usecase::PgUnitOfWork>>,
-    pub update_use_case: Arc<crate::identity_provider::operations::UpdateIdentityProviderUseCase<crate::usecase::PgUnitOfWork>>,
-    pub delete_use_case: Arc<crate::identity_provider::operations::DeleteIdentityProviderUseCase<crate::usecase::PgUnitOfWork>>,
+    pub create_use_case: Arc<
+        crate::identity_provider::operations::CreateIdentityProviderUseCase<
+            crate::usecase::PgUnitOfWork,
+        >,
+    >,
+    pub update_use_case: Arc<
+        crate::identity_provider::operations::UpdateIdentityProviderUseCase<
+            crate::usecase::PgUnitOfWork,
+        >,
+    >,
+    pub delete_use_case: Arc<
+        crate::identity_provider::operations::DeleteIdentityProviderUseCase<
+            crate::usecase::PgUnitOfWork,
+        >,
+    >,
 }
 
 #[utoipa::path(
@@ -109,7 +121,13 @@ async fn create_identity_provider(
     State(state): State<IdentityProvidersState>,
     auth: Authenticated,
     Json(req): Json<CreateIdentityProviderRequest>,
-) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
+) -> Result<
+    (
+        axum::http::StatusCode,
+        Json<crate::shared::api_common::CreatedResponse>,
+    ),
+    PlatformError,
+> {
     use crate::identity_provider::operations::CreateIdentityProviderCommand;
     use crate::usecase::{ExecutionContext, UseCase};
 
@@ -130,7 +148,9 @@ async fn create_identity_provider(
     let event = state.create_use_case.run(cmd, ctx).await.into_result()?;
     Ok((
         axum::http::StatusCode::CREATED,
-        Json(crate::shared::api_common::CreatedResponse::new(event.idp_id)),
+        Json(crate::shared::api_common::CreatedResponse::new(
+            event.idp_id,
+        )),
     ))
 }
 
@@ -175,7 +195,10 @@ async fn get_identity_provider(
     _auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<IdentityProviderResponse>, PlatformError> {
-    let idp = state.idp_repo.find_by_id(&id).await?
+    let idp = state
+        .idp_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("IdentityProvider", &id))?;
     Ok(Json(idp.into()))
 }
@@ -253,7 +276,15 @@ async fn delete_identity_provider(
 
 pub fn identity_providers_router(state: IdentityProvidersState) -> Router {
     Router::new()
-        .route("/", post(create_identity_provider).get(list_identity_providers))
-        .route("/{id}", get(get_identity_provider).put(update_identity_provider).delete(delete_identity_provider))
+        .route(
+            "/",
+            post(create_identity_provider).get(list_identity_providers),
+        )
+        .route(
+            "/{id}",
+            get(get_identity_provider)
+                .put(update_identity_provider)
+                .delete(delete_identity_provider),
+        )
         .with_state(state)
 }

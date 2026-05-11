@@ -1,7 +1,7 @@
 //! DispatchPool Entity — matches TypeScript DispatchPool domain
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -12,7 +12,6 @@ pub enum DispatchPoolStatus {
     Suspended,
     Archived,
 }
-
 
 impl DispatchPoolStatus {
     pub fn as_str(&self) -> &'static str {
@@ -66,10 +65,22 @@ impl DispatchPool {
         }
     }
 
-    pub fn with_description(mut self, desc: impl Into<String>) -> Self { self.description = Some(desc.into()); self }
-    pub fn with_client_id(mut self, id: impl Into<String>) -> Self { self.client_id = Some(id.into()); self }
-    pub fn with_rate_limit(mut self, rate: Option<u32>) -> Self { self.rate_limit = rate.map(|r| r as i32); self }
-    pub fn with_concurrency(mut self, conc: u32) -> Self { self.concurrency = conc as i32; self }
+    pub fn with_description(mut self, desc: impl Into<String>) -> Self {
+        self.description = Some(desc.into());
+        self
+    }
+    pub fn with_client_id(mut self, id: impl Into<String>) -> Self {
+        self.client_id = Some(id.into());
+        self
+    }
+    pub fn with_rate_limit(mut self, rate: Option<u32>) -> Self {
+        self.rate_limit = rate.map(|r| r as i32);
+        self
+    }
+    pub fn with_concurrency(mut self, conc: u32) -> Self {
+        self.concurrency = conc as i32;
+        self
+    }
 
     pub fn suspend(&mut self) {
         self.status = DispatchPoolStatus::Suspended;
@@ -96,8 +107,17 @@ mod tests {
         let pool = DispatchPool::new("default-pool", "Default Pool");
 
         assert!(!pool.id.is_empty());
-        assert!(pool.id.starts_with("dpl_"), "ID should have dpl_ prefix, got: {}", pool.id);
-        assert_eq!(pool.id.len(), 17, "Typed ID should be 17 chars, got: {}", pool.id.len());
+        assert!(
+            pool.id.starts_with("dpl_"),
+            "ID should have dpl_ prefix, got: {}",
+            pool.id
+        );
+        assert_eq!(
+            pool.id.len(),
+            17,
+            "Typed ID should be 17 chars, got: {}",
+            pool.id.len()
+        );
         assert_eq!(pool.code, "default-pool");
         assert_eq!(pool.name, "Default Pool");
         assert!(pool.description.is_none());
@@ -125,10 +145,22 @@ mod tests {
 
     #[test]
     fn test_dispatch_pool_status_from_str() {
-        assert_eq!(DispatchPoolStatus::from_str("ACTIVE"), DispatchPoolStatus::Active);
-        assert_eq!(DispatchPoolStatus::from_str("SUSPENDED"), DispatchPoolStatus::Suspended);
-        assert_eq!(DispatchPoolStatus::from_str("ARCHIVED"), DispatchPoolStatus::Archived);
-        assert_eq!(DispatchPoolStatus::from_str("unknown"), DispatchPoolStatus::Active);
+        assert_eq!(
+            DispatchPoolStatus::from_str("ACTIVE"),
+            DispatchPoolStatus::Active
+        );
+        assert_eq!(
+            DispatchPoolStatus::from_str("SUSPENDED"),
+            DispatchPoolStatus::Suspended
+        );
+        assert_eq!(
+            DispatchPoolStatus::from_str("ARCHIVED"),
+            DispatchPoolStatus::Archived
+        );
+        assert_eq!(
+            DispatchPoolStatus::from_str("unknown"),
+            DispatchPoolStatus::Active
+        );
     }
 
     #[test]
@@ -138,8 +170,17 @@ mod tests {
 
     #[test]
     fn test_dispatch_pool_status_roundtrip() {
-        for s in [DispatchPoolStatus::Active, DispatchPoolStatus::Suspended, DispatchPoolStatus::Archived] {
-            assert_eq!(DispatchPoolStatus::from_str(s.as_str()), s, "Roundtrip failed for {:?}", s);
+        for s in [
+            DispatchPoolStatus::Active,
+            DispatchPoolStatus::Suspended,
+            DispatchPoolStatus::Archived,
+        ] {
+            assert_eq!(
+                DispatchPoolStatus::from_str(s.as_str()),
+                s,
+                "Roundtrip failed for {:?}",
+                s
+            );
         }
     }
 
@@ -197,4 +238,3 @@ mod tests {
         assert_eq!(pool.status, DispatchPoolStatus::Archived);
     }
 }
-

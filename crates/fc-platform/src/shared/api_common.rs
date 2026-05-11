@@ -1,10 +1,10 @@
 //! Common API types and utilities
 
-use utoipa::{ToSchema, IntoParams};
 use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 
 mod string_or_number {
-    use serde::{Deserialize, Deserializer, de};
+    use serde::{de, Deserialize, Deserializer};
 
     pub fn deserialize_u32_opt<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
     where
@@ -146,9 +146,12 @@ pub fn decode_cursor(cursor: &str) -> Result<DecodedCursor, CursorDecodeError> {
     let raw = std::str::from_utf8(&bytes).map_err(|_| CursorDecodeError)?;
     let (micros_str, id) = raw.split_once(':').ok_or(CursorDecodeError)?;
     let micros: i64 = micros_str.parse().map_err(|_| CursorDecodeError)?;
-    let created_at = chrono::DateTime::<chrono::Utc>::from_timestamp_micros(micros)
-        .ok_or(CursorDecodeError)?;
-    Ok(DecodedCursor { created_at, id: id.to_string() })
+    let created_at =
+        chrono::DateTime::<chrono::Utc>::from_timestamp_micros(micros).ok_or(CursorDecodeError)?;
+    Ok(DecodedCursor {
+        created_at,
+        id: id.to_string(),
+    })
 }
 
 impl<T> PaginatedResponse<T> {

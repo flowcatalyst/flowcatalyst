@@ -43,7 +43,10 @@ impl PoolConfig {
 }
 
 fn env_parse<T: FromStr>(key: &str, default: T) -> T {
-    std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 /// Create a new SQLx PgPool with connection pooling.
@@ -97,43 +100,61 @@ pub struct AwsSecretProvider {
 
 impl AwsSecretProvider {
     pub fn new(secret_arn: String, host: String, db_name: String, fallback_port: String) -> Self {
-        Self { secret_arn, host, db_name, fallback_port }
+        Self {
+            secret_arn,
+            host,
+            db_name,
+            fallback_port,
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl SecretProvider for AwsSecretProvider {
-    fn name(&self) -> &'static str { "aws-secrets-manager" }
+    fn name(&self) -> &'static str {
+        "aws-secrets-manager"
+    }
 
     async fn get_db_url(&self) -> Result<String, anyhow::Error> {
         let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
         let sm = aws_sdk_secretsmanager::Client::new(&config);
 
-        let secret = sm.get_secret_value()
+        let secret = sm
+            .get_secret_value()
             .secret_id(&self.secret_arn)
             .send()
             .await
             .map_err(|e| anyhow::anyhow!("Failed to get DB secret from Secrets Manager: {}", e))?;
 
-        let secret_string = secret.secret_string()
+        let secret_string = secret
+            .secret_string()
             .ok_or_else(|| anyhow::anyhow!("DB secret has no string value"))?;
 
         let creds: serde_json::Value = serde_json::from_str(secret_string)
             .map_err(|e| anyhow::anyhow!("Failed to parse DB secret JSON: {}", e))?;
 
-        let username = creds["username"].as_str()
+        let username = creds["username"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("DB secret missing 'username' field"))?;
-        let password = creds["password"].as_str()
+        let password = creds["password"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("DB secret missing 'password' field"))?;
-        let port = creds["port"].as_u64()
+        let port = creds["port"]
+            .as_u64()
             .map(|p| p.to_string())
             .unwrap_or_else(|| self.fallback_port.clone());
 
         let password_encoded = urlencoding::encode(password);
         let url = if self.host.contains(':') {
-            format!("postgresql://{}:{}@{}/{}", username, password_encoded, self.host, self.db_name)
+            format!(
+                "postgresql://{}:{}@{}/{}",
+                username, password_encoded, self.host, self.db_name
+            )
         } else {
-            format!("postgresql://{}:{}@{}:{}/{}", username, password_encoded, self.host, port, self.db_name)
+            format!(
+                "postgresql://{}:{}@{}:{}/{}",
+                username, password_encoded, self.host, port, self.db_name
+            )
         };
         Ok(url)
     }
@@ -238,26 +259,80 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
 
     // Migrations applied to every profile.
     let core_migrations: &[(&str, &str)] = &[
-        ("001_tenant_tables", include_str!("../../../../migrations/001_tenant_tables.sql")),
-        ("002_iam_tables", include_str!("../../../../migrations/002_iam_tables.sql")),
-        ("003_application_tables", include_str!("../../../../migrations/003_application_tables.sql")),
-        ("004_messaging_tables", include_str!("../../../../migrations/004_messaging_tables.sql")),
-        ("005_outbox_tables", include_str!("../../../../migrations/005_outbox_tables.sql")),
-        ("006_audit_tables", include_str!("../../../../migrations/006_audit_tables.sql")),
-        ("007_oauth_tables", include_str!("../../../../migrations/007_oauth_tables.sql")),
-        ("008_auth_tracking_tables", include_str!("../../../../migrations/008_auth_tracking_tables.sql")),
-        ("009_p0_alignment", include_str!("../../../../migrations/009_p0_alignment.sql")),
-        ("010_auth_state_tables", include_str!("../../../../migrations/010_auth_state_tables.sql")),
-        ("011_dispatch_job_tables", include_str!("../../../../migrations/011_dispatch_job_tables.sql")),
-        ("012_projection_columns", include_str!("../../../../migrations/012_projection_columns.sql")),
-        ("013_drop_connection_endpoint", include_str!("../../../../migrations/013_drop_connection_endpoint.sql")),
-        ("014_widen_attempt_type", include_str!("../../../../migrations/014_widen_attempt_type.sql")),
-        ("015_dispatch_jobs_write_indexes", include_str!("../../../../migrations/015_dispatch_jobs_write_indexes.sql")),
-        ("016_clean_orphaned_role_assignments", include_str!("../../../../migrations/016_clean_orphaned_role_assignments.sql")),
-        ("017_dispatch_pool_rate_limit_nullable", include_str!("../../../../migrations/017_dispatch_pool_rate_limit_nullable.sql")),
+        (
+            "001_tenant_tables",
+            include_str!("../../../../migrations/001_tenant_tables.sql"),
+        ),
+        (
+            "002_iam_tables",
+            include_str!("../../../../migrations/002_iam_tables.sql"),
+        ),
+        (
+            "003_application_tables",
+            include_str!("../../../../migrations/003_application_tables.sql"),
+        ),
+        (
+            "004_messaging_tables",
+            include_str!("../../../../migrations/004_messaging_tables.sql"),
+        ),
+        (
+            "005_outbox_tables",
+            include_str!("../../../../migrations/005_outbox_tables.sql"),
+        ),
+        (
+            "006_audit_tables",
+            include_str!("../../../../migrations/006_audit_tables.sql"),
+        ),
+        (
+            "007_oauth_tables",
+            include_str!("../../../../migrations/007_oauth_tables.sql"),
+        ),
+        (
+            "008_auth_tracking_tables",
+            include_str!("../../../../migrations/008_auth_tracking_tables.sql"),
+        ),
+        (
+            "009_p0_alignment",
+            include_str!("../../../../migrations/009_p0_alignment.sql"),
+        ),
+        (
+            "010_auth_state_tables",
+            include_str!("../../../../migrations/010_auth_state_tables.sql"),
+        ),
+        (
+            "011_dispatch_job_tables",
+            include_str!("../../../../migrations/011_dispatch_job_tables.sql"),
+        ),
+        (
+            "012_projection_columns",
+            include_str!("../../../../migrations/012_projection_columns.sql"),
+        ),
+        (
+            "013_drop_connection_endpoint",
+            include_str!("../../../../migrations/013_drop_connection_endpoint.sql"),
+        ),
+        (
+            "014_widen_attempt_type",
+            include_str!("../../../../migrations/014_widen_attempt_type.sql"),
+        ),
+        (
+            "015_dispatch_jobs_write_indexes",
+            include_str!("../../../../migrations/015_dispatch_jobs_write_indexes.sql"),
+        ),
+        (
+            "016_clean_orphaned_role_assignments",
+            include_str!("../../../../migrations/016_clean_orphaned_role_assignments.sql"),
+        ),
+        (
+            "017_dispatch_pool_rate_limit_nullable",
+            include_str!("../../../../migrations/017_dispatch_pool_rate_limit_nullable.sql"),
+        ),
         // 018 reshapes the messaging tables into the partitioning-ready
         // schema (composite PKs, fanned_out_at, read-table created_at).
-        ("018_partition_prep", include_str!("../../../../migrations/018_partition_prep.sql")),
+        (
+            "018_partition_prep",
+            include_str!("../../../../migrations/018_partition_prep.sql"),
+        ),
         // 019/022 partition the high-volume tables. They used to be
         // production-only, but fc-dev now mirrors prod's partitioned shape so
         // partition-related schema bugs (UNIQUE missing the partition key,
@@ -265,12 +340,27 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
         // discovered in prod. Forward-rolling and retention are managed by
         // pg_partman_bgw in production (registered in 023) and by
         // `PartitionManagerService` in fc-dev.
-        ("019_partition_messaging_tables", include_str!("../../../../migrations/019_partition_messaging_tables.sql")),
-        ("020_webauthn_credentials", include_str!("../../../../migrations/020_webauthn_credentials.sql")),
-        ("021_scheduled_jobs", include_str!("../../../../migrations/021_scheduled_jobs.sql")),
-        ("022_partition_scheduled_job_history", include_str!("../../../../migrations/022_partition_scheduled_job_history.sql")),
+        (
+            "019_partition_messaging_tables",
+            include_str!("../../../../migrations/019_partition_messaging_tables.sql"),
+        ),
+        (
+            "020_webauthn_credentials",
+            include_str!("../../../../migrations/020_webauthn_credentials.sql"),
+        ),
+        (
+            "021_scheduled_jobs",
+            include_str!("../../../../migrations/021_scheduled_jobs.sql"),
+        ),
+        (
+            "022_partition_scheduled_job_history",
+            include_str!("../../../../migrations/022_partition_scheduled_job_history.sql"),
+        ),
         // Bridges DBs that ran 021 before `target_url` was added to it.
-        ("024_scheduled_jobs_add_target_url", include_str!("../../../../migrations/024_scheduled_jobs_add_target_url.sql")),
+        (
+            "024_scheduled_jobs_add_target_url",
+            include_str!("../../../../migrations/024_scheduled_jobs_add_target_url.sql"),
+        ),
     ];
 
     // No production-only migrations at the moment. Partitioning runs the
@@ -330,10 +420,9 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
     ];
 
     // Auto-backfill for pre-tracker DBs.
-    let tracker_count: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM _schema_migrations")
-            .fetch_one(pool)
-            .await?;
+    let tracker_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM _schema_migrations")
+        .fetch_one(pool)
+        .await?;
     if tracker_count.0 == 0 {
         let legacy_present: (bool,) = sqlx::query_as(
             "SELECT EXISTS (
@@ -353,16 +442,13 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
             let mut backfilled = 0;
             let mut skipped = Vec::new();
             for (id, sql) in core_migrations.iter().chain(production_migrations.iter()) {
-                let probe_says_applied = if let Some((_, probe_sql)) =
-                    probes.iter().find(|(p_id, _)| *p_id == *id)
-                {
-                    let r: (bool,) = sqlx::query_as(probe_sql)
-                        .fetch_one(&mut *tx)
-                        .await?;
-                    r.0
-                } else {
-                    true
-                };
+                let probe_says_applied =
+                    if let Some((_, probe_sql)) = probes.iter().find(|(p_id, _)| *p_id == *id) {
+                        let r: (bool,) = sqlx::query_as(probe_sql).fetch_one(&mut *tx).await?;
+                        r.0
+                    } else {
+                        true
+                    };
                 if probe_says_applied {
                     sqlx::query(
                         "INSERT INTO _schema_migrations (migration_id, checksum) VALUES ($1, $2) \
@@ -430,13 +516,11 @@ async fn apply_tracked(pool: &PgPool, id: &str, sql: &str) -> Result<(), sqlx::E
             None => {
                 // Pre-checksum row: backfill silently so future runs can
                 // detect drift.
-                sqlx::query(
-                    "UPDATE _schema_migrations SET checksum = $1 WHERE migration_id = $2",
-                )
-                .bind(&current_checksum)
-                .bind(id)
-                .execute(pool)
-                .await?;
+                sqlx::query("UPDATE _schema_migrations SET checksum = $1 WHERE migration_id = $2")
+                    .bind(&current_checksum)
+                    .bind(id)
+                    .execute(pool)
+                    .await?;
             }
             Some(stored) if stored == current_checksum => {
                 // Match — already applied, content unchanged.
@@ -483,7 +567,11 @@ async fn apply_tracked(pool: &PgPool, id: &str, sql: &str) -> Result<(), sqlx::E
     .await?;
     tx.commit().await?;
 
-    info!(migration = id, duration_ms = duration_ms, "Migration applied");
+    info!(
+        migration = id,
+        duration_ms = duration_ms,
+        "Migration applied"
+    );
     Ok(())
 }
 
@@ -620,20 +708,23 @@ fn split_sql_statements(sql: &str) -> Vec<String> {
 ///
 /// Permissions for newly-inserted roles are also seeded from code.
 pub async fn seed_builtin_roles(pool: &PgPool) -> Result<(), sqlx::Error> {
-    use crate::role::repository::RoleRepository;
     use crate::role::entity::roles;
+    use crate::role::repository::RoleRepository;
 
     let repo = RoleRepository::new(pool);
     let mut inserted = 0;
 
     for role in roles::all() {
-        if repo.find_by_name(&role.name).await
+        if repo
+            .find_by_name(&role.name)
+            .await
             .map_err(|e| sqlx::Error::Protocol(format!("find_by_name({}): {}", role.name, e)))?
             .is_some()
         {
             continue;
         }
-        repo.insert(&role).await
+        repo.insert(&role)
+            .await
             .map_err(|e| sqlx::Error::Protocol(format!("insert({}): {}", role.name, e)))?;
         info!(role = %role.name, "Seeded built-in role");
         inserted += 1;

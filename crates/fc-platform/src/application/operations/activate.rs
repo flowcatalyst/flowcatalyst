@@ -1,14 +1,12 @@
 //! Activate Application Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::ApplicationRepository;
-use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
-};
 use super::events::ApplicationActivated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::ApplicationRepository;
 
 /// Command for activating an application.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,10 +23,7 @@ pub struct ActivateApplicationUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> ActivateApplicationUseCase<U> {
-    pub fn new(
-        application_repo: Arc<ApplicationRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
+    pub fn new(application_repo: Arc<ApplicationRepository>, unit_of_work: Arc<U>) -> Self {
         Self {
             application_repo,
             unit_of_work,
@@ -45,7 +40,11 @@ impl<U: UnitOfWork> UseCase for ActivateApplicationUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &ActivateApplicationCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &ActivateApplicationCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -64,9 +63,10 @@ impl<U: UnitOfWork> UseCase for ActivateApplicationUseCase<U> {
                 ));
             }
             Err(e) => {
-                return UseCaseResult::failure(UseCaseError::commit(
-                    format!("Failed to find application: {}", e),
-                ));
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to find application: {}",
+                    e
+                )));
             }
         };
 
@@ -82,11 +82,7 @@ impl<U: UnitOfWork> UseCase for ActivateApplicationUseCase<U> {
         application.activate();
 
         // Create domain event
-        let event = ApplicationActivated::new(
-            &ctx,
-            &application.id,
-            &application.code,
-        );
+        let event = ApplicationActivated::new(&ctx, &application.id, &application.code);
 
         // Atomic commit
         self.unit_of_work

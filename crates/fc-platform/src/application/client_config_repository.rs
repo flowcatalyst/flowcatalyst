@@ -1,8 +1,8 @@
 //! ApplicationClientConfig Repository — PostgreSQL via SQLx
 
 use async_trait::async_trait;
-use sqlx::PgPool;
 use chrono::{DateTime, Utc};
+use sqlx::PgPool;
 
 use super::client_config::ApplicationClientConfig;
 use crate::shared::error::Result;
@@ -62,7 +62,7 @@ impl ApplicationClientConfigRepository {
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<ApplicationClientConfig>> {
         let row = sqlx::query_as::<_, AppClientConfigRow>(
-            "SELECT * FROM app_client_configs WHERE id = $1"
+            "SELECT * FROM app_client_configs WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -70,24 +70,33 @@ impl ApplicationClientConfigRepository {
         Ok(row.map(ApplicationClientConfig::from))
     }
 
-    pub async fn find_by_application(&self, application_id: &str) -> Result<Vec<ApplicationClientConfig>> {
+    pub async fn find_by_application(
+        &self,
+        application_id: &str,
+    ) -> Result<Vec<ApplicationClientConfig>> {
         let rows = sqlx::query_as::<_, AppClientConfigRow>(
-            "SELECT * FROM app_client_configs WHERE application_id = $1"
+            "SELECT * FROM app_client_configs WHERE application_id = $1",
         )
         .bind(application_id)
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows.into_iter().map(ApplicationClientConfig::from).collect())
+        Ok(rows
+            .into_iter()
+            .map(ApplicationClientConfig::from)
+            .collect())
     }
 
     pub async fn find_by_client(&self, client_id: &str) -> Result<Vec<ApplicationClientConfig>> {
         let rows = sqlx::query_as::<_, AppClientConfigRow>(
-            "SELECT * FROM app_client_configs WHERE client_id = $1"
+            "SELECT * FROM app_client_configs WHERE client_id = $1",
         )
         .bind(client_id)
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows.into_iter().map(ApplicationClientConfig::from).collect())
+        Ok(rows
+            .into_iter()
+            .map(ApplicationClientConfig::from)
+            .collect())
     }
 
     pub async fn find_by_application_and_client(
@@ -96,7 +105,7 @@ impl ApplicationClientConfigRepository {
         client_id: &str,
     ) -> Result<Option<ApplicationClientConfig>> {
         let row = sqlx::query_as::<_, AppClientConfigRow>(
-            "SELECT * FROM app_client_configs WHERE application_id = $1 AND client_id = $2"
+            "SELECT * FROM app_client_configs WHERE application_id = $1 AND client_id = $2",
         )
         .bind(application_id)
         .bind(client_id)
@@ -105,23 +114,35 @@ impl ApplicationClientConfigRepository {
         Ok(row.map(ApplicationClientConfig::from))
     }
 
-    pub async fn find_enabled_for_client(&self, client_id: &str) -> Result<Vec<ApplicationClientConfig>> {
+    pub async fn find_enabled_for_client(
+        &self,
+        client_id: &str,
+    ) -> Result<Vec<ApplicationClientConfig>> {
         let rows = sqlx::query_as::<_, AppClientConfigRow>(
-            "SELECT * FROM app_client_configs WHERE client_id = $1 AND enabled = TRUE"
+            "SELECT * FROM app_client_configs WHERE client_id = $1 AND enabled = TRUE",
         )
         .bind(client_id)
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows.into_iter().map(ApplicationClientConfig::from).collect())
+        Ok(rows
+            .into_iter()
+            .map(ApplicationClientConfig::from)
+            .collect())
     }
 
-    pub async fn enable_for_client(&self, application_id: &str, client_id: &str) -> Result<ApplicationClientConfig> {
+    pub async fn enable_for_client(
+        &self,
+        application_id: &str,
+        client_id: &str,
+    ) -> Result<ApplicationClientConfig> {
         // Check if exists
-        let existing = self.find_by_application_and_client(application_id, client_id).await?;
+        let existing = self
+            .find_by_application_and_client(application_id, client_id)
+            .await?;
         if let Some(config) = existing {
             // Update
             sqlx::query(
-                "UPDATE app_client_configs SET enabled = TRUE, updated_at = $2 WHERE id = $1"
+                "UPDATE app_client_configs SET enabled = TRUE, updated_at = $2 WHERE id = $1",
             )
             .bind(&config.id)
             .bind(Utc::now())
@@ -142,10 +163,12 @@ impl ApplicationClientConfigRepository {
     }
 
     pub async fn disable_for_client(&self, application_id: &str, client_id: &str) -> Result<bool> {
-        let existing = self.find_by_application_and_client(application_id, client_id).await?;
+        let existing = self
+            .find_by_application_and_client(application_id, client_id)
+            .await?;
         if let Some(config) = existing {
             sqlx::query(
-                "UPDATE app_client_configs SET enabled = FALSE, updated_at = $2 WHERE id = $1"
+                "UPDATE app_client_configs SET enabled = FALSE, updated_at = $2 WHERE id = $1",
             )
             .bind(&config.id)
             .bind(Utc::now())
@@ -164,7 +187,7 @@ impl ApplicationClientConfigRepository {
                 client_id = $3,
                 enabled = $4,
                 updated_at = $5
-             WHERE id = $1"
+             WHERE id = $1",
         )
         .bind(&config.id)
         .bind(&config.application_id)
@@ -190,7 +213,7 @@ impl ApplicationClientConfigRepository {
         client_id: &str,
     ) -> Result<bool> {
         let result = sqlx::query(
-            "DELETE FROM app_client_configs WHERE application_id = $1 AND client_id = $2"
+            "DELETE FROM app_client_configs WHERE application_id = $1 AND client_id = $2",
         )
         .bind(application_id)
         .bind(client_id)
@@ -203,12 +226,18 @@ impl ApplicationClientConfigRepository {
 // ── Persist<ApplicationClientConfig> ─────────────────────────────────────────
 
 impl HasId for ApplicationClientConfig {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]
 impl crate::usecase::Persist<ApplicationClientConfig> for ApplicationClientConfigRepository {
-    async fn persist(&self, c: &ApplicationClientConfig, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
+    async fn persist(
+        &self,
+        c: &ApplicationClientConfig,
+        tx: &mut crate::usecase::DbTx<'_>,
+    ) -> Result<()> {
         let now = Utc::now();
         sqlx::query(
             "INSERT INTO app_client_configs (id, application_id, client_id, enabled, created_at, updated_at)
@@ -228,7 +257,11 @@ impl crate::usecase::Persist<ApplicationClientConfig> for ApplicationClientConfi
         Ok(())
     }
 
-    async fn delete(&self, c: &ApplicationClientConfig, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
+    async fn delete(
+        &self,
+        c: &ApplicationClientConfig,
+        tx: &mut crate::usecase::DbTx<'_>,
+    ) -> Result<()> {
         sqlx::query("DELETE FROM app_client_configs WHERE id = $1")
             .bind(&c.id)
             .execute(&mut **tx.inner)

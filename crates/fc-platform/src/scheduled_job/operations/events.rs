@@ -13,8 +13,12 @@ use crate::usecase::ExecutionContext;
 const SPEC: &str = "1.0";
 const SOURCE: &str = "platform:admin";
 
-fn subject_for(id: &str) -> String { format!("platform.scheduledjob.{}", id) }
-fn group_for(id: &str) -> String { format!("platform:scheduledjob:{}", id) }
+fn subject_for(id: &str) -> String {
+    format!("platform.scheduledjob.{}", id)
+}
+fn group_for(id: &str) -> String {
+    format!("platform:scheduledjob:{}", id)
+}
 
 fn meta(ctx: &ExecutionContext, event_type: &str, id: &str) -> EventMetadata {
     EventMetadata::builder()

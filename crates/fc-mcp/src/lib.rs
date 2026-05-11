@@ -16,13 +16,13 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use rmcp::{
-    ServiceExt,
     transport::{
         stdio,
         streamable_http_server::{
-            StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
+            session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
         },
     },
+    ServiceExt,
 };
 
 pub use config::Config;

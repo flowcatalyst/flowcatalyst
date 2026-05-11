@@ -163,7 +163,9 @@ async fn delete_anchor_domain_emits_event_and_audit_log() {
     let body = assert_status(created, StatusCode::OK).await;
     let id = body.get("id").and_then(|v| v.as_str()).unwrap().to_string();
 
-    let del = app.delete(&format!("/api/anchor-domains/{}", id), &token).await;
+    let del = app
+        .delete(&format!("/api/anchor-domains/{}", id), &token)
+        .await;
     assert_eq!(
         del.status(),
         StatusCode::NO_CONTENT,

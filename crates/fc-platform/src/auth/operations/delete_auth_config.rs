@@ -1,14 +1,12 @@
 //! Delete ClientAuthConfig Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::auth::config_repository::ClientAuthConfigRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::AuthConfigDeleted;
+use crate::auth::config_repository::ClientAuthConfigRepository;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,7 +21,10 @@ pub struct DeleteAuthConfigUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> DeleteAuthConfigUseCase<U> {
     pub fn new(auth_config_repo: Arc<ClientAuthConfigRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { auth_config_repo, unit_of_work }
+        Self {
+            auth_config_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -42,7 +43,11 @@ impl<U: UnitOfWork> UseCase for DeleteAuthConfigUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeleteAuthConfigCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeleteAuthConfigCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -51,7 +56,11 @@ impl<U: UnitOfWork> UseCase for DeleteAuthConfigUseCase<U> {
         command: DeleteAuthConfigCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<AuthConfigDeleted> {
-        let config = match self.auth_config_repo.find_by_id(&command.auth_config_id).await {
+        let config = match self
+            .auth_config_repo
+            .find_by_id(&command.auth_config_id)
+            .await
+        {
             Ok(Some(c)) => c,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
@@ -61,7 +70,8 @@ impl<U: UnitOfWork> UseCase for DeleteAuthConfigUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch auth config: {}", e
+                    "Failed to fetch auth config: {}",
+                    e
                 )));
             }
         };

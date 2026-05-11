@@ -5,16 +5,14 @@
 //! Secret material is opaque to this use case: callers encrypt the
 //! plaintext and pass only the already-encrypted `client_secret_ref`.
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::auth::oauth_entity::{GrantType, OAuthClient, OAuthClientType};
-use crate::OAuthClientRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::OAuthClientCreated;
+use crate::auth::oauth_entity::{GrantType, OAuthClient, OAuthClientType};
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::OAuthClientRepository;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,7 +43,10 @@ pub struct CreateOAuthClientUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> CreateOAuthClientUseCase<U> {
     pub fn new(oauth_client_repo: Arc<OAuthClientRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { oauth_client_repo, unit_of_work }
+        Self {
+            oauth_client_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -56,18 +57,31 @@ impl<U: UnitOfWork> UseCase for CreateOAuthClientUseCase<U> {
 
     async fn validate(&self, command: &CreateOAuthClientCommand) -> Result<(), UseCaseError> {
         if command.oauth_client_id.trim().is_empty() {
-            return Err(UseCaseError::validation("OAUTH_CLIENT_ID_REQUIRED", "OAuth client id is required"));
+            return Err(UseCaseError::validation(
+                "OAUTH_CLIENT_ID_REQUIRED",
+                "OAuth client id is required",
+            ));
         }
         if command.client_id.trim().is_empty() {
-            return Err(UseCaseError::validation("CLIENT_ID_REQUIRED", "Client id is required"));
+            return Err(UseCaseError::validation(
+                "CLIENT_ID_REQUIRED",
+                "Client id is required",
+            ));
         }
         if command.client_name.trim().is_empty() {
-            return Err(UseCaseError::validation("CLIENT_NAME_REQUIRED", "Client name is required"));
+            return Err(UseCaseError::validation(
+                "CLIENT_NAME_REQUIRED",
+                "Client name is required",
+            ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &CreateOAuthClientCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &CreateOAuthClientCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -76,16 +90,26 @@ impl<U: UnitOfWork> UseCase for CreateOAuthClientUseCase<U> {
         command: CreateOAuthClientCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<OAuthClientCreated> {
-        let exists = match self.oauth_client_repo.exists_by_client_id(&command.client_id).await {
+        let exists = match self
+            .oauth_client_repo
+            .exists_by_client_id(&command.client_id)
+            .await
+        {
             Ok(v) => v,
-            Err(e) => return UseCaseResult::failure(UseCaseError::commit(format!(
-                "check client_id uniqueness: {}", e,
-            ))),
+            Err(e) => {
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "check client_id uniqueness: {}",
+                    e,
+                )))
+            }
         };
         if exists {
             return UseCaseResult::failure(UseCaseError::business_rule(
                 "OAUTH_CLIENT_EXISTS",
-                format!("OAuth client with clientId '{}' already exists", command.client_id),
+                format!(
+                    "OAuth client with clientId '{}' already exists",
+                    command.client_id
+                ),
             ));
         }
 
@@ -94,7 +118,9 @@ impl<U: UnitOfWork> UseCase for CreateOAuthClientUseCase<U> {
         client.client_type = OAuthClientType::from_str(&command.client_type);
         client.client_secret_ref = command.client_secret_ref.clone();
         client.redirect_uris = command.redirect_uris.clone();
-        client.grant_types = command.grant_types.iter()
+        client.grant_types = command
+            .grant_types
+            .iter()
             .filter_map(|g| GrantType::from_str(g))
             .collect();
         if !command.default_scopes.is_empty() {

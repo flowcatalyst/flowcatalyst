@@ -3,22 +3,22 @@
 //! REST endpoints for fetching filter options for UI dropdowns.
 
 use axum::{
+    extract::{Query, State},
     routing::get,
-    extract::{State, Query},
     Json, Router,
 };
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::{ToSchema, IntoParams};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::collections::HashSet;
+use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
+use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::{
-    ClientRepository, EventTypeRepository, SubscriptionRepository,
-    DispatchPoolRepository, ApplicationRepository,
-};
 use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
+use crate::{
+    ApplicationRepository, ClientRepository, DispatchPoolRepository, EventTypeRepository,
+    SubscriptionRepository,
+};
 
 /// Filter option item
 #[derive(Debug, Serialize, ToSchema)]
@@ -97,7 +97,8 @@ pub async fn get_client_options(
     let clients = state.client_repo.find_active().await?;
 
     // Filter by access
-    let options: Vec<FilterOption> = clients.into_iter()
+    let options: Vec<FilterOption> = clients
+        .into_iter()
         .filter(|c| auth.0.is_anchor() || auth.0.can_access_client(&c.id))
         .map(|c| FilterOption {
             value: c.id,
@@ -126,7 +127,8 @@ pub async fn get_event_type_options(
     let event_types = state.event_type_repo.find_active_shallow().await?;
 
     // Build event type options
-    let event_type_options: Vec<FilterOption> = event_types.iter()
+    let event_type_options: Vec<FilterOption> = event_types
+        .iter()
         .map(|et| FilterOption {
             value: et.code.clone(),
             label: et.name.clone(),
@@ -134,7 +136,8 @@ pub async fn get_event_type_options(
         .collect();
 
     // Extract unique applications
-    let mut applications: Vec<FilterOption> = event_types.iter()
+    let mut applications: Vec<FilterOption> = event_types
+        .iter()
         .map(|et| et.application.clone())
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
@@ -146,7 +149,8 @@ pub async fn get_event_type_options(
     applications.sort_by(|a, b| a.label.cmp(&b.label));
 
     // Extract unique subdomains
-    let mut subdomains: Vec<FilterOption> = event_types.iter()
+    let mut subdomains: Vec<FilterOption> = event_types
+        .iter()
         .map(|et| et.subdomain.clone())
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
@@ -182,12 +186,11 @@ pub async fn get_subscription_options(
     let subscriptions = state.subscription_repo.find_active().await?;
 
     // Filter by access
-    let options: Vec<FilterOption> = subscriptions.into_iter()
-        .filter(|s| {
-            match &s.client_id {
-                Some(cid) => auth.0.is_anchor() || auth.0.can_access_client(cid),
-                None => auth.0.is_anchor(),
-            }
+    let options: Vec<FilterOption> = subscriptions
+        .into_iter()
+        .filter(|s| match &s.client_id {
+            Some(cid) => auth.0.is_anchor() || auth.0.can_access_client(cid),
+            None => auth.0.is_anchor(),
         })
         .map(|s| FilterOption {
             value: s.id,
@@ -195,7 +198,9 @@ pub async fn get_subscription_options(
         })
         .collect();
 
-    Ok(Json(SubscriptionFilterOptions { subscriptions: options }))
+    Ok(Json(SubscriptionFilterOptions {
+        subscriptions: options,
+    }))
 }
 
 /// Get dispatch pool filter options
@@ -216,7 +221,8 @@ pub async fn get_dispatch_pool_options(
     let pools = state.dispatch_pool_repo.find_active().await?;
 
     // Filter by access
-    let options: Vec<FilterOption> = pools.into_iter()
+    let options: Vec<FilterOption> = pools
+        .into_iter()
         .filter(|p| {
             match &p.client_id {
                 Some(cid) => auth.0.is_anchor() || auth.0.can_access_client(cid),
@@ -229,7 +235,9 @@ pub async fn get_dispatch_pool_options(
         })
         .collect();
 
-    Ok(Json(DispatchPoolFilterOptions { dispatch_pools: options }))
+    Ok(Json(DispatchPoolFilterOptions {
+        dispatch_pools: options,
+    }))
 }
 
 /// Get all filter options at once
@@ -256,7 +264,8 @@ pub async fn get_all_options(
         state.dispatch_pool_repo.find_active(),
     )?;
 
-    let client_options: Vec<FilterOption> = clients.into_iter()
+    let client_options: Vec<FilterOption> = clients
+        .into_iter()
         .filter(|c| auth.0.is_anchor() || auth.0.can_access_client(&c.id))
         .map(|c| FilterOption {
             value: c.id,
@@ -264,38 +273,38 @@ pub async fn get_all_options(
         })
         .collect();
 
-    let event_type_options: Vec<FilterOption> = event_types.iter()
+    let event_type_options: Vec<FilterOption> = event_types
+        .iter()
         .map(|et| FilterOption {
             value: et.code.clone(),
             label: et.name.clone(),
         })
         .collect();
 
-    let app_options: Vec<FilterOption> = apps.into_iter()
+    let app_options: Vec<FilterOption> = apps
+        .into_iter()
         .map(|a| FilterOption {
             value: a.code,
             label: a.name,
         })
         .collect();
 
-    let subscription_options: Vec<FilterOption> = subscriptions.into_iter()
-        .filter(|s| {
-            match &s.client_id {
-                Some(cid) => auth.0.is_anchor() || auth.0.can_access_client(cid),
-                None => auth.0.is_anchor(),
-            }
+    let subscription_options: Vec<FilterOption> = subscriptions
+        .into_iter()
+        .filter(|s| match &s.client_id {
+            Some(cid) => auth.0.is_anchor() || auth.0.can_access_client(cid),
+            None => auth.0.is_anchor(),
         })
         .map(|s| FilterOption {
             value: s.id,
             label: s.name,
         })
         .collect();
-    let pool_options: Vec<FilterOption> = pools.into_iter()
-        .filter(|p| {
-            match &p.client_id {
-                Some(cid) => auth.0.is_anchor() || auth.0.can_access_client(cid),
-                None => true,
-            }
+    let pool_options: Vec<FilterOption> = pools
+        .into_iter()
+        .filter(|p| match &p.client_id {
+            Some(cid) => auth.0.is_anchor() || auth.0.can_access_client(cid),
+            None => true,
         })
         .map(|p| FilterOption {
             value: p.id,
@@ -361,7 +370,8 @@ pub async fn get_events_filter_options(
 ) -> Result<Json<EventsFilterOptions>, PlatformError> {
     // Get clients the user can access
     let clients = state.client_repo.find_active().await?;
-    let client_options: Vec<FilterOption> = clients.into_iter()
+    let client_options: Vec<FilterOption> = clients
+        .into_iter()
         .filter(|c| auth.0.is_anchor() || auth.0.can_access_client(&c.id))
         .map(|c| FilterOption {
             value: c.id,
@@ -372,7 +382,8 @@ pub async fn get_events_filter_options(
     // Get event types
     let event_types = state.event_type_repo.find_active_shallow().await?;
 
-    let event_type_options: Vec<FilterOption> = event_types.iter()
+    let event_type_options: Vec<FilterOption> = event_types
+        .iter()
         .map(|et| FilterOption {
             value: et.code.clone(),
             label: et.name.clone(),
@@ -380,7 +391,8 @@ pub async fn get_events_filter_options(
         .collect();
 
     // Extract unique applications
-    let mut applications: Vec<FilterOption> = event_types.iter()
+    let mut applications: Vec<FilterOption> = event_types
+        .iter()
         .map(|et| et.application.clone())
         .collect::<HashSet<_>>()
         .into_iter()
@@ -392,7 +404,8 @@ pub async fn get_events_filter_options(
     applications.sort_by(|a, b| a.label.cmp(&b.label));
 
     // Extract unique subdomains
-    let mut subdomains: Vec<FilterOption> = event_types.iter()
+    let mut subdomains: Vec<FilterOption> = event_types
+        .iter()
         .map(|et| et.subdomain.clone())
         .collect::<HashSet<_>>()
         .into_iter()
@@ -439,7 +452,8 @@ pub async fn get_dispatch_jobs_filter_options(
 ) -> Result<Json<DispatchJobsFilterOptions>, PlatformError> {
     // Get clients the user can access
     let clients = state.client_repo.find_active().await?;
-    let client_options: Vec<FilterOption> = clients.into_iter()
+    let client_options: Vec<FilterOption> = clients
+        .into_iter()
         .filter(|c| auth.0.is_anchor() || auth.0.can_access_client(&c.id))
         .map(|c| FilterOption {
             value: c.id,
@@ -449,7 +463,8 @@ pub async fn get_dispatch_jobs_filter_options(
 
     // Get event types
     let event_types = state.event_type_repo.find_active_shallow().await?;
-    let event_type_options: Vec<FilterOption> = event_types.iter()
+    let event_type_options: Vec<FilterOption> = event_types
+        .iter()
         .map(|et| FilterOption {
             value: et.code.clone(),
             label: et.name.clone(),
@@ -458,12 +473,11 @@ pub async fn get_dispatch_jobs_filter_options(
 
     // Get subscriptions the user can access
     let subscriptions = state.subscription_repo.find_active().await?;
-    let subscription_options: Vec<FilterOption> = subscriptions.into_iter()
-        .filter(|s| {
-            match &s.client_id {
-                Some(cid) => auth.0.is_anchor() || auth.0.can_access_client(cid),
-                None => auth.0.is_anchor(),
-            }
+    let subscription_options: Vec<FilterOption> = subscriptions
+        .into_iter()
+        .filter(|s| match &s.client_id {
+            Some(cid) => auth.0.is_anchor() || auth.0.can_access_client(cid),
+            None => auth.0.is_anchor(),
         })
         .map(|s| FilterOption {
             value: s.id,
@@ -472,7 +486,8 @@ pub async fn get_dispatch_jobs_filter_options(
         .collect();
 
     // Status options
-    let status_options: Vec<FilterOption> = DISPATCH_JOB_STATUSES.iter()
+    let status_options: Vec<FilterOption> = DISPATCH_JOB_STATUSES
+        .iter()
         .map(|(value, label)| FilterOption {
             value: value.to_string(),
             label: label.to_string(),
@@ -525,7 +540,8 @@ pub async fn get_event_type_applications(
 ) -> Result<Json<ApplicationsResponse>, PlatformError> {
     let event_types = state.event_type_repo.find_active_shallow().await?;
 
-    let mut applications: Vec<FilterOption> = event_types.iter()
+    let mut applications: Vec<FilterOption> = event_types
+        .iter()
         .map(|et| et.application.clone())
         .collect::<HashSet<_>>()
         .into_iter()
@@ -562,12 +578,14 @@ pub async fn get_event_type_subdomains(
     let filtered = if query.applications.is_empty() {
         event_types
     } else {
-        event_types.into_iter()
+        event_types
+            .into_iter()
             .filter(|et| query.applications.contains(&et.application))
             .collect()
     };
 
-    let mut subdomains: Vec<FilterOption> = filtered.iter()
+    let mut subdomains: Vec<FilterOption> = filtered
+        .iter()
         .map(|et| et.subdomain.clone())
         .collect::<HashSet<_>>()
         .into_iter()
@@ -601,15 +619,18 @@ pub async fn get_event_type_aggregates(
     let event_types = state.event_type_repo.find_active_shallow().await?;
 
     // Filter by applications and subdomains if specified
-    let filtered: Vec<_> = event_types.into_iter()
+    let filtered: Vec<_> = event_types
+        .into_iter()
         .filter(|et| {
-            let app_match = query.applications.is_empty() || query.applications.contains(&et.application);
+            let app_match =
+                query.applications.is_empty() || query.applications.contains(&et.application);
             let sub_match = query.subdomains.is_empty() || query.subdomains.contains(&et.subdomain);
             app_match && sub_match
         })
         .collect();
 
-    let mut aggregates: Vec<FilterOption> = filtered.iter()
+    let mut aggregates: Vec<FilterOption> = filtered
+        .iter()
         .map(|et| et.aggregate.clone())
         .collect::<HashSet<_>>()
         .into_iter()

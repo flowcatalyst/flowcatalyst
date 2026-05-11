@@ -12,15 +12,15 @@
 //! - Capacity management
 //! - Shutdown behavior
 
-use std::sync::Arc;
+use async_trait::async_trait;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::oneshot;
-use async_trait::async_trait;
 
 use fc_common::{
-    Message, BatchMessage, AckNack, MessageCallback, PoolConfig, MediationType,
-    MediationResult, MediationOutcome,
+    AckNack, BatchMessage, MediationOutcome, MediationResult, MediationType, Message,
+    MessageCallback, PoolConfig,
 };
 
 /// Test callback that records ack/nack via a oneshot channel
@@ -41,7 +41,7 @@ impl MessageCallback for TestCallback {
         }
     }
 }
-use fc_router::{ProcessPool, Mediator};
+use fc_router::{Mediator, ProcessPool};
 
 /// Mock mediator that tracks calls and can simulate delays/failures
 struct MockMediator {
@@ -126,7 +126,10 @@ fn create_test_message(id: &str, group_id: Option<&str>) -> Message {
     }
 }
 
-fn create_batch_message(id: &str, group_id: Option<&str>) -> (BatchMessage, oneshot::Receiver<AckNack>) {
+fn create_batch_message(
+    id: &str,
+    group_id: Option<&str>,
+) -> (BatchMessage, oneshot::Receiver<AckNack>) {
     let (tx, rx) = oneshot::channel();
     let msg = BatchMessage {
         message: create_test_message(id, group_id),
@@ -134,7 +137,9 @@ fn create_batch_message(id: &str, group_id: Option<&str>) -> (BatchMessage, ones
         broker_message_id: Some(format!("broker-{}", id)),
         queue_identifier: "test-queue".to_string(),
         batch_id: Some(std::sync::Arc::from("batch-1")),
-        callback: Box::new(TestCallback { tx: parking_lot::Mutex::new(Some(tx)) }),
+        callback: Box::new(TestCallback {
+            tx: parking_lot::Mutex::new(Some(tx)),
+        }),
     };
     (msg, rx)
 }
@@ -288,7 +293,11 @@ async fn test_different_groups_parallel() {
     let elapsed = start.elapsed();
     // With 50ms delay per message and parallel processing,
     // should complete much faster than 250ms (5 * 50ms sequential)
-    assert!(elapsed < Duration::from_millis(200), "Expected parallel processing, took {:?}", elapsed);
+    assert!(
+        elapsed < Duration::from_millis(200),
+        "Expected parallel processing, took {:?}",
+        elapsed
+    );
 }
 
 #[tokio::test]

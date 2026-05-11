@@ -1,10 +1,12 @@
 //! EventType Repository — PostgreSQL via SQLx
 
 use async_trait::async_trait;
-use sqlx::{PgPool, Postgres, QueryBuilder};
 use chrono::{DateTime, Utc};
+use sqlx::{PgPool, Postgres, QueryBuilder};
 
-use super::entity::{EventType, EventTypeStatus, EventTypeSource, SpecVersion, SpecVersionStatus, SchemaType};
+use super::entity::{
+    EventType, EventTypeSource, EventTypeStatus, SchemaType, SpecVersion, SpecVersionStatus,
+};
 use crate::shared::error::Result;
 use crate::usecase::unit_of_work::HasId;
 
@@ -41,7 +43,7 @@ impl From<EventTypeRow> for EventType {
             subdomain: r.subdomain,
             aggregate: r.aggregate,
             event_name,
-            client_id: None, // not stored in DB; derived from context
+            client_id: None,  // not stored in DB; derived from context
             created_by: None, // not stored in msg_event_types
             created_at: r.created_at,
             updated_at: r.updated_at,
@@ -119,20 +121,27 @@ impl EventTypeRepository {
         .fetch_all(&self.pool)
         .await?;
 
-        let mut spec_map: std::collections::HashMap<String, Vec<SpecVersion>> = std::collections::HashMap::new();
+        let mut spec_map: std::collections::HashMap<String, Vec<SpecVersion>> =
+            std::collections::HashMap::new();
         for row in all_specs {
             let event_type_id = row.event_type_id.clone();
-            spec_map.entry(event_type_id).or_default().push(SpecVersion::from(row));
+            spec_map
+                .entry(event_type_id)
+                .or_default()
+                .push(SpecVersion::from(row));
         }
 
-        Ok(rows.into_iter().map(|row| {
-            let id = row.id.clone();
-            let mut et = EventType::from(row);
-            if let Some(specs) = spec_map.remove(&id) {
-                et.spec_versions = specs;
-            }
-            et
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let id = row.id.clone();
+                let mut et = EventType::from(row);
+                if let Some(specs) = spec_map.remove(&id) {
+                    et.spec_versions = specs;
+                }
+                et
+            })
+            .collect())
     }
 
     pub async fn insert(&self, et: &EventType) -> Result<()> {
@@ -183,12 +192,10 @@ impl EventTypeRepository {
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<EventType>> {
-        let row = sqlx::query_as::<_, EventTypeRow>(
-            "SELECT * FROM msg_event_types WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query_as::<_, EventTypeRow>("SELECT * FROM msg_event_types WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
         match row {
             Some(r) => Ok(Some(self.hydrate(EventType::from(r)).await?)),
             None => Ok(None),
@@ -196,12 +203,11 @@ impl EventTypeRepository {
     }
 
     pub async fn find_by_code(&self, code: &str) -> Result<Option<EventType>> {
-        let row = sqlx::query_as::<_, EventTypeRow>(
-            "SELECT * FROM msg_event_types WHERE code = $1"
-        )
-        .bind(code)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row =
+            sqlx::query_as::<_, EventTypeRow>("SELECT * FROM msg_event_types WHERE code = $1")
+                .bind(code)
+                .fetch_optional(&self.pool)
+                .await?;
         match row {
             Some(r) => Ok(Some(self.hydrate(EventType::from(r)).await?)),
             None => Ok(None),
@@ -209,17 +215,16 @@ impl EventTypeRepository {
     }
 
     pub async fn find_all(&self) -> Result<Vec<EventType>> {
-        let rows = sqlx::query_as::<_, EventTypeRow>(
-            "SELECT * FROM msg_event_types ORDER BY code ASC"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows =
+            sqlx::query_as::<_, EventTypeRow>("SELECT * FROM msg_event_types ORDER BY code ASC")
+                .fetch_all(&self.pool)
+                .await?;
         self.hydrate_all(rows).await
     }
 
     pub async fn find_by_application(&self, application: &str) -> Result<Vec<EventType>> {
         let rows = sqlx::query_as::<_, EventTypeRow>(
-            "SELECT * FROM msg_event_types WHERE application = $1"
+            "SELECT * FROM msg_event_types WHERE application = $1",
         )
         .bind(application)
         .fetch_all(&self.pool)
@@ -229,7 +234,7 @@ impl EventTypeRepository {
 
     pub async fn find_by_status(&self, status: EventTypeStatus) -> Result<Vec<EventType>> {
         let rows = sqlx::query_as::<_, EventTypeRow>(
-            "SELECT * FROM msg_event_types WHERE status = $1 ORDER BY code ASC"
+            "SELECT * FROM msg_event_types WHERE status = $1 ORDER BY code ASC",
         )
         .bind(status.as_str())
         .fetch_all(&self.pool)
@@ -241,7 +246,7 @@ impl EventTypeRepository {
     pub async fn search(&self, term: &str) -> Result<Vec<EventType>> {
         let pattern = format!("%{}%", term);
         let rows = sqlx::query_as::<_, EventTypeRow>(
-            "SELECT * FROM msg_event_types WHERE code ILIKE $1 OR name ILIKE $1"
+            "SELECT * FROM msg_event_types WHERE code ILIKE $1 OR name ILIKE $1",
         )
         .bind(&pattern)
         .fetch_all(&self.pool)
@@ -285,7 +290,7 @@ impl EventTypeRepository {
 
     pub async fn find_active(&self) -> Result<Vec<EventType>> {
         let rows = sqlx::query_as::<_, EventTypeRow>(
-            "SELECT * FROM msg_event_types WHERE status = 'CURRENT' ORDER BY code ASC"
+            "SELECT * FROM msg_event_types WHERE status = 'CURRENT' ORDER BY code ASC",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -295,7 +300,7 @@ impl EventTypeRepository {
     /// Find active event types without loading spec versions (for filter endpoints)
     pub async fn find_active_shallow(&self) -> Result<Vec<EventType>> {
         let rows = sqlx::query_as::<_, EventTypeRow>(
-            "SELECT * FROM msg_event_types WHERE status = 'CURRENT' ORDER BY code ASC"
+            "SELECT * FROM msg_event_types WHERE status = 'CURRENT' ORDER BY code ASC",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -303,12 +308,10 @@ impl EventTypeRepository {
     }
 
     pub async fn exists_by_code(&self, code: &str) -> Result<bool> {
-        let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM msg_event_types WHERE code = $1"
-        )
-        .bind(code)
-        .fetch_one(&self.pool)
-        .await?;
+        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM msg_event_types WHERE code = $1")
+            .bind(code)
+            .fetch_one(&self.pool)
+            .await?;
         Ok(row.0 > 0)
     }
 
@@ -319,7 +322,7 @@ impl EventTypeRepository {
                 code = $2, name = $3, description = $4, status = $5, source = $6,
                 client_scoped = $7, application = $8, subdomain = $9, aggregate = $10,
                 updated_at = $11
-             WHERE id = $1"
+             WHERE id = $1",
         )
         .bind(&et.id)
         .bind(&et.code)
@@ -343,7 +346,7 @@ impl EventTypeRepository {
             "UPDATE msg_event_type_spec_versions SET
                 mime_type = $2, schema_content = $3, schema_type = $4, status = $5,
                 updated_at = $6
-             WHERE id = $1"
+             WHERE id = $1",
         )
         .bind(&sv.id)
         .bind(&sv.mime_type)
@@ -373,7 +376,9 @@ impl EventTypeRepository {
 // ── Persist<EventType> ───────────────────────────────────────────────────────
 
 impl HasId for EventType {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]
@@ -408,7 +413,8 @@ impl crate::usecase::Persist<EventType> for EventTypeRepository {
 
         sqlx::query("DELETE FROM msg_event_type_spec_versions WHERE event_type_id = $1")
             .bind(&et.id)
-            .execute(&mut **tx.inner).await?;
+            .execute(&mut **tx.inner)
+            .await?;
 
         for sv in &et.spec_versions {
             sqlx::query(
@@ -433,10 +439,12 @@ impl crate::usecase::Persist<EventType> for EventTypeRepository {
     async fn delete(&self, et: &EventType, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
         sqlx::query("DELETE FROM msg_event_type_spec_versions WHERE event_type_id = $1")
             .bind(&et.id)
-            .execute(&mut **tx.inner).await?;
+            .execute(&mut **tx.inner)
+            .await?;
         sqlx::query("DELETE FROM msg_event_types WHERE id = $1")
             .bind(&et.id)
-            .execute(&mut **tx.inner).await?;
+            .execute(&mut **tx.inner)
+            .await?;
         Ok(())
     }
 }

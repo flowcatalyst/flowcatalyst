@@ -45,7 +45,13 @@ impl ScheduledJobSchedulerService {
             .build()
             .expect("Failed to build scheduled-job HTTP client");
         let (shutdown, _) = broadcast::channel(1);
-        Self { config, repo, instance_repo, http_client, shutdown }
+        Self {
+            config,
+            repo,
+            instance_repo,
+            http_client,
+            shutdown,
+        }
     }
 
     /// Spawn poller + dispatcher tasks. Returns join handles caller can `.abort()`

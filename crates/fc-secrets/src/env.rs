@@ -1,8 +1,8 @@
 //! Environment variable secrets provider
 
+use crate::{Provider, SecretsError};
 use async_trait::async_trait;
 use std::env;
-use crate::{Provider, SecretsError};
 
 /// Environment variable secrets provider
 pub struct EnvProvider {
@@ -11,15 +11,23 @@ pub struct EnvProvider {
 
 impl EnvProvider {
     pub fn new() -> Self {
-        Self { prefix: "FLOWCATALYST_SECRET_".to_string() }
+        Self {
+            prefix: "FLOWCATALYST_SECRET_".to_string(),
+        }
     }
 
     pub fn with_prefix(prefix: &str) -> Self {
-        Self { prefix: prefix.to_string() }
+        Self {
+            prefix: prefix.to_string(),
+        }
     }
 
     fn env_key(&self, key: &str) -> String {
-        format!("{}{}", self.prefix, key.to_uppercase().replace("-", "_").replace(".", "_"))
+        format!(
+            "{}{}",
+            self.prefix,
+            key.to_uppercase().replace("-", "_").replace(".", "_")
+        )
     }
 }
 
@@ -37,11 +45,15 @@ impl Provider for EnvProvider {
     }
 
     async fn set(&self, _key: &str, _value: &str) -> Result<(), SecretsError> {
-        Err(SecretsError::ProviderError("Cannot set environment variables at runtime".to_string()))
+        Err(SecretsError::ProviderError(
+            "Cannot set environment variables at runtime".to_string(),
+        ))
     }
 
     async fn delete(&self, _key: &str) -> Result<(), SecretsError> {
-        Err(SecretsError::ProviderError("Cannot delete environment variables at runtime".to_string()))
+        Err(SecretsError::ProviderError(
+            "Cannot delete environment variables at runtime".to_string(),
+        ))
     }
 
     fn name(&self) -> &str {

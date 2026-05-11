@@ -74,10 +74,13 @@ impl SessionStore {
 
     /// Insert a session.
     pub fn insert(&self, session_id: String, claims: TokenClaims) {
-        self.sessions.insert(session_id, SessionData {
-            claims,
-            created_at: Instant::now(),
-        });
+        self.sessions.insert(
+            session_id,
+            SessionData {
+                claims,
+                created_at: Instant::now(),
+            },
+        );
     }
 
     /// Get claims for a session, returning `None` if expired or absent.
@@ -132,12 +135,15 @@ impl PendingOidcStateStore {
     }
 
     fn insert(&self, state: String, pkce_verifier: String, nonce: String, original_url: String) {
-        self.states.insert(state, PendingState {
-            pkce_verifier,
-            nonce,
-            original_url,
-            created_at: Instant::now(),
-        });
+        self.states.insert(
+            state,
+            PendingState {
+                pkce_verifier,
+                nonce,
+                original_url,
+                created_at: Instant::now(),
+            },
+        );
     }
 
     fn take(&self, state: &str) -> Option<(String, String, String)> {
@@ -151,7 +157,8 @@ impl PendingOidcStateStore {
 
     /// Remove all expired pending states.
     pub fn cleanup(&self) {
-        self.states.retain(|_, v| v.created_at.elapsed() < Self::TTL);
+        self.states
+            .retain(|_, v| v.created_at.elapsed() < Self::TTL);
     }
 }
 
@@ -364,13 +371,13 @@ async fn callback_handler(
             None => {
                 warn!(state = %query.state, "Unknown or expired OIDC state parameter");
                 return (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({
-                        "error": "invalid_state",
-                        "message": "Unknown or expired state parameter. Please try logging in again.",
-                    })),
-                )
-                    .into_response();
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "invalid_state",
+                    "message": "Unknown or expired state parameter. Please try logging in again.",
+                })),
+            )
+                .into_response();
             }
         };
 
@@ -560,7 +567,9 @@ async fn callback_handler(
 
     // Create session
     let session_id = generate_random_string(48);
-    state.session_store.insert(session_id.clone(), claims.clone());
+    state
+        .session_store
+        .insert(session_id.clone(), claims.clone());
 
     info!(
         sub = %claims.sub,
@@ -585,10 +594,7 @@ async fn callback_handler(
 }
 
 /// `GET /auth/logout` -- Destroy the session and clear the cookie.
-async fn logout_handler(
-    State(state): State<Arc<OidcFlowState>>,
-    headers: HeaderMap,
-) -> Response {
+async fn logout_handler(State(state): State<Arc<OidcFlowState>>, headers: HeaderMap) -> Response {
     if let Some(session_id) = extract_session_cookie(&headers) {
         state.session_store.remove(&session_id);
         debug!(session_id = %session_id, "Session removed on logout");
@@ -656,9 +662,7 @@ fn decode_claims_insecure(token: &str) -> Result<TokenClaims, String> {
 
     let payload_bytes = BASE64URL
         .decode(parts[1])
-        .or_else(|_| {
-            base64::engine::general_purpose::URL_SAFE.decode(parts[1])
-        })
+        .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(parts[1]))
         .map_err(|e| format!("Failed to base64url-decode token payload: {}", e))?;
 
     serde_json::from_slice::<TokenClaims>(&payload_bytes)
@@ -712,7 +716,9 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             header::COOKIE,
-            "other=value; fc_session=abc123; another=test".parse().unwrap(),
+            "other=value; fc_session=abc123; another=test"
+                .parse()
+                .unwrap(),
         );
         assert_eq!(extract_session_cookie(&headers), Some("abc123".to_string()));
     }
@@ -720,10 +726,7 @@ mod tests {
     #[test]
     fn test_extract_session_cookie_missing() {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            header::COOKIE,
-            "other=value; another=test".parse().unwrap(),
-        );
+        headers.insert(header::COOKIE, "other=value; another=test".parse().unwrap());
         assert_eq!(extract_session_cookie(&headers), None);
     }
 

@@ -21,18 +21,16 @@ use testcontainers_modules::postgres::Postgres;
 
 use serde_json::json;
 
-use fc_platform::auth::auth_service::{AuthConfig, AuthService};
-use fc_platform::domain::{Principal, UserScope};
-use fc_platform::shared::database::{create_pool, run_migrations, MigrationProfile};
-use fc_platform::{
-    ClientRepository, DispatchJobRepository, EventRepository, RoleRepository,
-};
 use fc_platform::api::{
     clients_router, sdk_dispatch_jobs_batch_router, sdk_events_batch_router, AppState, AuthLayer,
     ClientsState, SdkDispatchJobsState, SdkEventsState,
 };
-use fc_platform::Client;
+use fc_platform::auth::auth_service::{AuthConfig, AuthService};
+use fc_platform::domain::{Principal, UserScope};
+use fc_platform::shared::database::{create_pool, run_migrations, MigrationProfile};
 use fc_platform::AuthorizationService;
+use fc_platform::Client;
+use fc_platform::{ClientRepository, DispatchJobRepository, EventRepository, RoleRepository};
 
 // ─── Test Helpers ──────────────────────────────────────────────────────────
 
@@ -52,10 +50,7 @@ async fn setup_test_db() -> (sqlx::PgPool, testcontainers::ContainerAsync<Postgr
         .await
         .expect("Failed to get port");
 
-    let database_url = format!(
-        "postgresql://test:test@{}:{}/flowcatalyst_test",
-        host, port
-    );
+    let database_url = format!("postgresql://test:test@{}:{}/flowcatalyst_test", host, port);
 
     let pool = create_pool(&database_url)
         .await
@@ -146,10 +141,7 @@ fn build_test_router(pool: &sqlx::PgPool) -> (Router, Arc<AuthService>) {
             "/api/clients",
             Into::<Router>::into(clients_router(clients_state)),
         )
-        .nest(
-            "/api/events",
-            sdk_events_batch_router(sdk_events_state),
-        )
+        .nest("/api/events", sdk_events_batch_router(sdk_events_state))
         .nest(
             "/api/dispatch-jobs",
             sdk_dispatch_jobs_batch_router(sdk_dispatch_jobs_state),
@@ -201,8 +193,17 @@ async fn test_create_client_via_api() {
     let json: serde_json::Value = serde_json::from_slice(&body)
         .unwrap_or_else(|_| panic!("Failed to parse response body: {:?}", body));
 
-    assert_eq!(status.as_u16(), 200, "Expected 200 OK, got {} — body: {}", status, json);
-    assert!(json.get("id").is_some(), "Response should contain an 'id' field");
+    assert_eq!(
+        status.as_u16(),
+        200,
+        "Expected 200 OK, got {} — body: {}",
+        status,
+        json
+    );
+    assert!(
+        json.get("id").is_some(),
+        "Response should contain an 'id' field"
+    );
 }
 
 #[tokio::test]
@@ -239,9 +240,17 @@ async fn test_list_clients_via_api() {
     let json: serde_json::Value = serde_json::from_slice(&body)
         .unwrap_or_else(|_| panic!("Failed to parse response body: {:?}", body));
 
-    assert_eq!(status.as_u16(), 200, "Expected 200 OK, got {} — body: {}", status, json);
+    assert_eq!(
+        status.as_u16(),
+        200,
+        "Expected 200 OK, got {} — body: {}",
+        status,
+        json
+    );
 
-    let clients = json["clients"].as_array().expect("Response should have a 'clients' array");
+    let clients = json["clients"]
+        .as_array()
+        .expect("Response should have a 'clients' array");
     assert!(
         clients.iter().any(|c| c["identifier"] == "list-test"),
         "Response should contain the seeded client"
@@ -282,8 +291,17 @@ async fn test_get_client_by_id_via_api() {
     let json: serde_json::Value = serde_json::from_slice(&body)
         .unwrap_or_else(|_| panic!("Failed to parse response body: {:?}", body));
 
-    assert_eq!(status.as_u16(), 200, "Expected 200 OK, got {} — body: {}", status, json);
-    assert_eq!(json["name"], "Get By ID Client", "Response name should match");
+    assert_eq!(
+        status.as_u16(),
+        200,
+        "Expected 200 OK, got {} — body: {}",
+        status,
+        json
+    );
+    assert_eq!(
+        json["name"], "Get By ID Client",
+        "Response name should match"
+    );
 }
 
 #[tokio::test]
@@ -306,7 +324,12 @@ async fn test_unauthorized_request() {
         .unwrap();
 
     let status = response.status();
-    assert_eq!(status.as_u16(), 401, "Expected 401 Unauthorized, got {}", status);
+    assert_eq!(
+        status.as_u16(),
+        401,
+        "Expected 401 Unauthorized, got {}",
+        status
+    );
 }
 
 #[tokio::test]
@@ -344,12 +367,23 @@ async fn test_batch_events_via_api() {
     let json: serde_json::Value = serde_json::from_slice(&body)
         .unwrap_or_else(|_| panic!("Failed to parse response body: {:?}", body));
 
-    assert_eq!(status.as_u16(), 200, "Expected 200 OK, got {} — body: {}", status, json);
+    assert_eq!(
+        status.as_u16(),
+        200,
+        "Expected 200 OK, got {} — body: {}",
+        status,
+        json
+    );
 
-    let results = json["results"].as_array().expect("Response should have a 'results' array");
+    let results = json["results"]
+        .as_array()
+        .expect("Response should have a 'results' array");
     assert_eq!(results.len(), 3, "Should have 3 results");
     for result in results {
-        assert_eq!(result["status"], "SUCCESS", "Each result should have SUCCESS status");
+        assert_eq!(
+            result["status"], "SUCCESS",
+            "Each result should have SUCCESS status"
+        );
     }
 }
 
@@ -387,7 +421,12 @@ async fn test_batch_events_exceeds_limit() {
         .unwrap();
 
     let status = response.status();
-    assert_eq!(status.as_u16(), 400, "Expected 400 Bad Request for >100 items, got {}", status);
+    assert_eq!(
+        status.as_u16(),
+        400,
+        "Expected 400 Bad Request for >100 items, got {}",
+        status
+    );
 }
 
 #[tokio::test]
@@ -434,9 +473,17 @@ async fn test_batch_dispatch_jobs_via_api() {
     let json: serde_json::Value = serde_json::from_slice(&body)
         .unwrap_or_else(|_| panic!("Failed to parse response body: {:?}", body));
 
-    assert_eq!(status.as_u16(), 200, "Expected 200 OK, got {} — body: {}", status, json);
+    assert_eq!(
+        status.as_u16(),
+        200,
+        "Expected 200 OK, got {} — body: {}",
+        status,
+        json
+    );
     assert_eq!(json["count"], 2, "Response should report count=2");
 
-    let jobs = json["jobs"].as_array().expect("Response should have a 'jobs' array");
+    let jobs = json["jobs"]
+        .as_array()
+        .expect("Response should have a 'jobs' array");
     assert_eq!(jobs.len(), 2, "Should have 2 job responses");
 }

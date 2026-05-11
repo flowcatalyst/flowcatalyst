@@ -13,19 +13,23 @@
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
-
 use fc_platform::auth::auth_service::{AuthConfig, AuthService};
 use fc_platform::domain::{Principal, UserScope};
 use fc_platform::shared::database::{create_pool, run_migrations, MigrationProfile};
-use fc_platform::{
-    ClientRepository, PrincipalRepository, RoleRepository,
-    EventTypeRepository, ApplicationRepository,
-    AuditLogRepository, EventRepository,
-};
-use fc_platform::{Client, ClientStatus, AuthRole, Application, EventType, AuditLog, Event};
-use fc_platform::{Subscription, SubscriptionStatus, DispatchPool, DispatchPoolStatus, Connection, ConnectionStatus, DispatchJob, DispatchStatus, ServiceAccount};
-use fc_platform::{SubscriptionRepository, DispatchPoolRepository, ConnectionRepository, DispatchJobRepository, ServiceAccountRepository};
 use fc_platform::subscription::entity::EventTypeBinding;
+use fc_platform::{Application, AuditLog, AuthRole, Client, ClientStatus, Event, EventType};
+use fc_platform::{
+    ApplicationRepository, AuditLogRepository, ClientRepository, EventRepository,
+    EventTypeRepository, PrincipalRepository, RoleRepository,
+};
+use fc_platform::{
+    Connection, ConnectionStatus, DispatchJob, DispatchPool, DispatchPoolStatus, DispatchStatus,
+    ServiceAccount, Subscription, SubscriptionStatus,
+};
+use fc_platform::{
+    ConnectionRepository, DispatchJobRepository, DispatchPoolRepository, ServiceAccountRepository,
+    SubscriptionRepository,
+};
 
 // ─── Test Helpers ──────────────────────────────────────────────────────────
 
@@ -40,12 +44,12 @@ async fn setup_test_db() -> (sqlx::PgPool, testcontainers::ContainerAsync<Postgr
         .expect("Failed to start PostgreSQL container");
 
     let host = container.get_host().await.expect("Failed to get host");
-    let port = container.get_host_port_ipv4(5432).await.expect("Failed to get port");
+    let port = container
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("Failed to get port");
 
-    let database_url = format!(
-        "postgresql://test:test@{}:{}/flowcatalyst_test",
-        host, port
-    );
+    let database_url = format!("postgresql://test:test@{}:{}/flowcatalyst_test", host, port);
 
     let pool = create_pool(&database_url)
         .await
@@ -85,7 +89,10 @@ async fn test_client_crud() {
     repo.insert(&client).await.expect("Failed to insert client");
 
     // Read
-    let found = repo.find_by_id(&client.id).await.expect("Failed to find client");
+    let found = repo
+        .find_by_id(&client.id)
+        .await
+        .expect("Failed to find client");
     assert!(found.is_some());
     let found = found.unwrap();
     assert_eq!(found.name, "Acme Corp");
@@ -93,7 +100,10 @@ async fn test_client_crud() {
     assert_eq!(found.status, ClientStatus::Active);
 
     // Find by identifier
-    let by_ident = repo.find_by_identifier("acme-corp").await.expect("Failed to find by identifier");
+    let by_ident = repo
+        .find_by_identifier("acme-corp")
+        .await
+        .expect("Failed to find by identifier");
     assert!(by_ident.is_some());
     assert_eq!(by_ident.unwrap().id, client.id);
 
@@ -104,11 +114,16 @@ async fn test_client_crud() {
     // Update (suspend)
     let mut updated_client = found;
     updated_client.suspend("Testing suspension");
-    repo.update(&updated_client).await.expect("Failed to update client");
+    repo.update(&updated_client)
+        .await
+        .expect("Failed to update client");
 
     let suspended = repo.find_by_id(&client.id).await.unwrap().unwrap();
     assert_eq!(suspended.status, ClientStatus::Suspended);
-    assert_eq!(suspended.status_reason, Some("Testing suspension".to_string()));
+    assert_eq!(
+        suspended.status_reason,
+        Some("Testing suspension".to_string())
+    );
 }
 
 #[tokio::test]
@@ -117,7 +132,10 @@ async fn test_client_not_found() {
     let (pool, _container) = setup_test_db().await;
     let repo = ClientRepository::new(&pool);
 
-    let result = repo.find_by_id("nonexistent-id").await.expect("Query should succeed");
+    let result = repo
+        .find_by_id("nonexistent-id")
+        .await
+        .expect("Query should succeed");
     assert!(result.is_none());
 }
 
@@ -132,10 +150,15 @@ async fn test_principal_user_crud() {
     // Create user principal
     let mut principal = Principal::new_user("alice@example.com", UserScope::Anchor);
     principal.assign_role("admin");
-    repo.insert(&principal).await.expect("Failed to insert principal");
+    repo.insert(&principal)
+        .await
+        .expect("Failed to insert principal");
 
     // Read
-    let found = repo.find_by_id(&principal.id).await.expect("Failed to find principal");
+    let found = repo
+        .find_by_id(&principal.id)
+        .await
+        .expect("Failed to find principal");
     assert!(found.is_some());
     let found = found.unwrap();
     assert_eq!(found.name, "alice@example.com");
@@ -144,7 +167,10 @@ async fn test_principal_user_crud() {
     assert!(found.is_user());
 
     // Find by email
-    let by_email = repo.find_by_email("alice@example.com").await.expect("Failed to find by email");
+    let by_email = repo
+        .find_by_email("alice@example.com")
+        .await
+        .expect("Failed to find by email");
     assert!(by_email.is_some());
     assert_eq!(by_email.unwrap().id, principal.id);
 
@@ -164,7 +190,9 @@ async fn test_principal_service_account() {
     let repo = PrincipalRepository::new(&pool);
 
     let principal = Principal::new_service("svc-abc", "My Service");
-    repo.insert(&principal).await.expect("Failed to insert service principal");
+    repo.insert(&principal)
+        .await
+        .expect("Failed to insert service principal");
 
     let found = repo.find_by_id(&principal.id).await.unwrap().unwrap();
     assert!(found.is_service());
@@ -180,14 +208,24 @@ async fn test_principal_with_client_access() {
 
     // Create a client first
     let client = Client::new("Test Client", "test-client");
-    client_repo.insert(&client).await.expect("Failed to insert client");
+    client_repo
+        .insert(&client)
+        .await
+        .expect("Failed to insert client");
 
     // Create a principal with client scope
-    let principal = Principal::new_user("user@test-client.com", UserScope::Client)
-        .with_client_id(&client.id);
-    principal_repo.insert(&principal).await.expect("Failed to insert principal");
+    let principal =
+        Principal::new_user("user@test-client.com", UserScope::Client).with_client_id(&client.id);
+    principal_repo
+        .insert(&principal)
+        .await
+        .expect("Failed to insert principal");
 
-    let found = principal_repo.find_by_id(&principal.id).await.unwrap().unwrap();
+    let found = principal_repo
+        .find_by_id(&principal.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(found.client_id, Some(client.id.clone()));
     assert_eq!(found.scope, UserScope::Client);
     assert!(found.can_access_client(&client.id));
@@ -205,13 +243,19 @@ async fn test_role_crud() {
     let role = AuthRole::new("platform", "test-admin", "Test Admin");
     repo.insert(&role).await.expect("Failed to insert role");
 
-    let found = repo.find_by_code(&role.name).await.expect("Failed to find role");
+    let found = repo
+        .find_by_code(&role.name)
+        .await
+        .expect("Failed to find role");
     assert!(found.is_some());
     let found = found.unwrap();
     assert_eq!(found.display_name, "Test Admin");
 
     // Find by codes
-    let roles = repo.find_by_codes(std::slice::from_ref(&role.name)).await.expect("Failed to find roles");
+    let roles = repo
+        .find_by_codes(std::slice::from_ref(&role.name))
+        .await
+        .expect("Failed to find roles");
     assert_eq!(roles.len(), 1);
 }
 
@@ -225,16 +269,24 @@ async fn test_event_type_crud() {
 
     let event_type = EventType::new("orders:fulfillment:shipment:shipped", "Shipment Shipped")
         .expect("Failed to create event type");
-    repo.insert(&event_type).await.expect("Failed to insert event type");
+    repo.insert(&event_type)
+        .await
+        .expect("Failed to insert event type");
 
-    let found = repo.find_by_id(&event_type.id).await.expect("Failed to find event type");
+    let found = repo
+        .find_by_id(&event_type.id)
+        .await
+        .expect("Failed to find event type");
     assert!(found.is_some());
     let found = found.unwrap();
     assert_eq!(found.name, "Shipment Shipped");
     assert_eq!(found.code, "orders:fulfillment:shipment:shipped");
 
     // Find by code
-    let by_code = repo.find_by_code("orders:fulfillment:shipment:shipped").await.expect("Failed to find by code");
+    let by_code = repo
+        .find_by_code("orders:fulfillment:shipment:shipped")
+        .await
+        .expect("Failed to find by code");
     assert!(by_code.is_some());
     assert_eq!(by_code.unwrap().id, event_type.id);
 }
@@ -248,16 +300,24 @@ async fn test_application_crud() {
     let repo = ApplicationRepository::new(&pool);
 
     let app = Application::new("my-app", "My Application");
-    repo.insert(&app).await.expect("Failed to insert application");
+    repo.insert(&app)
+        .await
+        .expect("Failed to insert application");
 
-    let found = repo.find_by_id(&app.id).await.expect("Failed to find application");
+    let found = repo
+        .find_by_id(&app.id)
+        .await
+        .expect("Failed to find application");
     assert!(found.is_some());
     let found = found.unwrap();
     assert_eq!(found.code, "my-app");
     assert_eq!(found.name, "My Application");
 
     // Find by code
-    let by_code = repo.find_by_code("my-app").await.expect("Failed to find by code");
+    let by_code = repo
+        .find_by_code("my-app")
+        .await
+        .expect("Failed to find by code");
     assert!(by_code.is_some());
     assert_eq!(by_code.unwrap().id, app.id);
 }
@@ -280,7 +340,10 @@ async fn test_audit_log_insert_and_query() {
     );
     repo.insert(&log).await.expect("Failed to insert audit log");
 
-    let found = repo.find_by_id(&log.id).await.expect("Failed to find audit log");
+    let found = repo
+        .find_by_id(&log.id)
+        .await
+        .expect("Failed to find audit log");
     assert!(found.is_some());
     let found = found.unwrap();
     assert_eq!(found.entity_type, "Client");
@@ -304,7 +367,10 @@ async fn test_event_insert_and_query() {
     );
     repo.insert(&event).await.expect("Failed to insert event");
 
-    let found = repo.find_by_id(&event.id).await.expect("Failed to find event");
+    let found = repo
+        .find_by_id(&event.id)
+        .await
+        .expect("Failed to find event");
     assert!(found.is_some());
     let found = found.unwrap();
     assert_eq!(found.event_type, "platform:client:created");
@@ -323,16 +389,27 @@ async fn test_token_generation_from_db_principal() {
     // Create and persist a principal
     let mut principal = Principal::new_user("admin@flowcatalyst.local", UserScope::Anchor);
     principal.assign_role("platform:admin");
-    principal_repo.insert(&principal).await.expect("Failed to insert principal");
+    principal_repo
+        .insert(&principal)
+        .await
+        .expect("Failed to insert principal");
 
     // Load from DB
-    let loaded = principal_repo.find_by_id(&principal.id).await.unwrap().unwrap();
+    let loaded = principal_repo
+        .find_by_id(&principal.id)
+        .await
+        .unwrap()
+        .unwrap();
 
     // Generate token from DB-loaded principal
-    let token = auth_service.generate_access_token(&loaded).expect("Failed to generate token");
+    let token = auth_service
+        .generate_access_token(&loaded)
+        .expect("Failed to generate token");
 
     // Validate token
-    let claims = auth_service.validate_token(&token).expect("Failed to validate token");
+    let claims = auth_service
+        .validate_token(&token)
+        .expect("Failed to validate token");
     assert_eq!(claims.sub, principal.id);
     assert_eq!(claims.email, Some("admin@flowcatalyst.local".to_string()));
     assert_eq!(claims.scope, "ANCHOR");
@@ -361,7 +438,11 @@ async fn test_multiple_clients_with_partner_principal() {
     principal_repo.insert(&principal).await.unwrap();
 
     // Verify access
-    let loaded = principal_repo.find_by_id(&principal.id).await.unwrap().unwrap();
+    let loaded = principal_repo
+        .find_by_id(&principal.id)
+        .await
+        .unwrap()
+        .unwrap();
 
     // Generate token
     let auth_service = test_auth_service();
@@ -379,10 +460,14 @@ async fn test_migrations_are_idempotent() {
     let (pool, _container) = setup_test_db().await;
 
     // Run migrations again — should succeed (IF NOT EXISTS)
-    run_migrations(&pool, MigrationProfile::Production).await.expect("Second migration run should succeed");
+    run_migrations(&pool, MigrationProfile::Production)
+        .await
+        .expect("Second migration run should succeed");
 
     // Run a third time for good measure
-    run_migrations(&pool, MigrationProfile::Production).await.expect("Third migration run should succeed");
+    run_migrations(&pool, MigrationProfile::Production)
+        .await
+        .expect("Third migration run should succeed");
 }
 
 // ─── Cross-Repository Transaction Test ────────────────────────────────────
@@ -393,13 +478,16 @@ async fn test_unit_of_work_commit() {
     let (pool, _container) = setup_test_db().await;
     let client_repo = ClientRepository::new(&pool);
 
-    use fc_platform::{PgUnitOfWork, UnitOfWork};
     use fc_platform::client::operations::events::ClientCreated;
     use fc_platform::usecase::ExecutionContext;
+    use fc_platform::{PgUnitOfWork, UnitOfWork};
 
     // Create a client
     let client = Client::new("UoW Test Client", "uow-test");
-    client_repo.insert(&client).await.expect("Failed to insert client");
+    client_repo
+        .insert(&client)
+        .await
+        .expect("Failed to insert client");
 
     // Commit an event via UnitOfWork
     let uow = PgUnitOfWork::new(pool.clone());
@@ -407,21 +495,32 @@ async fn test_unit_of_work_commit() {
     let event = ClientCreated::new(&ctx, &client.id, &client.name, &client.identifier, None);
 
     #[derive(serde::Serialize)]
-    struct CreateClientCommand { name: String }
-    let command = CreateClientCommand { name: "UoW Test Client".to_string() };
+    struct CreateClientCommand {
+        name: String,
+    }
+    let command = CreateClientCommand {
+        name: "UoW Test Client".to_string(),
+    };
 
     let result = uow.commit(&client, &client_repo, event, &command).await;
-    assert!(result.into_result().is_ok(), "UnitOfWork commit should succeed");
+    assert!(
+        result.into_result().is_ok(),
+        "UnitOfWork commit should succeed"
+    );
 
     // Verify event was persisted (use find_by_type since find_all doesn't exist)
     let event_repo = EventRepository::new(&pool);
-    let events = event_repo.find_by_type("platform:iam:client:created", 10).await
+    let events = event_repo
+        .find_by_type("platform:iam:client:created", 10)
+        .await
         .expect("Failed to query events");
     assert!(!events.is_empty(), "At least one event should exist");
 
     // Verify audit log was persisted
     let audit_repo = AuditLogRepository::new(&pool);
-    let logs = audit_repo.find_by_entity("Client", &client.id, 10).await
+    let logs = audit_repo
+        .find_by_entity("Client", &client.id, 10)
+        .await
         .expect("Failed to query audit logs");
     assert!(!logs.is_empty(), "At least one audit log should exist");
 }
@@ -438,10 +537,15 @@ async fn test_dispatch_pool_crud() {
     let pool = DispatchPool::new("test-pool", "Test Pool")
         .with_rate_limit(Some(50))
         .with_concurrency(5);
-    repo.insert(&pool).await.expect("Failed to insert dispatch pool");
+    repo.insert(&pool)
+        .await
+        .expect("Failed to insert dispatch pool");
 
     // Find by ID
-    let found = repo.find_by_id(&pool.id).await.expect("Failed to find dispatch pool");
+    let found = repo
+        .find_by_id(&pool.id)
+        .await
+        .expect("Failed to find dispatch pool");
     assert!(found.is_some());
     let found = found.unwrap();
     assert_eq!(found.code, "test-pool");
@@ -453,7 +557,9 @@ async fn test_dispatch_pool_crud() {
     // Suspend
     let mut updated_pool = found;
     updated_pool.suspend();
-    repo.update(&updated_pool).await.expect("Failed to update dispatch pool");
+    repo.update(&updated_pool)
+        .await
+        .expect("Failed to update dispatch pool");
 
     let suspended = repo.find_by_id(&pool.id).await.unwrap().unwrap();
     assert_eq!(suspended.status, DispatchPoolStatus::Suspended);
@@ -469,10 +575,15 @@ async fn test_service_account_crud() {
 
     // Create
     let svc = ServiceAccount::new("test-svc", "Test Service");
-    repo.insert(&svc).await.expect("Failed to insert service account");
+    repo.insert(&svc)
+        .await
+        .expect("Failed to insert service account");
 
     // Find by ID
-    let found = repo.find_by_id(&svc.id).await.expect("Failed to find service account");
+    let found = repo
+        .find_by_id(&svc.id)
+        .await
+        .expect("Failed to find service account");
     assert!(found.is_some());
     let found = found.unwrap();
     assert_eq!(found.code, "test-svc");
@@ -491,14 +602,23 @@ async fn test_connection_crud() {
 
     // Create a service account first (needed for FK)
     let svc = ServiceAccount::new("conn-test-svc", "Connection Test Service");
-    svc_repo.insert(&svc).await.expect("Failed to insert service account");
+    svc_repo
+        .insert(&svc)
+        .await
+        .expect("Failed to insert service account");
 
     // Create a connection
     let conn = Connection::new("test-conn", "Test Connection", &svc.id);
-    conn_repo.insert(&conn).await.expect("Failed to insert connection");
+    conn_repo
+        .insert(&conn)
+        .await
+        .expect("Failed to insert connection");
 
     // Find by ID
-    let found = conn_repo.find_by_id(&conn.id).await.expect("Failed to find connection");
+    let found = conn_repo
+        .find_by_id(&conn.id)
+        .await
+        .expect("Failed to find connection");
     assert!(found.is_some());
     let found = found.unwrap();
     assert_eq!(found.code, "test-conn");
@@ -509,7 +629,10 @@ async fn test_connection_crud() {
     // Pause
     let mut paused_conn = found;
     paused_conn.pause();
-    conn_repo.update(&paused_conn).await.expect("Failed to update connection");
+    conn_repo
+        .update(&paused_conn)
+        .await
+        .expect("Failed to update connection");
 
     let paused = conn_repo.find_by_id(&conn.id).await.unwrap().unwrap();
     assert_eq!(paused.status, ConnectionStatus::Paused);
@@ -517,7 +640,10 @@ async fn test_connection_crud() {
     // Activate
     let mut activated_conn = paused;
     activated_conn.activate();
-    conn_repo.update(&activated_conn).await.expect("Failed to update connection");
+    conn_repo
+        .update(&activated_conn)
+        .await
+        .expect("Failed to update connection");
 
     let activated = conn_repo.find_by_id(&conn.id).await.unwrap().unwrap();
     assert_eq!(activated.status, ConnectionStatus::Active);
@@ -533,10 +659,15 @@ async fn test_subscription_crud() {
 
     // Create
     let sub = Subscription::new("test-sub", "Test Subscription", "con_dummy0000000");
-    repo.insert(&sub).await.expect("Failed to insert subscription");
+    repo.insert(&sub)
+        .await
+        .expect("Failed to insert subscription");
 
     // Find by ID
-    let found = repo.find_by_id(&sub.id).await.expect("Failed to find subscription");
+    let found = repo
+        .find_by_id(&sub.id)
+        .await
+        .expect("Failed to find subscription");
     assert!(found.is_some());
     let found = found.unwrap();
     assert_eq!(found.code, "test-sub");
@@ -544,11 +675,17 @@ async fn test_subscription_crud() {
     assert_eq!(found.status, SubscriptionStatus::Active);
 
     // Find active
-    let active = repo.find_active().await.expect("Failed to find active subscriptions");
+    let active = repo
+        .find_active()
+        .await
+        .expect("Failed to find active subscriptions");
     assert!(active.iter().any(|s| s.id == sub.id));
 
     // Find by code
-    let by_code = repo.find_by_code("test-sub").await.expect("Failed to find by code");
+    let by_code = repo
+        .find_by_code("test-sub")
+        .await
+        .expect("Failed to find by code");
     assert!(by_code.is_some());
     assert_eq!(by_code.unwrap().id, sub.id);
 }
@@ -562,11 +699,22 @@ async fn test_dispatch_job_lifecycle() {
     let repo = DispatchJobRepository::new(&pool);
 
     // Create
-    let job = DispatchJob::for_event("evt-123", "order:created", "platform", "https://example.com/webhook", "{}");
-    repo.insert(&job).await.expect("Failed to insert dispatch job");
+    let job = DispatchJob::for_event(
+        "evt-123",
+        "order:created",
+        "platform",
+        "https://example.com/webhook",
+        "{}",
+    );
+    repo.insert(&job)
+        .await
+        .expect("Failed to insert dispatch job");
 
     // Find by ID
-    let found = repo.find_by_id(&job.id).await.expect("Failed to find dispatch job");
+    let found = repo
+        .find_by_id(&job.id)
+        .await
+        .expect("Failed to find dispatch job");
     assert!(found.is_some());
     let found = found.unwrap();
     assert_eq!(found.status, DispatchStatus::Pending);
@@ -586,7 +734,10 @@ async fn test_dispatch_job_lifecycle() {
     assert_eq!(queued.status, DispatchStatus::Queued);
 
     // Find by status (Pending should no longer include it)
-    let pending = repo.find_by_status(DispatchStatus::Pending, 10).await.expect("Failed to find by status");
+    let pending = repo
+        .find_by_status(DispatchStatus::Pending, 10)
+        .await
+        .expect("Failed to find by status");
     assert!(!pending.iter().any(|j| j.id == job.id));
 }
 
@@ -611,14 +762,19 @@ async fn test_dispatch_job_batch_insert() {
         })
         .collect();
 
-    repo.insert_many(&jobs).await.expect("Failed to batch insert dispatch jobs");
+    repo.insert_many(&jobs)
+        .await
+        .expect("Failed to batch insert dispatch jobs");
 
     // Verify count
     let count = repo.count_all().await.expect("Failed to count all");
     assert_eq!(count, 5);
 
     // Verify find_pending_for_dispatch returns them
-    let pending = repo.find_pending_for_dispatch(10).await.expect("Failed to find pending");
+    let pending = repo
+        .find_pending_for_dispatch(10)
+        .await
+        .expect("Failed to find pending");
     assert_eq!(pending.len(), 5);
 }
 
@@ -638,10 +794,15 @@ async fn test_subscription_with_event_types() {
             spec_version: None,
             filter: None,
         });
-    repo.insert(&sub).await.expect("Failed to insert subscription with event types");
+    repo.insert(&sub)
+        .await
+        .expect("Failed to insert subscription with event types");
 
     // Find by ID and verify event_types are hydrated
-    let found = repo.find_by_id(&sub.id).await.expect("Failed to find subscription");
+    let found = repo
+        .find_by_id(&sub.id)
+        .await
+        .expect("Failed to find subscription");
     assert!(found.is_some());
     let found = found.unwrap();
     assert_eq!(found.event_types.len(), 1);

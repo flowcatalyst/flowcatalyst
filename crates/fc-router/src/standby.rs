@@ -4,15 +4,15 @@
 //! When standby mode is enabled, only the leader instance processes messages.
 //! Other instances remain in standby, ready to take over if the leader fails.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, watch};
-use tracing::{info, warn, debug};
+use tracing::{debug, info, warn};
 
 pub use fc_standby::{
-    LeaderElection, LeaderElectionConfig, LeadershipStatus, StandbyGuard,
-    StandbyError, Result as StandbyResult,
+    LeaderElection, LeaderElectionConfig, LeadershipStatus, Result as StandbyResult, StandbyError,
+    StandbyGuard,
 };
 
 /// Configuration for standby-aware router operation

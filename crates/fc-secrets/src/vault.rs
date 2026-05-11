@@ -31,10 +31,14 @@ impl VaultProvider {
     /// * `addr` - Vault server address (e.g., "http://vault:8200")
     /// * `mount_path` - KV secrets engine mount path (e.g., "secret")
     /// * `token` - Optional authentication token (can also use VAULT_TOKEN env var)
-    pub fn new(addr: &str, mount_path: String, token: Option<String>) -> Result<Self, SecretsError> {
-        let client = Client::builder()
-            .build()
-            .map_err(|e| SecretsError::ProviderError(format!("Failed to create HTTP client: {}", e)))?;
+    pub fn new(
+        addr: &str,
+        mount_path: String,
+        token: Option<String>,
+    ) -> Result<Self, SecretsError> {
+        let client = Client::builder().build().map_err(|e| {
+            SecretsError::ProviderError(format!("Failed to create HTTP client: {}", e))
+        })?;
 
         // Get token from parameter or environment variable
         let actual_token = token.or_else(|| std::env::var("VAULT_TOKEN").ok());
@@ -67,11 +71,16 @@ impl VaultProvider {
     }
 
     /// Validate a secret exists without retrieving its value (actually retrieves to check key)
-    pub async fn validate_reference(&self, reference: &str) -> Result<ValidationResult, SecretsError> {
+    pub async fn validate_reference(
+        &self,
+        reference: &str,
+    ) -> Result<ValidationResult, SecretsError> {
         const PREFIX: &str = "vault://";
 
         if !reference.starts_with(PREFIX) {
-            return Ok(ValidationResult::failure("Invalid reference format for Vault"));
+            return Ok(ValidationResult::failure(
+                "Invalid reference format for Vault",
+            ));
         }
 
         let path_and_key = &reference[PREFIX.len()..];
@@ -80,7 +89,10 @@ impl VaultProvider {
         match self.read_secret(&path).await {
             Ok(data) => {
                 if data.is_empty() {
-                    Ok(ValidationResult::failure(format!("Secret not found: {}", path)))
+                    Ok(ValidationResult::failure(format!(
+                        "Secret not found: {}",
+                        path
+                    )))
                 } else if !data.contains_key(&key) {
                     let available_keys: Vec<_> = data.keys().collect();
                     Ok(ValidationResult::failure(format!(
@@ -88,10 +100,16 @@ impl VaultProvider {
                         key, available_keys
                     )))
                 } else {
-                    Ok(ValidationResult::success(format!("Secret exists in Vault with key '{}'", key)))
+                    Ok(ValidationResult::success(format!(
+                        "Secret exists in Vault with key '{}'",
+                        key
+                    )))
                 }
             }
-            Err(e) => Ok(ValidationResult::failure(format!("Failed to access secret: {}", e))),
+            Err(e) => Ok(ValidationResult::failure(format!(
+                "Failed to access secret: {}",
+                e
+            ))),
         }
     }
 
@@ -172,14 +190,14 @@ impl Provider for VaultProvider {
         // Vault is read-only in this implementation
         // Secrets should be provisioned by infrastructure teams
         Err(SecretsError::ProviderError(
-            "Vault provider is read-only".to_string()
+            "Vault provider is read-only".to_string(),
         ))
     }
 
     async fn delete(&self, _key: &str) -> Result<(), SecretsError> {
         // Vault is read-only in this implementation
         Err(SecretsError::ProviderError(
-            "Vault provider is read-only".to_string()
+            "Vault provider is read-only".to_string(),
         ))
     }
 

@@ -1,8 +1,8 @@
 //! WebAuthn Credential Repository — PostgreSQL via SQLx.
 
 use async_trait::async_trait;
-use sqlx::PgPool;
 use chrono::{DateTime, Utc};
+use sqlx::PgPool;
 use webauthn_rs::prelude::Passkey;
 
 use super::entity::WebauthnCredential;
@@ -13,7 +13,8 @@ use crate::usecase::HasId;
 struct WebauthnCredentialRow {
     id: String,
     principal_id: String,
-    #[allow(dead_code)] credential_id: Vec<u8>,
+    #[allow(dead_code)]
+    credential_id: Vec<u8>,
     passkey_data: serde_json::Value,
     name: Option<String>,
     created_at: DateTime<Utc>,
@@ -23,8 +24,9 @@ struct WebauthnCredentialRow {
 impl TryFrom<WebauthnCredentialRow> for WebauthnCredential {
     type Error = PlatformError;
     fn try_from(r: WebauthnCredentialRow) -> Result<Self> {
-        let passkey: Passkey = serde_json::from_value(r.passkey_data)
-            .map_err(|e| PlatformError::internal(format!("corrupt passkey blob for {}: {}", r.id, e)))?;
+        let passkey: Passkey = serde_json::from_value(r.passkey_data).map_err(|e| {
+            PlatformError::internal(format!("corrupt passkey blob for {}: {}", r.id, e))
+        })?;
         Ok(Self {
             id: r.id,
             principal_id: r.principal_id,
@@ -79,18 +81,19 @@ impl WebauthnCredentialRepository {
     }
 
     pub async fn count_for_principal(&self, principal_id: &str) -> Result<i64> {
-        let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM webauthn_credentials WHERE principal_id = $1",
-        )
-        .bind(principal_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let count: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM webauthn_credentials WHERE principal_id = $1")
+                .bind(principal_id)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(count.0)
     }
 }
 
 impl HasId for WebauthnCredential {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]

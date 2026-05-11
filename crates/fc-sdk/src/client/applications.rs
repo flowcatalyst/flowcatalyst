@@ -1,7 +1,7 @@
 //! Application management operations.
 
+use super::{ClientError, FlowCatalystClient};
 use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError};
 
 /// Request to create an application.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -295,10 +295,7 @@ impl FlowCatalystClient {
         req: &ClientConfigRequest,
     ) -> Result<ClientConfigResponse, ClientError> {
         self.put(
-            &format!(
-                "/api/applications/{}/clients/{}",
-                application_id, client_id
-            ),
+            &format!("/api/applications/{}/clients/{}", application_id, client_id),
             req,
         )
         .await

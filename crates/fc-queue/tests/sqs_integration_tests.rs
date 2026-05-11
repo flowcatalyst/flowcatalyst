@@ -12,12 +12,12 @@
 
 #![cfg(feature = "sqs")]
 
-use std::time::Duration;
 use aws_config::{BehaviorVersion, Region};
 use aws_sdk_sqs::Client;
+use std::time::Duration;
 
-use fc_common::{Message, MediationType};
-use fc_queue::{QueueConsumer, sqs::SqsQueueConsumer};
+use fc_common::{MediationType, Message};
+use fc_queue::{sqs::SqsQueueConsumer, QueueConsumer};
 
 const LOCALSTACK_ENDPOINT: &str = "http://localhost:4566";
 const TEST_QUEUE_NAME: &str = "test-queue";
@@ -36,7 +36,10 @@ async fn setup_test_queue(client: &Client) -> String {
     // Delete queue if exists (ignore errors)
     let _ = client
         .delete_queue()
-        .queue_url(format!("{}/000000000000/{}", LOCALSTACK_ENDPOINT, TEST_QUEUE_NAME))
+        .queue_url(format!(
+            "{}/000000000000/{}",
+            LOCALSTACK_ENDPOINT, TEST_QUEUE_NAME
+        ))
         .send()
         .await;
 
@@ -107,12 +110,8 @@ async fn test_poll_empty_queue() {
     let client = create_test_client().await;
     let queue_url = setup_test_queue(&client).await;
 
-    let consumer = SqsQueueConsumer::new(
-        client.clone(),
-        queue_url,
-        TEST_QUEUE_NAME.to_string(),
-        30,
-    );
+    let consumer =
+        SqsQueueConsumer::new(client.clone(), queue_url, TEST_QUEUE_NAME.to_string(), 30);
 
     let messages = consumer.poll(10).await.expect("Poll failed");
     assert!(messages.is_empty());
@@ -132,12 +131,8 @@ async fn test_poll_single_message() {
     let test_msg = create_test_message("msg-1");
     send_test_message(&client, &queue_url, &test_msg).await;
 
-    let consumer = SqsQueueConsumer::new(
-        client.clone(),
-        queue_url,
-        TEST_QUEUE_NAME.to_string(),
-        30,
-    );
+    let consumer =
+        SqsQueueConsumer::new(client.clone(), queue_url, TEST_QUEUE_NAME.to_string(), 30);
 
     let messages = consumer.poll(10).await.expect("Poll failed");
     assert_eq!(messages.len(), 1);
@@ -160,12 +155,8 @@ async fn test_poll_multiple_messages() {
         send_test_message(&client, &queue_url, &test_msg).await;
     }
 
-    let consumer = SqsQueueConsumer::new(
-        client.clone(),
-        queue_url,
-        TEST_QUEUE_NAME.to_string(),
-        30,
-    );
+    let consumer =
+        SqsQueueConsumer::new(client.clone(), queue_url, TEST_QUEUE_NAME.to_string(), 30);
 
     let messages = consumer.poll(10).await.expect("Poll failed");
     assert!(!messages.is_empty());
@@ -186,18 +177,17 @@ async fn test_message_acknowledgment() {
     let test_msg = create_test_message("msg-ack");
     send_test_message(&client, &queue_url, &test_msg).await;
 
-    let consumer = SqsQueueConsumer::new(
-        client.clone(),
-        queue_url,
-        TEST_QUEUE_NAME.to_string(),
-        30,
-    );
+    let consumer =
+        SqsQueueConsumer::new(client.clone(), queue_url, TEST_QUEUE_NAME.to_string(), 30);
 
     let messages = consumer.poll(10).await.expect("Poll failed");
     assert_eq!(messages.len(), 1);
 
     // Acknowledge the message
-    consumer.ack(&messages[0].receipt_handle).await.expect("Ack failed");
+    consumer
+        .ack(&messages[0].receipt_handle)
+        .await
+        .expect("Ack failed");
 
     // Poll again - should be empty
     let messages = consumer.poll(10).await.expect("Poll failed");
@@ -218,18 +208,17 @@ async fn test_message_nack_immediate_retry() {
     let test_msg = create_test_message("msg-nack");
     send_test_message(&client, &queue_url, &test_msg).await;
 
-    let consumer = SqsQueueConsumer::new(
-        client.clone(),
-        queue_url,
-        TEST_QUEUE_NAME.to_string(),
-        30,
-    );
+    let consumer =
+        SqsQueueConsumer::new(client.clone(), queue_url, TEST_QUEUE_NAME.to_string(), 30);
 
     let messages = consumer.poll(10).await.expect("Poll failed");
     assert_eq!(messages.len(), 1);
 
     // NACK with 0 delay (immediate retry)
-    consumer.nack(&messages[0].receipt_handle, Some(0)).await.expect("Nack failed");
+    consumer
+        .nack(&messages[0].receipt_handle, Some(0))
+        .await
+        .expect("Nack failed");
 
     // Wait a moment then poll again - message should be available
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -263,7 +252,10 @@ async fn test_visibility_timeout_extension() {
     assert_eq!(messages.len(), 1);
 
     // Extend visibility
-    consumer.extend_visibility(&messages[0].receipt_handle, 60).await.expect("Extend failed");
+    consumer
+        .extend_visibility(&messages[0].receipt_handle, 60)
+        .await
+        .expect("Extend failed");
 
     // Message should still be invisible
     let messages2 = consumer.poll(10).await.expect("Poll failed");
@@ -280,12 +272,8 @@ async fn test_consumer_stop() {
     let client = create_test_client().await;
     let queue_url = setup_test_queue(&client).await;
 
-    let consumer = SqsQueueConsumer::new(
-        client.clone(),
-        queue_url,
-        TEST_QUEUE_NAME.to_string(),
-        30,
-    );
+    let consumer =
+        SqsQueueConsumer::new(client.clone(), queue_url, TEST_QUEUE_NAME.to_string(), 30);
 
     assert!(consumer.is_healthy());
 
@@ -308,12 +296,8 @@ async fn test_consumer_identifier() {
     let client = create_test_client().await;
     let queue_url = setup_test_queue(&client).await;
 
-    let consumer = SqsQueueConsumer::new(
-        client.clone(),
-        queue_url,
-        TEST_QUEUE_NAME.to_string(),
-        30,
-    );
+    let consumer =
+        SqsQueueConsumer::new(client.clone(), queue_url, TEST_QUEUE_NAME.to_string(), 30);
 
     assert_eq!(consumer.identifier(), TEST_QUEUE_NAME);
 }
@@ -337,12 +321,8 @@ async fn test_malformed_message_handling() {
         .await
         .expect("Failed to send message");
 
-    let consumer = SqsQueueConsumer::new(
-        client.clone(),
-        queue_url,
-        TEST_QUEUE_NAME.to_string(),
-        30,
-    );
+    let consumer =
+        SqsQueueConsumer::new(client.clone(), queue_url, TEST_QUEUE_NAME.to_string(), 30);
 
     // Poll should return empty (malformed message is auto-acked)
     let messages = consumer.poll(10).await.expect("Poll failed");
@@ -369,7 +349,7 @@ async fn test_batch_send_and_receive() {
                 .id(format!("{}", i))
                 .message_body(body)
                 .build()
-                .unwrap()
+                .unwrap(),
         );
     }
 
@@ -381,12 +361,8 @@ async fn test_batch_send_and_receive() {
         .await
         .expect("Failed to send batch");
 
-    let consumer = SqsQueueConsumer::new(
-        client.clone(),
-        queue_url,
-        TEST_QUEUE_NAME.to_string(),
-        30,
-    );
+    let consumer =
+        SqsQueueConsumer::new(client.clone(), queue_url, TEST_QUEUE_NAME.to_string(), 30);
 
     // Poll for messages (SQS max is 10 per poll)
     let messages = consumer.poll(10).await.expect("Poll failed");

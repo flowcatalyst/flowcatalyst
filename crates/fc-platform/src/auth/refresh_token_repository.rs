@@ -3,11 +3,11 @@
 //! Stores refresh tokens in `oauth_oidc_payloads` (type = "RefreshToken")
 //! for compatibility with the TypeScript oidc-provider implementation.
 
-use sqlx::PgPool;
+use crate::shared::error::Result;
+use crate::RefreshToken;
 use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
-use crate::RefreshToken;
-use crate::shared::error::Result;
+use sqlx::PgPool;
 
 const PAYLOAD_TYPE: &str = "RefreshToken";
 
@@ -30,44 +30,81 @@ struct PayloadRow {
 impl From<PayloadRow> for RefreshToken {
     fn from(m: PayloadRow) -> Self {
         let p = &m.payload;
-        let id = m.id.strip_prefix("RefreshToken:").unwrap_or(&m.id).to_string();
+        let id =
+            m.id.strip_prefix("RefreshToken:")
+                .unwrap_or(&m.id)
+                .to_string();
 
-        let scopes: Vec<String> = p.get("scope")
+        let scopes: Vec<String> = p
+            .get("scope")
             .and_then(|v| v.as_str())
-            .map(|s| s.split_whitespace().filter(|v| !v.is_empty()).map(String::from).collect())
+            .map(|s| {
+                s.split_whitespace()
+                    .filter(|v| !v.is_empty())
+                    .map(String::from)
+                    .collect()
+            })
             .unwrap_or_default();
 
-        let accessible_clients: Vec<String> = p.get("accessibleClients")
+        let accessible_clients: Vec<String> = p
+            .get("accessibleClients")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
 
         let revoked = p.get("revoked").and_then(|v| v.as_bool()).unwrap_or(false);
 
-        let revoked_at = p.get("revokedAt")
+        let revoked_at = p
+            .get("revokedAt")
             .and_then(|v| v.as_str())
             .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.with_timezone(&Utc));
 
-        let token_family = p.get("tokenFamily").and_then(|v| v.as_str()).map(String::from);
-        let replaced_by = p.get("replacedBy").and_then(|v| v.as_str()).map(String::from);
+        let token_family = p
+            .get("tokenFamily")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let replaced_by = p
+            .get("replacedBy")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
-        let last_used_at = p.get("lastUsedAt")
+        let last_used_at = p
+            .get("lastUsedAt")
             .and_then(|v| v.as_str())
             .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.with_timezone(&Utc));
 
-        let created_from_ip = p.get("createdFromIp").and_then(|v| v.as_str()).map(String::from);
-        let user_agent = p.get("userAgent").and_then(|v| v.as_str()).map(String::from);
+        let created_from_ip = p
+            .get("createdFromIp")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let user_agent = p
+            .get("userAgent")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         let created_at = m.created_at;
-        let expires_at = m.expires_at
+        let expires_at = m
+            .expires_at
             .unwrap_or_else(|| created_at + Duration::days(30));
 
         RefreshToken {
             id,
-            token_hash: p.get("tokenHash").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            principal_id: p.get("accountId").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            token_hash: p
+                .get("tokenHash")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            principal_id: p
+                .get("accountId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             oauth_client_id: p.get("clientId").and_then(|v| v.as_str()).map(String::from),
             scopes,
             accessible_clients,
@@ -168,7 +205,11 @@ impl RefreshTokenRepository {
         match row {
             Some(m) => {
                 let token = RefreshToken::from(m);
-                if token.revoked { Ok(None) } else { Ok(Some(token)) }
+                if token.revoked {
+                    Ok(None)
+                } else {
+                    Ok(Some(token))
+                }
             }
             None => Ok(None),
         }
@@ -200,7 +241,11 @@ impl RefreshTokenRepository {
         .bind(principal_id)
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows.into_iter().map(RefreshToken::from).filter(|t| !t.revoked).collect())
+        Ok(rows
+            .into_iter()
+            .map(RefreshToken::from)
+            .filter(|t| !t.revoked)
+            .collect())
     }
 
     /// Revoke a token by its ID.
@@ -407,12 +452,11 @@ impl RefreshTokenRepository {
 
     /// Count all refresh token payloads
     pub async fn count(&self) -> Result<u64> {
-        let (count,) = sqlx::query_as::<_, (i64,)>(
-            "SELECT COUNT(*) FROM oauth_oidc_payloads WHERE type = $1",
-        )
-        .bind(PAYLOAD_TYPE)
-        .fetch_one(&self.pool)
-        .await?;
+        let (count,) =
+            sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM oauth_oidc_payloads WHERE type = $1")
+                .bind(PAYLOAD_TYPE)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(count as u64)
     }
 

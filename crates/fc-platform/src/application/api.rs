@@ -4,26 +4,28 @@
 //! Applications are global platform entities (not client-scoped).
 
 use axum::{
-    routing::{get, post, put},
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
+    routing::{get, post, put},
     Json, Router,
 };
-use utoipa::{ToSchema, IntoParams};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
 
-use crate::{Application, ServiceAccount, AuthRole};
-use crate::{ApplicationRepository, ServiceAccountRepository, RoleRepository, ApplicationClientConfigRepository, ClientRepository};
-use crate::shared::error::PlatformError;
+use crate::application::operations::{
+    ActivateApplicationCommand, ActivateApplicationUseCase, CreateApplicationCommand,
+    CreateApplicationUseCase, DeactivateApplicationCommand, DeactivateApplicationUseCase,
+    UpdateApplicationCommand, UpdateApplicationUseCase,
+};
 use crate::shared::api_common::PaginationParams;
+use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
 use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseResult};
-use crate::application::operations::{
-    CreateApplicationCommand, CreateApplicationUseCase,
-    UpdateApplicationCommand, UpdateApplicationUseCase,
-    ActivateApplicationCommand, ActivateApplicationUseCase,
-    DeactivateApplicationCommand, DeactivateApplicationUseCase,
+use crate::{Application, AuthRole, ServiceAccount};
+use crate::{
+    ApplicationClientConfigRepository, ApplicationRepository, ClientRepository, RoleRepository,
+    ServiceAccountRepository,
 };
 
 /// Create application request
@@ -184,9 +186,12 @@ pub struct ApplicationsState<U: UnitOfWork + 'static> {
     pub update_use_case: Arc<UpdateApplicationUseCase<U>>,
     pub activate_use_case: Arc<ActivateApplicationUseCase<U>>,
     pub deactivate_use_case: Arc<DeactivateApplicationUseCase<U>>,
-    pub enable_for_client_use_case: Arc<crate::application::operations::EnableApplicationForClientUseCase<U>>,
-    pub disable_for_client_use_case: Arc<crate::application::operations::DisableApplicationForClientUseCase<U>>,
-    pub update_client_config_use_case: Arc<crate::application::operations::UpdateApplicationClientConfigUseCase<U>>,
+    pub enable_for_client_use_case:
+        Arc<crate::application::operations::EnableApplicationForClientUseCase<U>>,
+    pub disable_for_client_use_case:
+        Arc<crate::application::operations::DisableApplicationForClientUseCase<U>>,
+    pub update_client_config_use_case:
+        Arc<crate::application::operations::UpdateApplicationClientConfigUseCase<U>>,
     /// Concrete `PgUnitOfWork` for orchestrated operations (provision-service-account)
     /// that span two aggregates. Routed via `run(closure)` — handler owns the
     /// tx boundary. Trait-backed use cases still go through `U`.
@@ -227,9 +232,12 @@ pub async fn create_application<U: UnitOfWork>(
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
     match state.create_use_case.run(command, ctx).await {
-        UseCaseResult::Success(event) => {
-            Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(event.application_id))))
-        }
+        UseCaseResult::Success(event) => Ok((
+            StatusCode::CREATED,
+            Json(crate::shared::api_common::CreatedResponse::new(
+                event.application_id,
+            )),
+        )),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
 }
@@ -254,7 +262,10 @@ pub async fn get_application<U: UnitOfWork>(
     _auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<ApplicationResponse>, PlatformError> {
-    let app = state.application_repo.find_by_id(&id).await?
+    let app = state
+        .application_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Application", &id))?;
 
     Ok(Json(app.into()))
@@ -292,12 +303,13 @@ pub async fn list_applications<U: UnitOfWork>(
         state.application_repo.find_active().await?
     };
 
-    let applications: Vec<ApplicationResponse> = apps.into_iter()
-        .map(|a| a.into())
-        .collect();
+    let applications: Vec<ApplicationResponse> = apps.into_iter().map(|a| a.into()).collect();
     let total = applications.len();
 
-    Ok(Json(ApplicationListResponse { applications, total }))
+    Ok(Json(ApplicationListResponse {
+        applications,
+        total,
+    }))
 }
 
 /// Update application
@@ -398,7 +410,10 @@ pub async fn activate_application<U: UnitOfWork>(
 
     match state.activate_use_case.run(command, ctx).await {
         UseCaseResult::Success(_event) => {
-            let app = state.application_repo.find_by_id(&id).await?
+            let app = state
+                .application_repo
+                .find_by_id(&id)
+                .await?
                 .ok_or_else(|| PlatformError::not_found("Application", &id))?;
             Ok(Json(app.into()))
         }
@@ -433,7 +448,10 @@ pub async fn deactivate_application<U: UnitOfWork>(
 
     match state.deactivate_use_case.run(command, ctx).await {
         UseCaseResult::Success(_event) => {
-            let app = state.application_repo.find_by_id(&id).await?
+            let app = state
+                .application_repo
+                .find_by_id(&id)
+                .await?
                 .ok_or_else(|| PlatformError::not_found("Application", &id))?;
             Ok(Json(app.into()))
         }
@@ -461,7 +479,10 @@ pub async fn get_application_by_code<U: UnitOfWork>(
     _auth: Authenticated,
     Path(code): Path<String>,
 ) -> Result<Json<ApplicationResponse>, PlatformError> {
-    let app = state.application_repo.find_by_code(&code).await?
+    let app = state
+        .application_repo
+        .find_by_code(&code)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Application", &code))?;
 
     Ok(Json(app.into()))
@@ -494,19 +515,20 @@ pub async fn provision_service_account<U: UnitOfWork>(
     Path(id): Path<String>,
 ) -> Result<Json<ServiceAccountResponse>, PlatformError> {
     use crate::application::operations::{
-        AttachServiceAccountToApplicationCommand,
-        AttachServiceAccountToApplicationUseCase,
+        AttachServiceAccountToApplicationCommand, AttachServiceAccountToApplicationUseCase,
     };
     use crate::service_account::operations::{
-        CreateServiceAccountCommand,
-        CreateServiceAccountUseCase,
+        CreateServiceAccountCommand, CreateServiceAccountUseCase,
     };
 
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
     // Pre-validate: fail early before opening a tx. Mirrors the business
     // rule inside AttachServiceAccountToApplicationUseCase.
-    let app = state.application_repo.find_by_id(&id).await?
+    let app = state
+        .application_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Application", &id))?;
     if app.service_account_id.is_some() {
         return Err(PlatformError::conflict(
@@ -525,41 +547,51 @@ pub async fn provision_service_account<U: UnitOfWork>(
 
     // One DB tx for both use cases. If the attach fails for any reason
     // (rare — we pre-checked), the ServiceAccount insert rolls back too.
-    let result = state.pg_unit_of_work.run(|session| async move {
-        let create_sa_uc = CreateServiceAccountUseCase::new(sa_repo, session.clone());
-        let attach_uc = AttachServiceAccountToApplicationUseCase::new(app_repo, session);
+    let result = state
+        .pg_unit_of_work
+        .run(|session| async move {
+            let create_sa_uc = CreateServiceAccountUseCase::new(sa_repo, session.clone());
+            let attach_uc = AttachServiceAccountToApplicationUseCase::new(app_repo, session);
 
-        let create_cmd = CreateServiceAccountCommand {
-            code: sa_code.clone(),
-            name: sa_name,
-            description: Some(sa_description),
-            client_ids: Vec::new(),
-            application_id: Some(app_id.clone()),
-        };
-        let ctx = crate::usecase::ExecutionContext::create(&principal_id);
-        let created = match create_sa_uc.run(create_cmd, ctx.clone()).await.into_result() {
-            Ok(c) => c,
-            Err(err) => return crate::usecase::UseCaseResult::failure(err),
-        };
-        let sa_id = created.event.service_account_id.clone();
+            let create_cmd = CreateServiceAccountCommand {
+                code: sa_code.clone(),
+                name: sa_name,
+                description: Some(sa_description),
+                client_ids: Vec::new(),
+                application_id: Some(app_id.clone()),
+            };
+            let ctx = crate::usecase::ExecutionContext::create(&principal_id);
+            let created = match create_sa_uc
+                .run(create_cmd, ctx.clone())
+                .await
+                .into_result()
+            {
+                Ok(c) => c,
+                Err(err) => return crate::usecase::UseCaseResult::failure(err),
+            };
+            let sa_id = created.event.service_account_id.clone();
 
-        let attach_cmd = AttachServiceAccountToApplicationCommand {
-            application_id: app_id,
-            service_account_id: sa_id.clone(),
-            service_account_code: sa_code,
-        };
-        // `.map()` transforms the attach event into the SA id without
-        // bypassing the Result seal — success can only come from a UoW
-        // commit, then we re-shape the success payload.
-        attach_uc.run(attach_cmd, ctx).await.map(move |_| sa_id)
-    }).await;
+            let attach_cmd = AttachServiceAccountToApplicationCommand {
+                application_id: app_id,
+                service_account_id: sa_id.clone(),
+                service_account_code: sa_code,
+            };
+            // `.map()` transforms the attach event into the SA id without
+            // bypassing the Result seal — success can only come from a UoW
+            // commit, then we re-shape the success payload.
+            attach_uc.run(attach_cmd, ctx).await.map(move |_| sa_id)
+        })
+        .await;
 
     let sa_id = result.into_result()?;
 
     // Fetch the committed service account for the response. This is a read
     // after the tx closed — safe, the SA row is guaranteed to exist on the
     // success path.
-    let service_account = state.service_account_repo.find_by_id(&sa_id).await?
+    let service_account = state
+        .service_account_repo
+        .find_by_id(&sa_id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("ServiceAccount", &sa_id))?;
 
     Ok(Json(service_account.into()))
@@ -586,14 +618,21 @@ pub async fn get_application_service_account<U: UnitOfWork>(
     Path(id): Path<String>,
 ) -> Result<Json<ServiceAccountResponse>, PlatformError> {
     // Get the application
-    let app = state.application_repo.find_by_id(&id).await?
+    let app = state
+        .application_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Application", &id))?;
 
     // Get the service account
-    let sa_id = app.service_account_id
+    let sa_id = app
+        .service_account_id
         .ok_or_else(|| PlatformError::not_found("ServiceAccount", "for application"))?;
 
-    let service_account = state.service_account_repo.find_by_id(&sa_id).await?
+    let service_account = state
+        .service_account_repo
+        .find_by_id(&sa_id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("ServiceAccount", &sa_id))?;
 
     Ok(Json(service_account.into()))
@@ -624,15 +663,16 @@ pub async fn list_application_roles<U: UnitOfWork>(
     Path(id): Path<String>,
 ) -> Result<Json<Vec<ApplicationRoleResponse>>, PlatformError> {
     // Get the application
-    let app = state.application_repo.find_by_id(&id).await?
+    let app = state
+        .application_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Application", &id))?;
 
     // Find roles by application code
     let roles = state.role_repo.find_by_application(&app.code).await?;
 
-    let response: Vec<ApplicationRoleResponse> = roles.into_iter()
-        .map(|r| r.into())
-        .collect();
+    let response: Vec<ApplicationRoleResponse> = roles.into_iter().map(|r| r.into()).collect();
 
     Ok(Json(response))
 }
@@ -690,7 +730,10 @@ pub async fn list_client_configs<U: UnitOfWork>(
     Path(id): Path<String>,
 ) -> Result<Json<ClientConfigsResponse>, PlatformError> {
     // Verify application exists
-    let app = state.application_repo.find_by_id(&id).await?
+    let app = state
+        .application_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Application", &id))?;
 
     let configs = state.client_config_repo.find_by_application(&id).await?;
@@ -755,17 +798,29 @@ pub async fn update_client_config<U: UnitOfWork>(
         config: req.config,
     };
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
-    state.update_client_config_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .update_client_config_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
     // Refetch to build the response — the use case returns an event, not the
     // hydrated config, and the response carries the application's effective
     // base URL + client name/identifier alongside the updated config.
-    let app = state.application_repo.find_by_id(&id).await?
+    let app = state
+        .application_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Application", &id))?;
-    let client = state.client_repo.find_by_id(&client_id).await?
+    let client = state
+        .client_repo
+        .find_by_id(&client_id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Client", &client_id))?;
-    let config = state.client_config_repo
-        .find_by_application_and_client(&id, &client_id).await?
+    let config = state
+        .client_config_repo
+        .find_by_application_and_client(&id, &client_id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("ApplicationClientConfig", "for (app, client)"))?;
 
     Ok(Json(ClientConfigResponse {
@@ -810,7 +865,11 @@ pub async fn enable_for_client<U: UnitOfWork>(
         client_id: client_id.clone(),
     };
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
-    state.enable_for_client_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .enable_for_client_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
     build_client_config_response(&state, &id, &client_id).await
 }
@@ -844,7 +903,11 @@ pub async fn disable_for_client<U: UnitOfWork>(
         client_id: client_id.clone(),
     };
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
-    state.disable_for_client_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .disable_for_client_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
     build_client_config_response(&state, &id, &client_id).await
 }
@@ -857,12 +920,20 @@ async fn build_client_config_response<U: UnitOfWork>(
     app_id: &str,
     client_id: &str,
 ) -> Result<Json<ClientConfigResponse>, PlatformError> {
-    let app = state.application_repo.find_by_id(app_id).await?
+    let app = state
+        .application_repo
+        .find_by_id(app_id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Application", app_id))?;
-    let client = state.client_repo.find_by_id(client_id).await?
+    let client = state
+        .client_repo
+        .find_by_id(client_id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Client", client_id))?;
-    let config = state.client_config_repo
-        .find_by_application_and_client(app_id, client_id).await?
+    let config = state
+        .client_config_repo
+        .find_by_application_and_client(app_id, client_id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("ApplicationClientConfig", "for (app, client)"))?;
 
     Ok(Json(ClientConfigResponse {
@@ -881,17 +952,37 @@ async fn build_client_config_response<U: UnitOfWork>(
 /// Create applications router
 pub fn applications_router<U: UnitOfWork + Clone>(state: ApplicationsState<U>) -> Router {
     Router::new()
-        .route("/", post(create_application::<U>).get(list_applications::<U>))
-        .route("/{id}", get(get_application::<U>).put(update_application::<U>).delete(delete_application::<U>))
+        .route(
+            "/",
+            post(create_application::<U>).get(list_applications::<U>),
+        )
+        .route(
+            "/{id}",
+            get(get_application::<U>)
+                .put(update_application::<U>)
+                .delete(delete_application::<U>),
+        )
         .route("/{id}/activate", post(activate_application::<U>))
         .route("/{id}/deactivate", post(deactivate_application::<U>))
-        .route("/{id}/provision-service-account", post(provision_service_account::<U>))
-        .route("/{id}/service-account", get(get_application_service_account::<U>))
+        .route(
+            "/{id}/provision-service-account",
+            post(provision_service_account::<U>),
+        )
+        .route(
+            "/{id}/service-account",
+            get(get_application_service_account::<U>),
+        )
         .route("/by-id/{id}/roles", get(list_application_roles::<U>))
         .route("/{id}/clients", get(list_client_configs::<U>))
         .route("/{id}/clients/{client_id}", put(update_client_config::<U>))
-        .route("/{id}/clients/{client_id}/enable", post(enable_for_client::<U>))
-        .route("/{id}/clients/{client_id}/disable", post(disable_for_client::<U>))
+        .route(
+            "/{id}/clients/{client_id}/enable",
+            post(enable_for_client::<U>),
+        )
+        .route(
+            "/{id}/clients/{client_id}/disable",
+            post(disable_for_client::<U>),
+        )
         .route("/by-code/{code}", get(get_application_by_code::<U>))
         .with_state(state)
 }
@@ -1009,8 +1100,14 @@ mod tests {
         assert_eq!(req.name, "New Application");
         assert_eq!(req.description, Some("A new app".to_string()));
         assert_eq!(req.application_type, Some("INTEGRATION".to_string()));
-        assert_eq!(req.default_base_url, Some("https://api.example.com".to_string()));
-        assert_eq!(req.icon_url, Some("https://example.com/icon.png".to_string()));
+        assert_eq!(
+            req.default_base_url,
+            Some("https://api.example.com".to_string())
+        );
+        assert_eq!(
+            req.icon_url,
+            Some("https://example.com/icon.png".to_string())
+        );
     }
 
     #[test]
@@ -1108,7 +1205,10 @@ mod tests {
 
         let req: ClientConfigRequest = serde_json::from_value(json).unwrap();
         assert_eq!(req.enabled, Some(true));
-        assert_eq!(req.base_url_override, Some("https://custom.example.com".to_string()));
+        assert_eq!(
+            req.base_url_override,
+            Some("https://custom.example.com".to_string())
+        );
         assert!(req.config.is_some());
     }
 }

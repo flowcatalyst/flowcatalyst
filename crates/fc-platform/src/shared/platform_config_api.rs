@@ -47,6 +47,5 @@ pub async fn get_platform_config() -> Json<PlatformConfig> {
 
 /// Create the platform config router
 pub fn platform_config_router() -> Router {
-    Router::new()
-        .route("/platform", get(get_platform_config))
+    Router::new().route("/platform", get(get_platform_config))
 }

@@ -2,15 +2,13 @@
 //!
 //! Removes a single registered passkey. The caller must be the owning principal.
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::webauthn::repository::WebauthnCredentialRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::PasskeyRevoked;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::webauthn::repository::WebauthnCredentialRepository;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,7 +23,10 @@ pub struct RevokePasskeyUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> RevokePasskeyUseCase<U> {
     pub fn new(credential_repo: Arc<WebauthnCredentialRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { credential_repo, unit_of_work }
+        Self {
+            credential_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -36,12 +37,19 @@ impl<U: UnitOfWork> UseCase for RevokePasskeyUseCase<U> {
 
     async fn validate(&self, command: &RevokePasskeyCommand) -> Result<(), UseCaseError> {
         if command.credential_id.trim().is_empty() {
-            return Err(UseCaseError::validation("CREDENTIAL_ID_REQUIRED", "credentialId is required"));
+            return Err(UseCaseError::validation(
+                "CREDENTIAL_ID_REQUIRED",
+                "credentialId is required",
+            ));
         }
         Ok(())
     }
 
-    async fn authorize(&self, _command: &RevokePasskeyCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &RevokePasskeyCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         // Owner check happens in execute() because we need to load the row first.
         Ok(())
     }
@@ -51,15 +59,24 @@ impl<U: UnitOfWork> UseCase for RevokePasskeyUseCase<U> {
         command: RevokePasskeyCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<PasskeyRevoked> {
-        let credential = match self.credential_repo.find_by_id(&command.credential_id).await {
+        let credential = match self
+            .credential_repo
+            .find_by_id(&command.credential_id)
+            .await
+        {
             Ok(Some(c)) => c,
-            Ok(None) => return UseCaseResult::failure(UseCaseError::not_found(
-                "CREDENTIAL_NOT_FOUND",
-                format!("passkey '{}' not found", command.credential_id),
-            )),
-            Err(e) => return UseCaseResult::failure(UseCaseError::commit(format!(
-                "Failed to load passkey: {}", e,
-            ))),
+            Ok(None) => {
+                return UseCaseResult::failure(UseCaseError::not_found(
+                    "CREDENTIAL_NOT_FOUND",
+                    format!("passkey '{}' not found", command.credential_id),
+                ))
+            }
+            Err(e) => {
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to load passkey: {}",
+                    e,
+                )))
+            }
         };
 
         if ctx.principal_id != credential.principal_id {

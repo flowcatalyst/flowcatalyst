@@ -3,19 +3,19 @@
 //! REST endpoints for client management.
 
 use axum::{
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use super::entity::Client;
 use super::repository::ClientRepository;
-use crate::shared::error::PlatformError;
 use crate::shared::api_common::PaginationParams;
+use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
 
 /// Create client request
@@ -170,17 +170,42 @@ pub struct UpdateClientApplicationsRequest {
 pub struct ClientsState {
     pub client_repo: Arc<ClientRepository>,
     pub application_repo: Option<Arc<crate::application::repository::ApplicationRepository>>,
-    pub application_client_config_repo: Option<Arc<crate::application::ApplicationClientConfigRepository>>,
+    pub application_client_config_repo:
+        Option<Arc<crate::application::ApplicationClientConfigRepository>>,
     pub audit_service: Option<Arc<crate::audit::AuditService>>,
-    pub create_use_case: Arc<crate::client::operations::CreateClientUseCase<crate::usecase::PgUnitOfWork>>,
-    pub update_use_case: Arc<crate::client::operations::UpdateClientUseCase<crate::usecase::PgUnitOfWork>>,
-    pub delete_use_case: Arc<crate::client::operations::DeleteClientUseCase<crate::usecase::PgUnitOfWork>>,
-    pub activate_use_case: Arc<crate::client::operations::ActivateClientUseCase<crate::usecase::PgUnitOfWork>>,
-    pub suspend_use_case: Arc<crate::client::operations::SuspendClientUseCase<crate::usecase::PgUnitOfWork>>,
-    pub add_note_use_case: Arc<crate::client::operations::AddClientNoteUseCase<crate::usecase::PgUnitOfWork>>,
-    pub update_applications_use_case: Option<Arc<crate::application::operations::UpdateClientApplicationsUseCase<crate::usecase::PgUnitOfWork>>>,
-    pub enable_application_use_case: Option<Arc<crate::application::operations::EnableApplicationForClientUseCase<crate::usecase::PgUnitOfWork>>>,
-    pub disable_application_use_case: Option<Arc<crate::application::operations::DisableApplicationForClientUseCase<crate::usecase::PgUnitOfWork>>>,
+    pub create_use_case:
+        Arc<crate::client::operations::CreateClientUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_use_case:
+        Arc<crate::client::operations::UpdateClientUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_use_case:
+        Arc<crate::client::operations::DeleteClientUseCase<crate::usecase::PgUnitOfWork>>,
+    pub activate_use_case:
+        Arc<crate::client::operations::ActivateClientUseCase<crate::usecase::PgUnitOfWork>>,
+    pub suspend_use_case:
+        Arc<crate::client::operations::SuspendClientUseCase<crate::usecase::PgUnitOfWork>>,
+    pub add_note_use_case:
+        Arc<crate::client::operations::AddClientNoteUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_applications_use_case: Option<
+        Arc<
+            crate::application::operations::UpdateClientApplicationsUseCase<
+                crate::usecase::PgUnitOfWork,
+            >,
+        >,
+    >,
+    pub enable_application_use_case: Option<
+        Arc<
+            crate::application::operations::EnableApplicationForClientUseCase<
+                crate::usecase::PgUnitOfWork,
+            >,
+        >,
+    >,
+    pub disable_application_use_case: Option<
+        Arc<
+            crate::application::operations::DisableApplicationForClientUseCase<
+                crate::usecase::PgUnitOfWork,
+            >,
+        >,
+    >,
 }
 
 /// Create a new client
@@ -214,7 +239,12 @@ pub async fn create_client(
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     let event = state.create_use_case.run(cmd, ctx).await.into_result()?;
 
-    Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(event.client_id))))
+    Ok((
+        StatusCode::CREATED,
+        Json(crate::shared::api_common::CreatedResponse::new(
+            event.client_id,
+        )),
+    ))
 }
 
 /// Get client by ID
@@ -242,7 +272,10 @@ pub async fn get_client(
         return Err(PlatformError::forbidden("No access to this client"));
     }
 
-    let client = state.client_repo.find_by_id(&id).await?
+    let client = state
+        .client_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Client", &id))?;
 
     Ok(Json(client.into()))
@@ -272,13 +305,17 @@ pub async fn list_clients(
     let clients = state.client_repo.find_active().await?;
 
     // Filter by access
-    let filtered: Vec<ClientResponse> = clients.into_iter()
+    let filtered: Vec<ClientResponse> = clients
+        .into_iter()
         .filter(|c| auth.0.is_anchor() || auth.0.can_access_client(&c.id))
         .map(|c| c.into())
         .collect();
 
     let total = filtered.len();
-    Ok(Json(ClientListResponse { clients: filtered, total }))
+    Ok(Json(ClientListResponse {
+        clients: filtered,
+        total,
+    }))
 }
 
 /// Update client
@@ -382,7 +419,9 @@ pub async fn activate_client(
 
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
-    let cmd = ActivateClientCommand { client_id: id.clone() };
+    let cmd = ActivateClientCommand {
+        client_id: id.clone(),
+    };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     state.activate_use_case.run(cmd, ctx).await.into_result()?;
 
@@ -477,7 +516,9 @@ pub async fn deactivate_client(
     crate::shared::authorization_service::checks::require_anchor(&auth.0)?;
 
     let reason_for_log = req.reason.clone();
-    let cmd = DeleteClientCommand { client_id: id.clone() };
+    let cmd = DeleteClientCommand {
+        client_id: id.clone(),
+    };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     state.delete_use_case.run(cmd, ctx).await.into_result()?;
 
@@ -524,17 +565,19 @@ pub async fn search_clients(
     let clients: Vec<Client> = if auth.0.is_anchor() {
         clients
     } else {
-        clients.into_iter()
+        clients
+            .into_iter()
             .filter(|c| auth.0.can_access_client(&c.id))
             .collect()
     };
 
     let total = clients.len();
-    let responses: Vec<ClientResponse> = clients.into_iter()
-        .map(|c| c.into())
-        .collect();
+    let responses: Vec<ClientResponse> = clients.into_iter().map(|c| c.into()).collect();
 
-    Ok(Json(ClientListResponse { clients: responses, total }))
+    Ok(Json(ClientListResponse {
+        clients: responses,
+        total,
+    }))
 }
 
 /// Get client by identifier
@@ -557,7 +600,10 @@ pub async fn get_client_by_identifier(
     auth: Authenticated,
     Path(identifier): Path<String>,
 ) -> Result<Json<ClientResponse>, PlatformError> {
-    let client = state.client_repo.find_by_identifier(&identifier).await?
+    let client = state
+        .client_repo
+        .find_by_identifier(&identifier)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Client", &identifier))?;
 
     // Check access
@@ -640,7 +686,10 @@ pub async fn get_client_applications(
     }
 
     // Verify client exists
-    let _client = state.client_repo.find_by_id(&id).await?
+    let _client = state
+        .client_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Client", &id))?;
 
     // Get all applications and their configs for this client
@@ -652,7 +701,8 @@ pub async fn get_client_applications(
 
         if let Some(ref config_repo) = state.application_client_config_repo {
             let configs = config_repo.find_by_client(&id).await?;
-            let enabled_app_ids: std::collections::HashSet<_> = configs.iter()
+            let enabled_app_ids: std::collections::HashSet<_> = configs
+                .iter()
                 .filter(|c| c.enabled)
                 .map(|c| c.application_id.as_str())
                 .collect();
@@ -685,7 +735,10 @@ pub async fn get_client_applications(
     }
 
     let total = applications.len();
-    Ok(Json(ClientApplicationsResponse { applications, total }))
+    Ok(Json(ClientApplicationsResponse {
+        applications,
+        total,
+    }))
 }
 
 /// Enable application for client
@@ -881,7 +934,10 @@ mod tests {
 
         assert_eq!(json["status"], "SUSPENDED");
         assert_eq!(json["statusReason"], "Payment overdue");
-        assert!(json["statusChangedAt"].is_string(), "statusChangedAt should be ISO 8601 string");
+        assert!(
+            json["statusChangedAt"].is_string(),
+            "statusChangedAt should be ISO 8601 string"
+        );
     }
 
     // --- CreateClientRequest deserialization ---

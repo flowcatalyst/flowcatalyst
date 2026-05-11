@@ -10,17 +10,16 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use lapin::{
-    options::*,
-    types::FieldTable,
-    BasicProperties, Channel, Connection, ConnectionProperties, Consumer,
+    options::*, types::FieldTable, BasicProperties, Channel, Connection, ConnectionProperties,
+    Consumer,
 };
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
-use fc_common::{Message, QueuedMessage};
 use crate::{QueueConsumer, QueueError, Result};
+use fc_common::{Message, QueuedMessage};
 
 /// Configuration for ActiveMQ consumer
 #[derive(Debug, Clone)]
@@ -97,8 +96,7 @@ impl ActiveMqConsumer {
 
         let connection = Connection::connect(
             &self.config.uri,
-            ConnectionProperties::default()
-                .with_connection_name("flowcatalyst-router".into()),
+            ConnectionProperties::default().with_connection_name("flowcatalyst-router".into()),
         )
         .await
         .map_err(|e| QueueError::Database(format!("AMQP connection failed: {}", e)))?;
@@ -224,7 +222,8 @@ impl QueueConsumer for ActiveMqConsumer {
                     // Parse the message body
                     match serde_json::from_slice::<Message>(&delivery.data) {
                         Ok(message) => {
-                            let receipt_handle = self.generate_receipt_handle(delivery.delivery_tag);
+                            let receipt_handle =
+                                self.generate_receipt_handle(delivery.delivery_tag);
                             let broker_message_id = delivery
                                 .properties
                                 .message_id()
@@ -429,8 +428,7 @@ impl ActiveMqPublisher {
     async fn connect(&self) -> Result<()> {
         let connection = Connection::connect(
             &self.config.uri,
-            ConnectionProperties::default()
-                .with_connection_name("flowcatalyst-publisher".into()),
+            ConnectionProperties::default().with_connection_name("flowcatalyst-publisher".into()),
         )
         .await
         .map_err(|e| QueueError::Database(format!("AMQP connection failed: {}", e)))?;

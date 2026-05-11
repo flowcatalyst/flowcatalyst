@@ -1,7 +1,7 @@
 //! Authentication Configuration Entities — matches TypeScript domain
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -12,13 +12,18 @@ pub enum AuthProvider {
     Oidc,
 }
 
-
 impl AuthProvider {
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Internal => "INTERNAL", Self::Oidc => "OIDC" }
+        match self {
+            Self::Internal => "INTERNAL",
+            Self::Oidc => "OIDC",
+        }
     }
     pub fn from_str(s: &str) -> Self {
-        match s { "OIDC" => Self::Oidc, _ => Self::Internal }
+        match s {
+            "OIDC" => Self::Oidc,
+            _ => Self::Internal,
+        }
     }
 }
 
@@ -32,13 +37,20 @@ pub enum AuthConfigType {
     Client,
 }
 
-
 impl AuthConfigType {
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Anchor => "ANCHOR", Self::Partner => "PARTNER", Self::Client => "CLIENT" }
+        match self {
+            Self::Anchor => "ANCHOR",
+            Self::Partner => "PARTNER",
+            Self::Client => "CLIENT",
+        }
     }
     pub fn from_str(s: &str) -> Self {
-        match s { "ANCHOR" => Self::Anchor, "PARTNER" => Self::Partner, _ => Self::Client }
+        match s {
+            "ANCHOR" => Self::Anchor,
+            "PARTNER" => Self::Partner,
+            _ => Self::Client,
+        }
     }
 }
 
@@ -89,10 +101,7 @@ pub struct ClientAuthConfig {
 }
 
 impl ClientAuthConfig {
-    pub fn new_internal(
-        email_domain: impl Into<String>,
-        config_type: AuthConfigType,
-    ) -> Self {
+    pub fn new_internal(email_domain: impl Into<String>, config_type: AuthConfigType) -> Self {
         let now = Utc::now();
         Self {
             id: crate::TsidGenerator::generate(crate::EntityType::ClientAuthConfig),
@@ -122,7 +131,11 @@ impl ClientAuthConfig {
         config
     }
 
-    pub fn with_oidc(mut self, issuer_url: impl Into<String>, client_id: impl Into<String>) -> Self {
+    pub fn with_oidc(
+        mut self,
+        issuer_url: impl Into<String>,
+        client_id: impl Into<String>,
+    ) -> Self {
         self.auth_provider = AuthProvider::Oidc;
         self.oidc_issuer_url = Some(issuer_url.into());
         self.oidc_client_id = Some(client_id.into());
@@ -185,4 +198,3 @@ impl IdpRoleMapping {
         }
     }
 }
-

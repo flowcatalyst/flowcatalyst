@@ -1,8 +1,8 @@
 //! PlatformConfigAccess Repository — PostgreSQL via SQLx
 
 use async_trait::async_trait;
-use sqlx::PgPool;
 use chrono::{DateTime, Utc};
+use sqlx::PgPool;
 
 use super::access_entity::PlatformConfigAccess;
 use crate::shared::error::Result;
@@ -49,7 +49,11 @@ impl PlatformConfigAccessRepository {
         Ok(rows.into_iter().map(PlatformConfigAccess::from).collect())
     }
 
-    pub async fn find_by_application_and_role(&self, app_code: &str, role_code: &str) -> Result<Option<PlatformConfigAccess>> {
+    pub async fn find_by_application_and_role(
+        &self,
+        app_code: &str,
+        role_code: &str,
+    ) -> Result<Option<PlatformConfigAccess>> {
         let row = sqlx::query_as::<_, PlatformConfigAccessRow>(
             "SELECT * FROM app_platform_config_access WHERE application_code = $1 AND role_code = $2"
         )
@@ -60,7 +64,11 @@ impl PlatformConfigAccessRepository {
         Ok(row.map(PlatformConfigAccess::from))
     }
 
-    pub async fn find_by_role_codes(&self, app_code: &str, role_codes: &[String]) -> Result<Vec<PlatformConfigAccess>> {
+    pub async fn find_by_role_codes(
+        &self,
+        app_code: &str,
+        role_codes: &[String],
+    ) -> Result<Vec<PlatformConfigAccess>> {
         let rows = sqlx::query_as::<_, PlatformConfigAccessRow>(
             "SELECT * FROM app_platform_config_access WHERE application_code = $1 AND role_code = ANY($2)"
         )
@@ -75,7 +83,7 @@ impl PlatformConfigAccessRepository {
         sqlx::query(
             r#"INSERT INTO app_platform_config_access
                 (id, application_code, role_code, can_read, can_write, created_at)
-            VALUES ($1, $2, $3, $4, $5, NOW())"#
+            VALUES ($1, $2, $3, $4, $5, NOW())"#,
         )
         .bind(&access.id)
         .bind(&access.application_code)
@@ -91,7 +99,7 @@ impl PlatformConfigAccessRepository {
         sqlx::query(
             r#"UPDATE app_platform_config_access SET
                 application_code = $2, role_code = $3, can_read = $4, can_write = $5
-            WHERE id = $1"#
+            WHERE id = $1"#,
         )
         .bind(&access.id)
         .bind(&access.application_code)
@@ -103,9 +111,13 @@ impl PlatformConfigAccessRepository {
         Ok(())
     }
 
-    pub async fn delete_by_application_and_role(&self, app_code: &str, role_code: &str) -> Result<bool> {
+    pub async fn delete_by_application_and_role(
+        &self,
+        app_code: &str,
+        role_code: &str,
+    ) -> Result<bool> {
         let result = sqlx::query(
-            "DELETE FROM app_platform_config_access WHERE application_code = $1 AND role_code = $2"
+            "DELETE FROM app_platform_config_access WHERE application_code = $1 AND role_code = $2",
         )
         .bind(app_code)
         .bind(role_code)
@@ -116,12 +128,18 @@ impl PlatformConfigAccessRepository {
 }
 
 impl crate::usecase::HasId for PlatformConfigAccess {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]
 impl crate::usecase::Persist<PlatformConfigAccess> for PlatformConfigAccessRepository {
-    async fn persist(&self, a: &PlatformConfigAccess, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
+    async fn persist(
+        &self,
+        a: &PlatformConfigAccess,
+        tx: &mut crate::usecase::DbTx<'_>,
+    ) -> Result<()> {
         sqlx::query(
             r#"INSERT INTO app_platform_config_access
                 (id, application_code, role_code, can_read, can_write, created_at)
@@ -130,7 +148,7 @@ impl crate::usecase::Persist<PlatformConfigAccess> for PlatformConfigAccessRepos
                 application_code = EXCLUDED.application_code,
                 role_code = EXCLUDED.role_code,
                 can_read = EXCLUDED.can_read,
-                can_write = EXCLUDED.can_write"#
+                can_write = EXCLUDED.can_write"#,
         )
         .bind(&a.id)
         .bind(&a.application_code)
@@ -143,7 +161,11 @@ impl crate::usecase::Persist<PlatformConfigAccess> for PlatformConfigAccessRepos
         Ok(())
     }
 
-    async fn delete(&self, a: &PlatformConfigAccess, tx: &mut crate::usecase::DbTx<'_>) -> Result<()> {
+    async fn delete(
+        &self,
+        a: &PlatformConfigAccess,
+        tx: &mut crate::usecase::DbTx<'_>,
+    ) -> Result<()> {
         sqlx::query("DELETE FROM app_platform_config_access WHERE id = $1")
             .bind(&a.id)
             .execute(&mut **tx.inner)

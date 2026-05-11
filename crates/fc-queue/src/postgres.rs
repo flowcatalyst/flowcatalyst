@@ -2,10 +2,10 @@ use async_trait::async_trait;
 use chrono::Utc;
 use sqlx::{PgPool, Row};
 use std::sync::atomic::{AtomicBool, Ordering};
-use tracing::{debug, warn, info};
+use tracing::{debug, info, warn};
 
+use crate::{EmbeddedQueue, QueueConsumer, QueueError, QueueMetrics, QueuePublisher, Result};
 use fc_common::{Message, QueuedMessage};
-use crate::{QueueConsumer, QueuePublisher, EmbeddedQueue, QueueMetrics, Result, QueueError};
 
 /// Postgres-backed queue that mimics SQS FIFO semantics for local development.
 ///
@@ -159,13 +159,12 @@ impl QueueConsumer for PostgresQueue {
     }
 
     async fn ack(&self, receipt_handle: &str) -> Result<()> {
-        let result = sqlx::query(
-            "DELETE FROM queue_messages WHERE receipt_handle = $1 AND queue_name = $2",
-        )
-        .bind(receipt_handle)
-        .bind(&self.queue_name)
-        .execute(&self.pool)
-        .await?;
+        let result =
+            sqlx::query("DELETE FROM queue_messages WHERE receipt_handle = $1 AND queue_name = $2")
+                .bind(receipt_handle)
+                .bind(&self.queue_name)
+                .execute(&self.pool)
+                .await?;
 
         if result.rows_affected() == 0 {
             warn!(

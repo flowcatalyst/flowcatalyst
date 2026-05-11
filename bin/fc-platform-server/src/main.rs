@@ -19,29 +19,21 @@
 //! | `FC_JWT_ISSUER` | `flowcatalyst` | JWT issuer claim |
 //! | `RUST_LOG` | `info` | Log level |
 
+use axum::{response::Json, routing::get, Router};
 use std::sync::Arc;
-use axum::{
-    routing::get,
-    response::Json,
-    Router,
-};
-use tower_http::cors::{CorsLayer, AllowOrigin};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 // SetResponseHeaderLayer moved to PlatformRoutes
 use tower_http::trace::TraceLayer;
 // SPA serving moved to PlatformRoutes
-use axum::http::{Method, HeaderValue, header as http_header};
 use anyhow::Result;
-use tracing::info;
+use axum::http::{header as http_header, HeaderValue, Method};
 use tokio::net::TcpListener;
+use tracing::info;
 
 use fc_platform::api::middleware::{AppState, AuthLayer};
-use fc_platform::repository::{
-    Repositories,
-    CorsOriginRepository,
-};
-use fc_platform::usecase::PgUnitOfWork;
+use fc_platform::repository::{CorsOriginRepository, Repositories};
 use fc_platform::seed::DevDataSeeder;
-
+use fc_platform::usecase::PgUnitOfWork;
 
 use fc_common::config::{env_or, env_or_parse};
 
@@ -54,7 +46,10 @@ async fn main() -> Result<()> {
     // Configuration from environment
     let api_port: u16 = env_or_parse("FC_API_PORT", 3000);
     let metrics_port: u16 = env_or_parse("FC_METRICS_PORT", 9090);
-    let database_url = env_or("FC_DATABASE_URL", "postgresql://localhost:5432/flowcatalyst");
+    let database_url = env_or(
+        "FC_DATABASE_URL",
+        "postgresql://localhost:5432/flowcatalyst",
+    );
     let jwt_issuer = std::env::var("FC_JWT_ISSUER")
         .or_else(|_| std::env::var("FC_EXTERNAL_BASE_URL"))
         .or_else(|_| std::env::var("EXTERNAL_BASE_URL"))
@@ -62,7 +57,8 @@ async fn main() -> Result<()> {
 
     // Connect to PostgreSQL
     info!("Connecting to PostgreSQL...");
-    let pg_pool = fc_platform::shared::database::create_pool(&database_url).await
+    let pg_pool = fc_platform::shared::database::create_pool(&database_url)
+        .await
         .map_err(|e| anyhow::anyhow!("PostgreSQL connection failed: {}", e))?;
 
     // Run PostgreSQL migrations
@@ -73,7 +69,8 @@ async fn main() -> Result<()> {
     .await
     .map_err(|e| anyhow::anyhow!("PostgreSQL migrations failed: {}", e))?;
 
-    fc_platform::shared::database::seed_builtin_roles(&pg_pool).await
+    fc_platform::shared::database::seed_builtin_roles(&pg_pool)
+        .await
         .map_err(|e| anyhow::anyhow!("Built-in role seeding failed: {}", e))?;
 
     // Referential-integrity scan — warns about orphaned junction rows.
@@ -138,9 +135,9 @@ async fn main() -> Result<()> {
 
     // Sync code-defined roles to database (always, not just in dev mode)
     {
-        let role_sync = fc_platform::service::RoleSyncService::new(
-            std::sync::Arc::new(fc_platform::repository::RoleRepository::new(&pg_pool))
-        );
+        let role_sync = fc_platform::service::RoleSyncService::new(std::sync::Arc::new(
+            fc_platform::repository::RoleRepository::new(&pg_pool),
+        ));
         if let Err(e) = role_sync.sync_code_defined_roles().await {
             tracing::warn!("Role sync failed: {}", e);
         }
@@ -151,7 +148,8 @@ async fn main() -> Result<()> {
         issuer: jwt_issuer,
         ..fc_platform::shared::server_setup::AuthInitConfig::from_env("http://localhost:3000")
     };
-    let auth_services = fc_platform::shared::server_setup::init_auth_services(&repos, auth_init_config)?;
+    let auth_services =
+        fc_platform::shared::server_setup::init_auth_services(&repos, auth_init_config)?;
     info!("Auth services initialized");
 
     // Create AppState
@@ -192,35 +190,42 @@ async fn main() -> Result<()> {
         .layer({
             let cache = cors_origins_cache.clone();
             CorsLayer::new()
-                .allow_origin(AllowOrigin::predicate(move |origin: &HeaderValue, _parts| {
-                    let origin_str = match origin.to_str() {
-                        Ok(s) => s,
-                        Err(_) => return false,
-                    };
-                    let origins = cache.read().unwrap();
-                    // Check exact match first
-                    if origins.contains(origin_str) {
-                        return true;
-                    }
-                    // Check wildcard patterns (e.g., https://*.example.com)
-                    for pattern in origins.iter() {
-                        if pattern.contains('*') {
-                            let regex_str = format!(
-                                "^{}$",
-                                regex::escape(pattern).replace(r"\*", "[a-zA-Z0-9-]+")
-                            );
-                            if let Ok(re) = regex::Regex::new(&regex_str) {
-                                if re.is_match(origin_str) {
-                                    return true;
+                .allow_origin(AllowOrigin::predicate(
+                    move |origin: &HeaderValue, _parts| {
+                        let origin_str = match origin.to_str() {
+                            Ok(s) => s,
+                            Err(_) => return false,
+                        };
+                        let origins = cache.read().unwrap();
+                        // Check exact match first
+                        if origins.contains(origin_str) {
+                            return true;
+                        }
+                        // Check wildcard patterns (e.g., https://*.example.com)
+                        for pattern in origins.iter() {
+                            if pattern.contains('*') {
+                                let regex_str = format!(
+                                    "^{}$",
+                                    regex::escape(pattern).replace(r"\*", "[a-zA-Z0-9-]+")
+                                );
+                                if let Ok(re) = regex::Regex::new(&regex_str) {
+                                    if re.is_match(origin_str) {
+                                        return true;
+                                    }
                                 }
                             }
                         }
-                    }
-                    false
-                }))
+                        false
+                    },
+                ))
                 .allow_methods([
-                    Method::GET, Method::POST, Method::PUT, Method::PATCH,
-                    Method::DELETE, Method::OPTIONS, Method::HEAD,
+                    Method::GET,
+                    Method::POST,
+                    Method::PUT,
+                    Method::PATCH,
+                    Method::DELETE,
+                    Method::OPTIONS,
+                    Method::HEAD,
                 ])
                 .allow_headers([
                     http_header::AUTHORIZATION,
@@ -247,7 +252,10 @@ async fn main() -> Result<()> {
 
     // Start metrics server
     let metrics_addr = format!("0.0.0.0:{}", metrics_port);
-    info!("Metrics server listening on http://{}/metrics", metrics_addr);
+    info!(
+        "Metrics server listening on http://{}/metrics",
+        metrics_addr
+    );
 
     let metrics_app = Router::new()
         .route("/metrics", get(metrics_handler))
@@ -289,4 +297,3 @@ async fn ready_handler() -> Json<serde_json::Value> {
         "status": "READY"
     }))
 }
-

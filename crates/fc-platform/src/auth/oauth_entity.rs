@@ -2,8 +2,8 @@
 //!
 //! Represents OAuth 2.0 client registrations for external applications.
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// OAuth client type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,13 +17,18 @@ pub enum OAuthClientType {
     Confidential,
 }
 
-
 impl OAuthClientType {
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Public => "PUBLIC", Self::Confidential => "CONFIDENTIAL" }
+        match self {
+            Self::Public => "PUBLIC",
+            Self::Confidential => "CONFIDENTIAL",
+        }
     }
     pub fn from_str(s: &str) -> Self {
-        match s { "CONFIDENTIAL" => Self::Confidential, _ => Self::Public }
+        match s {
+            "CONFIDENTIAL" => Self::Confidential,
+            _ => Self::Public,
+        }
     }
 }
 
@@ -199,4 +204,3 @@ impl OAuthClient {
         })
     }
 }
-

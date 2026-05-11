@@ -43,8 +43,12 @@ pub struct ScheduledJobSyncEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_url: Option<String>,
 }
-fn default_timezone() -> String { "UTC".into() }
-fn default_attempts() -> i32 { 3 }
+fn default_timezone() -> String {
+    "UTC".into()
+}
+fn default_attempts() -> i32 {
+    3
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -78,13 +82,19 @@ impl<U: UnitOfWork> UseCase for SyncScheduledJobsUseCase<U> {
 
     async fn validate(&self, cmd: &Self::Command) -> Result<(), UseCaseError> {
         if cmd.scope.trim().is_empty() {
-            return Err(UseCaseError::validation("SCOPE_REQUIRED", "scope is required"));
+            return Err(UseCaseError::validation(
+                "SCOPE_REQUIRED",
+                "scope is required",
+            ));
         }
         for j in &cmd.jobs {
             if j.code.trim().is_empty() || j.name.trim().is_empty() || j.crons.is_empty() {
                 return Err(UseCaseError::validation(
                     "INVALID_ENTRY",
-                    format!("Sync entry '{}' must have code, name, and at least one cron", j.code),
+                    format!(
+                        "Sync entry '{}' must have code, name, and at least one cron",
+                        j.code
+                    ),
                 ));
             }
         }
@@ -112,7 +122,8 @@ impl<U: UnitOfWork> UseCase for SyncScheduledJobsUseCase<U> {
             Ok(v) => v,
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to load existing ScheduledJobs: {}", e
+                    "Failed to load existing ScheduledJobs: {}",
+                    e
                 )))
             }
         };
@@ -128,36 +139,51 @@ impl<U: UnitOfWork> UseCase for SyncScheduledJobsUseCase<U> {
             match existing_by_code.remove(&entry.code) {
                 Some(mut job) => {
                     let mut changed = false;
-                    if job.name != entry.name { job.name = entry.name.clone(); changed = true; }
-                    if job.description.as_ref() != entry.description.as_ref() {
-                        job.description = entry.description.clone(); changed = true;
+                    if job.name != entry.name {
+                        job.name = entry.name.clone();
+                        changed = true;
                     }
-                    if job.crons != entry.crons { job.crons = entry.crons.clone(); changed = true; }
+                    if job.description.as_ref() != entry.description.as_ref() {
+                        job.description = entry.description.clone();
+                        changed = true;
+                    }
+                    if job.crons != entry.crons {
+                        job.crons = entry.crons.clone();
+                        changed = true;
+                    }
                     if job.timezone != entry.timezone {
-                        job.timezone = entry.timezone.clone(); changed = true;
+                        job.timezone = entry.timezone.clone();
+                        changed = true;
                     }
                     if job.payload.as_ref() != entry.payload.as_ref() {
-                        job.payload = entry.payload.clone(); changed = true;
+                        job.payload = entry.payload.clone();
+                        changed = true;
                     }
                     if job.concurrent != entry.concurrent {
-                        job.concurrent = entry.concurrent; changed = true;
+                        job.concurrent = entry.concurrent;
+                        changed = true;
                     }
                     if job.tracks_completion != entry.tracks_completion {
-                        job.tracks_completion = entry.tracks_completion; changed = true;
+                        job.tracks_completion = entry.tracks_completion;
+                        changed = true;
                     }
                     if job.timeout_seconds != entry.timeout_seconds {
-                        job.timeout_seconds = entry.timeout_seconds; changed = true;
+                        job.timeout_seconds = entry.timeout_seconds;
+                        changed = true;
                     }
                     if job.delivery_max_attempts != entry.delivery_max_attempts {
-                        job.delivery_max_attempts = entry.delivery_max_attempts; changed = true;
+                        job.delivery_max_attempts = entry.delivery_max_attempts;
+                        changed = true;
                     }
                     if job.target_url.as_ref() != entry.target_url.as_ref() {
-                        job.target_url = entry.target_url.clone(); changed = true;
+                        job.target_url = entry.target_url.clone();
+                        changed = true;
                     }
                     // Sync re-activates archived/paused jobs that reappear in
                     // the payload — that's the contract.
                     if job.status != ScheduledJobStatus::Active {
-                        job.status = ScheduledJobStatus::Active; changed = true;
+                        job.status = ScheduledJobStatus::Active;
+                        changed = true;
                     }
                     if changed {
                         job.record_update(Some(ctx.principal_id.clone()));
@@ -172,11 +198,21 @@ impl<U: UnitOfWork> UseCase for SyncScheduledJobsUseCase<U> {
                         .with_tracks_completion(entry.tracks_completion)
                         .with_delivery_max_attempts(entry.delivery_max_attempts)
                         .with_created_by(ctx.principal_id.clone());
-                    if let Some(c) = &cmd.client_id { job = job.with_client_id(c); }
-                    if let Some(d) = &entry.description { job = job.with_description(d); }
-                    if let Some(p) = &entry.payload { job = job.with_payload(p.clone()); }
-                    if let Some(t) = entry.timeout_seconds { job = job.with_timeout_seconds(t); }
-                    if let Some(u) = &entry.target_url { job = job.with_target_url(u); }
+                    if let Some(c) = &cmd.client_id {
+                        job = job.with_client_id(c);
+                    }
+                    if let Some(d) = &entry.description {
+                        job = job.with_description(d);
+                    }
+                    if let Some(p) = &entry.payload {
+                        job = job.with_payload(p.clone());
+                    }
+                    if let Some(t) = entry.timeout_seconds {
+                        job = job.with_timeout_seconds(t);
+                    }
+                    if let Some(u) = &entry.target_url {
+                        job = job.with_target_url(u);
+                    }
                     created.push(job.id.clone());
                     to_persist.push(job);
                 }
@@ -209,6 +245,8 @@ impl<U: UnitOfWork> UseCase for SyncScheduledJobsUseCase<U> {
             return self.unit_of_work.emit_event(event, &cmd).await;
         }
 
-        self.unit_of_work.commit_all(&to_persist, &*self.repo, event, &cmd).await
+        self.unit_of_work
+            .commit_all(&to_persist, &*self.repo, event, &cmd)
+            .await
     }
 }

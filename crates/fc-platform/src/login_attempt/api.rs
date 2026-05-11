@@ -1,13 +1,13 @@
 //! Login Attempts Admin API
 
 use axum::{
+    extract::{Query, State},
     routing::get,
-    extract::{State, Query},
     Json, Router,
 };
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use super::entity::LoginAttempt;
 use super::repository::LoginAttemptRepository;
@@ -111,19 +111,24 @@ async fn list_login_attempts(
         None => None,
     };
 
-    let mut items = state.login_attempt_repo.find_with_cursor(
-        query.attempt_type.as_deref(),
-        query.outcome.as_deref(),
-        query.identifier.as_deref(),
-        query.principal_id.as_deref(),
-        query.date_from.as_deref(),
-        query.date_to.as_deref(),
-        cursor.as_ref(),
-        (size as i64) + 1,
-    ).await?;
+    let mut items = state
+        .login_attempt_repo
+        .find_with_cursor(
+            query.attempt_type.as_deref(),
+            query.outcome.as_deref(),
+            query.identifier.as_deref(),
+            query.principal_id.as_deref(),
+            query.date_from.as_deref(),
+            query.date_to.as_deref(),
+            cursor.as_ref(),
+            (size as i64) + 1,
+        )
+        .await?;
 
     let has_more = items.len() > size;
-    if has_more { items.truncate(size); }
+    if has_more {
+        items.truncate(size);
+    }
     let next_cursor = if has_more {
         items.last().map(|a| encode_cursor(a.attempted_at, &a.id))
     } else {

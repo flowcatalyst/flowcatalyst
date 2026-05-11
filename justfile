@@ -220,11 +220,20 @@ test-verbose:
 
 # ─── Code Quality ──────────────────────────────────────────────────────────
 
-# Format all code
+# Format all code (default-features only — fast)
 fmt:
     cargo fmt --all
 
-# Check formatting (CI)
+# `cargo fmt --all` only walks files reachable from each crate's default
+# features, so cfg-gated code (e.g. the `oidc-flow`-gated module in
+# fc-router) can drift unnoticed until CI's `cargo fmt --check` catches it.
+# This recipe formats every .rs file under crates/ and bin/ instead.
+
+# Format every .rs file including feature-gated modules (slower; matches CI)
+fmt-all:
+    find crates bin -name '*.rs' -not -path '*/target/*' -exec rustfmt --edition 2021 {} +
+
+# Check formatting (matches CI)
 fmt-check:
     cargo fmt --all -- --check
 

@@ -23,7 +23,7 @@ use tracing::info;
 mod encrypted;
 mod env;
 
-pub use encrypted::{EncryptedProvider, generate_key};
+pub use encrypted::{generate_key, EncryptedProvider};
 pub use env::EnvProvider;
 
 #[cfg(feature = "aws")]
@@ -34,12 +34,14 @@ pub use aws::{AwsSecretsManagerProvider, ValidationResult as AwsSmValidationResu
 #[cfg(feature = "aws-ssm")]
 mod aws_parameter_store;
 #[cfg(feature = "aws-ssm")]
-pub use aws_parameter_store::{AwsParameterStoreProvider, ValidationResult as AwsPsValidationResult};
+pub use aws_parameter_store::{
+    AwsParameterStoreProvider, ValidationResult as AwsPsValidationResult,
+};
 
 #[cfg(feature = "vault")]
 mod vault;
 #[cfg(feature = "vault")]
-pub use vault::{VaultProvider, ValidationResult as VaultValidationResult};
+pub use vault::{ValidationResult as VaultValidationResult, VaultProvider};
 
 mod service;
 pub use service::{SecretService, ValidationResult};
@@ -110,13 +112,13 @@ impl Default for SecretsConfig {
 pub trait Provider: Send + Sync {
     /// Get a secret by key
     async fn get(&self, key: &str) -> Result<String, SecretsError>;
-    
+
     /// Set a secret
     async fn set(&self, key: &str, value: &str) -> Result<(), SecretsError>;
-    
+
     /// Delete a secret
     async fn delete(&self, key: &str) -> Result<(), SecretsError>;
-    
+
     /// Provider name
     fn name(&self) -> &str;
 }
@@ -129,8 +131,11 @@ pub async fn create_provider(config: &SecretsConfig) -> Result<Arc<dyn Provider>
             Ok(Arc::new(EnvProvider::new()))
         }
         "encrypted" => {
-            let key = config.encryption_key.as_ref()
-                .ok_or_else(|| SecretsError::ProviderError("Encryption key required for encrypted provider".to_string()))?;
+            let key = config.encryption_key.as_ref().ok_or_else(|| {
+                SecretsError::ProviderError(
+                    "Encryption key required for encrypted provider".to_string(),
+                )
+            })?;
             info!("Using encrypted file secrets provider");
             let provider = EncryptedProvider::new(key, &config.data_dir)?;
             Ok(Arc::new(provider))
@@ -140,8 +145,12 @@ pub async fn create_provider(config: &SecretsConfig) -> Result<Arc<dyn Provider>
             info!("Using AWS Secrets Manager provider");
             let provider = AwsSecretsManagerProvider::new(
                 config.aws_region.clone(),
-                config.aws_prefix.clone().unwrap_or_else(|| "/flowcatalyst/".to_string()),
-            ).await?;
+                config
+                    .aws_prefix
+                    .clone()
+                    .unwrap_or_else(|| "/flowcatalyst/".to_string()),
+            )
+            .await?;
             Ok(Arc::new(provider))
         }
         #[cfg(feature = "aws-ssm")]
@@ -149,22 +158,34 @@ pub async fn create_provider(config: &SecretsConfig) -> Result<Arc<dyn Provider>
             info!("Using AWS Parameter Store provider");
             let provider = AwsParameterStoreProvider::new(
                 config.aws_region.clone(),
-                config.aws_prefix.clone().unwrap_or_else(|| "/flowcatalyst/".to_string()),
-            ).await?;
+                config
+                    .aws_prefix
+                    .clone()
+                    .unwrap_or_else(|| "/flowcatalyst/".to_string()),
+            )
+            .await?;
             Ok(Arc::new(provider))
         }
         #[cfg(feature = "vault")]
         "vault" => {
-            let addr = config.vault_addr.as_ref()
+            let addr = config
+                .vault_addr
+                .as_ref()
                 .ok_or_else(|| SecretsError::ProviderError("Vault address required".to_string()))?;
             info!("Using HashiCorp Vault provider");
             let provider = VaultProvider::new(
                 addr,
-                config.vault_path.clone().unwrap_or_else(|| "secret".to_string()),
+                config
+                    .vault_path
+                    .clone()
+                    .unwrap_or_else(|| "secret".to_string()),
                 config.vault_token.clone(),
             )?;
             Ok(Arc::new(provider))
         }
-        other => Err(SecretsError::ProviderError(format!("Unknown provider: {}", other))),
+        other => Err(SecretsError::ProviderError(format!(
+            "Unknown provider: {}",
+            other
+        ))),
     }
 }

@@ -6,16 +6,16 @@
 //! - Rate limit updates via hot reload
 //! - Multiple pools with different rate limits
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicBool, Ordering};
-use std::time::{Duration, Instant};
 use async_trait::async_trait;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use fc_common::{
-    Message, QueuedMessage, MediationType, MediationOutcome, PoolConfig, RouterConfig,
+    MediationOutcome, MediationType, Message, PoolConfig, QueuedMessage, RouterConfig,
 };
 use fc_queue::{QueueConsumer, QueueError};
-use fc_router::{QueueManager, Mediator};
+use fc_router::{Mediator, QueueManager};
 
 /// Mediator that tracks timing and counts
 struct TimingMediator {
@@ -90,11 +90,19 @@ impl QueueConsumer for TestQueueConsumer {
         Ok(())
     }
 
-    async fn nack(&self, _receipt_handle: &str, _delay_seconds: Option<u32>) -> fc_queue::Result<()> {
+    async fn nack(
+        &self,
+        _receipt_handle: &str,
+        _delay_seconds: Option<u32>,
+    ) -> fc_queue::Result<()> {
         Ok(())
     }
 
-    async fn extend_visibility(&self, _receipt_handle: &str, _seconds: u32) -> fc_queue::Result<()> {
+    async fn extend_visibility(
+        &self,
+        _receipt_handle: &str,
+        _seconds: u32,
+    ) -> fc_queue::Result<()> {
         Ok(())
     }
 
@@ -133,7 +141,9 @@ fn create_queued_message(id: &str, pool_code: &str) -> QueuedMessage {
 #[tokio::test]
 async fn test_pool_without_rate_limit() {
     let mediator = Arc::new(TimingMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -155,7 +165,10 @@ async fn test_pool_without_rate_limit() {
     let start = Instant::now();
 
     let poll_result = consumer.poll(20).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(300)).await;
 
@@ -174,7 +187,9 @@ async fn test_pool_without_rate_limit() {
 #[tokio::test]
 async fn test_pool_with_rate_limit() {
     let mediator = Arc::new(TimingMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     // Use a low rate limit (60/minute = 1/second) to test rate limiting behavior
     // Note: governor uses token bucket with burst capacity equal to quota,
@@ -197,25 +212,36 @@ async fn test_pool_with_rate_limit() {
     }
 
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     // Wait for processing
     tokio::time::sleep(Duration::from_secs(3)).await;
 
     // Messages should be processed (some may be NACKed due to rate limit)
     let processed = mediator.call_count();
-    assert!(processed >= 1, "Expected at least some messages to be processed");
+    assert!(
+        processed >= 1,
+        "Expected at least some messages to be processed"
+    );
 
     // Verify pool has rate limit configured
     let stats = manager.get_pool_stats();
-    let pool = stats.iter().find(|s| s.pool_code == "RATE_LIMITED").unwrap();
+    let pool = stats
+        .iter()
+        .find(|s| s.pool_code == "RATE_LIMITED")
+        .unwrap();
     assert_eq!(pool.rate_limit_per_minute, Some(60));
 }
 
 #[tokio::test]
 async fn test_multiple_pools_different_rates() {
     let mediator = Arc::new(TimingMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let config = RouterConfig {
         processing_pools: vec![
@@ -243,7 +269,10 @@ async fn test_multiple_pools_different_rates() {
     }
 
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     // FAST pool should complete quickly, SLOW pool takes longer
     tokio::time::sleep(Duration::from_secs(4)).await;
@@ -254,7 +283,9 @@ async fn test_multiple_pools_different_rates() {
 #[tokio::test]
 async fn test_rate_limit_hot_reload() {
     let mediator = Arc::new(TimingMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     // Start with no rate limit
     let config = RouterConfig {
@@ -278,7 +309,10 @@ async fn test_rate_limit_hot_reload() {
         concurrency: 10,
         rate_limit_per_minute: Some(600), // 10 per second
     };
-    manager.update_pool_config("DYNAMIC", new_config).await.unwrap();
+    manager
+        .update_pool_config("DYNAMIC", new_config)
+        .await
+        .unwrap();
 
     // Verify rate limit was applied
     let stats = manager.get_pool_stats();
@@ -289,7 +323,9 @@ async fn test_rate_limit_hot_reload() {
 #[tokio::test]
 async fn test_rate_limit_stats() {
     let mediator = Arc::new(TimingMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -312,7 +348,9 @@ async fn test_rate_limit_stats() {
 async fn test_high_rate_limit() {
     // Very high rate limit should not noticeably slow down processing
     let mediator = Arc::new(TimingMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let config = RouterConfig {
         processing_pools: vec![PoolConfig {
@@ -334,7 +372,10 @@ async fn test_high_rate_limit() {
     let start = Instant::now();
 
     let poll_result = consumer.poll(50).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_secs(2)).await;
 
@@ -353,13 +394,15 @@ async fn test_high_rate_limit() {
 #[tokio::test]
 async fn test_rate_limit_combined_with_concurrency() {
     let mediator = Arc::new(TimingMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     // Low concurrency + rate limit
     let config = RouterConfig {
         processing_pools: vec![PoolConfig {
             code: "LIMITED".to_string(),
-            concurrency: 2, // Only 2 concurrent workers
+            concurrency: 2,                   // Only 2 concurrent workers
             rate_limit_per_minute: Some(120), // 2 per second
         }],
         queues: vec![],
@@ -373,7 +416,10 @@ async fn test_rate_limit_combined_with_concurrency() {
     }
 
     let poll_result = consumer.poll(10).await.unwrap();
-    manager.route_batch(poll_result, consumer.clone()).await.unwrap();
+    manager
+        .route_batch(poll_result, consumer.clone())
+        .await
+        .unwrap();
 
     // Wait for processing - should be limited by both concurrency and rate
     tokio::time::sleep(Duration::from_secs(4)).await;
@@ -384,13 +430,27 @@ async fn test_rate_limit_combined_with_concurrency() {
 #[tokio::test]
 async fn test_pool_codes_with_rate_limits() {
     let mediator = Arc::new(TimingMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     let config = RouterConfig {
         processing_pools: vec![
-            PoolConfig { code: "A".to_string(), concurrency: 5, rate_limit_per_minute: Some(100) },
-            PoolConfig { code: "B".to_string(), concurrency: 5, rate_limit_per_minute: Some(200) },
-            PoolConfig { code: "C".to_string(), concurrency: 5, rate_limit_per_minute: None },
+            PoolConfig {
+                code: "A".to_string(),
+                concurrency: 5,
+                rate_limit_per_minute: Some(100),
+            },
+            PoolConfig {
+                code: "B".to_string(),
+                concurrency: 5,
+                rate_limit_per_minute: Some(200),
+            },
+            PoolConfig {
+                code: "C".to_string(),
+                concurrency: 5,
+                rate_limit_per_minute: None,
+            },
         ],
         queues: vec![],
     };
@@ -406,7 +466,9 @@ async fn test_pool_codes_with_rate_limits() {
 #[tokio::test]
 async fn test_remove_rate_limit() {
     let mediator = Arc::new(TimingMediator::new());
-    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(mediator.clone()));
+    let manager = Arc::new(QueueManager::with_shared_mediator_for_testing(
+        mediator.clone(),
+    ));
 
     // Start with rate limit
     let config = RouterConfig {
@@ -421,7 +483,10 @@ async fn test_remove_rate_limit() {
 
     // Verify rate limit exists
     let stats = manager.get_pool_stats();
-    let pool_stats = stats.iter().find(|s| s.pool_code == "REMOVE_LIMIT").unwrap();
+    let pool_stats = stats
+        .iter()
+        .find(|s| s.pool_code == "REMOVE_LIMIT")
+        .unwrap();
     assert_eq!(pool_stats.rate_limit_per_minute, Some(60));
 
     // Remove rate limit
@@ -430,10 +495,16 @@ async fn test_remove_rate_limit() {
         concurrency: 10,
         rate_limit_per_minute: None,
     };
-    manager.update_pool_config("REMOVE_LIMIT", new_config).await.unwrap();
+    manager
+        .update_pool_config("REMOVE_LIMIT", new_config)
+        .await
+        .unwrap();
 
     // Verify rate limit was removed
     let stats = manager.get_pool_stats();
-    let pool_stats = stats.iter().find(|s| s.pool_code == "REMOVE_LIMIT").unwrap();
+    let pool_stats = stats
+        .iter()
+        .find(|s| s.pool_code == "REMOVE_LIMIT")
+        .unwrap();
     assert_eq!(pool_stats.rate_limit_per_minute, None);
 }

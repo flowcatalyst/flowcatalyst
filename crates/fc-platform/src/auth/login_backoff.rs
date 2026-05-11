@@ -70,11 +70,17 @@ impl BackoffPolicy {
 }
 
 fn parse_env(name: &str, default: u32) -> u32 {
-    env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 fn parse_env_i64(name: &str, default: i64) -> i64 {
-    env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 /// Outcome of the backoff/ceiling check. `Allow` lets the request proceed;
@@ -82,7 +88,10 @@ fn parse_env_i64(name: &str, default: i64) -> i64 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackoffDecision {
     Allow,
-    Reject { retry_after_secs: u32, reason: BackoffReason },
+    Reject {
+        retry_after_secs: u32,
+        reason: BackoffReason,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,7 +117,9 @@ pub async fn check(
 ) -> Result<BackoffDecision> {
     let now = Utc::now();
     // Window 1: failures since last success (used by the per-pair backoff).
-    let last_success_cutoff = repo.last_success_at(identifier).await?
+    let last_success_cutoff = repo
+        .last_success_at(identifier)
+        .await?
         .unwrap_or_else(|| now - Duration::days(30));
 
     // Per-pair backoff. Skip when no IP is known (local dev / pre-LB setup).
@@ -134,7 +145,9 @@ pub async fn check(
     // Window 2: per-identifier global ceiling within `global_window_secs`.
     let global_cutoff = now - Duration::seconds(policy.global_window_secs);
     let cutoff = global_cutoff.max(last_success_cutoff);
-    let global_count = repo.failure_count_by_identifier_since(identifier, cutoff).await?;
+    let global_count = repo
+        .failure_count_by_identifier_since(identifier, cutoff)
+        .await?;
     if global_count >= policy.global_ceiling {
         return Ok(BackoffDecision::Reject {
             retry_after_secs: policy.global_lock_secs.max(0) as u32,

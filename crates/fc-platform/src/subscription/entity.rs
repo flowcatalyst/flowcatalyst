@@ -1,8 +1,8 @@
 //! Subscription Entity — matches TypeScript Subscription domain
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 pub use fc_common::DispatchMode;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -12,7 +12,6 @@ pub enum SubscriptionStatus {
     Active,
     Paused,
 }
-
 
 impl SubscriptionStatus {
     pub fn as_str(&self) -> &'static str {
@@ -39,13 +38,20 @@ pub enum SubscriptionSource {
     Ui,
 }
 
-
 impl SubscriptionSource {
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Code => "CODE", Self::Api => "API", Self::Ui => "UI" }
+        match self {
+            Self::Code => "CODE",
+            Self::Api => "API",
+            Self::Ui => "UI",
+        }
     }
     pub fn from_str(s: &str) -> Self {
-        match s { "CODE" => Self::Code, "API" => Self::Api, _ => Self::Ui }
+        match s {
+            "CODE" => Self::Code,
+            "API" => Self::Api,
+            _ => Self::Ui,
+        }
     }
 }
 
@@ -81,7 +87,10 @@ impl EventTypeBinding {
         if pattern_parts.len() != event_parts.len() {
             return false;
         }
-        pattern_parts.iter().zip(event_parts.iter()).all(|(p, e)| *p == "*" || p == e)
+        pattern_parts
+            .iter()
+            .zip(event_parts.iter())
+            .all(|(p, e)| *p == "*" || p == e)
     }
 }
 
@@ -131,7 +140,11 @@ pub struct Subscription {
 }
 
 impl Subscription {
-    pub fn new(code: impl Into<String>, name: impl Into<String>, endpoint: impl Into<String>) -> Self {
+    pub fn new(
+        code: impl Into<String>,
+        name: impl Into<String>,
+        endpoint: impl Into<String>,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: crate::TsidGenerator::generate(crate::EntityType::Subscription),
@@ -165,15 +178,42 @@ impl Subscription {
         }
     }
 
-    pub fn with_endpoint(mut self, ep: impl Into<String>) -> Self { self.endpoint = ep.into(); self }
-    pub fn with_connection_id(mut self, id: impl Into<String>) -> Self { self.connection_id = Some(id.into()); self }
-    pub fn with_description(mut self, desc: impl Into<String>) -> Self { self.description = Some(desc.into()); self }
-    pub fn with_client_id(mut self, id: impl Into<String>) -> Self { self.client_id = Some(id.into()); self }
-    pub fn with_dispatch_pool_id(mut self, id: impl Into<String>) -> Self { self.dispatch_pool_id = Some(id.into()); self }
-    pub fn with_service_account_id(mut self, id: impl Into<String>) -> Self { self.service_account_id = Some(id.into()); self }
-    pub fn with_mode(mut self, mode: DispatchMode) -> Self { self.mode = mode; self }
-    pub fn with_data_only(mut self, data_only: bool) -> Self { self.data_only = data_only; self }
-    pub fn with_event_type_binding(mut self, binding: EventTypeBinding) -> Self { self.event_types.push(binding); self }
+    pub fn with_endpoint(mut self, ep: impl Into<String>) -> Self {
+        self.endpoint = ep.into();
+        self
+    }
+    pub fn with_connection_id(mut self, id: impl Into<String>) -> Self {
+        self.connection_id = Some(id.into());
+        self
+    }
+    pub fn with_description(mut self, desc: impl Into<String>) -> Self {
+        self.description = Some(desc.into());
+        self
+    }
+    pub fn with_client_id(mut self, id: impl Into<String>) -> Self {
+        self.client_id = Some(id.into());
+        self
+    }
+    pub fn with_dispatch_pool_id(mut self, id: impl Into<String>) -> Self {
+        self.dispatch_pool_id = Some(id.into());
+        self
+    }
+    pub fn with_service_account_id(mut self, id: impl Into<String>) -> Self {
+        self.service_account_id = Some(id.into());
+        self
+    }
+    pub fn with_mode(mut self, mode: DispatchMode) -> Self {
+        self.mode = mode;
+        self
+    }
+    pub fn with_data_only(mut self, data_only: bool) -> Self {
+        self.data_only = data_only;
+        self
+    }
+    pub fn with_event_type_binding(mut self, binding: EventTypeBinding) -> Self {
+        self.event_types.push(binding);
+        self
+    }
 
     pub fn matches_event_type(&self, event_type_code: &str) -> bool {
         self.event_types.iter().any(|b| b.matches(event_type_code))
@@ -187,9 +227,17 @@ impl Subscription {
         }
     }
 
-    pub fn pause(&mut self) { self.status = SubscriptionStatus::Paused; self.updated_at = Utc::now(); }
-    pub fn resume(&mut self) { self.status = SubscriptionStatus::Active; self.updated_at = Utc::now(); }
-    pub fn is_active(&self) -> bool { self.status == SubscriptionStatus::Active }
+    pub fn pause(&mut self) {
+        self.status = SubscriptionStatus::Paused;
+        self.updated_at = Utc::now();
+    }
+    pub fn resume(&mut self) {
+        self.status = SubscriptionStatus::Active;
+        self.updated_at = Utc::now();
+    }
+    pub fn is_active(&self) -> bool {
+        self.status == SubscriptionStatus::Active
+    }
 }
 
 #[cfg(test)]
@@ -198,10 +246,18 @@ mod tests {
 
     #[test]
     fn test_new_subscription() {
-        let sub = Subscription::new("order-events", "Order Events", "https://example.com/webhook");
+        let sub = Subscription::new(
+            "order-events",
+            "Order Events",
+            "https://example.com/webhook",
+        );
 
         assert!(!sub.id.is_empty());
-        assert!(sub.id.starts_with("sub_"), "ID should have sub_ prefix, got: {}", sub.id);
+        assert!(
+            sub.id.starts_with("sub_"),
+            "ID should have sub_ prefix, got: {}",
+            sub.id
+        );
         assert_eq!(sub.code, "order-events");
         assert_eq!(sub.name, "Order Events");
         assert_eq!(sub.endpoint, "https://example.com/webhook");
@@ -290,8 +346,8 @@ mod tests {
         assert!(sub_no_client.matches_client(Some("client-1")));
         assert!(sub_no_client.matches_client(None));
 
-        let sub_with_client = Subscription::new("s2", "Sub", "https://a.com")
-            .with_client_id("client-1");
+        let sub_with_client =
+            Subscription::new("s2", "Sub", "https://a.com").with_client_id("client-1");
         assert!(sub_with_client.matches_client(Some("client-1")));
         assert!(!sub_with_client.matches_client(Some("client-2")));
         assert!(!sub_with_client.matches_client(None));
@@ -319,10 +375,13 @@ mod tests {
 
     #[test]
     fn test_event_type_binding_with_filter() {
-        let binding = EventTypeBinding::new("orders:*:*:*")
-            .with_filter("$.data.status == 'shipped'");
+        let binding =
+            EventTypeBinding::new("orders:*:*:*").with_filter("$.data.status == 'shipped'");
 
-        assert_eq!(binding.filter, Some("$.data.status == 'shipped'".to_string()));
+        assert_eq!(
+            binding.filter,
+            Some("$.data.status == 'shipped'".to_string())
+        );
     }
 
     #[test]
@@ -333,9 +392,18 @@ mod tests {
 
     #[test]
     fn test_subscription_status_from_str() {
-        assert_eq!(SubscriptionStatus::from_str("ACTIVE"), SubscriptionStatus::Active);
-        assert_eq!(SubscriptionStatus::from_str("PAUSED"), SubscriptionStatus::Paused);
-        assert_eq!(SubscriptionStatus::from_str("unknown"), SubscriptionStatus::Active);
+        assert_eq!(
+            SubscriptionStatus::from_str("ACTIVE"),
+            SubscriptionStatus::Active
+        );
+        assert_eq!(
+            SubscriptionStatus::from_str("PAUSED"),
+            SubscriptionStatus::Paused
+        );
+        assert_eq!(
+            SubscriptionStatus::from_str("unknown"),
+            SubscriptionStatus::Active
+        );
     }
 
     #[test]
@@ -352,10 +420,16 @@ mod tests {
 
     #[test]
     fn test_subscription_source_from_str() {
-        assert_eq!(SubscriptionSource::from_str("CODE"), SubscriptionSource::Code);
+        assert_eq!(
+            SubscriptionSource::from_str("CODE"),
+            SubscriptionSource::Code
+        );
         assert_eq!(SubscriptionSource::from_str("API"), SubscriptionSource::Api);
         assert_eq!(SubscriptionSource::from_str("UI"), SubscriptionSource::Ui);
-        assert_eq!(SubscriptionSource::from_str("unknown"), SubscriptionSource::Ui);
+        assert_eq!(
+            SubscriptionSource::from_str("unknown"),
+            SubscriptionSource::Ui
+        );
     }
 
     #[test]
@@ -416,8 +490,14 @@ mod tests {
         let b = EventTypeBinding::new("orders:*:shipment:*");
         assert!(b.matches("orders:fulfillment:shipment:shipped"));
         assert!(b.matches("orders:billing:shipment:created"));
-        assert!(!b.matches("orders:fulfillment:invoice:created"), "segment 3 must equal 'shipment'");
-        assert!(!b.matches("payments:fulfillment:shipment:shipped"), "segment 1 must equal 'orders'");
+        assert!(
+            !b.matches("orders:fulfillment:invoice:created"),
+            "segment 3 must equal 'shipment'"
+        );
+        assert!(
+            !b.matches("payments:fulfillment:shipment:shipped"),
+            "segment 1 must equal 'orders'"
+        );
     }
 
     #[test]
@@ -460,8 +540,7 @@ mod tests {
 
     #[test]
     fn client_scoped_subscription_matches_only_its_client() {
-        let s = Subscription::new("scoped", "Scoped", "https://x.com")
-            .with_client_id("clt_a");
+        let s = Subscription::new("scoped", "Scoped", "https://x.com").with_client_id("clt_a");
         assert!(s.matches_client(Some("clt_a")));
         assert!(!s.matches_client(Some("clt_b")));
         // Event without a client cannot match a client-scoped subscription.
@@ -470,8 +549,10 @@ mod tests {
 
     #[test]
     fn subscription_status_from_str_falls_back_to_active() {
-        assert_eq!(SubscriptionStatus::from_str("UNKNOWN"), SubscriptionStatus::Active);
+        assert_eq!(
+            SubscriptionStatus::from_str("UNKNOWN"),
+            SubscriptionStatus::Active
+        );
         assert_eq!(SubscriptionStatus::from_str(""), SubscriptionStatus::Active);
     }
 }
-

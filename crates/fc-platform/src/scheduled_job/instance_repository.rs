@@ -53,7 +53,10 @@ impl From<InstanceRow> for ScheduledJobInstance {
             status: InstanceStatus::from_str(&r.status),
             delivery_attempts: r.delivery_attempts,
             delivery_error: r.delivery_error,
-            completion_status: r.completion_status.as_deref().and_then(CompletionStatus::from_str),
+            completion_status: r
+                .completion_status
+                .as_deref()
+                .and_then(CompletionStatus::from_str),
             completion_result: r.completion_result,
             correlation_id: r.correlation_id,
             created_at: r.created_at,
@@ -184,7 +187,11 @@ impl ScheduledJobInstanceRepository {
         error: &str,
         terminal: bool,
     ) -> Result<()> {
-        let status = if terminal { "DELIVERY_FAILED" } else { "QUEUED" };
+        let status = if terminal {
+            "DELIVERY_FAILED"
+        } else {
+            "QUEUED"
+        };
         sqlx::query(
             "UPDATE msg_scheduled_job_instances \
              SET status = $3, delivery_error = $4 \
@@ -259,8 +266,9 @@ impl ScheduledJobInstanceRepository {
     }
 
     pub async fn list(&self, f: &InstanceListFilters<'_>) -> Result<Vec<ScheduledJobInstance>> {
-        let mut qb: QueryBuilder<Postgres> =
-            QueryBuilder::new(format!("SELECT {INSTANCE_COLS} FROM msg_scheduled_job_instances"));
+        let mut qb: QueryBuilder<Postgres> = QueryBuilder::new(format!(
+            "SELECT {INSTANCE_COLS} FROM msg_scheduled_job_instances"
+        ));
         let mut has_where = false;
         let push_where = |qb: &mut QueryBuilder<Postgres>, has_where: &mut bool| {
             qb.push(if *has_where { " AND " } else { " WHERE " });
@@ -281,7 +289,8 @@ impl ScheduledJobInstanceRepository {
         }
         if let Some(tk) = f.trigger_kind {
             push_where(&mut qb, &mut has_where);
-            qb.push("trigger_kind = ").push_bind(tk.as_str().to_string());
+            qb.push("trigger_kind = ")
+                .push_bind(tk.as_str().to_string());
         }
         if let Some(from) = f.from {
             push_where(&mut qb, &mut has_where);
@@ -327,7 +336,8 @@ impl ScheduledJobInstanceRepository {
         }
         if let Some(tk) = f.trigger_kind {
             push_where(&mut qb, &mut has_where);
-            qb.push("trigger_kind = ").push_bind(tk.as_str().to_string());
+            qb.push("trigger_kind = ")
+                .push_bind(tk.as_str().to_string());
         }
         if let Some(from) = f.from {
             push_where(&mut qb, &mut has_where);
@@ -379,6 +389,9 @@ impl ScheduledJobInstanceRepository {
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows.into_iter().map(ScheduledJobInstanceLog::from).collect())
+        Ok(rows
+            .into_iter()
+            .map(ScheduledJobInstanceLog::from)
+            .collect())
     }
 }

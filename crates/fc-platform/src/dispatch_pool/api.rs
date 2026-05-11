@@ -3,28 +3,27 @@
 //! REST endpoints for dispatch pool management.
 
 use axum::{
-    routing::{get, post},
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
+    routing::{get, post},
     Json, Router,
 };
-use utoipa::{ToSchema, IntoParams};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
 
-use crate::{DispatchPool, DispatchPoolStatus};
-use crate::DispatchPoolRepository;
-use crate::shared::error::PlatformError;
-use crate::shared::api_common::PaginationParams;
-use crate::shared::middleware::Authenticated;
-use crate::usecase::{ExecutionContext, UseCase, UnitOfWork, UseCaseResult};
 use crate::dispatch_pool::operations::{
-    CreateDispatchPoolCommand, CreateDispatchPoolUseCase,
+    ArchiveDispatchPoolCommand, ArchiveDispatchPoolUseCase, CreateDispatchPoolCommand,
+    CreateDispatchPoolUseCase, DeleteDispatchPoolCommand, DeleteDispatchPoolUseCase,
+    SyncDispatchPoolInput, SyncDispatchPoolsCommand, SyncDispatchPoolsUseCase,
     UpdateDispatchPoolCommand, UpdateDispatchPoolUseCase,
-    ArchiveDispatchPoolCommand, ArchiveDispatchPoolUseCase,
-    DeleteDispatchPoolCommand, DeleteDispatchPoolUseCase,
-    SyncDispatchPoolsCommand, SyncDispatchPoolsUseCase, SyncDispatchPoolInput,
 };
+use crate::shared::api_common::PaginationParams;
+use crate::shared::error::PlatformError;
+use crate::shared::middleware::Authenticated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseResult};
+use crate::DispatchPoolRepository;
+use crate::{DispatchPool, DispatchPoolStatus};
 
 /// Create dispatch pool request
 #[derive(Debug, Deserialize, ToSchema)]
@@ -147,7 +146,9 @@ pub struct SyncDispatchPoolInputRequest {
     pub concurrency: u32,
 }
 
-fn default_concurrency() -> u32 { 10 }
+fn default_concurrency() -> u32 {
+    10
+}
 
 /// Sync query parameters
 #[derive(Debug, Default, Deserialize)]
@@ -212,7 +213,9 @@ pub async fn create_dispatch_pool<U: UnitOfWork>(
                 return Err(PlatformError::forbidden("No access to this client"));
             }
         } else {
-            return Err(PlatformError::forbidden("Client ID required for non-anchor users"));
+            return Err(PlatformError::forbidden(
+                "Client ID required for non-anchor users",
+            ));
         }
     }
 
@@ -228,9 +231,12 @@ pub async fn create_dispatch_pool<U: UnitOfWork>(
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
     match state.create_use_case.run(command, ctx).await {
-        UseCaseResult::Success(event) => {
-            Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(event.dispatch_pool_id))))
-        }
+        UseCaseResult::Success(event) => Ok((
+            StatusCode::CREATED,
+            Json(crate::shared::api_common::CreatedResponse::new(
+                event.dispatch_pool_id,
+            )),
+        )),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
 }
@@ -255,7 +261,10 @@ pub async fn get_dispatch_pool<U: UnitOfWork>(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<DispatchPoolResponse>, PlatformError> {
-    let pool = state.dispatch_pool_repo.find_by_id(&id).await?
+    let pool = state
+        .dispatch_pool_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("DispatchPool", &id))?;
 
     // Check access
@@ -292,7 +301,10 @@ pub async fn list_dispatch_pools<U: UnitOfWork>(
         if !auth.0.is_anchor() && !auth.0.can_access_client(client_id) {
             return Err(PlatformError::forbidden("No access to this client"));
         }
-        state.dispatch_pool_repo.find_by_client(Some(client_id.as_str())).await?
+        state
+            .dispatch_pool_repo
+            .find_by_client(Some(client_id.as_str()))
+            .await?
     } else {
         // Get active pools by default, or all pools accessible to user
         state.dispatch_pool_repo.find_active().await?
@@ -302,7 +314,8 @@ pub async fn list_dispatch_pools<U: UnitOfWork>(
     let status_filter = query.status.as_deref().and_then(parse_status);
 
     // Filter by access for non-anchor users and by status
-    let filtered: Vec<DispatchPoolResponse> = pools.into_iter()
+    let filtered: Vec<DispatchPoolResponse> = pools
+        .into_iter()
         .filter(|p| {
             // Status filter
             if let Some(ref status) = status_filter {
@@ -324,7 +337,10 @@ pub async fn list_dispatch_pools<U: UnitOfWork>(
         .collect();
 
     let total = filtered.len() as u32;
-    Ok(Json(DispatchPoolListResponse { pools: filtered, total }))
+    Ok(Json(DispatchPoolListResponse {
+        pools: filtered,
+        total,
+    }))
 }
 
 /// Update dispatch pool
@@ -350,7 +366,10 @@ pub async fn update_dispatch_pool<U: UnitOfWork>(
     Json(req): Json<UpdateDispatchPoolRequest>,
 ) -> Result<StatusCode, PlatformError> {
     // Check access first
-    let pool = state.dispatch_pool_repo.find_by_id(&id).await?
+    let pool = state
+        .dispatch_pool_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("DispatchPool", &id))?;
 
     if !auth.0.is_anchor() {
@@ -359,7 +378,9 @@ pub async fn update_dispatch_pool<U: UnitOfWork>(
                 return Err(PlatformError::forbidden("No access to this dispatch pool"));
             }
         } else {
-            return Err(PlatformError::forbidden("Cannot update anchor-level dispatch pool"));
+            return Err(PlatformError::forbidden(
+                "Cannot update anchor-level dispatch pool",
+            ));
         }
     }
 
@@ -400,7 +421,10 @@ pub async fn archive_dispatch_pool<U: UnitOfWork>(
     Path(id): Path<String>,
 ) -> Result<Json<DispatchPoolResponse>, PlatformError> {
     // Check access first
-    let pool = state.dispatch_pool_repo.find_by_id(&id).await?
+    let pool = state
+        .dispatch_pool_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("DispatchPool", &id))?;
 
     if !auth.0.is_anchor() {
@@ -409,7 +433,9 @@ pub async fn archive_dispatch_pool<U: UnitOfWork>(
                 return Err(PlatformError::forbidden("No access to this dispatch pool"));
             }
         } else {
-            return Err(PlatformError::forbidden("Cannot archive anchor-level dispatch pool"));
+            return Err(PlatformError::forbidden(
+                "Cannot archive anchor-level dispatch pool",
+            ));
         }
     }
 
@@ -418,7 +444,10 @@ pub async fn archive_dispatch_pool<U: UnitOfWork>(
 
     match state.archive_use_case.run(command, ctx).await {
         UseCaseResult::Success(_event) => {
-            let pool = state.dispatch_pool_repo.find_by_id(&id).await?
+            let pool = state
+                .dispatch_pool_repo
+                .find_by_id(&id)
+                .await?
                 .ok_or_else(|| PlatformError::not_found("DispatchPool", &id))?;
             Ok(Json(pool.into()))
         }
@@ -448,7 +477,10 @@ pub async fn suspend_dispatch_pool<U: UnitOfWork>(
     Path(id): Path<String>,
 ) -> Result<Json<DispatchPoolResponse>, PlatformError> {
     // Check access first
-    let pool = state.dispatch_pool_repo.find_by_id(&id).await?
+    let pool = state
+        .dispatch_pool_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("DispatchPool", &id))?;
 
     if !auth.0.is_anchor() {
@@ -457,7 +489,9 @@ pub async fn suspend_dispatch_pool<U: UnitOfWork>(
                 return Err(PlatformError::forbidden("No access to this dispatch pool"));
             }
         } else {
-            return Err(PlatformError::forbidden("Cannot suspend anchor-level dispatch pool"));
+            return Err(PlatformError::forbidden(
+                "Cannot suspend anchor-level dispatch pool",
+            ));
         }
     }
 
@@ -466,7 +500,10 @@ pub async fn suspend_dispatch_pool<U: UnitOfWork>(
 
     match state.archive_use_case.run(command, ctx).await {
         UseCaseResult::Success(_event) => {
-            let pool = state.dispatch_pool_repo.find_by_id(&id).await?
+            let pool = state
+                .dispatch_pool_repo
+                .find_by_id(&id)
+                .await?
                 .ok_or_else(|| PlatformError::not_found("DispatchPool", &id))?;
             Ok(Json(pool.into()))
         }
@@ -496,7 +533,10 @@ pub async fn activate_dispatch_pool<U: UnitOfWork>(
     Path(id): Path<String>,
 ) -> Result<Json<DispatchPoolResponse>, PlatformError> {
     // Check access first
-    let pool = state.dispatch_pool_repo.find_by_id(&id).await?
+    let pool = state
+        .dispatch_pool_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("DispatchPool", &id))?;
 
     if !auth.0.is_anchor() {
@@ -505,7 +545,9 @@ pub async fn activate_dispatch_pool<U: UnitOfWork>(
                 return Err(PlatformError::forbidden("No access to this dispatch pool"));
             }
         } else {
-            return Err(PlatformError::forbidden("Cannot activate anchor-level dispatch pool"));
+            return Err(PlatformError::forbidden(
+                "Cannot activate anchor-level dispatch pool",
+            ));
         }
     }
 
@@ -521,7 +563,10 @@ pub async fn activate_dispatch_pool<U: UnitOfWork>(
 
     match state.update_use_case.run(command, ctx).await {
         UseCaseResult::Success(_event) => {
-            let pool = state.dispatch_pool_repo.find_by_id(&id).await?
+            let pool = state
+                .dispatch_pool_repo
+                .find_by_id(&id)
+                .await?
                 .ok_or_else(|| PlatformError::not_found("DispatchPool", &id))?;
             Ok(Json(pool.into()))
         }
@@ -583,26 +628,28 @@ pub async fn sync_dispatch_pools<U: UnitOfWork>(
 
     let command = SyncDispatchPoolsCommand {
         application_code: req.application_code,
-        pools: req.pools.into_iter().map(|p| SyncDispatchPoolInput {
-            code: p.code,
-            name: p.name,
-            description: p.description,
-            rate_limit: p.rate_limit,
-            concurrency: p.concurrency,
-        }).collect(),
+        pools: req
+            .pools
+            .into_iter()
+            .map(|p| SyncDispatchPoolInput {
+                code: p.code,
+                name: p.name,
+                description: p.description,
+                rate_limit: p.rate_limit,
+                concurrency: p.concurrency,
+            })
+            .collect(),
         remove_unlisted: query.remove_unlisted,
     };
 
     let ctx = ExecutionContext::create(auth.0.principal_id.clone());
 
     match state.sync_use_case.run(command, ctx).await {
-        UseCaseResult::Success(event) => {
-            Ok(Json(SyncResultResponse {
-                created: event.created,
-                updated: event.updated,
-                deleted: event.deleted,
-            }))
-        }
+        UseCaseResult::Success(event) => Ok(Json(SyncResultResponse {
+            created: event.created,
+            updated: event.updated,
+            deleted: event.deleted,
+        })),
         UseCaseResult::Failure(err) => Err(err.into()),
     }
 }
@@ -610,8 +657,16 @@ pub async fn sync_dispatch_pools<U: UnitOfWork>(
 /// Create dispatch pools router
 pub fn dispatch_pools_router<U: UnitOfWork + Clone>(state: DispatchPoolsState<U>) -> Router {
     Router::new()
-        .route("/", post(create_dispatch_pool::<U>).get(list_dispatch_pools::<U>))
-        .route("/{id}", get(get_dispatch_pool::<U>).put(update_dispatch_pool::<U>).delete(delete_dispatch_pool::<U>))
+        .route(
+            "/",
+            post(create_dispatch_pool::<U>).get(list_dispatch_pools::<U>),
+        )
+        .route(
+            "/{id}",
+            get(get_dispatch_pool::<U>)
+                .put(update_dispatch_pool::<U>)
+                .delete(delete_dispatch_pool::<U>),
+        )
         .route("/{id}/archive", post(archive_dispatch_pool::<U>))
         .route("/{id}/suspend", post(suspend_dispatch_pool::<U>))
         .route("/{id}/activate", post(activate_dispatch_pool::<U>))

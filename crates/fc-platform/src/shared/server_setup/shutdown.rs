@@ -7,7 +7,9 @@ use tracing::info;
 /// Shared across fc-server, fc-platform-server, and fc-dev.
 pub async fn wait_for_shutdown_signal() {
     let ctrl_c = async {
-        signal::ctrl_c().await.expect("Failed to install Ctrl+C handler");
+        signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
     };
 
     #[cfg(unix)]

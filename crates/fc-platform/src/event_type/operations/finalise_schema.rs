@@ -1,15 +1,13 @@
 //! Finalise Schema Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::event_type::entity::SpecVersionStatus;
-use crate::EventTypeRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::SchemaFinalised;
+use crate::event_type::entity::SpecVersionStatus;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::EventTypeRepository;
 
 /// Command for finalising a schema version.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,7 +28,10 @@ pub struct FinaliseSchemaUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> FinaliseSchemaUseCase<U> {
     pub fn new(event_type_repo: Arc<EventTypeRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { event_type_repo, unit_of_work }
+        Self {
+            event_type_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -55,7 +56,11 @@ impl<U: UnitOfWork> UseCase for FinaliseSchemaUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &FinaliseSchemaCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &FinaliseSchemaCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -64,7 +69,11 @@ impl<U: UnitOfWork> UseCase for FinaliseSchemaUseCase<U> {
         command: FinaliseSchemaCommand,
         ctx: ExecutionContext,
     ) -> UseCaseResult<SchemaFinalised> {
-        let mut event_type = match self.event_type_repo.find_by_id(&command.event_type_id).await {
+        let mut event_type = match self
+            .event_type_repo
+            .find_by_id(&command.event_type_id)
+            .await
+        {
             Ok(Some(et)) => et,
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
@@ -74,13 +83,17 @@ impl<U: UnitOfWork> UseCase for FinaliseSchemaUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch event type: {}", e
+                    "Failed to fetch event type: {}",
+                    e
                 )));
             }
         };
 
         // Find target version
-        let target_idx = event_type.spec_versions.iter().position(|sv| sv.version == command.version);
+        let target_idx = event_type
+            .spec_versions
+            .iter()
+            .position(|sv| sv.version == command.version);
         let target_idx = match target_idx {
             Some(i) => i,
             None => {
@@ -95,12 +108,18 @@ impl<U: UnitOfWork> UseCase for FinaliseSchemaUseCase<U> {
         if event_type.spec_versions[target_idx].status != SpecVersionStatus::Finalising {
             return UseCaseResult::failure(UseCaseError::business_rule(
                 "NOT_FINALISING",
-                format!("Schema version '{}' is not in FINALISING status", command.version),
+                format!(
+                    "Schema version '{}' is not in FINALISING status",
+                    command.version
+                ),
             ));
         }
 
         // Extract major version for auto-deprecation
-        let target_major: Option<u32> = command.version.split('.').next()
+        let target_major: Option<u32> = command
+            .version
+            .split('.')
+            .next()
             .and_then(|s| s.parse().ok());
 
         // Auto-deprecate existing CURRENT versions with same major version
@@ -108,8 +127,8 @@ impl<U: UnitOfWork> UseCase for FinaliseSchemaUseCase<U> {
         if let Some(major) = target_major {
             for sv in &mut event_type.spec_versions {
                 if sv.status == SpecVersionStatus::Current {
-                    let sv_major: Option<u32> = sv.version.split('.').next()
-                        .and_then(|s| s.parse().ok());
+                    let sv_major: Option<u32> =
+                        sv.version.split('.').next().and_then(|s| s.parse().ok());
                     if sv_major == Some(major) {
                         sv.status = SpecVersionStatus::Deprecated;
                         sv.updated_at = chrono::Utc::now();

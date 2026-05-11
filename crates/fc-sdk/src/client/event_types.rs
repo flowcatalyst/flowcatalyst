@@ -1,7 +1,7 @@
 //! Event Type management operations.
 
+use super::{ClientError, FlowCatalystClient};
 use serde::{Deserialize, Serialize};
-use super::{FlowCatalystClient, ClientError};
 
 /// List of event types returned by `GET /api/event-types`.
 ///
@@ -103,7 +103,8 @@ impl FlowCatalystClient {
         &self,
         code: &str,
     ) -> Result<EventTypeResponse, ClientError> {
-        self.get(&format!("/api/event-types/by-code/{}", code)).await
+        self.get(&format!("/api/event-types/by-code/{}", code))
+            .await
     }
 
     /// List event types with optional filters.

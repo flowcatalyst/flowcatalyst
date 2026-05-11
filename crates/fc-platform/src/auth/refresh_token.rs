@@ -3,9 +3,9 @@
 //! Stores refresh tokens for session renewal.
 //! Refresh tokens are long-lived and can be used to obtain new access tokens.
 
-use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc, Duration};
 use crate::TsidGenerator;
+use chrono::{DateTime, Duration, Utc};
+use serde::{Deserialize, Serialize};
 
 /// Default refresh token expiry: 30 days
 const REFRESH_TOKEN_EXPIRY_DAYS: i64 = 30;
@@ -85,10 +85,7 @@ impl RefreshToken {
     ///
     /// Note: The raw token should be generated separately and hashed before storage.
     /// Use `generate_token_pair()` to create both the raw token and entity.
-    pub fn new(
-        token_hash: impl Into<String>,
-        principal_id: impl Into<String>,
-    ) -> Self {
+    pub fn new(token_hash: impl Into<String>, principal_id: impl Into<String>) -> Self {
         let now = Utc::now();
         Self {
             id: TsidGenerator::generate_untyped(),
@@ -134,11 +131,7 @@ impl RefreshToken {
     }
 
     /// Set client info (IP and user agent)
-    pub fn with_client_info(
-        mut self,
-        ip: Option<String>,
-        user_agent: Option<String>,
-    ) -> Self {
+    pub fn with_client_info(mut self, ip: Option<String>, user_agent: Option<String>) -> Self {
         self.created_from_ip = ip;
         self.user_agent = user_agent;
         self
@@ -186,8 +179,8 @@ impl RefreshToken {
 
     /// Generate a cryptographically random token string
     pub fn generate_raw_token() -> String {
-        use rand::Rng;
         use base64::Engine;
+        use rand::Rng;
 
         let mut bytes = [0u8; 32];
         rand::rng().fill(&mut bytes);
@@ -196,8 +189,8 @@ impl RefreshToken {
 
     /// Hash a raw token for storage
     pub fn hash_token(raw_token: &str) -> String {
-        use sha2::{Sha256, Digest};
         use base64::Engine;
+        use sha2::{Digest, Sha256};
 
         let mut hasher = Sha256::new();
         hasher.update(raw_token.as_bytes());

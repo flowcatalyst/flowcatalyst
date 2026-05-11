@@ -1,20 +1,19 @@
 pub mod config;
+pub mod dispatch_job_projection;
 pub mod event_fan_out;
 pub mod event_projection;
-pub mod dispatch_job_projection;
 pub mod health;
 pub mod partition_manager;
 
 pub use config::StreamProcessorConfig;
+pub use dispatch_job_projection::DispatchJobProjectionService;
 pub use event_fan_out::{EventFanOutConfig, EventFanOutService};
 pub use event_projection::EventProjectionService;
-pub use dispatch_job_projection::DispatchJobProjectionService;
-pub use partition_manager::{PartitionManagerConfig, PartitionManagerService};
 pub use health::{
-    StreamHealth, StreamHealthService, StreamHealthSnapshot,
-    StreamHealthStatus, StreamProcessorHealth, StreamStatus,
-    AggregatedHealth,
+    AggregatedHealth, StreamHealth, StreamHealthService, StreamHealthSnapshot, StreamHealthStatus,
+    StreamProcessorHealth, StreamStatus,
 };
+pub use partition_manager::{PartitionManagerConfig, PartitionManagerService};
 
 /// Handle returned by `start_stream_processor` to control the running projections.
 pub struct StreamProcessorHandle {

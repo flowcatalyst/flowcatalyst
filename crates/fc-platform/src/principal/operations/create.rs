@@ -1,25 +1,21 @@
 //! Create User Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::UserCreated;
 use crate::auth::password_service::PasswordService;
+use crate::details;
 use crate::principal::entity::{Principal, UserScope};
 use crate::principal::repository::PrincipalRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use crate::details;
-use super::events::UserCreated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 /// Email validation pattern
 fn email_pattern() -> &'static Regex {
     static PATTERN: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-    PATTERN.get_or_init(|| {
-        Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap()
-    })
+    PATTERN.get_or_init(|| Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap())
 }
 
 /// Command for creating a new user.
@@ -67,7 +63,6 @@ pub struct CreateUserCommand {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub idp_type: Option<String>,
 }
-
 
 /// Use case for creating a new user.
 pub struct CreateUserUseCase<U: UnitOfWork> {
@@ -122,7 +117,11 @@ impl<U: UnitOfWork> UseCase for CreateUserUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &CreateUserCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &CreateUserCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 

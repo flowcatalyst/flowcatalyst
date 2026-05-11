@@ -1,7 +1,7 @@
 //! Encrypted file secrets provider using AES-256-GCM
 
 use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng, rand_core::RngCore},
+    aead::{rand_core::RngCore, Aead, KeyInit, OsRng},
     Aes256Gcm, Nonce,
 };
 use async_trait::async_trait;
@@ -23,11 +23,15 @@ pub struct EncryptedProvider {
 
 impl EncryptedProvider {
     pub fn new(encryption_key: &str, data_dir: &PathBuf) -> Result<Self, SecretsError> {
-        let key_bytes = BASE64.decode(encryption_key)
+        let key_bytes = BASE64
+            .decode(encryption_key)
             .map_err(|e| SecretsError::InvalidKey(format!("Invalid base64 key: {}", e)))?;
-        
+
         if key_bytes.len() != 32 {
-            return Err(SecretsError::InvalidKey(format!("Key must be 32 bytes, got {}", key_bytes.len())));
+            return Err(SecretsError::InvalidKey(format!(
+                "Key must be 32 bytes, got {}",
+                key_bytes.len()
+            )));
         }
 
         let cipher = Aes256Gcm::new_from_slice(&key_bytes)
@@ -70,7 +74,9 @@ impl EncryptedProvider {
         let nonce_arr: [u8; 12] = nonce_bytes.try_into().unwrap();
         let nonce = Nonce::from(nonce_arr);
 
-        let plaintext = self.cipher.decrypt(&nonce, ciphertext)
+        let plaintext = self
+            .cipher
+            .decrypt(&nonce, ciphertext)
             .map_err(|e| SecretsError::EncryptionError(e.to_string()))?;
 
         let secrets: HashMap<String, String> = serde_json::from_slice(&plaintext)?;
@@ -88,7 +94,9 @@ impl EncryptedProvider {
         OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from(nonce_bytes);
 
-        let ciphertext = self.cipher.encrypt(&nonce, plaintext.as_slice())
+        let ciphertext = self
+            .cipher
+            .encrypt(&nonce, plaintext.as_slice())
             .map_err(|e| SecretsError::EncryptionError(e.to_string()))?;
 
         let mut output = nonce_bytes.to_vec();
@@ -108,7 +116,10 @@ impl EncryptedProvider {
 impl Provider for EncryptedProvider {
     async fn get(&self, key: &str) -> Result<String, SecretsError> {
         let cache = self.cache.read().await;
-        cache.get(key).cloned().ok_or_else(|| SecretsError::NotFound(key.to_string()))
+        cache
+            .get(key)
+            .cloned()
+            .ok_or_else(|| SecretsError::NotFound(key.to_string()))
     }
 
     async fn set(&self, key: &str, value: &str) -> Result<(), SecretsError> {

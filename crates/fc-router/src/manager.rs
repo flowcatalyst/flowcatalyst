@@ -6,29 +6,28 @@
 //! - Pool management and lifecycle
 //! - Consumer health monitoring
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
 use dashmap::DashMap;
 use futures::future;
 use parking_lot::Mutex;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, RwLock};
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 
+use chrono::Utc;
 use fc_common::{
-    QueuedMessage, BatchMessage, InFlightMessage, MessageCallback,
-    PoolConfig, RouterConfig, PoolStats, StallConfig, StalledMessageInfo,
-    WarningCategory, WarningSeverity,
+    BatchMessage, InFlightMessage, MessageCallback, PoolConfig, PoolStats, QueuedMessage,
+    RouterConfig, StallConfig, StalledMessageInfo, WarningCategory, WarningSeverity,
 };
 use fc_queue::{QueueConsumer, QueueMetrics};
-use chrono::Utc;
 use utoipa::ToSchema;
 
-use crate::pool::ProcessPool;
-use crate::mediator::{HttpMediator, HttpMediatorConfig, Mediator};
-use crate::warning::WarningService;
 use crate::error::RouterError;
+use crate::mediator::{HttpMediator, HttpMediatorConfig, Mediator};
+use crate::pool::ProcessPool;
+use crate::warning::WarningService;
 use crate::Result;
 
 /// How `QueueManager` obtains a mediator for each new pool.
@@ -77,7 +76,8 @@ impl QueueMessageCallback {
     /// instead of being silently swallowed as duplicates.
     fn cleanup_tracking(&self) {
         self.in_pipeline.remove(&self.pipeline_key);
-        self.app_message_to_pipeline_key.remove(&self.app_message_id);
+        self.app_message_to_pipeline_key
+            .remove(&self.app_message_id);
     }
 }
 
@@ -86,10 +86,12 @@ impl MessageCallback for QueueMessageCallback {
     async fn ack(&self) {
         // Mark resolved BEFORE doing any await so the Drop impl knows we
         // owned the resolution even if a panic happens mid-await.
-        self.completed.store(true, std::sync::atomic::Ordering::Release);
+        self.completed
+            .store(true, std::sync::atomic::Ordering::Release);
 
         // Read latest receipt handle (may have been updated by redelivery)
-        let (handle, broker_id) = self.in_pipeline
+        let (handle, broker_id) = self
+            .in_pipeline
             .get(&self.pipeline_key)
             .map(|e| (e.receipt_handle.clone(), e.broker_message_id.clone()))
             .unwrap_or_default();
@@ -110,7 +112,9 @@ impl MessageCallback for QueueMessageCallback {
                         error = %e,
                         "ACK failed (receipt handle likely expired) - adding to pending delete"
                     );
-                    self.pending_delete.lock().insert(bid.clone(), Instant::now());
+                    self.pending_delete
+                        .lock()
+                        .insert(bid.clone(), Instant::now());
                 } else {
                     error!(
                         app_message_id = %self.app_message_id,
@@ -127,9 +131,11 @@ impl MessageCallback for QueueMessageCallback {
 
     async fn nack(&self, delay_seconds: Option<u32>) {
         // Mark resolved BEFORE doing any await; see ack() above.
-        self.completed.store(true, std::sync::atomic::Ordering::Release);
+        self.completed
+            .store(true, std::sync::atomic::Ordering::Release);
 
-        let handle = self.in_pipeline
+        let handle = self
+            .in_pipeline
             .get(&self.pipeline_key)
             .map(|e| e.receipt_handle.clone())
             .unwrap_or_default();
@@ -169,7 +175,8 @@ impl Drop for QueueMessageCallback {
         let app_message_id = self.app_message_id.clone();
 
         // Snapshot the current receipt handle before we yank the entry.
-        let handle = self.in_pipeline
+        let handle = self
+            .in_pipeline
             .get(&pipeline_key)
             .map(|e| e.receipt_handle.clone())
             .unwrap_or_default();
@@ -300,8 +307,17 @@ impl QueueManager {
         Self::with_limits(mediator_config, 10000, 5000)
     }
 
-    pub fn with_limits(mediator_config: HttpMediatorConfig, max_pools: usize, pool_warning_threshold: usize) -> Self {
-        Self::with_config(mediator_config, max_pools, pool_warning_threshold, StallConfig::default())
+    pub fn with_limits(
+        mediator_config: HttpMediatorConfig,
+        max_pools: usize,
+        pool_warning_threshold: usize,
+    ) -> Self {
+        Self::with_config(
+            mediator_config,
+            max_pools,
+            pool_warning_threshold,
+            StallConfig::default(),
+        )
     }
 
     pub fn with_config(
@@ -323,7 +339,7 @@ impl QueueManager {
             queue_configs: RwLock::new(HashMap::new()),
             consumer_factory: None,
             mediator_source: MediatorSource::PerPool(mediator_config),
-            default_pool_code: "DEFAULT-POOL".to_string(),  // Java: DEFAULT_POOL_CODE
+            default_pool_code: "DEFAULT-POOL".to_string(), // Java: DEFAULT_POOL_CODE
             running: AtomicBool::new(true),
             shutdown_tx,
             batch_counter: std::sync::atomic::AtomicU64::new(0),
@@ -370,7 +386,7 @@ impl QueueManager {
         match &self.mediator_source {
             MediatorSource::PerPool(config) => Arc::new(
                 HttpMediator::with_config(config.clone())
-                    .with_warning_service(self.warning_service.clone())
+                    .with_warning_service(self.warning_service.clone()),
             ),
             MediatorSource::Shared(m) => m.clone(),
         }
@@ -439,7 +455,8 @@ impl QueueManager {
         info!("Hot reloading configuration...");
 
         // Build map of new pool configs
-        let new_pool_configs: HashMap<String, PoolConfig> = config.processing_pools
+        let new_pool_configs: HashMap<String, PoolConfig> = config
+            .processing_pools
             .iter()
             .map(|p| (p.code.clone(), p.clone()))
             .collect();
@@ -456,7 +473,8 @@ impl QueueManager {
                 // Pool exists in new config - check for changes
                 if let Some(old_config) = pool_configs.get(&pool_code) {
                     let concurrency_changed = old_config.concurrency != new_config.concurrency;
-                    let rate_limit_changed = old_config.rate_limit_per_minute != new_config.rate_limit_per_minute;
+                    let rate_limit_changed =
+                        old_config.rate_limit_per_minute != new_config.rate_limit_per_minute;
 
                     if concurrency_changed || rate_limit_changed {
                         if let Some(pool) = self.pools.get(&pool_code) {
@@ -519,8 +537,10 @@ impl QueueManager {
                     self.warning_service.add_warning(
                         WarningCategory::PoolHealth,
                         WarningSeverity::Critical,
-                        format!("Max pool limit reached ({}/{}) - cannot create pool [{}]",
-                            current_count, self.max_pools, pool_config.code),
+                        format!(
+                            "Max pool limit reached ({}/{}) - cannot create pool [{}]",
+                            current_count, self.max_pools, pool_config.code
+                        ),
                         "QueueManager".to_string(),
                     );
                     continue;
@@ -537,14 +557,17 @@ impl QueueManager {
                     self.warning_service.add_warning(
                         WarningCategory::PoolHealth,
                         WarningSeverity::Warn,
-                        format!("Pool count {} approaching limit {} (threshold: {})",
-                            current_count, self.max_pools, self.pool_warning_threshold),
+                        format!(
+                            "Pool count {} approaching limit {} (threshold: {})",
+                            current_count, self.max_pools, self.pool_warning_threshold
+                        ),
                         "QueueManager".to_string(),
                     );
                 }
 
                 // Create new pool
-                self.get_or_create_pool(&pool_config.code, Some(pool_config.clone())).await?;
+                self.get_or_create_pool(&pool_config.code, Some(pool_config.clone()))
+                    .await?;
                 pool_configs.insert(pool_config.code.clone(), pool_config.clone());
                 pools_created += 1;
             }
@@ -578,11 +601,16 @@ impl QueueManager {
         let mut queues_removed = 0;
 
         // Build map of new queue configs
-        let new_queue_configs: HashMap<String, fc_common::QueueConfig> = config.queues
+        let new_queue_configs: HashMap<String, fc_common::QueueConfig> = config
+            .queues
             .iter()
             .map(|q| {
                 // Use name as identifier, fall back to uri if name is empty
-                let identifier = if q.name.is_empty() { q.uri.clone() } else { q.name.clone() };
+                let identifier = if q.name.is_empty() {
+                    q.uri.clone()
+                } else {
+                    q.name.clone()
+                };
                 (identifier, q.clone())
             })
             .collect();
@@ -633,7 +661,10 @@ impl QueueManager {
                             self.warning_service.add_warning(
                                 WarningCategory::ConsumerHealth,
                                 WarningSeverity::Critical,
-                                format!("Failed to create consumer for queue [{}]: {}", queue_id, e),
+                                format!(
+                                    "Failed to create consumer for queue [{}]: {}",
+                                    queue_id, e
+                                ),
                                 "QueueManager".to_string(),
                             );
                         }
@@ -692,21 +723,22 @@ impl QueueManager {
     }
 
     /// Get or create a pool by code
-    async fn get_or_create_pool(&self, code: &str, config: Option<PoolConfig>) -> Result<Arc<ProcessPool>> {
+    async fn get_or_create_pool(
+        &self,
+        code: &str,
+        config: Option<PoolConfig>,
+    ) -> Result<Arc<ProcessPool>> {
         if let Some(pool) = self.pools.get(code) {
             return Ok(pool.clone());
         }
 
         let pool_config = config.unwrap_or_else(|| PoolConfig {
             code: code.to_string(),
-            concurrency: 20,  // Java: DEFAULT_POOL_CONCURRENCY = 20
+            concurrency: 20, // Java: DEFAULT_POOL_CONCURRENCY = 20
             rate_limit_per_minute: None,
         });
 
-        let pool = ProcessPool::new(
-            pool_config.clone(),
-            self.build_mediator(),
-        );
+        let pool = ProcessPool::new(pool_config.clone(), self.build_mediator());
 
         let pool_arc = Arc::new(pool);
         pool_arc.start().await;
@@ -718,14 +750,23 @@ impl QueueManager {
     }
 
     /// Route a batch of messages from a consumer poll
-    pub async fn route_batch(&self, messages: Vec<QueuedMessage>, consumer: Arc<dyn QueueConsumer>) -> Result<()> {
+    pub async fn route_batch(
+        &self,
+        messages: Vec<QueuedMessage>,
+        consumer: Arc<dyn QueueConsumer>,
+    ) -> Result<()> {
         if !self.running.load(Ordering::SeqCst) {
             // NACK all messages concurrently on shutdown
-            let nack_futs: Vec<_> = messages.iter().map(|msg| {
-                let consumer = consumer.clone();
-                let handle = msg.receipt_handle.clone();
-                async move { let _ = consumer.nack(&handle, None).await; }
-            }).collect();
+            let nack_futs: Vec<_> = messages
+                .iter()
+                .map(|msg| {
+                    let consumer = consumer.clone();
+                    let handle = msg.receipt_handle.clone();
+                    async move {
+                        let _ = consumer.nack(&handle, None).await;
+                    }
+                })
+                .collect();
             future::join_all(nack_futs).await;
             return Err(RouterError::ShutdownInProgress);
         }
@@ -734,7 +775,12 @@ impl QueueManager {
             return Ok(());
         }
 
-        let batch_id: Arc<str> = Arc::from(self.batch_counter.fetch_add(1, Ordering::Relaxed).to_string().as_str());
+        let batch_id: Arc<str> = Arc::from(
+            self.batch_counter
+                .fetch_add(1, Ordering::Relaxed)
+                .to_string()
+                .as_str(),
+        );
 
         // Phase 0: Check for messages that need immediate deletion (previously processed but ACK failed)
         // First, identify which messages need deletion (while holding lock)
@@ -743,7 +789,9 @@ impl QueueManager {
         {
             let mut pending_delete = self.pending_delete_broker_ids.lock();
             for msg in messages {
-                let should_delete = msg.broker_message_id.as_ref()
+                let should_delete = msg
+                    .broker_message_id
+                    .as_ref()
                     .map(|broker_id| pending_delete.remove(broker_id).is_some())
                     .unwrap_or(false);
 
@@ -757,20 +805,23 @@ impl QueueManager {
         }
         // Perform the deletions concurrently (independent SQS API calls)
         if !messages_to_delete.is_empty() {
-            let delete_futs: Vec<_> = messages_to_delete.iter().map(|msg| {
-                let consumer = consumer.clone();
-                let handle = msg.receipt_handle.clone();
-                let broker_id = msg.broker_message_id.clone();
-                let app_id = msg.message.id.clone();
-                async move {
-                    info!(
-                        broker_message_id = ?broker_id,
-                        app_message_id = %app_id,
-                        "Message was previously processed - deleting from queue now"
-                    );
-                    let _ = consumer.ack(&handle).await;
-                }
-            }).collect();
+            let delete_futs: Vec<_> = messages_to_delete
+                .iter()
+                .map(|msg| {
+                    let consumer = consumer.clone();
+                    let handle = msg.receipt_handle.clone();
+                    let broker_id = msg.broker_message_id.clone();
+                    let app_id = msg.message.id.clone();
+                    async move {
+                        info!(
+                            broker_message_id = ?broker_id,
+                            app_message_id = %app_id,
+                            "Message was previously processed - deleting from queue now"
+                        );
+                        let _ = consumer.ack(&handle).await;
+                    }
+                })
+                .collect();
             future::join_all(delete_futs).await;
         }
 
@@ -840,15 +891,24 @@ impl QueueManager {
                 self.warning_service.add_warning(
                     WarningCategory::QueueHealth,
                     WarningSeverity::Warn,
-                    format!("Pool [{}] queue full, deferring {} messages from batch", pool_code, pool_messages.len()),
+                    format!(
+                        "Pool [{}] queue full, deferring {} messages from batch",
+                        pool_code,
+                        pool_messages.len()
+                    ),
                     "QueueManager".to_string(),
                 );
                 // Defer concurrently - capacity limits are not errors
-                let defer_futs: Vec<_> = pool_messages.iter().map(|msg| {
-                    let consumer = consumer.clone();
-                    let handle = msg.receipt_handle.clone();
-                    async move { let _ = consumer.defer(&handle, Some(5)).await; }
-                }).collect();
+                let defer_futs: Vec<_> = pool_messages
+                    .iter()
+                    .map(|msg| {
+                        let consumer = consumer.clone();
+                        let handle = msg.receipt_handle.clone();
+                        async move {
+                            let _ = consumer.defer(&handle, Some(5)).await;
+                        }
+                    })
+                    .collect();
                 future::join_all(defer_futs).await;
                 continue;
             }
@@ -880,8 +940,9 @@ impl QueueManager {
 
                     // Use broker_message_id as pipeline key (mirrors Java's sqsMessageId usage)
                     // Fall back to a composite key if broker_message_id is not available
-                    let pipeline_key = msg.broker_message_id.clone()
-                        .unwrap_or_else(|| format!("fallback:{}:{}", msg.queue_identifier, msg.message.id));
+                    let pipeline_key = msg.broker_message_id.clone().unwrap_or_else(|| {
+                        format!("fallback:{}:{}", msg.queue_identifier, msg.message.id)
+                    });
 
                     let receipt_handle = msg.receipt_handle.clone();
 
@@ -896,7 +957,8 @@ impl QueueManager {
                     self.in_pipeline.insert(pipeline_key.clone(), in_flight);
 
                     // Track app message ID -> pipeline key for requeue detection
-                    self.app_message_to_pipeline_key.insert(app_message_id.clone(), pipeline_key.clone());
+                    self.app_message_to_pipeline_key
+                        .insert(app_message_id.clone(), pipeline_key.clone());
 
                     // Create callback — pool worker calls this directly, no spawned task
                     let callback = QueueMessageCallback {
@@ -990,7 +1052,9 @@ impl QueueManager {
             // Check 2: Same application message ID but DIFFERENT broker message ID (requeued by external process)
             // This happens when a separate process requeues messages that were stuck in QUEUED status for 20+ min
             // The external process creates a NEW SQS message with the same application message ID
-            if let Some(existing_pipeline_key) = self.app_message_to_pipeline_key.get(&msg.message.id) {
+            if let Some(existing_pipeline_key) =
+                self.app_message_to_pipeline_key.get(&msg.message.id)
+            {
                 let existing_key = existing_pipeline_key.value().clone();
 
                 // Only treat as requeued duplicate if the broker message IDs are DIFFERENT
@@ -1038,8 +1102,12 @@ impl QueueManager {
     /// Group messages by pool code.
     /// Mirrors Java's pool routing logic: if a pool code is not found in processPools,
     /// log a ROUTING warning and fall back to DEFAULT-POOL.
-    fn group_by_pool(&self, messages: Vec<QueuedMessage>) -> std::collections::HashMap<String, Vec<QueuedMessage>> {
-        let mut by_pool: std::collections::HashMap<String, Vec<QueuedMessage>> = std::collections::HashMap::new();
+    fn group_by_pool(
+        &self,
+        messages: Vec<QueuedMessage>,
+    ) -> std::collections::HashMap<String, Vec<QueuedMessage>> {
+        let mut by_pool: std::collections::HashMap<String, Vec<QueuedMessage>> =
+            std::collections::HashMap::new();
 
         for msg in messages {
             let pool_code = if msg.message.pool_code.is_empty() {
@@ -1055,8 +1123,10 @@ impl QueueManager {
                 self.warning_service.add_warning(
                     WarningCategory::Routing,
                     WarningSeverity::Warn,
-                    format!("No pool found for code [{}] on message [{}] — routed to {}",
-                        msg.message.pool_code, msg.message.id, self.default_pool_code),
+                    format!(
+                        "No pool found for code [{}] on message [{}] — routed to {}",
+                        msg.message.pool_code, msg.message.id, self.default_pool_code
+                    ),
                     "QueueManager".to_string(),
                 );
                 self.default_pool_code.clone()
@@ -1072,12 +1142,19 @@ impl QueueManager {
 
     /// Group messages by message_group_id for FIFO ordering enforcement
     /// Mirrors Java's messagesByGroup logic in routeMessageBatch
-    fn group_by_message_group(&self, messages: Vec<QueuedMessage>) -> indexmap::IndexMap<String, Vec<QueuedMessage>> {
+    fn group_by_message_group(
+        &self,
+        messages: Vec<QueuedMessage>,
+    ) -> indexmap::IndexMap<String, Vec<QueuedMessage>> {
         // Use IndexMap to preserve insertion order (like Java's LinkedHashMap)
-        let mut by_group: indexmap::IndexMap<String, Vec<QueuedMessage>> = indexmap::IndexMap::new();
+        let mut by_group: indexmap::IndexMap<String, Vec<QueuedMessage>> =
+            indexmap::IndexMap::new();
 
         for msg in messages {
-            let group_id = msg.message.message_group_id.clone()
+            let group_id = msg
+                .message
+                .message_group_id
+                .clone()
                 .unwrap_or_else(|| "__DEFAULT__".to_string());
             by_group.entry(group_id).or_default().push(msg);
         }
@@ -1312,7 +1389,10 @@ impl QueueManager {
         // Log any remaining in-flight messages (they'll be NACKed when tasks are dropped)
         let remaining = self.in_pipeline.len();
         if remaining > 0 {
-            warn!(remaining = remaining, "Remaining in-flight messages will be NACKed");
+            warn!(
+                remaining = remaining,
+                "Remaining in-flight messages will be NACKed"
+            );
             self.in_pipeline.clear();
             self.app_message_to_pipeline_key.clear();
         }
@@ -1326,18 +1406,27 @@ impl QueueManager {
     }
 
     fn all_pools_drained(&self) -> bool {
-        self.pools.iter().all(|entry| entry.value().is_fully_drained())
+        self.pools
+            .iter()
+            .all(|entry| entry.value().is_fully_drained())
     }
 
     /// Check if any pool has capacity to accept messages.
     /// Used to gate SQS polling — avoids a hot poll-defer loop when all pools are full.
     fn has_pool_capacity(&self) -> bool {
-        self.pools.is_empty() || self.pools.iter().any(|entry| entry.value().available_capacity() > 0)
+        self.pools.is_empty()
+            || self
+                .pools
+                .iter()
+                .any(|entry| entry.value().available_capacity() > 0)
     }
 
     /// Get statistics for all pools
     pub fn get_pool_stats(&self) -> Vec<PoolStats> {
-        self.pools.iter().map(|entry| entry.value().get_stats()).collect()
+        self.pools
+            .iter()
+            .map(|entry| entry.value().get_stats())
+            .collect()
     }
 
     /// Check for potential memory leaks (large in-pipeline maps)
@@ -1363,7 +1452,11 @@ impl QueueManager {
     /// `max_age`, which indicates the ACK callback task is stuck or was dropped.
     /// Also evicts `pending_delete_broker_ids` entries older than `pending_delete_max_age`
     /// (messages that were processed but never re-polled for deletion).
-    pub fn reap_stale_entries(&self, max_age: Duration, pending_delete_max_age: Duration) -> (usize, usize) {
+    pub fn reap_stale_entries(
+        &self,
+        max_age: Duration,
+        pending_delete_max_age: Duration,
+    ) -> (usize, usize) {
         // Skip iteration when maps are empty (common case — zero cost)
         if self.in_pipeline.is_empty() && self.pending_delete_broker_ids.lock().is_empty() {
             return (0, 0);
@@ -1372,7 +1465,8 @@ impl QueueManager {
         // Reap stale in_pipeline entries
         let mut reaped_pipeline = 0;
         if !self.in_pipeline.is_empty() {
-            let stale_keys: Vec<String> = self.in_pipeline
+            let stale_keys: Vec<String> = self
+                .in_pipeline
                 .iter()
                 .filter(|entry| entry.value().started_at.elapsed() > max_age)
                 .map(|entry| entry.key().clone())
@@ -1672,7 +1766,8 @@ impl QueueManager {
     /// Check if a consumer is healthy
     pub async fn is_consumer_healthy(&self, consumer_id: &str) -> bool {
         let consumers = self.consumers.read().await;
-        consumers.get(consumer_id)
+        consumers
+            .get(consumer_id)
             .map(|c| c.is_healthy())
             .unwrap_or(false)
     }
@@ -1733,7 +1828,8 @@ impl QueueManager {
     /// O(1): goes through `app_message_to_pipeline_key` then `in_pipeline`.
     /// Both are `DashMap`, no global lock.
     pub fn lookup_in_flight_by_app_id(&self, app_message_id: &str) -> Option<InFlightMessageInfo> {
-        let pipeline_key = self.app_message_to_pipeline_key
+        let pipeline_key = self
+            .app_message_to_pipeline_key
             .get(app_message_id)
             .map(|e| e.value().clone())?;
         self.in_pipeline.get(&pipeline_key).map(|entry| {
@@ -1751,14 +1847,24 @@ impl QueueManager {
         })
     }
 
-    pub fn get_in_flight_messages(&self, limit: usize, message_id_filter: Option<&str>, pool_code_filter: Option<&str>) -> Vec<InFlightMessageInfo> {
-        let mut messages: Vec<InFlightMessageInfo> = self.in_pipeline
+    pub fn get_in_flight_messages(
+        &self,
+        limit: usize,
+        message_id_filter: Option<&str>,
+        pool_code_filter: Option<&str>,
+    ) -> Vec<InFlightMessageInfo> {
+        let mut messages: Vec<InFlightMessageInfo> = self
+            .in_pipeline
             .iter()
             .filter(|entry| {
                 let msg = entry.value();
                 // Message ID filter: substring match, case-insensitive (matches Java)
                 if let Some(filter) = message_id_filter {
-                    if !msg.message_id.to_lowercase().contains(&filter.to_lowercase()) {
+                    if !msg
+                        .message_id
+                        .to_lowercase()
+                        .contains(&filter.to_lowercase())
+                    {
                         return false;
                     }
                 }
@@ -1778,7 +1884,10 @@ impl QueueManager {
                     queue_id: msg.queue_identifier.clone(),
                     pool_code: msg.pool_code.clone(),
                     elapsed_time_ms: msg.started_at.elapsed().as_millis() as u64,
-                    added_to_in_pipeline_at: chrono::Utc::now() - chrono::Duration::milliseconds(msg.started_at.elapsed().as_millis() as i64),
+                    added_to_in_pipeline_at: chrono::Utc::now()
+                        - chrono::Duration::milliseconds(
+                            msg.started_at.elapsed().as_millis() as i64
+                        ),
                 }
             })
             .collect();
@@ -1848,8 +1957,12 @@ mod callback_drop_tests {
 
     #[async_trait]
     impl QueueConsumer for RecordingConsumer {
-        fn identifier(&self) -> &str { "recording" }
-        async fn poll(&self, _: u32) -> QueueResult<Vec<QueuedMessage>> { Ok(vec![]) }
+        fn identifier(&self) -> &str {
+            "recording"
+        }
+        async fn poll(&self, _: u32) -> QueueResult<Vec<QueuedMessage>> {
+            Ok(vec![])
+        }
         async fn ack(&self, _: &str) -> QueueResult<()> {
             self.acks.fetch_add(1, AtomicOrdering::SeqCst);
             Ok(())
@@ -1858,8 +1971,12 @@ mod callback_drop_tests {
             self.nacks.fetch_add(1, AtomicOrdering::SeqCst);
             Ok(())
         }
-        async fn extend_visibility(&self, _: &str, _: u32) -> QueueResult<()> { Ok(()) }
-        fn is_healthy(&self) -> bool { true }
+        async fn extend_visibility(&self, _: &str, _: u32) -> QueueResult<()> {
+            Ok(())
+        }
+        fn is_healthy(&self) -> bool {
+            true
+        }
         async fn stop(&self) {}
     }
 
@@ -1926,12 +2043,20 @@ mod callback_drop_tests {
         drop(cb);
 
         // Tracking maps cleared synchronously inside Drop.
-        assert_eq!(in_pipeline.len(), 0, "in_pipeline should be cleared on drop");
+        assert_eq!(
+            in_pipeline.len(),
+            0,
+            "in_pipeline should be cleared on drop"
+        );
         assert_eq!(app_index.len(), 0, "app index should be cleared on drop");
 
         // Fallback nack is fired via tokio::spawn — yield to let it run.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        assert_eq!(consumer.nacks.load(AtomicOrdering::SeqCst), 1, "fallback nack should have fired");
+        assert_eq!(
+            consumer.nacks.load(AtomicOrdering::SeqCst),
+            1,
+            "fallback nack should have fired"
+        );
         assert_eq!(consumer.acks.load(AtomicOrdering::SeqCst), 0);
     }
 
@@ -1946,7 +2071,11 @@ mod callback_drop_tests {
 
         // Drop happens implicitly here — should NOT fire a nack.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        assert_eq!(consumer.nacks.load(AtomicOrdering::SeqCst), 0, "no fallback nack after explicit ack");
+        assert_eq!(
+            consumer.nacks.load(AtomicOrdering::SeqCst),
+            0,
+            "no fallback nack after explicit ack"
+        );
     }
 
     #[tokio::test]
@@ -1960,6 +2089,10 @@ mod callback_drop_tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         // Total should still be 1 — Drop did not add a second nack.
-        assert_eq!(consumer.nacks.load(AtomicOrdering::SeqCst), 1, "no double-nack on drop after explicit nack");
+        assert_eq!(
+            consumer.nacks.load(AtomicOrdering::SeqCst),
+            1,
+            "no double-nack on drop after explicit nack"
+        );
     }
 }

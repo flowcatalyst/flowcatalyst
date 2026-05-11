@@ -4,26 +4,25 @@
 //! Provides a UI-friendly view of roles at `/bff/roles`.
 
 use axum::{
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
     Json,
 };
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::{ToSchema, IntoParams};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
+use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::role::entity::{AuthRole, RoleSource};
-use crate::role::repository::RoleRepository;
-use crate::role::operations::{
-    CreateRoleCommand, CreateRoleUseCase,
-    UpdateRoleCommand, UpdateRoleUseCase,
-    DeleteRoleCommand, DeleteRoleUseCase,
-};
-use crate::usecase::{ExecutionContext, PgUnitOfWork, UseCase};
 use crate::application::repository::ApplicationRepository;
-use crate::shared::error::PlatformError;
+use crate::role::entity::{AuthRole, RoleSource};
+use crate::role::operations::{
+    CreateRoleCommand, CreateRoleUseCase, DeleteRoleCommand, DeleteRoleUseCase, UpdateRoleCommand,
+    UpdateRoleUseCase,
+};
+use crate::role::repository::RoleRepository;
 use crate::shared::api_common::CreatedResponse;
+use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
+use crate::usecase::{ExecutionContext, PgUnitOfWork, UseCase};
 
 // ── Response DTOs ──────────────────────────────────────────────────────────
 
@@ -210,7 +209,10 @@ pub async fn list_roles(
 
     let roles: Vec<BffRoleResponse> = roles.into_iter().map(|r| r.into()).collect();
     let total = roles.len();
-    Ok(Json(BffRoleListResponse { items: roles, total }))
+    Ok(Json(BffRoleListResponse {
+        items: roles,
+        total,
+    }))
 }
 
 /// Get applications for role filter dropdown
@@ -260,7 +262,10 @@ pub async fn list_permissions(
 ) -> Result<Json<BffPermissionListResponse>, PlatformError> {
     let permissions = get_builtin_permissions();
     let total = permissions.len();
-    Ok(Json(BffPermissionListResponse { items: permissions, total }))
+    Ok(Json(BffPermissionListResponse {
+        items: permissions,
+        total,
+    }))
 }
 
 /// Get single permission by string
@@ -356,7 +361,10 @@ pub async fn create_role(
     let use_case = CreateRoleUseCase::new(state.role_repo.clone(), state.unit_of_work.clone());
     let event = use_case.run(cmd, ctx).await.into_result()?;
 
-    Ok((axum::http::StatusCode::CREATED, Json(CreatedResponse::new(event.role_id))))
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(CreatedResponse::new(event.role_id)),
+    ))
 }
 
 /// Update role
@@ -463,41 +471,209 @@ fn get_builtin_permissions() -> Vec<BffPermissionResponse> {
         perm("platform", "iam", "role", "update", "Update roles"),
         perm("platform", "iam", "role", "delete", "Delete roles"),
         perm("platform", "iam", "permission", "view", "View permissions"),
-        perm("platform", "iam", "service-account", "view", "View service accounts"),
-        perm("platform", "iam", "service-account", "create", "Create service accounts"),
-        perm("platform", "iam", "service-account", "update", "Update service accounts"),
-        perm("platform", "iam", "service-account", "delete", "Delete service accounts"),
-        perm("platform", "iam", "idp", "manage", "Manage identity providers"),
+        perm(
+            "platform",
+            "iam",
+            "service-account",
+            "view",
+            "View service accounts",
+        ),
+        perm(
+            "platform",
+            "iam",
+            "service-account",
+            "create",
+            "Create service accounts",
+        ),
+        perm(
+            "platform",
+            "iam",
+            "service-account",
+            "update",
+            "Update service accounts",
+        ),
+        perm(
+            "platform",
+            "iam",
+            "service-account",
+            "delete",
+            "Delete service accounts",
+        ),
+        perm(
+            "platform",
+            "iam",
+            "idp",
+            "manage",
+            "Manage identity providers",
+        ),
         // Admin Permissions
         perm("platform", "admin", "client", "view", "View clients"),
         perm("platform", "admin", "client", "create", "Create clients"),
         perm("platform", "admin", "client", "update", "Update clients"),
         perm("platform", "admin", "client", "delete", "Delete clients"),
-        perm("platform", "admin", "application", "view", "View applications"),
-        perm("platform", "admin", "application", "create", "Create applications"),
-        perm("platform", "admin", "application", "update", "Update applications"),
-        perm("platform", "admin", "application", "delete", "Delete applications"),
-        perm("platform", "admin", "config", "view", "View platform config"),
-        perm("platform", "admin", "config", "update", "Update platform config"),
+        perm(
+            "platform",
+            "admin",
+            "application",
+            "view",
+            "View applications",
+        ),
+        perm(
+            "platform",
+            "admin",
+            "application",
+            "create",
+            "Create applications",
+        ),
+        perm(
+            "platform",
+            "admin",
+            "application",
+            "update",
+            "Update applications",
+        ),
+        perm(
+            "platform",
+            "admin",
+            "application",
+            "delete",
+            "Delete applications",
+        ),
+        perm(
+            "platform",
+            "admin",
+            "config",
+            "view",
+            "View platform config",
+        ),
+        perm(
+            "platform",
+            "admin",
+            "config",
+            "update",
+            "Update platform config",
+        ),
         // Messaging Permissions
         perm("platform", "messaging", "event", "view", "View events"),
-        perm("platform", "messaging", "event", "view-raw", "View raw event data"),
-        perm("platform", "messaging", "event-type", "view", "View event types"),
-        perm("platform", "messaging", "event-type", "create", "Create event types"),
-        perm("platform", "messaging", "event-type", "update", "Update event types"),
-        perm("platform", "messaging", "event-type", "delete", "Delete event types"),
-        perm("platform", "messaging", "subscription", "view", "View subscriptions"),
-        perm("platform", "messaging", "subscription", "create", "Create subscriptions"),
-        perm("platform", "messaging", "subscription", "update", "Update subscriptions"),
-        perm("platform", "messaging", "subscription", "delete", "Delete subscriptions"),
-        perm("platform", "messaging", "dispatch-job", "view", "View dispatch jobs"),
-        perm("platform", "messaging", "dispatch-job", "view-raw", "View raw dispatch job data"),
-        perm("platform", "messaging", "dispatch-job", "create", "Create dispatch jobs"),
-        perm("platform", "messaging", "dispatch-job", "retry", "Retry dispatch jobs"),
-        perm("platform", "messaging", "dispatch-pool", "view", "View dispatch pools"),
-        perm("platform", "messaging", "dispatch-pool", "create", "Create dispatch pools"),
-        perm("platform", "messaging", "dispatch-pool", "update", "Update dispatch pools"),
-        perm("platform", "messaging", "dispatch-pool", "delete", "Delete dispatch pools"),
+        perm(
+            "platform",
+            "messaging",
+            "event",
+            "view-raw",
+            "View raw event data",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "event-type",
+            "view",
+            "View event types",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "event-type",
+            "create",
+            "Create event types",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "event-type",
+            "update",
+            "Update event types",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "event-type",
+            "delete",
+            "Delete event types",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "subscription",
+            "view",
+            "View subscriptions",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "subscription",
+            "create",
+            "Create subscriptions",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "subscription",
+            "update",
+            "Update subscriptions",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "subscription",
+            "delete",
+            "Delete subscriptions",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-job",
+            "view",
+            "View dispatch jobs",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-job",
+            "view-raw",
+            "View raw dispatch job data",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-job",
+            "create",
+            "Create dispatch jobs",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-job",
+            "retry",
+            "Retry dispatch jobs",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-pool",
+            "view",
+            "View dispatch pools",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-pool",
+            "create",
+            "Create dispatch pools",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-pool",
+            "update",
+            "Update dispatch pools",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-pool",
+            "delete",
+            "Delete dispatch pools",
+        ),
     ]
 }
 

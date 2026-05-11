@@ -1,14 +1,12 @@
 //! Deactivate User Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::principal::repository::PrincipalRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::UserDeactivated;
+use crate::principal::repository::PrincipalRepository;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 
 /// Command for deactivating a user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,7 +51,11 @@ impl<U: UnitOfWork> UseCase for DeactivateUserUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeactivateUserCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeactivateUserCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -91,11 +93,7 @@ impl<U: UnitOfWork> UseCase for DeactivateUserUseCase<U> {
         principal.deactivate();
 
         // Create domain event
-        let event = UserDeactivated::new(
-            &ctx,
-            &principal.id,
-            command.reason.as_deref(),
-        );
+        let event = UserDeactivated::new(&ctx, &principal.id, command.reason.as_deref());
 
         // Atomic commit
         self.unit_of_work

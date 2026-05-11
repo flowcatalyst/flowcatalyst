@@ -3,19 +3,20 @@
 //! REST endpoints for role management.
 
 use axum::{
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::{ToSchema, IntoParams};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
+use utoipa_axum::{router::OpenApiRouter, routes};
 
+use crate::application::repository::ApplicationRepository;
 use crate::role::entity::{AuthRole, RoleSource};
-use crate::role::repository::RoleRepository; use crate::application::repository::ApplicationRepository;
-use crate::shared::error::PlatformError;
+use crate::role::repository::RoleRepository;
 use crate::shared::api_common::PaginationParams;
+use crate::shared::error::PlatformError;
 use crate::shared::middleware::Authenticated;
 
 /// Create role request
@@ -137,9 +138,12 @@ pub struct RolesQuery {
 pub struct RolesState {
     pub role_repo: Arc<RoleRepository>,
     pub application_repo: Option<Arc<ApplicationRepository>>,
-    pub create_use_case: Arc<crate::role::operations::CreateRoleUseCase<crate::usecase::PgUnitOfWork>>,
-    pub update_use_case: Arc<crate::role::operations::UpdateRoleUseCase<crate::usecase::PgUnitOfWork>>,
-    pub delete_use_case: Arc<crate::role::operations::DeleteRoleUseCase<crate::usecase::PgUnitOfWork>>,
+    pub create_use_case:
+        Arc<crate::role::operations::CreateRoleUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_use_case:
+        Arc<crate::role::operations::UpdateRoleUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_use_case:
+        Arc<crate::role::operations::DeleteRoleUseCase<crate::usecase::PgUnitOfWork>>,
 }
 
 /// Application option for filter dropdown
@@ -223,7 +227,12 @@ pub async fn create_role(
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     let event = state.create_use_case.run(cmd, ctx).await.into_result()?;
 
-    Ok((StatusCode::CREATED, Json(crate::shared::api_common::CreatedResponse::new(event.role_id))))
+    Ok((
+        StatusCode::CREATED,
+        Json(crate::shared::api_common::CreatedResponse::new(
+            event.role_id,
+        )),
+    ))
 }
 
 /// Get role by ID or name (code)
@@ -281,7 +290,10 @@ pub async fn get_role_by_code(
     _auth: Authenticated,
     Path(code): Path<String>,
 ) -> Result<Json<RoleResponse>, PlatformError> {
-    let role = state.role_repo.find_by_name(&code).await?
+    let role = state
+        .role_repo
+        .find_by_name(&code)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Role", &code))?;
 
     Ok(Json(role.into()))
@@ -309,15 +321,16 @@ pub async fn list_roles(
         let _ = parse_source(source)?;
     }
 
-    let roles = state.role_repo.find_with_filters(
-        query.application_code.as_deref(),
-        query.source.as_deref(),
-        query.client_managed,
-    ).await?;
+    let roles = state
+        .role_repo
+        .find_with_filters(
+            query.application_code.as_deref(),
+            query.source.as_deref(),
+            query.client_managed,
+        )
+        .await?;
 
-    let roles: Vec<RoleResponse> = roles.into_iter()
-        .map(|r| r.into())
-        .collect();
+    let roles: Vec<RoleResponse> = roles.into_iter().map(|r| r.into()).collect();
 
     let total = roles.len();
     Ok(Json(RoleListResponse { roles, total }))
@@ -354,7 +367,8 @@ pub async fn update_role(
         state.role_repo.find_by_name(&role_name).await?
     } else {
         state.role_repo.find_by_id(&role_name).await?
-    }.ok_or_else(|| PlatformError::not_found("Role", &role_name))?;
+    }
+    .ok_or_else(|| PlatformError::not_found("Role", &role_name))?;
 
     let cmd = UpdateRoleCommand {
         role_id: role.id,
@@ -400,7 +414,8 @@ pub async fn grant_permission(
         state.role_repo.find_by_name(&role_name).await?
     } else {
         state.role_repo.find_by_id(&role_name).await?
-    }.ok_or_else(|| PlatformError::not_found("Role", &role_name))?;
+    }
+    .ok_or_else(|| PlatformError::not_found("Role", &role_name))?;
 
     role.grant_permission(req.permission);
     let cmd = UpdateRoleCommand {
@@ -413,7 +428,10 @@ pub async fn grant_permission(
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     state.update_use_case.run(cmd, ctx).await.into_result()?;
 
-    let refreshed = state.role_repo.find_by_id(&role.id).await?
+    let refreshed = state
+        .role_repo
+        .find_by_id(&role.id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Role", &role.id))?;
     Ok(Json(refreshed.into()))
 }
@@ -448,7 +466,8 @@ pub async fn revoke_permission(
         state.role_repo.find_by_name(&role_name).await?
     } else {
         state.role_repo.find_by_id(&role_name).await?
-    }.ok_or_else(|| PlatformError::not_found("Role", &role_name))?;
+    }
+    .ok_or_else(|| PlatformError::not_found("Role", &role_name))?;
 
     role.revoke_permission(&permission);
     let cmd = UpdateRoleCommand {
@@ -461,7 +480,10 @@ pub async fn revoke_permission(
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     state.update_use_case.run(cmd, ctx).await.into_result()?;
 
-    let refreshed = state.role_repo.find_by_id(&role.id).await?
+    let refreshed = state
+        .role_repo
+        .find_by_id(&role.id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("Role", &role.id))?;
     Ok(Json(refreshed.into()))
 }
@@ -495,7 +517,8 @@ pub async fn delete_role(
         state.role_repo.find_by_name(&role_name).await?
     } else {
         state.role_repo.find_by_id(&role_name).await?
-    }.ok_or_else(|| PlatformError::not_found("Role", &role_name))?;
+    }
+    .ok_or_else(|| PlatformError::not_found("Role", &role_name))?;
 
     let cmd = DeleteRoleCommand { role_id: role.id };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
@@ -575,7 +598,8 @@ pub async fn get_permission(
     Path(permission): Path<String>,
 ) -> Result<Json<PermissionResponse>, PlatformError> {
     let permissions = get_builtin_permissions();
-    let found = permissions.into_iter()
+    let found = permissions
+        .into_iter()
         .find(|p| p.permission == permission)
         .ok_or_else(|| PlatformError::not_found("Permission", &permission))?;
 
@@ -627,7 +651,10 @@ pub async fn get_roles_by_application_id(
     _auth: Authenticated,
     Path(application_id): Path<String>,
 ) -> Result<Json<Vec<RoleResponse>>, PlatformError> {
-    let roles = state.role_repo.find_by_application_id(&application_id).await?;
+    let roles = state
+        .role_repo
+        .find_by_application_id(&application_id)
+        .await?;
     let response: Vec<RoleResponse> = roles.into_iter().map(|r| r.into()).collect();
     Ok(Json(response))
 }
@@ -645,41 +672,209 @@ fn get_builtin_permissions() -> Vec<PermissionResponse> {
         perm("platform", "iam", "role", "update", "Update roles"),
         perm("platform", "iam", "role", "delete", "Delete roles"),
         perm("platform", "iam", "permission", "view", "View permissions"),
-        perm("platform", "iam", "service-account", "view", "View service accounts"),
-        perm("platform", "iam", "service-account", "create", "Create service accounts"),
-        perm("platform", "iam", "service-account", "update", "Update service accounts"),
-        perm("platform", "iam", "service-account", "delete", "Delete service accounts"),
-        perm("platform", "iam", "idp", "manage", "Manage identity providers"),
+        perm(
+            "platform",
+            "iam",
+            "service-account",
+            "view",
+            "View service accounts",
+        ),
+        perm(
+            "platform",
+            "iam",
+            "service-account",
+            "create",
+            "Create service accounts",
+        ),
+        perm(
+            "platform",
+            "iam",
+            "service-account",
+            "update",
+            "Update service accounts",
+        ),
+        perm(
+            "platform",
+            "iam",
+            "service-account",
+            "delete",
+            "Delete service accounts",
+        ),
+        perm(
+            "platform",
+            "iam",
+            "idp",
+            "manage",
+            "Manage identity providers",
+        ),
         // Admin Permissions
         perm("platform", "admin", "client", "view", "View clients"),
         perm("platform", "admin", "client", "create", "Create clients"),
         perm("platform", "admin", "client", "update", "Update clients"),
         perm("platform", "admin", "client", "delete", "Delete clients"),
-        perm("platform", "admin", "application", "view", "View applications"),
-        perm("platform", "admin", "application", "create", "Create applications"),
-        perm("platform", "admin", "application", "update", "Update applications"),
-        perm("platform", "admin", "application", "delete", "Delete applications"),
-        perm("platform", "admin", "config", "view", "View platform config"),
-        perm("platform", "admin", "config", "update", "Update platform config"),
+        perm(
+            "platform",
+            "admin",
+            "application",
+            "view",
+            "View applications",
+        ),
+        perm(
+            "platform",
+            "admin",
+            "application",
+            "create",
+            "Create applications",
+        ),
+        perm(
+            "platform",
+            "admin",
+            "application",
+            "update",
+            "Update applications",
+        ),
+        perm(
+            "platform",
+            "admin",
+            "application",
+            "delete",
+            "Delete applications",
+        ),
+        perm(
+            "platform",
+            "admin",
+            "config",
+            "view",
+            "View platform config",
+        ),
+        perm(
+            "platform",
+            "admin",
+            "config",
+            "update",
+            "Update platform config",
+        ),
         // Messaging Permissions
         perm("platform", "messaging", "event", "view", "View events"),
-        perm("platform", "messaging", "event", "view-raw", "View raw event data"),
-        perm("platform", "messaging", "event-type", "view", "View event types"),
-        perm("platform", "messaging", "event-type", "create", "Create event types"),
-        perm("platform", "messaging", "event-type", "update", "Update event types"),
-        perm("platform", "messaging", "event-type", "delete", "Delete event types"),
-        perm("platform", "messaging", "subscription", "view", "View subscriptions"),
-        perm("platform", "messaging", "subscription", "create", "Create subscriptions"),
-        perm("platform", "messaging", "subscription", "update", "Update subscriptions"),
-        perm("platform", "messaging", "subscription", "delete", "Delete subscriptions"),
-        perm("platform", "messaging", "dispatch-job", "view", "View dispatch jobs"),
-        perm("platform", "messaging", "dispatch-job", "view-raw", "View raw dispatch job data"),
-        perm("platform", "messaging", "dispatch-job", "create", "Create dispatch jobs"),
-        perm("platform", "messaging", "dispatch-job", "retry", "Retry dispatch jobs"),
-        perm("platform", "messaging", "dispatch-pool", "view", "View dispatch pools"),
-        perm("platform", "messaging", "dispatch-pool", "create", "Create dispatch pools"),
-        perm("platform", "messaging", "dispatch-pool", "update", "Update dispatch pools"),
-        perm("platform", "messaging", "dispatch-pool", "delete", "Delete dispatch pools"),
+        perm(
+            "platform",
+            "messaging",
+            "event",
+            "view-raw",
+            "View raw event data",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "event-type",
+            "view",
+            "View event types",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "event-type",
+            "create",
+            "Create event types",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "event-type",
+            "update",
+            "Update event types",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "event-type",
+            "delete",
+            "Delete event types",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "subscription",
+            "view",
+            "View subscriptions",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "subscription",
+            "create",
+            "Create subscriptions",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "subscription",
+            "update",
+            "Update subscriptions",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "subscription",
+            "delete",
+            "Delete subscriptions",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-job",
+            "view",
+            "View dispatch jobs",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-job",
+            "view-raw",
+            "View raw dispatch job data",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-job",
+            "create",
+            "Create dispatch jobs",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-job",
+            "retry",
+            "Retry dispatch jobs",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-pool",
+            "view",
+            "View dispatch pools",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-pool",
+            "create",
+            "Create dispatch pools",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-pool",
+            "update",
+            "Update dispatch pools",
+        ),
+        perm(
+            "platform",
+            "messaging",
+            "dispatch-pool",
+            "delete",
+            "Delete dispatch pools",
+        ),
     ]
 }
 

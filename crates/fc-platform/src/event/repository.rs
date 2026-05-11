@@ -2,10 +2,10 @@
 //!
 //! Direct SQL queries with explicit control over what's fetched.
 
-use sqlx::{PgPool, Postgres, QueryBuilder};
 use chrono::{DateTime, Utc};
+use sqlx::{PgPool, Postgres, QueryBuilder};
 
-use super::entity::{Event, EventRead, EventFilterOptions, ContextData, CLOUDEVENTS_SPEC_VERSION};
+use super::entity::{ContextData, Event, EventFilterOptions, EventRead, CLOUDEVENTS_SPEC_VERSION};
 use crate::shared::error::Result;
 
 /// Row mapping for msg_events table
@@ -30,7 +30,8 @@ struct EventRow {
 
 impl From<EventRow> for Event {
     fn from(r: EventRow) -> Self {
-        let context_data: Vec<ContextData> = r.context_data
+        let context_data: Vec<ContextData> = r
+            .context_data
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default();
 
@@ -41,7 +42,9 @@ impl From<EventRow> for Event {
             subject: r.subject,
             time: r.time,
             data: r.data.unwrap_or(serde_json::Value::Null),
-            spec_version: r.spec_version.unwrap_or_else(|| CLOUDEVENTS_SPEC_VERSION.to_string()),
+            spec_version: r
+                .spec_version
+                .unwrap_or_else(|| CLOUDEVENTS_SPEC_VERSION.to_string()),
             message_group: r.message_group,
             correlation_id: r.correlation_id,
             causation_id: r.causation_id,
@@ -112,7 +115,7 @@ impl EventRepository {
                 (id, spec_version, type, source, subject, time, data,
                  correlation_id, causation_id, deduplication_id,
                  message_group, client_id, context_data, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())"#
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())"#,
         )
         .bind(&event.id)
         .bind(&event.spec_version)
@@ -166,13 +169,11 @@ impl EventRepository {
             deduplication_ids.push(event.deduplication_id.clone());
             message_groups.push(event.message_group.clone());
             client_ids.push(event.client_id.clone());
-            context_datas.push(
-                if event.context_data.is_empty() {
-                    None
-                } else {
-                    serde_json::to_value(&event.context_data).ok()
-                }
-            );
+            context_datas.push(if event.context_data.is_empty() {
+                None
+            } else {
+                serde_json::to_value(&event.context_data).ok()
+            });
         }
 
         sqlx::query(
@@ -185,7 +186,7 @@ impl EventRepository {
                 $5::varchar[], $6::timestamptz[], $7::jsonb[],
                 $8::varchar[], $9::varchar[], $10::varchar[],
                 $11::varchar[], $12::varchar[], $13::jsonb[]
-            ), NOW()"#
+            ), NOW()"#,
         )
         .bind(&ids)
         .bind(&spec_versions)
@@ -207,19 +208,17 @@ impl EventRepository {
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<Event>> {
-        let row = sqlx::query_as::<_, EventRow>(
-            "SELECT * FROM msg_events WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query_as::<_, EventRow>("SELECT * FROM msg_events WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(row.map(Event::from))
     }
 
     pub async fn find_by_type(&self, event_type: &str, limit: i64) -> Result<Vec<Event>> {
         let rows = sqlx::query_as::<_, EventRow>(
-            "SELECT * FROM msg_events WHERE type = $1 ORDER BY time DESC LIMIT $2"
+            "SELECT * FROM msg_events WHERE type = $1 ORDER BY time DESC LIMIT $2",
         )
         .bind(event_type)
         .bind(limit)
@@ -231,7 +230,7 @@ impl EventRepository {
 
     pub async fn find_by_client(&self, client_id: &str, limit: i64) -> Result<Vec<Event>> {
         let rows = sqlx::query_as::<_, EventRow>(
-            "SELECT * FROM msg_events WHERE client_id = $1 ORDER BY time DESC LIMIT $2"
+            "SELECT * FROM msg_events WHERE client_id = $1 ORDER BY time DESC LIMIT $2",
         )
         .bind(client_id)
         .bind(limit)
@@ -243,7 +242,7 @@ impl EventRepository {
 
     pub async fn find_by_correlation_id(&self, correlation_id: &str) -> Result<Vec<Event>> {
         let rows = sqlx::query_as::<_, EventRow>(
-            "SELECT * FROM msg_events WHERE correlation_id = $1 ORDER BY time DESC"
+            "SELECT * FROM msg_events WHERE correlation_id = $1 ORDER BY time DESC",
         )
         .bind(correlation_id)
         .fetch_all(&self.pool)
@@ -253,12 +252,11 @@ impl EventRepository {
     }
 
     pub async fn find_by_deduplication_id(&self, deduplication_id: &str) -> Result<Option<Event>> {
-        let row = sqlx::query_as::<_, EventRow>(
-            "SELECT * FROM msg_events WHERE deduplication_id = $1"
-        )
-        .bind(deduplication_id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row =
+            sqlx::query_as::<_, EventRow>("SELECT * FROM msg_events WHERE deduplication_id = $1")
+                .bind(deduplication_id)
+                .fetch_optional(&self.pool)
+                .await?;
 
         Ok(row.map(Event::from))
     }
@@ -294,11 +292,9 @@ impl EventRepository {
     }
 
     pub async fn count_all(&self) -> Result<u64> {
-        let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM msg_events"
-        )
-        .fetch_one(&self.pool)
-        .await?;
+        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM msg_events")
+            .fetch_one(&self.pool)
+            .await?;
 
         Ok(row.0 as u64)
     }
@@ -309,7 +305,7 @@ impl EventRepository {
         let row = sqlx::query_as::<_, EventReadRow>(
             "SELECT id, type, source, subject, time, application, subdomain, \
              aggregate, message_group, correlation_id, client_id, projected_at \
-             FROM msg_events_read WHERE id = $1"
+             FROM msg_events_read WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -359,7 +355,9 @@ impl EventRepository {
         }
         if !applications.is_empty() {
             push_where(&mut qb, &mut has_where);
-            qb.push("application = ANY(").push_bind(applications).push(")");
+            qb.push("application = ANY(")
+                .push_bind(applications)
+                .push(")");
         }
         if !subdomains.is_empty() {
             push_where(&mut qb, &mut has_where);
@@ -399,7 +397,8 @@ impl EventRepository {
                 .push(")");
         }
 
-        qb.push(" ORDER BY time DESC, id DESC LIMIT ").push_bind(fetch_limit);
+        qb.push(" ORDER BY time DESC, id DESC LIMIT ")
+            .push_bind(fetch_limit);
 
         let rows: Vec<EventReadRow> = qb.build_query_as().fetch_all(&self.pool).await?;
         Ok(rows.into_iter().map(EventRead::from).collect())
@@ -420,10 +419,17 @@ impl EventRepository {
         ).fetch_all(&self.pool).await?;
 
         let types = sqlx::query_scalar::<_, String>(
-            "SELECT DISTINCT type FROM msg_events_read ORDER BY type"
-        ).fetch_all(&self.pool).await?;
+            "SELECT DISTINCT type FROM msg_events_read ORDER BY type",
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
-        Ok(EventFilterOptions { applications, subdomains, aggregates, types })
+        Ok(EventFilterOptions {
+            applications,
+            subdomains,
+            aggregates,
+            types,
+        })
     }
 
     pub async fn insert_read_projection(&self, p: &EventRead) -> Result<()> {
@@ -431,7 +437,7 @@ impl EventRepository {
             r#"INSERT INTO msg_events_read
                 (id, type, source, subject, time, application, subdomain,
                  aggregate, message_group, correlation_id, client_id, projected_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())"#
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())"#,
         )
         .bind(&p.id)
         .bind(&p.event_type)
@@ -457,7 +463,7 @@ impl EventRepository {
                 application = $6, subdomain = $7, aggregate = $8,
                 message_group = $9, correlation_id = $10, client_id = $11,
                 projected_at = NOW()
-            WHERE id = $1"#
+            WHERE id = $1"#,
         )
         .bind(&p.id)
         .bind(&p.event_type)

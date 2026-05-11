@@ -2,12 +2,12 @@
 //!
 //! User and service account identity management.
 
-pub mod entity;
-pub mod repository;
 pub mod api;
+pub mod entity;
 pub mod operations;
+pub mod repository;
 
 // Re-export main types
-pub use entity::{Principal, PrincipalType, UserScope, UserIdentity};
+pub use api::{principals_router, PrincipalsState};
+pub use entity::{Principal, PrincipalType, UserIdentity, UserScope};
 pub use repository::PrincipalRepository;
-pub use api::{PrincipalsState, principals_router};

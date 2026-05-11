@@ -1,13 +1,13 @@
 //! CORS Admin API
 
 use axum::{
+    extract::{Path, State},
     routing::{get, post},
-    extract::{State, Path},
     Json, Router,
 };
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use super::entity::CorsAllowedOrigin;
 use super::repository::CorsOriginRepository;
@@ -61,8 +61,10 @@ pub struct AllowedOriginsResponse {
 #[derive(Clone)]
 pub struct CorsState {
     pub cors_repo: Arc<CorsOriginRepository>,
-    pub add_use_case: Arc<crate::cors::operations::AddCorsOriginUseCase<crate::usecase::PgUnitOfWork>>,
-    pub delete_use_case: Arc<crate::cors::operations::DeleteCorsOriginUseCase<crate::usecase::PgUnitOfWork>>,
+    pub add_use_case:
+        Arc<crate::cors::operations::AddCorsOriginUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_use_case:
+        Arc<crate::cors::operations::DeleteCorsOriginUseCase<crate::usecase::PgUnitOfWork>>,
 }
 
 /// Create a new CORS allowed origin
@@ -82,7 +84,13 @@ pub async fn create_cors_origin(
     State(state): State<CorsState>,
     auth: Authenticated,
     Json(req): Json<CreateCorsOriginRequest>,
-) -> Result<(axum::http::StatusCode, Json<crate::shared::api_common::CreatedResponse>), PlatformError> {
+) -> Result<
+    (
+        axum::http::StatusCode,
+        Json<crate::shared::api_common::CreatedResponse>,
+    ),
+    PlatformError,
+> {
     use crate::cors::operations::AddCorsOriginCommand;
     use crate::usecase::{ExecutionContext, UseCase};
 
@@ -96,7 +104,9 @@ pub async fn create_cors_origin(
     let event = state.add_use_case.run(cmd, ctx).await.into_result()?;
     Ok((
         axum::http::StatusCode::CREATED,
-        Json(crate::shared::api_common::CreatedResponse::new(event.origin_id)),
+        Json(crate::shared::api_common::CreatedResponse::new(
+            event.origin_id,
+        )),
     ))
 }
 
@@ -162,7 +172,10 @@ pub async fn get_cors_origin(
     _auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<CorsOriginResponse>, PlatformError> {
-    let origin = state.cors_repo.find_by_id(&id).await?
+    let origin = state
+        .cors_repo
+        .find_by_id(&id)
+        .await?
         .ok_or_else(|| PlatformError::not_found("CorsAllowedOrigin", &id))?;
     Ok(Json(origin.into()))
 }

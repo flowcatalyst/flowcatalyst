@@ -19,12 +19,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use tracing::info;
 use tokio::signal;
+use tracing::info;
 
-use fc_stream::{StreamProcessorConfig, StreamHealthService, start_stream_processor};
+use fc_stream::{start_stream_processor, StreamHealthService, StreamProcessorConfig};
 
-use fc_common::config::{env_or, env_or_parse, env_bool};
+use fc_common::config::{env_bool, env_or, env_or_parse};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -33,7 +33,10 @@ async fn main() -> Result<()> {
     info!("Starting FlowCatalyst Stream Processor");
 
     // Configuration
-    let database_url = env_or("FC_DATABASE_URL", "postgresql://localhost:5432/flowcatalyst");
+    let database_url = env_or(
+        "FC_DATABASE_URL",
+        "postgresql://localhost:5432/flowcatalyst",
+    );
     let metrics_port: u16 = env_or_parse("FC_METRICS_PORT", 9090);
 
     let config = StreamProcessorConfig {
@@ -130,7 +133,9 @@ async fn health_handler(svc: Arc<StreamHealthService>) -> axum::Json<serde_json:
     }))
 }
 
-async fn ready_handler(svc: Arc<StreamHealthService>) -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
+async fn ready_handler(
+    svc: Arc<StreamHealthService>,
+) -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
     let health = svc.get_aggregated_health();
     if health.is_ready() {
         (

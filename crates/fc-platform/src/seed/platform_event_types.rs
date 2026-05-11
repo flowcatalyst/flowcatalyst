@@ -4,10 +4,10 @@
 //! constants on each domain event struct exactly. Used by the BFF
 //! sync-platform endpoint and the dev seeder.
 
-use std::collections::HashMap;
-use serde_json::Value;
-use crate::event_type::operations::SyncEventTypeInput;
 use super::platform_event_schemas;
+use crate::event_type::operations::SyncEventTypeInput;
+use serde_json::Value;
+use std::collections::HashMap;
 
 /// Returns all platform domain event type definitions with JSON schemas.
 ///
@@ -25,88 +25,189 @@ pub fn definitions() -> Vec<SyncEventTypeInput> {
     // ─── platform:iam ─────────────────────────────────────────────────
 
     // User
-    group(&mut defs, &schemas, "platform:iam:user", &[
-        "created", "updated", "activated", "deactivated", "deleted",
-        "roles-assigned", "application-access-assigned",
-        "client-access-granted", "client-access-revoked",
-        "logged-in", "password-reset-requested", "password-reset-completed",
-    ]);
+    group(
+        &mut defs,
+        &schemas,
+        "platform:iam:user",
+        &[
+            "created",
+            "updated",
+            "activated",
+            "deactivated",
+            "deleted",
+            "roles-assigned",
+            "application-access-assigned",
+            "client-access-granted",
+            "client-access-revoked",
+            "logged-in",
+            "password-reset-requested",
+            "password-reset-completed",
+        ],
+    );
     // Principals (sync — aggregate is plural)
-    push(&mut defs, &schemas, "platform:iam:principals:synced", "Principals Synced");
+    push(
+        &mut defs,
+        &schemas,
+        "platform:iam:principals:synced",
+        "Principals Synced",
+    );
 
     // Service Account (no hyphen in aggregate)
-    group(&mut defs, &schemas, "platform:iam:serviceaccount", &[
-        "created", "updated", "deleted",
-        "roles-assigned", "token-regenerated", "secret-regenerated",
-    ]);
+    group(
+        &mut defs,
+        &schemas,
+        "platform:iam:serviceaccount",
+        &[
+            "created",
+            "updated",
+            "deleted",
+            "roles-assigned",
+            "token-regenerated",
+            "secret-regenerated",
+        ],
+    );
 
     // Client
-    group(&mut defs, &schemas, "platform:iam:client", &[
-        "created", "updated", "activated", "suspended", "deleted", "note-added",
-    ]);
+    group(
+        &mut defs,
+        &schemas,
+        "platform:iam:client",
+        &[
+            "created",
+            "updated",
+            "activated",
+            "suspended",
+            "deleted",
+            "note-added",
+        ],
+    );
 
     // Role
-    group(&mut defs, &schemas, "platform:iam:role", &[
-        "created", "updated", "deleted",
-    ]);
-    push(&mut defs, &schemas, "platform:iam:roles:synced", "Roles Synced");
+    group(
+        &mut defs,
+        &schemas,
+        "platform:iam:role",
+        &["created", "updated", "deleted"],
+    );
+    push(
+        &mut defs,
+        &schemas,
+        "platform:iam:roles:synced",
+        "Roles Synced",
+    );
 
     // Application
-    group(&mut defs, &schemas, "platform:iam:application", &[
-        "created", "updated", "activated", "deactivated", "deleted",
-        "service-account-provisioned",
-        "enabled-for-client", "disabled-for-client",
-    ]);
+    group(
+        &mut defs,
+        &schemas,
+        "platform:iam:application",
+        &[
+            "created",
+            "updated",
+            "activated",
+            "deactivated",
+            "deleted",
+            "service-account-provisioned",
+            "enabled-for-client",
+            "disabled-for-client",
+        ],
+    );
 
     // Anchor Domain
-    group(&mut defs, &schemas, "platform:iam:anchor-domain", &[
-        "created", "deleted",
-    ]);
+    group(
+        &mut defs,
+        &schemas,
+        "platform:iam:anchor-domain",
+        &["created", "deleted"],
+    );
 
     // Auth Config
-    group(&mut defs, &schemas, "platform:iam:auth-config", &[
-        "created", "updated", "deleted",
-    ]);
+    group(
+        &mut defs,
+        &schemas,
+        "platform:iam:auth-config",
+        &["created", "updated", "deleted"],
+    );
 
     // ─── platform:admin ───────────────────────────────────────────────
 
     // CORS
-    group(&mut defs, &schemas, "platform:admin:cors", &[
-        "origin-added", "origin-deleted",
-    ]);
+    group(
+        &mut defs,
+        &schemas,
+        "platform:admin:cors",
+        &["origin-added", "origin-deleted"],
+    );
 
     // Identity Provider
-    group(&mut defs, &schemas, "platform:admin:idp", &[
-        "created", "updated", "deleted",
-    ]);
+    group(
+        &mut defs,
+        &schemas,
+        "platform:admin:idp",
+        &["created", "updated", "deleted"],
+    );
 
     // Email Domain Mapping
-    group(&mut defs, &schemas, "platform:admin:edm", &[
-        "created", "updated", "deleted",
-    ]);
+    group(
+        &mut defs,
+        &schemas,
+        "platform:admin:edm",
+        &["created", "updated", "deleted"],
+    );
 
     // Event Type (no hyphen in aggregate)
-    group(&mut defs, &schemas, "platform:admin:eventtype", &[
-        "created", "updated", "archived", "deleted",
-        "schema-added", "schema-finalised", "schema-deprecated",
-    ]);
-    push(&mut defs, &schemas, "platform:admin:eventtypes:synced", "Event Types Synced");
+    group(
+        &mut defs,
+        &schemas,
+        "platform:admin:eventtype",
+        &[
+            "created",
+            "updated",
+            "archived",
+            "deleted",
+            "schema-added",
+            "schema-finalised",
+            "schema-deprecated",
+        ],
+    );
+    push(
+        &mut defs,
+        &schemas,
+        "platform:admin:eventtypes:synced",
+        "Event Types Synced",
+    );
 
     // Connection
-    group(&mut defs, &schemas, "platform:admin:connection", &[
-        "created", "updated", "deleted",
-    ]);
+    group(
+        &mut defs,
+        &schemas,
+        "platform:admin:connection",
+        &["created", "updated", "deleted"],
+    );
 
     // Dispatch Pool
-    group(&mut defs, &schemas, "platform:admin:dispatch-pool", &[
-        "created", "updated", "archived", "deleted",
-    ]);
-    push(&mut defs, &schemas, "platform:admin:dispatch-pools:synced", "Dispatch Pools Synced");
+    group(
+        &mut defs,
+        &schemas,
+        "platform:admin:dispatch-pool",
+        &["created", "updated", "archived", "deleted"],
+    );
+    push(
+        &mut defs,
+        &schemas,
+        "platform:admin:dispatch-pools:synced",
+        "Dispatch Pools Synced",
+    );
 
     // Subscription
-    group(&mut defs, &schemas, "platform:admin:subscription", &[
-        "created", "updated", "paused", "resumed", "deleted", "synced",
-    ]);
+    group(
+        &mut defs,
+        &schemas,
+        "platform:admin:subscription",
+        &[
+            "created", "updated", "paused", "resumed", "deleted", "synced",
+        ],
+    );
 
     defs
 }

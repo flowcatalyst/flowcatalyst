@@ -2,13 +2,13 @@
 //!
 //! Audit logging for platform operations.
 
+pub mod api;
 pub mod entity;
 pub mod repository;
-pub mod api;
 pub mod service;
 
 // Re-export main types
+pub use api::audit_logs_router;
 pub use entity::AuditLog;
 pub use repository::AuditLogRepository;
-pub use api::{audit_logs_router};
 pub use service::AuditService;

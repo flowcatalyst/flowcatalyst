@@ -1,15 +1,13 @@
 //! Update Dispatch Pool Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::DispatchPoolRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
 use super::events::DispatchPoolUpdated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::DispatchPoolRepository;
 
 /// Command for updating a dispatch pool.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,10 +40,7 @@ pub struct UpdateDispatchPoolUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> UpdateDispatchPoolUseCase<U> {
-    pub fn new(
-        dispatch_pool_repo: Arc<DispatchPoolRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
+    pub fn new(dispatch_pool_repo: Arc<DispatchPoolRepository>, unit_of_work: Arc<U>) -> Self {
         Self {
             dispatch_pool_repo,
             unit_of_work,
@@ -62,7 +57,11 @@ impl<U: UnitOfWork> UseCase for UpdateDispatchPoolUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &UpdateDispatchPoolCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &UpdateDispatchPoolCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -81,9 +80,10 @@ impl<U: UnitOfWork> UseCase for UpdateDispatchPoolUseCase<U> {
                 ));
             }
             Err(e) => {
-                return UseCaseResult::failure(UseCaseError::commit(
-                    format!("Failed to find dispatch pool: {}", e),
-                ));
+                return UseCaseResult::failure(UseCaseError::commit(format!(
+                    "Failed to find dispatch pool: {}",
+                    e
+                )));
             }
         };
 

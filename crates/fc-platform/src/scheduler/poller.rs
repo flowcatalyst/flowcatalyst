@@ -59,7 +59,10 @@ impl PausedConnectionCache {
         *self.cache.write() = paused;
         *self.last_refresh.write() = Instant::now();
 
-        debug!(paused_subscriptions = count, "Refreshed paused connection cache");
+        debug!(
+            paused_subscriptions = count,
+            "Refreshed paused connection cache"
+        );
         Ok(())
     }
 
@@ -177,12 +180,11 @@ impl PendingJobPoller {
             return Ok(jobs);
         }
 
-        let filtered: Vec<SchedulerJobRow> = jobs.into_iter()
-            .filter(|j| {
-                match &j.subscription_id {
-                    Some(sid) => !paused_sub_ids.contains(sid),
-                    None => true,
-                }
+        let filtered: Vec<SchedulerJobRow> = jobs
+            .into_iter()
+            .filter(|j| match &j.subscription_id {
+                Some(sid) => !paused_sub_ids.contains(sid),
+                None => true,
             })
             .collect();
 
@@ -192,16 +194,25 @@ impl PendingJobPoller {
     fn group_by_message_group(jobs: Vec<SchedulerJobRow>) -> HashMap<String, Vec<SchedulerJobRow>> {
         let mut grouped: HashMap<String, Vec<SchedulerJobRow>> = HashMap::new();
         for job in jobs {
-            let group = job.message_group.clone().unwrap_or_else(|| DEFAULT_MESSAGE_GROUP.to_string());
+            let group = job
+                .message_group
+                .clone()
+                .unwrap_or_else(|| DEFAULT_MESSAGE_GROUP.to_string());
             grouped.entry(group).or_default().push(job);
         }
         grouped
     }
 
-    fn filter_by_dispatch_mode(jobs: Vec<SchedulerJobRow>, blocked_groups: &HashSet<String>) -> Vec<SchedulerJobRow> {
+    fn filter_by_dispatch_mode(
+        jobs: Vec<SchedulerJobRow>,
+        blocked_groups: &HashSet<String>,
+    ) -> Vec<SchedulerJobRow> {
         jobs.into_iter()
             .filter(|job| {
-                let group = job.message_group.as_deref().unwrap_or(DEFAULT_MESSAGE_GROUP);
+                let group = job
+                    .message_group
+                    .as_deref()
+                    .unwrap_or(DEFAULT_MESSAGE_GROUP);
                 match job.dispatch_mode() {
                     DispatchMode::Immediate => true,
                     DispatchMode::NextOnError | DispatchMode::BlockOnError => {
@@ -237,7 +248,11 @@ mod tests {
         }
     }
 
-    fn make_job_with_subscription(id: &str, group: Option<&str>, sub_id: Option<&str>) -> SchedulerJobRow {
+    fn make_job_with_subscription(
+        id: &str,
+        group: Option<&str>,
+        sub_id: Option<&str>,
+    ) -> SchedulerJobRow {
         let mut job = make_job(id, group, "IMMEDIATE");
         job.subscription_id = sub_id.map(|s| s.to_string());
         job
@@ -349,8 +364,10 @@ mod tests {
 
     #[test]
     fn paused_subscription_filter_logic() {
-        let paused_sub_ids: HashSet<String> = ["sub_paused_1".to_string(), "sub_paused_2".to_string()]
-            .into_iter().collect();
+        let paused_sub_ids: HashSet<String> =
+            ["sub_paused_1".to_string(), "sub_paused_2".to_string()]
+                .into_iter()
+                .collect();
 
         let jobs = vec![
             make_job_with_subscription("j1", Some("g"), Some("sub_active")),
@@ -359,12 +376,11 @@ mod tests {
             make_job_with_subscription("j4", Some("g"), Some("sub_paused_2")),
         ];
 
-        let filtered: Vec<SchedulerJobRow> = jobs.into_iter()
-            .filter(|j| {
-                match &j.subscription_id {
-                    Some(sid) => !paused_sub_ids.contains(sid),
-                    None => true,
-                }
+        let filtered: Vec<SchedulerJobRow> = jobs
+            .into_iter()
+            .filter(|j| match &j.subscription_id {
+                Some(sid) => !paused_sub_ids.contains(sid),
+                None => true,
             })
             .collect();
 

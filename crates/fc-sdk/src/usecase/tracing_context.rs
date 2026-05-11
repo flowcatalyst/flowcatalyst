@@ -200,12 +200,13 @@ mod tests {
             // Set an initial context
             TracingContext::set_current(TracingContext::new("original".into(), None));
 
-            let result = TracingContext::run_with_context("inner-corr", Some("inner-cause".into()), || {
-                let tc = TracingContext::current().unwrap();
-                assert_eq!(tc.correlation_id(), "inner-corr");
-                assert_eq!(tc.causation_id(), Some("inner-cause"));
-                42
-            });
+            let result =
+                TracingContext::run_with_context("inner-corr", Some("inner-cause".into()), || {
+                    let tc = TracingContext::current().unwrap();
+                    assert_eq!(tc.correlation_id(), "inner-corr");
+                    assert_eq!(tc.causation_id(), Some("inner-cause"));
+                    42
+                });
 
             assert_eq!(result, 42);
 

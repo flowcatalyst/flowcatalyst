@@ -4,12 +4,12 @@
 //! Uses the same schema as Java for cross-platform compatibility.
 
 use std::sync::Arc;
-use tracing::{info, error};
+use tracing::{error, info};
 
+use crate::shared::error::Result;
 use crate::AuditLog;
 use crate::AuditLogRepository;
 use crate::AuthContext;
-use crate::shared::error::Result;
 
 /// Audit service for recording platform actions
 #[derive(Clone)]
@@ -100,7 +100,12 @@ impl AuditService {
         principal_id: &str,
         _client_id: &str,
     ) -> Result<()> {
-        let log = self.build_log(auth, "Principal", Some(principal_id), "GrantClientAccessCommand");
+        let log = self.build_log(
+            auth,
+            "Principal",
+            Some(principal_id),
+            "GrantClientAccessCommand",
+        );
         self.insert(log).await
     }
 
@@ -111,7 +116,12 @@ impl AuditService {
         principal_id: &str,
         _client_id: &str,
     ) -> Result<()> {
-        let log = self.build_log(auth, "Principal", Some(principal_id), "RevokeClientAccessCommand");
+        let log = self.build_log(
+            auth,
+            "Principal",
+            Some(principal_id),
+            "RevokeClientAccessCommand",
+        );
         self.insert(log).await
     }
 
@@ -122,7 +132,11 @@ impl AuditService {
         success: bool,
         _ip_address: Option<&str>,
     ) -> Result<()> {
-        let operation = if success { "LoginCommand" } else { "FailedLoginCommand" };
+        let operation = if success {
+            "LoginCommand"
+        } else {
+            "FailedLoginCommand"
+        };
         let log = AuditLog::new("Session", "", operation, None, None);
         self.insert(log).await
     }

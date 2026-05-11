@@ -7,14 +7,14 @@
 //! - Filtering by severity/category
 //! - Optional notification integration (Teams, email, etc.)
 
-use std::collections::HashMap;
-use std::sync::Arc;
 use chrono::Utc;
 use parking_lot::RwLock;
+use std::collections::HashMap;
+use std::sync::Arc;
 use tracing::{debug, info};
 
-use fc_common::{Warning, WarningCategory, WarningSeverity};
 use crate::notification::NotificationService;
+use fc_common::{Warning, WarningCategory, WarningSeverity};
 
 /// Configuration for warning service
 #[derive(Debug, Clone)]
@@ -61,7 +61,10 @@ impl WarningService {
     }
 
     /// Create a new warning service with notification support
-    pub fn with_notification(config: WarningServiceConfig, notification: Arc<dyn NotificationService>) -> Self {
+    pub fn with_notification(
+        config: WarningServiceConfig,
+        notification: Arc<dyn NotificationService>,
+    ) -> Self {
         Self {
             warnings: RwLock::new(HashMap::new()),
             config,

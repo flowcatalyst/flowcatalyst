@@ -4,9 +4,9 @@
 //! Supports type-aware queries (EVENT, DISPATCH_JOB, AUDIT_LOG) and granular status tracking.
 //! Uses a single shared table (outbox_messages) with a `type` column, matching Java/TypeScript.
 
+use anyhow::Result;
 use async_trait::async_trait;
 use fc_common::{OutboxItem, OutboxItemType, OutboxStatus};
-use anyhow::Result;
 use std::collections::HashSet;
 use std::time::Duration;
 
@@ -49,7 +49,11 @@ impl OutboxTableConfig {
     pub fn unique_tables(&self) -> Vec<&str> {
         let mut seen = HashSet::new();
         let mut tables = Vec::new();
-        for table in [&self.events_table, &self.dispatch_jobs_table, &self.audit_logs_table] {
+        for table in [
+            &self.events_table,
+            &self.dispatch_jobs_table,
+            &self.audit_logs_table,
+        ] {
             if seen.insert(table.as_str()) {
                 tables.push(table.as_str());
             }
@@ -69,7 +73,11 @@ pub trait OutboxRepository: Send + Sync {
     ///
     /// Java equivalent: `fetchPending(OutboxItemType type, int limit)`
     /// Orders by message_group, created_at to match Java/TypeScript behavior.
-    async fn fetch_pending_by_type(&self, item_type: OutboxItemType, limit: u32) -> Result<Vec<OutboxItem>>;
+    async fn fetch_pending_by_type(
+        &self,
+        item_type: OutboxItemType,
+        limit: u32,
+    ) -> Result<Vec<OutboxItem>>;
 
     /// Mark items as IN_PROGRESS (status = 9)
     ///
@@ -90,7 +98,11 @@ pub trait OutboxRepository: Send + Sync {
     /// Increment retry count and reset to PENDING for retry
     ///
     /// Java equivalent: `incrementRetryCount(OutboxItemType type, List<String> ids)`
-    async fn increment_retry_count(&self, item_type: OutboxItemType, ids: Vec<String>) -> Result<()>;
+    async fn increment_retry_count(
+        &self,
+        item_type: OutboxItemType,
+        ids: Vec<String>,
+    ) -> Result<()>;
 
     /// Fetch items that are recoverable (stuck in IN_PROGRESS or error states)
     ///
@@ -105,7 +117,11 @@ pub trait OutboxRepository: Send + Sync {
     /// Reset recoverable items back to PENDING
     ///
     /// Java equivalent: `resetRecoverableItems(OutboxItemType type, List<String> ids)`
-    async fn reset_recoverable_items(&self, item_type: OutboxItemType, ids: Vec<String>) -> Result<()>;
+    async fn reset_recoverable_items(
+        &self,
+        item_type: OutboxItemType,
+        ids: Vec<String>,
+    ) -> Result<()>;
 
     /// Fetch items stuck in IN_PROGRESS for longer than timeout
     ///
@@ -144,14 +160,15 @@ pub trait OutboxRepository: Send + Sync {
     }
 
     /// Update status for a single item (legacy method)
-    async fn update_status(&self, id: &str, status: OutboxStatus, error: Option<String>) -> Result<()> {
+    async fn update_status(
+        &self,
+        id: &str,
+        status: OutboxStatus,
+        error: Option<String>,
+    ) -> Result<()> {
         // Assume EVENT type for legacy callers
-        self.mark_with_status(
-            OutboxItemType::EVENT,
-            vec![id.to_string()],
-            status,
-            error,
-        ).await
+        self.mark_with_status(OutboxItemType::EVENT, vec![id.to_string()], status, error)
+            .await
     }
 
     /// Recover stuck items across all types.
@@ -207,12 +224,14 @@ pub trait OutboxRepositoryExt: OutboxRepository {
 
         // Mark successful items
         if !success_ids.is_empty() {
-            self.mark_with_status(item_type, success_ids, OutboxStatus::SUCCESS, None).await?;
+            self.mark_with_status(item_type, success_ids, OutboxStatus::SUCCESS, None)
+                .await?;
         }
 
         // Handle error items individually (they may have different statuses)
         for (id, status, error) in error_items {
-            self.mark_with_status(item_type, vec![id], status, error).await?;
+            self.mark_with_status(item_type, vec![id], status, error)
+                .await?;
         }
 
         Ok(())
@@ -225,7 +244,9 @@ pub trait OutboxRepositoryExt: OutboxRepository {
         max_retries: i32,
         limit: u32,
     ) -> Result<u64> {
-        let recoverable = self.fetch_recoverable_items(item_type, Duration::from_secs(0), limit).await?;
+        let recoverable = self
+            .fetch_recoverable_items(item_type, Duration::from_secs(0), limit)
+            .await?;
 
         let mut retried = 0u64;
         let mut to_retry = Vec::new();
@@ -251,7 +272,8 @@ pub trait OutboxRepositoryExt: OutboxRepository {
                 exhausted,
                 OutboxStatus::INTERNAL_ERROR,
                 Some("Max retries exceeded".to_string()),
-            ).await?;
+            )
+            .await?;
         }
 
         Ok(retried)

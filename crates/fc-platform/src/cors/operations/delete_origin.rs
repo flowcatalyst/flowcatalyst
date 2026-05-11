@@ -1,12 +1,12 @@
 //! Delete CORS Origin Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::CorsOriginRepository;
-use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 use super::events::CorsOriginDeleted;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::CorsOriginRepository;
 
 /// Command for deleting a CORS allowed origin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,7 +22,10 @@ pub struct DeleteCorsOriginUseCase<U: UnitOfWork> {
 
 impl<U: UnitOfWork> DeleteCorsOriginUseCase<U> {
     pub fn new(cors_repo: Arc<CorsOriginRepository>, unit_of_work: Arc<U>) -> Self {
-        Self { cors_repo, unit_of_work }
+        Self {
+            cors_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -35,7 +38,11 @@ impl<U: UnitOfWork> UseCase for DeleteCorsOriginUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &DeleteCorsOriginCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &DeleteCorsOriginCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -54,7 +61,8 @@ impl<U: UnitOfWork> UseCase for DeleteCorsOriginUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to fetch CORS origin: {}", e
+                    "Failed to fetch CORS origin: {}",
+                    e
                 )));
             }
         };

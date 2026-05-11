@@ -3,16 +3,16 @@
 //! JWT token generation and validation.
 //! Supports both RS256 (RSA) for production and HS256 (HMAC) for development.
 
+use crate::shared::error::{PlatformError, Result};
+use crate::{Principal, UserScope};
 use chrono::{Duration, Utc};
 use dashmap::DashMap;
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation, Algorithm};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
 use tracing::{info, warn};
-use crate::{Principal, UserScope};
-use crate::shared::error::{PlatformError, Result};
 
 /// Cached token validation result
 struct CachedClaims {
@@ -54,7 +54,6 @@ pub struct IdTokenClaims {
     pub nonce: Option<String>,
 
     // --- Standard OIDC claims ---
-
     /// User's display name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -72,7 +71,6 @@ pub struct IdTokenClaims {
     pub updated_at: Option<i64>,
 
     // --- OIDC optional claims ---
-
     /// Authentication Context Class Reference (OIDC Core §2)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub acr: Option<String>,
@@ -86,7 +84,6 @@ pub struct IdTokenClaims {
     pub azp: Option<String>,
 
     // --- FlowCatalyst custom claims (matching TypeScript provider) ---
-
     /// Principal type (USER or SERVICE)
     #[serde(rename = "type")]
     pub principal_type: String,
@@ -200,8 +197,8 @@ impl Default for AuthConfig {
             secret_key: String::new(),
             issuer: "flowcatalyst".to_string(),
             audience: "flowcatalyst".to_string(),
-            access_token_expiry_secs: 3600,      // 1 hour (PT1H)
-            session_token_expiry_secs: 86400,    // 24 hours (PT24H)
+            access_token_expiry_secs: 3600,        // 1 hour (PT1H)
+            session_token_expiry_secs: 86400,      // 24 hours (PT24H)
             refresh_token_expiry_secs: 86400 * 30, // 30 days (P30D)
         }
     }
@@ -215,15 +212,31 @@ impl AuthConfig {
         public_key_path: Option<&str>,
     ) -> (Option<String>, Option<String>) {
         let private_key = private_key_path
-            .and_then(|p| if p.is_empty() { None } else { std::fs::read_to_string(p).ok() })
+            .and_then(|p| {
+                if p.is_empty() {
+                    None
+                } else {
+                    std::fs::read_to_string(p).ok()
+                }
+            })
             .or_else(|| {
-                std::env::var("FLOWCATALYST_JWT_PRIVATE_KEY").ok().filter(|s| !s.is_empty())
+                std::env::var("FLOWCATALYST_JWT_PRIVATE_KEY")
+                    .ok()
+                    .filter(|s| !s.is_empty())
             });
 
         let public_key = public_key_path
-            .and_then(|p| if p.is_empty() { None } else { std::fs::read_to_string(p).ok() })
+            .and_then(|p| {
+                if p.is_empty() {
+                    None
+                } else {
+                    std::fs::read_to_string(p).ok()
+                }
+            })
             .or_else(|| {
-                std::env::var("FLOWCATALYST_JWT_PUBLIC_KEY").ok().filter(|s| !s.is_empty())
+                std::env::var("FLOWCATALYST_JWT_PUBLIC_KEY")
+                    .ok()
+                    .filter(|s| !s.is_empty())
             });
 
         if private_key.is_some() && public_key.is_some() {
@@ -233,33 +246,36 @@ impl AuthConfig {
         (private_key, public_key)
     }
 
-
     /// Generate RSA key pair and optionally persist to directory
     /// Returns (private_key_pem, public_key_pem)
     pub fn generate_rsa_keys(persist_dir: Option<&Path>) -> Result<(String, String)> {
-        use rsa::{RsaPrivateKey, RsaPublicKey, pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding}};
+        use rsa::{
+            pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding},
+            RsaPrivateKey, RsaPublicKey,
+        };
 
         info!("Generating RSA key pair (2048 bit)");
 
         let mut rng = rsa::rand_core::OsRng;
-        let private_key = RsaPrivateKey::new(&mut rng, 2048)
-            .map_err(|e| PlatformError::Internal {
-                message: format!("Failed to generate RSA key: {}", e)
+        let private_key =
+            RsaPrivateKey::new(&mut rng, 2048).map_err(|e| PlatformError::Internal {
+                message: format!("Failed to generate RSA key: {}", e),
             })?;
         let public_key = RsaPublicKey::from(&private_key);
 
         let private_pem = private_key
             .to_pkcs8_pem(LineEnding::LF)
             .map_err(|e| PlatformError::Internal {
-                message: format!("Failed to encode private key: {}", e)
+                message: format!("Failed to encode private key: {}", e),
             })?
             .to_string();
 
-        let public_pem = public_key
-            .to_public_key_pem(LineEnding::LF)
-            .map_err(|e| PlatformError::Internal {
-                message: format!("Failed to encode public key: {}", e)
-            })?;
+        let public_pem =
+            public_key
+                .to_public_key_pem(LineEnding::LF)
+                .map_err(|e| PlatformError::Internal {
+                    message: format!("Failed to encode public key: {}", e),
+                })?;
 
         // Persist if directory provided
         if let Some(dir) = persist_dir {
@@ -327,11 +343,11 @@ impl AuthConfig {
     }
 
     /// Generate a fresh RSA keypair and write it to the supplied absolute paths.
-    fn generate_rsa_keys_at(
-        private_path: &Path,
-        public_path: &Path,
-    ) -> Result<(String, String)> {
-        use rsa::{RsaPrivateKey, RsaPublicKey, pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding}};
+    fn generate_rsa_keys_at(private_path: &Path, public_path: &Path) -> Result<(String, String)> {
+        use rsa::{
+            pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding},
+            RsaPrivateKey, RsaPublicKey,
+        };
 
         info!(
             private = %private_path.display(),
@@ -340,40 +356,57 @@ impl AuthConfig {
         );
 
         let mut rng = rsa::rand_core::OsRng;
-        let private_key = RsaPrivateKey::new(&mut rng, 2048)
-            .map_err(|e| PlatformError::Internal {
-                message: format!("Failed to generate RSA key: {}", e)
+        let private_key =
+            RsaPrivateKey::new(&mut rng, 2048).map_err(|e| PlatformError::Internal {
+                message: format!("Failed to generate RSA key: {}", e),
             })?;
         let public_key = RsaPublicKey::from(&private_key);
 
         let private_pem = private_key
             .to_pkcs8_pem(LineEnding::LF)
             .map_err(|e| PlatformError::Internal {
-                message: format!("Failed to encode private key: {}", e)
+                message: format!("Failed to encode private key: {}", e),
             })?
             .to_string();
-        let public_pem = public_key
-            .to_public_key_pem(LineEnding::LF)
-            .map_err(|e| PlatformError::Internal {
-                message: format!("Failed to encode public key: {}", e)
-            })?;
+        let public_pem =
+            public_key
+                .to_public_key_pem(LineEnding::LF)
+                .map_err(|e| PlatformError::Internal {
+                    message: format!("Failed to encode public key: {}", e),
+                })?;
 
         if let Some(parent) = private_path.parent() {
             if let Err(e) = fs::create_dir_all(parent) {
-                warn!("Could not create private key directory {}: {}", parent.display(), e);
+                warn!(
+                    "Could not create private key directory {}: {}",
+                    parent.display(),
+                    e
+                );
             }
         }
         if let Some(parent) = public_path.parent() {
             if let Err(e) = fs::create_dir_all(parent) {
-                warn!("Could not create public key directory {}: {}", parent.display(), e);
+                warn!(
+                    "Could not create public key directory {}: {}",
+                    parent.display(),
+                    e
+                );
             }
         }
 
         if let Err(e) = fs::write(private_path, &private_pem) {
-            warn!("Could not persist private key to {}: {}", private_path.display(), e);
+            warn!(
+                "Could not persist private key to {}: {}",
+                private_path.display(),
+                e
+            );
         }
         if let Err(e) = fs::write(public_path, &public_pem) {
-            warn!("Could not persist public key to {}: {}", public_path.display(), e);
+            warn!(
+                "Could not persist public key to {}: {}",
+                public_path.display(),
+                e
+            );
         }
 
         Ok((private_pem, public_pem))
@@ -428,16 +461,22 @@ pub struct AuthService {
 
 impl AuthService {
     /// Create auth service with RSA keys (RS256) - recommended for production
-    pub fn new_with_rsa(config: AuthConfig, private_key_pem: &str, public_key_pem: &str) -> Result<Self> {
-        let encoding_key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes())
-            .map_err(|e| PlatformError::Internal {
-                message: format!("Invalid RSA private key: {}", e)
-            })?;
+    pub fn new_with_rsa(
+        config: AuthConfig,
+        private_key_pem: &str,
+        public_key_pem: &str,
+    ) -> Result<Self> {
+        let encoding_key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes()).map_err(|e| {
+            PlatformError::Internal {
+                message: format!("Invalid RSA private key: {}", e),
+            }
+        })?;
 
-        let decoding_key = DecodingKey::from_rsa_pem(public_key_pem.as_bytes())
-            .map_err(|e| PlatformError::Internal {
-                message: format!("Invalid RSA public key: {}", e)
-            })?;
+        let decoding_key = DecodingKey::from_rsa_pem(public_key_pem.as_bytes()).map_err(|e| {
+            PlatformError::Internal {
+                message: format!("Invalid RSA public key: {}", e),
+            }
+        })?;
 
         // Generate key ID from public key hash (like Java)
         let key_id = Self::generate_key_id(public_key_pem);
@@ -462,10 +501,11 @@ impl AuthService {
     /// Add a previous RSA key pair for validation-only (key rotation).
     /// The previous key will be used to validate existing tokens and exposed in JWKS.
     pub fn add_previous_rsa_key(&mut self, public_key_pem: &str) -> Result<()> {
-        let decoding_key = DecodingKey::from_rsa_pem(public_key_pem.as_bytes())
-            .map_err(|e| PlatformError::Internal {
-                message: format!("Invalid previous RSA public key: {}", e)
-            })?;
+        let decoding_key = DecodingKey::from_rsa_pem(public_key_pem.as_bytes()).map_err(|e| {
+            PlatformError::Internal {
+                message: format!("Invalid previous RSA public key: {}", e),
+            }
+        })?;
         let key_id = Self::generate_key_id(public_key_pem);
         let rsa_components = Self::extract_rsa_components(public_key_pem)?;
 
@@ -481,13 +521,14 @@ impl AuthService {
 
     /// Extract RSA public key components (n, e) for JWKS
     fn extract_rsa_components(public_key_pem: &str) -> Result<RsaPublicKeyComponents> {
-        use rsa::{RsaPublicKey, pkcs8::DecodePublicKey, traits::PublicKeyParts};
         use base64::Engine;
+        use rsa::{pkcs8::DecodePublicKey, traits::PublicKeyParts, RsaPublicKey};
 
-        let public_key = RsaPublicKey::from_public_key_pem(public_key_pem)
-            .map_err(|e| PlatformError::Internal {
-                message: format!("Failed to parse RSA public key: {}", e)
-            })?;
+        let public_key = RsaPublicKey::from_public_key_pem(public_key_pem).map_err(|e| {
+            PlatformError::Internal {
+                message: format!("Failed to parse RSA public key: {}", e),
+            }
+        })?;
 
         // Get modulus and exponent as big-endian bytes
         let n_bytes = public_key.n().to_bytes_be();
@@ -546,11 +587,14 @@ impl AuthService {
 
     /// Generate key ID from public key (22 char base64url SHA-256 hash)
     fn generate_key_id(public_key_pem: &str) -> String {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(public_key_pem.as_bytes());
         let hash = hasher.finalize();
-        base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, &hash[..16])
+        base64::Engine::encode(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+            &hash[..16],
+        )
     }
 
     /// Get the key ID (for JWKS)
@@ -615,18 +659,23 @@ impl AuthService {
         // Build client access list (same logic as access token)
         let clients = match principal.scope {
             UserScope::Anchor => vec!["*".to_string()],
-            UserScope::Partner => principal.assigned_clients.iter().map(|id| {
-                match principal.client_identifier_map.get(id) {
+            UserScope::Partner => principal
+                .assigned_clients
+                .iter()
+                .map(|id| match principal.client_identifier_map.get(id) {
                     Some(identifier) => format!("{}:{}", id, identifier),
                     None => id.clone(),
-                }
-            }).collect(),
-            UserScope::Client => principal.client_id.clone().into_iter().map(|id| {
-                match principal.client_identifier_map.get(&id) {
+                })
+                .collect(),
+            UserScope::Client => principal
+                .client_id
+                .clone()
+                .into_iter()
+                .map(|id| match principal.client_identifier_map.get(&id) {
                     Some(identifier) => format!("{}:{}", id, identifier),
                     None => id,
-                }
-            }).collect(),
+                })
+                .collect(),
         };
 
         // Extract application codes from role names
@@ -668,30 +717,40 @@ impl AuthService {
 
         let mut header = Header::new(self.algorithm);
         header.kid = self.key_id.clone();
-        encode(&header, &claims, &self.encoding_key)
-            .map_err(|e| PlatformError::Internal { message: format!("Failed to encode ID token: {}", e) })
+        encode(&header, &claims, &self.encoding_key).map_err(|e| PlatformError::Internal {
+            message: format!("Failed to encode ID token: {}", e),
+        })
     }
 
     /// Generate a token with a specific expiry duration
-    fn generate_token_with_expiry(&self, principal: &Principal, expiry_secs: i64) -> Result<String> {
+    fn generate_token_with_expiry(
+        &self,
+        principal: &Principal,
+        expiry_secs: i64,
+    ) -> Result<String> {
         let now = Utc::now();
         let exp = now + Duration::seconds(expiry_secs);
 
         // Determine client access — TS format: "id:identifier" pairs
         let clients = match principal.scope {
             UserScope::Anchor => vec!["*".to_string()],
-            UserScope::Partner => principal.assigned_clients.iter().map(|id| {
-                match principal.client_identifier_map.get(id) {
+            UserScope::Partner => principal
+                .assigned_clients
+                .iter()
+                .map(|id| match principal.client_identifier_map.get(id) {
                     Some(identifier) => format!("{}:{}", id, identifier),
                     None => id.clone(),
-                }
-            }).collect(),
-            UserScope::Client => principal.client_id.clone().into_iter().map(|id| {
-                match principal.client_identifier_map.get(&id) {
+                })
+                .collect(),
+            UserScope::Client => principal
+                .client_id
+                .clone()
+                .into_iter()
+                .map(|id| match principal.client_identifier_map.get(&id) {
                     Some(identifier) => format!("{}:{}", id, identifier),
                     None => id,
-                }
-            }).collect(),
+                })
+                .collect(),
         };
 
         // Extract application codes from role names (e.g., "operant:admin" → "operant")
@@ -727,8 +786,9 @@ impl AuthService {
 
         let mut header = Header::new(self.algorithm);
         header.kid = self.key_id.clone();
-        encode(&header, &claims, &self.encoding_key)
-            .map_err(|e| PlatformError::Internal { message: format!("Failed to encode JWT: {}", e) })
+        encode(&header, &claims, &self.encoding_key).map_err(|e| PlatformError::Internal {
+            message: format!("Failed to encode JWT: {}", e),
+        })
     }
 
     /// Validate an access token and extract claims.
@@ -758,10 +818,13 @@ impl AuthService {
         let claims = self.validate_token_uncached(token)?;
 
         // Store in cache
-        self.token_cache.insert(token.to_string(), CachedClaims {
-            claims: claims.clone(),
-            cached_at: Instant::now(),
-        });
+        self.token_cache.insert(
+            token.to_string(),
+            CachedClaims {
+                claims: claims.clone(),
+                cached_at: Instant::now(),
+            },
+        );
 
         Ok(claims)
     }
@@ -782,7 +845,9 @@ impl AuthService {
                 }
                 // If no previous keys, fail immediately
                 if self.previous_keys.is_empty() {
-                    return Err(PlatformError::InvalidToken { message: format!("{}", e) });
+                    return Err(PlatformError::InvalidToken {
+                        message: format!("{}", e),
+                    });
                 }
             }
         }
@@ -802,9 +867,10 @@ impl AuthService {
     /// Check if claims grant access to a specific client.
     /// Handles both plain IDs and "id:identifier" format.
     pub fn has_client_access(&self, claims: &AccessTokenClaims, client_id: &str) -> bool {
-        claims.clients.iter().any(|c| {
-            c == "*" || c == client_id || c.starts_with(&format!("{}:", client_id))
-        })
+        claims
+            .clients
+            .iter()
+            .any(|c| c == "*" || c == client_id || c.starts_with(&format!("{}:", client_id)))
     }
 
     /// Check if claims have a specific role
@@ -852,8 +918,8 @@ mod tests {
         let config = AuthConfig::default();
         let service = AuthService::new(config);
 
-        let principal = Principal::new_user("test@example.com", UserScope::Client)
-            .with_client_id("client123");
+        let principal =
+            Principal::new_user("test@example.com", UserScope::Client).with_client_id("client123");
 
         let token = service.generate_access_token(&principal).unwrap();
         let claims = service.validate_token(&token).unwrap();

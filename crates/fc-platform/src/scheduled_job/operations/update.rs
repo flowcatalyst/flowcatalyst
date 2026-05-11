@@ -119,45 +119,63 @@ impl<U: UnitOfWork> UseCase for UpdateScheduledJobUseCase<U> {
 
         let mut changed: Vec<String> = Vec::new();
         if let Some(v) = &cmd.name {
-            if v != &job.name { job.name = v.clone(); changed.push("name".into()); }
+            if v != &job.name {
+                job.name = v.clone();
+                changed.push("name".into());
+            }
         }
         if let Some(v) = &cmd.description {
             if Some(v) != job.description.as_ref() {
-                job.description = Some(v.clone()); changed.push("description".into());
+                job.description = Some(v.clone());
+                changed.push("description".into());
             }
         }
         if let Some(v) = &cmd.crons {
-            if v != &job.crons { job.crons = v.clone(); changed.push("crons".into()); }
+            if v != &job.crons {
+                job.crons = v.clone();
+                changed.push("crons".into());
+            }
         }
         if let Some(v) = &cmd.timezone {
-            if v != &job.timezone { job.timezone = v.clone(); changed.push("timezone".into()); }
+            if v != &job.timezone {
+                job.timezone = v.clone();
+                changed.push("timezone".into());
+            }
         }
         if let Some(v) = &cmd.payload {
             if Some(v) != job.payload.as_ref() {
-                job.payload = Some(v.clone()); changed.push("payload".into());
+                job.payload = Some(v.clone());
+                changed.push("payload".into());
             }
         }
         if let Some(v) = cmd.concurrent {
-            if v != job.concurrent { job.concurrent = v; changed.push("concurrent".into()); }
+            if v != job.concurrent {
+                job.concurrent = v;
+                changed.push("concurrent".into());
+            }
         }
         if let Some(v) = cmd.tracks_completion {
             if v != job.tracks_completion {
-                job.tracks_completion = v; changed.push("tracksCompletion".into());
+                job.tracks_completion = v;
+                changed.push("tracksCompletion".into());
             }
         }
         if let Some(v) = cmd.timeout_seconds {
             if Some(v) != job.timeout_seconds {
-                job.timeout_seconds = Some(v); changed.push("timeoutSeconds".into());
+                job.timeout_seconds = Some(v);
+                changed.push("timeoutSeconds".into());
             }
         }
         if let Some(v) = cmd.delivery_max_attempts {
             if v != job.delivery_max_attempts {
-                job.delivery_max_attempts = v; changed.push("deliveryMaxAttempts".into());
+                job.delivery_max_attempts = v;
+                changed.push("deliveryMaxAttempts".into());
             }
         }
         if let Some(v) = &cmd.target_url {
             if Some(v) != job.target_url.as_ref() {
-                job.target_url = Some(v.clone()); changed.push("targetUrl".into());
+                job.target_url = Some(v.clone());
+                changed.push("targetUrl".into());
             }
         }
 
@@ -179,6 +197,8 @@ impl<U: UnitOfWork> UseCase for UpdateScheduledJobUseCase<U> {
             job.version,
         );
 
-        self.unit_of_work.commit(&job, &*self.repo, event, &cmd).await
+        self.unit_of_work
+            .commit(&job, &*self.repo, event, &cmd)
+            .await
     }
 }

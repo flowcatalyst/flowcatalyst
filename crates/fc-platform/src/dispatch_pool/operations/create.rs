@@ -1,16 +1,13 @@
 //! Create Dispatch Pool Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::DispatchPoolCreated;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
 use crate::DispatchPool;
 use crate::DispatchPoolRepository;
-use crate::usecase::{
-    ExecutionContext, UseCase, UnitOfWork, UseCaseError, UseCaseResult,
-};
-use super::events::DispatchPoolCreated;
-
 
 /// Command for creating a new dispatch pool.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,10 +43,7 @@ pub struct CreateDispatchPoolUseCase<U: UnitOfWork> {
 }
 
 impl<U: UnitOfWork> CreateDispatchPoolUseCase<U> {
-    pub fn new(
-        dispatch_pool_repo: Arc<DispatchPoolRepository>,
-        unit_of_work: Arc<U>,
-    ) -> Self {
+    pub fn new(dispatch_pool_repo: Arc<DispatchPoolRepository>, unit_of_work: Arc<U>) -> Self {
         Self {
             dispatch_pool_repo,
             unit_of_work,
@@ -82,7 +76,11 @@ impl<U: UnitOfWork> UseCase for CreateDispatchPoolUseCase<U> {
         Ok(())
     }
 
-    async fn authorize(&self, _command: &CreateDispatchPoolCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &CreateDispatchPoolCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -95,7 +93,10 @@ impl<U: UnitOfWork> UseCase for CreateDispatchPoolUseCase<U> {
         let name = command.name.trim();
 
         // Business rule: code must be unique
-        let existing = self.dispatch_pool_repo.find_by_code(code, command.client_id.as_deref()).await;
+        let existing = self
+            .dispatch_pool_repo
+            .find_by_code(code, command.client_id.as_deref())
+            .await;
         if let Ok(Some(_)) = existing {
             return UseCaseResult::failure(UseCaseError::business_rule(
                 "DISPATCH_POOL_CODE_EXISTS",

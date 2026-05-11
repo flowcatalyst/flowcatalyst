@@ -48,9 +48,7 @@ CREATE INDEX IF NOT EXISTS idx_outbox_created_at
 /// init_outbox_schema(&pool).await?;
 /// ```
 pub async fn init_outbox_schema(pool: &PgPool) -> anyhow::Result<()> {
-    sqlx::raw_sql(CREATE_OUTBOX_TABLE_SQL)
-        .execute(pool)
-        .await?;
+    sqlx::raw_sql(CREATE_OUTBOX_TABLE_SQL).execute(pool).await?;
     Ok(())
 }
 

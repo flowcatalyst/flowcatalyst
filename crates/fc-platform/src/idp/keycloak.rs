@@ -12,10 +12,10 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::UserScope;
 use crate::auth::oidc_service::IdTokenClaims;
+use crate::UserScope;
 
-use super::{IdpAdapter, IdpRoleMappingConfig, IdpUserInfo, apply_role_mappings};
+use super::{apply_role_mappings, IdpAdapter, IdpRoleMappingConfig, IdpUserInfo};
 
 /// Configuration for Keycloak adapter
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,7 +159,11 @@ impl IdpAdapter for KeycloakAdapter {
         )
     }
 
-    fn extract_user_info(&self, claims: &IdTokenClaims, role_config: &IdpRoleMappingConfig) -> IdpUserInfo {
+    fn extract_user_info(
+        &self,
+        claims: &IdTokenClaims,
+        role_config: &IdpRoleMappingConfig,
+    ) -> IdpUserInfo {
         let roles = self.extract_realm_roles(claims);
         let groups = self.extract_groups(claims);
 

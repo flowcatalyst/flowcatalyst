@@ -3,23 +3,23 @@
 //! REST endpoints for principal (user/service account) management.
 
 use axum::{
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::principal::entity::{Principal, UserScope, UserIdentity};
-use crate::service_account::entity::RoleAssignment;
-use crate::principal::repository::PrincipalRepository;
+use crate::application::client_config_repository::ApplicationClientConfigRepository;
 use crate::application::entity::Application;
 use crate::application::repository::ApplicationRepository;
-use crate::application::client_config_repository::ApplicationClientConfigRepository;
-use crate::shared::error::{PlatformError, NotFoundExt};
+use crate::principal::entity::{Principal, UserIdentity, UserScope};
+use crate::principal::repository::PrincipalRepository;
+use crate::service_account::entity::RoleAssignment;
 use crate::shared::api_common::PaginationParams;
+use crate::shared::error::{NotFoundExt, PlatformError};
 use crate::shared::middleware::Authenticated;
 use crate::{AuditService, PasswordService};
 
@@ -420,23 +420,33 @@ pub struct PrincipalsState {
     pub password_reset_emailer: Option<Arc<crate::auth::password_reset_api::PasswordResetEmailer>>,
     // Use cases — writes go through these so that events + audit logs are
     // emitted atomically via UnitOfWork.
-    pub create_user_use_case: Arc<crate::principal::operations::CreateUserUseCase<crate::usecase::PgUnitOfWork>>,
-    pub grant_client_access_use_case: Arc<crate::principal::operations::GrantClientAccessUseCase<crate::usecase::PgUnitOfWork>>,
-    pub reset_password_use_case: Arc<crate::principal::operations::ResetPasswordUseCase<crate::usecase::PgUnitOfWork>>,
-    pub activate_use_case: Arc<crate::principal::operations::ActivateUserUseCase<crate::usecase::PgUnitOfWork>>,
-    pub deactivate_use_case: Arc<crate::principal::operations::DeactivateUserUseCase<crate::usecase::PgUnitOfWork>>,
-    pub delete_use_case: Arc<crate::principal::operations::DeleteUserUseCase<crate::usecase::PgUnitOfWork>>,
-    pub update_use_case: Arc<crate::principal::operations::UpdateUserUseCase<crate::usecase::PgUnitOfWork>>,
-    pub assign_roles_use_case: Arc<crate::principal::operations::AssignUserRolesUseCase<crate::usecase::PgUnitOfWork>>,
-    pub revoke_client_access_use_case: Arc<crate::principal::operations::RevokeClientAccessUseCase<crate::usecase::PgUnitOfWork>>,
-    pub assign_app_access_use_case: Arc<crate::principal::operations::AssignApplicationAccessUseCase<crate::usecase::PgUnitOfWork>>,
+    pub create_user_use_case:
+        Arc<crate::principal::operations::CreateUserUseCase<crate::usecase::PgUnitOfWork>>,
+    pub grant_client_access_use_case:
+        Arc<crate::principal::operations::GrantClientAccessUseCase<crate::usecase::PgUnitOfWork>>,
+    pub reset_password_use_case:
+        Arc<crate::principal::operations::ResetPasswordUseCase<crate::usecase::PgUnitOfWork>>,
+    pub activate_use_case:
+        Arc<crate::principal::operations::ActivateUserUseCase<crate::usecase::PgUnitOfWork>>,
+    pub deactivate_use_case:
+        Arc<crate::principal::operations::DeactivateUserUseCase<crate::usecase::PgUnitOfWork>>,
+    pub delete_use_case:
+        Arc<crate::principal::operations::DeleteUserUseCase<crate::usecase::PgUnitOfWork>>,
+    pub update_use_case:
+        Arc<crate::principal::operations::UpdateUserUseCase<crate::usecase::PgUnitOfWork>>,
+    pub assign_roles_use_case:
+        Arc<crate::principal::operations::AssignUserRolesUseCase<crate::usecase::PgUnitOfWork>>,
+    pub revoke_client_access_use_case:
+        Arc<crate::principal::operations::RevokeClientAccessUseCase<crate::usecase::PgUnitOfWork>>,
+    pub assign_app_access_use_case: Arc<
+        crate::principal::operations::AssignApplicationAccessUseCase<crate::usecase::PgUnitOfWork>,
+    >,
     /// Direct UoW handle used by legacy handlers that mutate the principal in
     /// ways not yet captured by a dedicated use case (e.g. updating
     /// first_name/last_name or toggling client_id). Writes go via repo and
     /// then emit the event/audit through this UoW.
     pub unit_of_work: Arc<crate::usecase::PgUnitOfWork>,
 }
-
 
 /// Create a new user principal
 #[utoipa::path(
@@ -462,7 +472,10 @@ pub async fn create_user(
 
     crate::checks::require_anchor(&auth.0)?;
 
-    let domain = req.email.split('@').nth(1)
+    let domain = req
+        .email
+        .split('@')
+        .nth(1)
         .ok_or_else(|| PlatformError::validation("Invalid email format"))?
         .to_lowercase();
 
@@ -519,9 +532,7 @@ pub async fn create_user(
                     let already_linked = existing.client_id.as_deref() == Some(client_id)
                         || existing.assigned_clients.iter().any(|c| c == client_id);
                     if already_linked {
-                        return Err(PlatformError::duplicate(
-                            "Principal", "email", &req.email,
-                        ));
+                        return Err(PlatformError::duplicate("Principal", "email", &req.email));
                     }
                     let cmd = GrantClientAccessCommand {
                         user_id: existing.id.clone(),
@@ -570,7 +581,11 @@ pub async fn create_user(
         idp_type: Some(idp_type),
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    let event = state.create_user_use_case.run(cmd, ctx).await.into_result()?;
+    let event = state
+        .create_user_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
     let created = state
         .principal_repo
@@ -600,7 +615,10 @@ pub async fn get_principal(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<PrincipalResponse>, PlatformError> {
-    let principal = state.principal_repo.find_by_id(&id).await?
+    let principal = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
 
     // Check access - anchor can see all, others only their client
@@ -645,22 +663,29 @@ pub async fn list_principals(
     // Validate client_id access upfront
     if let Some(ref client_id) = query.client_id {
         if !auth.0.can_access_client(client_id) {
-            return Err(PlatformError::forbidden(format!("No access to client: {}", client_id)));
+            return Err(PlatformError::forbidden(format!(
+                "No access to client: {}",
+                client_id
+            )));
         }
     }
 
     // Apply all combinable filters at the DB level
-    let principals = state.principal_repo.find_with_filters(
-        query.client_id.as_deref(),
-        query.scope.as_deref(),
-        query.principal_type.as_deref(),
-        query.active,
-        query.q.as_deref(),
-        query.email.as_deref(),
-    ).await?;
+    let principals = state
+        .principal_repo
+        .find_with_filters(
+            query.client_id.as_deref(),
+            query.scope.as_deref(),
+            query.principal_type.as_deref(),
+            query.active,
+            query.q.as_deref(),
+            query.email.as_deref(),
+        )
+        .await?;
 
     // Post-filter: access control + roles (requires hydrated data)
-    let mut filtered: Vec<PrincipalResponse> = principals.into_iter()
+    let mut filtered: Vec<PrincipalResponse> = principals
+        .into_iter()
         // Access control
         .filter(|p| {
             if auth.0.is_anchor() {
@@ -673,14 +698,12 @@ pub async fn list_principals(
         })
         .map(|p| p.into())
         // Roles filter (requires checking hydrated roles, stays in-memory)
-        .filter(|p: &PrincipalResponse| {
-            match &query.roles {
-                Some(roles_str) if !roles_str.is_empty() => {
-                    let required: Vec<&str> = roles_str.split(',').collect();
-                    required.iter().any(|r| p.roles.contains(&r.to_string()))
-                }
-                _ => true,
+        .filter(|p: &PrincipalResponse| match &query.roles {
+            Some(roles_str) if !roles_str.is_empty() => {
+                let required: Vec<&str> = roles_str.split(',').collect();
+                required.iter().any(|r| p.roles.contains(&r.to_string()))
             }
+            _ => true,
         })
         .collect();
 
@@ -689,26 +712,35 @@ pub async fn list_principals(
     match query.sort_field.as_deref() {
         Some("name") => filtered.sort_by(|a, b| {
             let cmp = a.name.to_lowercase().cmp(&b.name.to_lowercase());
-            if sort_desc { cmp.reverse() } else { cmp }
+            if sort_desc {
+                cmp.reverse()
+            } else {
+                cmp
+            }
         }),
         Some("email") => filtered.sort_by(|a, b| {
             let cmp = a.email.cmp(&b.email);
-            if sort_desc { cmp.reverse() } else { cmp }
+            if sort_desc {
+                cmp.reverse()
+            } else {
+                cmp
+            }
         }),
         _ => filtered.sort_by(|a, b| {
             let cmp = a.created_at.cmp(&b.created_at);
-            if sort_desc { cmp.reverse() } else { cmp }
+            if sort_desc {
+                cmp.reverse()
+            } else {
+                cmp
+            }
         }),
     }
 
     let total = filtered.len();
     let offset = query.pagination.offset() as usize;
     let limit = query.pagination.limit() as usize;
-    let principals: Vec<PrincipalResponse> = filtered
-        .into_iter()
-        .skip(offset)
-        .take(limit)
-        .collect();
+    let principals: Vec<PrincipalResponse> =
+        filtered.into_iter().skip(offset).take(limit).collect();
     Ok(Json(PrincipalListResponse { principals, total }))
 }
 
@@ -740,7 +772,10 @@ pub async fn update_principal(
     // Handler-level auth: target-resource access + high-trust gates on
     // scope/client_id changes. Field-level mutations happen inside the
     // use case so the write commits atomically with the UserUpdated event.
-    let existing = state.principal_repo.find_by_id(&id).await?
+    let existing = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
 
     if !auth.0.is_anchor() {
@@ -773,7 +808,10 @@ pub async fn update_principal(
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     state.update_use_case.run(cmd, ctx).await.into_result()?;
 
-    let refreshed = state.principal_repo.find_by_id(&id).await?
+    let refreshed = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
     Ok(Json(refreshed.into()))
 }
@@ -798,7 +836,10 @@ pub async fn get_roles(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<RolesListResponse>, PlatformError> {
-    let principal = state.principal_repo.find_by_id(&id).await?
+    let principal = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
 
     // Check access
@@ -811,7 +852,9 @@ pub async fn get_roles(
     }
 
     // Convert role assignments to DTOs
-    let roles: Vec<RoleAssignmentDto> = principal.roles.iter()
+    let roles: Vec<RoleAssignmentDto> = principal
+        .roles
+        .iter()
         .enumerate()
         .map(|(i, r)| RoleAssignmentDto {
             id: format!("{}-role-{}", id, i),
@@ -852,18 +895,31 @@ pub async fn assign_role(
     crate::checks::require_anchor(&auth.0)?;
 
     // Additive assign: take existing roles + new role, run through UoW.
-    let principal = state.principal_repo.find_by_id(&id).await?
+    let principal = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
     let mut roles: Vec<String> = principal.roles.iter().map(|r| r.role.clone()).collect();
     if !roles.iter().any(|r| r == &req.role) {
         roles.push(req.role.clone());
     }
 
-    let cmd = AssignUserRolesCommand { user_id: id.clone(), roles };
+    let cmd = AssignUserRolesCommand {
+        user_id: id.clone(),
+        roles,
+    };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.assign_roles_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .assign_roles_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
-    let refreshed = state.principal_repo.find_by_id(&id).await?
+    let refreshed = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
     Ok(Json(refreshed.into()))
 }
@@ -895,12 +951,14 @@ pub async fn batch_assign_roles(
 
     crate::checks::require_anchor(&auth.0)?;
 
-    let principal = state.principal_repo.find_by_id(&id).await?
+    let principal = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
 
-    let old_roles: std::collections::HashSet<String> = principal.roles.iter()
-        .map(|r| r.role.clone())
-        .collect();
+    let old_roles: std::collections::HashSet<String> =
+        principal.roles.iter().map(|r| r.role.clone()).collect();
     let new_roles_set: std::collections::HashSet<String> = req.roles.iter().cloned().collect();
     let added: Vec<String> = new_roles_set.difference(&old_roles).cloned().collect();
     let removed: Vec<String> = old_roles.difference(&new_roles_set).cloned().collect();
@@ -910,11 +968,20 @@ pub async fn batch_assign_roles(
         roles: req.roles,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.assign_roles_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .assign_roles_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
-    let refreshed = state.principal_repo.find_by_id(&id).await?
+    let refreshed = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
-    let roles: Vec<RoleAssignmentDto> = refreshed.roles.iter()
+    let roles: Vec<RoleAssignmentDto> = refreshed
+        .roles
+        .iter()
         .enumerate()
         .map(|(i, r)| RoleAssignmentDto {
             id: format!("{}-role-{}", id, i),
@@ -957,18 +1024,33 @@ pub async fn remove_role(
 
     crate::checks::require_anchor(&auth.0)?;
 
-    let principal = state.principal_repo.find_by_id(&id).await?
+    let principal = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
-    let roles: Vec<String> = principal.roles.iter()
+    let roles: Vec<String> = principal
+        .roles
+        .iter()
         .filter(|r| r.role != role)
         .map(|r| r.role.clone())
         .collect();
 
-    let cmd = AssignUserRolesCommand { user_id: id.clone(), roles };
+    let cmd = AssignUserRolesCommand {
+        user_id: id.clone(),
+        roles,
+    };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.assign_roles_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .assign_roles_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
-    let refreshed = state.principal_repo.find_by_id(&id).await?
+    let refreshed = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
     Ok(Json(refreshed.into()))
 }
@@ -993,7 +1075,10 @@ pub async fn get_client_access(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<ClientAccessListResponse>, PlatformError> {
-    let principal = state.principal_repo.find_by_id(&id).await?
+    let principal = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
 
     // Check access
@@ -1006,7 +1091,9 @@ pub async fn get_client_access(
     }
 
     // Convert assigned_clients to grants (synthesized since we don't store grant metadata)
-    let grants: Vec<ClientAccessGrantResponse> = principal.assigned_clients.iter()
+    let grants: Vec<ClientAccessGrantResponse> = principal
+        .assigned_clients
+        .iter()
         .enumerate()
         .map(|(i, client_id)| ClientAccessGrantResponse {
             id: format!("{}-{}", id, i), // Synthetic ID
@@ -1053,12 +1140,23 @@ pub async fn grant_client_access(
         client_id: client_id.clone(),
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.grant_client_access_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .grant_client_access_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
-    let refreshed = state.principal_repo.find_by_id(&id).await?
+    let refreshed = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
     Ok(Json(ClientAccessGrantResponse {
-        id: format!("{}-{}", id, refreshed.assigned_clients.len().saturating_sub(1)),
+        id: format!(
+            "{}-{}",
+            id,
+            refreshed.assigned_clients.len().saturating_sub(1)
+        ),
         client_id,
         granted_at: granted_at.to_rfc3339(),
         expires_at: None,
@@ -1096,9 +1194,16 @@ pub async fn revoke_client_access(
         client_id,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.revoke_client_access_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .revoke_client_access_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
-    let refreshed = state.principal_repo.find_by_id(&id).await?
+    let refreshed = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
     Ok(Json(refreshed.into()))
 }
@@ -1167,7 +1272,9 @@ pub async fn activate_principal(
 
     crate::checks::require_anchor(&auth.0)?;
 
-    let cmd = ActivateUserCommand { principal_id: id.clone() };
+    let cmd = ActivateUserCommand {
+        principal_id: id.clone(),
+    };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     state.activate_use_case.run(cmd, ctx).await.into_result()?;
 
@@ -1211,7 +1318,11 @@ pub async fn deactivate_principal(
         reason: Some("Admin deactivated principal".to_string()),
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.deactivate_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .deactivate_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
     tracing::info!(principal_id = %id, admin_id = %auth.0.principal_id, "Principal deactivated");
 
@@ -1257,7 +1368,11 @@ pub async fn reset_password(
         enforce_password_complexity: req.enforce_password_complexity,
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.reset_password_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .reset_password_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
     tracing::info!(principal_id = %id, admin_id = %auth.0.principal_id, "Password reset");
 
@@ -1297,10 +1412,15 @@ pub async fn send_password_reset(
 ) -> Result<Json<StatusChangeResponse>, PlatformError> {
     crate::checks::require_anchor(&auth.0)?;
 
-    let emailer = state.password_reset_emailer.as_ref()
+    let emailer = state
+        .password_reset_emailer
+        .as_ref()
         .ok_or_else(|| PlatformError::internal("Password reset emailer not configured"))?;
 
-    let principal = state.principal_repo.find_by_id(&id).await?
+    let principal = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
 
     if !principal.is_user() {
@@ -1313,7 +1433,12 @@ pub async fn send_password_reset(
             "Cannot send password reset for OIDC-federated users — they manage credentials at their IDP",
         ));
     }
-    if principal.user_identity.as_ref().map(|i| i.email.is_empty()).unwrap_or(true) {
+    if principal
+        .user_identity
+        .as_ref()
+        .map(|i| i.email.is_empty())
+        .unwrap_or(true)
+    {
         return Err(PlatformError::validation(
             "User does not have an email address on file",
         ));
@@ -1328,12 +1453,14 @@ pub async fn send_password_reset(
     );
 
     if let Some(ref audit) = state.audit_service {
-        let _ = audit.log_update(
-            &auth.0,
-            "Principal",
-            &id,
-            "Password reset email sent by admin".to_string(),
-        ).await;
+        let _ = audit
+            .log_update(
+                &auth.0,
+                "Principal",
+                &id,
+                "Password reset email sent by admin".to_string(),
+            )
+            .await;
     }
 
     Ok(Json(StatusChangeResponse {
@@ -1364,7 +1491,9 @@ pub async fn check_email_domain(
 
     // Extract domain from email
     let email = &query.email;
-    let domain = email.split('@').nth(1)
+    let domain = email
+        .split('@')
+        .nth(1)
         .ok_or_else(|| PlatformError::validation("Invalid email format"))?
         .to_lowercase();
 
@@ -1381,12 +1510,16 @@ pub async fn check_email_domain(
     // Resolve auth provider: anchor domain → INTERNAL; mapped domain → mapped IdP;
     // otherwise default to INTERNAL (no warning — the internal store is the fallback).
     let (has_auth_config, auth_provider, info, warning) = if is_anchor_domain {
-        (true, Some("INTERNAL".to_string()),
-         Some("This is an anchor domain. User will have access to all clients.".to_string()),
-         None)
-    } else if let (Some(ref edm_repo), Some(ref idp_repo)) =
-        (&state.email_domain_mapping_repo, &state.identity_provider_repo)
-    {
+        (
+            true,
+            Some("INTERNAL".to_string()),
+            Some("This is an anchor domain. User will have access to all clients.".to_string()),
+            None,
+        )
+    } else if let (Some(ref edm_repo), Some(ref idp_repo)) = (
+        &state.email_domain_mapping_repo,
+        &state.identity_provider_repo,
+    ) {
         match edm_repo.find_by_email_domain(&domain).await? {
             Some(mapping) => match idp_repo.find_by_id(&mapping.identity_provider_id).await? {
                 Some(idp) => {
@@ -1401,18 +1534,27 @@ pub async fn check_email_domain(
                     };
                     (true, Some(provider.to_string()), info_msg, None)
                 }
-                None => (false, Some("INTERNAL".to_string()),
-                         Some("Default: user will sign in with an internal password.".to_string()),
-                         None),
+                None => (
+                    false,
+                    Some("INTERNAL".to_string()),
+                    Some("Default: user will sign in with an internal password.".to_string()),
+                    None,
+                ),
             },
-            None => (false, Some("INTERNAL".to_string()),
-                     Some("Default: user will sign in with an internal password.".to_string()),
-                     None),
+            None => (
+                false,
+                Some("INTERNAL".to_string()),
+                Some("Default: user will sign in with an internal password.".to_string()),
+                None,
+            ),
         }
     } else {
-        (false, Some("INTERNAL".to_string()),
-         Some("Default: user will sign in with an internal password.".to_string()),
-         None)
+        (
+            false,
+            Some("INTERNAL".to_string()),
+            Some("Default: user will sign in with an internal password.".to_string()),
+            None,
+        )
     };
 
     // Add warning if email already exists
@@ -1459,7 +1601,10 @@ pub async fn get_application_access(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<ApplicationAccessListResponse>, PlatformError> {
-    let principal = state.principal_repo.find_by_id(&id).await?
+    let principal = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
 
     // Check access
@@ -1471,7 +1616,9 @@ pub async fn get_application_access(
         }
     }
 
-    let app_repo = state.application_repo.as_ref()
+    let app_repo = state
+        .application_repo
+        .as_ref()
         .ok_or_else(|| PlatformError::internal("Application repository not configured"))?;
 
     // Resolve application details for each accessible application ID
@@ -1487,7 +1634,10 @@ pub async fn get_application_access(
     }
 
     let total = applications.len();
-    Ok(Json(ApplicationAccessListResponse { applications, total }))
+    Ok(Json(ApplicationAccessListResponse {
+        applications,
+        total,
+    }))
 }
 
 /// Set application access for a principal (batch replace)
@@ -1519,10 +1669,15 @@ pub async fn set_application_access(
 
     crate::checks::require_anchor(&auth.0)?;
 
-    let principal = state.principal_repo.find_by_id(&id).await?
+    let principal = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
 
-    let app_repo = state.application_repo.as_ref()
+    let app_repo = state
+        .application_repo
+        .as_ref()
         .ok_or_else(|| PlatformError::internal("Application repository not configured"))?;
 
     // Validate applications exist and are active (kept in handler for 400 mapping).
@@ -1531,22 +1686,27 @@ pub async fn set_application_access(
             Some(app) => {
                 if !app.active {
                     return Err(PlatformError::validation(format!(
-                        "Application is not active: {}", app_id
+                        "Application is not active: {}",
+                        app_id
                     )));
                 }
             }
             None => {
                 return Err(PlatformError::validation(format!(
-                    "Application not found: {}", app_id
+                    "Application not found: {}",
+                    app_id
                 )));
             }
         }
     }
 
-    let old_set: std::collections::HashSet<&str> = principal.accessible_application_ids
-        .iter().map(|s| s.as_str()).collect();
-    let new_set: std::collections::HashSet<&str> = req.application_ids
-        .iter().map(|s| s.as_str()).collect();
+    let old_set: std::collections::HashSet<&str> = principal
+        .accessible_application_ids
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
+    let new_set: std::collections::HashSet<&str> =
+        req.application_ids.iter().map(|s| s.as_str()).collect();
     let added_count = new_set.difference(&old_set).count();
     let removed_count = old_set.difference(&new_set).count();
 
@@ -1555,7 +1715,11 @@ pub async fn set_application_access(
         application_ids: req.application_ids.clone(),
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
-    state.assign_app_access_use_case.run(cmd, ctx).await.into_result()?;
+    state
+        .assign_app_access_use_case
+        .run(cmd, ctx)
+        .await
+        .into_result()?;
 
     let mut applications = Vec::new();
     for app_id in &req.application_ids {
@@ -1598,7 +1762,10 @@ pub async fn get_available_applications(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> Result<Json<AvailableApplicationsResponse>, PlatformError> {
-    let principal = state.principal_repo.find_by_id(&id).await?
+    let principal = state
+        .principal_repo
+        .find_by_id(&id)
+        .await?
         .or_not_found("Principal", &id)?;
 
     // Check access
@@ -1610,17 +1777,22 @@ pub async fn get_available_applications(
         }
     }
 
-    let app_repo = state.application_repo.as_ref()
+    let app_repo = state
+        .application_repo
+        .as_ref()
         .ok_or_else(|| PlatformError::internal("Application repository not configured"))?;
 
     let applications: Vec<AvailableApplicationResponse> = if principal.scope == UserScope::Anchor {
         // Anchor users see all active applications
         let apps = app_repo.find_active().await?;
-        apps.into_iter().map(AvailableApplicationResponse::from).collect()
+        apps.into_iter()
+            .map(AvailableApplicationResponse::from)
+            .collect()
     } else {
         // Client users see only apps enabled for their accessible clients
-        let config_repo = state.app_client_config_repo.as_ref()
-            .ok_or_else(|| PlatformError::internal("Application client config repository not configured"))?;
+        let config_repo = state.app_client_config_repo.as_ref().ok_or_else(|| {
+            PlatformError::internal("Application client config repository not configured")
+        })?;
 
         // Gather all client IDs this principal can access
         let mut client_ids: Vec<String> = principal.assigned_clients.clone();
@@ -1652,7 +1824,10 @@ pub async fn get_available_applications(
     };
 
     let total = applications.len();
-    Ok(Json(AvailableApplicationsResponse { applications, total }))
+    Ok(Json(AvailableApplicationsResponse {
+        applications,
+        total,
+    }))
 }
 
 /// Create principals router
@@ -1681,7 +1856,7 @@ pub fn principals_router(state: PrincipalsState) -> OpenApiRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::principal::entity::{Principal, PrincipalType, UserScope, UserIdentity};
+    use crate::principal::entity::{Principal, PrincipalType, UserIdentity, UserScope};
     use crate::service_account::entity::RoleAssignment;
     use chrono::Utc;
 
@@ -1697,9 +1872,7 @@ mod tests {
             active: true,
             user_identity: Some(UserIdentity::new("jane@example.com")),
             service_account_id: None,
-            roles: vec![
-                RoleAssignment::new("platform:admin"),
-            ],
+            roles: vec![RoleAssignment::new("platform:admin")],
             assigned_clients: vec!["clt_CLIENT1234567".to_string()],
             client_identifier_map: std::collections::HashMap::new(),
             accessible_application_ids: vec![],

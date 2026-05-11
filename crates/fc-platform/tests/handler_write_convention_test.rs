@@ -93,7 +93,9 @@ fn src_root() -> PathBuf {
 }
 
 fn walk_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let p = entry.path();
         if p.is_dir() {
@@ -113,9 +115,9 @@ fn file_allowlisted(rel: &str) -> bool {
 }
 
 fn line_allowlisted(rel: &str, line: &str) -> bool {
-    LINE_ALLOWLIST.iter().any(|(file_suffix, substring)| {
-        rel.ends_with(file_suffix) && line.contains(substring)
-    })
+    LINE_ALLOWLIST
+        .iter()
+        .any(|(file_suffix, substring)| rel.ends_with(file_suffix) && line.contains(substring))
 }
 
 fn matches_forbidden(line: &str) -> Option<&'static str> {
@@ -135,7 +137,10 @@ fn matches_forbidden(line: &str) -> Option<&'static str> {
         return None;
     }
 
-    FORBIDDEN_PATTERNS.iter().find(|p| line.contains(*p)).copied()
+    FORBIDDEN_PATTERNS
+        .iter()
+        .find(|p| line.contains(*p))
+        .copied()
 }
 
 #[test]
@@ -156,7 +161,9 @@ fn handlers_must_not_perform_direct_repo_writes() {
             continue;
         }
 
-        let Ok(content) = fs::read_to_string(file) else { continue };
+        let Ok(content) = fs::read_to_string(file) else {
+            continue;
+        };
         for (lineno, line) in content.lines().enumerate() {
             if let Some(pattern) = matches_forbidden(line) {
                 if line_allowlisted(&rel, line) {

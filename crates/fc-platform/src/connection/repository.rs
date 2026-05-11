@@ -1,8 +1,8 @@
 //! Connection Repository — PostgreSQL via SQLx
 
 use async_trait::async_trait;
-use sqlx::{PgPool, Postgres, QueryBuilder};
 use chrono::{DateTime, Utc};
+use sqlx::{PgPool, Postgres, QueryBuilder};
 
 use super::entity::{Connection, ConnectionStatus};
 use crate::shared::error::Result;
@@ -74,19 +74,21 @@ impl ConnectionRepository {
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<Connection>> {
-        let row = sqlx::query_as::<_, ConnectionRow>(
-            "SELECT * FROM msg_connections WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query_as::<_, ConnectionRow>("SELECT * FROM msg_connections WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(row.map(Connection::from))
     }
 
-    pub async fn find_by_code_and_client(&self, code: &str, client_id: Option<&str>) -> Result<Option<Connection>> {
+    pub async fn find_by_code_and_client(
+        &self,
+        code: &str,
+        client_id: Option<&str>,
+    ) -> Result<Option<Connection>> {
         let row = if let Some(cid) = client_id {
             sqlx::query_as::<_, ConnectionRow>(
-                "SELECT * FROM msg_connections WHERE code = $1 AND client_id = $2"
+                "SELECT * FROM msg_connections WHERE code = $1 AND client_id = $2",
             )
             .bind(code)
             .bind(cid)
@@ -94,7 +96,7 @@ impl ConnectionRepository {
             .await?
         } else {
             sqlx::query_as::<_, ConnectionRow>(
-                "SELECT * FROM msg_connections WHERE code = $1 AND client_id IS NULL"
+                "SELECT * FROM msg_connections WHERE code = $1 AND client_id IS NULL",
             )
             .bind(code)
             .fetch_optional(&self.pool)
@@ -104,11 +106,10 @@ impl ConnectionRepository {
     }
 
     pub async fn find_all(&self) -> Result<Vec<Connection>> {
-        let rows = sqlx::query_as::<_, ConnectionRow>(
-            "SELECT * FROM msg_connections ORDER BY code ASC"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows =
+            sqlx::query_as::<_, ConnectionRow>("SELECT * FROM msg_connections ORDER BY code ASC")
+                .fetch_all(&self.pool)
+                .await?;
         Ok(rows.into_iter().map(Connection::from).collect())
     }
 
@@ -145,7 +146,7 @@ impl ConnectionRepository {
 
     pub async fn find_by_status(&self, status: &str) -> Result<Vec<Connection>> {
         let rows = sqlx::query_as::<_, ConnectionRow>(
-            "SELECT * FROM msg_connections WHERE status = $1 ORDER BY code ASC"
+            "SELECT * FROM msg_connections WHERE status = $1 ORDER BY code ASC",
         )
         .bind(status)
         .fetch_all(&self.pool)
@@ -155,7 +156,7 @@ impl ConnectionRepository {
 
     pub async fn find_by_client_id(&self, client_id: &str) -> Result<Vec<Connection>> {
         let rows = sqlx::query_as::<_, ConnectionRow>(
-            "SELECT * FROM msg_connections WHERE client_id = $1 ORDER BY code ASC"
+            "SELECT * FROM msg_connections WHERE client_id = $1 ORDER BY code ASC",
         )
         .bind(client_id)
         .fetch_all(&self.pool)
@@ -163,9 +164,12 @@ impl ConnectionRepository {
         Ok(rows.into_iter().map(Connection::from).collect())
     }
 
-    pub async fn find_by_service_account(&self, service_account_id: &str) -> Result<Vec<Connection>> {
+    pub async fn find_by_service_account(
+        &self,
+        service_account_id: &str,
+    ) -> Result<Vec<Connection>> {
         let rows = sqlx::query_as::<_, ConnectionRow>(
-            "SELECT * FROM msg_connections WHERE service_account_id = $1"
+            "SELECT * FROM msg_connections WHERE service_account_id = $1",
         )
         .bind(service_account_id)
         .fetch_all(&self.pool)
@@ -185,7 +189,7 @@ impl ConnectionRepository {
                 client_id = $8,
                 client_identifier = $9,
                 updated_at = $10
-             WHERE id = $1"
+             WHERE id = $1",
         )
         .bind(&conn.id)
         .bind(&conn.code)
@@ -212,7 +216,9 @@ impl ConnectionRepository {
 }
 
 impl HasId for Connection {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 #[async_trait]

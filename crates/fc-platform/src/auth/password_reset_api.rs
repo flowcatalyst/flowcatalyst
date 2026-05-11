@@ -1,25 +1,25 @@
 //! /auth/password-reset Routes — Password reset flow (unauthenticated)
 
 use axum::{
+    extract::{Query, State},
     routing::{get, post},
-    extract::{State, Query},
     Json, Router,
 };
+use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
-use chrono::{Utc, Duration};
-use sha2::{Sha256, Digest};
 use tracing::{info, warn};
+use utoipa::ToSchema;
 
+use crate::auth::password_service::PasswordService;
 use crate::password_reset::entity::PasswordResetToken;
 use crate::password_reset::repository::PasswordResetTokenRepository;
 use crate::principal::entity::Principal;
-use crate::principal::repository::PrincipalRepository;
 use crate::principal::operations::events::PasswordResetRequested;
-use crate::auth::password_service::PasswordService;
+use crate::principal::repository::PrincipalRepository;
+use crate::shared::email_service::{EmailMessage, EmailService};
 use crate::shared::error::PlatformError;
-use crate::shared::email_service::{EmailService, EmailMessage};
 use crate::{PgUnitOfWork, UnitOfWork};
 
 /// Shared service that creates a single-use reset token and emails the
@@ -44,14 +44,20 @@ impl PasswordResetEmailer {
     /// password reset (USER type, has email, not OIDC-federated). This method
     /// expects `principal.user_identity.email` to be present.
     pub async fn send_reset_email(&self, principal: &Principal) -> Result<(), PlatformError> {
-        let email = principal.user_identity.as_ref()
+        let email = principal
+            .user_identity
+            .as_ref()
             .map(|i| i.email.clone())
-            .ok_or_else(|| PlatformError::validation(
-                "Principal does not have an email address for password reset",
-            ))?;
+            .ok_or_else(|| {
+                PlatformError::validation(
+                    "Principal does not have an email address for password reset",
+                )
+            })?;
 
         // Invalidate any outstanding tokens for this principal.
-        self.password_reset_repo.delete_by_principal_id(&principal.id).await?;
+        self.password_reset_repo
+            .delete_by_principal_id(&principal.id)
+            .await?;
 
         let raw_token = generate_raw_token();
         let token_hash = hash_token(&raw_token);
@@ -89,7 +95,12 @@ impl PasswordResetEmailer {
         // Best-effort domain event.
         let event = PasswordResetRequested::new(&principal.id, &email);
         let command = serde_json::json!({ "principalId": principal.id, "email": email });
-        if let Err(e) = self.unit_of_work.emit_event(event, &command).await.into_result() {
+        if let Err(e) = self
+            .unit_of_work
+            .emit_event(event, &command)
+            .await
+            .into_result()
+        {
             warn!("Failed to emit PasswordResetRequested event: {}", e);
         }
 
@@ -107,7 +118,8 @@ pub struct PasswordResetApiState {
     pub password_reset_repo: Arc<PasswordResetTokenRepository>,
     /// Use case used by `confirm_reset` so the principal write + event +
     /// audit log are committed atomically.
-    pub reset_password_use_case: Arc<crate::principal::operations::ResetPasswordUseCase<PgUnitOfWork>>,
+    pub reset_password_use_case:
+        Arc<crate::principal::operations::ResetPasswordUseCase<PgUnitOfWork>>,
 }
 
 // -- Request / Response DTOs --
@@ -184,7 +196,8 @@ async fn request_reset(
                 Ok(())
             }
         }
-    }.await;
+    }
+    .await;
 
     if let Err(e) = result {
         warn!("Password reset request error (suppressed): {}", e);
@@ -214,20 +227,34 @@ async fn validate_token(
 ) -> Json<ValidateTokenResponse> {
     let token_hash = hash_token(&query.token);
 
-    match state.password_reset_repo.find_by_token_hash(&token_hash).await {
+    match state
+        .password_reset_repo
+        .find_by_token_hash(&token_hash)
+        .await
+    {
         Ok(Some(token)) => {
             if token.is_expired() {
-                Json(ValidateTokenResponse { valid: false, reason: Some("expired".to_string()) })
+                Json(ValidateTokenResponse {
+                    valid: false,
+                    reason: Some("expired".to_string()),
+                })
             } else {
-                Json(ValidateTokenResponse { valid: true, reason: None })
+                Json(ValidateTokenResponse {
+                    valid: true,
+                    reason: None,
+                })
             }
         }
-        Ok(None) => {
-            Json(ValidateTokenResponse { valid: false, reason: Some("not_found".to_string()) })
-        }
+        Ok(None) => Json(ValidateTokenResponse {
+            valid: false,
+            reason: Some("not_found".to_string()),
+        }),
         Err(e) => {
             warn!("Token validation error: {}", e);
-            Json(ValidateTokenResponse { valid: false, reason: Some("not_found".to_string()) })
+            Json(ValidateTokenResponse {
+                valid: false,
+                reason: Some("not_found".to_string()),
+            })
         }
     }
 }
@@ -253,14 +280,20 @@ async fn confirm_reset(
 
     let token_hash = hash_token(&body.token);
 
-    let reset_token = state.password_reset_repo.find_by_token_hash(&token_hash).await?
+    let reset_token = state
+        .password_reset_repo
+        .find_by_token_hash(&token_hash)
+        .await?
         .ok_or_else(|| PlatformError::Validation {
             message: "Invalid or expired reset token.".to_string(),
         })?;
 
     if reset_token.is_expired() {
         // Clean up the expired token
-        let _ = state.password_reset_repo.delete_by_id(&reset_token.id).await;
+        let _ = state
+            .password_reset_repo
+            .delete_by_id(&reset_token.id)
+            .await;
         return Err(PlatformError::Validation {
             message: "Reset token has expired.".to_string(),
         });
@@ -275,16 +308,22 @@ async fn confirm_reset(
         enforce_password_complexity: Some(true),
     };
     let ctx = ExecutionContext::create("system");
-    state.reset_password_use_case
+    state
+        .reset_password_use_case
         .run(command, ctx)
         .await
         .into_result()
-        .map_err(|e| PlatformError::Validation { message: e.to_string() })?;
+        .map_err(|e| PlatformError::Validation {
+            message: e.to_string(),
+        })?;
 
     // Token cleanup happens after the principal write commits. If this fails
     // the password is already changed; the worst case is the consumed token
     // lingers until expiry/cleanup.
-    state.password_reset_repo.delete_by_principal_id(&reset_token.principal_id).await?;
+    state
+        .password_reset_repo
+        .delete_by_principal_id(&reset_token.principal_id)
+        .await?;
 
     info!(principal_id = %reset_token.principal_id, "Password reset completed successfully");
 
@@ -333,7 +372,10 @@ mod tests {
     fn hash_token_empty_input() {
         let hash = hash_token("");
         // SHA-256 of empty string is e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-        assert_eq!(hash, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        assert_eq!(
+            hash,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
     }
 
     // ── generate_raw_token tests ──
@@ -349,7 +391,9 @@ mod tests {
         let token = generate_raw_token();
         // URL-safe base64 chars: A-Z, a-z, 0-9, -, _
         assert!(
-            token.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+            token
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
             "Token contains non-URL-safe characters: {token}"
         );
     }
@@ -358,7 +402,12 @@ mod tests {
     fn generate_raw_token_has_correct_length() {
         let token = generate_raw_token();
         // 32 bytes -> base64 no-pad -> ceil(32 * 4/3) = 43 characters
-        assert_eq!(token.len(), 43, "Expected 43 chars for 32 bytes base64 no-pad, got {}", token.len());
+        assert_eq!(
+            token.len(),
+            43,
+            "Expected 43 chars for 32 bytes base64 no-pad, got {}",
+            token.len()
+        );
     }
 
     #[test]
@@ -423,7 +472,10 @@ mod tests {
 
     #[test]
     fn validate_token_response_serializes_valid() {
-        let resp = ValidateTokenResponse { valid: true, reason: None };
+        let resp = ValidateTokenResponse {
+            valid: true,
+            reason: None,
+        };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["valid"], true);
         assert!(json["reason"].is_null());
@@ -431,7 +483,10 @@ mod tests {
 
     #[test]
     fn validate_token_response_serializes_invalid() {
-        let resp = ValidateTokenResponse { valid: false, reason: Some("expired".to_string()) };
+        let resp = ValidateTokenResponse {
+            valid: false,
+            reason: Some("expired".to_string()),
+        };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["valid"], false);
         assert_eq!(json["reason"], "expired");

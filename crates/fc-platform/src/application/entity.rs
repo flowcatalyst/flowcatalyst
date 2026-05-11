@@ -1,7 +1,7 @@
 //! Application Entity — matches TypeScript Application domain
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -11,7 +11,6 @@ pub enum ApplicationType {
     Application,
     Integration,
 }
-
 
 impl ApplicationType {
     pub fn as_str(&self) -> &'static str {
@@ -115,8 +114,17 @@ mod tests {
         let app = Application::new("my-app", "My Application");
 
         assert!(!app.id.is_empty());
-        assert!(app.id.starts_with("app_"), "ID should have app_ prefix, got: {}", app.id);
-        assert_eq!(app.id.len(), 17, "Typed ID should be 17 chars, got: {}", app.id.len());
+        assert!(
+            app.id.starts_with("app_"),
+            "ID should have app_ prefix, got: {}",
+            app.id
+        );
+        assert_eq!(
+            app.id.len(),
+            17,
+            "Typed ID should be 17 chars, got: {}",
+            app.id.len()
+        );
         assert_eq!(app.code, "my-app");
         assert_eq!(app.name, "My Application");
         assert_eq!(app.application_type, ApplicationType::Application);
@@ -146,10 +154,19 @@ mod tests {
 
     #[test]
     fn test_application_type_from_str() {
-        assert_eq!(ApplicationType::from_str("APPLICATION"), ApplicationType::Application);
-        assert_eq!(ApplicationType::from_str("INTEGRATION"), ApplicationType::Integration);
+        assert_eq!(
+            ApplicationType::from_str("APPLICATION"),
+            ApplicationType::Application
+        );
+        assert_eq!(
+            ApplicationType::from_str("INTEGRATION"),
+            ApplicationType::Integration
+        );
         // Unknown defaults to Application
-        assert_eq!(ApplicationType::from_str("unknown"), ApplicationType::Application);
+        assert_eq!(
+            ApplicationType::from_str("unknown"),
+            ApplicationType::Application
+        );
         assert_eq!(ApplicationType::from_str(""), ApplicationType::Application);
     }
 
@@ -162,7 +179,12 @@ mod tests {
     fn test_application_type_roundtrip() {
         for t in [ApplicationType::Application, ApplicationType::Integration] {
             let s = t.as_str();
-            assert_eq!(ApplicationType::from_str(s), t, "Roundtrip failed for {:?}", t);
+            assert_eq!(
+                ApplicationType::from_str(s),
+                t,
+                "Roundtrip failed for {:?}",
+                t
+            );
         }
     }
 
@@ -189,8 +211,14 @@ mod tests {
             .with_icon_url("https://example.com/icon.png");
 
         assert_eq!(app.description, Some("A test app".to_string()));
-        assert_eq!(app.default_base_url, Some("https://example.com".to_string()));
-        assert_eq!(app.icon_url, Some("https://example.com/icon.png".to_string()));
+        assert_eq!(
+            app.default_base_url,
+            Some("https://example.com".to_string())
+        );
+        assert_eq!(
+            app.icon_url,
+            Some("https://example.com/icon.png".to_string())
+        );
     }
 
     #[test]
@@ -214,4 +242,3 @@ mod tests {
         assert!(app.updated_at >= before);
     }
 }
-

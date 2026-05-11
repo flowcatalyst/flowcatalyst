@@ -73,8 +73,8 @@ pub async fn write_event<E: DomainEvent + Serialize>(
     client_id: Option<&str>,
 ) -> anyhow::Result<()> {
     let id = TsidGenerator::generate_untyped();
-    let data_json: serde_json::Value = serde_json::from_str(&event.to_data_json())
-        .unwrap_or(serde_json::json!({}));
+    let data_json: serde_json::Value =
+        serde_json::from_str(&event.to_data_json()).unwrap_or(serde_json::json!({}));
 
     let payload = serde_json::json!({
         "event_type": event.event_type(),
@@ -538,10 +538,7 @@ mod tests {
         // principal from event
         assert_eq!(audit.principal_id, "prn_user");
         // message_group from event
-        assert_eq!(
-            audit.message_group.as_deref(),
-            Some("orders:order:ord_123")
-        );
+        assert_eq!(audit.message_group.as_deref(), Some("orders:order:ord_123"));
         // operation_json should serialize the command
         let op_json = audit.operation_json.unwrap();
         assert_eq!(op_json["customer_id"], "cust_1");
@@ -584,8 +581,16 @@ mod tests {
     #[test]
     fn audit_log_from_event_performed_at_is_rfc3339() {
         let meta = EventMetadata::new(
-            "e".into(), "t", "1", "s", "a.b.c".into(), "grp".into(),
-            "exec".into(), "corr".into(), None, "prn".into(),
+            "e".into(),
+            "t",
+            "1",
+            "s",
+            "a.b.c".into(),
+            "grp".into(),
+            "exec".into(),
+            "corr".into(),
+            None,
+            "prn".into(),
         );
         let event = TestEvent {
             metadata: meta,

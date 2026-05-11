@@ -9,14 +9,14 @@
 //! - `NoopTrafficStrategy`: No-op, always considers itself registered (default)
 //! - `AwsAlbTrafficStrategy`: Manages AWS ALB target group registration (requires `alb` feature)
 
-use std::sync::Arc;
-#[cfg(feature = "alb")]
-use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
 #[cfg(feature = "alb")]
-use tracing::{info, warn, error, debug};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 #[cfg(not(feature = "alb"))]
-use tracing::{info, error, debug};
+use tracing::{debug, error, info};
+#[cfg(feature = "alb")]
+use tracing::{debug, error, info, warn};
 
 /// Errors that can occur during traffic management operations.
 #[derive(Debug, thiserror::Error)]
@@ -165,13 +165,16 @@ impl AwsAlbTrafficStrategy {
                 return Err(TrafficError::DeregistrationTimeout);
             }
 
-            let health_result = self.client
+            let health_result = self
+                .client
                 .describe_target_health()
                 .target_group_arn(&self.config.target_group_arn)
                 .targets(self.target_description())
                 .send()
                 .await
-                .map_err(|e| TrafficError::Aws(format!("Failed to describe target health: {}", e)))?;
+                .map_err(|e| {
+                    TrafficError::Aws(format!("Failed to describe target health: {}", e))
+                })?;
 
             let is_draining = health_result
                 .target_health_descriptions()
@@ -335,9 +338,11 @@ pub fn spawn_traffic_watcher(
                         );
                     }
                 }
-                fc_standby::LeadershipStatus::Follower
-                | fc_standby::LeadershipStatus::Unknown => {
-                    info!(?status, "Traffic watcher: no longer leader, deregistering target");
+                fc_standby::LeadershipStatus::Follower | fc_standby::LeadershipStatus::Unknown => {
+                    info!(
+                        ?status,
+                        "Traffic watcher: no longer leader, deregistering target"
+                    );
                     if let Err(e) = strategy.deregister().await {
                         error!(
                             error = %e,

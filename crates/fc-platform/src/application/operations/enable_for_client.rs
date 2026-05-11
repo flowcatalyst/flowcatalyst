@@ -1,17 +1,15 @@
 //! Enable Application for Client Use Case
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use super::events::ApplicationEnabledForClient;
+use crate::usecase::{ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult};
+use crate::ApplicationClientConfig;
+use crate::ApplicationClientConfigRepository;
 use crate::ApplicationRepository;
 use crate::ClientRepository;
-use crate::ApplicationClientConfigRepository;
-use crate::ApplicationClientConfig;
-use crate::usecase::{
-    ExecutionContext, UnitOfWork, UseCase, UseCaseError, UseCaseResult,
-};
-use super::events::ApplicationEnabledForClient;
 
 /// Command for enabling an application for a specific client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,7 +33,12 @@ impl<U: UnitOfWork> EnableApplicationForClientUseCase<U> {
         config_repo: Arc<ApplicationClientConfigRepository>,
         unit_of_work: Arc<U>,
     ) -> Self {
-        Self { application_repo, client_repo, config_repo, unit_of_work }
+        Self {
+            application_repo,
+            client_repo,
+            config_repo,
+            unit_of_work,
+        }
     }
 }
 
@@ -44,22 +47,31 @@ impl<U: UnitOfWork> UseCase for EnableApplicationForClientUseCase<U> {
     type Command = EnableApplicationForClientCommand;
     type Event = ApplicationEnabledForClient;
 
-    async fn validate(&self, command: &EnableApplicationForClientCommand) -> Result<(), UseCaseError> {
+    async fn validate(
+        &self,
+        command: &EnableApplicationForClientCommand,
+    ) -> Result<(), UseCaseError> {
         if command.application_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "APPLICATION_ID_REQUIRED", "Application ID is required",
+                "APPLICATION_ID_REQUIRED",
+                "Application ID is required",
             ));
         }
         if command.client_id.trim().is_empty() {
             return Err(UseCaseError::validation(
-                "CLIENT_ID_REQUIRED", "Client ID is required",
+                "CLIENT_ID_REQUIRED",
+                "Client ID is required",
             ));
         }
 
         Ok(())
     }
 
-    async fn authorize(&self, _command: &EnableApplicationForClientCommand, _ctx: &ExecutionContext) -> Result<(), UseCaseError> {
+    async fn authorize(
+        &self,
+        _command: &EnableApplicationForClientCommand,
+        _ctx: &ExecutionContext,
+    ) -> Result<(), UseCaseError> {
         Ok(())
     }
 
@@ -69,7 +81,11 @@ impl<U: UnitOfWork> UseCase for EnableApplicationForClientUseCase<U> {
         ctx: ExecutionContext,
     ) -> UseCaseResult<ApplicationEnabledForClient> {
         // Validate application exists
-        match self.application_repo.find_by_id(&command.application_id).await {
+        match self
+            .application_repo
+            .find_by_id(&command.application_id)
+            .await
+        {
             Ok(Some(_)) => {}
             Ok(None) => {
                 return UseCaseResult::failure(UseCaseError::not_found(
@@ -79,7 +95,8 @@ impl<U: UnitOfWork> UseCase for EnableApplicationForClientUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to validate application: {}", e
+                    "Failed to validate application: {}",
+                    e
                 )));
             }
         }
@@ -95,13 +112,15 @@ impl<U: UnitOfWork> UseCase for EnableApplicationForClientUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to validate client: {}", e
+                    "Failed to validate client: {}",
+                    e
                 )));
             }
         }
 
         // Check if config already exists
-        let existing = self.config_repo
+        let existing = self
+            .config_repo
             .find_by_application_and_client(&command.application_id, &command.client_id)
             .await;
 
@@ -117,7 +136,8 @@ impl<U: UnitOfWork> UseCase for EnableApplicationForClientUseCase<U> {
             }
             Err(e) => {
                 return UseCaseResult::failure(UseCaseError::commit(format!(
-                    "Failed to check existing config: {}", e
+                    "Failed to check existing config: {}",
+                    e
                 )));
             }
         };
