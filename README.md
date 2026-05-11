@@ -82,52 +82,33 @@ Development URLs:
 
 ### Installing fc-dev from a release
 
-Prebuilt fc-dev binaries are published as GitHub Releases for macOS-arm64,
-Linux-x64, Linux-arm64 and Windows-x64. Download the archive for your
-platform from the [releases page](https://github.com/flowcatalyst/flowcatalyst/releases),
-extract, and put `fc-dev` on your PATH.
+Prebuilt binaries are published on every release for macOS (Apple Silicon),
+Linux (x86_64 and ARM64), and Windows (x86_64). One-liner installers fetch
+the latest, verify SHA256, and put `fc-dev` on your `PATH`:
 
-```bash
-# macOS / Linux (tar.gz archives)
-shasum -a 256 -c fc-dev-vX.Y.Z-<target>.tar.gz.sha256
-
-# Windows (zip archive)
-certutil -hashfile fc-dev-vX.Y.Z-x86_64-pc-windows-msvc.zip SHA256
-# …then compare against the value in the .sha256 sidecar
+```sh
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/flowcatalyst/flowcatalyst/main/install.sh | sh
 ```
 
-Linux archives are additionally signed with [cosign](https://docs.sigstore.dev/)
-keyless — GitHub Actions' OIDC identity, recorded in the public Rekor
-transparency log. No keys to manage; verification is provably tied to
-the release workflow that built it:
-
-```bash
-cosign verify-blob \
-  --signature fc-dev-vX.Y.Z-<target>.tar.gz.sig \
-  --certificate fc-dev-vX.Y.Z-<target>.tar.gz.pem \
-  --certificate-identity-regexp '^https://github.com/flowcatalyst/flowcatalyst/.github/workflows/release-fc-dev.yml@refs/tags/fc-dev/v' \
-  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-  fc-dev-vX.Y.Z-<target>.tar.gz
+```powershell
+# Windows (PowerShell 5.1+)
+irm https://raw.githubusercontent.com/flowcatalyst/flowcatalyst/main/install.ps1 | iex
 ```
 
-macOS and Windows archives are not yet codesigned (see
-[`docs/release-signing.md`](docs/release-signing.md)). Gatekeeper and
-SmartScreen will prompt on first launch — bypass once and the cache
-remembers the binary.
+Full per-platform instructions, manual install, cosign verification, and
+troubleshooting are in [`INSTALL.md`](INSTALL.md).
 
-On startup fc-dev does a best-effort check against GitHub for newer
-releases (24h cached, disable with `FC_DEV_UPDATE_CHECK=false`). To
-upgrade in place:
+Once installed, the binary keeps itself up to date:
 
-```bash
-fc-dev upgrade           # download & replace if a newer version exists
-fc-dev upgrade --check   # check only, no download
-fc-dev upgrade --force   # re-install even if already current
+```sh
+fc-dev upgrade           # download & replace if a newer release exists
+fc-dev upgrade --check   # just check
 ```
 
-The upgrade subcommand is atomic: on Windows it does the rename-then-replace
-dance for the live exe; on Unix it overwrites in place. Restart any running
-fc-dev processes after upgrading.
+On startup fc-dev also does a best-effort check against GitHub (24h
+cached; disable with `FC_DEV_UPDATE_CHECK=false`) and prints a hint when
+a newer release is available.
 
 ### Releasing fc-dev
 
