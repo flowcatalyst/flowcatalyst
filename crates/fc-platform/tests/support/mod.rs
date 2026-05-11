@@ -110,6 +110,8 @@ impl TestApp {
             &unit_of_work,
             PlatformRoutesConfig {
                 session_cookie_secure: false,
+                session_cookie_same_site: PlatformRoutesConfig::DEFAULT_SAME_SITE.to_string(),
+                session_token_expiry_secs: PlatformRoutesConfig::DEFAULT_SESSION_EXPIRY_SECS,
                 static_dir: None,
                 oidc_login_external_base_url: None,
                 well_known_external_base_url: "http://localhost".to_string(),

@@ -211,7 +211,7 @@ async fn test_role_crud() {
     assert_eq!(found.display_name, "Test Admin");
 
     // Find by codes
-    let roles = repo.find_by_codes(&[role.name.clone()]).await.expect("Failed to find roles");
+    let roles = repo.find_by_codes(std::slice::from_ref(&role.name)).await.expect("Failed to find roles");
     assert_eq!(roles.len(), 1);
 }
 
@@ -436,7 +436,7 @@ async fn test_dispatch_pool_crud() {
 
     // Create with builder methods
     let pool = DispatchPool::new("test-pool", "Test Pool")
-        .with_rate_limit(50)
+        .with_rate_limit(Some(50))
         .with_concurrency(5);
     repo.insert(&pool).await.expect("Failed to insert dispatch pool");
 
@@ -447,7 +447,7 @@ async fn test_dispatch_pool_crud() {
     assert_eq!(found.code, "test-pool");
     assert_eq!(found.name, "Test Pool");
     assert_eq!(found.status, DispatchPoolStatus::Active);
-    assert_eq!(found.rate_limit, 50);
+    assert_eq!(found.rate_limit, Some(50));
     assert_eq!(found.concurrency, 5);
 
     // Suspend
@@ -573,8 +573,13 @@ async fn test_dispatch_job_lifecycle() {
     assert_eq!(found.code, "order:created");
     assert_eq!(found.target_url, "https://example.com/webhook");
 
-    // Update status to Queued
-    let updated = repo.update_status(&job.id, DispatchStatus::Queued).await.expect("Failed to update status");
+    // Update status to Queued. update_status requires `created_at` because
+    // msg_dispatch_jobs is RANGE-partitioned on created_at — including it
+    // in the WHERE lets PG prune to a single partition.
+    let updated = repo
+        .update_status(&job.id, job.created_at, DispatchStatus::Queued)
+        .await
+        .expect("Failed to update status");
     assert!(updated);
 
     let queued = repo.find_by_id(&job.id).await.unwrap().unwrap();
@@ -597,7 +602,7 @@ async fn test_dispatch_job_batch_insert() {
     let jobs: Vec<DispatchJob> = (0..5)
         .map(|i| {
             DispatchJob::for_event(
-                &format!("evt-{}", i),
+                format!("evt-{}", i),
                 "order:created",
                 "platform",
                 "https://example.com/webhook",

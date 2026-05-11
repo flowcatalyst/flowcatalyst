@@ -126,6 +126,11 @@ fn build_test_router(pool: &sqlx::PgPool) -> (Router, Arc<AuthService>) {
             client_repo.clone(),
             unit_of_work.clone(),
         )),
+        // Application management is exercised via the dedicated
+        // application tests; this integration test doesn't need them.
+        update_applications_use_case: None,
+        enable_application_use_case: None,
+        disable_application_use_case: None,
     };
 
     let sdk_events_state = SdkEventsState {
@@ -264,7 +269,7 @@ async fn test_get_client_by_id_via_api() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(&format!("/api/clients/{}", client.id))
+                .uri(format!("/api/clients/{}", client.id))
                 .header("authorization", format!("Bearer {}", token))
                 .body(Body::empty())
                 .unwrap(),

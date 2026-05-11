@@ -9,6 +9,12 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
+  # fc-dev's build.rs invokes `pnpm build` to embed the frontend into the
+  # binary via rust-embed. For clippy / test we don't need a real bundle,
+  # just enough that the `#[folder = "../../frontend/dist/"]` macro finds
+  # a non-empty directory. Each Rust job creates a stub before invoking
+  # cargo, then exports this flag to skip the actual build.
+  FC_SKIP_FRONTEND_BUILD: "1"
 
 jobs:
   check:
@@ -22,6 +28,13 @@ jobs:
           components: clippy
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Stub frontend/dist (skip-build mode)
+        run: |
+          mkdir -p frontend/dist
+          # rust-embed will fail on an empty directory in some versions;
+          # a placeholder index.html keeps the macro happy.
+          echo "<!doctype html><title>stub</title>" > frontend/dist/index.html
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets
@@ -38,6 +51,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Stub frontend/dist (skip-build mode)
+        run: |
+          mkdir -p frontend/dist
+          echo "<!doctype html><title>stub</title>" > frontend/dist/index.html
 
       - name: Run tests
         run: cargo test --workspace
