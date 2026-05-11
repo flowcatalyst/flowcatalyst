@@ -231,7 +231,7 @@ impl EventMetadataBuilder {
         EventMetadata {
             event_id: self
                 .event_id
-                .unwrap_or_else(|| crate::tsid::TsidGenerator::generate_untyped()),
+                .unwrap_or_else(crate::tsid::TsidGenerator::generate_untyped),
             event_type: self.event_type.expect("event_type is required"),
             spec_version: self.spec_version.expect("spec_version is required"),
             source: self.source.expect("source is required"),
@@ -256,7 +256,7 @@ impl EventMetadataBuilder {
         Ok(EventMetadata {
             event_id: self
                 .event_id
-                .unwrap_or_else(|| crate::tsid::TsidGenerator::generate_untyped()),
+                .unwrap_or_else(crate::tsid::TsidGenerator::generate_untyped),
             event_type: self.event_type.ok_or("event_type is required")?,
             spec_version: self.spec_version.ok_or("spec_version is required")?,
             source: self.source.ok_or("source is required")?,

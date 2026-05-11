@@ -126,9 +126,36 @@ jobs:
         with:
           key: release-${{ matrix.target }}
 
+      # `.cargo/config.toml` pins `-Clink-arg=-fuse-ld=lld` on every Linux
+      # target for fast incremental dev builds. CI runners don't ship lld.
+      - name: Install lld (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y lld
+
+      # `openssl-sys` (pulled transitively by mongodb's native-tls default
+      # feature, among others) needs an OpenSSL build to link against. The
+      # Windows runner has vcpkg pre-installed at $VCPKG_INSTALLATION_ROOT
+      # but `openssl-sys` checks `VCPKG_ROOT`, and the openssl package
+      # isn't installed by default. Install + export.
+      - name: Install OpenSSL via vcpkg (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export VCPKG_ROOT="$VCPKG_INSTALLATION_ROOT"
+          "$VCPKG_INSTALLATION_ROOT/vcpkg" install openssl:x64-windows-static-md
+          echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
+          echo "OPENSSL_STATIC=1" >> "$GITHUB_ENV"
+
       - name: Build
         env:
           FC_SKIP_FRONTEND_BUILD: "1"
+          # `postgresql_embedded`'s build script downloads PG binaries from
+          # GitHub's `theseus-rs/postgresql-binaries` releases. Unauthenticated
+          # API requests are throttled at 60/hour per source IP; with four
+          # platform jobs running in parallel on shared runners we hit that
+          # ceiling fast. Forwarding GITHUB_TOKEN raises the limit to 5000/hr.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: cargo build --release -p fc-dev --target ${{ matrix.target }}
 
       - name: Package archive
