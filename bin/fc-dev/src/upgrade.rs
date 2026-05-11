@@ -125,6 +125,16 @@ fn install(tag: &str) -> Result<()> {
         .repo_owner(REPO_OWNER)
         .repo_name(REPO_NAME)
         .bin_name(BIN_NAME)
+        // Our release archives have a wrapping directory so that manual
+        // `tar -xzf` / "Extract All" produces a tidy `fc-dev-vX.Y.Z-<target>/`
+        // folder rather than dropping `fc-dev` directly into cwd. self_update
+        // would otherwise look for `fc-dev` at the archive root and fail
+        // with `Could not find the required path in the archive: "fc-dev"`.
+        //
+        // Template tokens `{{ version }}` and `{{ target }}` are expanded by
+        // self_update; `{{ bin }}` is the OS-suffixed binary name (so the
+        // trailing `.exe` lands correctly on Windows zip archives).
+        .bin_path_in_archive("fc-dev-v{{ version }}-{{ target }}/{{ bin }}")
         // self_update requires the running binary's version so it can
         // print a sensible status (and skip if equal — though we already
         // gate that ourselves in run() against the prefix-filtered tag).
