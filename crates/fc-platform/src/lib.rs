@@ -30,6 +30,7 @@
 
 // Core aggregates
 pub mod application;
+pub mod application_openapi_spec;
 pub mod client;
 pub mod principal;
 pub mod role;
@@ -85,6 +86,8 @@ pub use usecase::{
 // Re-export main entity types for convenience
 pub use application::client_config::ApplicationClientConfig;
 pub use application::entity::{Application, ApplicationType};
+pub use application_openapi_spec::entity::{ChangeNotes, OpenApiSpec, OpenApiSpecStatus};
+pub use application_openapi_spec::repository::OpenApiSpecRepository;
 pub use audit::entity::AuditLog;
 pub use auth::config_entity::ClientAuthConfig;
 pub use client::entity::{Client, ClientStatus};

@@ -24,7 +24,26 @@ export const usePermissionsStore = defineStore("permissions", () => {
 		if (userPermissions.value.includes("*")) {
 			return true;
 		}
-		return userPermissions.value.includes(permission);
+		if (userPermissions.value.includes(permission)) {
+			return true;
+		}
+		// 4-level wildcard pattern matching, mirroring the backend
+		// (see role::entity::matches_pattern). A held permission like
+		// "platform:*:*:*" grants `platform:developer:application-openapi:view`.
+		const required = permission.split(":");
+		for (const held of userPermissions.value) {
+			const heldParts = held.split(":");
+			if (heldParts.length !== required.length) continue;
+			let match = true;
+			for (let i = 0; i < heldParts.length; i++) {
+				if (heldParts[i] !== "*" && heldParts[i] !== required[i]) {
+					match = false;
+					break;
+				}
+			}
+			if (match) return true;
+		}
+		return false;
 	});
 
 	// Actions
@@ -133,6 +152,9 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
 
 	// Audit Log
 	"/platform/audit-log": "platform:admin:audit:view",
+
+	// Developer portal
+	"/developer": "platform:developer:application-openapi:view",
 };
 
 /**

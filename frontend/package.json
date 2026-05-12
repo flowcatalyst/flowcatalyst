@@ -23,6 +23,7 @@
 		"pinia": "^3.0.0",
 		"primeicons": "^7.0.0",
 		"primevue": "^4.5.4",
+		"swagger-ui-dist": "^5.32.5",
 		"vee-validate": "^4.15.1",
 		"vue": "^3.5.13",
 		"vue-router": "^4.5.0",

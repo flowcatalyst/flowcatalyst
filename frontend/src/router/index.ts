@@ -409,6 +409,25 @@ const router = createRouter({
 					component: () =>
 						import("@/pages/platform/debug/RawDispatchJobListPage.vue"),
 				},
+				// Developer portal
+				{
+					path: "developer",
+					name: "developer",
+					component: () =>
+						import("@/pages/developer/DeveloperApplicationsListPage.vue"),
+				},
+				{
+					path: "developer/applications/:id",
+					name: "developer-application-detail",
+					component: () =>
+						import("@/pages/developer/DeveloperApplicationDetailPage.vue"),
+				},
+				{
+					path: "developer/applications/:id/versions",
+					name: "developer-application-versions",
+					component: () =>
+						import("@/pages/developer/DeveloperApiVersionsPage.vue"),
+				},
 				// Profile
 				{
 					path: "profile",

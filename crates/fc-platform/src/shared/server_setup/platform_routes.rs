@@ -81,6 +81,7 @@ pub fn build_platform_routes(
     auth: &AuthServices,
     unit_of_work: &Arc<PgUnitOfWork>,
     config: PlatformRoutesConfig,
+    platform_application_id: String,
 ) -> PlatformRoutes<PgUnitOfWork> {
     // ── Simple states ─────────────────────────────────────────────────────
     let events_state = EventsState {
@@ -861,6 +862,15 @@ pub fn build_platform_routes(
             unit_of_work.clone(),
         ),
     );
+    let openapi_spec_repo = Arc::new(
+        crate::application_openapi_spec::repository::OpenApiSpecRepository::new(&repos.pool),
+    );
+    let sync_openapi_use_case = Arc::new(
+        crate::application_openapi_spec::operations::SyncOpenApiSpecUseCase::new(
+            openapi_spec_repo.clone(),
+            unit_of_work.clone(),
+        ),
+    );
     let sdk_sync_state = SdkSyncState {
         sync_roles_use_case,
         sync_event_types_use_case: sync_event_types_use_case.clone(),
@@ -868,6 +878,8 @@ pub fn build_platform_routes(
         sync_dispatch_pools_use_case: sync_dispatch_pools_use_case.clone(),
         sync_principals_use_case,
         sync_scheduled_jobs_use_case,
+        sync_openapi_use_case: sync_openapi_use_case.clone(),
+        application_repo: repos.application_repo.clone(),
     };
 
     let sdk_audit_batch_state = SdkAuditBatchState {
@@ -996,6 +1008,14 @@ pub fn build_platform_routes(
                 .build()
                 .expect("Failed to build HTTP client"),
         }),
+        bff_developer: crate::router::BffDeveloperDeps {
+            application_repo: repos.application_repo.clone(),
+            openapi_spec_repo: openapi_spec_repo.clone(),
+            event_type_repo: repos.event_type_repo.clone(),
+            principal_repo: repos.principal_repo.clone(),
+            sync_openapi_use_case,
+            platform_application_id,
+        },
         static_dir: config.static_dir,
     }
 }

@@ -600,6 +600,14 @@ pub mod permissions {
         ];
     }
 
+    /// Developer portal — applications' OpenAPI specs + event-type discovery
+    pub mod developer {
+        pub const APPLICATION_OPENAPI_VIEW: &str = "platform:developer:application-openapi:view";
+        pub const APPLICATION_OPENAPI_SYNC: &str = "platform:developer:application-openapi:sync";
+        pub const APPLICATION_OPENAPI_MANAGE: &str =
+            "platform:developer:application-openapi:manage";
+    }
+
     /// Superuser permission (grants all platform access)
     pub const ADMIN_ALL: &str = "platform:*:*:*";
 
@@ -668,6 +676,7 @@ pub mod roles {
                 permissions::admin::AUDIT_LOG_READ,
                 permissions::admin::AUDIT_LOG_EXPORT,
                 permissions::admin::LOGIN_ATTEMPT_READ,
+                permissions::developer::APPLICATION_OPENAPI_MANAGE,
             ])
     }
 
@@ -684,6 +693,7 @@ pub mod roles {
                 permissions::admin::APPLICATION_READ,
                 permissions::admin::AUDIT_LOG_READ,
                 permissions::admin::LOGIN_ATTEMPT_READ,
+                permissions::developer::APPLICATION_OPENAPI_VIEW,
             ])
     }
 
@@ -832,6 +842,23 @@ pub mod roles {
             ])
     }
 
+    /// PLATFORM_DEVELOPER — read-only access to application API documentation
+    /// (OpenAPI specs + event types) for applications the principal has access
+    /// to. Self-contained: holding this role alone is enough to use the
+    /// Developer section in the frontend. Visibility is further scoped to the
+    /// principal's `iam_principal_application_access` grants at request time.
+    pub fn developer() -> AuthRole {
+        AuthRole::new("platform", "developer", "Developer")
+            .with_description(
+                "Developer portal: API documentation + accessible event types",
+            )
+            .with_source(RoleSource::Code)
+            .with_permissions([
+                permissions::developer::APPLICATION_OPENAPI_VIEW,
+                permissions::admin::EVENT_TYPE_READ,
+            ])
+    }
+
     /// Application service — auto-assigned to application service accounts
     pub fn application_service() -> AuthRole {
         let mut role = AuthRole::new(
@@ -862,6 +889,7 @@ pub mod roles {
             ai_agent_readonly(),
             messaging_admin(),
             viewer(),
+            developer(),
             application_service(),
         ]
     }
@@ -940,7 +968,7 @@ mod tests {
         // Bump this number whenever you add a built-in role in `roles::all()`.
         // The test is a tripwire against accidentally orphaning a new role
         // from `role_sync_service::seed_built_in_roles`'s consumption path.
-        assert_eq!(all_roles.len(), 11);
+        assert_eq!(all_roles.len(), 12);
 
         // Super admin has wildcard
         let super_admin = roles::super_admin();

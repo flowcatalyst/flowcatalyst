@@ -107,16 +107,34 @@ use crate::api::{
     SubscriptionsState,
     WellKnownState,
 };
+use crate::shared::bff_developer_api::{bff_developer_router, BffDeveloperState};
 use crate::shared::rate_limit_middleware::{
     rate_limit_per_ip, IpRateLimiterState, RateLimitConfig,
 };
 use crate::usecase::UnitOfWork;
+use std::sync::Arc;
+
+/// Dependencies handed to `build()` so the Developer-portal BFF state can be
+/// finalised once the platform's own OpenAPI document has been computed.
+pub struct BffDeveloperDeps {
+    pub application_repo: Arc<crate::application::repository::ApplicationRepository>,
+    pub openapi_spec_repo: Arc<crate::application_openapi_spec::repository::OpenApiSpecRepository>,
+    pub event_type_repo: Arc<crate::event_type::repository::EventTypeRepository>,
+    pub principal_repo: Arc<crate::PrincipalRepository>,
+    pub sync_openapi_use_case: Arc<
+        crate::application_openapi_spec::operations::SyncOpenApiSpecUseCase<
+            crate::usecase::PgUnitOfWork,
+        >,
+    >,
+    pub platform_application_id: String,
+}
 
 // =============================================================================
 // Route path constants
 // =============================================================================
 
 // BFF routes
+pub const PATH_BFF_DEVELOPER: &str = "/bff/developer";
 pub const PATH_BFF_EVENTS: &str = "/bff/events";
 pub const PATH_BFF_DISPATCH_JOBS: &str = "/bff/dispatch-jobs";
 pub const PATH_BFF_FILTER_OPTIONS: &str = "/bff/filter-options";
@@ -242,6 +260,11 @@ pub struct PlatformRoutes<U: UnitOfWork + Clone + 'static> {
     pub public: PublicApiState,
     pub password_reset: PasswordResetApiState,
     pub webauthn: crate::webauthn::WebauthnApiState,
+    /// Dependencies for the Developer portal BFF. The final `BffDeveloperState`
+    /// is constructed inside `build()` so the platform's own OpenAPI document
+    /// (returned by `build()` itself) can be stored against the seeded
+    /// `code='platform'` application row without an HTTP self-call.
+    pub bff_developer: BffDeveloperDeps,
     /// Optional — dispatch processing endpoint state. None when dispatch processing
     /// is not needed (e.g., tests or standalone platform server without router).
     pub dispatch_process: Option<DispatchProcessState>,
@@ -389,13 +412,30 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
 
         // 3. Set OpenAPI metadata
         openapi.info.title = "FlowCatalyst Platform API".to_string();
-        openapi.info.version = "1.0.0".to_string();
+        openapi.info.version = env!("CARGO_PKG_VERSION").to_string();
         openapi.info.description =
             Some("REST APIs for events, subscriptions, and administration".to_string());
+
+        // Snapshot the platform's own OpenAPI document for the Developer
+        // portal. Compile-time-derived from utoipa, so a single capture at
+        // boot is correct for the lifetime of this binary; "Sync All" pushes
+        // this value into the seeded `code='platform'` application row.
+        let platform_openapi =
+            Arc::new(serde_json::to_value(&openapi).unwrap_or(serde_json::Value::Null));
+        let bff_developer_state = BffDeveloperState {
+            application_repo: self.bff_developer.application_repo,
+            openapi_spec_repo: self.bff_developer.openapi_spec_repo,
+            event_type_repo: self.bff_developer.event_type_repo,
+            principal_repo: self.bff_developer.principal_repo,
+            sync_openapi_use_case: self.bff_developer.sync_openapi_use_case,
+            platform_openapi,
+            platform_application_id: self.bff_developer.platform_application_id,
+        };
 
         // 4. Merge plain Router routes (not in Swagger)
         let app = Router::new()
             .merge(router)
+            .nest(PATH_BFF_DEVELOPER, bff_developer_router(bff_developer_state))
             // BFF
             .nest(PATH_BFF_ROLES, bff_roles_router(self.bff_roles).into())
             .nest(

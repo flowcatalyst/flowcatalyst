@@ -402,6 +402,10 @@ async fn main() -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("Built-in role seeding failed: {}", e))?;
 
+    fc_platform::shared::database::seed_platform_application(&pg_pool)
+        .await
+        .map_err(|e| anyhow::anyhow!("Platform application seeding failed: {}", e))?;
+
     // Referential-integrity scan — warns when any aggregate delete path has
     // left orphan junction rows behind. Non-fatal; operator-visible.
     fc_platform::shared::integrity_scan::run(&pg_pool).await;
@@ -656,6 +660,14 @@ async fn main() -> Result<()> {
         authz_service: auth_services.authz.clone(),
     };
 
+    // Resolve the seeded `platform` application id.
+    let platform_application_id = repos
+        .application_repo
+        .find_by_code("platform")
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("platform application row missing after seeding"))?
+        .id;
+
     // 8e. Build platform API router via shared builder (handles ~38 state structs).
     // Event fan-out runs as a background service (started below); the request
     // path doesn't need the queue/dispatch deps wired in here.
@@ -678,6 +690,7 @@ async fn main() -> Result<()> {
             well_known_external_base_url: format!("http://localhost:{}", args.api_port),
             password_reset_external_base_url: format!("http://localhost:{}", args.api_port),
         },
+        platform_application_id,
     );
 
     // Event fan-out runs inside the stream processor (fc-stream) configured

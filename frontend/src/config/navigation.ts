@@ -161,4 +161,14 @@ export const NAVIGATION_CONFIG: NavGroup[] = [
 			},
 		],
 	},
+	{
+		label: "Developer",
+		items: [
+			{
+				label: "Applications",
+				icon: "pi pi-book",
+				route: "/developer",
+			},
+		],
+	},
 ];

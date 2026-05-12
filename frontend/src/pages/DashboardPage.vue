@@ -3,6 +3,7 @@ import { onMounted, ref } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import { eventTypesApi } from "@/api/event-types";
 import { rolesApi } from "@/api/roles";
+import { developerApi } from "@/api/developer";
 import { dashboardApi, type DashboardStats } from "@/api/dashboard";
 import { toast } from "@/utils/errorBus";
 
@@ -10,6 +11,7 @@ const authStore = useAuthStore();
 
 const syncingEvents = ref(false);
 const syncingRoles = ref(false);
+const syncingOpenApi = ref(false);
 
 // Platform Overview stat cards. `null` = loading / failed; rendered as "—".
 // One round-trip to /bff/dashboard/stats replaces three separate list
@@ -77,8 +79,39 @@ async function syncPlatformRoles() {
 	}
 }
 
+async function syncPlatformOpenApi() {
+	syncingOpenApi.value = true;
+	try {
+		const result = await developerApi.syncPlatformOpenApi();
+		if (result.unchanged) {
+			toast.success(
+				"Platform OpenAPI Synced",
+				`No changes (v${result.version} unchanged)`,
+			);
+		} else if (result.archivedPriorVersion) {
+			const breaking = result.hasBreaking ? " · breaking" : "";
+			toast.success(
+				"Platform OpenAPI Synced",
+				`v${result.archivedPriorVersion} → v${result.version}${breaking}`,
+			);
+		} else {
+			toast.success(
+				"Platform OpenAPI Synced",
+				`Published initial version v${result.version}`,
+			);
+		}
+	} catch {
+	} finally {
+		syncingOpenApi.value = false;
+	}
+}
+
 async function syncAllPlatform() {
-	await Promise.all([syncPlatformEvents(), syncPlatformRoles()]);
+	await Promise.all([
+		syncPlatformEvents(),
+		syncPlatformRoles(),
+		syncPlatformOpenApi(),
+	]);
 }
 
 const dashboardCards = [
@@ -174,7 +207,7 @@ const dashboardCards = [
         <Button
           label="Sync All"
           icon="pi pi-sync"
-          :loading="syncingEvents || syncingRoles"
+          :loading="syncingEvents || syncingRoles || syncingOpenApi"
           @click="syncAllPlatform"
         />
       </div>
@@ -207,6 +240,21 @@ const dashboardCards = [
             outlined
             :loading="syncingRoles"
             @click="syncPlatformRoles"
+          />
+        </div>
+        <div class="sync-card">
+          <div class="sync-icon bg-blue"><i class="pi pi-book text-blue"></i></div>
+          <div class="sync-info">
+            <h3 class="sync-title">OpenAPI</h3>
+            <p class="sync-description">Publish this build's OpenAPI document to the Developer portal.</p>
+          </div>
+          <Button
+            label="Sync"
+            icon="pi pi-sync"
+            severity="secondary"
+            outlined
+            :loading="syncingOpenApi"
+            @click="syncPlatformOpenApi"
           />
         </div>
       </div>

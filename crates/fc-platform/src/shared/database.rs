@@ -361,6 +361,10 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
             "024_scheduled_jobs_add_target_url",
             include_str!("../../../../migrations/024_scheduled_jobs_add_target_url.sql"),
         ),
+        (
+            "025_application_openapi_specs",
+            include_str!("../../../../migrations/025_application_openapi_specs.sql"),
+        ),
     ];
 
     // No production-only migrations at the moment. Partitioning runs the
@@ -416,6 +420,11 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
             "SELECT EXISTS (SELECT 1 FROM pg_partitioned_table pt \
              JOIN pg_class c ON c.oid = pt.partrelid \
              WHERE c.relname = 'msg_scheduled_job_instances')",
+        ),
+        (
+            "025_application_openapi_specs",
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables \
+             WHERE table_schema = 'public' AND table_name = 'app_application_openapi_specs')",
         ),
     ];
 
@@ -707,6 +716,35 @@ fn split_sql_statements(sql: &str) -> Vec<String> {
 /// are the platform's **initial state**, not an authoritative mirror.
 ///
 /// Permissions for newly-inserted roles are also seeded from code.
+/// Ensure the special `platform` application row exists. The Developer
+/// portal treats the platform itself as one of the applications: the
+/// dynamic utoipa-generated OpenAPI document is stored against this row by
+/// the "Sync All" dashboard action. Idempotent — leaves any existing row
+/// alone (including the more-descriptive name the dev seeder may have set).
+pub async fn seed_platform_application(pool: &PgPool) -> Result<(), sqlx::Error> {
+    use crate::application::entity::Application;
+    use crate::application::repository::ApplicationRepository;
+
+    let repo = ApplicationRepository::new(pool);
+    let existing = repo
+        .find_by_code("platform")
+        .await
+        .map_err(|e| sqlx::Error::Protocol(format!("find_by_code(platform): {}", e)))?;
+
+    if existing.is_some() {
+        return Ok(());
+    }
+
+    let app = Application::new("platform", "FlowCatalyst Platform").with_description(
+        "Core platform — its own OpenAPI document is published here as one of the applications",
+    );
+    repo.insert(&app)
+        .await
+        .map_err(|e| sqlx::Error::Protocol(format!("insert(platform application): {}", e)))?;
+    info!("Seeded built-in platform application");
+    Ok(())
+}
+
 pub async fn seed_builtin_roles(pool: &PgPool) -> Result<(), sqlx::Error> {
     use crate::role::entity::roles;
     use crate::role::repository::RoleRepository;

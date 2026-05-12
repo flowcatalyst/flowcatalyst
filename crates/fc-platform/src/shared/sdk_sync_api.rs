@@ -12,6 +12,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
+use crate::application::repository::ApplicationRepository;
+use crate::application_openapi_spec::operations::{
+    SyncOpenApiSpecCommand, SyncOpenApiSpecUseCase,
+};
 use crate::dispatch_pool::operations::{
     SyncDispatchPoolInput, SyncDispatchPoolsCommand, SyncDispatchPoolsUseCase,
 };
@@ -223,6 +227,8 @@ pub struct SdkSyncState {
     pub sync_dispatch_pools_use_case: Arc<SyncDispatchPoolsUseCase<crate::usecase::PgUnitOfWork>>,
     pub sync_principals_use_case: Arc<SyncPrincipalsUseCase<crate::usecase::PgUnitOfWork>>,
     pub sync_scheduled_jobs_use_case: Arc<SyncScheduledJobsUseCase<crate::usecase::PgUnitOfWork>>,
+    pub sync_openapi_use_case: Arc<SyncOpenApiSpecUseCase<crate::usecase::PgUnitOfWork>>,
+    pub application_repo: Arc<ApplicationRepository>,
 }
 
 // ---------------------------------------------------------------------------
@@ -650,6 +656,113 @@ async fn sync_scheduled_jobs(
 }
 
 // ---------------------------------------------------------------------------
+// OpenAPI sync
+// ---------------------------------------------------------------------------
+
+/// Request body for syncing an application's OpenAPI document.
+/// The spec is accepted as a raw JSON value; the platform reads `info.version`
+/// to track versions and computes a diff against the prior CURRENT to populate
+/// human-readable change notes.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncOpenApiSpecRequest {
+    /// The OpenAPI document (OpenAPI 3.x or Swagger 2.x).
+    pub spec: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncOpenApiSpecResponse {
+    pub application_code: String,
+    pub spec_id: String,
+    pub version: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived_prior_version: Option<String>,
+    pub has_breaking: bool,
+    pub unchanged: bool,
+}
+
+/// Sync the OpenAPI document for an application.
+///
+/// Versioned: the prior CURRENT (if any) is flipped to ARCHIVED with computed
+/// change-notes; the incoming document becomes the new CURRENT. Re-sending an
+/// unchanged spec is a no-op (returns `unchanged: true`).
+#[utoipa::path(
+    post,
+    path = "/{app_code}/openapi/sync",
+    tag = "sdk-sync",
+    operation_id = "postApiApplicationsByAppCodeOpenapiSync",
+    params(("app_code" = String, Path, description = "Application code")),
+    request_body = SyncOpenApiSpecRequest,
+    responses(
+        (status = 200, description = "OpenAPI spec synced", body = SyncOpenApiSpecResponse),
+        (status = 400, description = "Validation error"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Application not found")
+    ),
+    security(("bearer_auth" = []))
+)]
+async fn sync_openapi(
+    State(state): State<SdkSyncState>,
+    auth: Authenticated,
+    Path(app_code): Path<String>,
+    Json(req): Json<SyncOpenApiSpecRequest>,
+) -> Result<Json<SyncOpenApiSpecResponse>, PlatformError> {
+    crate::shared::authorization_service::checks::can_sync_application_openapi(&auth.0)?;
+
+    let app = state
+        .application_repo
+        .find_by_code(&app_code)
+        .await?
+        .ok_or_else(|| {
+            PlatformError::not_found("Application", format!("code={}", app_code))
+        })?;
+
+    // Resource-level guard: anchor users may sync any application; otherwise
+    // the caller must BE this application's bound service account (matches the
+    // way other SDK ingest paths gate per-application writes).
+    let is_app_service_account = app
+        .service_account_id
+        .as_deref()
+        .is_some_and(|sa| sa == auth.0.principal_id);
+    let permitted = auth.0.is_anchor()
+        || auth.0.has_permission(crate::permissions::ADMIN_ALL)
+        || is_app_service_account;
+    if !permitted {
+        return Err(PlatformError::forbidden(format!(
+            "Service account is not authorised for application '{}'",
+            app.code
+        )));
+    }
+
+    let command = SyncOpenApiSpecCommand {
+        application_id: app.id.clone(),
+        application_code: app.code.clone(),
+        spec: req.spec,
+    };
+
+    let ctx = ExecutionContext::create(auth.0.principal_id.clone());
+
+    match state.sync_openapi_use_case.run(command, ctx).await {
+        UseCaseResult::Success(event) => Ok(Json(SyncOpenApiSpecResponse {
+            application_code: event.application_code,
+            spec_id: event.spec_id,
+            version: event.version,
+            status: if event.unchanged {
+                "UNCHANGED".to_string()
+            } else {
+                "CURRENT".to_string()
+            },
+            archived_prior_version: event.archived_prior_version,
+            has_breaking: event.has_breaking,
+            unchanged: event.unchanged,
+        })),
+        UseCaseResult::Failure(err) => Err(err.into()),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -670,5 +783,6 @@ pub fn sdk_sync_router(state: SdkSyncState) -> Router {
         .route("/{app_code}/dispatch-pools/sync", post(sync_dispatch_pools))
         .route("/{app_code}/principals/sync", post(sync_principals))
         .route("/{app_code}/scheduled-jobs/sync", post(sync_scheduled_jobs))
+        .route("/{app_code}/openapi/sync", post(sync_openapi))
         .with_state(state)
 }

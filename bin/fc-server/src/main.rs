@@ -197,6 +197,10 @@ async fn main() -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("Built-in role seeding failed: {}", e))?;
 
+    fc_platform::shared::database::seed_platform_application(&pg_pool)
+        .await
+        .map_err(|e| anyhow::anyhow!("Platform application seeding failed: {}", e))?;
+
     // Referential-integrity scan — warns about orphaned junction rows.
     fc_platform::shared::integrity_scan::run(&pg_pool).await;
 
@@ -333,6 +337,13 @@ async fn main() -> Result<()> {
 
     let unit_of_work = Arc::new(PgUnitOfWork::new(pg_pool.clone()));
 
+    let platform_application_id = repos
+        .application_repo
+        .find_by_code("platform")
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("platform application row missing after seeding"))?
+        .id;
+
     // ── Build HTTP app ───────────────────────────────────────────────────────
     let app = if platform_enabled {
         build_platform_app(
@@ -342,6 +353,7 @@ async fn main() -> Result<()> {
             &repos,
             &cors_origins_cache,
             standby_enabled,
+            platform_application_id,
         )
     } else {
         // Minimal app with just health + metrics
@@ -536,6 +548,7 @@ fn build_platform_app(
     repos: &Repositories,
     cors_origins_cache: &Arc<std::sync::RwLock<std::collections::HashSet<String>>>,
     _standby_enabled: bool,
+    platform_application_id: String,
 ) -> Router {
     let app_state = AppState {
         auth_service: auth_services.auth.clone(),
@@ -565,6 +578,7 @@ fn build_platform_app(
                 .or_else(|_| std::env::var("EXTERNAL_BASE_URL"))
                 .unwrap_or_else(|_| format!("http://localhost:{}", api_port)),
         },
+        platform_application_id,
     );
     let (app, _openapi) = routes.build();
 

@@ -73,6 +73,10 @@ async fn main() -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("Built-in role seeding failed: {}", e))?;
 
+    fc_platform::shared::database::seed_platform_application(&pg_pool)
+        .await
+        .map_err(|e| anyhow::anyhow!("Platform application seeding failed: {}", e))?;
+
     // Referential-integrity scan — warns about orphaned junction rows.
     fc_platform::shared::integrity_scan::run(&pg_pool).await;
 
@@ -161,6 +165,15 @@ async fn main() -> Result<()> {
     // Create UnitOfWork for atomic commits with events and audit logs
     let unit_of_work = Arc::new(PgUnitOfWork::new(pg_pool.clone()));
 
+    // Resolve the seeded `platform` application id — used by the Developer
+    // portal to store the platform's own OpenAPI document against this row.
+    let platform_application_id = repos
+        .application_repo
+        .find_by_code("platform")
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("platform application row missing after seeding"))?
+        .id;
+
     // Build platform API router via shared builder (handles ~38 state structs)
     let routes = fc_platform::shared::server_setup::build_platform_routes(
         &repos,
@@ -180,6 +193,7 @@ async fn main() -> Result<()> {
             password_reset_external_base_url: std::env::var("FC_EXTERNAL_BASE_URL")
                 .unwrap_or_else(|_| format!("http://localhost:{}", api_port)),
         },
+        platform_application_id,
     );
     let (app, _openapi) = routes.build();
 

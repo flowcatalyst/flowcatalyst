@@ -245,6 +245,37 @@ pub mod checks {
         }
     }
 
+    /// Developer portal: read an application's OpenAPI document.
+    /// Resource scoping (which application the principal can see) is handled
+    /// in the handler against `iam_principal_application_access`.
+    pub fn can_read_application_openapi(context: &AuthContext) -> Result<()> {
+        if context.has_any_permission(&[
+            permissions::developer::APPLICATION_OPENAPI_VIEW,
+            permissions::developer::APPLICATION_OPENAPI_MANAGE,
+        ]) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden(
+                "Cannot read application OpenAPI specs",
+            ))
+        }
+    }
+
+    /// SDK ingest: sync an application's OpenAPI document.
+    /// Service-account-belongs-to-application is enforced in the handler.
+    pub fn can_sync_application_openapi(context: &AuthContext) -> Result<()> {
+        if context.has_any_permission(&[
+            permissions::developer::APPLICATION_OPENAPI_SYNC,
+            permissions::developer::APPLICATION_OPENAPI_MANAGE,
+        ]) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden(
+                "Cannot sync application OpenAPI specs",
+            ))
+        }
+    }
+
     /// Check read access to events
     pub fn can_read_events(context: &AuthContext) -> Result<()> {
         if context.has_permission(permissions::admin::EVENT_READ) {
