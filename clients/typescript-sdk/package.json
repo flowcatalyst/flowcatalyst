@@ -28,6 +28,14 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
+		},
+		"./effect": {
+			"types": "./dist/effect/index.d.ts",
+			"import": "./dist/effect/index.js"
+		},
+		"./effect/usecase": {
+			"types": "./dist/effect/usecase/index.d.ts",
+			"import": "./dist/effect/usecase/index.js"
 		}
 	},
 	"scripts": {
@@ -43,9 +51,18 @@
 	"dependencies": {
 		"neverthrow": "^8.1.1"
 	},
+	"peerDependencies": {
+		"effect": "^4.0.0"
+	},
+	"peerDependenciesMeta": {
+		"effect": {
+			"optional": true
+		}
+	},
 	"devDependencies": {
 		"@hey-api/openapi-ts": "^0.91.1",
 		"@types/node": "^22.0.0",
+		"effect": "^4.0.0",
 		"typescript": "^5.9.0"
 	},
 	"engines": {

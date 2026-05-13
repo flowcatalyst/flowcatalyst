@@ -114,6 +114,19 @@ full structure guide — how to name roles, the 4-part permission format,
 event-type code conventions, subscription modes, dispatch pool sizing, and
 principal management.
 
+## Using with Effect
+
+If your project uses [Effect](https://effect.website/), the SDK ships an
+optional Effect-flavored surface at `@flowcatalyst/sdk/effect/usecase` that
+gives the write path (events, dispatch jobs, audit logs) compile-time
+invariant guarantees — a use case that doesn't go through `UnitOfWork`
+fails to compile, not at runtime. Effect is an optional peer dependency:
+the default neverthrow surface is unchanged for everyone else.
+
+See **[docs/effect-usage.md](./docs/effect-usage.md)** for the full
+worked example, layer wiring, error handling with `Effect.catchTag`, and
+testing with `TestUnitOfWork`.
+
 ## TypeScript Support
 
 This SDK is written in TypeScript and provides full type definitions. All API responses are properly typed.
