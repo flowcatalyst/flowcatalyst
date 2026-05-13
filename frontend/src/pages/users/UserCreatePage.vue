@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { toast } from "@/utils/errorBus";
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { usersApi, type EmailDomainCheckResponse } from "@/api/users";
+import { clientsApi, type Client } from "@/api/clients";
 
 const router = useRouter();
 
@@ -10,19 +11,26 @@ const saving = ref(false);
 
 // Form fields
 const email = ref("");
-const password = ref("");
-const confirmPassword = ref("");
 const name = ref("");
+// Selected client when the domain check tells us we need one (partner-scope
+// mappings, unmapped client-scope domains, or client-scope mappings without
+// a primary client pinned).
+const clientId = ref<string | null>(null);
 
 // Validation
 const emailError = ref("");
-const passwordError = ref("");
 const nameError = ref("");
 
 // Email domain check
 const domainCheck = ref<EmailDomainCheckResponse | null>(null);
 const checkingDomain = ref(false);
 const lastCheckedEmail = ref("");
+
+// Clients (fetched once on mount). Used to populate the picker when the
+// backend says we need a clientId. Picker filters to the response's
+// `allowedClientIds` set when non-empty (partner-scope domains).
+const clients = ref<Client[]>([]);
+const loadingClients = ref(false);
 
 // Whether the domain check has completed successfully (no errors, email validated)
 const domainCheckComplete = computed(() => {
@@ -31,11 +39,33 @@ const domainCheckComplete = computed(() => {
 	);
 });
 
-// Determine if user needs internal authentication (password)
-const requiresPassword = computed(() => {
-	// Don't show password fields until domain check confirms internal auth
+// True when the user is internally-authenticated. The admin never sets a
+// password — the backend auto-sends a magic sign-in link on creation so the
+// user picks their own. The flag drives the info copy on the form.
+const isInternalAuth = computed(() => {
 	if (!domainCheck.value) return false;
 	return domainCheck.value.authProvider === "INTERNAL";
+});
+
+// Whether the form must collect a client id. The backend tells us in the
+// domain-check response; this re-renders the picker whenever the response
+// changes (e.g. user edits email).
+const requiresClient = computed(() => {
+	return domainCheck.value?.requiresClientId === true;
+});
+
+// Options for the client Select. When the backend constrains the choice
+// (partner-scope domains), filter to that allow-list; otherwise the picker
+// shows every active client.
+const clientOptions = computed(() => {
+	const allowed = domainCheck.value?.allowedClientIds ?? [];
+	const filtered =
+		allowed.length > 0
+			? clients.value.filter((c) => allowed.includes(c.id))
+			: clients.value;
+	return filtered
+		.filter((c) => c.status === "ACTIVE")
+		.map((c) => ({ label: `${c.name} (${c.identifier})`, value: c.id }));
 });
 
 // Check if email already exists (blocking error)
@@ -55,13 +85,9 @@ const isFormValid = computed(() => {
 		!checkingDomain.value &&
 		domainCheckComplete.value; // Must have completed domain check
 
-	if (requiresPassword.value) {
-		return (
-			baseValid &&
-			password.value &&
-			password.value === confirmPassword.value &&
-			!passwordError.value
-		);
+	// Client picker is required for partner / unmapped-client domains.
+	if (requiresClient.value && !clientId.value) {
+		return false;
 	}
 
 	return baseValid;
@@ -95,16 +121,22 @@ async function checkEmailDomain() {
 	checkingDomain.value = true;
 	// Clear previous check result while loading
 	domainCheck.value = null;
+	// Clear any stale client selection; the new domain's allow-list may
+	// not include it, and an anchor domain doesn't take one at all.
+	clientId.value = null;
 
 	try {
 		const result = await usersApi.checkEmailDomain(email.value);
 		domainCheck.value = result;
 
-		// Clear password fields if switching to OIDC (no password needed)
-		if (result.authProvider !== "INTERNAL") {
-			password.value = "";
-			confirmPassword.value = "";
-			passwordError.value = "";
+		// If the domain constrains the client choice to a single allowed
+		// id, pre-select it — saves a click for the common case.
+		if (
+			result.requiresClientId &&
+			result.allowedClientIds.length === 1 &&
+			result.allowedClientIds[0]
+		) {
+			clientId.value = result.allowedClientIds[0];
 		}
 	} catch (error) {
 		console.error("Failed to check email domain:", error);
@@ -114,26 +146,19 @@ async function checkEmailDomain() {
 	}
 }
 
-function validatePassword() {
-	// Skip validation if password not required (OIDC users)
-	if (!requiresPassword.value) {
-		passwordError.value = "";
-		return;
-	}
-
-	if (!password.value) {
-		passwordError.value = "Password is required";
-	} else if (password.value.length < 8) {
-		passwordError.value = "Password must be at least 8 characters";
-	} else if (
-		confirmPassword.value &&
-		password.value !== confirmPassword.value
-	) {
-		passwordError.value = "Passwords do not match";
-	} else {
-		passwordError.value = "";
+async function loadClients() {
+	loadingClients.value = true;
+	try {
+		const res = await clientsApi.list({ status: "ACTIVE" });
+		clients.value = res.clients;
+	} catch (e) {
+		console.error("Failed to load clients:", e);
+	} finally {
+		loadingClients.value = false;
 	}
 }
+
+onMounted(loadClients);
 
 function validateName() {
 	if (!name.value) {
@@ -146,7 +171,6 @@ function validateName() {
 async function createUser() {
 	// Validate all fields
 	await validateEmail();
-	validatePassword();
 	validateName();
 
 	if (!isFormValid.value) {
@@ -155,20 +179,29 @@ async function createUser() {
 
 	saving.value = true;
 	try {
-		// Build request - only include password for internal auth users
+		// We never send a password. For INTERNAL users the backend
+		// automatically emails a magic sign-in link so they pick their own;
+		// for OIDC users the IdP owns credentials entirely. The admin never
+		// sees or sets a password.
 		const request: Parameters<typeof usersApi.create>[0] = {
 			email: email.value,
 			name: name.value,
 		};
 
-		if (requiresPassword.value) {
-			request.password = password.value;
+		// Include the picked clientId when the backend signalled it's
+		// required (partner / unmapped-client domains).
+		if (requiresClient.value && clientId.value) {
+			request.clientId = clientId.value;
 		}
 
-		// Create the user (client will be auto-detected from email domain on backend)
 		const user = await usersApi.create(request);
 
-		toast.success("Success", "User created successfully");
+		toast.success(
+			"User created",
+			isInternalAuth.value
+				? "We've emailed them a one-time sign-in link to set their password."
+				: "They can sign in via their identity provider.",
+		);
 
 		// Redirect to user detail/edit page
 		router.push(`/users/${user.id}`);
@@ -255,59 +288,53 @@ function cancel() {
           </small>
         </div>
 
-        <template v-if="requiresPassword">
-          <div class="form-field">
-            <label for="password">Password <span class="required">*</span></label>
-            <Password
-              id="password"
-              v-model="password"
-              placeholder="Minimum 12 characters"
-              class="w-full"
-              :invalid="!!passwordError"
-              :feedback="true"
-              toggleMask
-              appendTo="self"
-              @blur="validatePassword"
-            />
-            <small v-if="passwordError" class="p-error">{{ passwordError }}</small>
-          </div>
+        <div v-if="requiresClient" class="form-field client-field">
+          <label for="clientId">Client <span class="required">*</span></label>
+          <Select
+            id="clientId"
+            v-model="clientId"
+            :options="clientOptions"
+            option-label="label"
+            option-value="value"
+            :placeholder="loadingClients ? 'Loading clients…' : 'Select a client'"
+            :loading="loadingClients"
+            :disabled="loadingClients || clientOptions.length === 0"
+            class="w-full"
+            show-clear
+            filter
+          />
+          <small v-if="domainCheck?.derivedScope === 'PARTNER'" class="domain-info">
+            <i class="pi pi-info-circle"></i>
+            This partner domain restricts users to specific clients.
+          </small>
+          <small v-else class="domain-info">
+            <i class="pi pi-info-circle"></i>
+            Required for non-anchor users — sets the user's home client.
+          </small>
+          <small v-if="!loadingClients && clientOptions.length === 0" class="p-error">
+            No clients available to assign. Configure a client first.
+          </small>
+        </div>
 
-          <div class="form-field">
-            <label for="confirmPassword">Confirm Password <span class="required">*</span></label>
-            <Password
-              id="confirmPassword"
-              v-model="confirmPassword"
-              placeholder="Re-enter password"
-              class="w-full"
-              :invalid="password !== confirmPassword && confirmPassword !== ''"
-              :feedback="false"
-              toggleMask
-              @blur="validatePassword"
-            />
-            <small v-if="confirmPassword && password !== confirmPassword" class="p-error">
-              Passwords do not match
-            </small>
-          </div>
-        </template>
       </div>
     </div>
 
     <!-- Only show info message after domain check completes and email doesn't exist -->
     <Message
-      v-if="domainCheckComplete && !emailAlreadyExists && requiresPassword"
+      v-if="domainCheckComplete && !emailAlreadyExists && isInternalAuth"
       severity="info"
       :closable="false"
       class="info-message"
     >
       <template #icon>
-        <i class="pi pi-info-circle"></i>
+        <i class="pi pi-envelope"></i>
       </template>
-      The user will be created with internal authentication. Client access will be determined based
-      on the email domain. After creation, you can manage additional client access on the user
-      detail page.
+      The user will be emailed a one-time sign-in link to set their own password
+      — we never see or store an admin-set password.
+      Scope: <strong>{{ domainCheck?.derivedScope }}</strong>.
     </Message>
     <Message
-      v-else-if="domainCheckComplete && !emailAlreadyExists && !requiresPassword"
+      v-else-if="domainCheckComplete && !emailAlreadyExists && !isInternalAuth"
       severity="info"
       :closable="false"
       class="info-message"
@@ -315,9 +342,9 @@ function cancel() {
       <template #icon>
         <i class="pi pi-info-circle"></i>
       </template>
-      This user will authenticate via their organization's identity provider ({{
-        domainCheck?.authProvider
-      }}). No password is required. Client access will be determined based on the email domain.
+      This user will authenticate via their organization's identity provider
+      ({{ domainCheck?.authProvider }}) — no password to set.
+      Scope: <strong>{{ domainCheck?.derivedScope }}</strong>.
     </Message>
   </div>
 </template>
@@ -356,6 +383,11 @@ function cancel() {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* Span the full grid width so the picker is easy to scan + filter. */
+.client-field {
+  grid-column: 1 / -1;
 }
 
 .form-field label {

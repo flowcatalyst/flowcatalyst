@@ -93,6 +93,16 @@ export interface EmailDomainCheckResponse {
 	emailExists: boolean;
 	info: string | null;
 	warning: string | null;
+	/** Scope the user will be created with — ANCHOR / PARTNER / CLIENT. */
+	derivedScope: PrincipalScope;
+	/** True when the form must supply a clientId before submit. */
+	requiresClientId: boolean;
+	/**
+	 * Allow-list of client IDs the form should constrain the picker to.
+	 * Empty when there is no per-domain restriction; the picker can show the
+	 * full active-clients list in that case.
+	 */
+	allowedClientIds: string[];
 }
 
 export interface UserFilters {

@@ -131,6 +131,18 @@ pub struct CheckEmailDomainResponse {
     pub info: Option<String>,
     /// Warning message
     pub warning: Option<String>,
+    /// Scope the user will be created with (ANCHOR / PARTNER / CLIENT).
+    /// Derived from anchor domains + email_domain_mappings; unmapped domains
+    /// default to CLIENT.
+    pub derived_scope: String,
+    /// True when the create-user form must supply a `clientId`. False for
+    /// anchor domains and for mappings that already pin a primary client.
+    pub requires_client_id: bool,
+    /// When the user must pick a client, this is the allow-list to choose
+    /// from. Empty when `requiresClientId` is false (no input needed) OR
+    /// when there is no per-domain restriction (any active client is valid —
+    /// the UI shows the full list it already fetches).
+    pub allowed_client_ids: Vec<String>,
 }
 
 /// Set application access request (batch replace)
@@ -578,7 +590,7 @@ pub async fn create_user(
         granted_client_ids,
         password: req.password.clone(),
         enforce_password_complexity: req.enforce_password_complexity,
-        idp_type: Some(idp_type),
+        idp_type: Some(idp_type.clone()),
     };
     let ctx = ExecutionContext::create(&auth.0.principal_id);
     let event = state
@@ -592,6 +604,47 @@ pub async fn create_user(
         .find_by_id(&event.principal_id)
         .await?
         .or_not_found("Principal", &event.principal_id)?;
+
+    // Magic-link bootstrap: when no password is supplied by the caller and
+    // the user is INTERNAL-authenticated (we own the password store), send
+    // them a one-time set-password email. The admin never sees a password —
+    // the backend generates a random hash to satisfy the NOT NULL column,
+    // and the recipient picks their own via this link.
+    //
+    // SDK / automation callers that DO send a password (e.g. bulk migration)
+    // skip this step — they've taken responsibility for credential delivery.
+    let should_send_magic_link = req.password.is_none()
+        && idp_type == "INTERNAL"
+        && created
+            .user_identity
+            .as_ref()
+            .map(|i| !i.email.is_empty())
+            .unwrap_or(false);
+    if should_send_magic_link {
+        if let Some(ref emailer) = state.password_reset_emailer {
+            if let Err(e) = emailer.send_reset_email(&created).await {
+                // Don't fail the create — the user is in the DB. Surface the
+                // problem in logs; the admin can resend from the detail page.
+                tracing::error!(
+                    principal_id = %created.id,
+                    error = %e,
+                    "User created but magic-link email failed to send"
+                );
+            } else {
+                tracing::info!(
+                    principal_id = %created.id,
+                    "Sent magic sign-in link to new user"
+                );
+            }
+        } else {
+            tracing::warn!(
+                principal_id = %created.id,
+                "Magic sign-in link not sent — password_reset_emailer not configured. \
+                 Admin must trigger the reset manually from the user detail page."
+            );
+        }
+    }
+
     Ok(Json(created.into()))
 }
 
@@ -1507,8 +1560,16 @@ pub async fn check_email_domain(
         false
     };
 
-    // Resolve auth provider: anchor domain → INTERNAL; mapped domain → mapped IdP;
-    // otherwise default to INTERNAL (no warning — the internal store is the fallback).
+    // Resolve auth provider + scope derivation. The scope/client_id logic
+    // here MUST stay in sync with `create_user` above — the form uses
+    // `requires_client_id` to decide whether to show a client picker, and the
+    // backend would otherwise reject the submission with CLIENT_ID_REQUIRED.
+    let mapping = if let Some(ref edm_repo) = state.email_domain_mapping_repo {
+        edm_repo.find_by_email_domain(&domain).await?
+    } else {
+        None
+    };
+
     let (has_auth_config, auth_provider, info, warning) = if is_anchor_domain {
         (
             true,
@@ -1516,31 +1577,22 @@ pub async fn check_email_domain(
             Some("This is an anchor domain. User will have access to all clients.".to_string()),
             None,
         )
-    } else if let (Some(ref edm_repo), Some(ref idp_repo)) = (
-        &state.email_domain_mapping_repo,
-        &state.identity_provider_repo,
-    ) {
-        match edm_repo.find_by_email_domain(&domain).await? {
-            Some(mapping) => match idp_repo.find_by_id(&mapping.identity_provider_id).await? {
-                Some(idp) => {
-                    let provider = match idp.r#type {
-                        crate::IdentityProviderType::Oidc => "OIDC",
-                        crate::IdentityProviderType::Internal => "INTERNAL",
-                    };
-                    let info_msg = if provider == "OIDC" {
-                        Some("This domain uses external OIDC authentication.".to_string())
-                    } else {
-                        Some("This domain uses internal authentication.".to_string())
-                    };
-                    (true, Some(provider.to_string()), info_msg, None)
-                }
-                None => (
-                    false,
-                    Some("INTERNAL".to_string()),
-                    Some("Default: user will sign in with an internal password.".to_string()),
-                    None,
-                ),
-            },
+    } else if let (Some(ref m), Some(ref idp_repo)) =
+        (&mapping, &state.identity_provider_repo)
+    {
+        match idp_repo.find_by_id(&m.identity_provider_id).await? {
+            Some(idp) => {
+                let provider = match idp.r#type {
+                    crate::IdentityProviderType::Oidc => "OIDC",
+                    crate::IdentityProviderType::Internal => "INTERNAL",
+                };
+                let info_msg = if provider == "OIDC" {
+                    Some("This domain uses external OIDC authentication.".to_string())
+                } else {
+                    Some("This domain uses internal authentication.".to_string())
+                };
+                (true, Some(provider.to_string()), info_msg, None)
+            }
             None => (
                 false,
                 Some("INTERNAL".to_string()),
@@ -1555,6 +1607,37 @@ pub async fn check_email_domain(
             Some("Default: user will sign in with an internal password.".to_string()),
             None,
         )
+    };
+
+    // Derive scope + whether the form needs to pick a client.
+    let (derived_scope, requires_client_id, allowed_client_ids) = if is_anchor_domain {
+        ("ANCHOR".to_string(), false, Vec::new())
+    } else if let Some(ref m) = mapping {
+        match m.scope_type {
+            crate::email_domain_mapping::entity::ScopeType::Anchor => {
+                ("ANCHOR".to_string(), false, Vec::new())
+            }
+            crate::email_domain_mapping::entity::ScopeType::Partner => {
+                // Partner: client must be picked from the granted set
+                // (primary_client_id is also valid; see create_user).
+                let mut allowed = m.granted_client_ids.clone();
+                if let Some(ref p) = m.primary_client_id {
+                    if !allowed.iter().any(|c| c == p) {
+                        allowed.push(p.clone());
+                    }
+                }
+                ("PARTNER".to_string(), true, allowed)
+            }
+            crate::email_domain_mapping::entity::ScopeType::Client => {
+                // Client mapping with a primary client pins the choice;
+                // without one, the form must collect it.
+                let requires = m.primary_client_id.is_none();
+                ("CLIENT".to_string(), requires, Vec::new())
+            }
+        }
+    } else {
+        // Unmapped domain → client-scoped, any active client is acceptable.
+        ("CLIENT".to_string(), true, Vec::new())
     };
 
     // Add warning if email already exists
@@ -1572,6 +1655,9 @@ pub async fn check_email_domain(
         email_exists,
         info,
         warning,
+        derived_scope,
+        requires_client_id,
+        allowed_client_ids,
     }))
 }
 
