@@ -20,7 +20,7 @@ class GetApiAdminDispatchJobsByIdRaw extends \FlowCatalyst\Generated\Runtime\Cli
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/bff/dispatch-jobs/{id}/raw');
+        return str_replace(['{id}'], [$this->id], '/api/dispatch-jobs/{id}/raw');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {

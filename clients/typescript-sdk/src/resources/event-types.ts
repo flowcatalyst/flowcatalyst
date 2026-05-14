@@ -16,7 +16,6 @@ import type {
 	PostApiAdminEventTypesByIdSchemasData,
 	PostApiAdminEventTypesSyncData,
 	PostApiAdminEventTypesSyncResponse,
-	GetApiAdminFilterOptionsEventTypesFiltersApplicationsResponse,
 	PaginationParams,
 } from "../generated/types.gen";
 
@@ -25,8 +24,6 @@ export type EventTypeResponse = GetApiAdminEventTypesByIdResponse;
 export type CreateEventTypeRequest = PostApiAdminEventTypesData["body"];
 export type UpdateEventTypeRequest = PutApiAdminEventTypesByIdData["body"];
 export type SyncEventTypesResponse = PostApiAdminEventTypesSyncResponse;
-export type FilterOptionsResponse =
-	GetApiAdminFilterOptionsEventTypesFiltersApplicationsResponse;
 
 export interface EventTypeFilters {
 	status?: string;
@@ -134,49 +131,6 @@ export class EventTypesResource {
 				client: httpClient,
 				headers,
 				path: { id },
-			}),
-		);
-	}
-
-	/**
-	 * Get distinct application names for filtering.
-	 */
-	filterApplications(): ResultAsync<FilterOptionsResponse, SdkError> {
-		return this.client.request<FilterOptionsResponse>((httpClient, headers) =>
-			sdk.getApiAdminFilterOptionsEventTypesFiltersApplications({
-				client: httpClient,
-				headers,
-			}),
-		);
-	}
-
-	/**
-	 * Get distinct subdomains for filtering.
-	 */
-	filterSubdomains(
-		application?: string[],
-	): ResultAsync<FilterOptionsResponse, SdkError> {
-		return this.client.request<FilterOptionsResponse>((httpClient, headers) =>
-			sdk.getApiAdminFilterOptionsEventTypesFiltersSubdomains({
-				client: httpClient,
-				headers,
-				query: { "application[]": application },
-			}),
-		);
-	}
-
-	/**
-	 * Get distinct aggregates for filtering.
-	 */
-	filterAggregates(
-		application?: string[],
-		subdomain?: string[],
-	): ResultAsync<FilterOptionsResponse, SdkError> {
-		return this.client.request<FilterOptionsResponse>((httpClient, headers) =>
-			sdk.getApiAdminFilterOptionsEventTypesFiltersAggregates({
-				client: httpClient,
-				headers,
-				query: { "application[]": application, "subdomain[]": subdomain },
 			}),
 		);
 	}

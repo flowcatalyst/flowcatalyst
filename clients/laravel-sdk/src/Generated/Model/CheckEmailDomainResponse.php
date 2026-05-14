@@ -13,11 +13,28 @@ class CheckEmailDomainResponse extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
+     * When the user must pick a client, this is the allow-list to choose
+     * from. Empty when `requiresClientId` is false (no input needed) OR
+     * when there is no per-domain restriction (any active client is valid —
+     * the UI shows the full list it already fetches).
+     *
+     * @var list<string>|null
+     */
+    protected $allowedClientIds;
+    /**
      * Auth provider if configured (INTERNAL, OIDC)
      *
      * @var string|null
      */
     protected $authProvider;
+    /**
+     * Scope the user will be created with (ANCHOR / PARTNER / CLIENT).
+     * Derived from anchor domains + email_domain_mappings; unmapped domains
+     * default to CLIENT.
+     *
+     * @var string|null
+     */
+    protected $derivedScope;
     /**
      * The domain that was checked
      *
@@ -49,11 +66,46 @@ class CheckEmailDomainResponse extends \ArrayObject
      */
     protected $isAnchorDomain;
     /**
+     * True when the create-user form must supply a `clientId`. False for
+     * anchor domains and for mappings that already pin a primary client.
+     *
+     * @var bool|null
+     */
+    protected $requiresClientId;
+    /**
      * Warning message
      *
      * @var string|null
      */
     protected $warning;
+    /**
+     * When the user must pick a client, this is the allow-list to choose
+     * from. Empty when `requiresClientId` is false (no input needed) OR
+     * when there is no per-domain restriction (any active client is valid —
+     * the UI shows the full list it already fetches).
+     *
+     * @return list<string>|null
+     */
+    public function getAllowedClientIds(): ?array
+    {
+        return $this->allowedClientIds;
+    }
+    /**
+    * When the user must pick a client, this is the allow-list to choose
+    from. Empty when `requiresClientId` is false (no input needed) OR
+    when there is no per-domain restriction (any active client is valid —
+    the UI shows the full list it already fetches).
+    *
+    * @param list<string>|null $allowedClientIds
+    *
+    * @return self
+    */
+    public function setAllowedClientIds(?array $allowedClientIds): self
+    {
+        $this->initialized['allowedClientIds'] = true;
+        $this->allowedClientIds = $allowedClientIds;
+        return $this;
+    }
     /**
      * Auth provider if configured (INTERNAL, OIDC)
      *
@@ -74,6 +126,32 @@ class CheckEmailDomainResponse extends \ArrayObject
     {
         $this->initialized['authProvider'] = true;
         $this->authProvider = $authProvider;
+        return $this;
+    }
+    /**
+     * Scope the user will be created with (ANCHOR / PARTNER / CLIENT).
+     * Derived from anchor domains + email_domain_mappings; unmapped domains
+     * default to CLIENT.
+     *
+     * @return string|null
+     */
+    public function getDerivedScope(): ?string
+    {
+        return $this->derivedScope;
+    }
+    /**
+    * Scope the user will be created with (ANCHOR / PARTNER / CLIENT).
+    Derived from anchor domains + email_domain_mappings; unmapped domains
+    default to CLIENT.
+    *
+    * @param string|null $derivedScope
+    *
+    * @return self
+    */
+    public function setDerivedScope(?string $derivedScope): self
+    {
+        $this->initialized['derivedScope'] = true;
+        $this->derivedScope = $derivedScope;
         return $this;
     }
     /**
@@ -184,6 +262,30 @@ class CheckEmailDomainResponse extends \ArrayObject
     {
         $this->initialized['isAnchorDomain'] = true;
         $this->isAnchorDomain = $isAnchorDomain;
+        return $this;
+    }
+    /**
+     * True when the create-user form must supply a `clientId`. False for
+     * anchor domains and for mappings that already pin a primary client.
+     *
+     * @return bool|null
+     */
+    public function getRequiresClientId(): ?bool
+    {
+        return $this->requiresClientId;
+    }
+    /**
+    * True when the create-user form must supply a `clientId`. False for
+    anchor domains and for mappings that already pin a primary client.
+    *
+    * @param bool|null $requiresClientId
+    *
+    * @return self
+    */
+    public function setRequiresClientId(?bool $requiresClientId): self
+    {
+        $this->initialized['requiresClientId'] = true;
+        $this->requiresClientId = $requiresClientId;
         return $this;
     }
     /**

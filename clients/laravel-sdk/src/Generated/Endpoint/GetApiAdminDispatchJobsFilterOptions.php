@@ -11,7 +11,7 @@ class GetApiAdminDispatchJobsFilterOptions extends \FlowCatalyst\Generated\Runti
     }
     public function getUri(): string
     {
-        return '/bff/dispatch-jobs/filter-options';
+        return '/api/dispatch-jobs/filter-options';
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {

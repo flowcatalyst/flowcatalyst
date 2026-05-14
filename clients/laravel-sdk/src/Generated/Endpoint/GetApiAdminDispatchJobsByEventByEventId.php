@@ -19,7 +19,7 @@ class GetApiAdminDispatchJobsByEventByEventId extends \FlowCatalyst\Generated\Ru
     }
     public function getUri(): string
     {
-        return str_replace(['{event_id}'], [$this->event_id], '/bff/dispatch-jobs/by-event/{event_id}');
+        return str_replace(['{event_id}'], [$this->event_id], '/api/dispatch-jobs/by-event/{event_id}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {

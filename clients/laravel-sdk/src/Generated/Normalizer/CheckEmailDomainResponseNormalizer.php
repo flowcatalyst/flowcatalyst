@@ -43,8 +43,22 @@ class CheckEmailDomainResponseNormalizer implements DenormalizerInterface, Norma
         if (\array_key_exists('isAnchorDomain', $data) && \is_int($data['isAnchorDomain'])) {
             $data['isAnchorDomain'] = (bool) $data['isAnchorDomain'];
         }
+        if (\array_key_exists('requiresClientId', $data) && \is_int($data['requiresClientId'])) {
+            $data['requiresClientId'] = (bool) $data['requiresClientId'];
+        }
         if (null === $data || false === \is_array($data)) {
             return $object;
+        }
+        if (\array_key_exists('allowedClientIds', $data) && $data['allowedClientIds'] !== null) {
+            $values = [];
+            foreach ($data['allowedClientIds'] as $value) {
+                $values[] = $value;
+            }
+            $object->setAllowedClientIds($values);
+            unset($data['allowedClientIds']);
+        }
+        elseif (\array_key_exists('allowedClientIds', $data) && $data['allowedClientIds'] === null) {
+            $object->setAllowedClientIds(null);
         }
         if (\array_key_exists('authProvider', $data) && $data['authProvider'] !== null) {
             $object->setAuthProvider($data['authProvider']);
@@ -52,6 +66,13 @@ class CheckEmailDomainResponseNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('authProvider', $data) && $data['authProvider'] === null) {
             $object->setAuthProvider(null);
+        }
+        if (\array_key_exists('derivedScope', $data) && $data['derivedScope'] !== null) {
+            $object->setDerivedScope($data['derivedScope']);
+            unset($data['derivedScope']);
+        }
+        elseif (\array_key_exists('derivedScope', $data) && $data['derivedScope'] === null) {
+            $object->setDerivedScope(null);
         }
         if (\array_key_exists('domain', $data) && $data['domain'] !== null) {
             $object->setDomain($data['domain']);
@@ -88,6 +109,13 @@ class CheckEmailDomainResponseNormalizer implements DenormalizerInterface, Norma
         elseif (\array_key_exists('isAnchorDomain', $data) && $data['isAnchorDomain'] === null) {
             $object->setIsAnchorDomain(null);
         }
+        if (\array_key_exists('requiresClientId', $data) && $data['requiresClientId'] !== null) {
+            $object->setRequiresClientId($data['requiresClientId']);
+            unset($data['requiresClientId']);
+        }
+        elseif (\array_key_exists('requiresClientId', $data) && $data['requiresClientId'] === null) {
+            $object->setRequiresClientId(null);
+        }
         if (\array_key_exists('warning', $data) && $data['warning'] !== null) {
             $object->setWarning($data['warning']);
             unset($data['warning']);
@@ -95,9 +123,9 @@ class CheckEmailDomainResponseNormalizer implements DenormalizerInterface, Norma
         elseif (\array_key_exists('warning', $data) && $data['warning'] === null) {
             $object->setWarning(null);
         }
-        foreach ($data as $key => $value) {
+        foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
-                $object[$key] = $value;
+                $object[$key] = $value_1;
             }
         }
         return $object;
@@ -105,9 +133,15 @@ class CheckEmailDomainResponseNormalizer implements DenormalizerInterface, Norma
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
+        $values = [];
+        foreach ($data->getAllowedClientIds() as $value) {
+            $values[] = $value;
+        }
+        $dataArray['allowedClientIds'] = $values;
         if ($data->isInitialized('authProvider')) {
             $dataArray['authProvider'] = $data->getAuthProvider();
         }
+        $dataArray['derivedScope'] = $data->getDerivedScope();
         $dataArray['domain'] = $data->getDomain();
         $dataArray['emailExists'] = $data->getEmailExists();
         $dataArray['hasAuthConfig'] = $data->getHasAuthConfig();
@@ -115,12 +149,13 @@ class CheckEmailDomainResponseNormalizer implements DenormalizerInterface, Norma
             $dataArray['info'] = $data->getInfo();
         }
         $dataArray['isAnchorDomain'] = $data->getIsAnchorDomain();
+        $dataArray['requiresClientId'] = $data->getRequiresClientId();
         if ($data->isInitialized('warning')) {
             $dataArray['warning'] = $data->getWarning();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
-                $dataArray[$key] = $value;
+                $dataArray[$key] = $value_1;
             }
         }
         return $dataArray;

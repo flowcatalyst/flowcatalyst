@@ -19,7 +19,7 @@ class GetApiAdminEventsById extends \FlowCatalyst\Generated\Runtime\Client\BaseE
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/bff/events/{id}');
+        return str_replace(['{id}'], [$this->id], '/api/events/{id}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {

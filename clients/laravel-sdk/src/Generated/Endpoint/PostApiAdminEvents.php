@@ -21,7 +21,7 @@ class PostApiAdminEvents extends \FlowCatalyst\Generated\Runtime\Client\BaseEndp
     }
     public function getUri(): string
     {
-        return '/bff/events';
+        return '/api/events';
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
