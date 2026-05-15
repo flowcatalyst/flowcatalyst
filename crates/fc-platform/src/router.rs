@@ -40,6 +40,7 @@ use crate::api::{
     email_domain_mappings_router,
     event_types_router,
     events_api_router,
+    processes_router,
     // OpenApiRouter routes
     events_router,
     filter_options_router,
@@ -96,6 +97,7 @@ use crate::api::{
     PasswordResetApiState,
     PlatformConfigState,
     PrincipalsState,
+    ProcessesState,
     PublicApiState,
     RolesState,
     ScheduledJobsState,
@@ -148,6 +150,8 @@ pub const PATH_BFF_DEBUG_DISPATCH_JOBS: &str = "/bff/debug/dispatch-jobs";
 // API routes (single programmable surface; gated by permissions, not URL tier)
 pub const PATH_API_EVENTS: &str = "/api/events";
 pub const PATH_API_EVENT_TYPES: &str = "/api/event-types";
+pub const PATH_API_PROCESSES: &str = "/api/processes";
+pub const PATH_BFF_PROCESSES: &str = "/bff/processes";
 pub const PATH_API_CLIENTS: &str = "/api/clients";
 pub const PATH_API_PRINCIPALS: &str = "/api/principals";
 pub const PATH_API_ROLES: &str = "/api/roles";
@@ -218,6 +222,7 @@ pub struct PlatformRoutes<U: UnitOfWork + Clone + 'static> {
     // -- OpenApiRouter routes (collected in Swagger) --
     pub events: EventsState,
     pub event_types: EventTypesState,
+    pub processes: ProcessesState,
     pub dispatch_jobs: DispatchJobsState,
     pub scheduled_jobs: ScheduledJobsState,
     pub filter_options: FilterOptionsState,
@@ -307,6 +312,11 @@ impl<U: UnitOfWork + Clone + 'static> PlatformRoutes<U> {
             .nest(PATH_API_EVENTS, events_api_router(self.events.clone()))
             .nest(PATH_BFF_EVENTS, events_router(self.events))
             .nest(PATH_API_EVENT_TYPES, event_types_router(self.event_types))
+            .nest(
+                PATH_API_PROCESSES,
+                processes_router(self.processes.clone()),
+            )
+            .nest(PATH_BFF_PROCESSES, processes_router(self.processes))
             .nest(
                 PATH_API_SCHEDULED_JOBS,
                 scheduled_jobs_router(self.scheduled_jobs),

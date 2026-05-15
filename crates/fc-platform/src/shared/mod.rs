@@ -3,6 +3,7 @@
 //! Cross-cutting concerns and shared utilities.
 
 pub mod api_common;
+pub mod bootstrap_admin;
 pub mod database;
 pub mod error;
 pub mod middleware;

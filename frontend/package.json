@@ -20,6 +20,7 @@
 		"@simplewebauthn/browser": "^13.3.0",
 		"@vee-validate/zod": "^4.15.1",
 		"fflate": "^0.8.2",
+		"mermaid": "^11.4.0",
 		"pinia": "^3.0.0",
 		"primeicons": "^7.0.0",
 		"primevue": "^4.5.4",

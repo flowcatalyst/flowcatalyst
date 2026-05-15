@@ -420,6 +420,73 @@ pub mod checks {
         }
     }
 
+    // ── Process documentation ────────────────────────────────────────────
+
+    /// Check read access to processes
+    pub fn can_read_processes(context: &AuthContext) -> Result<()> {
+        if context.has_any_permission(&[
+            permissions::admin::PROCESS_READ,
+            permissions::application_service::PROCESS_READ,
+        ]) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot read processes"))
+        }
+    }
+
+    /// Check create access to processes
+    pub fn can_create_processes(context: &AuthContext) -> Result<()> {
+        if context.has_permission(permissions::admin::PROCESS_CREATE) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot create processes"))
+        }
+    }
+
+    /// Check update access to processes
+    pub fn can_update_processes(context: &AuthContext) -> Result<()> {
+        if context.has_permission(permissions::admin::PROCESS_UPDATE) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot update processes"))
+        }
+    }
+
+    /// Check delete access to processes
+    pub fn can_delete_processes(context: &AuthContext) -> Result<()> {
+        if context.has_permission(permissions::admin::PROCESS_DELETE) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot delete processes"))
+        }
+    }
+
+    /// Check write access to processes (create, update, archive, or delete)
+    pub fn can_write_processes(context: &AuthContext) -> Result<()> {
+        if context.has_any_permission(&[
+            permissions::admin::PROCESS_CREATE,
+            permissions::admin::PROCESS_UPDATE,
+            permissions::admin::PROCESS_DELETE,
+            permissions::admin::PROCESS_ARCHIVE,
+        ]) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot write processes"))
+        }
+    }
+
+    /// Check sync access to processes (SDK push from an application)
+    pub fn can_sync_processes(context: &AuthContext) -> Result<()> {
+        if context.has_any_permission(&[
+            permissions::admin::PROCESS_SYNC,
+            permissions::application_service::PROCESS_SYNC,
+        ]) {
+            Ok(())
+        } else {
+            Err(PlatformError::forbidden("Cannot sync processes"))
+        }
+    }
+
     /// Check write access to subscriptions (create, update, or delete)
     pub fn can_write_subscriptions(context: &AuthContext) -> Result<()> {
         if context.has_any_permission(&[

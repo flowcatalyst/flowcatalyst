@@ -26,7 +26,8 @@ use crate::api::{
     DispatchPoolsState, DispatchProcessState, EmailDomainMappingsState, EventTypesState,
     EventsState, FilterOptionsState, IdentityProvidersState, InFlightTracker, LeaderState,
     LoginAttemptsState, MeState, MonitoringState, OAuthClientsState, OAuthState, OidcLoginApiState,
-    PasswordResetApiState, PlatformConfigState, PrincipalsState, PublicApiState, RolesState,
+    PasswordResetApiState, PlatformConfigState, PrincipalsState, ProcessesState, PublicApiState,
+    RolesState,
     SdkAuditBatchState, SdkDispatchJobsState, SdkEventsState, SdkSyncState, ServiceAccountsState,
     SubscriptionsState, WellKnownState,
 };
@@ -130,6 +131,37 @@ pub fn build_platform_routes(
         update_use_case: update_event_type_use_case,
         delete_use_case: delete_event_type_use_case,
         add_schema_use_case,
+    };
+
+    // ── Process documentation (use cases + API state) ────────────────────
+    let processes_state = {
+        use crate::process::operations::{
+            ArchiveProcessUseCase, CreateProcessUseCase, DeleteProcessUseCase,
+            SyncProcessesUseCase, UpdateProcessUseCase,
+        };
+        ProcessesState {
+            process_repo: repos.process_repo.clone(),
+            create_use_case: Arc::new(CreateProcessUseCase::new(
+                repos.process_repo.clone(),
+                unit_of_work.clone(),
+            )),
+            update_use_case: Arc::new(UpdateProcessUseCase::new(
+                repos.process_repo.clone(),
+                unit_of_work.clone(),
+            )),
+            archive_use_case: Arc::new(ArchiveProcessUseCase::new(
+                repos.process_repo.clone(),
+                unit_of_work.clone(),
+            )),
+            delete_use_case: Arc::new(DeleteProcessUseCase::new(
+                repos.process_repo.clone(),
+                unit_of_work.clone(),
+            )),
+            sync_use_case: Arc::new(SyncProcessesUseCase::new(
+                repos.process_repo.clone(),
+                unit_of_work.clone(),
+            )),
+        }
     };
 
     // ── Scheduled jobs (use cases + API state) ────────────────────────────
@@ -961,6 +993,7 @@ pub fn build_platform_routes(
     PlatformRoutes {
         events: events_state,
         event_types: event_types_state,
+        processes: processes_state,
         scheduled_jobs: scheduled_jobs_state,
         dispatch_jobs: dispatch_jobs_state,
         filter_options: filter_options_state,

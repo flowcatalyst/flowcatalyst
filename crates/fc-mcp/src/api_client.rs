@@ -22,6 +22,8 @@ pub struct ListEventTypesFilters<'a> {
     pub status: Option<&'a str>,
     pub application: Option<&'a str>,
     pub client_id: Option<&'a str>,
+    pub subdomain: Option<&'a str>,
+    pub aggregate: Option<&'a str>,
 }
 
 impl ApiClient {
@@ -44,6 +46,12 @@ impl ApiClient {
         }
         if let Some(c) = filters.client_id {
             query.push(("clientId", c));
+        }
+        if let Some(sd) = filters.subdomain {
+            query.push(("subdomain", sd));
+        }
+        if let Some(ag) = filters.aggregate {
+            query.push(("aggregate", ag));
         }
         if !query.is_empty() {
             req = req.query(&query);

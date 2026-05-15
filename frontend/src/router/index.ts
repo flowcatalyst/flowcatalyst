@@ -409,6 +409,30 @@ const router = createRouter({
 					component: () =>
 						import("@/pages/platform/debug/RawDispatchJobListPage.vue"),
 				},
+				// Processes (workflow / Mermaid documentation)
+				{
+					path: "processes",
+					name: "processes",
+					component: () => import("@/pages/processes/ProcessListPage.vue"),
+				},
+				{
+					path: "processes/create",
+					name: "process-create",
+					component: () =>
+						import("@/pages/processes/ProcessCreatePage.vue"),
+				},
+				{
+					path: "processes/:id",
+					name: "process-detail",
+					component: () =>
+						import("@/pages/processes/ProcessDetailPage.vue"),
+				},
+				{
+					path: "processes/:id/edit",
+					name: "process-edit",
+					component: () =>
+						import("@/pages/processes/ProcessEditPage.vue"),
+				},
 				// Developer portal
 				{
 					path: "developer",

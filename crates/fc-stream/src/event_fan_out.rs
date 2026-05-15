@@ -280,6 +280,8 @@ struct CachedSubscription {
     service_account_id: Option<String>,
     max_retries: i32,
     timeout_seconds: i32,
+    sequence: i32,
+    connection_id: Option<String>,
     /// Wildcard-supporting `:`-separated event type patterns
     event_type_patterns: Vec<String>,
 }
@@ -321,6 +323,8 @@ struct SubsRow {
     service_account_id: Option<String>,
     max_retries: i32,
     timeout_seconds: i32,
+    sequence: i32,
+    connection_id: Option<String>,
     event_type_code: Option<String>,
 }
 
@@ -337,6 +341,8 @@ async fn load_active_subscriptions(pool: &PgPool) -> anyhow::Result<Vec<CachedSu
             s.service_account_id,
             s.max_retries,
             s.timeout_seconds,
+            s.sequence,
+            s.connection_id,
             e.event_type_code
         FROM msg_subscriptions s
         LEFT JOIN msg_subscription_event_types e ON e.subscription_id = s.id
@@ -361,6 +367,8 @@ async fn load_active_subscriptions(pool: &PgPool) -> anyhow::Result<Vec<CachedSu
                 service_account_id: r.service_account_id.clone(),
                 max_retries: r.max_retries,
                 timeout_seconds: r.timeout_seconds,
+                sequence: r.sequence,
+                connection_id: r.connection_id.clone(),
                 event_type_patterns: Vec::new(),
             });
         if let Some(p) = r.event_type_code {
@@ -402,9 +410,12 @@ impl SubscriptionCache {
 // ── Dispatch job insert ───────────────────────────────────────────────
 
 /// One row to be inserted into `msg_dispatch_jobs`. Carries only the
-/// columns fan-out actually sets — every other column gets the table
-/// default (kind='EVENT', protocol='HTTP_WEBHOOK', status='PENDING',
-/// retry_strategy='exponential', etc.).
+/// columns fan-out actually sets — every other column (kind='EVENT',
+/// retry_strategy='exponential', external_id=NULL, etc.) takes the
+/// table default. `protocol` is set explicitly to 'HTTP_WEBHOOK' even
+/// though the column defaults to the same value, to match the TS
+/// fan-out path and keep the transport discriminator visible at the
+/// call site.
 struct NewJobRow {
     id: String,
     code: String,
@@ -413,17 +424,23 @@ struct NewJobRow {
     event_id: String,
     correlation_id: Option<String>,
     target_url: String,
+    protocol: &'static str,
     payload: String,
     data_only: bool,
     service_account_id: Option<String>,
     client_id: Option<String>,
     subscription_id: String,
+    connection_id: Option<String>,
     mode: &'static str,
     dispatch_pool_id: Option<String>,
     message_group: Option<String>,
+    sequence: i32,
     timeout_seconds: i32,
     status: &'static str,
     max_retries: i32,
+    /// `{event.id}:{subscription.id}` — used by downstream consumers to
+    /// dedupe redeliveries of the same fan-out pairing.
+    idempotency_key: String,
     /// Inherits the source event's created_at so the scheduler's
     /// `ORDER BY created_at` preserves source order within a message
     /// group, and so events and their dispatch jobs land in the same
@@ -443,17 +460,21 @@ impl NewJobRow {
             event_id: event.id.clone(),
             correlation_id: event.correlation_id.clone(),
             target_url: sub.target.clone(),
+            protocol: "HTTP_WEBHOOK",
             payload,
             data_only: sub.data_only,
             service_account_id: sub.service_account_id.clone(),
             client_id: event.client_id.clone(),
             subscription_id: sub.id.clone(),
+            connection_id: sub.connection_id.clone(),
             mode: dispatch_mode_str(sub.mode),
             dispatch_pool_id: sub.dispatch_pool_id.clone(),
             message_group: event.message_group.clone(),
+            sequence: sub.sequence,
             timeout_seconds: sub.timeout_seconds,
             status: DispatchStatus::Pending.as_str(),
             max_retries: sub.max_retries,
+            idempotency_key: format!("{}:{}", event.id, sub.id),
             created_at: event.created_at,
         }
     }
@@ -482,17 +503,21 @@ async fn insert_dispatch_jobs_tx(
     let mut event_ids: Vec<Option<String>> = Vec::with_capacity(jobs.len());
     let mut correlation_ids: Vec<Option<String>> = Vec::with_capacity(jobs.len());
     let mut target_urls = Vec::with_capacity(jobs.len());
+    let mut protocols = Vec::with_capacity(jobs.len());
     let mut payloads = Vec::with_capacity(jobs.len());
     let mut data_onlys = Vec::with_capacity(jobs.len());
     let mut service_account_ids: Vec<Option<String>> = Vec::with_capacity(jobs.len());
     let mut client_ids: Vec<Option<String>> = Vec::with_capacity(jobs.len());
     let mut subscription_ids = Vec::with_capacity(jobs.len());
+    let mut connection_ids: Vec<Option<String>> = Vec::with_capacity(jobs.len());
     let mut modes = Vec::with_capacity(jobs.len());
     let mut dispatch_pool_ids: Vec<Option<String>> = Vec::with_capacity(jobs.len());
     let mut message_groups: Vec<Option<String>> = Vec::with_capacity(jobs.len());
+    let mut sequences = Vec::with_capacity(jobs.len());
     let mut timeout_secs = Vec::with_capacity(jobs.len());
     let mut statuses = Vec::with_capacity(jobs.len());
     let mut max_retries_vec = Vec::with_capacity(jobs.len());
+    let mut idempotency_keys = Vec::with_capacity(jobs.len());
     let mut created_ats = Vec::with_capacity(jobs.len());
 
     for j in jobs {
@@ -503,17 +528,21 @@ async fn insert_dispatch_jobs_tx(
         event_ids.push(Some(j.event_id.clone()));
         correlation_ids.push(j.correlation_id.clone());
         target_urls.push(j.target_url.clone());
+        protocols.push(j.protocol.to_string());
         payloads.push(j.payload.clone());
         data_onlys.push(j.data_only);
         service_account_ids.push(j.service_account_id.clone());
         client_ids.push(j.client_id.clone());
         subscription_ids.push(j.subscription_id.clone());
+        connection_ids.push(j.connection_id.clone());
         modes.push(j.mode.to_string());
         dispatch_pool_ids.push(j.dispatch_pool_id.clone());
         message_groups.push(j.message_group.clone());
+        sequences.push(j.sequence);
         timeout_secs.push(j.timeout_seconds);
         statuses.push(j.status.to_string());
         max_retries_vec.push(j.max_retries);
+        idempotency_keys.push(j.idempotency_key.clone());
         created_ats.push(j.created_at);
     }
 
@@ -521,16 +550,18 @@ async fn insert_dispatch_jobs_tx(
         r#"
         INSERT INTO msg_dispatch_jobs (
             id, code, source, subject, event_id, correlation_id,
-            target_url, payload, data_only, service_account_id, client_id,
-            subscription_id, mode, dispatch_pool_id, message_group,
-            timeout_seconds, status, max_retries, created_at, updated_at
+            target_url, protocol, payload, data_only, service_account_id, client_id,
+            subscription_id, connection_id, mode, dispatch_pool_id, message_group,
+            sequence, timeout_seconds, status, max_retries, idempotency_key,
+            created_at, updated_at
         )
         SELECT * FROM UNNEST(
             $1::varchar[], $2::varchar[], $3::varchar[], $4::varchar[],
             $5::varchar[], $6::varchar[],
-            $7::varchar[], $8::text[], $9::bool[], $10::varchar[], $11::varchar[],
-            $12::varchar[], $13::varchar[], $14::varchar[], $15::varchar[],
-            $16::int[], $17::varchar[], $18::int[], $19::timestamptz[], $19::timestamptz[]
+            $7::varchar[], $8::varchar[], $9::text[], $10::bool[], $11::varchar[], $12::varchar[],
+            $13::varchar[], $14::varchar[], $15::varchar[], $16::varchar[], $17::varchar[],
+            $18::int[], $19::int[], $20::varchar[], $21::int[], $22::varchar[],
+            $23::timestamptz[], $23::timestamptz[]
         )
         "#,
     )
@@ -541,17 +572,21 @@ async fn insert_dispatch_jobs_tx(
     .bind(&event_ids)
     .bind(&correlation_ids)
     .bind(&target_urls)
+    .bind(&protocols)
     .bind(&payloads)
     .bind(&data_onlys)
     .bind(&service_account_ids)
     .bind(&client_ids)
     .bind(&subscription_ids)
+    .bind(&connection_ids)
     .bind(&modes)
     .bind(&dispatch_pool_ids)
     .bind(&message_groups)
+    .bind(&sequences)
     .bind(&timeout_secs)
     .bind(&statuses)
     .bind(&max_retries_vec)
+    .bind(&idempotency_keys)
     .bind(&created_ats)
     .execute(&mut **tx)
     .await?;
@@ -621,6 +656,8 @@ mod tests {
             service_account_id: None,
             max_retries: 3,
             timeout_seconds: 30,
+            sequence: 99,
+            connection_id: None,
             event_type_patterns: vec![],
         }
     }

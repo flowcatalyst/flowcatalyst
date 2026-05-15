@@ -9,6 +9,7 @@ use FlowCatalyst\DTOs\EventTypeBinding;
 use FlowCatalyst\DTOs\Requests\SyncDispatchPoolEntry;
 use FlowCatalyst\DTOs\Requests\SyncEventTypeEntry;
 use FlowCatalyst\DTOs\Requests\SyncPrincipalEntry;
+use FlowCatalyst\DTOs\Requests\SyncProcessEntry;
 use FlowCatalyst\DTOs\Requests\SyncRoleEntry;
 use FlowCatalyst\DTOs\Requests\SyncSubscriptionEntry;
 
@@ -67,6 +68,7 @@ class DefinitionSynchronizer
         $subscriptionsResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
         $dispatchPoolsResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
         $principalsResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
+        $processesResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
 
         // Sync roles
         if ($options->syncRoles && $definitions->hasRoles()) {
@@ -93,6 +95,11 @@ class DefinitionSynchronizer
             $principalsResult = $this->syncPrincipals($appCode, $definitions->getPrincipals(), $options->removeUnlisted);
         }
 
+        // Sync processes (workflow documentation)
+        if ($options->syncProcesses && $definitions->hasProcesses()) {
+            $processesResult = $this->syncProcesses($appCode, $definitions->getProcesses(), $options->removeUnlisted);
+        }
+
         return new SyncResult(
             applicationCode: $appCode,
             roles: $rolesResult,
@@ -100,6 +107,7 @@ class DefinitionSynchronizer
             subscriptions: $subscriptionsResult,
             dispatchPools: $dispatchPoolsResult,
             principals: $principalsResult,
+            processes: $processesResult,
         );
     }
 
@@ -351,6 +359,62 @@ class DefinitionSynchronizer
         }
 
         return $errors;
+    }
+
+    /**
+     * Sync processes (workflow documentation) for an application.
+     *
+     * Accepts entries shaped like `ProcessDefinition::toArray()` (which
+     * carry the full `code`) or scanner output from `#[AsProcess]` (which
+     * carries `subdomain` + `processName` and relies on `$appCode` for
+     * the first segment).
+     *
+     * @param string $appCode Application code
+     * @param array<array<string, mixed>> $processes Process definitions
+     * @param bool $removeUnlisted Archive CODE/API-sourced processes not in the local set
+     * @return array{created: int, updated: int, deleted: int, error?: string}
+     */
+    private function syncProcesses(string $appCode, array $processes, bool $removeUnlisted): array
+    {
+        try {
+            $entries = array_map(
+                function (array $row) use ($appCode) {
+                    $code = isset($row['code']) && $row['code'] !== ''
+                        ? (string) $row['code']
+                        : sprintf(
+                            '%s:%s:%s',
+                            $appCode,
+                            (string) ($row['subdomain'] ?? ''),
+                            (string) ($row['processName'] ?? ''),
+                        );
+                    /** @var string[] $tags */
+                    $tags = $row['tags'] ?? [];
+                    return new SyncProcessEntry(
+                        code: $code,
+                        name: (string) ($row['name'] ?? ''),
+                        body: (string) ($row['body'] ?? ''),
+                        description: isset($row['description']) ? (string) $row['description'] : null,
+                        diagramType: (string) ($row['diagramType'] ?? 'mermaid'),
+                        tags: array_map(fn($t) => (string) $t, $tags),
+                    );
+                },
+                $processes,
+            );
+            $result = $this->client->processes()->sync($appCode, $entries, $removeUnlisted);
+
+            return [
+                'created' => $result->created,
+                'updated' => $result->updated,
+                'deleted' => $result->deleted,
+            ];
+        } catch (\Exception $e) {
+            return [
+                'created' => 0,
+                'updated' => 0,
+                'deleted' => 0,
+                'error' => $e->getMessage(),
+            ];
+        }
     }
 
     /**

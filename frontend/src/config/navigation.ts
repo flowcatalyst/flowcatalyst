@@ -169,6 +169,11 @@ export const NAVIGATION_CONFIG: NavGroup[] = [
 				icon: "pi pi-book",
 				route: "/developer",
 			},
+			{
+				label: "Processes",
+				icon: "pi pi-sitemap",
+				route: "/processes",
+			},
 		],
 	},
 ];

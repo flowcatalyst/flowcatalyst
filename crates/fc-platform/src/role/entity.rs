@@ -281,6 +281,15 @@ pub mod permissions {
         pub const EVENT_TYPE_MANAGE_SCHEMA: &str = "platform:messaging:event-type:manage-schema";
         pub const EVENT_TYPE_SYNC: &str = "platform:messaging:event-type:sync";
 
+        // Process documentation (messaging context in DB)
+        pub const PROCESS_READ: &str = "platform:messaging:process:view";
+        pub const PROCESS_CREATE: &str = "platform:messaging:process:create";
+        pub const PROCESS_UPDATE: &str = "platform:messaging:process:update";
+        pub const PROCESS_DELETE: &str = "platform:messaging:process:delete";
+        pub const PROCESS_MANAGE: &str = "platform:messaging:process:manage";
+        pub const PROCESS_ARCHIVE: &str = "platform:messaging:process:archive";
+        pub const PROCESS_SYNC: &str = "platform:messaging:process:sync";
+
         // Dispatch pool management (messaging context in DB)
         pub const DISPATCH_POOL_READ: &str = "platform:messaging:dispatch-pool:view";
         pub const DISPATCH_POOL_CREATE: &str = "platform:messaging:dispatch-pool:create";
@@ -397,6 +406,13 @@ pub mod permissions {
             EVENT_TYPE_ARCHIVE,
             EVENT_TYPE_MANAGE_SCHEMA,
             EVENT_TYPE_SYNC,
+            PROCESS_READ,
+            PROCESS_CREATE,
+            PROCESS_UPDATE,
+            PROCESS_DELETE,
+            PROCESS_MANAGE,
+            PROCESS_ARCHIVE,
+            PROCESS_SYNC,
             DISPATCH_POOL_READ,
             DISPATCH_POOL_CREATE,
             DISPATCH_POOL_UPDATE,
@@ -578,6 +594,10 @@ pub mod permissions {
         // Scheduled job: SDK sync of definitions
         pub const SCHEDULED_JOB_SYNC: &str = "platform:application-service:scheduled-job:sync";
 
+        // Process documentation: SDK sync of process definitions
+        pub const PROCESS_READ: &str = "platform:application-service:process:view";
+        pub const PROCESS_SYNC: &str = "platform:application-service:process:sync";
+
         /// All application service permissions
         pub const ALL: &[&str] = &[
             EVENT_CREATE,
@@ -597,6 +617,8 @@ pub mod permissions {
             PERMISSION_SYNC,
             SCHEDULED_JOB_INSTANCE_WRITE,
             SCHEDULED_JOB_SYNC,
+            PROCESS_READ,
+            PROCESS_SYNC,
         ];
     }
 
@@ -815,6 +837,12 @@ pub mod roles {
                 permissions::admin::SCHEDULED_JOB_FIRE,
                 permissions::admin::SCHEDULED_JOB_SYNC,
                 permissions::admin::SCHEDULED_JOB_INSTANCE_READ,
+                permissions::admin::PROCESS_READ,
+                permissions::admin::PROCESS_CREATE,
+                permissions::admin::PROCESS_UPDATE,
+                permissions::admin::PROCESS_DELETE,
+                permissions::admin::PROCESS_ARCHIVE,
+                permissions::admin::PROCESS_SYNC,
             ])
     }
 
@@ -837,6 +865,7 @@ pub mod roles {
                 permissions::admin::DISPATCH_POOL_READ,
                 permissions::admin::SCHEDULED_JOB_READ,
                 permissions::admin::SCHEDULED_JOB_INSTANCE_READ,
+                permissions::admin::PROCESS_READ,
                 permissions::admin::AUDIT_LOG_READ,
                 permissions::admin::LOGIN_ATTEMPT_READ,
             ])
@@ -856,6 +885,11 @@ pub mod roles {
             .with_permissions([
                 permissions::developer::APPLICATION_OPENAPI_VIEW,
                 permissions::admin::EVENT_TYPE_READ,
+                permissions::admin::PROCESS_READ,
+                permissions::admin::PROCESS_CREATE,
+                permissions::admin::PROCESS_UPDATE,
+                permissions::admin::PROCESS_DELETE,
+                permissions::admin::PROCESS_ARCHIVE,
             ])
     }
 

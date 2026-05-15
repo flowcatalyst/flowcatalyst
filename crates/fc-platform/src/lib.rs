@@ -41,6 +41,7 @@ pub mod dispatch_job;
 pub mod dispatch_pool;
 pub mod event;
 pub mod event_type;
+pub mod process;
 pub mod scheduled_job;
 pub mod subscription;
 
@@ -101,6 +102,7 @@ pub use dispatch_pool::entity::{DispatchPool, DispatchPoolStatus};
 pub use email_domain_mapping::entity::{EmailDomainMapping, ScopeType};
 pub use event::entity::{ContextData, Event, EventRead};
 pub use event_type::entity::{EventType, EventTypeStatus, SpecVersion};
+pub use process::entity::{Process, ProcessSource, ProcessStatus};
 pub use identity_provider::entity::{IdentityProvider, IdentityProviderType};
 pub use login_attempt::entity::{AttemptType, LoginAttempt, LoginOutcome};
 pub use password_reset::entity::PasswordResetToken;
@@ -129,6 +131,7 @@ pub use dispatch_pool::repository::DispatchPoolRepository;
 pub use email_domain_mapping::repository::EmailDomainMappingRepository;
 pub use event::repository::EventRepository;
 pub use event_type::repository::EventTypeRepository;
+pub use process::repository::ProcessRepository;
 pub use identity_provider::repository::IdentityProviderRepository;
 pub use login_attempt::repository::LoginAttemptRepository;
 pub use password_reset::repository::PasswordResetTokenRepository;
@@ -196,6 +199,7 @@ pub mod repository {
     pub use crate::email_domain_mapping::repository::EmailDomainMappingRepository;
     pub use crate::event::repository::EventRepository;
     pub use crate::event_type::repository::EventTypeRepository;
+    pub use crate::process::repository::ProcessRepository;
     pub use crate::identity_provider::repository::IdentityProviderRepository;
     pub use crate::login_attempt::repository::LoginAttemptRepository;
     pub use crate::password_reset::repository::PasswordResetTokenRepository;
@@ -224,6 +228,7 @@ pub mod repository {
         pub scheduled_job_repo: Arc<ScheduledJobRepository>,
         pub scheduled_job_instance_repo: Arc<ScheduledJobInstanceRepository>,
         pub event_type_repo: Arc<EventTypeRepository>,
+        pub process_repo: Arc<ProcessRepository>,
         pub role_repo: Arc<RoleRepository>,
         pub service_account_repo: Arc<ServiceAccountRepository>,
         pub dispatch_pool_repo: Arc<DispatchPoolRepository>,
@@ -277,6 +282,7 @@ pub mod repository {
                     pool,
                 )),
                 event_type_repo: Arc::new(EventTypeRepository::new(pool)),
+                process_repo: Arc::new(ProcessRepository::new(pool)),
                 role_repo: Arc::new(RoleRepository::new(pool)),
                 service_account_repo: Arc::new(ServiceAccountRepository::new(pool)),
                 subscription_repo: Arc::new(SubscriptionRepository::new(pool)),
@@ -342,6 +348,7 @@ pub mod api {
     pub use crate::dispatch_pool::api::{dispatch_pools_router, DispatchPoolsState};
     pub use crate::event::api::{events_api_router, events_router, EventsState};
     pub use crate::event_type::api::{event_types_router, EventTypesState};
+    pub use crate::process::api::{processes_router, ProcessesState};
     pub use crate::principal::api::{principals_router, PrincipalsState};
     pub use crate::role::api::{roles_router, RolesState};
     pub use crate::scheduled_job::api::{scheduled_jobs_router, ScheduledJobsState};

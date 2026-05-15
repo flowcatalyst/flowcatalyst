@@ -390,6 +390,8 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "application"?: string, //Filter by application
      *    "clientId"?: string, //Filter by client ID
      *    "status"?: string, //Filter by status
+     *    "subdomain"?: string, //Filter by subdomain
+     *    "aggregate"?: string, //Filter by aggregate
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
@@ -965,6 +967,104 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function postApiAdminPrincipalsByIdSendPasswordReset(string $id, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiAdminPrincipalsByIdSendPasswordReset($id), $fetch);
+    }
+    /**
+     * @param array{
+     *    "pagination": array,
+     *    "application"?: string,
+     *    "subdomain"?: string,
+     *    "status"?: string,
+     *    "search"?: string,
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ProcessListResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getApiProcesses(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApiProcesses($queryParameters), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\CreateProcessRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\PostApiProcessesBadRequestException
+     * @throws \FlowCatalyst\Generated\Exception\PostApiProcessesConflictException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\CreatedResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postApiProcesses(?\FlowCatalyst\Generated\Model\CreateProcessRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiProcesses($requestBody), $fetch);
+    }
+    /**
+     * @param string $code Process code
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\GetApiProcessesByCodeNotFoundException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ProcessResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getApiProcessesByCode(string $code, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApiProcessesByCode($code), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\SyncProcessesRequest $requestBody
+     * @param array{
+     *    "removeUnlisted"?: bool,
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\PostApiProcessesSyncBadRequestException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\SyncResultResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postApiProcessesSync(?\FlowCatalyst\Generated\Model\SyncProcessesRequest $requestBody = null, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiProcessesSync($requestBody, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $id Process ID
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\DeleteApiProcessesByIdNotFoundException
+     *
+     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     */
+    public function deleteApiProcessesById(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeleteApiProcessesById($id), $fetch);
+    }
+    /**
+     * @param string $id Process ID
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\GetApiProcessesByIdNotFoundException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ProcessResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getApiProcessesById(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApiProcessesById($id), $fetch);
+    }
+    /**
+     * @param string $id Process ID
+     * @param null|\FlowCatalyst\Generated\Model\UpdateProcessRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\PutApiProcessesByIdNotFoundException
+     *
+     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     */
+    public function putApiProcessesById(string $id, ?\FlowCatalyst\Generated\Model\UpdateProcessRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PutApiProcessesById($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id Process ID
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\PostApiProcessesByIdArchiveNotFoundException
+     *
+     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postApiProcessesByIdArchive(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostApiProcessesByIdArchive($id), $fetch);
     }
     /**
      * @param array{

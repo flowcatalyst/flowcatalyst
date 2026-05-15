@@ -262,6 +262,8 @@ impl EventTypeRepository {
         application: Option<&str>,
         client_id: Option<&str>,
         status: Option<&str>,
+        subdomain: Option<&str>,
+        aggregate: Option<&str>,
     ) -> Result<Vec<EventType>> {
         let mut qb: QueryBuilder<Postgres> = QueryBuilder::new("SELECT * FROM msg_event_types");
         let mut has_where = false;
@@ -281,6 +283,14 @@ impl EventTypeRepository {
         if let Some(s) = status {
             push_where(&mut qb, &mut has_where);
             qb.push("status = ").push_bind(s.to_string());
+        }
+        if let Some(sd) = subdomain {
+            push_where(&mut qb, &mut has_where);
+            qb.push("subdomain = ").push_bind(sd.to_string());
+        }
+        if let Some(ag) = aggregate {
+            push_where(&mut qb, &mut has_where);
+            qb.push("aggregate = ").push_bind(ag.to_string());
         }
 
         qb.push(" ORDER BY code ASC");

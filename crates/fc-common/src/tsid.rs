@@ -54,6 +54,7 @@ pub enum EntityType {
     ScheduledJobInstance,
     ScheduledJobInstanceLog,
     ApplicationOpenApiSpec,
+    Process,
 }
 
 impl EntityType {
@@ -95,6 +96,7 @@ impl EntityType {
             EntityType::ScheduledJobInstance => "sji",
             EntityType::ScheduledJobInstanceLog => "sjl",
             EntityType::ApplicationOpenApiSpec => "oas",
+            EntityType::Process => "prc",
         }
     }
 }

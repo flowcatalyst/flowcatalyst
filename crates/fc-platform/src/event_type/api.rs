@@ -148,6 +148,12 @@ pub struct EventTypesQuery {
 
     /// Filter by status
     pub status: Option<String>,
+
+    /// Filter by subdomain
+    pub subdomain: Option<String>,
+
+    /// Filter by aggregate
+    pub aggregate: Option<String>,
 }
 
 /// Sync event types request (admin)
@@ -359,12 +365,16 @@ pub async fn list_event_types(
     crate::shared::authorization_service::checks::can_read_event_types(&auth.0)?;
 
     // Default to CURRENT status when no filters are provided (matches find_active behavior)
-    let default_status =
-        if query.application.is_none() && query.client_id.is_none() && query.status.is_none() {
-            Some("CURRENT".to_string())
-        } else {
-            query.status.clone()
-        };
+    let default_status = if query.application.is_none()
+        && query.client_id.is_none()
+        && query.status.is_none()
+        && query.subdomain.is_none()
+        && query.aggregate.is_none()
+    {
+        Some("CURRENT".to_string())
+    } else {
+        query.status.clone()
+    };
 
     let event_types = state
         .event_type_repo
@@ -372,6 +382,8 @@ pub async fn list_event_types(
             query.application.as_deref(),
             query.client_id.as_deref(),
             default_status.as_deref(),
+            query.subdomain.as_deref(),
+            query.aggregate.as_deref(),
         )
         .await?;
 

@@ -89,6 +89,9 @@ pub mod outbox;
 #[cfg(feature = "client")]
 pub mod client;
 
+#[cfg(feature = "client")]
+pub mod sync;
+
 #[cfg(feature = "auth")]
 pub mod auth;
 

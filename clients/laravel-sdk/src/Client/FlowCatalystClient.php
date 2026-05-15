@@ -14,6 +14,7 @@ use FlowCatalyst\Client\Resources\EventTypes;
 use FlowCatalyst\Client\Resources\Me;
 use FlowCatalyst\Client\Resources\Permissions;
 use FlowCatalyst\Client\Resources\Principals;
+use FlowCatalyst\Client\Resources\Processes;
 use FlowCatalyst\Client\Resources\Roles;
 use FlowCatalyst\Client\Resources\Connections;
 use FlowCatalyst\Client\Resources\Router;
@@ -40,6 +41,7 @@ class FlowCatalystClient
     private ?Applications $applications = null;
     private ?Clients $clients = null;
     private ?Principals $principals = null;
+    private ?Processes $processes = null;
     private ?Connections $connections = null;
     private ?Me $me = null;
     private ?Router $router = null;
@@ -174,6 +176,14 @@ class FlowCatalystClient
     public function principals(): Principals
     {
         return $this->principals ??= new Principals($this);
+    }
+
+    /**
+     * Get the Processes resource (process documentation: CRUD + sync).
+     */
+    public function processes(): Processes
+    {
+        return $this->processes ??= new Processes($this);
     }
 
     /**

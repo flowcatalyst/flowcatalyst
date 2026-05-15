@@ -127,6 +127,21 @@ class SyncDefinitionsCommand extends Command
             }
             $this->newLine();
         }
+
+        if ($options->syncProcesses && $definitions->hasProcesses()) {
+            $this->info('Processes to sync:');
+            foreach ($definitions->getProcesses() as $process) {
+                $code = $process['code']
+                    ?? sprintf(
+                        '%s:%s:%s',
+                        $definitions->applicationCode,
+                        $process['subdomain'] ?? '',
+                        $process['processName'] ?? '',
+                    );
+                $this->line("  - {$code}");
+            }
+            $this->newLine();
+        }
     }
 
     /**
@@ -172,6 +187,12 @@ class SyncDefinitionsCommand extends Command
                     $result->dispatchPools['created'] ?? 0,
                     $result->dispatchPools['updated'] ?? 0,
                     $result->dispatchPools['deleted'] ?? 0,
+                ],
+                [
+                    'Processes',
+                    $result->processes['created'] ?? 0,
+                    $result->processes['updated'] ?? 0,
+                    $result->processes['deleted'] ?? 0,
                 ],
             ]
         );

@@ -14,6 +14,7 @@ import { mapHttpStatusToError, httpError, authError } from "./errors";
 
 // Re-export resource classes
 import { EventTypesResource } from "./resources/event-types";
+import { ProcessesResource } from "./resources/processes";
 import { SubscriptionsResource } from "./resources/subscriptions";
 import { DispatchPoolsResource } from "./resources/dispatch-pools";
 import { RolesResource } from "./resources/roles";
@@ -123,6 +124,7 @@ export class FlowCatalystClient {
 
 	// Lazy-loaded resource instances
 	private _eventTypes?: EventTypesResource;
+	private _processes?: ProcessesResource;
 	private _subscriptions?: SubscriptionsResource;
 	private _dispatchPools?: DispatchPoolsResource;
 	private _roles?: RolesResource;
@@ -182,6 +184,11 @@ export class FlowCatalystClient {
 	/** Event Types resource */
 	eventTypes(): EventTypesResource {
 		return (this._eventTypes ??= new EventTypesResource(this));
+	}
+
+	/** Processes resource (workflow documentation / Mermaid diagrams) */
+	processes(): ProcessesResource {
+		return (this._processes ??= new ProcessesResource(this));
 	}
 
 	/** Subscriptions resource */

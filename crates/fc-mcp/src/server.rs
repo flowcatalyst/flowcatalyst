@@ -19,6 +19,12 @@ pub struct ListEventTypesArgs {
     /// Filter by application code.
     #[serde(default)]
     pub application: Option<String>,
+    /// Filter by subdomain code.
+    #[serde(default)]
+    pub subdomain: Option<String>,
+    /// Filter by aggregate code.
+    #[serde(default)]
+    pub aggregate: Option<String>,
     /// Filter by client ID (admin-scoped tokens only).
     #[serde(default, rename = "clientId")]
     pub client_id: Option<String>,
@@ -65,7 +71,7 @@ impl FcMcpServer {
     }
 
     #[tool(
-        description = "List event types registered in FlowCatalyst. Optionally filter by status, application, or client ID."
+        description = "List event types registered in FlowCatalyst. Optionally filter by status, application, subdomain, aggregate, or client ID."
     )]
     async fn list_event_types(
         &self,
@@ -75,6 +81,8 @@ impl FcMcpServer {
             status: args.status.as_deref(),
             application: args.application.as_deref(),
             client_id: args.client_id.as_deref(),
+            subdomain: args.subdomain.as_deref(),
+            aggregate: args.aggregate.as_deref(),
         };
         match self.api.list_event_types(&filters).await {
             Ok(v) => Ok(json_text(v)),

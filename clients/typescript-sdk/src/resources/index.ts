@@ -5,6 +5,7 @@
  */
 
 export { EventTypesResource } from "./event-types";
+export { ProcessesResource } from "./processes";
 export { SubscriptionsResource } from "./subscriptions";
 export { DispatchPoolsResource } from "./dispatch-pools";
 export { RolesResource } from "./roles";

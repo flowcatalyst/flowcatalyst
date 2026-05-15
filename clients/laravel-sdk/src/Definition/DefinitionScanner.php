@@ -6,6 +6,7 @@ namespace FlowCatalyst\Definition;
 
 use FlowCatalyst\Attributes\AsDispatchPool;
 use FlowCatalyst\Attributes\AsEventType;
+use FlowCatalyst\Attributes\AsProcess;
 use FlowCatalyst\Attributes\AsRole;
 use FlowCatalyst\Attributes\AsSubscription;
 use Illuminate\Support\Facades\File;
@@ -29,6 +30,7 @@ class DefinitionScanner
         $eventTypes = [];
         $subscriptions = [];
         $dispatchPools = [];
+        $processes = [];
 
         foreach ($paths as $path) {
             if (!File::isDirectory($path)) {
@@ -42,7 +44,7 @@ class DefinitionScanner
                 $classes = $this->getClassesFromFile($file->getRealPath());
 
                 foreach ($classes as $className) {
-                    $this->processClass($className, $roles, $eventTypes, $subscriptions, $dispatchPools);
+                    $this->processClass($className, $roles, $eventTypes, $subscriptions, $dispatchPools, $processes);
                 }
             }
         }
@@ -51,7 +53,8 @@ class DefinitionScanner
             roles: $roles,
             eventTypes: $eventTypes,
             subscriptions: $subscriptions,
-            dispatchPools: $dispatchPools
+            dispatchPools: $dispatchPools,
+            processes: $processes
         );
     }
 
@@ -95,13 +98,15 @@ class DefinitionScanner
      * @param array<array<string, mixed>> $eventTypes
      * @param array<array<string, mixed>> $subscriptions
      * @param array<array<string, mixed>> $dispatchPools
+     * @param array<array<string, mixed>> $processes
      */
     private function processClass(
         string $className,
         array &$roles,
         array &$eventTypes,
         array &$subscriptions,
-        array &$dispatchPools
+        array &$dispatchPools,
+        array &$processes
     ): void {
         try {
             $reflection = new ReflectionClass($className);
@@ -145,6 +150,16 @@ class DefinitionScanner
             /** @var AsDispatchPool $instance */
             $instance = $attribute->newInstance();
             $dispatchPools[] = array_merge($instance->toArray(), [
+                '_class' => $className,
+            ]);
+        }
+
+        // Check for AsProcess attribute
+        $processAttributes = $reflection->getAttributes(AsProcess::class);
+        foreach ($processAttributes as $attribute) {
+            /** @var AsProcess $instance */
+            $instance = $attribute->newInstance();
+            $processes[] = array_merge($instance->toArray(), [
                 '_class' => $className,
             ]);
         }

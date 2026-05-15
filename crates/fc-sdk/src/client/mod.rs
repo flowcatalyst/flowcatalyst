@@ -28,6 +28,7 @@ pub mod clients;
 pub mod connections;
 pub mod dispatch_pools;
 pub mod event_types;
+pub mod processes;
 pub mod me;
 pub mod principals;
 pub mod roles;
@@ -44,6 +45,7 @@ pub use clients::*;
 pub use connections::*;
 pub use dispatch_pools::*;
 pub use event_types::*;
+pub use processes::*;
 pub use me::*;
 pub use principals::*;
 pub use roles::*;
@@ -259,6 +261,30 @@ impl FlowCatalystClient {
             .http
             .post(&self.url(path))
             .headers(self.headers())
+            .send()
+            .await
+            .map_err(ClientError::Request)?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ClientError::Api {
+                status: status.as_u16(),
+                body,
+            });
+        }
+
+        Ok(())
+    }
+
+    /// PUT with a JSON body, discarding the response body. For platform
+    /// endpoints that return 204 No Content on success (e.g. update flows).
+    async fn put_empty<B: Serialize>(&self, path: &str, body: &B) -> Result<(), ClientError> {
+        let resp = self
+            .http
+            .put(&self.url(path))
+            .headers(self.headers())
+            .json(body)
             .send()
             .await
             .map_err(ClientError::Request)?;

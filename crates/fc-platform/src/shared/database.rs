@@ -365,6 +365,10 @@ pub async fn run_migrations(pool: &PgPool, profile: MigrationProfile) -> Result<
             "025_application_openapi_specs",
             include_str!("../../../../migrations/025_application_openapi_specs.sql"),
         ),
+        (
+            "026_processes",
+            include_str!("../../../../migrations/026_processes.sql"),
+        ),
     ];
 
     // No production-only migrations at the moment. Partitioning runs the

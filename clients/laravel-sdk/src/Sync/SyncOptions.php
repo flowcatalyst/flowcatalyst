@@ -40,6 +40,11 @@ final class SyncOptions
          * Whether to sync principals (users with roles).
          */
         public readonly bool $syncPrincipals = true,
+
+        /**
+         * Whether to sync processes (workflow documentation).
+         */
+        public readonly bool $syncProcesses = true,
     ) {}
 
     /**
@@ -69,6 +74,7 @@ final class SyncOptions
             syncSubscriptions: false,
             syncDispatchPools: false,
             syncPrincipals: false,
+            syncProcesses: false,
         );
     }
 
@@ -83,6 +89,7 @@ final class SyncOptions
             syncSubscriptions: false,
             syncDispatchPools: false,
             syncPrincipals: false,
+            syncProcesses: false,
         );
     }
 
@@ -97,6 +104,7 @@ final class SyncOptions
             syncSubscriptions: true,
             syncDispatchPools: false,
             syncPrincipals: false,
+            syncProcesses: false,
         );
     }
 
@@ -111,6 +119,7 @@ final class SyncOptions
             syncSubscriptions: false,
             syncDispatchPools: true,
             syncPrincipals: false,
+            syncProcesses: false,
         );
     }
 
@@ -125,6 +134,22 @@ final class SyncOptions
             syncSubscriptions: false,
             syncDispatchPools: false,
             syncPrincipals: true,
+            syncProcesses: false,
+        );
+    }
+
+    /**
+     * Create options that only sync processes.
+     */
+    public static function processesOnly(): self
+    {
+        return new self(
+            syncRoles: false,
+            syncEventTypes: false,
+            syncSubscriptions: false,
+            syncDispatchPools: false,
+            syncPrincipals: false,
+            syncProcesses: true,
         );
     }
 
@@ -140,6 +165,7 @@ final class SyncOptions
             syncSubscriptions: $this->syncSubscriptions,
             syncDispatchPools: $this->syncDispatchPools,
             syncPrincipals: $this->syncPrincipals,
+            syncProcesses: $this->syncProcesses,
         );
     }
 }

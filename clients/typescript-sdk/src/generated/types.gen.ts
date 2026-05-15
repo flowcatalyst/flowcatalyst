@@ -751,6 +751,24 @@ export type CreateOAuthClientResponse = {
     clientSecret?: string | null;
 };
 
+export type CreateProcessRequest = {
+    /**
+     * Diagram body (typically Mermaid source).
+     */
+    body?: string;
+    /**
+     * Process code: {application}:{subdomain}:{process-name}
+     */
+    code: string;
+    description?: string | null;
+    /**
+     * Defaults to `mermaid` if unset.
+     */
+    diagramType?: string | null;
+    name: string;
+    tags?: Array<string>;
+};
+
 /**
  * Create role request
  */
@@ -1649,6 +1667,27 @@ export type PrincipalResponse = {
     updatedAt: string;
 };
 
+export type ProcessListResponse = {
+    items: Array<ProcessResponse>;
+};
+
+export type ProcessResponse = {
+    application: string;
+    body: string;
+    code: string;
+    createdAt: string;
+    description?: string | null;
+    diagramType: string;
+    id: string;
+    name: string;
+    processName: string;
+    source: string;
+    status: string;
+    subdomain: string;
+    tags: Array<string>;
+    updatedAt: string;
+};
+
 /**
  * Processing time metrics with percentiles
  */
@@ -2025,6 +2064,20 @@ export type SyncEventTypesRequest = {
     eventTypes: Array<SyncEventTypeInputRequest>;
 };
 
+export type SyncProcessInputRequest = {
+    body?: string;
+    code: string;
+    description?: string | null;
+    diagramType?: string | null;
+    name: string;
+    tags?: Array<string>;
+};
+
+export type SyncProcessesRequest = {
+    applicationCode: string;
+    processes: Array<SyncProcessInputRequest>;
+};
+
 /**
  * Sync result response
  */
@@ -2202,6 +2255,14 @@ export type UpdatePrincipalRequest = {
      * User scope (ANCHOR / PARTNER / CLIENT). Changing scope requires anchor.
      */
     scope?: string | null;
+};
+
+export type UpdateProcessRequest = {
+    body?: string | null;
+    description?: string | null;
+    diagramType?: string | null;
+    name?: string | null;
+    tags?: Array<string> | null;
 };
 
 /**
@@ -3181,6 +3242,14 @@ export type GetApiAdminEventTypesData = {
          * Filter by status
          */
         status?: string;
+        /**
+         * Filter by subdomain
+         */
+        subdomain?: string;
+        /**
+         * Filter by aggregate
+         */
+        aggregate?: string;
     };
     url: '/api/event-types';
 };
@@ -4496,6 +4565,220 @@ export type PostApiAdminPrincipalsByIdSendPasswordResetResponses = {
 };
 
 export type PostApiAdminPrincipalsByIdSendPasswordResetResponse = PostApiAdminPrincipalsByIdSendPasswordResetResponses[keyof PostApiAdminPrincipalsByIdSendPasswordResetResponses];
+
+export type GetApiProcessesData = {
+    body?: never;
+    path?: never;
+    query: {
+        pagination: PaginationParams;
+        application?: string;
+        subdomain?: string;
+        status?: string;
+        search?: string;
+    };
+    url: '/api/processes';
+};
+
+export type GetApiProcessesResponses = {
+    /**
+     * List of processes
+     */
+    200: ProcessListResponse;
+};
+
+export type GetApiProcessesResponse = GetApiProcessesResponses[keyof GetApiProcessesResponses];
+
+export type PostApiProcessesData = {
+    body: CreateProcessRequest;
+    path?: never;
+    query?: never;
+    url: '/api/processes';
+};
+
+export type PostApiProcessesErrors = {
+    /**
+     * Validation error
+     */
+    400: unknown;
+    /**
+     * Duplicate code
+     */
+    409: unknown;
+};
+
+export type PostApiProcessesResponses = {
+    /**
+     * Process created
+     */
+    201: CreatedResponse;
+};
+
+export type PostApiProcessesResponse = PostApiProcessesResponses[keyof PostApiProcessesResponses];
+
+export type GetApiProcessesByCodeData = {
+    body?: never;
+    path: {
+        /**
+         * Process code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/processes/by-code/{code}';
+};
+
+export type GetApiProcessesByCodeErrors = {
+    /**
+     * Process not found
+     */
+    404: unknown;
+};
+
+export type GetApiProcessesByCodeResponses = {
+    /**
+     * Process found
+     */
+    200: ProcessResponse;
+};
+
+export type GetApiProcessesByCodeResponse = GetApiProcessesByCodeResponses[keyof GetApiProcessesByCodeResponses];
+
+export type PostApiProcessesSyncData = {
+    body: SyncProcessesRequest;
+    path?: never;
+    query?: {
+        removeUnlisted?: boolean;
+    };
+    url: '/api/processes/sync';
+};
+
+export type PostApiProcessesSyncErrors = {
+    /**
+     * Validation error
+     */
+    400: unknown;
+};
+
+export type PostApiProcessesSyncResponses = {
+    /**
+     * Processes synced
+     */
+    200: SyncResultResponse;
+};
+
+export type PostApiProcessesSyncResponse = PostApiProcessesSyncResponses[keyof PostApiProcessesSyncResponses];
+
+export type DeleteApiProcessesByIdData = {
+    body?: never;
+    path: {
+        /**
+         * Process ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/processes/{id}';
+};
+
+export type DeleteApiProcessesByIdErrors = {
+    /**
+     * Process not found
+     */
+    404: unknown;
+};
+
+export type DeleteApiProcessesByIdResponses = {
+    /**
+     * Process deleted
+     */
+    204: void;
+};
+
+export type DeleteApiProcessesByIdResponse = DeleteApiProcessesByIdResponses[keyof DeleteApiProcessesByIdResponses];
+
+export type GetApiProcessesByIdData = {
+    body?: never;
+    path: {
+        /**
+         * Process ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/processes/{id}';
+};
+
+export type GetApiProcessesByIdErrors = {
+    /**
+     * Process not found
+     */
+    404: unknown;
+};
+
+export type GetApiProcessesByIdResponses = {
+    /**
+     * Process found
+     */
+    200: ProcessResponse;
+};
+
+export type GetApiProcessesByIdResponse = GetApiProcessesByIdResponses[keyof GetApiProcessesByIdResponses];
+
+export type PutApiProcessesByIdData = {
+    body: UpdateProcessRequest;
+    path: {
+        /**
+         * Process ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/processes/{id}';
+};
+
+export type PutApiProcessesByIdErrors = {
+    /**
+     * Process not found
+     */
+    404: unknown;
+};
+
+export type PutApiProcessesByIdResponses = {
+    /**
+     * Process updated
+     */
+    204: void;
+};
+
+export type PutApiProcessesByIdResponse = PutApiProcessesByIdResponses[keyof PutApiProcessesByIdResponses];
+
+export type PostApiProcessesByIdArchiveData = {
+    body?: never;
+    path: {
+        /**
+         * Process ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/processes/{id}/archive';
+};
+
+export type PostApiProcessesByIdArchiveErrors = {
+    /**
+     * Process not found
+     */
+    404: unknown;
+};
+
+export type PostApiProcessesByIdArchiveResponses = {
+    /**
+     * Process archived
+     */
+    204: void;
+};
+
+export type PostApiProcessesByIdArchiveResponse = PostApiProcessesByIdArchiveResponses[keyof PostApiProcessesByIdArchiveResponses];
 
 export type GetApiAdminRolesData = {
     body?: never;

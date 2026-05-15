@@ -77,6 +77,13 @@ async fn main() -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("Platform application seeding failed: {}", e))?;
 
+    // Create the initial platform admin if no anchor user exists yet. No-op
+    // on subsequent boots; gated on FLOWCATALYST_BOOTSTRAP_ADMIN_EMAIL +
+    // _PASSWORD env vars when first run.
+    fc_platform::shared::bootstrap_admin::bootstrap_admin_user(&pg_pool)
+        .await
+        .map_err(|e| anyhow::anyhow!("Bootstrap admin seeding failed: {}", e))?;
+
     // Referential-integrity scan — warns about orphaned junction rows.
     fc_platform::shared::integrity_scan::run(&pg_pool).await;
 

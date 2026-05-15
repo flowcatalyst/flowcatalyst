@@ -10,6 +10,8 @@ class GetApiAdminEventTypes extends \FlowCatalyst\Generated\Runtime\Client\BaseE
      *    "application"?: string, //Filter by application
      *    "clientId"?: string, //Filter by client ID
      *    "status"?: string, //Filter by status
+     *    "subdomain"?: string, //Filter by subdomain
+     *    "aggregate"?: string, //Filter by aggregate
      * } $queryParameters
      */
     public function __construct(array $queryParameters = [])
@@ -36,13 +38,15 @@ class GetApiAdminEventTypes extends \FlowCatalyst\Generated\Runtime\Client\BaseE
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['pagination', 'application', 'clientId', 'status']);
+        $optionsResolver->setDefined(['pagination', 'application', 'clientId', 'status', 'subdomain', 'aggregate']);
         $optionsResolver->setRequired(['pagination']);
         $optionsResolver->setDefaults([]);
         $optionsResolver->addAllowedTypes('pagination', ['array']);
         $optionsResolver->addAllowedTypes('application', ['string']);
         $optionsResolver->addAllowedTypes('clientId', ['string']);
         $optionsResolver->addAllowedTypes('status', ['string']);
+        $optionsResolver->addAllowedTypes('subdomain', ['string']);
+        $optionsResolver->addAllowedTypes('aggregate', ['string']);
         return $optionsResolver;
     }
     /**

@@ -166,10 +166,15 @@ pub struct OidcValidator {
 }
 
 impl OidcValidator {
-    /// Create a new OIDC validator
+    /// Create a new OIDC validator.
+    ///
+    /// Stores `issuer` with any trailing `/` stripped so validation accepts
+    /// both forms (`https://idp.example.com` and `https://idp.example.com/`).
+    /// IdPs are inconsistent about which form they emit in `iss` claims;
+    /// normalizing on the consumer side avoids config-drift 401s.
     pub fn new(issuer: String, audience: String) -> Self {
         Self {
-            issuer,
+            issuer: issuer.trim_end_matches('/').to_string(),
             audience,
             jwks_cache: RwLock::new(None),
             jwks_cache_ttl: Duration::from_secs(3600), // 1 hour cache
@@ -293,23 +298,40 @@ impl OidcValidator {
         let header =
             decode_header(token).map_err(|e| format!("Failed to decode token header: {}", e))?;
 
-        // Get JWKS
+        // Get JWKS and find the matching key. On `kid`-miss, force-refresh
+        // the cache once and retry — this is the standard pattern for key
+        // rotation: the IdP advertises a new key, but our 1h cache still
+        // holds only the old one. Without the refetch, validation 401s
+        // for up to an hour after each rotation.
         let jwks = self.get_jwks().await?;
-
-        // Find the key
-        let jwk = self
-            .find_key(&jwks, header.kid.as_deref())
-            .ok_or_else(|| format!("No matching key found for kid: {:?}", header.kid))?;
+        let jwk = match self.find_key(&jwks, header.kid.as_deref()) {
+            Some(k) => k.clone(),
+            None => {
+                warn!(
+                    kid = ?header.kid,
+                    "kid not in cached JWKS — forcing refresh and retrying"
+                );
+                self.refresh_jwks().await?;
+                let jwks = self.get_jwks().await?;
+                self.find_key(&jwks, header.kid.as_deref())
+                    .ok_or_else(|| {
+                        format!("No matching key found for kid: {:?}", header.kid)
+                    })?
+                    .clone()
+            }
+        };
 
         // Create decoding key
-        let decoding_key = self.jwk_to_decoding_key(jwk)?;
+        let decoding_key = self.jwk_to_decoding_key(&jwk)?;
 
         // Determine algorithm - use from header, or infer from JWK
         let algorithm = header.alg;
 
-        // Set up validation
+        // Set up validation. Pass both trailing-slash forms of the issuer
+        // so a config / IdP-emit mismatch doesn't 401 — see `Self::new`.
+        let issuer_with_slash = format!("{}/", self.issuer);
         let mut validation = Validation::new(algorithm);
-        validation.set_issuer(&[&self.issuer]);
+        validation.set_issuer(&[&self.issuer, &issuer_with_slash]);
         validation.set_audience(&[&self.audience]);
         validation.validate_exp = true;
         validation.validate_nbf = true;
@@ -818,6 +840,20 @@ mod tests {
         );
         assert_eq!(config.oidc_client_id, Some("client-id".to_string()));
         assert_eq!(config.oidc_audience, Some("api://client-id".to_string()));
+    }
+
+    #[test]
+    fn test_oidc_validator_normalizes_trailing_slash() {
+        let with_slash = OidcValidator::new(
+            "https://idp.example.com/realms/foo/".to_string(),
+            "fc-router".to_string(),
+        );
+        let without_slash = OidcValidator::new(
+            "https://idp.example.com/realms/foo".to_string(),
+            "fc-router".to_string(),
+        );
+        assert_eq!(with_slash.issuer, without_slash.issuer);
+        assert_eq!(with_slash.issuer, "https://idp.example.com/realms/foo");
     }
 
     #[test]
