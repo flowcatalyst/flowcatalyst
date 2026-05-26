@@ -1,0 +1,24 @@
+name: "GET /monitoring/health — dashboard JSON shape"
+
+# Mirrors Rust's DashboardHealthResponse. Top-level mixes snake_case
+# (status, timestamp) with the explicit camelCase rename uptimeMillis.
+# `details` object is all explicit camelCase per Rust DashboardHealthDetails.
+
+request:
+  method: GET
+  path: /monitoring/health
+
+expect:
+  status: 200
+  body_shape:
+    status: any-string
+    timestamp: any-string
+    uptimeMillis: any-int
+    details:
+      totalQueues: any-int
+      healthyQueues: any-int
+      totalPools: any-int
+      healthyPools: any-int
+      activeWarnings: any-int
+      criticalWarnings: any-int
+      circuitBreakersOpen: any-int

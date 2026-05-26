@@ -14,7 +14,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -28,6 +27,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/logging"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
+	routerapi "github.com/flowcatalyst/flowcatalyst-go/internal/router/api"
 
 	// Backend registrations.
 	_ "github.com/flowcatalyst/flowcatalyst-go/internal/queue/postgres"
@@ -64,18 +64,17 @@ func main() {
 		}
 	}()
 
-	// HTTP endpoints: /health, /ready, /metrics.
+	// HTTP surface: health probes, monitoring reads, warnings management,
+	// config read — all wired by the shared internal/router/api package
+	// so fc-server's StartRouter and this binary expose identical
+	// endpoints. The basic /ready leader-gate + /metrics JSON snapshot
+	// stay inline here as router-binary-specific concerns.
 	r := chi.NewRouter()
-	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"status":    "ok",
-			"pools":     srv.Manager.PoolCount(),
-			"in_flight": srv.Tracker.Count(),
-			"is_leader": srv.IsLeader(),
-		})
-	})
+	routerapi.RegisterRoutes(r, routerapi.FromServer(srv))
 	r.Get("/ready", func(w http.ResponseWriter, _ *http.Request) {
+		// Leader-gated readiness — distinct from /health/ready (which
+		// checks HealthService.Status). This endpoint is the standby-
+		// election signal an ALB target group would poll.
 		if srv.IsLeader() {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -83,12 +82,11 @@ func main() {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	})
 	r.Get("/metrics", func(w http.ResponseWriter, _ *http.Request) {
+		// Prometheus emitter is deferred (HANDOFF.md §4 #7); this is
+		// a JSON snapshot for ad-hoc inspection until that lands.
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"pools":            srv.Manager.PoolCount(),
-			"in_flight":        srv.Tracker.Count(),
-			"circuit_breakers": srv.Breakers.Snapshot(),
-		})
+		_, _ = w.Write([]byte(`{"pools":` + strconv.Itoa(srv.Manager.PoolCount()) +
+			`,"in_flight":` + strconv.Itoa(srv.Tracker.Count()) + `}`))
 	})
 
 	httpSrv := &http.Server{

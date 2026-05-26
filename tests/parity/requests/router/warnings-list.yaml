@@ -1,0 +1,14 @@
+name: "GET /warnings — empty list shape"
+
+# On a fresh boot both binaries should return [] (empty JSON array,
+# not null) with status 200. Validates that no-rows doesn't accidentally
+# serialise as null in one runtime and [] in the other — a classic
+# Rust↔Go drop-in foot-gun.
+
+request:
+  method: GET
+  path: /warnings
+
+expect:
+  status: 200
+  body_shape: any-array

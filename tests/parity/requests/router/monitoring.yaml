@@ -1,0 +1,27 @@
+name: "GET /monitoring — MonitoringResponse shape"
+
+# Top-level keys come from Rust's MonitoringResponse with default serde
+# (snake_case). Drop-in test: both binaries must emit the same key set,
+# in the same casing, with health_report carrying the same sub-keys.
+
+request:
+  method: GET
+  path: /monitoring
+
+expect:
+  status: 200
+  body_shape:
+    status: any-string
+    version: any-string
+    active_warnings: any-int
+    critical_warnings: any-int
+    pool_stats: any-array
+    health_report:
+      status: any-string
+      pools_healthy: any-int
+      pools_unhealthy: any-int
+      consumers_healthy: any-int
+      consumers_unhealthy: any-int
+      active_warnings: any-int
+      critical_warnings: any-int
+      issues: any-array

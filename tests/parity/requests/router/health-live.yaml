@@ -1,0 +1,12 @@
+name: "GET /health/live — k8s liveness probe"
+
+# Mirrors Rust's ProbeResponse — `{"status": "LIVE"}`. Unauthenticated.
+
+request:
+  method: GET
+  path: /health/live
+
+expect:
+  status: 200
+  body_shape:
+    status: LIVE
