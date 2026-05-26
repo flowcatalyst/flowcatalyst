@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/spf13/cobra"
 
+	"github.com/flowcatalyst/flowcatalyst-go/frontend"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/config"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/migrate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
@@ -154,6 +155,19 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	// envCfg (ephemeral JWT signing key, dev OAuth secret).
 	if err := server.WirePlatform(r, pool, devEnvCfg(databaseURL)); err != nil {
 		return fmt.Errorf("wire platform: %w", err)
+	}
+
+	// Embedded Vue SPA (built by `make frontend`). Mounted as the
+	// NotFound handler so every API route registered above takes
+	// precedence; only paths the API doesn't know fall through to
+	// asset-or-SPA-fallback. When the binary was built without
+	// `make frontend` the handler reports a clear "frontend not
+	// built" message instead of an opaque 404.
+	if frontend.IsAvailable() {
+		r.NotFound(frontend.Handler().ServeHTTP)
+		slog.Info("embedded Vue SPA mounted on /")
+	} else {
+		slog.Warn("frontend not embedded — run `make frontend` and rebuild to ship the SPA")
 	}
 
 	// ── Optional subsystems ────────────────────────────────────────────

@@ -1,13 +1,23 @@
-.PHONY: build test test-unit test-integration lint analyze fmt sqlc sqlc-verify ci clean
+.PHONY: build go-build frontend frontend-install test test-unit test-integration lint analyze fmt sqlc sqlc-verify ci clean
 
 GO ?= go
+PNPM ?= pnpm
 BINARIES := fc-platform-server fc-router fc-stream-processor fc-outbox-processor fc-mcp-server fc-server fc-dev
 
-build: ## Build all binaries
+build: frontend go-build ## Build the frontend then every Go binary
+
+go-build: ## Build all Go binaries (skips frontend; assumes frontend/dist exists)
 	@for b in $(BINARIES); do \
 		echo ">> building $$b"; \
 		$(GO) build -o bin/$$b ./cmd/$$b || exit 1; \
 	done
+
+frontend: frontend-install ## Build the Vue SPA into frontend/dist (required for `go-build` to embed it)
+	@echo ">> building frontend/dist"
+	@cd frontend && $(PNPM) build
+
+frontend-install: ## Install frontend deps (idempotent; pnpm skips when up-to-date)
+	@cd frontend && $(PNPM) install --frozen-lockfile
 
 test: test-unit test-integration ## Run all tests
 

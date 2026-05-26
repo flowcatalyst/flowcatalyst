@@ -269,11 +269,28 @@ the source. Search for the marker to find the exact file:line.
     `internal/queue.Consumer` abstraction** — same contract as PG
     dev + SQS prod backends, not a parallel pattern.
 
-14. **Frontend.** The Vue app lives in
-    `/Users/andrewgraaff/Developer/flowcatalyst-rust/frontend/`. It
-    needs to be copied to the Go repo (or pointed at the Go server via
-    env). The Rust binaries embed `frontend/dist/` via `rust_embed`;
-    Go can do the same with `//go:embed`.
+14. ~~**Frontend.**~~ **Done.** Vue 3 source copied to top-level
+    `frontend/`; `dist/` + `node_modules/` gitignored.
+    `frontend/embed.go` + `frontend/handler.go` provide
+    `frontend.Handler() http.Handler` that mirrors Rust's
+    `bin/fc-dev/src/main.rs::embedded_asset_handler`: exact-path
+    asset → MIME-typed response with `Cache-Control: immutable` for
+    `/assets/*`, otherwise SPA fallback to `index.html`. Mounted on
+    fc-dev as the chi NotFound handler so every API route takes
+    precedence. `frontend.IsAvailable()` lets the caller skip the
+    mount cleanly when the binary was built without
+    `make frontend`. **Build pipeline:** `make build` now depends on
+    `make frontend`, which runs `pnpm install --frozen-lockfile` +
+    `pnpm build` in `frontend/`. For backend-only iteration,
+    `make go-build` skips the frontend step. Smoke verified end-to-end:
+    `GET /` → SPA shell; `GET /assets/*.js` → immutable cache;
+    `GET /api/event-types` → still served by the API; SPA history-mode
+    routes (`/principals/some-id`) → fall back to `index.html`. The
+    Hey-API generated TypeScript client under
+    `frontend/src/api/generated/` is currently committed (matches
+    Rust); regenerate from Go's spec once the OpenAPI generator
+    lands (see lower-priority item #23 — added). Binary size delta:
+    +7.9MB (matches the 7.4MB dist/ + embed overhead).
 
 15. **Frontend-only `/bff/*` routes.** Beyond `/bff/dashboard` (which
     is ported), Rust exposes `/bff/events`, `/bff/dispatch-jobs`,
@@ -892,7 +909,7 @@ If picking this up cold, I'd tackle in this order:
 
 9. ~~**Argon2id PHC salt**~~ **Done.** See §4 #4.
 
-10. **Frontend port** — copy the Vue app, embed via `//go:embed`.
+10. ~~**Frontend port**~~ **Done.** See §4 #14.
 
 ## 8. Conventions Cheat Sheet
 
