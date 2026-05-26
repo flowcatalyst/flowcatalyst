@@ -1,0 +1,115 @@
+package webauthn
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+
+	"github.com/go-webauthn/webauthn/webauthn"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
+)
+
+// Repository is the Postgres-backed credential repo.
+// Table: webauthn_credentials. JSONB column is passkey_data.
+type Repository struct{ q *dbq.Queries }
+
+// NewRepository wires a repo.
+func NewRepository(pool *pgxpool.Pool) *Repository {
+	return &Repository{q: dbq.New(pool)}
+}
+
+// FindByID loads by primary key.
+func (r *Repository) FindByID(ctx context.Context, id string) (*Credential, error) {
+	row, err := r.q.WebauthnCredentialFindByID(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("webauthn repo: %w", err)
+	}
+	return rowToCredential(row)
+}
+
+// FindByCredentialID loads by the authenticator-issued ID (BYTEA column).
+func (r *Repository) FindByCredentialID(ctx context.Context, credID []byte) (*Credential, error) {
+	row, err := r.q.WebauthnCredentialFindByCredentialID(ctx, credID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("webauthn repo: %w", err)
+	}
+	return rowToCredential(row)
+}
+
+// FindByPrincipal returns all credentials for a principal.
+func (r *Repository) FindByPrincipal(ctx context.Context, principalID string) ([]Credential, error) {
+	rows, err := r.q.WebauthnCredentialFindByPrincipal(ctx, principalID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Credential, 0, len(rows))
+	for _, row := range rows {
+		c, err := rowToCredential(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *c)
+	}
+	return out, nil
+}
+
+// LibraryCredentialsByPrincipal returns the credentials in the shape go-webauthn
+// expects (for the WebAuthn.BeginLogin / FinishLogin API).
+func (r *Repository) LibraryCredentialsByPrincipal(ctx context.Context, principalID string) ([]webauthn.Credential, error) {
+	creds, err := r.FindByPrincipal(ctx, principalID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]webauthn.Credential, len(creds))
+	for i, c := range creds {
+		out[i] = c.Credential
+	}
+	return out, nil
+}
+
+// Persist implements usecasepgx.Persist[Credential].
+func (r *Repository) Persist(ctx context.Context, c *Credential, tx *usecasepgx.DbTx) error {
+	credJSON, err := json.Marshal(c.Credential)
+	if err != nil {
+		return fmt.Errorf("marshal credential: %w", err)
+	}
+	return r.q.WithTx(tx.Inner()).WebauthnCredentialUpsert(ctx, dbq.WebauthnCredentialUpsertParams{
+		ID:           c.ID,
+		PrincipalID:  c.PrincipalID,
+		CredentialID: c.CredentialIDBytes(),
+		PasskeyData:  credJSON,
+		Name:         c.Name,
+		CreatedAt:    c.CreatedAt,
+		LastUsedAt:   c.LastUsedAt,
+	})
+}
+
+// Delete removes the credential.
+func (r *Repository) Delete(ctx context.Context, c *Credential, tx *usecasepgx.DbTx) error {
+	return r.q.WithTx(tx.Inner()).WebauthnCredentialDelete(ctx, c.ID)
+}
+
+func rowToCredential(row dbq.WebauthnCredential) (*Credential, error) {
+	c := Credential{
+		ID:          row.ID,
+		PrincipalID: row.PrincipalID,
+		Name:        row.Name,
+		CreatedAt:   row.CreatedAt,
+		LastUsedAt:  row.LastUsedAt,
+	}
+	if err := json.Unmarshal(row.PasskeyData, &c.Credential); err != nil {
+		return nil, fmt.Errorf("unmarshal credential: %w", err)
+	}
+	return &c, nil
+}

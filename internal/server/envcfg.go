@@ -1,0 +1,206 @@
+package server
+
+import (
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+)
+
+// EnvCfg captures every env-driven knob fc-server reads. Mirrors the
+// Rust fc-server's FC_*_ENABLED + DB resolution surface, plus the
+// aliased TS variable names for compatibility with existing ECS task
+// definitions.
+type EnvCfg struct {
+	APIPort     int
+	MetricsPort int
+
+	DatabaseURL string
+	JWTIssuer   string
+
+	// Subsystem toggles.
+	PlatformEnabled  bool
+	RouterEnabled    bool
+	SchedulerEnabled bool
+	StreamEnabled    bool
+	OutboxEnabled    bool
+
+	// Stream processor — per-projection sub-toggles (default true when
+	// StreamEnabled is on, so the top-level flag is enough on its own).
+	StreamEventsEnabled       bool
+	StreamDispatchJobsEnabled bool
+	StreamFanOutEnabled       bool
+	StreamPartitionsEnabled   bool
+	StreamBatchSize           int
+
+	// Outbox processor — only Postgres is supported in the unified
+	// binary; the standalone cmd/fc-outbox-processor remains the home
+	// for the (future) sqlite/mysql/mongo backends.
+	OutboxPlatformURL       string
+	OutboxPlatformAuthToken string
+	OutboxBatchSize         int
+	OutboxMaxInFlight       int
+	OutboxPollIntervalMS    int
+
+	// Router — used when FC_ROUTER_ENABLED=true. Mirrors the env vars
+	// the standalone cmd/fc-router binary reads.
+	RouterConfigURL        string
+	RouterDevMode          bool
+	RouterNotifyWebhookURL string
+	RouterDrainTimeoutSec  int
+
+	// Standby / HA.
+	StandbyEnabled  bool
+	StandbyRedisURL string
+	StandbyLockKey  string
+
+	// JWT signing.
+	JWTSigningKeyPath string
+	JWTSigningKeyID   string
+
+	// HMAC global secret (used by fosite for non-JWT tokens).
+	OAuthGlobalSecret string
+
+	// AuthAllowTestHeaders enables the X-FC-Test-Principal dev fallback
+	// in the platform Authenticator middleware. Defaults to false in
+	// production. fc-dev flips it on for the local embedded-PG flow.
+	AuthAllowTestHeaders bool
+}
+
+func LoadEnv() EnvCfg {
+	c := EnvCfg{
+		APIPort:     envIntAlias("FC_API_PORT", "PORT", 3000),
+		MetricsPort: envInt("FC_METRICS_PORT", 9090),
+
+		DatabaseURL: ResolveDatabaseURL(),
+		JWTIssuer:   envFirst("FC_JWT_ISSUER", "FC_EXTERNAL_BASE_URL", "EXTERNAL_BASE_URL", "http://localhost:3000"),
+
+		PlatformEnabled:  envBoolAlias("FC_PLATFORM_ENABLED", "PLATFORM_ENABLED", true),
+		RouterEnabled:    envBoolAlias("FC_ROUTER_ENABLED", "MESSAGE_ROUTER_ENABLED", false),
+		SchedulerEnabled: envBoolAlias("FC_SCHEDULER_ENABLED", "DISPATCH_SCHEDULER_ENABLED", false),
+		StreamEnabled:    envBoolAlias("FC_STREAM_PROCESSOR_ENABLED", "STREAM_PROCESSOR_ENABLED", false),
+		OutboxEnabled:    envBoolAlias("FC_OUTBOX_ENABLED", "OUTBOX_PROCESSOR_ENABLED", false),
+
+		// Stream sub-toggles default ON so FC_STREAM_PROCESSOR_ENABLED=true
+		// is sufficient to bring up the whole stream pipeline.
+		StreamEventsEnabled:       envBool("FC_STREAM_EVENTS_ENABLED", true),
+		StreamDispatchJobsEnabled: envBool("FC_STREAM_DISPATCH_JOBS_ENABLED", true),
+		StreamFanOutEnabled:       envBool("FC_STREAM_FAN_OUT_ENABLED", true),
+		StreamPartitionsEnabled:   envBool("FC_STREAM_PARTITIONS_ENABLED", true),
+		StreamBatchSize:           envInt("FC_STREAM_BATCH_SIZE", 0),
+
+		OutboxPlatformURL:       envFirst("FC_OUTBOX_PLATFORM_URL", "FLOWCATALYST_URL", "", ""),
+		OutboxPlatformAuthToken: os.Getenv("FC_OUTBOX_PLATFORM_AUTH_TOKEN"),
+		OutboxBatchSize:         envInt("FC_OUTBOX_BATCH_SIZE", 0),
+		OutboxMaxInFlight:       envInt("FC_OUTBOX_MAX_IN_FLIGHT", 0),
+		OutboxPollIntervalMS:    envInt("FC_OUTBOX_POLL_INTERVAL_MS", 0),
+
+		RouterConfigURL:        os.Getenv("FLOWCATALYST_CONFIG_URL"),
+		RouterDevMode:          envBool("FLOWCATALYST_DEV_MODE", false),
+		RouterNotifyWebhookURL: os.Getenv("FC_NOTIFY_WEBHOOK_URL"),
+		RouterDrainTimeoutSec:  envInt("FC_DRAIN_TIMEOUT_SECONDS", 60),
+
+		StandbyEnabled:  envBoolAlias("FC_STANDBY_ENABLED", "STANDBY_ENABLED", false),
+		StandbyRedisURL: envFirst("FC_STANDBY_REDIS_URL", "REDIS_URL", "", "redis://127.0.0.1:6379"),
+		StandbyLockKey:  envOr("FC_STANDBY_LOCK_KEY", "fc:server:leader"),
+
+		JWTSigningKeyPath:    os.Getenv("FC_JWT_SIGNING_KEY_PATH"),
+		JWTSigningKeyID:      envOr("FC_JWT_SIGNING_KEY_ID", "fc-key-1"),
+		OAuthGlobalSecret:    envOr("FC_OAUTH_GLOBAL_SECRET", "change-me-please-this-is-only-for-dev-32b"),
+		AuthAllowTestHeaders: envBool("FC_AUTH_ALLOW_TEST_HEADERS", false),
+	}
+	return c
+}
+
+// ResolveDatabaseURL mirrors the Rust fc-server's three-mode resolution.
+// 1. FC_DATABASE_URL / DATABASE_URL — full connection string (preferred).
+// 2. DB_HOST + DB_NAME + DB_USERNAME + DB_PASSWORD — explicit credentials.
+// 3. (TODO) AWS Secrets Manager via DB_SECRET_ARN — deferred.
+func ResolveDatabaseURL() string {
+	if v := envFirst("FC_DATABASE_URL", "DATABASE_URL", "", ""); v != "" {
+		return v
+	}
+	host := os.Getenv("DB_HOST")
+	if host == "" {
+		// No DB config found. Default to local dev for ergonomics —
+		// fc-server logs + dies in main() if the connection fails.
+		return "postgresql://postgres@localhost:5432/flowcatalyst"
+	}
+	name := envOr("DB_NAME", "flowcatalyst")
+	port := envOr("DB_PORT", "5432")
+	username := envOr("DB_USERNAME", "postgres")
+	password := os.Getenv("DB_PASSWORD")
+	hostPort := host
+	if !strings.Contains(host, ":") {
+		hostPort = host + ":" + port
+	}
+	if password == "" {
+		return "postgresql://" + username + "@" + hostPort + "/" + name
+	}
+	return "postgresql://" + username + ":" + url.QueryEscape(password) + "@" + hostPort + "/" + name
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+func envFirst(keys ...string) string {
+	// Last argument is the default; everything else is a key in priority order.
+	def := keys[len(keys)-1]
+	for _, k := range keys[:len(keys)-1] {
+		if k == "" {
+			continue
+		}
+		if v := os.Getenv(k); v != "" {
+			return v
+		}
+	}
+	return def
+}
+
+func envInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
+}
+
+func envIntAlias(key, alias string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	if v := os.Getenv(alias); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
+}
+
+func envBool(key string, def bool) bool {
+	if v := os.Getenv(key); v != "" {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes", "on":
+			return true
+		case "0", "false", "no", "off":
+			return false
+		}
+	}
+	return def
+}
+
+func envBoolAlias(key, alias string, def bool) bool {
+	if v := os.Getenv(key); v != "" {
+		return envBool(key, def)
+	}
+	return envBool(alias, def)
+}

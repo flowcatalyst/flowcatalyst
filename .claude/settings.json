@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build *)",
+      "Bash(go test *)",
+      "Bash(go vet *)",
+      "Bash(cargo build *)",
+      "Bash(cargo check *)",
+      "Bash(cargo test *)",
+      "Bash(cargo clippy *)",
+      "Bash(cargo tree *)",
+      "Bash(pnpm test *)",
+      "Bash(pnpm test:integration *)",
+      "Bash(pnpm typecheck *)",
+      "Bash(pnpm tsc *)",
+      "Bash(pnpm lint *)",
+      "Bash(npx tsc *)",
+      "Bash(npx vue-tsc *)",
+      "Bash(make typecheck *)",
+      "Bash(make build-sea *)",
+      "Bash(make sqlc *)",
+      "Bash(make sqlc-verify *)",
+      "Bash(make ci *)",
+      "Bash(curl http://localhost:*)",
+      "Bash(curl http://127.0.0.1:*)"
+    ]
+  }
+}

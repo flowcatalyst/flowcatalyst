@@ -1,0 +1,51 @@
+version: "2"
+sql:
+  - engine: postgresql
+    # Schema is the embedded migration set — same SQL the binaries apply
+    # at boot, so sqlc's view of the database matches what runs in prod.
+    schema: internal/migrate/sql
+    queries: internal/sqlc/queries
+    gen:
+      go:
+        package: dbq
+        out: internal/sqlc/dbq
+        sql_package: pgx/v5
+        # Generate the Querier interface so repos can inject a test
+        # double if they want. The concrete *Queries type is also emitted.
+        emit_interface: true
+        emit_empty_slices: true
+        # Single-arg signature (Querier method receivers), not the
+        # db-argument variant. Keeps the call sites short.
+        emit_methods_with_db_argument: false
+        # Pointer for nullable columns so we can distinguish absent
+        # from zero-value in the repository layer.
+        emit_pointers_for_null_types: true
+        emit_json_tags: false
+        overrides:
+          # TIMESTAMPTZ → time.Time directly (sqlc defaults to
+          # pgtype.Timestamptz; for NOT NULL columns we don't want the
+          # nullable wrapper).
+          - db_type: "timestamptz"
+            go_type:
+              import: "time"
+              type: "Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true
+          # JSONB stays as json.RawMessage so callers control
+          # encoding/decoding. Specific aggregates that want []string or
+          # struct shapes can add column-level overrides here. Both
+          # the NOT NULL and nullable cases need explicit entries —
+          # the global match doesn't generalise across nullability.
+          - db_type: "jsonb"
+            go_type:
+              type: "RawMessage"
+              import: "encoding/json"
+          - db_type: "jsonb"
+            nullable: true
+            go_type:
+              type: "RawMessage"
+              import: "encoding/json"

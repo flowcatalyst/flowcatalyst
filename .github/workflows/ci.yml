@@ -1,0 +1,71 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: flowcatalyst
+          POSTGRES_PASSWORD: flowcatalyst
+          POSTGRES_DB: flowcatalyst_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Verify go.mod tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Build
+        run: make build
+
+      - name: Unit tests
+        run: make test-unit
+
+      - name: Integration tests
+        run: make test-integration
+        env:
+          POSTGRES_URL: postgres://flowcatalyst:flowcatalyst@localhost:5432/flowcatalyst_test?sslmode=disable
+
+      - name: Custom UoW seal analyzer
+        run: make analyze
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+  parity-spec:
+    runs-on: ubuntu-latest
+    continue-on-error: true  # allowlist-driven until phase 3 completes
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "parity spec diff job — wired up in Phase 3 with oasdiff"

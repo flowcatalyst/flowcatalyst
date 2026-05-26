@@ -1,0 +1,48 @@
+# Binaries
+/bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Build artifacts in the repo root — `go build .` inside each cmd/*
+# leaves the binary here. cmd/ subdirs are name-matched.
+/fc-dev
+/fc-server
+/fc-router
+/fc-platform-server
+/fc-stream-processor
+/fc-outbox-processor
+/fc-mcp-server
+
+# Test artifacts
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+/build/
+/dist/
+
+# Local env
+.env
+.env.local
+*.local
+
+# Per-user Claude Code settings (the .json suffix means *.local doesn't catch it)
+.claude/settings.local.json
+
+# Air (hot reload)
+tmp/

@@ -1,0 +1,44 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - gocritic
+    - gosec
+    - misspell
+    - revive
+    - unparam
+    - whitespace
+  settings:
+    revive:
+      rules:
+        - name: var-naming
+          severity: warning
+        - name: exported
+          severity: warning
+        - name: error-return
+        - name: error-naming
+        - name: indent-error-flow
+    gosec:
+      excludes:
+        - G104  # audit errors not checked — we use revive's error-return instead
+        - G115  # int conversion overflow — handled by pgx
+
+issues:
+  exclude-dirs:
+    - internal/db/gen  # go-jet generated code
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports

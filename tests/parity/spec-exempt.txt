@@ -1,0 +1,10 @@
+# OpenAPI paths exempt from the Rust-vs-Go spec diff during the port.
+#
+# Format: one path per line, glob-style. Lines starting with # are comments.
+# This list shrinks as subdomains are ported (Phase 3a → 3g).
+#
+# When this file is empty, the parity-spec CI job's continue-on-error flag
+# can be removed from .github/workflows/ci.yml.
+
+# Phase 0: everything is exempt. Replaced wave-by-wave through Phase 3.
+*

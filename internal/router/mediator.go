@@ -1,0 +1,255 @@
+// Package router is the Go port of fc-router. It consumes messages
+// from per-pool queue consumers, applies rate limits and circuit
+// breakers, and delivers via HTTP webhook (with HMAC-SHA256 signing).
+package router
+
+import (
+	"bytes"
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/tls"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+)
+
+// SignatureHeader matches the Rust SIGNATURE_HEADER constant.
+const SignatureHeader = "X-FLOWCATALYST-SIGNATURE"
+
+// TimestampHeader matches the Rust TIMESTAMP_HEADER constant.
+const TimestampHeader = "X-FLOWCATALYST-TIMESTAMP"
+
+// Mediator delivers a message to its target. The HTTP implementation
+// signs the payload with HMAC-SHA256 when a signing secret is supplied.
+type Mediator interface {
+	Mediate(ctx context.Context, m *common.Message) common.MediationOutcome
+}
+
+// HTTPVersion controls the negotiated HTTP version.
+type HTTPVersion int
+
+const (
+	HTTPVersion1 HTTPVersion = iota // HTTP/1.1
+	HTTPVersion2                    // HTTP/2 via ALPN
+)
+
+// MediatorConfig configures the HTTP mediator.
+type MediatorConfig struct {
+	Timeout        time.Duration
+	ConnectTimeout time.Duration
+	HTTPVersion    HTTPVersion
+	MaxRetries     int
+	RetryDelays    []time.Duration
+}
+
+// DefaultMediatorConfig matches the Rust production defaults (15min timeout, HTTP/2).
+func DefaultMediatorConfig() MediatorConfig {
+	return MediatorConfig{
+		Timeout:        15 * time.Minute,
+		ConnectTimeout: 30 * time.Second,
+		HTTPVersion:    HTTPVersion2,
+		MaxRetries:     3,
+		RetryDelays:    []time.Duration{1 * time.Second, 2 * time.Second, 3 * time.Second},
+	}
+}
+
+// DevMediatorConfig is the developer-friendly variant (30s timeout, HTTP/1.1).
+func DevMediatorConfig() MediatorConfig {
+	c := DefaultMediatorConfig()
+	c.Timeout = 30 * time.Second
+	c.ConnectTimeout = 10 * time.Second
+	c.HTTPVersion = HTTPVersion1
+	return c
+}
+
+// HTTPMediator delivers via net/http.
+type HTTPMediator struct {
+	client *http.Client
+	cfg    MediatorConfig
+}
+
+// NewHTTPMediator wires an HTTP mediator with the supplied config.
+func NewHTTPMediator(cfg MediatorConfig) *HTTPMediator {
+	transport := &http.Transport{
+		MaxIdleConnsPerHost: 10,
+		ResponseHeaderTimeout: cfg.Timeout,
+		IdleConnTimeout:     90 * time.Second,
+	}
+	// HTTP/2 via ALPN is the net/http default for HTTPS; for HTTP/1.1 we
+	// disable HTTP/2 explicitly. Go's transport doesn't expose a clean
+	// "h1 only" flag; setting ForceAttemptHTTP2=false plus TLSNextProto
+	// with an h2 entry that returns nil disables h2 negotiation.
+	if cfg.HTTPVersion == HTTPVersion1 {
+		transport.ForceAttemptHTTP2 = false
+		transport.TLSNextProto = map[string]func(authority string, c *tls.Conn) http.RoundTripper{}
+	} else {
+		transport.ForceAttemptHTTP2 = true
+	}
+	return &HTTPMediator{
+		client: &http.Client{Transport: transport, Timeout: cfg.Timeout},
+		cfg:    cfg,
+	}
+}
+
+// mediationPayload is the JSON body sent to the target. Byte-identical
+// to the Rust `MediationPayload { message_id: &str }` struct.
+type mediationPayload struct {
+	MessageID string `json:"messageId"`
+}
+
+// mediationResponse is what we expect back from the target.
+type mediationResponse struct {
+	Ack          *bool   `json:"ack,omitempty"`
+	DelaySeconds *uint32 `json:"delaySeconds,omitempty"`
+}
+
+// signWebhook computes the HMAC-SHA256 over `timestamp + payload` and
+// returns (signatureHex, timestampStr). MUST byte-match the Rust
+// fc-router sign_webhook for the test vector in
+// tests/golden/webhook/mediation-payload.json.
+func signWebhook(payload []byte, signingSecret string) (sigHex, ts string) {
+	// Millisecond-precision ISO8601 UTC, exactly 3 fractional digits.
+	// Matches Rust format "%Y-%m-%dT%H:%M:%S%.3fZ".
+	ts = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	mac := hmac.New(sha256.New, []byte(signingSecret))
+	mac.Write([]byte(ts))
+	mac.Write(payload)
+	return hex.EncodeToString(mac.Sum(nil)), ts
+}
+
+// Mediate delivers the message with retry. Returns the outcome.
+func (m *HTTPMediator) Mediate(ctx context.Context, msg *common.Message) common.MediationOutcome {
+	var last common.MediationOutcome
+	for attempt := 0; attempt <= m.cfg.MaxRetries; attempt++ {
+		last = m.mediateOnce(ctx, msg)
+
+		// Don't retry on success, config errors, or rate-limit responses.
+		// For 429 the queue applies Retry-After delay rather than busy-waiting here.
+		switch last.Result {
+		case common.MediationSuccess, common.MediationErrorConfig, common.MediationRateLimited:
+			return last
+		}
+		if attempt == m.cfg.MaxRetries {
+			return last
+		}
+
+		// Backoff according to configured retry_delays.
+		delay := 3 * time.Second
+		if attempt < len(m.cfg.RetryDelays) {
+			delay = m.cfg.RetryDelays[attempt]
+		}
+		select {
+		case <-ctx.Done():
+			return last
+		case <-time.After(delay):
+		}
+	}
+	return last
+}
+
+func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) common.MediationOutcome {
+	if msg.MediationType != common.MediationTypeHTTP {
+		return common.ErrorConfig(0, fmt.Sprintf("Unsupported mediation type: %s", msg.MediationType))
+	}
+
+	payload, err := json.Marshal(mediationPayload{MessageID: msg.ID})
+	if err != nil {
+		return common.ErrorConfig(0, fmt.Sprintf("payload marshal: %v", err))
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, msg.MediationTarget, bytes.NewReader(payload))
+	if err != nil {
+		return common.ErrorConnection(fmt.Sprintf("build request: %v", err))
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	if msg.SigningSecret != nil {
+		sig, ts := signWebhook(payload, *msg.SigningSecret)
+		req.Header.Set(SignatureHeader, sig)
+		req.Header.Set(TimestampHeader, ts)
+	}
+	if msg.AuthToken != nil {
+		req.Header.Set("Authorization", "Bearer "+*msg.AuthToken)
+	}
+
+	resp, err := m.client.Do(req)
+	if err != nil {
+		// Map common error types.
+		var netErr interface{ Timeout() bool }
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			return common.ErrorConnection("Request timeout")
+		}
+		return common.ErrorConnection(fmt.Sprintf("Request failed: %v", err))
+	}
+	defer resp.Body.Close()
+
+	status := resp.StatusCode
+	switch {
+	case status >= 200 && status < 300:
+		// Parse {"ack": false, "delaySeconds": N}; if ack=false treat as transient.
+		body, err := io.ReadAll(resp.Body)
+		if err == nil && len(body) > 0 {
+			var r mediationResponse
+			if err := json.Unmarshal(body, &r); err == nil && r.Ack != nil && !*r.Ack {
+				delay := uint32(30)
+				if r.DelaySeconds != nil {
+					delay = *r.DelaySeconds
+				}
+				out := common.ErrorProcess(int(delay), "Target returned ack=false")
+				out.StatusCode = status
+				return out
+			}
+		}
+		return common.Success()
+
+	case status == 400:
+		slog.Warn("HTTP 400 from target", "message_id", msg.ID, "target", msg.MediationTarget)
+		return common.ErrorConfig(status, "HTTP 400: Bad request")
+
+	case status == 401 || status == 403:
+		slog.Warn("auth error from target", "message_id", msg.ID, "status", status)
+		return common.ErrorConfig(status, fmt.Sprintf("HTTP %d: Auth error", status))
+
+	case status == 404:
+		slog.Warn("target not found", "message_id", msg.ID, "target", msg.MediationTarget)
+		return common.ErrorConfig(status, "HTTP 404: Not found")
+
+	case status == 429:
+		retryAfter := 30
+		if v := resp.Header.Get("Retry-After"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				retryAfter = n
+			}
+		}
+		slog.Warn("rate limited by target", "message_id", msg.ID, "retry_after", retryAfter)
+		return common.RateLimited(retryAfter)
+
+	case status == 501:
+		slog.Warn("target not implemented", "message_id", msg.ID)
+		return common.ErrorConfig(status, "HTTP 501: Not implemented")
+
+	case status >= 400 && status < 500:
+		slog.Warn("client error from target", "message_id", msg.ID, "status", status)
+		return common.ErrorConfig(status, fmt.Sprintf("HTTP %d: Client error", status))
+
+	case status >= 500:
+		slog.Warn("server error from target", "message_id", msg.ID, "status", status)
+		out := common.ErrorProcess(30, fmt.Sprintf("HTTP %d: Server error", status))
+		out.StatusCode = status
+		return out
+
+	default:
+		slog.Warn("unexpected status from target", "message_id", msg.ID, "status", status)
+		return common.ErrorProcess(30, fmt.Sprintf("HTTP %d: Unexpected status", status))
+	}
+}

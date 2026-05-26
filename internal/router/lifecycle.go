@@ -1,0 +1,206 @@
+package router
+
+import (
+	"context"
+	"log/slog"
+	"sync"
+	"time"
+)
+
+// LifecycleConfig tunes the cadence of background tasks. Mirrors
+// `crates/fc-router/src/lifecycle.rs::LifecycleConfig::default()`.
+type LifecycleConfig struct {
+	// WarningCleanupInterval drives WarningService.Cleanup.
+	WarningCleanupInterval time.Duration
+	// HealthReportInterval logs the current HealthReport at this cadence.
+	HealthReportInterval time.Duration
+	// ConsumerHealthInterval drives HealthService.Cleanup (logs stalled
+	// consumers, runs the warning cleanup as a side effect — but
+	// dedicated WarningCleanupInterval ensures cleanup happens even when
+	// HealthService.Cleanup runs less often).
+	ConsumerHealthInterval time.Duration
+}
+
+// DefaultLifecycleConfig returns the Rust defaults.
+func DefaultLifecycleConfig() LifecycleConfig {
+	return LifecycleConfig{
+		WarningCleanupInterval: 5 * time.Minute,
+		HealthReportInterval:   1 * time.Minute,
+		ConsumerHealthInterval: 30 * time.Second,
+	}
+}
+
+// PoolStatsProvider yields the current pool stats snapshot. The router
+// Manager will implement this once /monitoring/pools lands; the
+// LifecycleManager skips the health-report logger when nil.
+type PoolStatsProvider interface {
+	PoolStats() []PoolStats
+}
+
+// LifecycleManager owns the background tasks that maintain
+// WarningService + HealthService. Wraps both services so callers have
+// a single shutdown handle and a single place to register optional
+// hooks. Mirrors `crates/fc-router/src/lifecycle.rs::LifecycleManager`
+// — the manager-coupled tasks (memory health monitor, consumer
+// auto-restart, stale-entry reaper) land as the Go Manager grows the
+// matching surface area.
+type LifecycleManager struct {
+	cfg            LifecycleConfig
+	warningService *WarningService
+	healthService  *HealthService
+
+	poolStatsProviderMu sync.RWMutex
+	poolStatsProvider   PoolStatsProvider
+
+	startOnce sync.Once
+	stopOnce  sync.Once
+	cancelFn  context.CancelFunc
+	wg        sync.WaitGroup
+}
+
+// NewLifecycleManager builds a manager. Pass nil for either service to
+// use a default. Call Start to spawn the background tasks; Shutdown to
+// stop them.
+func NewLifecycleManager(cfg LifecycleConfig, ws *WarningService, hs *HealthService) *LifecycleManager {
+	if cfg.WarningCleanupInterval <= 0 {
+		cfg.WarningCleanupInterval = 5 * time.Minute
+	}
+	if cfg.HealthReportInterval <= 0 {
+		cfg.HealthReportInterval = 1 * time.Minute
+	}
+	if cfg.ConsumerHealthInterval <= 0 {
+		cfg.ConsumerHealthInterval = 30 * time.Second
+	}
+	if ws == nil {
+		ws = NoopWarningService()
+	}
+	if hs == nil {
+		hs = NewHealthService(DefaultHealthServiceConfig(), ws)
+	}
+	return &LifecycleManager{
+		cfg:            cfg,
+		warningService: ws,
+		healthService:  hs,
+	}
+}
+
+// WarningService returns the bound warning service.
+func (l *LifecycleManager) WarningService() *WarningService { return l.warningService }
+
+// HealthService returns the bound health service.
+func (l *LifecycleManager) HealthService() *HealthService { return l.healthService }
+
+// SetPoolStatsProvider wires the source of pool stats for the
+// health-report logger. When nil, the logger emits a stats-less report
+// (pool counts always zero) and otherwise behaves the same.
+func (l *LifecycleManager) SetPoolStatsProvider(p PoolStatsProvider) {
+	l.poolStatsProviderMu.Lock()
+	l.poolStatsProvider = p
+	l.poolStatsProviderMu.Unlock()
+}
+
+// Start spawns the background tasks. Idempotent — only spawns on the
+// first call.
+func (l *LifecycleManager) Start(parent context.Context) {
+	l.startOnce.Do(func() {
+		ctx, cancel := context.WithCancel(parent)
+		l.cancelFn = cancel
+
+		l.wg.Add(1)
+		go func() {
+			defer l.wg.Done()
+			l.warningCleanupLoop(ctx)
+		}()
+		l.wg.Add(1)
+		go func() {
+			defer l.wg.Done()
+			l.consumerHealthLoop(ctx)
+		}()
+		l.wg.Add(1)
+		go func() {
+			defer l.wg.Done()
+			l.healthReportLoop(ctx)
+		}()
+
+		slog.Info("router lifecycle manager started",
+			"warning_cleanup", l.cfg.WarningCleanupInterval,
+			"consumer_health", l.cfg.ConsumerHealthInterval,
+			"health_report", l.cfg.HealthReportInterval)
+	})
+}
+
+// Shutdown cancels every background task and blocks until they exit
+// (or ctx is cancelled). Idempotent.
+func (l *LifecycleManager) Shutdown(ctx context.Context) error {
+	l.stopOnce.Do(func() {
+		if l.cancelFn != nil {
+			l.cancelFn()
+		}
+	})
+	done := make(chan struct{})
+	go func() { l.wg.Wait(); close(done) }()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (l *LifecycleManager) warningCleanupLoop(ctx context.Context) {
+	t := time.NewTicker(l.cfg.WarningCleanupInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("warning cleanup loop stopped")
+			return
+		case <-t.C:
+			l.warningService.Cleanup()
+		}
+	}
+}
+
+func (l *LifecycleManager) consumerHealthLoop(ctx context.Context) {
+	t := time.NewTicker(l.cfg.ConsumerHealthInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("consumer health loop stopped")
+			return
+		case <-t.C:
+			// HealthService.Cleanup logs stalled consumers + runs
+			// WarningService.Cleanup as a side effect.
+			l.healthService.Cleanup()
+		}
+	}
+}
+
+func (l *LifecycleManager) healthReportLoop(ctx context.Context) {
+	t := time.NewTicker(l.cfg.HealthReportInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("health report loop stopped")
+			return
+		case <-t.C:
+			l.poolStatsProviderMu.RLock()
+			provider := l.poolStatsProvider
+			l.poolStatsProviderMu.RUnlock()
+			var stats []PoolStats
+			if provider != nil {
+				stats = provider.PoolStats()
+			}
+			report := l.healthService.HealthReport(stats)
+			if len(report.Issues) > 0 {
+				slog.Warn("router health report",
+					"status", report.Status,
+					"issues", report.Issues)
+			} else {
+				slog.Debug("router health report", "status", report.Status)
+			}
+		}
+	}
+}
