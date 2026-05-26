@@ -335,6 +335,13 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			Clients:    clientRepo,
 			EventTypes: eventTypeRepo,
 		})
+		bff.RegisterEventTypes(r, &bff.EventTypesState{
+			Repo:        eventTypeRepo,
+			CreateUC:    eventtypeops.NewCreateUseCase(eventTypeRepo, uow),
+			UpdateUC:    eventtypeops.NewUpdateUseCase(eventTypeRepo, uow),
+			DeleteUC:    eventtypeops.NewDeleteUseCase(eventTypeRepo, uow),
+			AddSchemaUC: eventtypeops.NewAddSchemaUseCase(eventTypeRepo, uow),
+		})
 		sdkapi.RegisterRoutes(r, &sdkapi.DispatchJobsBatchState{Repo: dispatchJobRepo})
 
 		// OpenAPI spec endpoint. Built up by per-aggregate OpenAPI()

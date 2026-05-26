@@ -1,0 +1,32 @@
+name: "GET /bff/event-types — UI-friendly list shape"
+
+# Distinct from /api/event-types: items wrapped in {items,total},
+# each item splits `code` into denormalised application/subdomain/
+# aggregate/event fields, ISO-8601 timestamps as strings, spec_versions
+# embedded with schema as a stringified JSON blob. Frontend code expects
+# this exact shape — see tests/parity/requests/event-types/list-all.yaml
+# for the /api equivalent.
+
+request:
+  method: GET
+  path: /bff/event-types
+  headers:
+    Authorization: "Bearer ${ANCHOR_TOKEN}"
+
+expect:
+  status: 200
+  body_shape:
+    total: any-int
+    items:
+      - id: tsid
+        code: any-string
+        application: any-string
+        subdomain: any-string
+        aggregate: any-string
+        event: any-string
+        name: any-string
+        status: any-string
+        clientScoped: any-bool
+        specVersions: any-array
+        createdAt: any-string
+        updatedAt: any-string

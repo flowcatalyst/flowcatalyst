@@ -327,11 +327,25 @@ the source. Search for the marker to find the exact file:line.
 
     **Remaining BFF endpoints** (prioritised by frontend page usage):
 
-    *Event-types page (`/bff/event-types/*` — 10 routes):*
-    list, get, create, update, delete, archive, add-schema,
-    finalise-schema, deprecate-schema, sync-platform, plus
-    `/event-types/filters/{subdomains,aggregates}` cascading filters
-    (already-ported `/applications` is the first of the cascade).
+    *Event-types page (`/bff/event-types/*`):* **9 of 13 routes
+    ported.** `internal/platform/shared/bff/event_types.go` covers
+    list (with status/application/subdomain/aggregate filters),
+    get-by-id, create (with optional initial schema), update
+    (metadata), delete, add-schema, plus the cascading filter
+    endpoints (`/filters/subdomains?application=...` and
+    `/filters/aggregates?application=...&subdomain=...`). Wire
+    DTOs match Rust's BffEventTypeResponse exactly: items wrapped
+    in `{items, total}`, denormalised application/subdomain/
+    aggregate/event fields, ISO-8601 timestamps as strings,
+    embedded specVersions with schema as a stringified JSON blob.
+    Smoke-verified — `total: 73` returned on a fresh boot (72
+    platform seeds + 1 we created).
+    Parity YAML in `tests/parity/requests/bff/event-types-list.yaml`.
+    **Still pending** (each needs a corresponding use case):
+    archive (`POST /{id}/archive` — needs ArchiveUseCase),
+    finalise-schema, deprecate-schema (`POST /{id}/schemas/{v}/finalise`
+    and `/deprecate` — need lifecycle UCs), sync-platform (needs
+    SyncEventTypesUseCase wired through state).
     Rust source: `crates/fc-platform/src/shared/bff_event_types_api.rs`
     (954 LoC).
 
