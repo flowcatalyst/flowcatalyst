@@ -317,10 +317,57 @@ the source. Search for the marker to find the exact file:line.
     that registers route + spec together so they can't drift; today
     `RegisterRoutes` + `OpenAPI` are paired by convention.
 
-15. **Frontend-only `/bff/*` routes.** Beyond `/bff/dashboard` (which
-    is ported), Rust exposes `/bff/events`, `/bff/dispatch-jobs`,
-    `/bff/roles`, `/bff/event-types`, `/bff/scheduled-jobs`, etc.
-    These are thin frontend-tailored views.
+15. **Frontend-only `/bff/*` routes.** Frontend source enumerated:
+    the Vue app calls ~30 BFF endpoints across dashboard, filter-options,
+    event-types, roles, processes, scheduled-jobs, and developer pages.
+    **Now ported:** `/bff/dashboard/stats`, `/bff/filter-options/clients`,
+    `/bff/event-types/filters/applications` —
+    `internal/platform/shared/bff/filter_options.go`. Smoke-verified.
+    Parity YAML at `tests/parity/requests/bff/filter-options-clients.yaml`.
+
+    **Remaining BFF endpoints** (prioritised by frontend page usage):
+
+    *Event-types page (`/bff/event-types/*` — 10 routes):*
+    list, get, create, update, delete, archive, add-schema,
+    finalise-schema, deprecate-schema, sync-platform, plus
+    `/event-types/filters/{subdomains,aggregates}` cascading filters
+    (already-ported `/applications` is the first of the cascade).
+    Rust source: `crates/fc-platform/src/shared/bff_event_types_api.rs`
+    (954 LoC).
+
+    *Roles page (`/bff/roles/*` — 6 routes):*
+    list, get-by-name, create, permissions list, permissions detail,
+    sync-platform, `/roles/filters/applications`. Rust:
+    `bff_roles_api.rs` (751 LoC).
+
+    *Processes page (`/bff/processes/*` — 7 routes):*
+    CRUD + archive + by-code lookup. Rust mounts the canonical
+    `processes_router` under both `/api/processes` and `/bff/processes`
+    so the BFF surface is the same as the API surface. Go equivalent:
+    extract the chi.Mux from `processes/api.RegisterRoutes` and
+    re-mount under `/bff/processes` — needs a small refactor to make
+    `RegisterRoutes` accept a configurable prefix, or factor out the
+    sub-router so it can be mounted twice. Same pattern applies to
+    scheduled-jobs.
+
+    *Scheduled-jobs page (`/bff/scheduled-jobs/*` — 6 routes):*
+    list, get, instances list, instance get, filter-options. Same
+    mount-twice pattern as processes. Rust:
+    `bff_scheduled_jobs_api.rs` (467 LoC) — but a chunk of that is
+    Rust-specific scaffolding; effective Go port is much smaller.
+
+    *Developer page (`/bff/developer/*` — 8 routes):*
+    applications list/get, OpenAPI current/versions, event-types,
+    sync-platform-openapi. Rust: `bff_developer_api.rs` (446 LoC).
+    Lower priority — only the Developer Portal page calls these.
+
+    *Permissions (`/bff/roles/permissions/*` — 2 routes):* covered
+    above under roles.
+
+    **Recommended porting order for next session:**
+    event-types + roles (most frontend pages), then processes +
+    scheduled-jobs via mount-twice refactor, finally developer.
+    Total remaining ~25 endpoints.
 
 16. **OIDC bridge auto-provisioning.** Today the bridge fails with
     `USER_NOT_PROVISIONED` if no FlowCatalyst principal matches the

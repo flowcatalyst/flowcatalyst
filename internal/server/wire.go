@@ -331,6 +331,10 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 
 		// Shared BFF/SDK endpoints (dashboard + SDK ingest)
 		bff.RegisterRoutes(r, &bff.DashboardState{Pool: pool})
+		bff.RegisterFilterOptions(r, &bff.FilterOptionsState{
+			Clients:    clientRepo,
+			EventTypes: eventTypeRepo,
+		})
 		sdkapi.RegisterRoutes(r, &sdkapi.DispatchJobsBatchState{Repo: dispatchJobRepo})
 
 		// OpenAPI spec endpoint. Built up by per-aggregate OpenAPI()

@@ -1,0 +1,16 @@
+name: "GET /bff/filter-options/clients — client dropdown"
+
+# Powers every client-filter dropdown in the dashboard. Highest-call
+# BFF endpoint. Empty list on a fresh boot; values populate as clients
+# get created.
+
+request:
+  method: GET
+  path: /bff/filter-options/clients
+  headers:
+    Authorization: "Bearer ${ANCHOR_TOKEN}"
+
+expect:
+  status: 200
+  body_shape:
+    clients: any-array
