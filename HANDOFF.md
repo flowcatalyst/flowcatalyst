@@ -3,6 +3,110 @@
 This document is the canonical "where we are, where we're going" reference
 for the Rust → Go port. Read it cold to pick up the work.
 
+## 0. Session orientation (read this first)
+
+**Where to start cold:**
+- Repo is initialised on `main` tracking `git@github.com:flowcatalyst/flowcatalyst-go.git`.
+  Last 10 commits show the trajectory; `git log --oneline` for the full list.
+- Drop-in port is functional end-to-end on a fresh embedded Postgres:
+  events ingest → fanout produces dispatch jobs → scheduler claims them →
+  mediator dispatches with HMAC signing → frontend serves at `/`.
+- `make build` builds frontend (`pnpm install --frozen-lockfile && pnpm build`)
+  then every Go binary. `make go-build` skips the frontend step. Fresh
+  checkout requires Node + pnpm to be present for `make build`.
+- Tests: `make test-unit` runs all unit tests (DB-free, fast).
+  `make test-integration` runs the testcontainers Postgres suite.
+
+**Last-session deltas (commits 7a32a88 → 03fc690):**
+
+| Commit  | What                                                                         |
+|---------|------------------------------------------------------------------------------|
+| 7a32a88 | Parity harness framework — `tools/parityharness/` + 6 starter YAMLs          |
+| efb8052 | HTTP mediator: wire `ConnectTimeout` into Transport.DialContext              |
+| ebbda58 | HTTP mediator: enable HTTP/2 `StrictMaxConcurrentStreams`                    |
+| 49dd5a9 | HTTP mediator: per-host concurrency cap via `hostLimiter` RoundTripper       |
+| d886091 | Router HTTP routes — 17 health/monitoring/warnings/config endpoints          |
+| fc71e53 | Vue frontend ported + embedded via `//go:embed` (gitignored `dist/`)         |
+| 0e678f8 | OpenAPI 3.0 spec framework + spec for 3 aggregates (eventtype/principal/sub) |
+| 0ea8bcd | BFF filter-options (clients + event-type applications)                       |
+| 03fc690 | BFF event-types (9 of 13 routes)                                             |
+
+**Pending work, ordered by recommended priority:**
+
+1. **Roles BFF (6 routes)** — `internal/platform/shared/bff/roles.go`.
+   Same pattern as event_types.go just landed. Unblocks the roles page in
+   the embedded frontend. Smallest next thread.
+2. **Processes + scheduled-jobs BFF via mount-twice refactor (13 routes)**
+   — Rust mounts the canonical `processes_router` under both `/api/*`
+   and `/bff/*`. Go needs `RegisterRoutes` to accept a configurable
+   prefix; once that lands, both BFF surfaces are free. Same applies to
+   scheduled-jobs.
+3. **Event-types BFF: the missing 4** — needs ArchiveUseCase,
+   FinaliseSchemaUseCase, DeprecateSchemaUseCase, plus wiring
+   SyncEventTypesUseCase through state.
+4. **OpenAPI sweep — remaining ~17 aggregates** —
+   `internal/platform/shared/openapi/` framework is in. Each aggregate
+   adds an `OpenAPI(doc)` function alongside `RegisterRoutes`. Pattern:
+   see eventtype/api/openapi.go (~70 LoC each). Once 4-6 more land, wire
+   the `parity-spec` CI job (currently a stub) to run oasdiff against
+   the Rust spec for real.
+5. **Developer BFF (8 routes)** — `/bff/developer/applications/*` for
+   the Developer Portal. Lower priority — only one page calls these.
+6. **HTTP slot-pool port** — the Rust side is designing a per-host
+   `HostConnectionPool` with up to 8 H2 connection slots × ~100 streams.
+   Once Rust lands, port to Go so drop-in parity holds (the current
+   Go `hostLimiter` becomes the laggard). Design notes in task #20 and
+   in `internal/router/host_limiter.go`'s doc.
+7. **Manager surface for Lifecycle hooks** — Go `router.Manager` doesn't
+   yet expose `PoolStats()`, `CheckMemoryHealth()`, `ReapStaleEntries()`,
+   `consumer_ids()`. Once added, the LifecycleManager's deferred tasks
+   (memory health monitor, consumer auto-restart, reaper) can land. See
+   `internal/router/lifecycle.go` for the placeholders.
+8. **Fanout subscription cache race window** —
+   `internal/stream/fan_out.go` caches active subscriptions for 5s. A
+   subscription created and a matching event published in the same
+   5-second window can be claimed by the no-subs fast path before the
+   cache refreshes. Mitigation: drop the TTL or refresh-on-every-cycle.
+9. **Structured logging tidy** — Go calls `slog.Warn(...)` inline with
+   ad-hoc keys; TS uses `this.logger.warn({...}, "msg")` consistently.
+   Sweep + normalise per-subsystem skeletons. Low-stakes quality-of-life.
+10. **Pre-existing 22a/22b** — `cmd/fc-mcp-server` + `pkg/fcsdk/sync` SDK
+    consumer-side compile-time issues were fixed earlier; verify by
+    running `go build ./...` which now succeeds cleanly.
+
+**Patterns established in last session — apply for new work:**
+
+- **HTTP route packages:** mirror `internal/router/api/` —
+  `RegisterRoutes(r chi.Router, deps Deps)` with deps held by reference
+  so future endpoints can grow without re-threading callers.
+- **OpenAPI spec:** every api package pairs `RegisterRoutes` with an
+  `OpenAPI(doc *openapi.Doc)` function. Recommended pattern for new
+  packages: fused `Mount(r chi.Router, doc *openapi.Doc, state *State)`
+  so route + spec can't drift. Today the two functions are paired by
+  convention — bring forward when fused helper lands.
+- **BFF endpoints:** wire DTOs separate from internal types. Match
+  Rust's per-endpoint JSON-case decisions (snake_case where Rust uses
+  default serde; camelCase where Rust has explicit renames). See
+  `internal/platform/shared/bff/event_types.go` + `dto.go`-style files
+  for the pattern.
+- **Parity-harness YAML:** every new endpoint that's wire-stable should
+  get a `tests/parity/requests/<area>/<name>.yaml` so the harness can
+  catch drift once a Rust+Go pair is running side by side.
+- **Smoke testing:** boot `fc-dev`, curl with `X-FC-Test-*` headers
+  (anchor scope = bypass all permission checks), verify status + JSON
+  shape. The harness verifies the shape automatically once the YAML
+  exists.
+
+**Files not authored by Claude but present uncommitted at session end:**
+
+- `CONVENTIONS.md` — appears to be a separate authored doc on patterns.
+  Inspect + commit separately.
+- Doc-comment expansions in `internal/router/lifecycle.go` and
+  `internal/router/pool.go` — left untouched in case they're work-
+  in-progress edits.
+
+---
+
 ## 1. The Drop-In Contract
 
 The Go port is a **drop-in replacement** for the Rust binaries. That means:
