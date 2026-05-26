@@ -1,0 +1,12 @@
+name: "GET /health — liveness probe"
+
+# Unauthenticated check that both binaries are up. No body, no auth.
+# Useful first case in any parity run because it isolates "is the
+# server reachable" from any other failure mode.
+
+request:
+  method: GET
+  path: /health
+
+expect:
+  status: 200

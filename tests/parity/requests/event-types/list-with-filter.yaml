@@ -1,0 +1,14 @@
+name: "GET /api/event-types?application=platform — filtered list"
+
+# Same endpoint, narrowed to the `platform` application. Exercises the
+# query-string filter pass-through. The Rust and Go counts should be
+# identical (both seeded the same catalog).
+
+request:
+  method: GET
+  path: /api/event-types?application=platform
+  headers:
+    Authorization: "Bearer ${ANCHOR_TOKEN}"
+
+expect:
+  status: 200

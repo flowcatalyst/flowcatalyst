@@ -1,0 +1,22 @@
+name: "GET /api/event-types without auth — 403"
+
+# Confirms the authenticator middleware is wired identically on both
+# binaries and returns the same status + error envelope shape. The
+# envelope is `{ "code": "UNAUTHENTICATED", "message": "..." }` —
+# distinct from the OAuth `{ "error": ..., "error_description": ... }`
+# envelope used by the /oauth/* endpoints.
+#
+# (Earlier docs/api-parity.md suggested 401 — the binary returns 403.
+# The harness's first self-test caught this divergence in the YAML
+# expectation; left as a worked example of why the harness pays off
+# immediately, even on a same-server self-test.)
+
+request:
+  method: GET
+  path: /api/event-types
+
+expect:
+  status: 403
+  body_shape:
+    code: any-string
+    message: any-string

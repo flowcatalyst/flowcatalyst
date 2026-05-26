@@ -1,0 +1,17 @@
+name: "GET /api/dispatch-jobs — list (no filters)"
+
+# Empty-DB case: both binaries should return an empty list with the
+# same shape (`{"items": []}`). Useful for verifying that "no rows"
+# doesn't accidentally become null in one and [] in the other — a
+# common drop-in foot-gun.
+
+request:
+  method: GET
+  path: /api/dispatch-jobs
+  headers:
+    Authorization: "Bearer ${ANCHOR_TOKEN}"
+
+expect:
+  status: 200
+  body_shape:
+    items: any-array

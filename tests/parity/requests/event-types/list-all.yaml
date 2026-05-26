@@ -1,0 +1,25 @@
+name: "GET /api/event-types — list (seeded catalog)"
+
+# Both binaries seed the 72 platform event types at boot. The harness
+# doesn't pin the count (Rust + Go could disagree about extra rows the
+# operator added during testing), but every row must be a tsid-prefixed
+# id and a colon-separated code.
+#
+# Auth: the harness supplies a bearer token via ${ANCHOR_TOKEN}. If
+# unset, the case is skipped — not failed — so this file also exercises
+# the harness's missing-env handling.
+
+request:
+  method: GET
+  path: /api/event-types
+  headers:
+    Authorization: "Bearer ${ANCHOR_TOKEN}"
+
+expect:
+  status: 200
+  body_shape:
+    items:
+      - id: tsid
+        code: any-string
+        name: any-string
+        status: any-string

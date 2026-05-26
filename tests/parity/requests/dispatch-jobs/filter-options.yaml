@@ -1,0 +1,22 @@
+name: "GET /api/dispatch-jobs/filter-options — facet endpoint"
+
+# DistinctValues facet endpoint used by the frontend. Returns six
+# enumerable arrays. Confirms that the Go side returns the same set of
+# facet names with the same casing (statuses/codes/clientIds/...) —
+# this exact JSON shape is consumed by the Vue app.
+
+request:
+  method: GET
+  path: /api/dispatch-jobs/filter-options
+  headers:
+    Authorization: "Bearer ${ANCHOR_TOKEN}"
+
+expect:
+  status: 200
+  body_shape:
+    statuses: any-array
+    codes: any-array
+    clientIds: any-array
+    dispatchPoolIds: any-array
+    subscriptionIds: any-array
+    kinds: any-array

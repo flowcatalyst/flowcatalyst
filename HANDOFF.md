@@ -418,11 +418,24 @@ against the same DB and confirm identical behaviour. Recommended steps:
 2. **Stop Rust. Start Go fc-server against the SAME PG.** Run the
    identical smoke test. Confirm identical responses.
 
-3. **Run a contract harness** — `tools/parityharness/` is the planned
-   home. Today it's a placeholder. The shape: a Go test that hits a
-   Rust server on `:3001` and a Go server on `:3000`, fires N identical
-   requests, asserts each response matches byte-for-byte (modulo
-   timestamps + generated IDs).
+3. ~~**Run a contract harness**~~ **Done (framework).**
+   `tools/parityharness/` is a working binary. Usage:
+   `go run ./tools/parityharness -rust=URL -go=URL -dir=tests/parity/requests`.
+   YAML cases under `tests/parity/requests/` describe `name + request +
+   expect (status, body_shape)`. `${VAR}` substitution in path/body/
+   headers; missing vars cause clean SKIPs. Comparator does status +
+   load-bearing-header diffs + placeholder-typed JSON shape matches
+   (`tsid`, `uuid`, `iso8601-microsecond`, `any-*`). 15 unit tests on
+   the comparator + placeholder matchers. Self-tested against fc-dev
+   pointed at itself (both `-rust` and `-go` → same URL) — 2 PASS, 5
+   SKIP (no `ANCHOR_TOKEN` env), exit 0; divergence path proved by
+   pointing `-go` at a closed port (exit 1, attributed correctly).
+   First self-test immediately caught 2 inaccurate YAML expectations
+   (status 401 vs actual 403; error envelope `error/error_description`
+   vs actual `code/message`) — exactly the kind of contract drift the
+   harness exists to catch. Next: 6 starter YAMLs under smoke/,
+   event-types/, dispatch-jobs/, principals/ — grow as new endpoints
+   land.
 
 4. **Frontend smoke** — copy the Vue app, set `VITE_API_BASE_URL` to
    the Go server, click through the main screens (clients, users,
@@ -816,8 +829,14 @@ If picking this up cold, I'd tackle in this order:
    HTTP route surface (40+ endpoints under `/monitoring/*`,
    `/warnings/*`, `/config/*`) + Prometheus metrics.
 
-8. **Contract harness** — `tools/parityharness/` with Rust-vs-Go
-   diffing. Highest leverage for verifying drop-in claim.
+8. ~~**Contract harness**~~ **Done (framework).** See §6 #3 for
+   detail. To use it for the actual drop-in proof: bring up the Rust
+   `fc-platform-server` (or whichever binary serves the API) on one
+   port, bring up Go `fc-dev` on another, point the harness at both.
+   Cases turn from SKIP → PASS as you supply auth (`ANCHOR_TOKEN` env)
+   and as the YAML library grows. Wire into CI once both binaries can
+   be brought up in the GitHub Actions runner (currently only Postgres
+   is — Rust binary needs publishing).
 
 9. ~~**Argon2id PHC salt**~~ **Done.** See §4 #4.
 
