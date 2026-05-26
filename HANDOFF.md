@@ -367,6 +367,23 @@ Specifically:
   Configurable per dispatch-pool. The values + jitter algorithm need
   to match Rust's; the current Go impl needs an audit pass to confirm.
 
+- **HTTP transport parity (`internal/router/mediator.go`).** Audited
+  against `crates/fc-router/src/mediator.rs`. Aligned on
+  `MaxIdleConnsPerHost=10` ↔ `pool_max_idle_per_host(10)`,
+  `IdleConnTimeout=90s` ↔ reqwest default, HMAC sign format
+  (`%Y-%m-%dT%H:%M:%S%.3fZ`), retry policy (3 × [1s,2s,3s]), skip-retry
+  rules (Success/ErrorConfig/RateLimited), HTTP/2 default + HTTP/1.1
+  forcing (`TLSNextProto={}` + `ForceAttemptHTTP2=false` is
+  functionally equivalent to reqwest's `http1_only()` for HTTPS — the
+  only mode used in prod). **One bug caught + fixed during the audit:**
+  `MediatorConfig.ConnectTimeout` was stored but never wired into the
+  Transport's `DialContext`, so a slow TCP connect was bounded by
+  `Client.Timeout` (15min prod) rather than `ConnectTimeout` (30s prod).
+  Fix: explicit `net.Dialer{Timeout: cfg.ConnectTimeout, KeepAlive: 30s}`
+  feeding `transport.DialContext`. Regression test
+  `TestMediatorConnectTimeoutHonoured` points at RFC-5737 TEST-NET-1
+  and asserts elapsed < 2s with a 250ms ConnectTimeout.
+
 ### Sub-systems that talk to consumers
 
 - `/oauth/token` (client_credentials grant) — SDK consumers exchange

@@ -123,6 +123,42 @@ func TestMediatorServerErrorRetries(t *testing.T) {
 	assert.Equal(t, 3, attempts, "should attempt initial + 2 retries")
 }
 
+// TestMediatorConnectTimeoutHonoured guards against the parity bug
+// where MediatorConfig.ConnectTimeout was stored but never applied to
+// the transport's DialContext. Before the fix, the only timeout that
+// fired was Client.Timeout (15min in prod), so a slow target could
+// pin a worker for the full 15 minutes vs Rust's reqwest stopping at
+// 30s. The test points at a non-routable RFC-5737 address so the TCP
+// connect stalls until our ConnectTimeout fires.
+func TestMediatorConnectTimeoutHonoured(t *testing.T) {
+	cfg := router.MediatorConfig{
+		Timeout:        5 * time.Second, // request budget is generous
+		ConnectTimeout: 250 * time.Millisecond,
+		HTTPVersion:    router.HTTPVersion1,
+		MaxRetries:     0,
+		RetryDelays:    []time.Duration{},
+	}
+	m := router.NewHTTPMediator(cfg)
+
+	msg := &common.Message{
+		ID:              "test-msg-1",
+		MediationType:   common.MediationTypeHTTP,
+		// TEST-NET-1 (RFC 5737) — guaranteed unroutable.
+		MediationTarget: "http://192.0.2.1:65000/webhook",
+	}
+
+	start := time.Now()
+	out := m.Mediate(context.Background(), msg)
+	elapsed := time.Since(start)
+
+	assert.Equal(t, common.MediationErrorConnection, out.Result,
+		"expected ErrorConnection, got %+v", out)
+	// Slack for jitter, but fail clearly if we're anywhere near the
+	// 5s request timeout — that would mean ConnectTimeout regressed.
+	assert.Less(t, elapsed, 2*time.Second,
+		"connect timeout not honoured: elapsed %v with 250ms ConnectTimeout", elapsed)
+}
+
 func TestMediatorAckFalseIsTransient(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

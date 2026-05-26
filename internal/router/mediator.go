@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -78,16 +79,38 @@ type HTTPMediator struct {
 }
 
 // NewHTTPMediator wires an HTTP mediator with the supplied config.
+// Pool + timeout layout mirrors crates/fc-router/src/mediator.rs
+// (reqwest::Client builder):
+//
+//   - MaxIdleConnsPerHost = 10           ↔ pool_max_idle_per_host(10)
+//   - IdleConnTimeout = 90s              ↔ reqwest default
+//   - DialContext.Timeout = ConnectTimeout ↔ connect_timeout(...)
+//   - Client.Timeout = Timeout           ↔ timeout(...)
+//
+// `ResponseHeaderTimeout` is intentionally NOT set: it would shadow
+// Client.Timeout for the response-header phase only and obscure which
+// timeout is actually enforced. Single source of truth: Client.Timeout.
 func NewHTTPMediator(cfg MediatorConfig) *HTTPMediator {
+	dialer := &net.Dialer{
+		// Mirrors reqwest's `connect_timeout` — bounds TCP connect
+		// (incl. DNS) so a slow target fails fast instead of consuming
+		// the full Client.Timeout budget. Was a silent divergence
+		// before this fix: the field existed on MediatorConfig but
+		// never reached the transport, so prod Go runs effectively
+		// had a 15min connect timeout vs Rust's 30s.
+		Timeout:   cfg.ConnectTimeout,
+		KeepAlive: 30 * time.Second,
+	}
 	transport := &http.Transport{
+		DialContext:         dialer.DialContext,
 		MaxIdleConnsPerHost: 10,
-		ResponseHeaderTimeout: cfg.Timeout,
 		IdleConnTimeout:     90 * time.Second,
 	}
 	// HTTP/2 via ALPN is the net/http default for HTTPS; for HTTP/1.1 we
 	// disable HTTP/2 explicitly. Go's transport doesn't expose a clean
 	// "h1 only" flag; setting ForceAttemptHTTP2=false plus TLSNextProto
-	// with an h2 entry that returns nil disables h2 negotiation.
+	// to an empty map prevents ALPN h2 negotiation. Functionally
+	// equivalent to reqwest's `http1_only()` for HTTPS dispatch.
 	if cfg.HTTPVersion == HTTPVersion1 {
 		transport.ForceAttemptHTTP2 = false
 		transport.TLSNextProto = map[string]func(authority string, c *tls.Conn) http.RoundTripper{}
