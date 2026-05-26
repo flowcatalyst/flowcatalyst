@@ -384,6 +384,25 @@ Specifically:
   `TestMediatorConnectTimeoutHonoured` points at RFC-5737 TEST-NET-1
   and asserts elapsed < 2s with a 250ms ConnectTimeout.
 
+- **Intentional Go-only divergence: `StrictMaxConcurrentStreams`.**
+  AWS ALBs advertise a per-H2-connection stream cap (~128) via SETTINGS
+  frames. Without `StrictMaxConcurrentStreams`, Go's HTTP/2 client
+  ignores the hint and opens streams until the server returns
+  `REFUSED_STREAM` / `GOAWAY` — bad for tail latency and failure-mode
+  observability. With it, the client *waits* for an in-flight stream
+  to complete before starting a new one. Rust's reqwest doesn't expose
+  this knob today, so Go is strictly safer against ALB's H2→H1
+  translation cap. Set via
+  `http2.ConfigureTransports(transport).StrictMaxConcurrentStreams = true`
+  in `NewHTTPMediator` (production HTTP/2 path only; HTTP/1.1 dev
+  path unaffected). Surfaced as a known intentional divergence so the
+  drop-in audit doesn't flag it as a bug. **Workload note:** if your
+  dispatch pool's `Concurrency` is set above ALB's stream cap and you
+  observe head-of-line blocking on slow handlers, segregating
+  fast/slow workloads into separate pools is the recommended
+  mitigation; per-host concurrency caps in the transport are not
+  ported (yet).
+
 ### Sub-systems that talk to consumers
 
 - `/oauth/token` (client_credentials grant) — SDK consumers exchange

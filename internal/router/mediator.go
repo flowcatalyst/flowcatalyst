@@ -20,6 +20,8 @@ import (
 	"strconv"
 	"time"
 
+	"golang.org/x/net/http2"
+
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 )
 
@@ -116,6 +118,16 @@ func NewHTTPMediator(cfg MediatorConfig) *HTTPMediator {
 		transport.TLSNextProto = map[string]func(authority string, c *tls.Conn) http.RoundTripper{}
 	} else {
 		transport.ForceAttemptHTTP2 = true
+		// Go-only divergence from Rust: enable StrictMaxConcurrentStreams
+		// so the HTTP/2 client *waits* when ALB advertises a per-connection
+		// stream limit (typically ~128) instead of cheerfully opening
+		// extra streams and getting back REFUSED_STREAM / GOAWAY. Rust's
+		// reqwest doesn't expose this knob today, so Go is strictly safer
+		// against the AWS-ALB H2→H1 translation cap. Documented in
+		// HANDOFF.md §5 as an intentional drop-in divergence.
+		if h2, err := http2.ConfigureTransports(transport); err == nil && h2 != nil {
+			h2.StrictMaxConcurrentStreams = true
+		}
 	}
 	return &HTTPMediator{
 		client: &http.Client{Transport: transport, Timeout: cfg.Timeout},
