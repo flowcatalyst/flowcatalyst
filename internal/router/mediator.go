@@ -47,21 +47,32 @@ const (
 
 // MediatorConfig configures the HTTP mediator.
 type MediatorConfig struct {
-	Timeout        time.Duration
-	ConnectTimeout time.Duration
-	HTTPVersion    HTTPVersion
-	MaxRetries     int
-	RetryDelays    []time.Duration
+	Timeout             time.Duration
+	ConnectTimeout      time.Duration
+	TLSHandshakeTimeout time.Duration
+	HTTPVersion         HTTPVersion
+	MaxRetries          int
+	RetryDelays         []time.Duration
+	// MaxConcurrentPerHost caps in-flight requests to any single target
+	// host across the whole mediator. 0 disables. Defence-in-depth
+	// against ALB stream-limit overflow and cross-pool fanout to a
+	// shared backend. Default 100 (production); 50 (dev). Go-only
+	// divergence from Rust — reqwest doesn't expose this knob.
+	MaxConcurrentPerHost int
 }
 
 // DefaultMediatorConfig matches the Rust production defaults (15min timeout, HTTP/2).
+// Adds two Go-only transport knobs (TLSHandshakeTimeout,
+// MaxConcurrentPerHost) explicitly — see HANDOFF.md §5.
 func DefaultMediatorConfig() MediatorConfig {
 	return MediatorConfig{
-		Timeout:        15 * time.Minute,
-		ConnectTimeout: 30 * time.Second,
-		HTTPVersion:    HTTPVersion2,
-		MaxRetries:     3,
-		RetryDelays:    []time.Duration{1 * time.Second, 2 * time.Second, 3 * time.Second},
+		Timeout:              15 * time.Minute,
+		ConnectTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:  10 * time.Second,
+		HTTPVersion:          HTTPVersion2,
+		MaxRetries:           3,
+		RetryDelays:          []time.Duration{1 * time.Second, 2 * time.Second, 3 * time.Second},
+		MaxConcurrentPerHost: 100,
 	}
 }
 
@@ -71,6 +82,7 @@ func DevMediatorConfig() MediatorConfig {
 	c.Timeout = 30 * time.Second
 	c.ConnectTimeout = 10 * time.Second
 	c.HTTPVersion = HTTPVersion1
+	c.MaxConcurrentPerHost = 50
 	return c
 }
 
@@ -88,6 +100,12 @@ type HTTPMediator struct {
 //   - IdleConnTimeout = 90s              ↔ reqwest default
 //   - DialContext.Timeout = ConnectTimeout ↔ connect_timeout(...)
 //   - Client.Timeout = Timeout           ↔ timeout(...)
+//
+// Two Go-only additions sit ABOVE strict-Rust parity (HANDOFF.md §5):
+//   - http2.Transport.StrictMaxConcurrentStreams=true: honour ALB's
+//     advertised H2 stream limit instead of oversubscribing.
+//   - hostLimiter RoundTripper: per-host concurrency cap regardless of
+//     pool source. Defence-in-depth for ALB-fronted backends.
 //
 // `ResponseHeaderTimeout` is intentionally NOT set: it would shadow
 // Client.Timeout for the response-header phase only and obscure which
@@ -107,6 +125,10 @@ func NewHTTPMediator(cfg MediatorConfig) *HTTPMediator {
 		DialContext:         dialer.DialContext,
 		MaxIdleConnsPerHost: 10,
 		IdleConnTimeout:     90 * time.Second,
+		// Explicit so a Go stdlib default change doesn't silently shift
+		// our TLS handshake budget. Go's current default is 10s; we
+		// match it here so the value is visible at the call site.
+		TLSHandshakeTimeout: cfg.TLSHandshakeTimeout,
 	}
 	// HTTP/2 via ALPN is the net/http default for HTTPS; for HTTP/1.1 we
 	// disable HTTP/2 explicitly. Go's transport doesn't expose a clean
@@ -129,8 +151,12 @@ func NewHTTPMediator(cfg MediatorConfig) *HTTPMediator {
 			h2.StrictMaxConcurrentStreams = true
 		}
 	}
+	// Wrap with the per-host limiter so multi-pool fanout to one host
+	// can't blow past MaxConcurrentPerHost. Zero disables → returns the
+	// inner transport unchanged.
+	rt := newHostLimiter(transport, cfg.MaxConcurrentPerHost)
 	return &HTTPMediator{
-		client: &http.Client{Transport: transport, Timeout: cfg.Timeout},
+		client: &http.Client{Transport: rt, Timeout: cfg.Timeout},
 		cfg:    cfg,
 	}
 }

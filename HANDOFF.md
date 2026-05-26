@@ -395,13 +395,29 @@ Specifically:
   translation cap. Set via
   `http2.ConfigureTransports(transport).StrictMaxConcurrentStreams = true`
   in `NewHTTPMediator` (production HTTP/2 path only; HTTP/1.1 dev
-  path unaffected). Surfaced as a known intentional divergence so the
-  drop-in audit doesn't flag it as a bug. **Workload note:** if your
-  dispatch pool's `Concurrency` is set above ALB's stream cap and you
-  observe head-of-line blocking on slow handlers, segregating
-  fast/slow workloads into separate pools is the recommended
-  mitigation; per-host concurrency caps in the transport are not
-  ported (yet).
+  path unaffected).
+
+- **Intentional Go-only divergence: per-host concurrency cap.**
+  `internal/router/host_limiter.go` wraps the `http.Transport` with a
+  per-target-host semaphore. Default cap: 100 (prod), 50 (dev). Caps
+  in-flight requests to any single host regardless of which dispatch
+  pool issued them. Sits ABOVE the transport so the cap is on logical
+  requests, not TCP connections — covers both H1 (multiple TCP
+  connections) and H2 (multiplexed streams on one connection)
+  uniformly. Defence-in-depth for the AWS-ALB case: even if a peer
+  doesn't advertise an H2 stream limit (so `StrictMaxConcurrentStreams`
+  has nothing to honour), the host limiter still bounds fanout.
+  Cancellation while queued returns promptly without dispatching the
+  request — verified by `TestHostLimiter_ContextCancelReleasesQueued`.
+  Also covers the cross-pool case: if two dispatch pools target the
+  same host, they share the per-host budget rather than each running
+  their pool's `Concurrency` independently. Set
+  `MediatorConfig.MaxConcurrentPerHost = 0` to disable.
+
+- **Intentional Go-only knob: explicit `TLSHandshakeTimeout`.** Go's
+  stdlib default is 10s but we set it explicitly via
+  `MediatorConfig.TLSHandshakeTimeout` so a stdlib default change can't
+  silently shift our handshake budget.
 
 ### Sub-systems that talk to consumers
 
