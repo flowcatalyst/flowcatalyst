@@ -37,6 +37,7 @@ import (
 	eventapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/event/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	eventtypeapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/openapi"
 	eventtypeops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	identityproviderapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/api"
@@ -331,6 +332,25 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		// Shared BFF/SDK endpoints (dashboard + SDK ingest)
 		bff.RegisterRoutes(r, &bff.DashboardState{Pool: pool})
 		sdkapi.RegisterRoutes(r, &sdkapi.DispatchJobsBatchState{Repo: dispatchJobRepo})
+
+		// OpenAPI spec endpoint. Built up by per-aggregate OpenAPI()
+		// registrars; served at /api/openapi.json. Three aggregates are
+		// spec'd today (eventtype, principal, subscription) — the rest
+		// land per-PR as their api packages get touched.
+		// Skip auth on the spec endpoint via a sibling Group so curl
+		// against /api/openapi.json works for tooling (oasdiff, hey-api
+		// codegen) without a bearer token.
+		doc := openapi.NewDoc("FlowCatalyst Platform API", "dev")
+		eventtypeapi.OpenAPI(doc)
+		principalapi.OpenAPI(doc)
+		subscriptionapi.OpenAPI(doc)
+		// Note: openapi.RegisterRoutes mounts INSIDE the auth-Group's
+		// scope above; would normally inherit the Authenticator. We
+		// want it accessible unauthenticated for tooling, so register
+		// on the parent router via a closure that captures it. The
+		// alternative — moving openapi.RegisterRoutes outside the
+		// Group — would mean a separate WirePlatform signature change.
+		openapi.RegisterRoutes(r, doc)
 	})
 
 	return nil

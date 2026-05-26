@@ -1,0 +1,24 @@
+name: "GET /api/openapi.json — spec served + has core shape"
+
+# Until the spec is fully built out, this YAML just asserts the
+# top-level shape (openapi/info/paths/components keys present, info
+# carries title + version). Once every aggregate has an OpenAPI
+# registrar, this test can grow to assert the full path set matches
+# Rust's spec — at which point oasdiff replaces it in CI.
+#
+# Unauthenticated: the spec endpoint must be reachable for tooling
+# (hey-api codegen, oasdiff CI job) without a bearer token.
+
+request:
+  method: GET
+  path: /api/openapi.json
+
+expect:
+  status: 200
+  body_shape:
+    openapi: any-string
+    info:
+      title: any-string
+      version: any-string
+    paths: any-object
+    components: any-object

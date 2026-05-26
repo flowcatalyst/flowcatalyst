@@ -288,9 +288,34 @@ the source. Search for the marker to find the exact file:line.
     routes (`/principals/some-id`) → fall back to `index.html`. The
     Hey-API generated TypeScript client under
     `frontend/src/api/generated/` is currently committed (matches
-    Rust); regenerate from Go's spec once the OpenAPI generator
-    lands (see lower-priority item #23 — added). Binary size delta:
-    +7.9MB (matches the 7.4MB dist/ + embed overhead).
+    Rust); will be regenerated from Go's spec — see item #24a
+    (OpenAPI), now landed (framework + 3 aggregates). Binary size
+    delta: +7.9MB (matches the 7.4MB dist/ + embed overhead).
+
+14a. **OpenAPI spec generation.** **Framework done.**
+    `internal/platform/shared/openapi/` provides `Doc` + `Op()` +
+    helper option builders (`Tag`, `PathParam`, `QueryParam`,
+    `RequestBody`, `Response`) with reflective schema generation via
+    `getkin/kin-openapi/openapi3gen`. Each api package pairs its
+    `RegisterRoutes` with an `OpenAPI(doc)` function — three landed
+    today (eventtype, principal, subscription), each covering every
+    route the package exposes. `WirePlatform` builds the Doc,
+    threads it through each registrar, and mounts
+    `GET /api/openapi.json` unauthenticated for tooling
+    (oasdiff, hey-api codegen). Smoke verified:
+    `curl /api/openapi.json` → 200, 22.5KB, 17 paths, 19 component
+    schemas. Parity-harness YAML in
+    `tests/parity/requests/openapi/spec.yaml` asserts the spec is
+    served + has the core OpenAPI 3.0 top-level shape.
+    **Still pending** (per-PR work as api packages get touched):
+    spec for the other ~17 aggregates (client, role, application,
+    serviceaccount, etc.); wiring the parity-spec CI job
+    (`.github/workflows/ci.yml`) to actually run `oasdiff` once the
+    spec is complete; pointing frontend's `openapi-ts.config.ts` at
+    Go's spec URL; Swagger UI at `/api/swagger`. Pattern recommendation
+    for future packages: prefer a fused `Mount(r, doc, state)` helper
+    that registers route + spec together so they can't drift; today
+    `RegisterRoutes` + `OpenAPI` are paired by convention.
 
 15. **Frontend-only `/bff/*` routes.** Beyond `/bff/dashboard` (which
     is ported), Rust exposes `/bff/events`, `/bff/dispatch-jobs`,
