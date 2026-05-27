@@ -69,10 +69,14 @@ last gate before cutover.
    ScheduledJobInstance + InstanceLog read repos first), developer BFF
    (8), event-types lifecycle 4 (archive, finalise-schema, deprecate-schema,
    sync-platform — each needs a use case), roles sync-platform.
-2. **Per-row sync events** — `eventtype/operations/sync.go` emits only
-   the rollup; Rust emits per-row Created/Updated/Deleted. Same gap
-   for role, dispatch_pool, subscription, scheduled_job, process,
-   platformconfig.
+2. **Per-row sync events.** ~~`eventtype/operations/sync.go` emits only
+   the rollup.~~ **Done for eventtype.** A new `commit.Sync` helper
+   (backed by `usecasepgx.CommitSync`) persists a batch of save +
+   delete pairs alongside their per-row events and the rollup, all in
+   one transaction. Same gap still open for role, dispatch_pool,
+   subscription, scheduled_job, process, platformconfig — each sync
+   op now needs the same refactor (port the events.go per-row
+   types if missing, then plug into `commit.Sync`).
 3. **Specialty routes** — connection activate/pause, dispatch-pool
    suspend (new use cases needed).
 4. **Principal find-methods** — Go has 3, Rust has 14+

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
-	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
@@ -30,12 +29,10 @@ type SyncEventTypesCommand struct {
 }
 
 // SyncEventTypes bulk-upserts an application's event-type catalog within
-// a single multi-row transaction, then emits a single EventTypesSynced
-// rollup event with create/update/delete counts.
-//
-// NB the rollup event is emitted in a separate transaction from the
-// bulk writes — same as the previous implementation. Per-row events
-// (Created/Updated/Deleted) match the Rust source but aren't ported yet.
+// a single transaction. Emits a per-row [EventTypeCreated], [EventTypeUpdated],
+// or [EventTypeDeleted] event for every row touched, alongside one
+// [EventTypesSynced] rollup carrying the create/update/delete counts.
+// All event writes are atomic with the row writes via [commit.Sync].
 func SyncEventTypes(
 	ctx context.Context,
 	repo *eventtype.Repository,
@@ -63,24 +60,29 @@ func SyncEventTypes(
 		incomingCodes[in.Code] = struct{}{}
 	}
 
-	var created, updated, deleted int
-	syncedCodes := make([]string, 0, len(cmd.EventTypes))
-
-	tx, err := repo.Pool().Begin(ctx)
-	if err != nil {
-		return zero, usecase.Internal("TX_BEGIN", "begin tx failed", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	var (
+		saves       []commit.SyncSave[eventtype.EventType]
+		deletes     []commit.SyncDelete[eventtype.EventType]
+		syncedCodes = make([]string, 0, len(cmd.EventTypes))
+		created     int
+		updated     int
+		deleted     int
+	)
 
 	for _, in := range cmd.EventTypes {
 		syncedCodes = append(syncedCodes, in.Code)
 		if cur, ok := existingByCode[in.Code]; ok {
 			cur.Name = in.Name
 			cur.Description = in.Description
-			cur.UpdatedAt = time.Now().UTC()
-			if err := repo.PersistTx(ctx, cur, tx); err != nil {
-				return zero, usecase.Internal("REPO", "update failed", err)
-			}
+			saves = append(saves, commit.SyncSave[eventtype.EventType]{
+				Aggregate: cur,
+				Event: EventTypeUpdated{
+					Metadata:    usecase.NewEventMetadata(ec, EventTypeUpdatedType, EventTypeSourceConst, subjectFor(cur.ID)),
+					EventTypeID: cur.ID,
+					Name:        cur.Name,
+					Description: cur.Description,
+				},
+			})
 			updated++
 			continue
 		}
@@ -90,9 +92,21 @@ func SyncEventTypes(
 		}
 		et.Description = in.Description
 		et.Source = eventtype.SourceAPI
-		if err := repo.PersistTx(ctx, et, tx); err != nil {
-			return zero, usecase.Internal("REPO", "create failed", err)
-		}
+		saves = append(saves, commit.SyncSave[eventtype.EventType]{
+			Aggregate: et,
+			Event: EventTypeCreated{
+				Metadata:    usecase.NewEventMetadata(ec, EventTypeCreatedType, EventTypeSourceConst, subjectFor(et.ID)),
+				EventTypeID: et.ID,
+				Code:        et.Code,
+				Name:        et.Name,
+				Description: et.Description,
+				Application: et.Application,
+				Subdomain:   et.Subdomain,
+				Aggregate:   et.Aggregate,
+				EventName:   et.EventName,
+				ClientID:    et.ClientID,
+			},
+		})
 		created++
 	}
 
@@ -104,18 +118,19 @@ func SyncEventTypes(
 			if cur.Source != eventtype.SourceAPI {
 				continue // never touch UI/CODE-managed rows
 			}
-			if err := repo.DeleteTx(ctx, cur, tx); err != nil {
-				return zero, usecase.Internal("REPO", "delete failed", err)
-			}
+			deletes = append(deletes, commit.SyncDelete[eventtype.EventType]{
+				Aggregate: cur,
+				Event: EventTypeDeleted{
+					Metadata:    usecase.NewEventMetadata(ec, EventTypeDeletedType, EventTypeSourceConst, subjectFor(cur.ID)),
+					EventTypeID: cur.ID,
+					Code:        cur.Code,
+				},
+			})
 			deleted++
 		}
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return zero, usecase.Internal("TX_COMMIT", "commit failed", err)
-	}
-
-	event := EventTypesSynced{
+	rollup := EventTypesSynced{
 		Metadata: usecase.NewEventMetadata(ec, EventTypesSyncedType, EventTypeSourceConst,
 			"platform.eventtypes."+cmd.ApplicationCode),
 		ApplicationCode: cmd.ApplicationCode,
@@ -124,5 +139,5 @@ func SyncEventTypes(
 		Deleted:         uint32(deleted),
 		SyncedCodes:     syncedCodes,
 	}
-	return commit.Emit(ctx, uow, event, cmd)
+	return commit.Sync(ctx, uow, repo, saves, deletes, rollup, cmd)
 }

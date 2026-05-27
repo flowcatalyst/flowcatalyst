@@ -134,6 +134,34 @@ func Emit[E usecase.DomainEvent, C any](
 	return unwrap(usecasepgx.EmitEvent(ctx, uow, event, command))
 }
 
+// SyncSave pairs an aggregate to persist with the per-row domain event
+// to emit for it. Type alias for [usecasepgx.SyncSaveItem].
+type SyncSave[A usecase.HasID] = usecasepgx.SyncSaveItem[A]
+
+// SyncDelete pairs an aggregate to delete with the per-row domain event
+// to emit for it. Type alias for [usecasepgx.SyncDeleteItem].
+type SyncDelete[A usecase.HasID] = usecasepgx.SyncDeleteItem[A]
+
+// Sync persists a batch of saves + deletes of one aggregate type, emits
+// one per-row event for each row, and emits one rollup event — all in
+// one transaction. Returns the rollup as the committed value.
+//
+// Use for sync / bulk-upsert endpoints whose consumers want per-row
+// Created / Updated / Deleted events alongside the rollup. Single-row
+// operations should use [Save] / [Delete]; one-shot bulk operations
+// that only need a summary event should use [SaveAll].
+func Sync[A usecase.HasID, RE usecase.DomainEvent, C any](
+	ctx context.Context,
+	uow *usecasepgx.UnitOfWork,
+	repo usecasepgx.Persist[A],
+	saves []SyncSave[A],
+	deletes []SyncDelete[A],
+	rollup RE,
+	command C,
+) (Committed[RE], error) {
+	return unwrap(usecasepgx.CommitSync(ctx, uow, repo, saves, deletes, rollup, command))
+}
+
 // unwrap converts a usecasepgx Result[E] into the (Committed[E], error)
 // shape this package exposes. The conversion is the only path through
 // which the unexported event field gets populated, which is what makes
