@@ -13,6 +13,7 @@
 -- in migration 023) and by `PartitionManagerService` in fc-dev. The Rust
 -- manager auto-defers when partman is detected.
 
+-- +goose StatementBegin
 DO $migration022$
 DECLARE
     already_partitioned boolean;
@@ -116,3 +117,4 @@ BEGIN
     END LOOP;
 END
 $migration022$;
+-- +goose StatementEnd

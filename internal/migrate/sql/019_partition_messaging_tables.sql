@@ -39,6 +39,7 @@
 --     same deduplication_id in *different* months are no longer rejected
 --     by the database. App-level dedup compensates if needed.
 
+-- +goose StatementBegin
 DO $migration018$
 DECLARE
     already_partitioned boolean;
@@ -286,3 +287,4 @@ BEGIN
     END LOOP;
 END
 $migration018$;
+-- +goose StatementEnd

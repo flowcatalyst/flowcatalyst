@@ -16,6 +16,7 @@ ALTER TABLE msg_events ADD COLUMN IF NOT EXISTS fanned_out_at TIMESTAMPTZ;
 
 ALTER TABLE msg_events ALTER COLUMN created_at SET NOT NULL;
 
+-- +goose StatementBegin
 DO $events$
 BEGIN
     IF EXISTS (
@@ -33,6 +34,7 @@ BEGIN
     END IF;
 END
 $events$;
+-- +goose StatementEnd
 
 DROP INDEX IF EXISTS idx_msg_events_type;
 DROP INDEX IF EXISTS idx_msg_events_client_type;
@@ -49,6 +51,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_msg_events_deduplication ON msg_events (de
 
 ALTER TABLE msg_events_read ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
+-- +goose StatementBegin
 DO $events_read$
 BEGIN
     IF EXISTS (
@@ -66,11 +69,13 @@ BEGIN
     END IF;
 END
 $events_read$;
+-- +goose StatementEnd
 
 -- ─── msg_dispatch_jobs ────────────────────────────────────────────────────
 
 ALTER TABLE msg_dispatch_jobs ALTER COLUMN created_at SET NOT NULL;
 
+-- +goose StatementBegin
 DO $dj$
 BEGIN
     IF EXISTS (
@@ -88,11 +93,13 @@ BEGIN
     END IF;
 END
 $dj$;
+-- +goose StatementEnd
 
 -- ─── msg_dispatch_jobs_read ───────────────────────────────────────────────
 
 ALTER TABLE msg_dispatch_jobs_read ALTER COLUMN created_at SET NOT NULL;
 
+-- +goose StatementBegin
 DO $djr$
 BEGIN
     IF EXISTS (
@@ -110,6 +117,7 @@ BEGIN
     END IF;
 END
 $djr$;
+-- +goose StatementEnd
 
 -- ─── msg_dispatch_job_attempts ────────────────────────────────────────────
 
@@ -117,6 +125,7 @@ ALTER TABLE msg_dispatch_job_attempts ALTER COLUMN created_at SET DEFAULT NOW();
 UPDATE msg_dispatch_job_attempts SET created_at = NOW() WHERE created_at IS NULL;
 ALTER TABLE msg_dispatch_job_attempts ALTER COLUMN created_at SET NOT NULL;
 
+-- +goose StatementBegin
 DO $att$
 BEGIN
     IF EXISTS (
@@ -134,6 +143,7 @@ BEGIN
     END IF;
 END
 $att$;
+-- +goose StatementEnd
 
 DROP INDEX IF EXISTS idx_msg_dispatch_job_attempts_job_number;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_msg_dispatch_job_attempts_job_number
