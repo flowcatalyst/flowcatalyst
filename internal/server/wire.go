@@ -299,6 +299,11 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			Applications: applicationRepo,
 			UoW:          uow,
 		})
+		bff.RegisterScheduledJobs(r, &bff.ScheduledJobsState{
+			Jobs:      scheduledJobRepo,
+			Instances: scheduledjob.NewInstanceRepository(pool),
+			Clients:   clientRepo,
+		})
 		sdkapi.RegisterRoutes(r, &sdkapi.DispatchJobsBatchState{Repo: dispatchJobRepo})
 	})
 

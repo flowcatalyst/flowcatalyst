@@ -1,0 +1,19 @@
+name: "GET /bff/scheduled-jobs — paginated job list"
+
+# Powers the ScheduledJobsListPage. Returns the
+# {data, page, size, total, totalPages} envelope Rust emits.
+
+request:
+  method: GET
+  path: /bff/scheduled-jobs
+  headers:
+    Authorization: "Bearer ${ANCHOR_TOKEN}"
+
+expect:
+  status: 200
+  body_shape:
+    data: any-array
+    page: any-number
+    size: any-number
+    total: any-number
+    totalPages: any-number

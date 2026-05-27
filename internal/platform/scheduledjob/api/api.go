@@ -122,14 +122,14 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 	if err := auth.CanReadScheduledJobs(ac); err != nil {
 		return nil, err
 	}
-	var status, clientID *string
+	filters := scheduledjob.ListFilters{}
 	if in.Status != "" {
-		status = &in.Status
+		filters.Status = &in.Status
 	}
 	if in.ClientID != "" {
-		clientID = &in.ClientID
+		filters.ClientID = &in.ClientID
 	}
-	rows, err := s.Repo.FindWithFilters(ctx, status, clientID)
+	rows, err := s.Repo.FindWithFilters(ctx, filters)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}

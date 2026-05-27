@@ -1,0 +1,16 @@
+name: "GET /bff/scheduled-jobs/filter-options — dropdowns"
+
+# Anchor sees a synthetic 'platform' entry first; statuses are the
+# hardcoded ACTIVE / PAUSED / ARCHIVED set.
+
+request:
+  method: GET
+  path: /bff/scheduled-jobs/filter-options
+  headers:
+    Authorization: "Bearer ${ANCHOR_TOKEN}"
+
+expect:
+  status: 200
+  body_shape:
+    clients: any-array
+    statuses: any-array

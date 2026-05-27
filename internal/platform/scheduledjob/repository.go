@@ -60,28 +60,31 @@ func (r *Repository) FindByCode(ctx context.Context, code string, clientID *stri
 	return rowToScheduledJob(row), nil
 }
 
-// FindWithFilters returns jobs matching non-nil filters. Hand-rolled
-// dynamic query (mirrors the application repo pattern).
-func (r *Repository) FindWithFilters(ctx context.Context, status, clientID *string) ([]ScheduledJob, error) {
-	const baseSelect = `SELECT id, client_id, code, name, description, status, crons, timezone,
+// ListFilters drives FindWithFilters / CountWithFilters. AND semantics
+// across non-nil fields.
+//
+//   - ClientID: a non-nil pointer with non-empty *string matches that
+//     client; a non-nil pointer to "" matches platform-scoped jobs
+//     (client_id IS NULL). A nil pointer means "don't filter on
+//     client_id".
+//   - Search: case-insensitive prefix match against code OR name.
+//   - Limit / Offset: applied only by List; Count ignores them.
+type ListFilters struct {
+	ClientID *string
+	Status   *string
+	Search   *string
+	Limit    *int64
+	Offset   *int64
+}
+
+// FindWithFilters returns jobs matching non-nil filters, ordered by
+// code, with optional pagination. Hand-rolled dynamic query (mirrors
+// the application repo pattern).
+func (r *Repository) FindWithFilters(ctx context.Context, f ListFilters) ([]ScheduledJob, error) {
+	q, args := buildJobQuery(`SELECT id, client_id, code, name, description, status, crons, timezone,
 		payload, concurrent, tracks_completion, timeout_seconds,
 		delivery_max_attempts, target_url, last_fired_at, created_at, updated_at,
-		created_by, updated_by, version FROM msg_scheduled_jobs`
-	q := baseSelect
-	args := []any{}
-	conds := []string{}
-	if status != nil {
-		args = append(args, *status)
-		conds = append(conds, fmt.Sprintf("status = $%d", len(args)))
-	}
-	if clientID != nil {
-		args = append(args, *clientID)
-		conds = append(conds, fmt.Sprintf("client_id = $%d", len(args)))
-	}
-	if len(conds) > 0 {
-		q += ` WHERE ` + strings.Join(conds, ` AND `)
-	}
-	q += ` ORDER BY code`
+		created_by, updated_by, version FROM msg_scheduled_jobs`, f, true)
 	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -101,6 +104,54 @@ func (r *Repository) FindWithFilters(ctx context.Context, status, clientID *stri
 		out = append(out, *rowToScheduledJob(row))
 	}
 	return out, rows.Err()
+}
+
+// CountWithFilters returns the total job count for the filters,
+// ignoring Limit/Offset so callers can render pagination totals.
+func (r *Repository) CountWithFilters(ctx context.Context, f ListFilters) (int64, error) {
+	q, args := buildJobQuery(`SELECT COUNT(*) FROM msg_scheduled_jobs`, f, false)
+	var count int64
+	if err := r.pool.QueryRow(ctx, q, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("scheduled_job count: %w", err)
+	}
+	return count, nil
+}
+
+func buildJobQuery(base string, f ListFilters, withPagination bool) (string, []any) {
+	q := base
+	args := []any{}
+	conds := []string{}
+	if f.ClientID != nil {
+		if *f.ClientID == "" {
+			conds = append(conds, "client_id IS NULL")
+		} else {
+			args = append(args, *f.ClientID)
+			conds = append(conds, fmt.Sprintf("client_id = $%d", len(args)))
+		}
+	}
+	if f.Status != nil {
+		args = append(args, *f.Status)
+		conds = append(conds, fmt.Sprintf("status = $%d", len(args)))
+	}
+	if f.Search != nil && *f.Search != "" {
+		args = append(args, "%"+*f.Search+"%")
+		conds = append(conds, fmt.Sprintf("(code ILIKE $%d OR name ILIKE $%d)", len(args), len(args)))
+	}
+	if len(conds) > 0 {
+		q += " WHERE " + strings.Join(conds, " AND ")
+	}
+	if withPagination {
+		q += " ORDER BY code"
+		if f.Limit != nil {
+			args = append(args, *f.Limit)
+			q += fmt.Sprintf(" LIMIT $%d", len(args))
+		}
+		if f.Offset != nil {
+			args = append(args, *f.Offset)
+			q += fmt.Sprintf(" OFFSET $%d", len(args))
+		}
+	}
+	return q, args
 }
 
 // FindActive lists ACTIVE jobs; used by the scheduler poller.
