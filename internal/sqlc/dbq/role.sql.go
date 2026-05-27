@@ -10,6 +10,17 @@ import (
 	"time"
 )
 
+const roleCountAssignments = `-- name: RoleCountAssignments :one
+SELECT COUNT(*) FROM iam_principal_roles WHERE role_name = $1
+`
+
+func (q *Queries) RoleCountAssignments(ctx context.Context, roleName string) (int64, error) {
+	row := q.db.QueryRow(ctx, roleCountAssignments, roleName)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const roleDelete = `-- name: RoleDelete :exec
 DELETE FROM iam_roles WHERE id = $1
 `
@@ -108,6 +119,45 @@ func (q *Queries) RoleFindByName(ctx context.Context, name string) (IamRole, err
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const roleFindBySource = `-- name: RoleFindBySource :many
+SELECT id, application_id, application_code, name, display_name, description,
+       source, client_managed, created_at, updated_at
+FROM iam_roles
+WHERE source = $1
+ORDER BY name
+`
+
+func (q *Queries) RoleFindBySource(ctx context.Context, source string) ([]IamRole, error) {
+	rows, err := q.db.Query(ctx, roleFindBySource, source)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IamRole{}
+	for rows.Next() {
+		var i IamRole
+		if err := rows.Scan(
+			&i.ID,
+			&i.ApplicationID,
+			&i.ApplicationCode,
+			&i.Name,
+			&i.DisplayName,
+			&i.Description,
+			&i.Source,
+			&i.ClientManaged,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const rolePermissionInsert = `-- name: RolePermissionInsert :exec

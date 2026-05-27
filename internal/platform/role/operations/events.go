@@ -11,6 +11,7 @@ const (
 	RoleCreatedType = "platform:admin:role:created"
 	RoleUpdatedType = "platform:admin:role:updated"
 	RoleDeletedType = "platform:admin:role:deleted"
+	RolesSyncedType = "platform:admin:roles:synced"
 	Source          = "platform:admin"
 )
 
@@ -87,4 +88,36 @@ func (e RoleDeleted) ToDataJSON() ([]byte, error) {
 		RoleID string `json:"roleId"`
 		Name   string `json:"name"`
 	}{e.RoleID, e.Name})
+}
+
+// RolesSynced is the rollup event emitted by SyncPlatformRoles. The
+// counts mirror Rust's RoleSyncCounts: created/updated/removed are
+// per-row outcomes; total is the size of the code-defined catalogue
+// (NOT the number of CODE rows in the database after sync).
+type RolesSynced struct {
+	Metadata usecase.EventMetadata
+	Created  uint32
+	Updated  uint32
+	Removed  uint32
+	Total    uint32
+}
+
+func (e RolesSynced) EventID() string       { return e.Metadata.EventID }
+func (e RolesSynced) EventType() string     { return RolesSyncedType }
+func (e RolesSynced) SpecVersion() string   { return "1.0" }
+func (e RolesSynced) Source() string        { return Source }
+func (e RolesSynced) Subject() string       { return "platform.roles" }
+func (e RolesSynced) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e RolesSynced) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e RolesSynced) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e RolesSynced) CausationID() string   { return e.Metadata.CausationID }
+func (e RolesSynced) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e RolesSynced) MessageGroup() string  { return "platform:roles" }
+func (e RolesSynced) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Created uint32 `json:"created"`
+		Updated uint32 `json:"updated"`
+		Removed uint32 `json:"removed"`
+		Total   uint32 `json:"total"`
+	}{e.Created, e.Updated, e.Removed, e.Total})
 }

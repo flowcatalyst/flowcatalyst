@@ -11,6 +11,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -35,17 +36,11 @@ type RolesState struct {
 // BffApplicationOptionsResponse / BffPermissionListResponse exactly:
 // camelCase fields, ISO-8601 timestamps as strings, items wrapped in
 // `{items, total}`.
-//
-// **Not yet ported** (each blocked on infrastructure that doesn't
-// exist on the Go side today):
-//
-//   - POST /bff/roles/sync-platform — needs a RoleSyncService that
-//     can diff platformRoles() against the database and emit
-//     created/updated/removed counts. The Go seeder is insert-only.
 func RegisterRoles(r chi.Router, s *RolesState) {
 	r.Route("/bff/roles", func(r chi.Router) {
 		r.Get("/", s.list)
 		r.Post("/", s.create)
+		r.Post("/sync-platform", s.syncPlatform)
 		r.Get("/filters/applications", s.filterApplications)
 		r.Get("/permissions", s.listPermissions)
 		r.Get("/permissions/{permission}", s.getPermission)
@@ -120,6 +115,14 @@ type bffUpdateRoleRequest struct {
 
 type createdResponse struct {
 	ID string `json:"id"`
+}
+
+// syncPlatformRolesResponse matches Rust's SyncPlatformRolesResponse.
+type syncPlatformRolesResponse struct {
+	Created uint32 `json:"created"`
+	Updated uint32 `json:"updated"`
+	Removed uint32 `json:"removed"`
+	Total   uint32 `json:"total"`
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────
@@ -267,6 +270,33 @@ func (s *RolesState) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /bff/roles/sync-platform
+//
+// Re-runs the code-defined role sync. Mirrors Rust's
+// RoleSyncService::sync_code_defined_roles via the new SyncPlatformRoles
+// use case: per-row Created / Updated / Deleted events fire alongside
+// the RolesSynced rollup, all in one transaction. Anchor-only.
+func (s *RolesState) syncPlatform(w http.ResponseWriter, r *http.Request) {
+	ac := auth.FromContext(r.Context())
+	if err := auth.RequireAnchor(ac); err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	committed, err := operations.SyncPlatformRoles(r.Context(), s.Roles, s.UoW, seed.PlatformRoles(), ec)
+	if err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	ev := committed.Event()
+	writeJSON(w, http.StatusOK, syncPlatformRolesResponse{
+		Created: ev.Created,
+		Updated: ev.Updated,
+		Removed: ev.Removed,
+		Total:   ev.Total,
+	})
 }
 
 // DELETE /bff/roles/{roleName}

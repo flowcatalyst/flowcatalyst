@@ -1,0 +1,21 @@
+name: "POST /bff/roles/sync-platform — re-run code role sync"
+
+# Anchor-only. Diffs seed.PlatformRoles() against iam_roles and emits
+# per-row Created/Updated/Deleted plus the RolesSynced rollup in one
+# tx. On a fresh boot every code role already exists from the seeder,
+# so created/removed should be 0 and updated bumps for any that
+# differ in display/description/permissions.
+
+request:
+  method: POST
+  path: /bff/roles/sync-platform
+  headers:
+    Authorization: "Bearer ${ANCHOR_TOKEN}"
+
+expect:
+  status: 200
+  body_shape:
+    created: any-number
+    updated: any-number
+    removed: any-number
+    total: any-number

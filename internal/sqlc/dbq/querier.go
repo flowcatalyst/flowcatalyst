@@ -221,12 +221,14 @@ type Querier interface {
 	// matches the Rust source which hard-codes CreatedBy: None on read.
 	ProcessFindByID(ctx context.Context, id string) (MsgProcess, error)
 	ProcessUpsert(ctx context.Context, arg ProcessUpsertParams) error
+	RoleCountAssignments(ctx context.Context, roleName string) (int64, error)
 	RoleDelete(ctx context.Context, id string) error
 	RoleFindAll(ctx context.Context) ([]IamRole, error)
 	// Queries for iam_roles + iam_role_permissions. Permissions are
 	// many-to-many; Persist replaces them wholesale.
 	RoleFindByID(ctx context.Context, id string) (IamRole, error)
 	RoleFindByName(ctx context.Context, name string) (IamRole, error)
+	RoleFindBySource(ctx context.Context, source string) ([]IamRole, error)
 	RolePermissionInsert(ctx context.Context, arg RolePermissionInsertParams) error
 	RolePermissionsClear(ctx context.Context, roleID string) error
 	RolePermissionsForRoles(ctx context.Context, roleIds []string) ([]IamRolePermission, error)

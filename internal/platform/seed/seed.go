@@ -79,7 +79,7 @@ func (s *Seeder) seedPlatformApplication(ctx context.Context) error {
 // seed_builtin_roles: skip-if-name-exists (preserves any local edits to
 // permissions, matching Rust's behaviour exactly).
 func (s *Seeder) seedRoles(ctx context.Context) error {
-	roles := platformRoles()
+	roles := PlatformRoles()
 	var inserted int
 	for _, r := range roles {
 		var existingID string

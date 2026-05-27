@@ -19,6 +19,16 @@ SELECT id, application_id, application_code, name, display_name, description,
 FROM iam_roles
 ORDER BY name;
 
+-- name: RoleFindBySource :many
+SELECT id, application_id, application_code, name, display_name, description,
+       source, client_managed, created_at, updated_at
+FROM iam_roles
+WHERE source = $1
+ORDER BY name;
+
+-- name: RoleCountAssignments :one
+SELECT COUNT(*) FROM iam_principal_roles WHERE role_name = $1;
+
 -- name: RoleUpsert :exec
 INSERT INTO iam_roles
     (id, application_id, name, display_name, description, application_code,

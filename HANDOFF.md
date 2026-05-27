@@ -63,20 +63,23 @@ last gate before cutover.
 
 **Parity surface gaps (P1)**
 1. **BFF routes** for the embedded frontend. Done: dashboard stats,
-   filter-options, event-types (9 of 13), **roles (8 of 9 — sync-platform
-   skipped, needs a RoleSyncService), processes (7 of 7, mount-twice
-   refactor landed)**. Pending: scheduled-jobs BFF (6, needs the
-   ScheduledJobInstance + InstanceLog read repos first), developer BFF
-   (8), event-types lifecycle 4 (archive, finalise-schema, deprecate-schema,
-   sync-platform — each needs a use case), roles sync-platform.
+   filter-options, event-types (9 of 13), **roles (9 of 9 — sync-platform
+   landed via the new SyncPlatformRoles use case), processes (7 of 7,
+   mount-twice refactor landed)**. Pending: scheduled-jobs BFF (6,
+   needs the ScheduledJobInstance + InstanceLog read repos first),
+   developer BFF (8), event-types lifecycle 4 (archive,
+   finalise-schema, deprecate-schema, sync-platform — each needs a use
+   case).
 2. **Per-row sync events.** ~~`eventtype/operations/sync.go` emits only
-   the rollup.~~ **Done for eventtype.** A new `commit.Sync` helper
-   (backed by `usecasepgx.CommitSync`) persists a batch of save +
-   delete pairs alongside their per-row events and the rollup, all in
-   one transaction. Same gap still open for role, dispatch_pool,
-   subscription, scheduled_job, process, platformconfig — each sync
-   op now needs the same refactor (port the events.go per-row
-   types if missing, then plug into `commit.Sync`).
+   the rollup.~~ **Done for eventtype + role.** `commit.Sync` (backed
+   by `usecasepgx.CommitSync`) persists a batch of save + delete
+   pairs alongside their per-row events and the rollup, all in one
+   transaction. Two worked examples: `eventtype/operations/sync.go`
+   and `role/operations/sync.go` (the latter is the
+   sync-from-static-catalogue case — exports `seed.PlatformRoles`,
+   uses new `role.Repository.FindBySource` + `CountAssignments`).
+   Same gap still open for dispatch_pool, subscription, scheduled_job,
+   process, platformconfig.
 3. **Specialty routes** — connection activate/pause, dispatch-pool
    suspend (new use cases needed).
 4. **Principal find-methods** — Go has 3, Rust has 14+

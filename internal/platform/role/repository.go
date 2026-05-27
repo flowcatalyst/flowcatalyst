@@ -61,6 +61,28 @@ func (r *Repository) FindAll(ctx context.Context) ([]Role, error) {
 	return r.hydrateAll(ctx, bare)
 }
 
+// FindBySource returns every role with the supplied source value
+// ("CODE", "DATABASE", or "SDK"), hydrated with permissions.
+func (r *Repository) FindBySource(ctx context.Context, source Source) ([]Role, error) {
+	rows, err := r.q.RoleFindBySource(ctx, string(source))
+	if err != nil {
+		return nil, err
+	}
+	bare := make([]Role, 0, len(rows))
+	for _, row := range rows {
+		bare = append(bare, *rowToRole(row))
+	}
+	return r.hydrateAll(ctx, bare)
+}
+
+// CountAssignments reports how many principals currently have the
+// named role assigned via iam_principal_roles. Used to guard CODE-role
+// deletions: a stale code role still in use by principals shouldn't
+// be silently removed.
+func (r *Repository) CountAssignments(ctx context.Context, name string) (int64, error) {
+	return r.q.RoleCountAssignments(ctx, name)
+}
+
 // Persist implements usecasepgx.Persist[Role]. Replaces the role
 // permissions wholesale.
 func (r *Repository) Persist(ctx context.Context, role *Role, tx *usecasepgx.DbTx) error {
