@@ -1,0 +1,16 @@
+name: "GET /bff/processes — process list (mount-twice alias of /api/processes)"
+
+# Powers ProcessListPage. Same handlers as /api/processes; the /bff
+# prefix exists so the cookie-session frontend hits a path that
+# matches the OIDC bridge's allow-list.
+
+request:
+  method: GET
+  path: /bff/processes
+  headers:
+    Authorization: "Bearer ${ANCHOR_TOKEN}"
+
+expect:
+  status: 200
+  body_shape:
+    items: any-array

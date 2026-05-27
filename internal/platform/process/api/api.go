@@ -22,59 +22,75 @@ type State struct {
 	UoW  *usecasepgx.UnitOfWork
 }
 
-const tag = "processes"
-
-// Register mounts the process endpoints.
+// Register mounts the process endpoints under both /api/processes and
+// /bff/processes. The two prefixes serve the same handlers — the BFF
+// alias exists so the cookie-session frontend can hit the same surface
+// without the bearer-token expectations of /api consumers. Mirrors
+// Rust's router.rs which nests processes_router under both paths.
 func Register(api huma.API, s *State) {
+	registerAt(api, s, "/api/processes", "", "processes")
+	registerAt(api, s, "/bff/processes", "Bff", "bff-processes")
+}
+
+func registerAt(api huma.API, s *State, base, opSuffix, tag string) {
 	huma.Register(api, huma.Operation{
-		OperationID:   "listProcesses",
+		OperationID:   "list" + opSuffix + "Processes",
 		Method:        http.MethodGet,
-		Path:          "/api/processes",
+		Path:          base,
 		Summary:       "List processes",
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusOK,
 	}, s.list)
 
 	huma.Register(api, huma.Operation{
-		OperationID:   "createProcess",
+		OperationID:   "create" + opSuffix + "Process",
 		Method:        http.MethodPost,
-		Path:          "/api/processes",
+		Path:          base,
 		Summary:       "Create a process",
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusCreated,
 	}, s.create)
 
 	huma.Register(api, huma.Operation{
-		OperationID:   "getProcess",
+		OperationID:   "get" + opSuffix + "ProcessByCode",
 		Method:        http.MethodGet,
-		Path:          "/api/processes/{id}",
+		Path:          base + "/by-code/{code}",
+		Summary:       "Get a process by code",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getByCode)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "get" + opSuffix + "Process",
+		Method:        http.MethodGet,
+		Path:          base + "/{id}",
 		Summary:       "Get a process by id",
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusOK,
 	}, s.getByID)
 
 	huma.Register(api, huma.Operation{
-		OperationID:   "updateProcess",
+		OperationID:   "update" + opSuffix + "Process",
 		Method:        http.MethodPut,
-		Path:          "/api/processes/{id}",
+		Path:          base + "/{id}",
 		Summary:       "Update a process",
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusNoContent,
 	}, s.update)
 
 	huma.Register(api, huma.Operation{
-		OperationID:   "archiveProcess",
+		OperationID:   "archive" + opSuffix + "Process",
 		Method:        http.MethodPost,
-		Path:          "/api/processes/{id}/archive",
+		Path:          base + "/{id}/archive",
 		Summary:       "Archive a process",
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusNoContent,
 	}, s.archive)
 
 	huma.Register(api, huma.Operation{
-		OperationID:   "deleteProcess",
+		OperationID:   "delete" + opSuffix + "Process",
 		Method:        http.MethodDelete,
-		Path:          "/api/processes/{id}",
+		Path:          base + "/{id}",
 		Summary:       "Delete a process",
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusNoContent,
@@ -136,6 +152,25 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	}
 	if p == nil {
 		return nil, httperror.NotFound("Process", in.ID)
+	}
+	return &getOutput{Body: fromEntity(p)}, nil
+}
+
+type getByCodeInput struct {
+	Code string `path:"code"`
+}
+
+func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanReadProcesses(ac); err != nil {
+		return nil, err
+	}
+	p, err := s.Repo.FindByCode(ctx, in.Code)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_code failed", err)
+	}
+	if p == nil {
+		return nil, httperror.NotFound("Process", in.Code)
 	}
 	return &getOutput{Body: fromEntity(p)}, nil
 }
