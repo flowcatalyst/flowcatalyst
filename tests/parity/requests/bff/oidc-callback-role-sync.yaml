@@ -1,0 +1,15 @@
+name: "GET /oauth/oidc/callback — runs through role sync"
+
+# Smoke check that the callback handler is wired. With no `state` query
+# param we expect a 400 BAD_REQUEST/INVALID_STATE — the parity goal here
+# is wire-format parity on the error envelope, NOT a successful
+# round-trip (that needs an IDP).
+
+request:
+  method: GET
+  path: /oauth/oidc/callback
+
+expect:
+  status: 400
+  body_shape:
+    error: any-string

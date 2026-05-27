@@ -110,18 +110,22 @@ last gate before cutover.
    `oauth_oidc_payloads`, `oauth_oidc_login_states`, and
    `webauthn_ceremonies`. Wired into `fc-server` (when
    `FC_PLATFORM_ENABLED=true`) and `fc-dev start` unconditionally.
-10. **OIDC bridge auto-provisioning** — ~~Go fails with
-    `USER_NOT_PROVISIONED` for unknown emails.~~ **Logic landed.**
-    `LoginEndpoint.autoProvision` now looks up the
-    `EmailDomainMapping` carried by the login_state row, creates the
-    Principal via `principalops.CreateUser` with the mapping's scope
-    + primary-client-id, and proceeds. Role-mapping from IDP claims
-    (Rust's `sync_oidc_login_with_allowed_roles`) is still pending.
-    **Bridge wired:** `POST /oauth/check-domain`, `GET /oauth/oidc/login`,
-    and `GET /oauth/oidc/callback` now serve from `WirePlatform`
-    alongside the OAuth provider endpoints. `SessionWriter` is left at
-    its JSON-200 fallback; the frontend will swap it for the
-    session-cookie write at startup.
+10. **OIDC bridge auto-provisioning + IDP role-mapping** — ~~Go fails
+    with `USER_NOT_PROVISIONED` for unknown emails.~~ **Done.**
+    `LoginEndpoint.autoProvision` looks up the `EmailDomainMapping`
+    carried by the login_state row, creates the Principal via
+    `principalops.CreateUser` with the mapping's scope +
+    primary-client-id. `LoginEndpoint.syncIdpRoles` then runs on every
+    callback (new OR existing user): the `roles` claim is translated
+    through `oauth_idp_role_mappings`, filtered through the
+    EmailDomainMapping's `allowed_role_ids`, and applied via the new
+    `principalops.SyncIdpRoles` use case that preserves
+    admin-assigned roles untouched (only IDP_SYNC-sourced
+    assignments get replaced). Unknown IDP role names log a security
+    rejection. Bridge wired in `WirePlatform`: `POST /oauth/check-domain`,
+    `GET /oauth/oidc/login`, `GET /oauth/oidc/callback`. SessionWriter
+    is left at its JSON-200 fallback; the frontend will swap it for
+    the session-cookie write at startup.
 11. **WebAuthn enumeration defence** — Rust returns deterministic-fake
     `allowCredentials` for unknown emails; Go returns empty.
 12. **Fanout subscription cache race** — 5s TTL race window between

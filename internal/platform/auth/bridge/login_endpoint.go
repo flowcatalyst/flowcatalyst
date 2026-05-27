@@ -7,14 +7,17 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
@@ -30,11 +33,13 @@ import (
 // session-cookie write (and any consent UI) is owned by the
 // SessionWriter callback the platform server installs.
 type LoginEndpoint struct {
-	bridge     *Bridge
-	states     *LoginStateRepo
-	principals *principal.Repository
-	mappings   *emaildomainmapping.Repository
-	uow        *usecasepgx.UnitOfWork
+	bridge      *Bridge
+	states      *LoginStateRepo
+	principals  *principal.Repository
+	mappings    *emaildomainmapping.Repository
+	roles       *role.Repository
+	idpMappings *auth.IdpRoleMappingRepo
+	uow         *usecasepgx.UnitOfWork
 
 	// SessionWriter is called after the callback exchange completes
 	// successfully. It receives the resolved principal ID + the
@@ -49,21 +54,30 @@ type LoginEndpoint struct {
 // and UoW power the auto-provisioning path in handleCallback — when a
 // successful OIDC handshake yields an email that doesn't match a
 // FlowCatalyst principal, the bridge creates one using the scope and
-// primary-client-id carried by the matching email-domain mapping
-// (drop-in parity with the Rust impl).
+// primary-client-id carried by the matching email-domain mapping. The
+// idpMappings repo + roles repo power the IDP role-sync that runs on
+// every callback (both new and existing users): the roles claim is
+// translated through oauth_idp_role_mappings, filtered through the
+// mapping's allowed_role_ids, and applied with source=IDP_SYNC so
+// admin-assigned roles aren't trampled. Drop-in parity with Rust's
+// sync_oidc_login_with_allowed_roles.
 func NewLoginEndpoint(
 	b *Bridge,
 	states *LoginStateRepo,
 	principals *principal.Repository,
 	mappings *emaildomainmapping.Repository,
+	roles *role.Repository,
+	idpMappings *auth.IdpRoleMappingRepo,
 	uow *usecasepgx.UnitOfWork,
 ) *LoginEndpoint {
 	return &LoginEndpoint{
-		bridge:     b,
-		states:     states,
-		principals: principals,
-		mappings:   mappings,
-		uow:        uow,
+		bridge:      b,
+		states:      states,
+		principals:  principals,
+		mappings:    mappings,
+		roles:       roles,
+		idpMappings: idpMappings,
+		uow:         uow,
 		SessionWriter: func(w http.ResponseWriter, _ *http.Request, principalID string, returnURL string) {
 			if returnURL != "" {
 				http.Redirect(w, nil, returnURL, http.StatusFound)
@@ -202,8 +216,9 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var claims struct {
-		Email string `json:"email"`
-		Nonce string `json:"nonce"`
+		Email string   `json:"email"`
+		Nonce string   `json:"nonce"`
+		Roles []string `json:"roles"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		httperror.Write(w, httperror.BadRequest("OIDC_CLAIMS", "id_token claims malformed"))
@@ -215,11 +230,13 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve or create the FlowCatalyst principal. Drop-in parity with
-	// the Rust impl: lookup by email; if missing, auto-provision using
-	// the scope + primary-client-id carried by the email-domain mapping
-	// that drove this login. Role-mapping from IDP claims is a separate
-	// follow-up (Rust calls sync_oidc_login_with_allowed_roles; Go
-	// today plumbs no roles into the new principal).
+	// Rust's sync_oidc_login_with_allowed_roles: lookup by email; if
+	// missing, auto-provision using the scope + primary-client-id from
+	// the email-domain mapping. Then translate IDP roles → platform
+	// roles (filtered by the mapping's allowed_role_ids) and apply via
+	// SyncIdpRoles. Existing users get the same role sync — if HR
+	// removed someone from a group upstream, their next login drops the
+	// corresponding platform role.
 	p, err := e.principals.FindByEmail(r.Context(), claims.Email)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "principal lookup failed", err))
@@ -231,6 +248,14 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 			httperror.Write(w, err)
 			return
 		}
+	}
+	if err := e.syncIdpRoles(r.Context(), p, claims.Roles, loginState.EmailDomainMappingID); err != nil {
+		// Role sync failure shouldn't block login — the principal is
+		// already valid. Log and continue with whatever role set is in
+		// place. Mirrors Rust's behaviour where the role sync is a
+		// best-effort step after auth.
+		slog.Warn("OIDC role sync failed; continuing without role update",
+			"principalId", p.ID, "err", err)
 	}
 
 	// Best-effort cleanup of the state row.
@@ -289,6 +314,96 @@ func (e *LoginEndpoint) autoProvision(ctx context.Context, email, mappingID stri
 		return nil, usecase.Internal("REPO", "post-create principal missing", errors.New("not found"))
 	}
 	return created, nil
+}
+
+// syncIdpRoles translates the IDP `roles` claim through
+// oauth_idp_role_mappings, filters by the EmailDomainMapping's
+// allowed_role_ids (when non-empty), and applies the resulting
+// platform-role set with source=IDP_SYNC. Preserves admin-assigned
+// roles untouched.
+//
+// An empty claim is a valid input: the user lost every group
+// upstream, so all their IDP-sourced platform roles should drop. The
+// caller treats any error here as non-fatal — the principal is
+// already authenticated; we just log and continue.
+func (e *LoginEndpoint) syncIdpRoles(ctx context.Context, p *principal.Principal, idpRoles []string, mappingID string) error {
+	mapping, err := e.mappings.FindByID(ctx, mappingID)
+	if err != nil {
+		return usecase.Internal("REPO", "email_domain_mapping lookup failed", err)
+	}
+	if mapping == nil {
+		// Mapping vanished between login and callback. Drop all
+		// IDP-sourced roles defensively — we can't validate the claim
+		// without a mapping.
+		return e.applySyncIdpRoles(ctx, p, nil)
+	}
+
+	// Load every IDP role mapping; in-memory filter. Mirrors Rust's
+	// find_idp_role_mapping which doesn't filter by IDP type either.
+	allMappings, err := e.idpMappings.FindAll(ctx)
+	if err != nil {
+		return usecase.Internal("REPO", "idp_role_mappings list failed", err)
+	}
+	byIdpRoleName := make(map[string]string, len(allMappings))
+	for _, m := range allMappings {
+		byIdpRoleName[m.IdpRoleName] = m.PlatformRoleName
+	}
+
+	allowed := mapping.AllowedRoleIDs
+	allowedSet := make(map[string]struct{}, len(allowed))
+	for _, n := range allowed {
+		allowedSet[n] = struct{}{}
+	}
+	hasAllowList := len(allowed) > 0
+
+	authorized := make(map[string]struct{}, len(idpRoles))
+	for _, idpRole := range idpRoles {
+		platformRole, ok := byIdpRoleName[idpRole]
+		if !ok {
+			// Unknown role — Rust logs this at warn as a security
+			// rejection. Match that.
+			slog.Warn("REJECTED unauthorized IDP role: not found in idp_role_mappings",
+				"principalId", p.ID, "idpRole", idpRole, "email", principalEmail(p))
+			continue
+		}
+		if hasAllowList {
+			if _, ok := allowedSet[platformRole]; !ok {
+				slog.Debug("skipped IDP role: not in email_domain_mapping allowed_role_ids",
+					"principalId", p.ID, "idpRole", idpRole, "platformRole", platformRole)
+				continue
+			}
+		}
+		authorized[platformRole] = struct{}{}
+	}
+	platformRoles := make([]string, 0, len(authorized))
+	for r := range authorized {
+		platformRoles = append(platformRoles, r)
+	}
+	return e.applySyncIdpRoles(ctx, p, platformRoles)
+}
+
+func (e *LoginEndpoint) applySyncIdpRoles(ctx context.Context, p *principal.Principal, platformRoles []string) error {
+	cmd := principalops.SyncIdpRolesCommand{
+		UserID:        p.ID,
+		PlatformRoles: platformRoles,
+	}
+	// The actor here is the system, not an authenticated user — match
+	// the auto-provision pattern of an empty principal id.
+	ec := usecase.NewExecutionContext("")
+	if _, err := principalops.SyncIdpRoles(ctx, e.principals, e.roles, e.uow, cmd, ec); err != nil {
+		return err
+	}
+	return nil
+}
+
+// principalEmail returns the user-identity email, or empty string when
+// the principal has no UserIdentity attached (shouldn't happen for
+// OIDC-resolved principals but defends against the nil case).
+func principalEmail(p *principal.Principal) string {
+	if p == nil || p.UserIdentity == nil {
+		return ""
+	}
+	return p.UserIdentity.Email
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────

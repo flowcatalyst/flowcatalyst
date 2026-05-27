@@ -223,7 +223,8 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		// for a session-cookie write at startup.
 		bridgeClient := bridge.NewBridge(authRepo)
 		loginStateRepo := bridge.NewLoginStateRepo(pool)
-		bridge.NewLoginEndpoint(bridgeClient, loginStateRepo, principalRepo, edmRepo, uow).RegisterRoutes(r)
+		bridge.NewLoginEndpoint(bridgeClient, loginStateRepo, principalRepo, edmRepo,
+			roleRepo, authRepo.IdpRoleMappings, uow).RegisterRoutes(r)
 
 		corsapi.Register(humaAPI, &corsapi.State{
 			Repo: corsRepo,
